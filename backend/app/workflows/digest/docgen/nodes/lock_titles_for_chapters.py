@@ -56,7 +56,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
                 },
             )
             upsert_knowledge_build_chapter_progress(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 chapter_progress={
                     "chapter_index": locked.chapter_index,

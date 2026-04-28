@@ -69,7 +69,7 @@ from app.shared.infra.subject import (
     inspect_subject_build_precheck,
     resolve_subject_build_vector_status,
 )
-from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
+from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering, normalize_mermaid_blocks
 from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
@@ -213,12 +213,14 @@ def _load_current_published_markdown(
 ) -> tuple[str, datetime | None]:
     cs = get_content_store()
     stored_markdown = normalize_mermaid_blocks(
-        run_store_sync(
-            cs.read_text,
-            subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
-            default="",
+        normalize_markdown_rendering(
+            run_store_sync(
+                cs.read_text,
+                subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
+                default="",
+            )
+            or ""
         )
-        or ""
     ).strip()
     if stored_markdown:
         return stored_markdown, manifest.updated_at if manifest is not None else None
@@ -228,7 +230,9 @@ def _load_current_published_markdown(
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
-        markdown = normalize_mermaid_blocks(str(doc.markdown_content or doc.content_markdown or "").strip())
+        markdown = normalize_mermaid_blocks(
+            normalize_markdown_rendering(str(doc.markdown_content or doc.content_markdown or "").strip())
+        )
         if markdown:
             parts.append(markdown)
         for candidate in (doc.updated_at, doc.published_at, doc.created_at):
@@ -515,9 +519,19 @@ def get_knowledge_build_runtime_result(
     )
 
 
-def _build_confirmed_plan_payload(plan: ConfirmedBuildPlan) -> dict[str, Any]:
+def _build_confirmed_plan_payload(
+    plan: ConfirmedBuildPlan,
+    *,
+    fallback_subject_name: str | None = None,
+) -> dict[str, Any]:
     payload = dict(plan.plan_json or {})
-    payload.setdefault("subject_name", plan.subject_name)
+    subject_name = str(
+        payload.get("subject_name")
+        or fallback_subject_name
+        or getattr(plan, "subject_name", "")
+        or ""
+    ).strip()
+    payload["subject_name"] = subject_name
     payload.setdefault("user_prompt", plan.user_prompt)
     payload.setdefault("digest_mode", plan.digest_mode)
     payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
@@ -534,6 +548,7 @@ def _load_confirmed_plan_payload(
     subject_id: str,
     user_id: str,
     confirmed_plan_id: str,
+    fallback_subject_name: str | None = None,
 ) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:
     with managed_session() as session:
         plan = get_confirmed_build_plan(
@@ -542,7 +557,7 @@ def _load_confirmed_plan_payload(
             user_id=user_id,
             plan_id=confirmed_plan_id,
         )
-    return plan, _build_confirmed_plan_payload(plan)
+    return plan, _build_confirmed_plan_payload(plan, fallback_subject_name=fallback_subject_name)
 
 
 def trigger_docgen_build(
@@ -760,21 +775,22 @@ async def run_docgen_background(
         release_knowledge_build_lock(subject_id)
         return
 
-    plan, confirmed_plan_payload = _load_confirmed_plan_payload(
-        subject_id=subject_id,
-        user_id=user_id,
-        confirmed_plan_id=confirmed_plan_id,
-    )
-    planner_session_id = planner_session_id or plan.planner_session_id
-    resolved_digest_mode = plan.digest_mode
     subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
-    _mark_confirmed_plan_status(
-        subject_id=subject_id,
-        user_id=user_id,
-        confirmed_plan_id=confirmed_plan_id,
-        status="building",
-    )
     try:
+        plan, confirmed_plan_payload = _load_confirmed_plan_payload(
+            subject_id=subject_id,
+            user_id=user_id,
+            confirmed_plan_id=confirmed_plan_id,
+            fallback_subject_name=subject_name,
+        )
+        planner_session_id = planner_session_id or plan.planner_session_id
+        resolved_digest_mode = plan.digest_mode
+        _mark_confirmed_plan_status(
+            subject_id=subject_id,
+            user_id=user_id,
+            confirmed_plan_id=confirmed_plan_id,
+            status="building",
+        )
         _clear_docgen_staging_safely(subject_id, subject_scope=subject_scope)
         _write_docgen_status(
             subject_id,
@@ -1051,7 +1067,9 @@ def get_docgen_result(
             error=str(exc),
         )
         markdown, published_updated_at = "", None
-    draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
+    draft_markdown = normalize_mermaid_blocks(
+        normalize_markdown_rendering(run_store_sync(cs.read_text, draft_key, default="") or "")
+    )
     updated_at = published_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
         docgen_build_status.draft_updated_at

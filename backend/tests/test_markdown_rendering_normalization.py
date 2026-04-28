@@ -1,5 +1,6 @@
 import asyncio
 
+from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     find_markdown_rendering_issues,
     normalize_markdown_rendering,
@@ -73,6 +74,54 @@ def test_normalize_ignores_dollars_inside_inline_code() -> None:
     assert "`\\$P`" not in fixed
     assert "$1 + 1 = 2$" in fixed
     assert "存在未成对的单美元内联公式分隔符。" not in find_markdown_rendering_issues(fixed)
+
+
+def test_latex_processing_ignores_dos_prompt_dollars_inside_inline_code() -> None:
+    raw = "\n".join(
+        [
+            "- `$$`：显示 `$` 符号。",
+            "- 示例：`PROMPT $P$G` 显示为 `C>`。",
+            "普通块公式仍应保留：$$x + 1$$",
+        ]
+    )
+
+    fixed = validate_latex(normalize_math_delimiters(raw))
+
+    assert "- `$$`：显示 `$` 符号。" in fixed
+    assert "`PROMPT $P$G`" in fixed
+    assert "- `\n$$" not in fixed
+    assert "$$\nx + 1\n$$" in fixed
+
+
+def test_normalize_repairs_previous_inline_code_dollar_corruption() -> None:
+    raw = "\n".join(
+        [
+            "### PROMPT 命令：提示符自定义",
+            "- **常用参数**：",
+            "  - `",
+            "$$",
+            "`：显示 `$` 符号。$",
+            "$$",
+            "- **示例**：",
+            "$$",
+            "```dos",
+            "PROMPT $P$G",
+            "```",
+            "显示为 `C>`。",
+            "[!TIP]",
+            "记忆口诀：组合即得标准提示符。",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "  - `$$`：显示 `$` 符号。" in fixed
+    assert "- **示例**：\n```dos\nPROMPT $P$G\n```" in fixed
+    assert "> [!TIP]\n>\n> 记忆口诀：组合即得标准提示符。" in fixed
+    assert "> **自测例题**" not in fixed
+    assert "display math 疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
+    assert "display math 分隔符数量不成对。" not in find_markdown_rendering_issues(fixed)
+    assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
 
 
 def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:

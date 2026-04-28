@@ -351,6 +351,42 @@ def _repair_display_math_boundaries(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _repair_split_inline_code_math_literals(markdown: str) -> str:
+    """Undo a known corruption from math cleanup touching inline code dollars."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip()
+        if (
+            index + 3 < len(lines)
+            and line.rstrip().endswith("`")
+            and MATH_FENCE_PATTERN.match(lines[index + 1])
+            and lines[index + 2].lstrip().startswith("`")
+            and lines[index + 2].rstrip().endswith("$")
+            and MATH_FENCE_PATTERN.match(lines[index + 3])
+        ):
+            tail = lines[index + 2].lstrip().rstrip()
+            fixed.append(f"{line}$$" + tail[:-1])
+            index += 4
+            continue
+
+        if (
+            MATH_FENCE_PATTERN.match(line)
+            and index + 1 < len(lines)
+            and lines[index + 1].lstrip().startswith("```")
+        ):
+            previous = next((item.strip() for item in reversed(fixed) if item.strip()), "")
+            if "示例" in previous or "代码" in previous or "命令" in previous:
+                index += 1
+                continue
+
+        fixed.append(line)
+        index += 1
+    return "\n".join(fixed)
+
+
 def _normalize_callout_blocks(markdown: str) -> str:
     """Convert GitHub callout variants to a frontend-stable blockquote shape."""
 
@@ -418,7 +454,11 @@ def _normalize_callout_blocks(markdown: str) -> str:
                 output.append(">")
                 index += 1
                 break
-            if body_stripped.startswith("```") or re.match(r"^#{1,6}\s+\S", body_stripped):
+            if body_stripped.startswith(("```", "---", "***", "___")) or re.match(r"^#{1,6}\s+\S", body_stripped):
+                break
+            if body_lines and body_stripped.startswith("**") and any(
+                marker in body_stripped for marker in ("自测", "例题", "题目", "解析", "正确答案")
+            ):
                 break
             if CALLOUT_LINE_PATTERN.match(body_line):
                 break
@@ -666,6 +706,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     """
 
     text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
+    text = _repair_split_inline_code_math_literals(text)
     text = _repair_display_math_boundaries(text)
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
@@ -750,7 +791,7 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
         issues.append("display math 内混入 blockquote 前缀。")
     if text.count("```") % 2 != 0:
         issues.append("Markdown fenced code block 数量不成对。")
-    if text.count("$$") % 2 != 0:
+    if _display_math_fence_line_count(text) % 2 != 0:
         issues.append("display math 分隔符数量不成对。")
     if STUCK_MATH_FENCE_PATTERN.search(text):
         issues.append("display math 分隔符和代码围栏粘连。")
@@ -773,6 +814,10 @@ def _display_math_contains_markdown(markdown: str) -> bool:
         if in_math and _is_markdown_boundary_inside_math(line):
             return True
     return False
+
+
+def _display_math_fence_line_count(markdown: str) -> int:
+    return sum(1 for line in str(markdown or "").split("\n") if MATH_FENCE_PATTERN.match(line))
 
 
 def _split_stuck_math_fences(markdown: str) -> str:

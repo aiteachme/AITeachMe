@@ -463,7 +463,8 @@ function BuildInProgressBubble({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-zinc-950">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950">
+                {isActive ? <span className="build-live-dot h-2 w-2 text-blue-500" aria-hidden="true" /> : null}
                 {isActive ? "知识库正在构建" : "知识库构建状态"}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-500">
@@ -475,9 +476,15 @@ function BuildInProgressBubble({
           <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-600">
             {statusText || "正在启动知识文档构建..."}
           </p>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+          <div
+            className={`mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100 ${
+              isActive ? "build-plan-progress-track-active" : ""
+            }`}
+          >
             <div
-              className="h-full rounded-full bg-zinc-950 build-plan-progress-breathing transition-all duration-500"
+              className={`h-full rounded-full bg-zinc-950 transition-all duration-500 ${
+                isActive ? "build-plan-progress-breathing" : ""
+              }`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>

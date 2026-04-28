@@ -31,7 +31,40 @@ def validate_latex(markdown: str) -> str:
 
 def _process_non_fenced(markdown: str, processor) -> str:
     parts = _FENCE_PATTERN.split(str(markdown or ""))
-    return "".join(part if part.startswith("```") else processor(part) for part in parts)
+    return "".join(part if part.startswith("```") else _process_non_inline_code(part, processor) for part in parts)
+
+
+def _process_non_inline_code(segment: str, processor) -> str:
+    """Apply math repairs outside inline code spans.
+
+    DOS prompt strings and other command snippets often contain literal dollar
+    signs, e.g. ``$P$G`` or ``$$``. Treating those inline-code dollars as LaTeX
+    delimiters corrupts otherwise valid Markdown, so the math normalizer must
+    leave code spans untouched.
+    """
+
+    text = str(segment or "")
+    parts: list[str] = []
+    cursor = 0
+    length = len(text)
+    while cursor < length:
+        tick_index = text.find("`", cursor)
+        if tick_index < 0:
+            parts.append(processor(text[cursor:]))
+            break
+        parts.append(processor(text[cursor:tick_index]))
+        tick_count = 1
+        while tick_index + tick_count < length and text[tick_index + tick_count] == "`":
+            tick_count += 1
+        fence = "`" * tick_count
+        closing = text.find(fence, tick_index + tick_count)
+        if closing < 0:
+            parts.append(text[tick_index:])
+            break
+        end = closing + tick_count
+        parts.append(text[tick_index:end])
+        cursor = end
+    return "".join(parts)
 
 
 def _normalize_math_segment(segment: str) -> str:
