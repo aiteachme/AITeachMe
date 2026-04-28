@@ -555,14 +555,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
+            <div className="flex items-center gap-1.5 pb-2 pl-2 pr-0 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
               <div className="ml-auto flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setIsImportModalOpen(true)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
                   title="导入课程包"
                   aria-label="导入课程包"
                 >
@@ -642,7 +642,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <button
                         type="button"
                         onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-3.5 w-3.5" />
