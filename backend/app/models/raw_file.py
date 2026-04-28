@@ -24,6 +24,21 @@ class RawFile(SQLModel, table=True):
             "file_size_bytes",
             "filetype",
         ),
+        sa.Index(
+            "uq_raw_file_user_hash_size_type_signature_active",
+            "user_id",
+            "content_hash",
+            "file_size_bytes",
+            "filetype",
+            "parse_request_signature",
+            unique=True,
+            sqlite_where=sa.text(
+                "status != 'failed' AND content_hash IS NOT NULL AND file_size_bytes IS NOT NULL"
+            ),
+            postgresql_where=sa.text(
+                "status != 'failed' AND content_hash IS NOT NULL AND file_size_bytes IS NOT NULL"
+            ),
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -58,6 +73,10 @@ class RawFile(SQLModel, table=True):
     parse_metadata: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     material_profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     parse_metadata_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    parse_request_signature: str = Field(
+        default="default",
+        sa_column=sa.Column(sa.String(length=80), nullable=False, server_default="default"),
+    )
     image_count: int | None = Field(default=None)
     ingest_status: str = Field(default=IngestStatus.PENDING.value, index=True)
     current_step: str | None = Field(default=None, index=True)
@@ -124,7 +143,7 @@ class RawFile(SQLModel, table=True):
                 decoded = json.loads(payload)
             except json.JSONDecodeError:
                 continue
-            parser_used = decoded.get("parser_used")
+            parser_used = decoded.get("parser_used") or decoded.get("provider_used")
             if parser_used:
                 return str(parser_used)
         return None
