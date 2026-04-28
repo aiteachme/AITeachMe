@@ -308,6 +308,14 @@
     touch-action: manipulation;
   }
 
+  .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"] svg {
+    transform: rotate(90deg);
+  }
+
+  .markdown-collapsible-section[data-collapsed="true"] > [data-collapsible-heading="true"] [data-heading-toggle="true"] svg {
+    transform: rotate(0deg);
+  }
+
   @media (hover: hover) and (pointer: fine) {
     .markdown-collapsible-section > [data-collapsible-heading="true"] [data-heading-toggle="true"] {
       opacity: 0;

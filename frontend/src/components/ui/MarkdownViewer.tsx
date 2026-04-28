@@ -1,4 +1,4 @@
-import { Children, useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -1052,6 +1052,37 @@ function resolveCollapsibleHeadingLevels(value: CollapsibleHeadings | undefined)
   return new Set(value.filter((level) => Number.isInteger(level) && level >= 1 && level <= 6));
 }
 
+function applyHeadingCollapseDomState(id: string, collapsed: boolean, source: HTMLElement | null | undefined): boolean {
+  const section = source?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
+  if (!section || section.getAttribute("data-heading-section-id") !== id) {
+    return false;
+  }
+
+  if (collapsed) {
+    section.setAttribute("data-collapsed", "true");
+  } else {
+    section.removeAttribute("data-collapsed");
+  }
+
+  const heading = section.firstElementChild instanceof HTMLElement ? section.firstElementChild : null;
+  if (heading?.getAttribute("data-heading-id") === id) {
+    if (collapsed) {
+      heading.setAttribute("data-heading-collapsed", "true");
+    } else {
+      heading.removeAttribute("data-heading-collapsed");
+    }
+  }
+
+  const toggle = heading?.querySelector<HTMLButtonElement>('[data-heading-toggle="true"]');
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", collapsed ? "展开标题内容" : "折叠标题内容");
+    toggle.title = collapsed ? "展开标题内容" : "折叠标题内容";
+  }
+
+  return true;
+}
+
 function extractMarkdownAstText(node: MarkdownAstNode | undefined): string {
   if (!node) return "";
   if (typeof node.value === "string") return node.value;
@@ -1564,6 +1595,11 @@ export function MarkdownViewer({
   );
   const [internalCollapsedHeadingIds, setInternalCollapsedHeadingIds] = useState<Set<string>>(new Set());
   const collapsedHeadingIds = controlledCollapsedHeadingIds ?? internalCollapsedHeadingIds;
+  const collapsedHeadingIdsRef = useRef(collapsedHeadingIds);
+
+  useEffect(() => {
+    collapsedHeadingIdsRef.current = collapsedHeadingIds;
+  }, [collapsedHeadingIds]);
 
   useEffect(() => {
     if (!controlledCollapsedHeadingIds) {
@@ -1571,22 +1607,32 @@ export function MarkdownViewer({
     }
   }, [controlledCollapsedHeadingIds, processedContent]);
 
-  const toggleHeadingCollapse = useCallback((id: string) => {
-    const nextCollapsed = !collapsedHeadingIds.has(id);
+  const toggleHeadingCollapse = useCallback((id: string, source?: HTMLElement | null) => {
+    const section = source?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
+    const nextCollapsed = section
+      ? section.getAttribute("data-collapsed") !== "true"
+      : !collapsedHeadingIdsRef.current.has(id);
+
     if (onHeadingCollapseChange) {
       onHeadingCollapseChange(id, nextCollapsed);
+    }
+
+    if (applyHeadingCollapseDomState(id, nextCollapsed, source)) {
       return;
     }
-    setInternalCollapsedHeadingIds((prev) => {
-      const next = new Set(prev);
-      if (nextCollapsed) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  }, [collapsedHeadingIds, onHeadingCollapseChange]);
+
+    if (!controlledCollapsedHeadingIds) {
+      setInternalCollapsedHeadingIds((prev) => {
+        const next = new Set(prev);
+        if (nextCollapsed) {
+          next.add(id);
+        } else {
+          next.delete(id);
+        }
+        return next;
+      });
+    }
+  }, [controlledCollapsedHeadingIds, onHeadingCollapseChange]);
 
   const makeHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
     const Tag = `h${level}` as const;
@@ -1624,15 +1670,12 @@ export function MarkdownViewer({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                toggleHeadingCollapse(headingId);
+                toggleHeadingCollapse(headingId, event.currentTarget);
               }}
             >
               <ChevronRight
                 aria-hidden="true"
-                className={cn(
-                  "h-4 w-4 transition-transform duration-200",
-                  !isCollapsed && "rotate-90",
-                )}
+                className="h-4 w-4 transition-transform duration-200"
               />
             </button>
           ) : null}

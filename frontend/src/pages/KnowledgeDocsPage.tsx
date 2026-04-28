@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
+import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -579,6 +579,33 @@ function findHeadingById(contentRoot: HTMLElement | null, headingId: string): HT
   }
   return Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"))
     .find((heading) => heading.getAttribute("data-heading-id") === headingId) ?? null;
+}
+
+function applyDocHeadingCollapseDomState(contentRoot: HTMLElement | null, headingId: string, collapsed: boolean): boolean {
+  const heading = findHeadingById(contentRoot, headingId);
+  const section = heading?.parentElement?.matches(".markdown-collapsible-section[data-heading-section-id]")
+    ? heading.parentElement
+    : heading?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
+  if (!heading || !section || section.getAttribute("data-heading-section-id") !== headingId) {
+    return false;
+  }
+
+  if (collapsed) {
+    section.setAttribute("data-collapsed", "true");
+    heading.setAttribute("data-heading-collapsed", "true");
+  } else {
+    section.removeAttribute("data-collapsed");
+    heading.removeAttribute("data-heading-collapsed");
+  }
+
+  const toggle = heading.querySelector<HTMLButtonElement>('[data-heading-toggle="true"]');
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", collapsed ? "展开标题内容" : "折叠标题内容");
+    toggle.title = collapsed ? "展开标题内容" : "折叠标题内容";
+  }
+
+  return true;
 }
 
 function findSelectionHeading(anchorHeading: HTMLElement | null, selectedText: string): HTMLElement | null {
@@ -1216,13 +1243,11 @@ const DocMarkdown = memo(function DocMarkdown({
   content,
   subjectId,
   headingNumbering,
-  collapsedHeadingIds,
   onHeadingCollapseChange,
 }: {
   content: string;
   subjectId?: string;
   headingNumbering: boolean;
-  collapsedHeadingIds: ReadonlySet<string>;
   onHeadingCollapseChange: (id: string, collapsed: boolean) => void;
 }) {
   return (
@@ -1232,7 +1257,6 @@ const DocMarkdown = memo(function DocMarkdown({
       headingAnchors
       headingNumbering={headingNumbering}
       collapsibleHeadings
-      collapsedHeadingIds={collapsedHeadingIds}
       onHeadingCollapseChange={onHeadingCollapseChange}
       assetSubject={subjectId}
     />
@@ -1873,7 +1897,28 @@ export function KnowledgeDocsPage() {
       next.delete(id);
     }
     collapsedDocHeadingIdsRef.current = next;
-    setCollapsedDocHeadingIds(next);
+    startTransition(() => {
+      setCollapsedDocHeadingIds(next);
+    });
+    window.requestAnimationFrame(() => {
+      const pending = pendingHeadingCollapseScrollRef.current;
+      const nextHeading = findHeadingById(contentAreaRef.current, id);
+      if (!container || !pending || pending.id !== id || !nextHeading || !isVisibleHeading(nextHeading)) {
+        return;
+      }
+      const delta = nextHeading.getBoundingClientRect().top - pending.top;
+      if (Math.abs(delta) >= 0.5) {
+        const previousScrollBehavior = container.style.scrollBehavior;
+        container.style.scrollBehavior = "auto";
+        container.scrollTop += delta;
+        if (previousScrollBehavior) {
+          container.style.scrollBehavior = previousScrollBehavior;
+        } else {
+          container.style.removeProperty("scroll-behavior");
+        }
+      }
+      pendingHeadingCollapseScrollRef.current = null;
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -1940,6 +1985,7 @@ export function KnowledgeDocsPage() {
     let changed = false;
     for (const id of idsToExpand) {
       if (next.delete(id)) {
+        applyDocHeadingCollapseDomState(contentAreaRef.current, id, false);
         changed = true;
       }
     }
@@ -1947,7 +1993,9 @@ export function KnowledgeDocsPage() {
       return false;
     }
     collapsedDocHeadingIdsRef.current = next;
-    setCollapsedDocHeadingIds(next);
+    startTransition(() => {
+      setCollapsedDocHeadingIds(next);
+    });
     return true;
   }, []);
 
@@ -2109,7 +2157,9 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const next = new Set<string>();
     collapsedDocHeadingIdsRef.current = next;
-    setCollapsedDocHeadingIds(next);
+    startTransition(() => {
+      setCollapsedDocHeadingIds(next);
+    });
   }, [renderedMarkdown]);
 
   useEffect(() => {
@@ -5130,7 +5180,6 @@ export function KnowledgeDocsPage() {
                         content={renderedMarkdown}
                         subjectId={subjectId}
                         headingNumbering={viewPrefs.autoHeadingNumbering}
-                        collapsedHeadingIds={collapsedDocHeadingIds}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
                     </>
