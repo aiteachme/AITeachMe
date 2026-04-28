@@ -12,6 +12,7 @@ from fastapi import Request
 
 from app.shared.infra.agent_loop import run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support.model_choices import resolve_runtime_model_selector
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
@@ -65,7 +66,14 @@ def _build_stream_state(
     return next_state
 
 
-def _build_response_stream(state: InteractWorkflowState, *, subject_id: str):
+def _resolve_chat_model_selector(state: InteractWorkflowState) -> str:
+    return resolve_runtime_model_selector(
+        state.get("model_override"),
+        default_selector=INTERACT_MODEL_SELECTOR,
+    )
+
+
+def _build_response_stream(state: InteractWorkflowState, *, subject_id: str, model_selector: str):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
     tool_plan = resolve_interact_tool_plan(
         execution_mode=execution_mode,
@@ -76,12 +84,16 @@ def _build_response_stream(state: InteractWorkflowState, *, subject_id: str):
         return run_agent_loop_stream(
             state["messages"],
             tools=tool_plan.tool_names,
-            config=build_agent_loop_config(tool_plan=tool_plan, subject_id=subject_id),
+            config=build_agent_loop_config(
+                tool_plan=tool_plan,
+                subject_id=subject_id,
+                model_selector=model_selector,
+            ),
         )
     return acompletion_stream(
         state["messages"],
         call_purpose=LLMCallPurpose.CHAT,
-        model=INTERACT_MODEL_SELECTOR,
+        model=model_selector,
     )
 
 
@@ -101,6 +113,7 @@ def build_stream_answer_node(
 
         collected_tokens: list[str] = []
         subject_id = str(state.get("subject_id") or context.subject_id or "")
+        model_selector = _resolve_chat_model_selector(state)
         execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
         tool_plan = resolve_interact_tool_plan(
             execution_mode=execution_mode,
@@ -113,9 +126,9 @@ def build_stream_answer_node(
             "正在组织回答..." if not tool_plan.uses_tools else "正在结合知识库工具整理回答...",
             execution_mode=execution_mode.value,
             tools=tool_plan.tool_names,
-            model=INTERACT_MODEL_SELECTOR,
+            model=model_selector,
         )
-        stream = _build_response_stream(state, subject_id=subject_id)
+        stream = _build_response_stream(state, subject_id=subject_id, model_selector=model_selector)
         try:
             async for token in stream:
                 if await _is_disconnected(request):
@@ -142,6 +155,7 @@ def build_stream_answer_node(
             response_chars=len(assistant_response),
             streaming_enabled=emitter is not None,
             execution_mode=state.get("execution_mode", InteractExecutionMode.SINGLE_PASS).value,
+            model=model_selector,
         )
         return _build_stream_state(
             state,

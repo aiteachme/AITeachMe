@@ -25,6 +25,7 @@ class InteractWorkflowState(TypedDict, total=False):
     session_created: bool
     question: str
     source: str | None
+    model_override: str | None
     anchor_id: str | None
     selected_text: str | None
     selected_context: str | None

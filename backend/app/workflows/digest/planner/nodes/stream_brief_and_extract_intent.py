@@ -65,6 +65,7 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
             [{"role": "user", "content": prompt}],
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.STREAM_BRIEF,
+                model_override=state.get("model_override"),
                 planner_session_id=state.get("planner_session_id") or "",
                 substep="生成可见判断",
             ),
@@ -131,6 +132,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
             ),
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.EXTRACT_INTENT,
+                model_override=state.get("model_override"),
                 planner_session_id=state.get("planner_session_id") or "",
                 substep="生成规划抓手",
             ),

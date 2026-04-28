@@ -21,6 +21,11 @@ import { type ChatSessionMessage, useChatSession } from "../../hooks/useChatSess
 import { cn } from "../../lib/utils";
 import { ChatCitationModal } from "../chat/ChatCitationModal";
 import { ChatComposer } from "../chat/ChatComposer";
+import {
+  DEFAULT_CHAT_MODEL_CHOICE,
+  type ChatModelChoice,
+  toChatRequestModel,
+} from "../chat/ChatModelSelect";
 import { ChatTranscript } from "../chat/ChatTranscript";
 import { HeroAnimation } from "../ui/HeroAnimation";
 import { useAiInteraction } from "./AiInteractionProvider";
@@ -258,6 +263,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   const isKnowledgeDocsPage = Boolean(docsSubjectId && /^\/subject\/[^/]+\/knowledge-docs$/.test(pathname));
 
   const [draft, setDraft] = useState("");
+  const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -933,6 +939,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     const result = await sendMessage(
       {
         question,
+        model: toChatRequestModel(chatModel),
         session_id: pendingSelectionContext ? undefined : selectedSessionId ?? undefined,
         source: selectionContext?.source,
         anchor_id: selectionContext?.anchorId,
@@ -1163,6 +1170,8 @@ export const AiConversationPanel = memo(function AiConversationPanel({
           isStreaming={isStreaming}
           disabled={!subjectId || isPlannerConversation}
           autoFocusKey={composerFocusKey}
+          modelValue={chatModel}
+          onModelChange={setChatModel}
           placeholder={pendingSelectionContext ? (
             pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "围绕这道题提问..." : "结合原文上下文提问..."
           ) : undefined}

@@ -54,7 +54,6 @@ _SUBJECT_FOREIGN_KEYS = (
     ("knowledge_graph_source_ref", "subject_id"),
     ("knowledge_graph_sync_run", "subject_id"),
     ("question_template", "subject_id"),
-    ("raw_file", "origin_subject_id"),
     ("retrieval_chunk", "subject_id"),
     ("subject_file", "subject_id"),
     ("user_knowledge_state", "subject_id"),

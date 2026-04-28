@@ -8532,6 +8532,18 @@
             ],
             "title": "Title",
             "description": "Optional planner session title."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Optional per-request planner model. Omit or use settings for configured defaults."
           }
         },
         "type": "object",
@@ -8547,6 +8559,18 @@
             "type": "string",
             "title": "Message",
             "description": "User feedback used to revise the current plan draft."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Optional per-request planner model. Omit or use settings for configured defaults."
           }
         },
         "type": "object",
@@ -9448,6 +9472,18 @@
             ],
             "title": "Source",
             "description": "Optional source tag, e.g. quick_chat, exam_question, or build_assistant."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Optional per-message chat model. Omit or use settings for configured defaults."
           },
           "anchor_id": {
             "anyOf": [

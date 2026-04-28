@@ -40,6 +40,12 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { SubjectExportModal } from "../components/subject/SubjectExportModal";
 import { useToast } from "../components/ui/Toast";
+import {
+  ChatModelSelect,
+  DEFAULT_CHAT_MODEL_CHOICE,
+  type ChatModelChoice,
+  toChatRequestModel,
+} from "../components/chat/ChatModelSelect";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 /* ── API helpers (same as BuildPlanPage) ── */
@@ -639,6 +645,7 @@ export function HomePage() {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
+  const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -854,9 +861,10 @@ export function HomePage() {
         await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
       }
       const userGoal = prompt.trim();
+      const selectedModel = toChatRequestModel(chatModel);
       navigate(`/subject/${subjectId}/build`, {
-        state: userGoal
-          ? { initialPrompt: userGoal, autoStart: true }
+        state: userGoal || selectedModel
+          ? { initialPrompt: userGoal || undefined, autoStart: Boolean(userGoal), model: selectedModel }
           : undefined,
       });
     } catch {
@@ -1037,7 +1045,7 @@ export function HomePage() {
               )}
 
               <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex flex-1 flex-wrap items-center gap-2">
                   <input 
                     type="file" 
                     title="选择要上传的文件资料"
@@ -1069,6 +1077,11 @@ export function HomePage() {
                     <FolderOpen className="h-3.5 w-3.5" />
                     从资料库选
                   </button>
+                  <ChatModelSelect
+                    value={chatModel}
+                    onChange={setChatModel}
+                    disabled={isWorking}
+                  />
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />

@@ -37,6 +37,13 @@ import { KnowledgeBuildResolutionModal } from "../components/build-plan/Knowledg
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
+import {
+  ChatModelSelect,
+  DEFAULT_CHAT_MODEL_CHOICE,
+  type ChatModelChoice,
+  toChatModelChoice,
+  toChatRequestModel,
+} from "../components/chat/ChatModelSelect";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import {
   buildKnowledgeBuildRuntimeQueryKey,
@@ -91,6 +98,7 @@ interface BuildPlanLocationState {
   initialFiles?: File[];
   initialPrompt?: string;
   autoStart?: boolean;
+  model?: string | null;
 }
 
 let messageCounter = 0;
@@ -639,7 +647,7 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   subject: string,
-  payload: { file_ids: string[]; user_prompt: string },
+  payload: { file_ids: string[]; user_prompt: string; model?: string },
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -657,6 +665,7 @@ async function revisePlannerSessionStream(
   subject: string,
   sessionId: string,
   message: string,
+  model: string | undefined,
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -665,7 +674,7 @@ async function revisePlannerSessionStream(
 ) {
   return streamPlannerSession(
     `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/messages/stream`,
-    { message },
+    { message, model },
     options,
   );
 }
@@ -712,6 +721,7 @@ export function BuildPlanPage() {
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
+  const [chatModel, setChatModel] = useState<ChatModelChoice>(() => toChatModelChoice(navState?.model ?? DEFAULT_CHAT_MODEL_CHOICE));
   const [plannerNeedsRefresh, setPlannerNeedsRefresh] = useState(false);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
@@ -1022,9 +1032,10 @@ export function BuildPlanPage() {
 
     void (async () => {
       try {
+        const selectedModel = toChatRequestModel(chatModel);
         const response = await createPlannerSessionStream(
           subjectId,
-          { file_ids: plannerEffectiveFileIds, user_prompt: prompt },
+          { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
           {
             signal: controller.signal,
             onStatus: (payload) => {
@@ -1353,6 +1364,7 @@ export function BuildPlanPage() {
           {
             file_ids: plannerEffectiveFileIds,
             user_prompt: text,
+            model: toChatRequestModel(chatModel),
           },
           {
             signal: controller.signal,
@@ -1379,7 +1391,7 @@ export function BuildPlanPage() {
         return;
       }
 
-      const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, {
+      const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, toChatRequestModel(chatModel), {
         signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -1437,6 +1449,7 @@ export function BuildPlanPage() {
     }
   }, [
     appendPlannerResponse,
+    chatModel,
     currentPlan,
     handleStopPlannerStream,
     inputValue,
@@ -1739,8 +1752,8 @@ export function BuildPlanPage() {
                   </div>
                 )}
 
-                <div className="flex items-end justify-between px-1">
-                  <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-end justify-between gap-2 px-1">
+                  <div className="flex flex-1 flex-wrap items-center gap-2">
                     <input
                       type="file"
                       multiple
@@ -1766,6 +1779,12 @@ export function BuildPlanPage() {
                       )}
                       {uploadMutation.isPending ? "上传中" : "添加资料"}
                     </label>
+
+                    <ChatModelSelect
+                      value={chatModel}
+                      onChange={setChatModel}
+                      disabled={isBuilding || plannerStreaming}
+                    />
 
                     {plannerNeedsRefresh && (
                       <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700">

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Loader2, Send, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { ChatModelSelect, type ChatModelChoice } from "./ChatModelSelect";
 
 interface ChatComposerProps {
   value: string;
@@ -11,6 +12,8 @@ interface ChatComposerProps {
   disabled?: boolean;
   autoFocusKey?: number;
   placeholder?: string;
+  modelValue?: ChatModelChoice;
+  onModelChange?: (value: ChatModelChoice) => void;
 }
 
 const TEXTAREA_MIN_HEIGHT = 48;
@@ -25,6 +28,8 @@ export function ChatComposer({
   disabled = false,
   autoFocusKey,
   placeholder = "问我一个问题，或者让我结合资料解释某个概念...",
+  modelValue,
+  onModelChange,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -105,6 +110,16 @@ export function ChatComposer({
             )}
           </div>
         </div>
+
+        {modelValue && onModelChange ? (
+          <div className="mt-2.5 flex px-2">
+            <ChatModelSelect
+              value={modelValue}
+              onChange={onModelChange}
+              disabled={disabled || isStreaming}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-2.5 flex items-center justify-between gap-3 px-2 text-[11px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
           <span className="hidden sm:inline-block">Enter 发送，Shift + Enter 换行</span>

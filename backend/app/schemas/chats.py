@@ -72,6 +72,7 @@ class ChatSendRequest(BaseModel):
     question: str = Field(description="Current user question.")
     session_id: str | None = Field(default=None, description="Optional session ID. Auto-created when omitted.")
     source: str | None = Field(default=None, description="Optional source tag, e.g. quick_chat, exam_question, or build_assistant.")
+    model: str | None = Field(default=None, description="Optional per-message chat model. Omit or use settings for configured defaults.")
     anchor_id: str | None = Field(default=None, description="Optional doc heading or exam-question anchor for highlighted QA.")
     selected_text: str | None = Field(default=None, description="Exact highlighted text or question preview for display and persistence.")
     selected_context: str | None = Field(default=None, description="Legacy highlighted context string.")
