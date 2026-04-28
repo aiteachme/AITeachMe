@@ -170,7 +170,11 @@ def get_chunks_by_ids(session: Session, chunk_ids: list[int]) -> list[RetrievalC
 
 
 def delete_chunks_by_file_ids(session: Session, *, subject: str, file_ids: list[str]) -> int:
-    chunks = get_chunks_by_file_ids(session, file_ids)
+    chunks = get_chunks_by_source_file_ids(
+        session,
+        subject=subject,
+        source_file_ids=file_ids,
+    )
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
         delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)

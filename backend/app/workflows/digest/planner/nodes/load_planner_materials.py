@@ -62,7 +62,7 @@ def _build_seed_material_context(*, subject: str, file_ids: list[str], user_prom
 
     source_documents = [
         SourcePacket(
-            file_id=int(raw_file.id),
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
             filetype=raw_file.file_ext,
             markdown_path=raw_file.markdown_path or "",

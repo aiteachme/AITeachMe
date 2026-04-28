@@ -196,7 +196,7 @@ def upgrade() -> None:
         sa.text(
             """
             ALTER TABLE retrieval_chunk
-            ADD CONSTRAINT uq_retrieval_chunk_file_id_chunk_index UNIQUE (file_id, chunk_index)
+            ADD CONSTRAINT uq_retrieval_chunk_subject_file_id_chunk_index UNIQUE (subject, file_id, chunk_index)
             """
         )
     )

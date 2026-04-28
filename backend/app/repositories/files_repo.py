@@ -124,6 +124,10 @@ def list_raw_files_by_ids(
 
     stmt = (
         select(RawFile)
+        .where(
+            _subject_membership_condition(subject),
+            RawFile.id.in_(file_ids),  # type: ignore[union-attr]
+        )
         .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
     )
     return list(session.exec(stmt).all())

@@ -16,9 +16,10 @@ class RetrievalChunk(SQLModel, table=True):
     __tablename__ = "retrieval_chunk"
     __table_args__ = (
         UniqueConstraint(
+            "subject",
             "file_id",
             "chunk_index",
-            name="uq_retrieval_chunk_file_id_chunk_index",
+            name="uq_retrieval_chunk_subject_file_id_chunk_index",
         ),
         UniqueConstraint(
             "subject",
