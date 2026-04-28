@@ -762,6 +762,16 @@ function isEscapedAt(source: string, index: number): boolean {
 function unescapedSingleDollarPositions(line: string): number[] {
   const positions: number[] = [];
   for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === "`") {
+      const tickRun = line.slice(index).match(/^`+/)?.[0] ?? "`";
+      const closing = line.indexOf(tickRun, index + tickRun.length);
+      if (closing >= 0) {
+        index = closing + tickRun.length - 1;
+        continue;
+      }
+      index += tickRun.length - 1;
+      continue;
+    }
     if (line[index] !== "$") continue;
     if (line[index + 1] === "$") {
       index += 1;

@@ -40,6 +40,7 @@ def build_chapter_rewrite_messages(
 3. 不要虚构真题；如果是生成例题，要称为“自测例题”。
 4. systematic 要讲清定义、结构和推理；sprint 要强化题型、速判和易错点。
 5. 标题不要自带编号；正文列表、解析步骤可以继续使用普通有序列表。
+6. 代码、命令、路径、文件名、环境变量、配置项等字面量使用反引号代码片段，并保留材料中的原始符号；只有数学表达式使用公式语法。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

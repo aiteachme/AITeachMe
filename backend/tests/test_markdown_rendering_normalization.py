@@ -55,6 +55,26 @@ def test_normalize_trims_inline_math_padding_inside_callout() -> None:
     assert "$ 35 \\times 86 = 3010 $" not in fixed
 
 
+def test_normalize_ignores_dollars_inside_inline_code() -> None:
+    raw = "\n".join(
+        [
+            "- `$P`：当前盘符",
+            "- `$G`：大于号 `>`",
+            "`PROMPT $P$G` 的输出结果是 `C>`。",
+            "普通公式仍应修剪：$ 1 + 1 = 2 $。",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "`$P`" in fixed
+    assert "`$G`" in fixed
+    assert "`PROMPT $P$G`" in fixed
+    assert "`\\$P`" not in fixed
+    assert "$1 + 1 = 2$" in fixed
+    assert "存在未成对的单美元内联公式分隔符。" not in find_markdown_rendering_issues(fixed)
+
+
 def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:
     raw = "\n".join(
         [

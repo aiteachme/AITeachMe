@@ -432,6 +432,17 @@ def _unescaped_single_dollar_positions(line: str) -> list[int]:
     positions: list[int] = []
     index = 0
     while index < len(line):
+        if line[index] == "`":
+            tick_count = 1
+            while index + tick_count < len(line) and line[index + tick_count] == "`":
+                tick_count += 1
+            fence = "`" * tick_count
+            closing = line.find(fence, index + tick_count)
+            if closing >= 0:
+                index = closing + tick_count
+                continue
+            index += tick_count
+            continue
         if line[index] != "$":
             index += 1
             continue
