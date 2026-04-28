@@ -309,6 +309,12 @@ class KnowledgeGraphBuildMetricsResponse(BaseModel):
     stable_anchor_count: int = Field(default=0, description="Stable graph anchors seen during the latest docs-sync.")
     deprecated_unit_count: int = Field(default=0, description="Knowledge units deprecated by the latest docs-sync.")
     deprecated_edge_count: int = Field(default=0, description="Knowledge edges deprecated by the latest docs-sync.")
+    prefetch_status: str | None = Field(default=None, description="DocGen-side KG prefetch status for the latest auto sync.")
+    prefetch_section_count: int = Field(default=0, description="Section payloads produced by the DocGen-side KG prefetch.")
+    prefetch_reused_section_count: int = Field(default=0, description="Prefetched section payloads reused by final graph sync.")
+    prefetch_catchup_section_count: int = Field(default=0, description="Final sections that required normal catch-up extraction.")
+    prefetch_stale_section_count: int = Field(default=0, description="Prefetched section payloads discarded because final content changed.")
+    prefetch_failed_section_count: int = Field(default=0, description="Prefetch section payloads that failed before final graph sync.")
 
 
 class KnowledgeBuildStatusResponse(BaseModel):

@@ -146,6 +146,8 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 - `kg_doc_sync/`
 - `workflows/support/knowledge_graph/`
 
+自动同步支持 DocGen sidecar 预抽取：章节增强完成后可在后台生成 section 级候选缓存；发布成功后 `kg_doc_sync` 用最终 Markdown 的 hash 复用命中的缓存，对变更章节补抽，再统一写入正式图谱表。手动图谱重建仍只读取已发布 KnowledgeDoc，不依赖预抽取缓存。
+
 `kg_file_ingest/` 已移除，后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询和触发也收口在 `kg_doc_sync`。
 
 ## 8. common 使用规则

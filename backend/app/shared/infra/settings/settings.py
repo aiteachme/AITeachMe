@@ -106,6 +106,9 @@ class LocalRagSettings(_SettingsModel):
 
 class KnowledgeGraphSettings(_SettingsModel):
     sync_after_docgen: bool
+    prefetch_during_docgen: bool
+    prefetch_concurrency: int
+    max_parallel_extractions: int
 
 
 class ObservabilitySettings(_SettingsModel):

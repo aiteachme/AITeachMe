@@ -1,8 +1,8 @@
 ﻿# kg_doc_sync Flow Design
 
-最后更新：2026-04-27
+最后更新：2026-04-28
 
-`kg_doc_sync` 是知识文档发布后的知识图谱同步链路。它不再直接解析用户上传的原始文件；正式输入只有当前学科已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Subject.document_summary_json`。除 DocGen 发布后的自动同步外，前端知识图谱面板可以调用 `/api/v1/subjects/{subject}/knowledge/build/graph` 手动重建图谱；该入口仍然只从已入库的知识文档和 manifest 读取输入，不接收前端临时 Markdown。
+`kg_doc_sync` 是知识文档到知识图谱的正式同步链路。它不再直接解析用户上传的原始文件；正式落库输入仍然只有当前学科已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Subject.document_summary_json`。自动同步可以复用 DocGen 期间产生的内存预抽取缓存，但发布前不会写 `knowledge_unit / knowledge_edge`。除 DocGen 发布后的自动同步外，前端知识图谱面板可以调用 `/api/v1/subjects/{subject}/knowledge/build/graph` 手动重建图谱；该入口仍然只从已入库的知识文档和 manifest 读取输入，不依赖预抽取缓存，也不接收前端临时 Markdown。
 
 当前写入的核心表：
 
@@ -26,6 +26,7 @@ LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱�
 - `graph.py`：LangGraph 定义、initial state、路由、`run_graph_docs_sync_workflow` 单次运行入口和 LangGraph dev 导出。
 - `builds.py`：DocGen 发布后的自动同步、手动重建、graph lane runtime 与后台任务编排。
 - `inputs.py`：从已发布 `KnowledgeDoc`、manifest 和结构化上下文组装同步输入。
+- `lib/prefetch.py`：DocGen sidecar 预抽取协调器，按 `subject + build_session_id` 管理内存 section payload 缓存。
 - `nodes/`：只放 LangGraph 顶层节点。
 - `lib/`：节点内部复用逻辑、抽取合同、候选过滤、增量写库、查询、总览和清理。
 - `prompts/`：只放 prompt builder。当前抽取提示词、ontology 展示文案和结构化 schema 描述统一使用中文；枚举值仍保留英文稳定值，便于落库和关系方向校验。
@@ -68,8 +69,9 @@ image_generation -> settings.models.image_generation（默认未配置）
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `knowledge_graph_build` | `api/knowledge_docs.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
-| `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，不阻塞知识文档展示 |
-| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并进入 `digest.kg_doc_sync` LangGraph 链路 |
+| `docgen kg_prefetch sidecar` | `kg_doc_sync/lib/prefetch.py` | 间接 LLM | `EXTRACT` | `light` | `qwen-flash` | DocGen 增强章节完成后后台预抽取 section payload，只进内存缓存，不落库 |
+| `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，消费并停止同 build 的预抽取 sidecar |
+| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并把可复用预抽取 payload 传入 `digest.kg_doc_sync` |
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `subject` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
@@ -83,17 +85,27 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `_build_cross_section_semantic_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 基于节点上下文补跨章节语义边 |
 | upsert / source ref / deprecate | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、同步批次、来源引用和过期标记 |
 
-当前主线：
+当前自动同步主线：
 
 ```text
-run_docgen_background / knowledge_graph_build
+DocGen enhance_chapters
+  如果 sync_after_docgen + prefetch_during_docgen 开启，启动 kg_prefetch sidecar。
+  sidecar 只缓存 section_key + content_hash + SectionExtractionPayload，不写图谱表。
+  默认 prefetch_concurrency = 4，仍受全局 LLM semaphore 限制，并先让后续 DocGen review 调度。
+  |
+  v
+DocGen review / repair / merge / publish
+  DocGen 主路径不等待 sidecar；发布失败或取消时丢弃预抽取缓存。
+  |
+  v
+run_docgen_background
   DocGen 发布完成后，docgen lane 立即 completed，页面可直接读取正式 KnowledgeDoc。
   如果 sync_after_docgen 打开，再注册独立 graph 后台任务进入 graph lane。
-  或用户在知识图谱面板点击“构建图谱”，从当前已发布 KnowledgeDoc 手动重建。
   |
   v
 run_graph_docs_sync_after_doc_build
   读取当前发布知识文档和结构化上下文。
+  消费并停止同 build_session_id 的预抽取 sidecar。
   写入 graph lane running runtime。
   |
   v
@@ -122,6 +134,9 @@ init_run
 extract
   如果 subject_context 为空，则从学科 LLM context 读取。
   按真实章节切分 Markdown；大章会按子章节继续拆成多个抽取任务。
+  对每个最终 section 计算 section_key + content_hash：
+    - 命中预抽取缓存：补齐最终 knowledge_document_id / source_file_ids 后复用。
+    - 未命中或缓存失败：按正常路径补抽。
   LLM 子调用挂在 extract 节点下。
   |
   v
@@ -130,7 +145,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 / subsection 2.1 extraction
     └─ chapter N / subsection N.x extraction
-  默认最多 12 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
+  正式同步默认最多 20 路抽取并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -155,6 +170,16 @@ finalize
   v
 run_graph_docs_sync_after_doc_build
   返回 graph metrics，由 build runtime / stream 展示进度。
+```
+
+手动重建主线：
+
+```text
+knowledge_graph_build
+  用户在知识图谱面板点击“构建图谱”。
+  从当前已发布 KnowledgeDoc 和 manifest 读取输入。
+  不读取、不等待、不复用 DocGen 预抽取缓存。
+  后续仍走 prepare -> init_run -> extract -> persist -> finalize。
 ```
 
 失败路径：
@@ -392,8 +417,8 @@ _build_extraction_tasks
   规则：
     - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000` 且至少有 2 个可抽取子章节时，按子章节拆分。
     - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
-    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12` 封顶；`KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 可向下覆盖，但不会超过 12。
-    - 任务规划会先以章节为基线；章节少而大章很长时，再按子章节和字符预算自适应拆分，最多扩展到 12 路。
+    - 总任务规划上限来自 `settings.knowledge_graph.max_parallel_extractions`，默认 20；旧 `KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 只作为低层兜底。
+    - 任务规划会先以章节为基线；章节少而大章很长时，再按子章节和字符预算自适应拆分，最多扩展到配置上限。
   设计目的：
     - 章节少但单章很长时，仍然可以并行抽取，减少长章卡住整条链路的情况。
     - 所有语义候选仍由结构化 LLM 抽取或 LLM 空结果修复产生，不引入本地关键词造点。
@@ -407,8 +432,8 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 12`，可用 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT` 向下覆盖。
-    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12`
+    - 正式同步并发上限默认 20，来自 `settings.knowledge_graph.max_parallel_extractions`。
+    - DocGen sidecar 预抽取并发默认 4，来自 `settings.knowledge_graph.prefetch_concurrency`。
     - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
     - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`

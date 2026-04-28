@@ -47,6 +47,12 @@ _GRAPH_RUNTIME_METRIC_KEYS = {
     "stable_anchor_count",
     "deprecated_unit_count",
     "deprecated_edge_count",
+    "prefetch_status",
+    "prefetch_section_count",
+    "prefetch_reused_section_count",
+    "prefetch_catchup_section_count",
+    "prefetch_stale_section_count",
+    "prefetch_failed_section_count",
 }
 _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "processed_chunks",
@@ -65,6 +71,11 @@ _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "stable_anchor_count",
     "deprecated_unit_count",
     "deprecated_edge_count",
+    "prefetch_section_count",
+    "prefetch_reused_section_count",
+    "prefetch_catchup_section_count",
+    "prefetch_stale_section_count",
+    "prefetch_failed_section_count",
 }
 
 _STAGE_PROGRESS = {

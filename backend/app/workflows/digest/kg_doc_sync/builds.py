@@ -26,6 +26,7 @@ from app.workflows.digest.kg_doc_sync.inputs import (
     resolve_graph_input_paths,
 )
 from app.workflows.digest.kg_doc_sync.graph import RUN_NAME_KG_DOC_SYNC
+from app.workflows.digest.kg_doc_sync.lib.prefetch import consume_docgen_kg_prefetch
 
 logger = structlog.get_logger(__name__)
 
@@ -96,6 +97,11 @@ def _base_doc_sync_metrics(
         "stable_anchor_count": 0,
         "deprecated_unit_count": 0,
         "deprecated_edge_count": 0,
+        "prefetch_section_count": 0,
+        "prefetch_reused_section_count": 0,
+        "prefetch_catchup_section_count": 0,
+        "prefetch_stale_section_count": 0,
+        "prefetch_failed_section_count": 0,
     }
 
 
@@ -135,6 +141,11 @@ def _completed_doc_sync_metrics(
             "stable_anchor_count": sync_report.stable_anchor_count,
             "deprecated_unit_count": sync_report.deprecated_unit_count,
             "deprecated_edge_count": sync_report.deprecated_edge_count,
+            "prefetch_section_count": sync_report.prefetch_section_count,
+            "prefetch_reused_section_count": sync_report.prefetch_reused_section_count,
+            "prefetch_catchup_section_count": sync_report.prefetch_catchup_section_count,
+            "prefetch_stale_section_count": sync_report.prefetch_stale_section_count,
+            "prefetch_failed_section_count": sync_report.prefetch_failed_section_count,
         }
     )
     return metrics
@@ -175,6 +186,14 @@ async def run_graph_docs_sync_after_doc_build(
         chapter_count=len(doc_chapter_metadatas),
         doc_version_no=doc_version_no,
     )
+    prefetched_sections = []
+    prefetch_metrics: dict[str, int | str] = {}
+    if docgen_state is not None and build_session_id:
+        prefetched_sections, prefetch_metrics = await consume_docgen_kg_prefetch(
+            subject=subject,
+            build_session_id=build_session_id,
+        )
+        base_metrics.update(prefetch_metrics)
     if not knowledge_doc_markdown.strip():
         return base_metrics
 
@@ -224,6 +243,7 @@ async def run_graph_docs_sync_after_doc_build(
                 markdown=knowledge_doc_markdown,
                 build_session_id=build_session_id,
                 structured_context=sync_input.structured_context,
+                prefetched_sections=prefetched_sections,
             )
         if sync_result.failed:
             _end_trace_run(trace_run, {"status": "failed", "error": sync_result.error.detail})
@@ -235,6 +255,13 @@ async def run_graph_docs_sync_after_doc_build(
             chapter_count=len(doc_chapter_metadatas),
             doc_version_no=doc_version_no,
             sync_report=sync_report,
+        )
+        completed_metrics.update(
+            {
+                key: value
+                for key, value in prefetch_metrics.items()
+                if key not in completed_metrics
+            }
         )
         _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
         return completed_metrics

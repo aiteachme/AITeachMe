@@ -43,6 +43,11 @@ class KnowledgeSyncReport:
     backbone_unit_count: int = 0
     backbone_edge_count: int = 0
     stable_anchor_count: int = 0
+    prefetch_section_count: int = 0
+    prefetch_reused_section_count: int = 0
+    prefetch_catchup_section_count: int = 0
+    prefetch_stale_section_count: int = 0
+    prefetch_failed_section_count: int = 0
 
     @property
     def unit_change_count(self) -> int:
@@ -134,6 +139,20 @@ class SectionExtractionPayload:
 
 
 @dataclass(slots=True)
+class SectionExtractionRecord:
+    """One section-level extraction result that can be cached before publish."""
+
+    section_key: str
+    content_hash: str
+    task_index: int
+    source_chapter_index: int
+    source_kind: str
+    title: str
+    payload: SectionExtractionPayload | None = None
+    error: str = ""
+
+
+@dataclass(slots=True)
 class KnowledgeSyncRunContext:
     """Persistent run context shared by kg_doc_sync graph nodes."""
 
@@ -162,5 +181,6 @@ __all__ = [
     "MarkdownExtractedEdge",
     "PendingMarkdownExtractedEdge",
     "SectionExtractionContext",
+    "SectionExtractionRecord",
     "SectionExtractionPayload",
 ]

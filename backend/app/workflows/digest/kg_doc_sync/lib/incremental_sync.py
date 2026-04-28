@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import hashlib
 import json
 from dataclasses import dataclass, replace
 from time import perf_counter
@@ -24,6 +25,7 @@ from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.env_support import get_env_int
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.api import search_knowledge
+from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
 from app.utils.time import utcnow
 from app.workflows.digest.common.markdown_knowledge_anchors import build_knowledge_unit_anchor
@@ -54,6 +56,7 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
     MarkdownExtractedEdge,
     PendingMarkdownExtractedEdge,
     SectionExtractionContext,
+    SectionExtractionRecord,
     SectionExtractionPayload,
 )
 from app.workflows.digest.kg_doc_sync.lib.ontology import default_relation_for_unit_type
@@ -69,31 +72,15 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DOCS_SYNC_HARD_PARALLEL_LIMIT = 12
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 12
-_DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12
-_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = max(
-    1,
-    min(
-        _DOCS_SYNC_HARD_PARALLEL_LIMIT,
-        get_env_int("KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS", _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS),
-    ),
-)
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 20
+_DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 20
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
 _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000
 _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 7000
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
-_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = max(
-    1,
-    min(
-        _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
-        get_env_int("KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT", _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT),
-    ),
-)
 _DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
 _DOCS_SYNC_CHAPTER_RETRY_DELAY_S = _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S
-_DOCS_SYNC_SECTION_CONCURRENCY_LIMIT = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
 _DOCS_SYNC_SECTION_MAX_RETRIES = _DOCS_SYNC_CHAPTER_MAX_RETRIES
 _DOCS_SYNC_SECTION_RETRY_DELAY_S = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
 _DEFAULT_EXTRACT_CANDIDATES = extract_candidates
@@ -304,6 +291,8 @@ async def extract_knowledge_graph_items_async(
     markdown: str,
     subject_context: str | None,
     run_context: KnowledgeSyncRunContext,
+    concurrency_limit: int | None = None,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
 ) -> KnowledgeSyncExtractionPayload:
     """Async extraction entry used by LangGraph nodes.
 
@@ -314,6 +303,8 @@ async def extract_knowledge_graph_items_async(
         markdown,
         subject_context=subject_context,
         structured_context=run_context.structured_context,
+        concurrency_limit=concurrency_limit,
+        prefetched_records=prefetched_records,
     )
     return KnowledgeSyncExtractionPayload(
         units=units,
@@ -358,6 +349,11 @@ def persist_knowledge_graph_items(
         total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
         backbone_unit_count=int(diagnostics_totals.get("backbone_unit_count", 0) or 0),
         backbone_edge_count=int(diagnostics_totals.get("backbone_edge_count", 0) or 0),
+        prefetch_section_count=int(diagnostics_totals.get("prefetch_section_count", 0) or 0),
+        prefetch_reused_section_count=int(diagnostics_totals.get("prefetch_reused_section_count", 0) or 0),
+        prefetch_catchup_section_count=int(diagnostics_totals.get("prefetch_catchup_section_count", 0) or 0),
+        prefetch_stale_section_count=int(diagnostics_totals.get("prefetch_stale_section_count", 0) or 0),
+        prefetch_failed_section_count=int(diagnostics_totals.get("prefetch_failed_section_count", 0) or 0),
         stable_anchor_count=len({item.anchor for item in units if item.anchor}),
     )
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
@@ -573,13 +569,14 @@ def _create_source_ref_for_edge(
 
 
 def _empty_extraction_diagnostics() -> dict[str, int]:
+    max_parallel = _max_parallel_extractions()
     return {
         "chapter_count": 0,
         "section_count": 0,
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
-        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "planned_task_limit": max_parallel,
         "planned_task_count": 0,
         "successful_section_count": 0,
         "failed_section_count": 0,
@@ -593,15 +590,37 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "total_extracted_edge_count": 0,
         "backbone_unit_count": 0,
         "backbone_edge_count": 0,
+        "prefetch_section_count": 0,
+        "prefetch_reused_section_count": 0,
+        "prefetch_catchup_section_count": 0,
+        "prefetch_stale_section_count": 0,
+        "prefetch_failed_section_count": 0,
     }
 
 
+def _max_parallel_extractions() -> int:
+    configured = int(
+        getattr(
+            get_settings().knowledge_graph,
+            "max_parallel_extractions",
+            _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        )
+        or _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS
+    )
+    if configured <= 0:
+        configured = get_env_int("KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS", _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS)
+    return max(1, int(configured))
+
+
 def _chapter_concurrency_limit() -> int:
-    return max(1, min(_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS, int(_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT)))
+    max_parallel = _max_parallel_extractions()
+    configured = get_env_int("KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT", max_parallel)
+    return max(1, min(max_parallel, int(configured or max_parallel)))
 
 
-def _effective_concurrency_limit(task_count: int) -> int:
-    return max(1, min(max(1, task_count), _chapter_concurrency_limit()))
+def _effective_concurrency_limit(task_count: int, *, override: int | None = None) -> int:
+    limit = int(override or _chapter_concurrency_limit())
+    return max(1, min(max(1, task_count), max(1, limit)))
 
 
 def _chapter_max_retries() -> int:
@@ -623,8 +642,8 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
 
     return {
         "chapter_concurrency_limit": _chapter_concurrency_limit(),
-        "max_parallel_extractions": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
-        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "max_parallel_extractions": _max_parallel_extractions(),
+        "planned_task_limit": _max_parallel_extractions(),
         "chapter_max_retries": _chapter_max_retries(),
         "chapter_retry_delay_s": _chapter_retry_delay_s(),
         "split_min_child_sections": _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS,
@@ -760,12 +779,13 @@ def _build_extraction_tasks(
     chapter_contexts: dict[int, ChapterSourceContext],
 ) -> tuple[list[_ExtractionTask], dict[str, int]]:
     tasks: list[_ExtractionTask] = []
-    split_budget = max(0, _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS - len(chapters))
+    max_parallel = _max_parallel_extractions()
+    split_budget = max(0, max_parallel - len(chapters))
     metrics = {
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
-        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "planned_task_limit": max_parallel,
     }
     for source_chapter_index, chapter in enumerate(chapters, start=1):
         chapter_context = _chapter_context_for_index(chapter_contexts, source_chapter_index)
@@ -814,49 +834,179 @@ def _build_extraction_tasks(
     return tasks, metrics
 
 
-async def _extract_markdown_graph_items_async(
-    markdown: str,
+def _section_task_key(task: _ExtractionTask) -> str:
+    identity = normalize_name(task.chunk.header_path or task.chunk.title) or str(task.task_index)
+    return f"ch{task.source_chapter_index}:{task.source_kind}:{identity}"
+
+
+def _section_task_content_hash(task: _ExtractionTask) -> str:
+    payload = "\n".join(
+        [
+            str(task.source_chapter_index),
+            task.source_kind,
+            task.chunk.title or "",
+            task.chunk.header_path or "",
+            task.chunk.body_markdown or "",
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _section_record_for_task(
+    task: _ExtractionTask,
     *,
-    subject_context: str | None = None,
-    structured_context: dict[str, object] | None = None,
+    payload: SectionExtractionPayload | None = None,
+    error: str = "",
+) -> SectionExtractionRecord:
+    return SectionExtractionRecord(
+        section_key=_section_task_key(task),
+        content_hash=_section_task_content_hash(task),
+        task_index=task.task_index,
+        source_chapter_index=task.source_chapter_index,
+        source_kind=task.source_kind,
+        title=task.chunk.title,
+        payload=payload,
+        error=str(error or ""),
+    )
+
+
+def _apply_task_context_to_payload(
+    payload: SectionExtractionPayload,
+    task: _ExtractionTask,
+) -> SectionExtractionPayload:
+    chapter_context = task.chapter_context
+    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
+    source_file_ids = list(chapter_context.source_file_ids)
+    knowledge_document_id = chapter_context.knowledge_document_id
+    units = [
+        replace(
+            unit,
+            knowledge_document_id=knowledge_document_id,
+            chapter_index=resolved_chapter_index,
+            source_file_ids=source_file_ids,
+        )
+        for unit in payload.units
+    ]
+    pending_edges = [
+        replace(
+            edge,
+            knowledge_document_id=knowledge_document_id,
+            chapter_index=resolved_chapter_index,
+            source_file_ids=source_file_ids,
+        )
+        for edge in payload.pending_edges
+    ]
+    section_context = replace(
+        payload.section_context,
+        section_index=task.task_index,
+        title=task.chunk.title,
+        header_path=task.chunk.header_path,
+        body_markdown=(task.chunk.body_markdown or "")[:8000],
+        knowledge_document_id=knowledge_document_id,
+        source_file_ids=source_file_ids,
+    )
+    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
+    for anchor, node_context in payload.node_contexts_by_anchor.items():
+        updated = dict(node_context or {})
+        updated["section_index"] = resolved_chapter_index
+        updated["knowledge_document_id"] = knowledge_document_id
+        updated["source_file_ids"] = source_file_ids
+        node_contexts_by_anchor[anchor] = updated
+    return SectionExtractionPayload(
+        units=units,
+        pending_edges=pending_edges,
+        candidate_id_to_anchor=dict(payload.candidate_id_to_anchor),
+        anchors_by_name={key: list(value) for key, value in payload.anchors_by_name.items()},
+        anchors_by_normalized_name={
+            key: list(value) for key, value in payload.anchors_by_normalized_name.items()
+        },
+        node_contexts_by_anchor=node_contexts_by_anchor,
+        section_context=section_context,
+        diagnostics=dict(payload.diagnostics),
+    )
+
+
+async def _collect_section_payloads_async(
+    extraction_tasks: list[_ExtractionTask],
+    *,
+    subject_context: str,
+    concurrency_limit: int | None = None,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
+    on_record: object | None = None,
+) -> tuple[list[SectionExtractionPayload], dict[str, int]]:
+    prefetch_lookup: dict[tuple[str, str], SectionExtractionRecord] = {}
+    failed_prefetch_count = 0
+    for record in list(prefetched_records or []):
+        if record.payload is None:
+            failed_prefetch_count += 1
+            continue
+        prefetch_lookup[(record.section_key, record.content_hash)] = record
+    used_prefetch_keys: set[tuple[str, str]] = set()
+    prefetch_enabled = prefetched_records is not None
+    semaphore = asyncio.Semaphore(
+        _effective_concurrency_limit(len(extraction_tasks), override=concurrency_limit)
+    )
+
+    async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
+        key = (_section_task_key(task), _section_task_content_hash(task))
+        prefetched = prefetch_lookup.get(key)
+        if prefetched is not None and prefetched.payload is not None:
+            used_prefetch_keys.add(key)
+            return _apply_task_context_to_payload(prefetched.payload, task)
+
+        async with semaphore:
+            try:
+                payload = await _extract_chapter_with_retries(
+                    task.task_index,
+                    task.chunk,
+                    subject_context=subject_context,
+                    chapter_context=task.chapter_context,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
+                )
+                record = _section_record_for_task(task, payload=payload)
+            except Exception as exc:
+                logger.warning(
+                    "knowledge_docs_sync_section_extraction_failed",
+                    task_index=task.task_index,
+                    chunk_title=task.chunk.title,
+                    header_path=task.chunk.header_path,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
+                    error_type=type(exc).__name__,
+                )
+                payload = _empty_failed_section_payload(task, exc)
+                record = _section_record_for_task(task, payload=payload, error=str(exc))
+            if callable(on_record):
+                on_record(record)
+            return payload
+
+    payloads = await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
+    stats = {
+        "prefetch_section_count": len(list(prefetched_records or [])),
+        "prefetch_reused_section_count": len(used_prefetch_keys),
+        "prefetch_catchup_section_count": (
+            max(0, len(extraction_tasks) - len(used_prefetch_keys)) if prefetch_enabled else 0
+        ),
+        "prefetch_stale_section_count": max(0, len(prefetch_lookup) - len(used_prefetch_keys)),
+        "prefetch_failed_section_count": failed_prefetch_count,
+    }
+    return payloads, stats
+
+
+def _combine_section_payloads(
+    *,
+    markdown: str,
+    structured_context: dict[str, object],
+    chapters: list[MarkdownSectionChunk],
+    sections: list[MarkdownSectionChunk],
+    extraction_tasks: list[_ExtractionTask],
+    task_metrics: dict[str, int],
+    section_payloads: list[SectionExtractionPayload],
+    prefetch_stats: dict[str, int] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
-    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
-    sections = extract_markdown_section_chunks(markdown)
-    if not chapters:
-        return [], [], _empty_extraction_diagnostics()
-    structured_context = _structured_context_payload(structured_context)
+    del markdown
     chapter_contexts = _chapter_context_lookup(structured_context)
-    extraction_tasks, task_metrics = _build_extraction_tasks(chapters, chapter_contexts)
-
-    async def _extract_all_chapters() -> list[SectionExtractionPayload]:
-        semaphore = asyncio.Semaphore(_effective_concurrency_limit(len(extraction_tasks)))
-
-        async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
-            async with semaphore:
-                try:
-                    return await _extract_chapter_with_retries(
-                        task.task_index,
-                        task.chunk,
-                        subject_context=subject_context or "",
-                        chapter_context=task.chapter_context,
-                        source_chapter_index=task.source_chapter_index,
-                        source_kind=task.source_kind,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "knowledge_docs_sync_section_extraction_failed",
-                        task_index=task.task_index,
-                        chunk_title=task.chunk.title,
-                        header_path=task.chunk.header_path,
-                        source_chapter_index=task.source_chapter_index,
-                        source_kind=task.source_kind,
-                        error_type=type(exc).__name__,
-                    )
-                    return _empty_failed_section_payload(task, exc)
-
-        return await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
-
-    results = await _extract_all_chapters()
     units: list[MarkdownKnowledgeUnit] = []
     pending_edges: list[PendingMarkdownExtractedEdge] = []
     candidate_id_to_anchor: dict[str, str] = {}
@@ -868,9 +1018,10 @@ async def _extract_markdown_graph_items_async(
     diagnostics_totals["chapter_count"] = len(chapters)
     diagnostics_totals["section_count"] = len(extraction_tasks)
     diagnostics_totals.update(task_metrics)
+    diagnostics_totals.update(dict(prefetch_stats or {}))
     used_anchors: set[str] = set()
 
-    for payload in results:
+    for payload in section_payloads:
         payload = _make_payload_anchors_unique(payload, used_anchors)
         units.extend(payload.units)
         pending_edges.extend(payload.pending_edges)
@@ -980,6 +1131,82 @@ async def _extract_markdown_graph_items_async(
             )
         )
     return units, edges, diagnostics_totals
+
+
+async def _extract_markdown_graph_items_async(
+    markdown: str,
+    *,
+    subject_context: str | None = None,
+    structured_context: dict[str, object] | None = None,
+    concurrency_limit: int | None = None,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
+) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    sections = extract_markdown_section_chunks(markdown)
+    if not chapters:
+        return [], [], _empty_extraction_diagnostics()
+    structured_context = _structured_context_payload(structured_context)
+    chapter_contexts = _chapter_context_lookup(structured_context)
+    extraction_tasks, task_metrics = _build_extraction_tasks(chapters, chapter_contexts)
+    section_payloads, prefetch_stats = await _collect_section_payloads_async(
+        extraction_tasks,
+        subject_context=subject_context or "",
+        concurrency_limit=concurrency_limit,
+        prefetched_records=prefetched_records,
+    )
+    return _combine_section_payloads(
+        markdown=markdown,
+        structured_context=structured_context,
+        chapters=chapters,
+        sections=sections,
+        extraction_tasks=extraction_tasks,
+        task_metrics=task_metrics,
+        section_payloads=section_payloads,
+        prefetch_stats=prefetch_stats,
+    )
+
+
+async def extract_knowledge_graph_section_records_async(
+    *,
+    markdown: str,
+    subject_context: str | None,
+    structured_context: dict[str, object] | None = None,
+    concurrency_limit: int | None = None,
+    on_record: object | None = None,
+) -> tuple[list[SectionExtractionRecord], dict[str, int]]:
+    """Extract section-level graph payloads without global merge or persistence."""
+
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    if not chapters:
+        return [], _empty_extraction_diagnostics()
+    structured_context = _structured_context_payload(structured_context)
+    chapter_contexts = _chapter_context_lookup(structured_context)
+    extraction_tasks, task_metrics = _build_extraction_tasks(chapters, chapter_contexts)
+    records: list[SectionExtractionRecord] = []
+
+    def _remember(record: SectionExtractionRecord) -> None:
+        records.append(record)
+        if callable(on_record):
+            on_record(record)
+
+    await _collect_section_payloads_async(
+        extraction_tasks,
+        subject_context=subject_context or "",
+        concurrency_limit=concurrency_limit,
+        on_record=_remember,
+    )
+    diagnostics = _empty_extraction_diagnostics()
+    diagnostics["chapter_count"] = len(chapters)
+    diagnostics["section_count"] = len(extraction_tasks)
+    diagnostics.update(task_metrics)
+    for record in records:
+        if record.payload is None:
+            continue
+        for key in diagnostics:
+            diagnostics[key] += int(record.payload.diagnostics.get(key, 0) or 0)
+    diagnostics["prefetch_section_count"] = len(records)
+    diagnostics["prefetch_failed_section_count"] = sum(1 for record in records if record.error)
+    return records, diagnostics
 
 
 def _extract_markdown_graph_items(
@@ -1984,6 +2211,7 @@ __all__ = [
     "KnowledgeSyncRunContext",
     "extract_knowledge_graph_items",
     "extract_knowledge_graph_items_async",
+    "extract_knowledge_graph_section_records_async",
     "graph_extraction_parallelism",
     "initialize_knowledge_graph_sync_run",
     "mark_knowledge_graph_sync_run_failed",

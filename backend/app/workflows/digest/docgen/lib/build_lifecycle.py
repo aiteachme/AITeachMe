@@ -741,6 +741,7 @@ async def run_docgen_background(
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
     from app.workflows.digest.kg_doc_sync.builds import run_graph_docs_sync_auto_build
+    from app.workflows.digest.kg_doc_sync.lib.prefetch import cancel_docgen_kg_prefetch
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
@@ -844,6 +845,7 @@ async def run_docgen_background(
             digest_mode=resolved_digest_mode,
         )
         if result.failed:
+            cancel_docgen_kg_prefetch(subject=subject, build_session_id=build_session_id)
             if sync_graph_after_docgen:
                 _write_graph_status(
                     subject,
@@ -956,6 +958,7 @@ async def run_docgen_background(
             status="completed",
         )
     except asyncio.CancelledError:
+        cancel_docgen_kg_prefetch(subject=subject, build_session_id=build_session_id)
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 subject,
@@ -991,6 +994,7 @@ async def run_docgen_background(
         )
         raise
     except Exception:
+        cancel_docgen_kg_prefetch(subject=subject, build_session_id=build_session_id)
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 subject,

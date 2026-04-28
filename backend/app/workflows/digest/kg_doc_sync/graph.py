@@ -14,6 +14,7 @@ from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_resu
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncReport
+from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
 from app.workflows.digest.kg_doc_sync.nodes.extract_node import extract_node
 from app.workflows.digest.kg_doc_sync.nodes.fail_node import fail_node
 from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
@@ -242,12 +243,14 @@ def create_docs_sync_initial_state(
     build_session_id: str | None = None,
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
+    prefetched_sections: list[SectionExtractionRecord] | None = None,
 ) -> DocsSyncState:
     return {
         "subject": subject,
         "markdown": markdown,
         "subject_context": subject_context or "",
         "structured_context": dict(structured_context or {}),
+        "prefetched_sections": list(prefetched_sections or []),
         "build_revision_no": build_revision_no,
         "build_session_id": build_session_id or "",
         "node_metrics": {},
@@ -275,6 +278,7 @@ async def run_graph_docs_sync_workflow(
     build_session_id: str | None = None,
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
+    prefetched_sections: list[SectionExtractionRecord] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
     error_subject = str(subject or "").strip()
     try:
@@ -304,6 +308,7 @@ async def run_graph_docs_sync_workflow(
                 build_session_id=build_session_id,
                 subject_context=subject_context,
                 structured_context=structured_context,
+                prefetched_sections=prefetched_sections,
             ),
             context=context,
         )

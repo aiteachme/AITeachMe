@@ -19,6 +19,7 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
@@ -133,6 +134,12 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
+        start_docgen_kg_prefetch(
+            subject=state["subject"],
+            build_session_id=state.get("build_session_id", ""),
+            chapters=[item.model_dump(mode="json") for item in enhanced_items],
+            document_backbone=state.get("document_backbone") or {},
+        )
         update_knowledge_build_status(
             state["subject"],
             requested_at=state["requested_at"],

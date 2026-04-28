@@ -1,6 +1,6 @@
 ﻿# Digest 模块说明
 
-最后更新：2026-04-27
+最后更新：2026-04-28
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -58,7 +58,7 @@ from app.workflows.digest.planner import (
 当前 digest 的 canonical 主线是：
 
 - `planner -> docgen`
-- `docgen publish -> kg_doc_sync`
+- `docgen sidecar prefetch -> publish -> kg_doc_sync persist`
 
 ## 两条核心链路介绍口径
 
@@ -78,6 +78,7 @@ DocGen 消费 Planner 已确认的 `confirmed_plan`，不重新推翻用户确�
 -> 组装最终章节任务
 -> 生成章节草稿（LangGraph Send 按章 fan-out）
 -> 增强章节内容
+-> 启动 KG 预抽取 sidecar（可选、非阻塞、发布前不落库）
 -> 复核章节内容（LangGraph Send 按章 fan-out）
 -> 复核整本一致性
 -> 记录复核回流动作
@@ -90,18 +91,21 @@ DocGen 消费 Planner 已确认的 `confirmed_plan`，不重新推翻用户确�
 
 ### KG Doc Sync：把知识文档同步成知识图谱
 
-KG 同步只消费 DocGen 发布后的知识文档和结构化产物，不再直接解析原始上传文件入图。
+KG 同步的正式落库仍只消费 DocGen 发布后的知识文档和结构化产物，不再直接解析原始上传文件入图。
+自动同步可以复用 DocGen 期间产生的 section 级预抽取缓存；缓存命中才复用，最终内容变更则补抽。
 当前主线是：
 
 ```text
-prepare
+prefetch_extract（可选，DocGen sidecar，发布前不落库）
+-> publish_gate
+-> prepare
 -> init_run
--> extract（节点内部按章节 async gather + semaphore 并发）
+-> reuse_or_catchup extract（节点内部按章节 async gather + semaphore 并发）
 -> persist
 -> finalize
 ```
 
-对外讲的时候可以概括成：先校验发布文档和创建同步批次，再按章节并发抽取知识单元与关系，随后统一写入 `knowledge_unit`、`knowledge_edge` 和 `knowledge_graph_source_ref`，并用 `knowledge_graph_sync_run` 记录本轮图谱同步结果。
+对外讲的时候可以概括成：DocGen 期间可提前抽取候选，发布后先校验最终文档版本与缓存，再对缺失或变更章节补抽，随后统一写入 `knowledge_unit`、`knowledge_edge` 和 `knowledge_graph_source_ref`，并用 `knowledge_graph_sync_run` 记录本轮图谱同步结果。
 
 旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`。
 KG 同步编排按 `prepare -> init_run -> extract -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，

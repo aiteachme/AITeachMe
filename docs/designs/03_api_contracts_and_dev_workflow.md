@@ -24,7 +24,7 @@
 - `POST /build/runtime`：读取聚合、DocGen、Graph 三个 lane 的运行态。
 - `GET /build/stream`：SSE 推送构建快照、预览增量和构建事件。
 
-`/build` 不再暴露单独的图谱调试构建模式。知识图谱同步由 `sync_after_docgen` 设置控制，并在知识文档发布后自动执行。
+`/build` 不再暴露单独的图谱调试构建模式。知识图谱同步由 `sync_after_docgen` 设置控制；开启 `prefetch_during_docgen` 时，DocGen 期间会先做内存预抽取，知识文档发布后再校验缓存并统一落库。
 
 ### 知识文档与概览
 
@@ -71,6 +71,12 @@
 - `stable_anchor_count`
 - `deprecated_unit_count`
 - `deprecated_edge_count`
+- `prefetch_status`
+- `prefetch_section_count`
+- `prefetch_reused_section_count`
+- `prefetch_catchup_section_count`
+- `prefetch_stale_section_count`
+- `prefetch_failed_section_count`
 
 前端应优先读取 `graph_metrics` 展示图谱进度；`graph.metrics` 仅作为 lane 级诊断兜底。
 
