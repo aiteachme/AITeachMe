@@ -162,6 +162,21 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     )
 
 
+def _has_file_error(record: FileRecord) -> bool:
+    return record.status == TaskStatus.FAILED.value or bool((record.error_message or "").strip())
+
+
+def _count_file_states(records: list[FileRecord]) -> tuple[int, int, int]:
+    ready_count = sum(1 for item in records if item.markdown_ready)
+    failed_count = sum(1 for item in records if _has_file_error(item))
+    processing_count = sum(
+        1
+        for item in records
+        if not item.markdown_ready and not _has_file_error(item)
+    )
+    return ready_count, processing_count, failed_count
+
+
 def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
     if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject=subject):
@@ -246,14 +261,13 @@ def list_subject_files(
         status=None,
     )
     records = [build_file_record(item) for item in raw_files]
+    ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
         subject=subject,
         total=total,
-        ready_count=sum(1 for item in records if item.markdown_ready),
-        processing_count=sum(
-            1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value
-        ),
-        failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
+        ready_count=ready_count,
+        processing_count=processing_count,
+        failed_count=failed_count,
         items=records,
     )
 
@@ -273,14 +287,13 @@ def list_user_files(
         status=None,
     )
     records = [build_file_record(item) for item in raw_files]
+    ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
         subject="library",
         total=total,
-        ready_count=sum(1 for item in records if item.markdown_ready),
-        processing_count=sum(
-            1 for item in records if not item.markdown_ready and item.status != TaskStatus.FAILED.value
-        ),
-        failed_count=sum(1 for item in records if item.status == TaskStatus.FAILED.value),
+        ready_count=ready_count,
+        processing_count=processing_count,
+        failed_count=failed_count,
         items=records,
     )
 

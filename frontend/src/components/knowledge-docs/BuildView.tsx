@@ -107,11 +107,11 @@ function countReadySourceFiles(files: FileRecord[]): number {
 }
 
 function countProcessingSourceFiles(files: FileRecord[]): number {
-  return files.filter((file) => !file.markdown_ready && file.status !== "failed").length;
+  return files.filter((file) => !file.markdown_ready && file.status !== "failed" && !file.error_message?.trim()).length;
 }
 
 function countFailedSourceFiles(files: FileRecord[]): number {
-  return files.filter((file) => file.status === "failed" || Boolean(file.error_message)).length;
+  return files.filter((file) => file.status === "failed" || Boolean(file.error_message?.trim())).length;
 }
 
 function formatDurationMs(value: number | null | undefined): string {
