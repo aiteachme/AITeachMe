@@ -714,7 +714,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                                   initial="hidden"
                                   animate="visible"
                                   exit="exit"
-                                  whileHover={{ x: 2 }}
                                   whileTap={{ scale: 0.985 }}
                                 >
                                   <Link

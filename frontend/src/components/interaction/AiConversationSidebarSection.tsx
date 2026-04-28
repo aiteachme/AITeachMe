@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
   Loader2,
-  MessageSquareText,
   Plus,
   Sparkles,
   Trash2,
@@ -326,22 +325,9 @@ export function AiConversationSidebarSection({
 
   if (collapsed) {
     return (
-      <button
-        type="button"
-        onClick={() => {
-          onExpandSidebar();
-          updateExpanded(true);
-        }}
-        title="AI 对话"
-        className={cn(
-          "mx-auto flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-          isSidebarOpen
-            ? "bg-sky-100 text-sky-700 ring-1 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-200 dark:ring-sky-500/30"
-            : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-        )}
-      >
-        <MessageSquareText className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
-      </button>
+      <div className="flex h-6 items-center px-1">
+        <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+      </div>
     );
   }
 
@@ -401,7 +387,6 @@ export function AiConversationSidebarSection({
               initial="hidden"
               animate="visible"
               exit="exit"
-              whileHover={{ x: 2 }}
               whileTap={{ scale: 0.985 }}
               className={cn(
                 "group relative flex h-7 w-full items-center gap-1.5 overflow-hidden rounded-md px-2 text-left",
@@ -431,7 +416,6 @@ export function AiConversationSidebarSection({
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  whileHover={{ x: 2 }}
                   whileTap={{ scale: 0.985 }}
                   className={cn(
                     "group relative overflow-hidden rounded-md transition-colors",
