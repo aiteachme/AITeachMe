@@ -10,6 +10,6 @@
  * Delete result.
  */
 export interface FileDeleteData {
-  /** Deleted public file UIDs. */
-  deleted_file_uids?: string[];
+  /** Deleted public file IDs. */
+  deleted_file_ids?: string[];
 }

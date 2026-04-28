@@ -7,7 +7,7 @@ import re
 from typing import Literal
 from time import perf_counter
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import structlog
 
 from app.shared.infra.llm_support import acompletion_structured
@@ -48,6 +48,11 @@ _MULTISPACE_RE = re.compile(r"\s+")
 _DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90
 _DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000
 _DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS = 1600
+_MAX_SECTION_CANDIDATE_NODES = 8
+_MAX_SECTION_CANDIDATE_EDGES = 10
+_MAX_CANDIDATE_NAME_CHARS = 90
+_MAX_CANDIDATE_SUMMARY_CHARS = 140
+_MAX_EDGE_DESCRIPTION_CHARS = 140
 
 # 概念性内容检测
 _CONCEPTUAL_SIGNAL_RE = re.compile(
@@ -72,7 +77,7 @@ class CandidateNode(BaseModel):
 
     candidate_id: str = Field(default="", description="内部稳定候选 ID。")
     anchor_id: str = Field(default="", description="Markdown 中已有的 KnowledgeUnit anchor ID。")
-    name: str = Field(description="知识单元名称，要求短、准、可展示。")
+    name: str = Field(description="知识单元名称，要求短、准、可展示；不超过 90 个字符。")
     knowledge_unit_type: Literal[
         "concept",
         "definition",
@@ -88,12 +93,22 @@ class CandidateNode(BaseModel):
     )
     type_confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     type_source: Literal["rule", "llm", "manual"] = Field(default="llm")
-    local_summary: str = Field(description="只基于当前片段的简短摘要。")
+    local_summary: str = Field(description="只基于当前片段的简短摘要；不超过 140 个字符。")
     taxonomy_hint: str = Field(default="", description="可能的上位主题或分类线索。")
     parent_entity_name: str | None = Field(
         default=None,
         description="定义、公式、例题等节点所属的父概念、方法或主题。",
     )
+
+    @field_validator("knowledge_unit_type", mode="before")
+    @classmethod
+    def _normalize_knowledge_unit_type(cls, value: object) -> str:
+        return normalize_knowledge_unit_type(str(value or ""))
+
+    @field_validator("type_source", mode="before")
+    @classmethod
+    def _normalize_type_source(cls, value: object) -> str:
+        return normalize_type_source(str(value or ""))
 
 
 class CandidateEdge(BaseModel):
@@ -113,14 +128,43 @@ class CandidateEdge(BaseModel):
         "similar",
         "contrast",
     ] = Field(description="允许的关系类型，必须使用枚举值本身。")
-    description: str = Field(description="一句话说明这条关系在当前片段中的依据。")
+    description: str = Field(description="一句话说明这条关系在当前片段中的依据；不超过 140 个字符。")
+
+    @field_validator("edge_type", mode="before")
+    @classmethod
+    def _normalize_edge_type(cls, value: object) -> str:
+        # Some providers occasionally echo a node type such as "remark" as a relation.
+        # Normalize before Literal validation so the section can still be salvaged.
+        return normalize_relation_type(str(value or ""))
 
 
 class ChunkExtractionResult(BaseModel):
     """Structured extraction result for a single chunk."""
 
-    nodes: list[CandidateNode] = Field(default_factory=list)
-    edges: list[CandidateEdge] = Field(default_factory=list)
+    nodes: list[CandidateNode] = Field(
+        default_factory=list,
+        description="本片段最多 8 个高置信候选节点。",
+        json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_NODES},
+    )
+    edges: list[CandidateEdge] = Field(
+        default_factory=list,
+        description="本片段最多 10 条高置信候选关系。",
+        json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_EDGES},
+    )
+
+    @field_validator("nodes", mode="before")
+    @classmethod
+    def _limit_nodes(cls, value: object) -> object:
+        if isinstance(value, list):
+            return value[:_MAX_SECTION_CANDIDATE_NODES]
+        return value
+
+    @field_validator("edges", mode="before")
+    @classmethod
+    def _limit_edges(cls, value: object) -> object:
+        if isinstance(value, list):
+            return value[:_MAX_SECTION_CANDIDATE_EDGES]
+        return value
 
 
 @dataclass(slots=True)
@@ -151,6 +195,13 @@ def _normalize_text(text: str) -> str:
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     text = normalize_semantic_whitespace(text)
     return _MULTISPACE_RE.sub(" ", text).strip()
+
+
+def _clip_text(text: str, *, max_chars: int) -> str:
+    cleaned = str(text or "").strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max(0, max_chars - 1)].rstrip() + "…"
 
 
 def _limit_llm_text(text: str, *, max_chars: int) -> str:
@@ -309,14 +360,15 @@ def _sanitize_candidate_graph(
         node.type_confidence = max(0.0, min(1.0, float(node.type_confidence)))
         if is_topic_like:
             cleaned_name = clean_semantic_title(node.name) or semantic_topic_name
-            node.name = cleaned_name
+            node.name = _clip_text(cleaned_name, max_chars=_MAX_CANDIDATE_NAME_CHARS)
             if not node.taxonomy_hint or is_generic_semantic_title(node.taxonomy_hint):
                 if len(semantic_topic_path) >= 2 and cleaned_name == semantic_topic_path[-1]:
                     node.taxonomy_hint = semantic_topic_path[-2]
                 else:
                     node.taxonomy_hint = cleaned_name
         else:
-            node.name = _normalize_text(node.name)
+            node.name = _clip_text(_normalize_text(node.name), max_chars=_MAX_CANDIDATE_NAME_CHARS)
+            node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
             if node.knowledge_unit_type in {"concept", "method"} and (
                 not node.taxonomy_hint or is_generic_semantic_title(node.taxonomy_hint)
             ):
@@ -325,6 +377,7 @@ def _sanitize_candidate_graph(
                 not node.parent_entity_name or is_generic_semantic_title(node.parent_entity_name)
             ):
                 node.parent_entity_name = semantic_topic_name
+        node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
         rename_map[original_name] = node.name
 
     for node in result.nodes:
@@ -338,6 +391,7 @@ def _sanitize_candidate_graph(
     for edge in result.edges:
         edge.source_name = rename_map.get(edge.source_name, edge.source_name)
         edge.target_name = rename_map.get(edge.target_name, edge.target_name)
+        edge.description = _clip_text(edge.description, max_chars=_MAX_EDGE_DESCRIPTION_CHARS)
         edge.edge_type = normalize_relation_type(edge.edge_type)
         edge.source_node_type = normalize_knowledge_unit_type(edge.source_node_type or node_type_by_name.get(edge.source_name))
         edge.target_node_type = normalize_knowledge_unit_type(edge.target_node_type or node_type_by_name.get(edge.target_name))

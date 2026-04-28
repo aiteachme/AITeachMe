@@ -6,10 +6,9 @@ import hashlib
 import re
 from typing import Literal
 
-from langsmith import traceable
-
 from app.schemas.chats import ChatSelectionContext
 from app.schemas.llm import ASSISTANT, ChatMessage, USER
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.prompt_loader import populate_prompt
 from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.llm_support.context_window import ContextWindowManager
@@ -299,8 +298,8 @@ def _dedupe_retrieval_results(results: list[RetrievedContext]) -> list[Retrieved
 
 
 def _retrieval_identity(result: RetrievedContext) -> str:
-    if result.chunk_id and result.document_id:
-        return f"chunk:{result.document_id}:{result.chunk_id}"
+    if result.chunk_id and result.file_id:
+        return f"chunk:{result.file_id}:{result.chunk_id}"
     normalized = " ".join((result.content or "").split())
     if normalized:
         digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()

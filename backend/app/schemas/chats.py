@@ -14,7 +14,7 @@ class ChatContextItem(BaseModel):
     """One retrieval citation attached to an assistant message."""
 
     chunk_id: int = Field(description="Knowledge chunk ID.")
-    document_id: int = Field(description="Document ID.")
+    file_id: str = Field(description="Raw file ID.")
     title: str = Field(description="Chunk title.")
     header_path: str = Field(description="Chunk header path.")
     score: float = Field(description="Retrieval score.")

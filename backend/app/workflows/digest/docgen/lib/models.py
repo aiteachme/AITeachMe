@@ -144,7 +144,7 @@ class ChapterSourceSlice(DocGenBaseModel):
     """One LLM-selected source slice assigned to a target chapter."""
 
     chapter_index: int = 1
-    file_id: int = 0
+    file_id: str = ""
     filename: str = ""
     section_ref: str = ""
     section_title: str = ""
@@ -164,12 +164,8 @@ class ChapterSourceSlice(DocGenBaseModel):
 
     @field_validator("file_id", mode="before")
     @classmethod
-    def _file_id(cls, value: Any) -> int:
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            return 0
-        return parsed if parsed > 0 else 0
+    def _file_id(cls, value: Any) -> str:
+        return clean_text(value)
 
     @field_validator("line_start", "line_end", mode="before")
     @classmethod
@@ -187,7 +183,7 @@ class ChapterSourceSlice(DocGenBaseModel):
 
 
 class FileMaterialSummary(DocGenBaseModel):
-    file_id: int = 0
+    file_id: str = ""
     filename: str = ""
     summary: str = ""
     concepts: list[str] = Field(default_factory=list)
@@ -286,15 +282,15 @@ class HighConfidenceEvidenceUnit(DocGenBaseModel):
 
 class SourceAffinityByChapter(DocGenBaseModel):
     chapter_index: int = 1
-    file_ids: list[int] = Field(default_factory=list)
+    file_ids: list[str] = Field(default_factory=list)
     section_refs: list[str] = Field(default_factory=list)
     source_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     reason: str = ""
 
     @field_validator("file_ids", mode="before")
     @classmethod
-    def _file_ids(cls, value: Any) -> list[int]:
-        return clean_int_list(value)
+    def _file_ids(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
 
     @field_validator("section_refs", mode="before")
     @classmethod
@@ -368,7 +364,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
     enhanced_title: str = ""
     chapter_goal: str = ""
     mode: str = "systematic"
-    priority_file_ids: list[int] = Field(default_factory=list)
+    priority_file_ids: list[str] = Field(default_factory=list)
     required_elements: list[str] = Field(default_factory=list)
     forbidden_scope: list[str] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
@@ -403,8 +399,8 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 
     @field_validator("priority_file_ids", mode="before")
     @classmethod
-    def _priority_file_ids(cls, value: Any) -> list[int]:
-        return clean_int_list(value)
+    def _priority_file_ids(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTaskSeed":
@@ -474,7 +470,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     formula_targets: list[str] = Field(default_factory=list)
     example_targets: list[str] = Field(default_factory=list)
     pitfall_targets: list[str] = Field(default_factory=list)
-    priority_file_ids: list[int] = Field(default_factory=list)
+    priority_file_ids: list[str] = Field(default_factory=list)
     priority_section_refs: list[str] = Field(default_factory=list)
     source_slices: list[ChapterSourceSlice] = Field(default_factory=list)
     retrieval_queries: list[str] = Field(default_factory=list)
@@ -544,8 +540,8 @@ class ChapterGenerationTask(DocGenBaseModel):
 
     @field_validator("priority_file_ids", mode="before")
     @classmethod
-    def _int_list(cls, value: Any) -> list[int]:
-        return clean_int_list(value)
+    def _int_list(cls, value: Any) -> list[str]:
+        return clean_string_list(value)
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":

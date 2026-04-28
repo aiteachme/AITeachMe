@@ -150,10 +150,10 @@ class RawFileInUseError(AITeachMeError):
     error_code = "RAW_FILE_IN_USE"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, file_uid: str, linked_subjects: list[dict[str, str]]) -> None:
+    def __init__(self, file_id: str, linked_subjects: list[dict[str, str]]) -> None:
         super().__init__(
-            detail=f"文件 `{file_uid}` 仍被学科引用，不能从资料库删除。",
-            data={"file_uid": file_uid, "linked_subjects": linked_subjects},
+            detail=f"文件 `{file_id}` 仍被学科引用，不能从资料库删除。",
+            data={"file_id": file_id, "linked_subjects": linked_subjects},
         )
 
 

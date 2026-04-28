@@ -11,7 +11,7 @@
  */
 export interface EvidenceSummary {
   id: number;
-  document_id: number;
+  file_id: string;
   chunk_id: number;
   quote_text: string;
   evidence_role: string;

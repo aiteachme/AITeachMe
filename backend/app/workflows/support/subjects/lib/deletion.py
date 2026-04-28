@@ -77,7 +77,7 @@ def _bulk_delete_by_subject(session: Session, model: type, *, subject_id: str) -
 
 
 def _raw_file_subject_membership_condition(subject_id: str):
-    linked_file_ids = select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject_id == subject_id)
+    linked_file_ids = select(SubjectFileLink.file_id).where(SubjectFileLink.subject_id == subject_id)
     return RawFile.id.in_(linked_file_ids)
 
 

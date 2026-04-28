@@ -54,15 +54,15 @@ def bulk_create_documents(session: Session, documents: list[RawFile]) -> list[Ra
     return persisted
 
 
-def get_document_by_id(session: Session, document_id: int) -> RawFile | None:
-    return session.get(RawFile, document_id)
+def get_document_by_id(session: Session, file_id: str) -> RawFile | None:
+    return session.get(RawFile, file_id)
 
 
 def get_documents_by_source_file_ids(
     session: Session,
     *,
     subject_id: str,
-    source_file_ids: list[int],
+    source_file_ids: list[str],
 ) -> list[RawFile]:
     if not source_file_ids:
         return []
@@ -71,10 +71,10 @@ def get_documents_by_source_file_ids(
 
 def update_document_content(
     session: Session,
-    document_id: int,
+    file_id: str,
     markdown_content: str,
 ) -> RawFile | None:
-    document = session.get(RawFile, document_id)
+    document = session.get(RawFile, file_id)
     if document is None:
         return None
     document.markdown_content = markdown_content
@@ -87,10 +87,10 @@ def update_document_content(
 
 def update_document_step(
     session: Session,
-    document_id: int,
+    file_id: str,
     current_step: str | None,
 ) -> RawFile | None:
-    document = session.get(RawFile, document_id)
+    document = session.get(RawFile, file_id)
     if document is None:
         return None
     document.current_step = current_step
@@ -110,22 +110,22 @@ def bulk_create_chunks(session: Session, chunks: list[RetrievalChunk]) -> list[R
     return chunks
 
 
-def get_chunks_by_document_id(session: Session, document_id: int) -> list[RetrievalChunk]:
+def get_chunks_by_file_id(session: Session, file_id: str) -> list[RetrievalChunk]:
     statement = (
         select(RetrievalChunk)
-        .where(RetrievalChunk.document_id == document_id)
+        .where(RetrievalChunk.file_id == file_id)
         .order_by(RetrievalChunk.chunk_index)
     )
     return list(session.exec(statement).all())
 
 
-def get_chunks_by_document_ids(session: Session, document_ids: list[int]) -> list[RetrievalChunk]:
-    if not document_ids:
+def get_chunks_by_file_ids(session: Session, file_ids: list[str]) -> list[RetrievalChunk]:
+    if not file_ids:
         return []
     statement = (
         select(RetrievalChunk)
-        .where(RetrievalChunk.document_id.in_(document_ids))
-        .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+        .where(RetrievalChunk.file_id.in_(file_ids))
+        .order_by(RetrievalChunk.file_id, RetrievalChunk.chunk_index)
     )
     return list(session.exec(statement).all())
 
@@ -134,7 +134,7 @@ def get_chunks_by_source_file_ids(
     session: Session,
     *,
     subject_id: str,
-    source_file_ids: list[int],
+    source_file_ids: list[str],
 ) -> list[RetrievalChunk]:
     if not source_file_ids:
         return []
@@ -142,9 +142,9 @@ def get_chunks_by_source_file_ids(
         select(RetrievalChunk)
         .where(
             RetrievalChunk.subject_id == subject_id,
-            RetrievalChunk.document_id.in_(source_file_ids),
+            RetrievalChunk.file_id.in_(source_file_ids),
         )
-        .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+        .order_by(RetrievalChunk.file_id, RetrievalChunk.chunk_index)
     )
     return list(session.exec(statement).all())
 
@@ -153,7 +153,7 @@ def get_chunks_by_build_session(session: Session, build_session_id: str) -> list
     statement = (
         select(RetrievalChunk)
         .where(RetrievalChunk.build_session_id == build_session_id)
-        .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+        .order_by(RetrievalChunk.file_id, RetrievalChunk.chunk_index)
     )
     return list(session.exec(statement).all())
 
@@ -169,8 +169,12 @@ def get_chunks_by_ids(session: Session, chunk_ids: list[int]) -> list[RetrievalC
     return list(session.exec(statement).all())
 
 
-def delete_chunks_by_document_ids(session: Session, *, subject_id: str, document_ids: list[int]) -> int:
-    chunks = get_chunks_by_document_ids(session, document_ids)
+def delete_chunks_by_file_ids(session: Session, *, subject_id: str, file_ids: list[str]) -> int:
+    chunks = get_chunks_by_source_file_ids(
+        session,
+        subject_id=subject_id,
+        source_file_ids=file_ids,
+    )
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
         delete_embeddings_by_chunk_ids(session, subject_id=subject_id, chunk_ids=chunk_ids)
@@ -206,15 +210,14 @@ def delete_documents_by_source_file_ids(
     session: Session,
     *,
     subject_id: str,
-    source_file_ids: list[int],
+    source_file_ids: list[str],
 ) -> tuple[int, int]:
     documents = get_documents_by_source_file_ids(
         session,
         subject_id=subject_id,
         source_file_ids=source_file_ids,
     )
-    document_ids = [document.id for document in documents if document.id is not None]
-    chunk_count = delete_chunks_by_document_ids(session, subject_id=subject_id, document_ids=document_ids)
+    chunk_count = delete_chunks_by_file_ids(session, subject_id=subject_id, file_ids=source_file_ids)
     return len(documents), chunk_count
 
 
@@ -380,7 +383,7 @@ def bulk_insert_embeddings(
         indexed_chunks.append(
             IndexedChunk(
                 chunk_id=int(chunk.id),
-                document_id=int(chunk.document_id),
+                file_id=chunk.file_id,
                 subject_id=chunk.subject_id,
                 title=chunk.title,
                 header_path=chunk.header_path,

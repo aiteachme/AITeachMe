@@ -12,8 +12,8 @@ import type { TaskStatusValue } from './taskStatusValue';
  * Unified file record for list, preview, and upload responses.
  */
 export interface FileRecord {
-  /** Stable public file UID. */
-  uid: string;
+  /** Stable public file ID. */
+  id: string;
   /** Filename. */
   filename: string;
   /** File extension. */

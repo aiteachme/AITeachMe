@@ -10,7 +10,7 @@ import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPla
 
 export interface BuildPlannerPlanResponse {
   subject_id: string;
-  selected_file_uids?: string[];
+  selected_file_ids?: string[];
   user_prompt: string;
   digest_mode: string;
   chapter_plan?: BuildPlannerChapterPlanResponse[];

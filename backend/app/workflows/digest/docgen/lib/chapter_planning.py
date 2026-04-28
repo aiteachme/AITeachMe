@@ -21,7 +21,6 @@ from app.workflows.digest.docgen.lib.models import (
     HighConfidenceEvidenceUnit,
     LockedChapterTitle,
     SourceAffinityByChapter,
-    clean_int_list,
     clean_string_list,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
@@ -31,7 +30,7 @@ def _priority_files_for_chapter(
     *,
     chapter_index: int,
     file_summaries: Sequence[FileMaterialSummary],
-) -> tuple[list[int], list[str]]:
+) -> tuple[list[str], list[str]]:
     scored = sorted(
         [
             (
@@ -41,7 +40,7 @@ def _priority_files_for_chapter(
                 list(summary.high_value_sections),
             )
             for summary in file_summaries
-            if summary.file_id > 0
+            if summary.file_id
         ],
         reverse=True,
     )
@@ -272,7 +271,7 @@ def assemble_chapter_generation_plan(
             formula_targets=clean_string_list(brief.formula_targets, limit=4),
             example_targets=clean_string_list(brief.example_targets, limit=4),
             pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
-            priority_file_ids=priority_file_ids or clean_int_list(chapter.get("source_file_ids", [])),
+            priority_file_ids=priority_file_ids or clean_string_list(chapter.get("source_file_ids", [])),
             priority_section_refs=priority_section_refs or seed.priority_section_refs,
             source_slices=source_slices,
             retrieval_queries=clean_string_list(brief.retrieval_queries or seed.retrieval_queries, limit=2),

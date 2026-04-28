@@ -353,7 +353,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_PUBLISH: {
         "description": (
             "发布 DocGen 产物：写出章节 Markdown、整本 Markdown、docgen_manifest、版本归档和 KnowledgeDoc rows。"
-            "如果 sync_after_docgen 开启，后续由构建生命周期触发 kg_doc_sync；本节点自身只负责文档持久化。"
+            "如果 sync_after_docgen 开启，后续由构建生命周期触发 kg_doc_sync；"
+            "可复用的 KG 预抽取只作为 sidecar 缓存存在，本节点自身只负责文档持久化。"
         ),
         "reads": ["merged_markdown", "chapter_metadatas", "docgen_artifacts", "document_context", "cover_artifact"],
         "writes": ["doc_ids", "built_paths", "merged_path", "enriched_markdown"],
@@ -610,7 +611,7 @@ def create_docgen_initial_state(
     *,
     subject_id: str,
     subject_name: str | None = None,
-    file_ids: list[int],
+    file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None,
     requested_at: datetime,
@@ -751,7 +752,7 @@ async def run_docgen_workflow(
     *,
     subject_id: str,
     subject_name: str | None = None,
-    file_ids: list[int],
+    file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None = None,
     requested_at: datetime,

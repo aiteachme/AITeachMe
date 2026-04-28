@@ -72,7 +72,7 @@
 - 自动创建 `data/aiteachme.db`
 - 检测 schema drift
 - 允许清理 legacy schema
-- 必要时删除 SQLite 文件并重建
+- 必要时先把 `.db/-wal/-shm` 备份到 `data/backups/`，再删除 SQLite 文件并重建
 
 这条路径只服务本地开发，不代表云端策略。
 
@@ -249,6 +249,8 @@ python scripts/check_migration_sql.py
 - `ALTER TYPE`
 
 如果以后确实需要破坏性 DDL，应该先补备份方案、回滚方案，再显式扩展这层守卫。
+
+数据回填 migration 也必须能在 Alembic `--sql` 离线模式下生成 SQL。不要在 migration 中依赖查询结果集迭代，例如 `.mappings()` / `.fetchall()` 后再逐行更新；这类逻辑应改成 SQL `UPDATE`、CTE 或窗口函数，必要时按 dialect 分支。
 
 ### Step 5：在临时 PostgreSQL 上验证
 

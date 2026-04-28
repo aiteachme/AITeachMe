@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-DEFAULT_LLM_CONCURRENCY_LIMIT = 20
+DEFAULT_LLM_CONCURRENCY_LIMIT = 32
 DEFAULT_LLM_TOKEN_BUDGET = 4000
 
 __all__ = [

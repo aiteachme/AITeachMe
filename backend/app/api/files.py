@@ -17,7 +17,7 @@ from app.shared.infra.storage import get_content_store
 from app.repositories.files_repo import link_raw_files_to_subject
 from app.workflows.ingest.intake import (
     delete_files,
-    get_user_files_by_uid_or_raise,
+    get_user_files_or_raise,
     list_subject_files,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
@@ -150,10 +150,10 @@ async def link_files_api(
 ) -> ApiResponse[FilesData]:
     normalized_subject_id = normalize_subject_id(subject_id)
     get_subject_record(session, normalized_subject_id, owner_user_id=user.user_id)
-    raw_files = get_user_files_by_uid_or_raise(
+    raw_files = get_user_files_or_raise(
         session,
         owner_user_id=user.user_id,
-        file_uids=list(dict.fromkeys(body.file_uids)),
+        file_ids=list(dict.fromkeys(body.file_ids)),
     )
     link_raw_files_to_subject(
         session,
@@ -178,16 +178,16 @@ async def delete_files_api(
 ) -> ApiResponse[FileDeleteData]:
     normalized_subject_id = normalize_subject_id(subject_id)
     get_subject_record(session, normalized_subject_id, owner_user_id=user.user_id)
-    file_uids = [body.file_uid] if body.file_uid is not None else []
-    if body.file_uids:
-        file_uids.extend(body.file_uids)
-    unique_file_uids = list(dict.fromkeys(file_uids))
+    file_ids = [body.file_id] if body.file_id is not None else []
+    if body.file_ids:
+        file_ids.extend(body.file_ids)
+    unique_file_ids = list(dict.fromkeys(file_ids))
     return ok_response(
         await delete_files(
             session,
             subject_id=normalized_subject_id,
             owner_user_id=user.user_id,
-            file_uids=unique_file_uids,
+            file_ids=unique_file_ids,
         )
     )
 

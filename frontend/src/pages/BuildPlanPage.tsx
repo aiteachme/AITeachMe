@@ -99,7 +99,8 @@ const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
 const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
 
 function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
-  console.info(`[planner] ${event}`, payload);
+  void event;
+  void payload;
 }
 
 interface PlannerRuntimeStep {
@@ -546,11 +547,11 @@ async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadD
   return response.data ?? { subject_id: subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }
 
-async function deleteFile(subject: string, uid: string) {
-  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
+async function deleteFile(subject: string, id: string) {
+  await apiClient<ApiResponse<{ deleted_file_ids: string[] }>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/delete`,
-    data: { file_uid: uid },
+    data: { file_id: id },
   });
 }
 
@@ -638,7 +639,7 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   subject: string,
-  payload: { file_uids: string[]; user_prompt: string },
+  payload: { file_ids: string[]; user_prompt: string },
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -724,7 +725,7 @@ export function BuildPlanPage() {
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
-      return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 1500 : false;
+      return items.some((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()) ? 1500 : false;
     },
   });
 
@@ -800,11 +801,11 @@ export function BuildPlanPage() {
   const files = filesQuery.data?.items ?? [];
   const plannerFiles = useMemo(() => files.filter((item) => item.status !== "failed"), [files]);
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
-  const plannerFileUids = useMemo(() => plannerFiles.map((item) => item.uid), [plannerFiles]);
-  const readyFileUids = useMemo(() => readyFiles.map((item) => item.uid), [readyFiles]);
-  const plannerEffectiveFileUids = useMemo(
-    () => (readyFileUids.length > 0 ? readyFileUids : plannerFileUids),
-    [plannerFileUids, readyFileUids],
+  const plannerFileIds = useMemo(() => plannerFiles.map((item) => item.id), [plannerFiles]);
+  const readyFileIds = useMemo(() => readyFiles.map((item) => item.id), [readyFiles]);
+  const plannerEffectiveFileIds = useMemo(
+    () => (readyFileIds.length > 0 ? readyFileIds : plannerFileIds),
+    [plannerFileIds, readyFileIds],
   );
   const buildMeta = buildRuntimeQuery.data?.docgen ?? knowledgeDocState.data?.build ?? null;
   const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
@@ -975,9 +976,9 @@ export function BuildPlanPage() {
     if (hydratedSubjectRef.current !== subjectId || !currentPlan) {
       return;
     }
-    const selected = currentPlan.selected_file_uids ?? [];
-    setPlannerNeedsRefresh(selected.length > 0 && !sameStringSet(selected, plannerFileUids));
-  }, [currentPlan, plannerFileUids, subjectId]);
+    const selected = currentPlan.selected_file_ids ?? [];
+    setPlannerNeedsRefresh(selected.length > 0 && !sameStringSet(selected, plannerFileIds));
+  }, [currentPlan, plannerFileIds, subjectId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1023,7 +1024,7 @@ export function BuildPlanPage() {
       try {
         const response = await createPlannerSessionStream(
           subjectId,
-          { file_uids: plannerEffectiveFileUids, user_prompt: prompt },
+          { file_ids: plannerEffectiveFileIds, user_prompt: prompt },
           {
             signal: controller.signal,
             onStatus: (payload) => {
@@ -1120,7 +1121,7 @@ export function BuildPlanPage() {
   }, [toast, uploadMutation]);
 
   const deleteMutation = useMutation({
-    mutationFn: (uid: string) => deleteFile(subjectId, uid),
+    mutationFn: (fileId: string) => deleteFile(subjectId, fileId),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
   });
 
@@ -1140,7 +1141,7 @@ export function BuildPlanPage() {
     subjectId,
     buildType: "docs",
     buildRequest: () => ({
-      file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
+      file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
       prompt: plannerUserPrompt(currentPlanRef.current) || undefined,
       confirmed_plan_id: currentPlanRef.current?.confirmed_plan_id ?? undefined,
     }),
@@ -1151,7 +1152,7 @@ export function BuildPlanPage() {
       toast({
         title: "已开始构建知识文档",
         description:
-          readyFileUids.length > 0
+          readyFileIds.length > 0
             ? "正在跳转到知识文档页查看真实构建进度。"
             : "当前将直接进入联网研究模式，正在跳转到知识文档页查看构建进度。",
         variant: "success",
@@ -1307,8 +1308,8 @@ export function BuildPlanPage() {
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
       plannerNeedsRefresh,
-      plannerFileCount: plannerFileUids.length,
-      readyFileCount: readyFileUids.length,
+      plannerFileCount: plannerFileIds.length,
+      readyFileCount: readyFileIds.length,
     });
     if (!text || isPlannerPending || isBuilding) {
       logPlannerDebug("send_plan_message_blocked", {
@@ -1322,7 +1323,7 @@ export function BuildPlanPage() {
       subjectId,
       mode: shouldCreateSession ? "create" : "revise",
       plannerSessionId,
-      effectiveFileCount: plannerEffectiveFileUids.length,
+      effectiveFileCount: plannerEffectiveFileIds.length,
     });
     markPlannerLocalInteraction();
     const pendingAssistantId = nextMessageId();
@@ -1339,7 +1340,7 @@ export function BuildPlanPage() {
     plannerStreamingRawRef.current = "";
     setPlannerStreamingPreview("");
     const initialStatus = shouldCreateSession
-      ? readyFileUids.length === 0 && plannerFileUids.length > 0
+      ? readyFileIds.length === 0 && plannerFileIds.length > 0
         ? "资料仍在解析，先基于文件名思考临时大纲..."
         : "正在理解目标和资料，整理思考过程..."
       : "正在根据你的补充重新思考大纲...";
@@ -1350,7 +1351,7 @@ export function BuildPlanPage() {
         const response = await createPlannerSessionStream(
           subjectId,
           {
-            file_uids: plannerEffectiveFileUids,
+            file_ids: plannerEffectiveFileIds,
             user_prompt: text,
           },
           {
@@ -1441,12 +1442,12 @@ export function BuildPlanPage() {
     inputValue,
     isBuilding,
     isPlannerPending,
-    plannerEffectiveFileUids,
-    plannerFileUids,
+    plannerEffectiveFileIds,
+    plannerFileIds,
     plannerNeedsRefresh,
     plannerSessionId,
     plannerStreaming,
-    readyFileUids.length,
+    readyFileIds.length,
     markPlannerLocalInteraction,
     subjectId,
   ]);
@@ -1459,7 +1460,7 @@ export function BuildPlanPage() {
       isPlannerPending,
       isBuilding,
       plannerNeedsRefresh,
-      readyFileCount: readyFileUids.length,
+      readyFileCount: readyFileIds.length,
     });
     if (!plannerSessionId || !currentPlan || isPlannerPending || isBuilding) {
       logPlannerDebug("confirm_build_blocked", {
@@ -1488,7 +1489,7 @@ export function BuildPlanPage() {
       setIsRevisingPlan(false);
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
-        file_uids: readyFileUids.length > 0 ? readyFileUids : undefined,
+        file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
         prompt: confirmedUserPrompt(response),
       });
     } catch (error) {
@@ -1509,7 +1510,7 @@ export function BuildPlanPage() {
     knowledgeBuild,
     plannerNeedsRefresh,
     plannerSessionId,
-    readyFileUids,
+    readyFileIds,
   ]);
 
   useEffect(() => {
@@ -1715,7 +1716,7 @@ export function BuildPlanPage() {
                       const meta = fileMeta(file);
                       return (
                         <div
-                          key={file.uid}
+                          key={file.id}
                           className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
                         >
                           {fileIcon(file)}
@@ -1725,7 +1726,7 @@ export function BuildPlanPage() {
                           <span title={meta.label}>{meta.icon}</span>
                           <button
                             type="button"
-                            onClick={() => deleteMutation.mutate(file.uid)}
+                            onClick={() => deleteMutation.mutate(file.id)}
                             disabled={deleteMutation.isPending}
                             className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-zinc-600 text-white group-hover:flex"
                             title="删除文件"

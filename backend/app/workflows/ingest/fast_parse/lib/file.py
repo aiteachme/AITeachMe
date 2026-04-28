@@ -243,11 +243,11 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
         )
 
         record_markdown_path = raw_file.markdown_path or file_scope.raw_markdown_key(
-            file_uid=raw_file.uid,
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
         )
         record_asset_dir = raw_file.asset_dir or file_scope.asset_prefix(
-            file_uid=raw_file.uid,
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
         ).rstrip("/")
         asset_upload_prefix = record_asset_dir.rstrip("/") + "/"
@@ -272,7 +272,6 @@ async def _load_raw_file_state(state: IngestParseState) -> IngestParseState:
             "asset_link_prefix": asset_link_prefix,
             "asset_name_prefix": build_asset_name_prefix(
                 filename=raw_file.original_filename,
-                file_uid=raw_file.uid,
                 file_id=file_id,
             ),
             "storage_backend": raw_file.storage_backend or "local",

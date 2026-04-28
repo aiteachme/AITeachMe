@@ -13,7 +13,7 @@ class ExamGenerateRequest(BaseModel):
 
     exam_mode: str = Field(description="Exam mode: web_practice | paper_exam (legacy values are compatible).")
     user_prompt: str | None = Field(default=None, description="Optional user requirements for exam generation.")
-    sample_file_uids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file UIDs.")
+    sample_file_ids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file IDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
 
 
@@ -47,7 +47,7 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     exam_mode: str
     num_questions: int
     exam_paper_id: int | None = None
-    sample_file_uids: list[str] = Field(default_factory=list)
+    sample_file_ids: list[str] = Field(default_factory=list)
 
 
 class ExamPrewarmStatusResponse(BaseModel):

@@ -21,7 +21,7 @@ export interface KnowledgeGraphSourceRefResponse {
   graph_revision_no?: number;
   source_kind?: string;
   anchor?: string;
-  source_file_ids?: number[];
+  source_file_ids?: string[];
   quote_text?: string;
   confidence?: number;
   created_at: string;

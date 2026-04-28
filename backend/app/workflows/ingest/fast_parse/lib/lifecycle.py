@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 def mark_parse_workflow_failed(
     *,
     user_id: str,
-    file_id: int,
+    file_id: str,
     error: str,
     step: str = "ingest.unhandled_error",
     subject_id: str = "",
@@ -62,8 +62,8 @@ def dispatch_enhancement_if_needed(
 
     subject_id = str(state.get("subject_id") or "").strip()
     user_id = str(state.get("user_id") or "").strip()
-    file_id = int(state.get("file_id") or 0)
-    if not user_id or file_id <= 0:
+    file_id = str(state.get("file_id") or "").strip()
+    if not user_id or not file_id:
         return False
 
     enhance_coro = _run_deep_enhance_background(

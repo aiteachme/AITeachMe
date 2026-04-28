@@ -6,12 +6,12 @@ import math
 import re
 
 import structlog
-from langsmith import traceable
 from sqlmodel import Session
 
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo, profile_repo
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.subject import get_subject_vector_search_notice
 from app.workflows.interact.chat.lib.types import RetrievedContext
 
@@ -275,20 +275,20 @@ def _context_from_unit(
     title = unit.canonical_name
     header_path = unit.canonical_name
     chunk_id = int(evidence["chunk_id"] or 0)
-    document_id = int(evidence["document_id"] or 0)
+    file_id = str(evidence["file_id"] or "")
 
     if chunk is not None and chunk.subject_id == unit.subject_id:
         content = chunk.content
         title = chunk.title or unit.canonical_name
         header_path = chunk.header_path or unit.canonical_name
         chunk_id = int(chunk.id or chunk_id)
-        document_id = int(chunk.document_id)
+        file_id = chunk.file_id
     else:
         content = unit.body_markdown or unit.body or unit.summary or unit.canonical_name
 
     return RetrievedContext(
         chunk_id=chunk_id,
-        document_id=document_id,
+        file_id=file_id,
         title=title,
         header_path=header_path,
         content=content,
@@ -306,14 +306,14 @@ def _context_from_unit(
 
 def _first_unit_evidence(session: Session, unit: KnowledgeUnit) -> dict[str, object]:
     if unit.id is None:
-        return {"chunk_id": 0, "document_id": 0, "quote_text": ""}
+        return {"chunk_id": 0, "file_id": "", "quote_text": ""}
     evidence_items = knowledge_relation_repo.list_evidence_by_entity(session, "node", int(unit.id))
     if not evidence_items:
-        return {"chunk_id": 0, "document_id": 0, "quote_text": ""}
+        return {"chunk_id": 0, "file_id": "", "quote_text": ""}
     first = sorted(evidence_items, key=lambda item: (-item.confidence, item.id or 0))[0]
     return {
         "chunk_id": first.chunk_id,
-        "document_id": first.document_id,
+        "file_id": first.file_id,
         "quote_text": first.quote_text,
     }
 
@@ -365,7 +365,7 @@ async def _retrieve_vector_context(
         results.append(
             RetrievedContext(
                 chunk_id=int(metadata.get("chunk_id", 0)),
-                document_id=int(metadata.get("document_id", 0)),
+                file_id=str(metadata.get("file_id") or metadata.get("document_id") or ""),
                 title=str(metadata.get("title", "")),
                 header_path=str(metadata.get("header_path", "")),
                 content=node.get_content(),

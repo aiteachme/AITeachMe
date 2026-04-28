@@ -89,7 +89,12 @@ def get_langsmith_project_name() -> str | None:
 
 
 def get_langsmith_max_text_chars() -> int:
-    return max(32, int(DEFAULT_LANGSMITH_MAX_TEXT_CHARS))
+    try:
+        raw_value = get_env("LANGSMITH_MAX_TEXT_CHARS", str(DEFAULT_LANGSMITH_MAX_TEXT_CHARS))
+        value = int(raw_value or DEFAULT_LANGSMITH_MAX_TEXT_CHARS)
+    except ValueError:
+        value = DEFAULT_LANGSMITH_MAX_TEXT_CHARS
+    return max(32, value)
 
 
 def get_langsmith_endpoint() -> str:
@@ -608,6 +613,14 @@ def _build_dynamic_langsmith_extra(
     return extra or None
 
 
+def _default_traceable_inputs(inputs: dict[str, Any]) -> Any:
+    return sanitize_langsmith_value(inputs, capture_text=True, field_name="inputs")
+
+
+def _default_traceable_outputs(outputs: Any) -> Any:
+    return sanitize_langsmith_value(outputs, capture_text=True, field_name="outputs")
+
+
 def traceable_with_context(
     *,
     name: str,
@@ -623,8 +636,8 @@ def traceable_with_context(
     traced = traceable(
         name=name,
         run_type=run_type,
-        process_inputs=process_inputs,
-        process_outputs=process_outputs,
+        process_inputs=process_inputs or _default_traceable_inputs,
+        process_outputs=process_outputs or _default_traceable_outputs,
     )
 
     def decorator(func):

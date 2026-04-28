@@ -65,6 +65,19 @@ def _clean_int_list(value: object) -> list[int]:
     return cleaned
 
 
+def _clean_string_list(value: object) -> list[str]:
+    items = value if isinstance(value, list) else ([] if value is None else [value])
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        cleaned.append(text)
+    return cleaned
+
+
 def extract_doc_chapter_metadatas(markdown: str) -> list[dict[str, object]]:
     chapters: list[dict[str, object]] = []
     for chunk in extract_markdown_chapter_chunks(markdown)[:60]:
@@ -132,7 +145,7 @@ def _load_docgen_manifest_for_scope(
 def _chapter_context_payload(doc: KnowledgeDoc) -> dict[str, object]:
     source_scope = _load_json_dict(doc.source_scope_json)
     manifest = _load_json_dict(doc.manifest_json)
-    source_file_ids = _clean_int_list(
+    source_file_ids = _clean_string_list(
         _load_json_list(doc.source_file_ids)
         or source_scope.get("source_file_ids")
         or manifest.get("source_file_ids")
@@ -155,7 +168,7 @@ def _chapter_context_from_docgen_state(
 ) -> dict[str, object]:
     source_scope = dict(chapter.get("source_scope") or {}) if isinstance(chapter.get("source_scope"), dict) else {}
     manifest = dict(chapter.get("manifest") or {}) if isinstance(chapter.get("manifest"), dict) else {}
-    source_file_ids = _clean_int_list(
+    source_file_ids = _clean_string_list(
         chapter.get("source_file_ids")
         or source_scope.get("source_file_ids")
         or manifest.get("source_file_ids")
@@ -283,7 +296,7 @@ def load_knowledge_doc_markdown(subject_id: str) -> tuple[str, str]:
     return sync_input.markdown, sync_input.source
 
 
-def resolve_graph_input_paths(*, file_ids: list[int], knowledge_doc_markdown: str) -> list[str]:
+def resolve_graph_input_paths(*, file_ids: list[str], knowledge_doc_markdown: str) -> list[str]:
     paths: list[str] = []
     if knowledge_doc_markdown.strip():
         paths.append("knowledge_doc")

@@ -1,4 +1,4 @@
-"""Helpers for staging and publishing knowledge docs."""
+﻿"""Helpers for staging and publishing knowledge docs."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from app.models.knowledge_doc import KnowledgeDoc
 from app.repositories.knowledge import docgen_repo
 from app.shared.infra.database import managed_session
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
-from app.workflows.digest.common.pedagogy import build_document_overview as build_learning_document_overview
 from app.shared.infra.storage import (
     SubjectStorageScope,
     get_content_store,
@@ -126,18 +125,8 @@ def build_merged_markdown(
 
     deduped_chapters = _dedupe_chapter_metadatas(chapters)
     include_sources = bool((document_context or {}).get("include_sources", True))
-    overview = _ensure_document_overview_structure(
-        build_learning_document_overview(
-            subject_name=str((document_context or {}).get("subject_name") or "未命名学科"),
-            digest_mode=str((document_context or {}).get("digest_mode") or ""),
-            user_prompt=str((document_context or {}).get("user_prompt") or ""),
-            plan_summary=str((document_context or {}).get("plan_summary") or ""),
-            source_strategy=str((document_context or {}).get("source_strategy") or ""),
-            chapters=deduped_chapters,
-        )
-    )
     separator = "\n\n---\n\n"
-    body: list[str] = [overview.strip()]
+    body: list[str] = []
     all_source_details: list[dict[str, object]] = []
     for chapter in deduped_chapters:
         chapter_index = int(chapter.get("chapter_index", 0) or 0)
@@ -161,31 +150,6 @@ def build_merged_markdown(
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
     return normalize_mermaid_blocks(merged.strip()) + "\n"
-
-
-def _ensure_document_overview_structure(markdown: str) -> str:
-    cleaned = str(markdown or "").strip()
-    if not cleaned.startswith("# "):
-        cleaned = "# 知识文档总览\n\n" + cleaned.lstrip("# \n")
-    if "\n## 目录" not in cleaned and "\n## 目錄" not in cleaned:
-        cleaned = _insert_toc_after_overview_intro(cleaned)
-    return cleaned.strip()
-
-
-def _insert_toc_after_overview_intro(markdown: str) -> str:
-    lines = str(markdown or "").splitlines()
-    if not lines:
-        return "# 知识文档总览\n\n## 目录\n\n"
-    insert_at = len(lines)
-    for index, line in enumerate(lines[1:], start=1):
-        if line.startswith("## "):
-            insert_at = index
-            break
-    while insert_at > 0 and not lines[insert_at - 1].strip():
-        insert_at -= 1
-    toc_block = ["", "## 目录", ""]
-    lines[insert_at:insert_at] = toc_block
-    return "\n".join(lines).strip() + "\n"
 
 
 
@@ -281,16 +245,13 @@ def _build_source_scope(chapter: dict) -> dict[str, object]:
     }
 
 
-def _clean_source_file_ids(value: object) -> list[int]:
+def _clean_source_file_ids(value: object) -> list[str]:
     raw_items = value if isinstance(value, list) else ([] if value is None else [value])
-    cleaned: list[int] = []
-    seen: set[int] = set()
+    cleaned: list[str] = []
+    seen: set[str] = set()
     for item in raw_items:
-        try:
-            file_id = int(item)
-        except (TypeError, ValueError):
-            continue
-        if file_id <= 0 or file_id in seen:
+        file_id = str(item or "").strip()
+        if not file_id or file_id in seen:
             continue
         seen.add(file_id)
         cleaned.append(file_id)
@@ -317,13 +278,8 @@ def _resolve_published_chapter_source_file_ids(
     chapter_index: int,
     fallback_assignment: dict | None,
     assignments_by_index: dict[int, dict],
-) -> list[int]:
-    """Resolve internal RawFile.id values for a published chapter.
-
-    DocGen stores public file selection as RawFile.uid at API boundaries, but
-    persisted chapter/source manifests use RawFile.id because parsed markdown
-    rows and retrieval chunks are keyed by the database id.
-    """
+) -> list[str]:
+    """Resolve RawFile string IDs for a published chapter."""
 
     ids = _clean_source_file_ids(chapter.get("source_file_ids"))
     if ids:
@@ -412,7 +368,7 @@ def publish_staged_knowledge_docs(
     build_session_id: str | None = None,
     docgen_artifacts: dict[str, Any] | None = None,
     subject_scope: SubjectStorageScope | None = None,
-) -> list[int]:
+) -> list[str]:
     """Promote staged chapter markdown to live outputs and persist metadata."""
 
     if not chapter_metadatas:
@@ -549,7 +505,7 @@ def publish_staged_knowledge_docs(
         version_no=resolved_version_no,
         source_file_ids=sorted(
             {
-                int(file_id)
+                file_id
                 for chapter in sorted_chapters
                 for file_id in _clean_source_file_ids(chapter.get("source_file_ids"))
             }

@@ -64,7 +64,7 @@ class EvidenceLink(SQLModel):
     entity_type: str
     entity_id: int
     entity_revision_id: int | None = Field(default=None)
-    document_id: int
+    file_id: str
     chunk_id: int
     quote_text: str = ""
     source_span_start: int | None = Field(default=None)

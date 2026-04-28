@@ -42,7 +42,7 @@ export interface KnowledgeGraphBuildData {
   requested_at?: string;
   build_group_id?: string | null;
   build_session_id?: string | null;
-  source_file_ids?: number[];
+  source_file_ids?: string[];
   message?: string;
 }
 

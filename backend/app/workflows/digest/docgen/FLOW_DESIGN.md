@@ -1,6 +1,6 @@
 ﻿# DocGen 流程设计
 
-最后更新：2026-04-27
+最后更新：2026-04-28
 
 这份文档是 `backend/app/workflows/digest/docgen/` 当前唯一的文档文件，同时兼任入口说明和流程权威文档。
 
@@ -39,6 +39,17 @@ enhance / 当前 enhance_chapters
 ```text
 Planner 定方向，DocGen 构建知识文档。
 ```
+
+DocGen 与知识图谱的协作口径：
+
+```text
+DocGen 主路径只负责知识文档质量和发布；KG 预抽取是 sidecar，不是 DocGen 节点。
+```
+
+当 `knowledge_graph.prefetch_during_docgen` 开启时，DocGen 在章节进入稳定增强态后会启动
+非阻塞 `kg_prefetch sidecar`。这个 sidecar 只做 section 级候选抽取缓存，不写
+`knowledge_unit / knowledge_edge`，也不参与 DocGen 的路由、复核和发布判定。发布成功后，
+`kg_doc_sync` 会用最终发布 Markdown 的 section hash 校验缓存，命中则复用，未命中则补抽。
 
 DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认过的 `confirmed_plan`，在不推翻用户确认语义的前提下完成：
 
@@ -193,6 +204,10 @@ enhance_chapters
     ├─ enhance_chapter 2
     └─ enhance_chapter N
   处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构，以及按构建约束追加例题/练习。
+  如果图谱预抽取开启，则在本阶段完成后启动非阻塞 kg_prefetch sidecar：
+    - 使用增强后的章节 Markdown 预抽取 section payload。
+    - 默认最多 6 路 LLM 并发，并先让后续 DocGen review 调度。
+    - 不等待、不落库、不影响后续 review_content。
   |
   v
 review_content / 当前 review_chapter Send x N + document_consistency_review
@@ -245,6 +260,12 @@ review_content
   review_chapter 1 ┐
   review_chapter 2 ├─ fan-in -> document_consistency_review -> repair_or_route
   review_chapter N ┘
+
+kg_prefetch sidecar
+  enhanced_chapter 1 ┐
+  enhanced_chapter 2 ├─ 后台预抽取候选，仅缓存 section payload
+  enhanced_chapter N ┘
+  发布成功后由 kg_doc_sync 消费；发布失败或构建取消时丢弃。
 ```
 
 ### 1.2 长流程执行合同
@@ -717,7 +738,7 @@ repair_trace
 可以：
 
 - Mermaid、交互占位处理、公式清洗、Markdown 结构，以及按需追加例题/练习。
-- 根据 digest mode 和章节合同决定表现层策略；当前不再生成讲义配图。
+- 根据 digest mode 和章节合同决定表现层策略；正文表现优先使用标准 Markdown 表格、加粗和 `[!IMPORTANT]` / `[!TIP]` / `[!WARNING]` callout，让前端渲染出清晰的重点、技巧和易错提示；当前不再生成讲义配图。
 
 不能：
 

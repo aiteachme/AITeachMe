@@ -23,12 +23,12 @@ def create_raw_file(session: Session, raw_file: RawFile) -> RawFile:
     return raw_file
 
 
-def get_raw_file_by_id(session: Session, raw_file_id: int) -> RawFile | None:
-    return session.get(RawFile, raw_file_id)
+def get_raw_file_by_id(session: Session, file_id: str) -> RawFile | None:
+    return session.get(RawFile, file_id)
 
 
-def get_raw_file_by_uid_for_user(session: Session, *, user_id: str, file_uid: str) -> RawFile | None:
-    stmt = select(RawFile).where(RawFile.user_id == user_id, RawFile.uid == file_uid)
+def get_raw_file_by_id_for_user(session: Session, *, user_id: str, file_id: str) -> RawFile | None:
+    stmt = select(RawFile).where(RawFile.user_id == user_id, RawFile.id == file_id)
     return session.exec(stmt).first()
 
 
@@ -88,7 +88,7 @@ def _parser_rank(raw_file: RawFile) -> int:
     return 2
 
 
-def _reusable_raw_file_sort_key(raw_file: RawFile) -> tuple[int, int, float, int]:
+def _reusable_raw_file_sort_key(raw_file: RawFile) -> tuple[int, int, float, str]:
     status_rank = {
         TaskStatus.COMPLETED.value: 0,
         TaskStatus.PROCESSING.value: 1,
@@ -100,11 +100,11 @@ def _reusable_raw_file_sort_key(raw_file: RawFile) -> tuple[int, int, float, int
         if raw_file.status == TaskStatus.COMPLETED.value
         else _datetime_ts(raw_file.created_at)
     )
-    return (status_rank, parser_rank, time_rank, int(raw_file.id or 0))
+    return (status_rank, parser_rank, time_rank, raw_file.id or "")
 
 
 def _linked_raw_file_ids_for_subject(subject_id: str):
-    return select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject_id == subject_id)
+    return select(SubjectFileLink.file_id).where(SubjectFileLink.subject_id == subject_id)
 
 
 def _subject_membership_condition(subject_id: str):
@@ -114,7 +114,7 @@ def _subject_membership_condition(subject_id: str):
 def list_raw_files_by_ids(
     session: Session,
     subject_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
 ) -> list[RawFile]:
     if not file_ids:
         return []
@@ -127,44 +127,11 @@ def list_raw_files_by_ids(
     return list(session.exec(stmt).all())
 
 
-def list_raw_files_by_uids(
-    session: Session,
-    subject_id: str,
-    file_uids: list[str],
-) -> list[RawFile]:
-    if not file_uids:
-        return []
-
-    stmt = (
-        select(RawFile)
-        .where(_subject_membership_condition(subject_id), RawFile.uid.in_(file_uids))  # type: ignore[union-attr]
-        .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
-    )
-    return list(session.exec(stmt).all())
-
-
-def list_raw_files_by_uids_for_user(
-    session: Session,
-    *,
-    user_id: str,
-    file_uids: list[str],
-) -> list[RawFile]:
-    if not file_uids:
-        return []
-
-    stmt = (
-        select(RawFile)
-        .where(RawFile.user_id == user_id, RawFile.uid.in_(file_uids))  # type: ignore[union-attr]
-        .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
-    )
-    return list(session.exec(stmt).all())
-
-
 def list_raw_files_by_ids_for_user(
     session: Session,
     *,
     user_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
 ) -> list[RawFile]:
     if not file_ids:
         return []
@@ -213,14 +180,14 @@ def list_raw_files_by_user(
     session: Session,
     *,
     user_id: str,
-    file_uids: list[str] | None = None,
+    file_ids: list[str] | None = None,
     limit: int,
     offset: int,
     status: str | None = None,
 ) -> tuple[list[RawFile], int]:
     filters = [RawFile.user_id == user_id]
-    if file_uids:
-        filters.append(RawFile.uid.in_(file_uids))  # type: ignore[union-attr]
+    if file_ids:
+        filters.append(RawFile.id.in_(file_ids))  # type: ignore[union-attr]
     if status:
         filters.append(RawFile.status == status)
 
@@ -240,7 +207,7 @@ def raw_file_belongs_to_subject(session: Session, *, raw_file: RawFile, subject_
         return False
     stmt = select(SubjectFileLink.id).where(
         SubjectFileLink.subject_id == subject_id,
-        SubjectFileLink.raw_file_id == raw_file.id,
+        SubjectFileLink.file_id == raw_file.id,
     )
     return session.exec(stmt).first() is not None
 
@@ -252,30 +219,30 @@ def link_raw_files_to_subject(
     subject_id: str,
     raw_files: list[RawFile],
 ) -> list[RawFile]:
-    raw_file_ids = list(dict.fromkeys(int(item.id) for item in raw_files if item.id is not None))
+    raw_file_ids = list(dict.fromkeys(item.id for item in raw_files if item.id))
     if not raw_file_ids:
         return []
 
     existing_link_ids = set(
         session.exec(
-            select(SubjectFileLink.raw_file_id).where(
+            select(SubjectFileLink.file_id).where(
                 SubjectFileLink.user_id == owner_user_id,
                 SubjectFileLink.subject_id == subject_id,
-                SubjectFileLink.raw_file_id.in_(raw_file_ids),  # type: ignore[union-attr]
+                SubjectFileLink.file_id.in_(raw_file_ids),  # type: ignore[union-attr]
             )
         ).all()
     )
 
     now = utcnow()
     for raw_file in raw_files:
-        if raw_file.id is None or raw_file.user_id != owner_user_id:
+        if not raw_file.id or raw_file.user_id != owner_user_id:
             continue
         if raw_file.id not in existing_link_ids:
             session.add(
                 SubjectFileLink(
                     user_id=owner_user_id,
                     subject_id=subject_id,
-                    raw_file_id=raw_file.id,
+                    file_id=raw_file.id,
                     created_at=now,
                     updated_at=now,
                 )
@@ -296,7 +263,7 @@ def unlink_raw_files_from_subject(
     raw_files: list[RawFile],
     commit: bool = True,
 ) -> list[RawFile]:
-    raw_file_ids = [int(item.id) for item in raw_files if item.id is not None]
+    raw_file_ids = [item.id for item in raw_files if item.id]
     if not raw_file_ids:
         return []
 
@@ -304,7 +271,7 @@ def unlink_raw_files_from_subject(
         sa_delete(SubjectFileLink).where(
             SubjectFileLink.user_id == owner_user_id,
             SubjectFileLink.subject_id == subject_id,
-            SubjectFileLink.raw_file_id.in_(raw_file_ids),  # type: ignore[union-attr]
+            SubjectFileLink.file_id.in_(raw_file_ids),  # type: ignore[union-attr]
         )
     )
     session.flush()
@@ -316,23 +283,23 @@ def unlink_raw_files_from_subject(
     return raw_files
 
 
-def unlink_all_subjects_for_raw_file(session: Session, *, raw_file_id: int) -> None:
-    session.exec(sa_delete(SubjectFileLink).where(SubjectFileLink.raw_file_id == raw_file_id))
+def unlink_all_subjects_for_raw_file(session: Session, *, file_id: str) -> None:
+    session.exec(sa_delete(SubjectFileLink).where(SubjectFileLink.file_id == file_id))
 
 
-def count_subject_links_for_raw_file(session: Session, *, raw_file_id: int) -> int:
+def count_subject_links_for_raw_file(session: Session, *, file_id: str) -> int:
     return int(
         session.exec(
-            select(func.count()).select_from(SubjectFileLink).where(SubjectFileLink.raw_file_id == raw_file_id)
+            select(func.count()).select_from(SubjectFileLink).where(SubjectFileLink.file_id == file_id)
         ).one()
     )
 
 
-def list_linked_subjects_for_raw_file(session: Session, *, raw_file_id: int) -> list[Subject]:
+def list_linked_subjects_for_raw_file(session: Session, *, file_id: str) -> list[Subject]:
     stmt = (
         select(Subject)
         .join(SubjectFileLink, SubjectFileLink.subject_id == Subject.id)
-        .where(SubjectFileLink.raw_file_id == raw_file_id)
+        .where(SubjectFileLink.file_id == file_id)
         .order_by(Subject.created_at.asc())  # type: ignore[union-attr]
     )
     return list(session.exec(stmt).all())
@@ -431,15 +398,15 @@ def update_raw_file(
 def replace_raw_file_assets(
     session: Session,
     *,
-    raw_file_id: int,
+    file_id: str,
     assets: Iterable[RawFileAsset],
 ) -> list[RawFileAsset]:
-    del session, raw_file_id
+    del session, file_id
     return list(assets)
 
 
-def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFileAsset]:
-    raw_file = get_raw_file_by_id(session, raw_file_id)
+def list_assets_by_raw_file_id(session: Session, file_id: str) -> list[RawFileAsset]:
+    raw_file = get_raw_file_by_id(session, file_id)
     if raw_file is None:
         return []
 
@@ -447,7 +414,7 @@ def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFi
     if not asset_dir:
         if raw_file.user_id:
             scope = get_content_store().user_file_scope(user_id=raw_file.user_id)
-            asset_dir = scope.asset_prefix(file_uid=raw_file.uid, filename=raw_file.filename).rstrip("/")
+            asset_dir = scope.asset_prefix(file_id=raw_file.id, filename=raw_file.filename).rstrip("/")
 
     cs = get_content_store()
     keys = run_store_sync(cs.list_prefix, asset_dir.rstrip("/") + "/", default=[]) or []
@@ -456,7 +423,7 @@ def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFi
         rows.append(
             RawFileAsset(
                 id=index,
-                raw_file_id=raw_file_id,
+                file_id=file_id,
                 asset_name=key.rsplit("/", 1)[-1],
                 storage_key=key,
                 mime_type=mimetypes.guess_type(key)[0],
@@ -465,12 +432,12 @@ def list_assets_by_raw_file_id(session: Session, raw_file_id: int) -> list[RawFi
     return rows
 
 
-def delete_raw_file_assets(session: Session, raw_file_id: int) -> None:
-    del session, raw_file_id
+def delete_raw_file_assets(session: Session, file_id: str) -> None:
+    del session, file_id
 
 
 def delete_raw_file(session: Session, raw_file: RawFile) -> None:
-    if raw_file.id is not None:
-        unlink_all_subjects_for_raw_file(session, raw_file_id=raw_file.id)
+    if raw_file.id:
+        unlink_all_subjects_for_raw_file(session, file_id=raw_file.id)
     session.delete(raw_file)
     session.commit()

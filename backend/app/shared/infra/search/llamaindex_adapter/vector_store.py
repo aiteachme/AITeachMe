@@ -33,7 +33,7 @@ class _ExtractedChunk:
     """Plain data extracted from ORM inside session scope."""
 
     chunk_id: int
-    document_id: int
+    file_id: str
     title: str
     header_path: str
     subject_id: str
@@ -117,7 +117,7 @@ class ATMVectorStore(BasePydanticVectorStore):
                 extracted.append(
                     _ExtractedChunk(
                         chunk_id=chunk.id,
-                        document_id=chunk.document_id,
+                        file_id=chunk.file_id,
                         title=chunk.title,
                         header_path=chunk.header_path,
                         subject_id=chunk.subject_id,
@@ -137,14 +137,14 @@ class ATMVectorStore(BasePydanticVectorStore):
                 id_=str(item.chunk_id),
                 metadata={
                     "chunk_id": item.chunk_id,
-                    "document_id": item.document_id,
+                    "file_id": item.file_id,
                     "title": item.title,
                     "header_path": item.header_path,
                     "subject_id": item.subject_id,
                     "source": "vector",
                 },
-                excluded_embed_metadata_keys=["chunk_id", "document_id", "subject_id", "source"],
-                excluded_llm_metadata_keys=["chunk_id", "document_id", "subject_id", "source"],
+                excluded_embed_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
+                excluded_llm_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
             )
             nodes.append(node)
             similarities.append(item.score)

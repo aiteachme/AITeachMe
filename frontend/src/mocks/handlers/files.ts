@@ -4,7 +4,7 @@ import type { FileAssetItem, FileRecord, FilesData } from "../../types/files";
 
 type MockFile = {
   internal_id: number;
-  uid: string;
+  id: string;
   filename: string;
   filetype: string;
   status: string;
@@ -25,7 +25,7 @@ type MockFile = {
 
 type PendingKnowledgeBuild = {
   requested_at: string;
-  source_file_uids: string[];
+  source_file_ids: string[];
   prompt: string | null;
   poll_count: number;
 };
@@ -36,7 +36,7 @@ const SVG_ASSET_NAME = "figure-1.svg";
 let nextInternalFileId = 4;
 const filePollTicks = new Map<string, number>();
 
-function buildFileUid(seed: number): string {
+function buildFileId(seed: number): string {
   return `file_mock_${seed.toString().padStart(4, "0")}`;
 }
 
@@ -73,7 +73,7 @@ function buildReadyMarkdown(filename: string): string {
 function serializeFile(subject: string, file: MockFile): FileRecord {
   const assetBaseUrl = buildAssetBaseUrl(subject, file.internal_id);
   return {
-    uid: file.uid,
+    id: file.id,
     filename: file.filename,
     filetype: file.filetype,
     status: file.status,
@@ -98,13 +98,14 @@ function buildFilesResponse(subject: string): FilesData {
   const items = [...mockFiles]
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .map((file) => serializeFile(subject, file));
+  const hasFileError = (item: FileRecord) => item.status === "failed" || Boolean(item.error_message?.trim());
 
   return {
     subject_id: subject === "library" ? null : subject,
     total: items.length,
     ready_count: items.filter((item) => item.markdown_ready).length,
-    processing_count: items.filter((item) => !item.markdown_ready && item.status !== "failed").length,
-    failed_count: items.filter((item) => item.status === "failed").length,
+    processing_count: items.filter((item) => !item.markdown_ready && !hasFileError(item)).length,
+    failed_count: items.filter((item) => hasFileError(item)).length,
     items,
   };
 }
@@ -112,7 +113,7 @@ function buildFilesResponse(subject: string): FilesData {
 const mockFiles: MockFile[] = [
   {
     internal_id: 1,
-    uid: buildFileUid(1),
+    id: buildFileId(1),
     filename: "calculus-final.pdf",
     filetype: "pdf",
     status: "completed",
@@ -132,7 +133,7 @@ const mockFiles: MockFile[] = [
   },
   {
     internal_id: 2,
-    uid: buildFileUid(2),
+    id: buildFileId(2),
     filename: "discrete-notes.docx",
     filetype: "docx",
     status: "processing",
@@ -152,7 +153,7 @@ const mockFiles: MockFile[] = [
   },
   {
     internal_id: 3,
-    uid: buildFileUid(3),
+    id: buildFileId(3),
     filename: "algorithms-exercises.pdf",
     filetype: "pdf",
     status: "failed",
@@ -172,13 +173,13 @@ const mockFiles: MockFile[] = [
   },
 ];
 
-filePollTicks.set(buildFileUid(2), 0);
+filePollTicks.set(buildFileId(2), 0);
 
 let publishedDoc = {
   exists: false,
   markdown: "",
   updated_at: null as string | null,
-  source_file_uids: [] as string[],
+  source_file_ids: [] as string[],
   prompt: null as string | null,
 };
 
@@ -190,8 +191,8 @@ function advanceFileParsing(subject: string) {
       continue;
     }
 
-    const nextTick = (filePollTicks.get(file.uid) ?? 0) + 1;
-    filePollTicks.set(file.uid, nextTick);
+    const nextTick = (filePollTicks.get(file.id) ?? 0) + 1;
+    filePollTicks.set(file.id, nextTick);
 
     if (nextTick < 2) {
       file.status = "processing";
@@ -225,7 +226,7 @@ function advanceKnowledgeBuild() {
   publishedDoc = {
     exists: true,
     updated_at: now(),
-    source_file_uids: [...pendingKnowledgeBuild.source_file_uids],
+    source_file_ids: [...pendingKnowledgeBuild.source_file_ids],
     prompt: pendingKnowledgeBuild.prompt,
     markdown: [
       "# 知识文档总览",
@@ -244,7 +245,7 @@ function advanceKnowledgeBuild() {
       "",
       "## 关键主题",
       "",
-      ...pendingKnowledgeBuild.source_file_uids.map((fileUid) => `- 来自文件 ${fileUid} 的重点内容`),
+      ...pendingKnowledgeBuild.source_file_ids.map((fileId) => `- 来自文件 ${fileId} 的重点内容`),
       "",
       "标签：#概念 #主线",
       "",
@@ -353,12 +354,12 @@ export const fileHandlers = [
 
     const newItems = uploads.map((entry, index) => {
       const internalId = nextInternalFileId + index;
-      const uid = buildFileUid(internalId);
+      const id = buildFileId(internalId);
       const filename = entry instanceof File ? entry.name : `mock-file-${internalId}.txt`;
       const filetype = filename.split(".").pop()?.toLowerCase() ?? "txt";
       const item: MockFile = {
         internal_id: internalId,
-        uid,
+        id,
         filename,
         filetype,
         status: "processing",
@@ -376,7 +377,7 @@ export const fileHandlers = [
         markdown_content: "",
         assets: [],
       };
-      filePollTicks.set(uid, 0);
+      filePollTicks.set(id, 0);
       mockFiles.unshift(item);
       return item;
     });
@@ -395,22 +396,22 @@ export const fileHandlers = [
   }),
 
   http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
-    const body = (await request.json()) as { file_uid?: string; file_uids?: string[] };
-    const candidateUids = body.file_uids?.length ? body.file_uids : body.file_uid ? [body.file_uid] : [];
-    const deletedUids: string[] = [];
+    const body = (await request.json()) as { file_id?: string; file_ids?: string[] };
+    const candidateIds = body.file_ids?.length ? body.file_ids : body.file_id ? [body.file_id] : [];
+    const deletedIds: string[] = [];
 
-    for (const fileUid of candidateUids) {
-      const index = mockFiles.findIndex((item) => item.uid === fileUid);
+    for (const fileId of candidateIds) {
+      const index = mockFiles.findIndex((item) => item.id === fileId);
       if (index >= 0) {
         mockFiles.splice(index, 1);
-        filePollTicks.delete(fileUid);
-        deletedUids.push(fileUid);
+        filePollTicks.delete(fileId);
+        deletedIds.push(fileId);
       }
     }
 
     return HttpResponse.json({
       code: 0,
-      data: { deleted_file_uids: deletedUids },
+      data: { deleted_file_ids: deletedIds },
     });
   }),
 
@@ -422,14 +423,14 @@ export const fileHandlers = [
   }),
 
   http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {
-    const body = (await request.json()) as { file_uids?: string[]; prompt?: string | null };
-    const requestedUids = body.file_uids?.length ? body.file_uids : null;
-    const readyFileUids = mockFiles.filter((item) => item.markdown_ready).map((item) => item.uid);
-    const acceptedFileUids = requestedUids
-      ? requestedUids.filter((uid) => readyFileUids.includes(uid))
-      : readyFileUids;
+    const body = (await request.json()) as { file_ids?: string[]; prompt?: string | null };
+    const requestedIds = body.file_ids?.length ? body.file_ids : null;
+    const readyFileIds = mockFiles.filter((item) => item.markdown_ready).map((item) => item.id);
+    const acceptedFileIds = requestedIds
+      ? requestedIds.filter((fileId) => readyFileIds.includes(fileId))
+      : readyFileIds;
 
-    if (!acceptedFileUids.length) {
+    if (!acceptedFileIds.length) {
       return HttpResponse.json(
         {
           code: 422,
@@ -454,7 +455,7 @@ export const fileHandlers = [
     const requestedAt = now();
     pendingKnowledgeBuild = {
       requested_at: requestedAt,
-      source_file_uids: acceptedFileUids,
+      source_file_ids: acceptedFileIds,
       prompt: body.prompt?.trim() || null,
       poll_count: 0,
     };
@@ -462,9 +463,9 @@ export const fileHandlers = [
     return HttpResponse.json({
       code: 0,
       data: {
-        accepted_file_uids: acceptedFileUids,
+        accepted_file_ids: acceptedFileIds,
         prompt: pendingKnowledgeBuild.prompt,
-        ready_file_count: readyFileUids.length,
+        ready_file_count: readyFileIds.length,
         requested_at: requestedAt,
       },
     });
@@ -478,7 +479,7 @@ export const fileHandlers = [
         exists: publishedDoc.exists,
         markdown: publishedDoc.markdown,
         updated_at: publishedDoc.updated_at,
-        source_file_uids: publishedDoc.source_file_uids,
+        source_file_ids: publishedDoc.source_file_ids,
         prompt: publishedDoc.prompt,
       },
     });

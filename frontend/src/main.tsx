@@ -1,8 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import "./index.css";
+import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
+import "./index.css";
 import { THEME_STORAGE_KEY, type Theme } from "./components/providers/ThemeProvider";
 
 const BACKEND_READY_TIMEOUT_MS = 6000;

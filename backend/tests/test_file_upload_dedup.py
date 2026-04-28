@@ -83,7 +83,7 @@ def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:
     assert second_parse_ids == []
     assert first_data.started_parse_count == 1
     assert second_data.started_parse_count == 0
-    assert second_data.uploaded_items[0].uid == first_data.uploaded_items[0].uid
+    assert second_data.uploaded_items[0].id == first_data.uploaded_items[0].id
     assert raw_files[0].parse_request_signature == "default"
 
 
@@ -115,7 +115,7 @@ def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) 
     assert parse_ids == [raw_files[0].id]
     assert data.started_parse_count == 1
     assert len(data.uploaded_items) == 2
-    assert data.uploaded_items[0].uid == data.uploaded_items[1].uid
+    assert data.uploaded_items[0].id == data.uploaded_items[1].id
 
 
 def test_duplicate_with_different_explicit_parser_creates_parse_variant(monkeypatch) -> None:
@@ -143,7 +143,7 @@ def test_duplicate_with_different_explicit_parser_creates_parse_variant(monkeypa
     assert len(raw_files) == 2
     assert len(fake_store.writes) == 2
     assert mineru_parse_ids != paddle_parse_ids
-    assert mineru_data.uploaded_items[0].uid != paddle_data.uploaded_items[0].uid
+    assert mineru_data.uploaded_items[0].id != paddle_data.uploaded_items[0].id
     assert len({item.parse_request_signature for item in raw_files}) == 2
 
 
@@ -188,7 +188,7 @@ def test_duplicate_with_same_explicit_parser_reuses_signature(monkeypatch) -> No
     assert len(fake_store.writes) == 1
     assert first_parse_ids == [raw_files[0].id]
     assert second_parse_ids == []
-    assert first_data.uploaded_items[0].uid == second_data.uploaded_items[0].uid
+    assert first_data.uploaded_items[0].id == second_data.uploaded_items[0].id
     assert raw_files[0].parse_request_signature.startswith("sha256:")
 
 
@@ -239,7 +239,7 @@ def test_default_upload_reuses_best_completed_parse_variant(monkeypatch) -> None
     assert total == 2
     assert len(fake_store.writes) == 2
     assert default_parse_ids == []
-    assert default_data.uploaded_items[0].uid == paddle_file.uid
+    assert default_data.uploaded_items[0].id == paddle_file.id
     assert len(raw_files) == 2
 
 
@@ -271,5 +271,5 @@ def test_failed_duplicate_does_not_block_retry(monkeypatch) -> None:
     assert total == 2
     assert len(fake_store.writes) == 2
     assert first_parse_ids != second_parse_ids
-    assert first_data.uploaded_items[0].uid != second_data.uploaded_items[0].uid
+    assert first_data.uploaded_items[0].id != second_data.uploaded_items[0].id
     assert len(raw_files) == 2

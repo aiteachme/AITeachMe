@@ -73,6 +73,11 @@ def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
         "backbone_unit_count": report.backbone_unit_count,
         "backbone_edge_count": report.backbone_edge_count,
         "stable_anchor_count": report.stable_anchor_count,
+        "prefetch_section_count": report.prefetch_section_count,
+        "prefetch_reused_section_count": report.prefetch_reused_section_count,
+        "prefetch_catchup_section_count": report.prefetch_catchup_section_count,
+        "prefetch_stale_section_count": report.prefetch_stale_section_count,
+        "prefetch_failed_section_count": report.prefetch_failed_section_count,
         "elapsed_ms": report.elapsed_ms,
     }
 

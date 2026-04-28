@@ -59,8 +59,8 @@ async function uploadFiles(files: File[]): Promise<FilesUploadData> {
   return response.data;
 }
 
-async function fetchFiles(fileUids: string[]): Promise<FilesData> {
-  const query = fileUids.map((uid) => `file_uids=${encodeURIComponent(uid)}`).join("&");
+async function fetchFiles(fileIds: string[]): Promise<FilesData> {
+  const query = fileIds.map((fileId) => `file_ids=${encodeURIComponent(fileId)}`).join("&");
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
     url: `/api/v1/files${query ? `?${query}` : ""}`,
@@ -75,11 +75,11 @@ async function fetchFiles(fileUids: string[]): Promise<FilesData> {
   };
 }
 
-async function linkFilesToSubject(subject: string, fileUids: string[]): Promise<FilesData> {
+async function linkFilesToSubject(subject: string, fileIds: string[]): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/files/link`,
-    data: { file_uids: fileUids },
+    data: { file_ids: fileIds },
   });
   return response.data;
 }
@@ -136,7 +136,7 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
 }
 /* ── Helpers ── */
 
-const HOME_ENTRY_FILES_QUERY_KEY = (fileUids: string[]) => ["home-entry-files", fileUids.join(",")] as const;
+const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", fileIds.join(",")] as const;
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -188,20 +188,20 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
 }
 
 function LibraryPickerModal({
-  selectedFileUids,
+  selectedFileIds,
   onClose,
   onConfirm,
 }: {
-  selectedFileUids: string[];
+  selectedFileIds: string[];
   onClose: () => void;
-  onConfirm: (fileUids: string[], files: FileRecord[]) => void;
+  onConfirm: (fileIds: string[], files: FileRecord[]) => void;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedFileUids));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedFileIds));
 
   useEffect(() => {
-    setSelected(new Set(selectedFileUids));
-  }, [selectedFileUids]);
+    setSelected(new Set(selectedFileIds));
+  }, [selectedFileIds]);
 
   const filesQuery = useQuery({
     queryKey: ["files-library"],
@@ -228,18 +228,18 @@ function LibraryPickerModal({
   }, [files, normalizedSearchTerm]);
 
   const selectedFiles = useMemo(
-    () => files.filter((file) => selected.has(file.uid)),
+    () => files.filter((file) => selected.has(file.id)),
     [files, selected],
   );
   const selectedCount = selected.size;
 
-  const toggleFileUid = (uid: string) => {
+  const toggleFileId = (fileId: string) => {
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(uid)) {
-        next.delete(uid);
+      if (next.has(fileId)) {
+        next.delete(fileId);
       } else {
-        next.add(uid);
+        next.add(fileId);
       }
       return next;
     });
@@ -327,11 +327,11 @@ function LibraryPickerModal({
           {visibleFiles.length > 0 ? (
             <div className="space-y-2">
               {visibleFiles.map((file) => {
-                const checked = selected.has(file.uid);
+                const checked = selected.has(file.id);
                 const meta = homeFileStatusMeta(file);
                 return (
                   <label
-                    key={file.uid}
+                    key={file.id}
                     className={cn(
                       "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition",
                       checked
@@ -343,7 +343,7 @@ function LibraryPickerModal({
                       type="checkbox"
                       className="sr-only"
                       checked={checked}
-                      onChange={() => toggleFileUid(file.uid)}
+                      onChange={() => toggleFileId(file.id)}
                     />
                     <span
                       className={cn(
@@ -638,7 +638,7 @@ export function HomePage() {
   const [isStartingBuild, setIsStartingBuild] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
-  const [entryFileUids, setEntryFileUids] = useState<string[]>([]);
+  const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -659,7 +659,7 @@ export function HomePage() {
     setIsStartingBuild(false);
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
-    setEntryFileUids([]);
+    setEntryFileIds([]);
     setLibraryPickerOpen(false);
     setError(null);
     navigate("/", { replace: true, state: null });
@@ -667,9 +667,9 @@ export function HomePage() {
   }, [navigate, newEntryAt]);
 
   const { data: entryFilesData } = useQuery({
-    queryKey: HOME_ENTRY_FILES_QUERY_KEY(entryFileUids),
-    enabled: entryFileUids.length > 0,
-    queryFn: () => fetchFiles(entryFileUids),
+    queryKey: HOME_ENTRY_FILES_QUERY_KEY(entryFileIds),
+    enabled: entryFileIds.length > 0,
+    queryFn: () => fetchFiles(entryFileIds),
     refetchInterval: (query) => {
       const data = query.state.data as FilesData | undefined;
       if (isUploadingFiles || (data?.processing_count ?? 0) > 0) {
@@ -736,14 +736,14 @@ export function HomePage() {
     }
   }, [draftSubjectId, queryClient]);
 
-  const syncEntryFilesCache = useCallback((fileUids: string[], uploaded: FileRecord[]) => {
-    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileUids), (previous) => {
+  const syncEntryFilesCache = useCallback((fileIds: string[], uploaded: FileRecord[]) => {
+    queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileIds), (previous) => {
       const previousItems = previous?.items ?? [];
-      const nextByUid = new Map(previousItems.map((item) => [item.uid, item]));
+      const nextById = new Map(previousItems.map((item) => [item.id, item]));
       for (const item of uploaded) {
-        nextByUid.set(item.uid, item);
+        nextById.set(item.id, item);
       }
-      const nextItems = Array.from(nextByUid.values()).sort(
+      const nextItems = Array.from(nextById.values()).sort(
         (left, right) =>
           Date.parse(right.latest_updated_at || right.created_at || "") -
           Date.parse(left.latest_updated_at || left.created_at || ""),
@@ -752,7 +752,7 @@ export function HomePage() {
         subject_id: null,
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
-        processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,
+        processing_count: nextItems.filter((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()).length,
         failed_count: nextItems.filter((item) => Boolean(item.error_message?.trim()) || item.status === "failed").length,
         items: nextItems,
       };
@@ -776,11 +776,11 @@ export function HomePage() {
     try {
       const result = await uploadFiles(supportedFiles);
       const uploaded = result.uploaded_items ?? [];
-      const uploadedUids = uploaded.map((file) => file.uid);
-      const nextFileUids = uniqueStrings([...entryFileUids, ...uploadedUids]);
-      setEntryFileUids(nextFileUids);
-      syncEntryFilesCache(nextFileUids, uploaded);
-      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
+      const uploadedIds = uploaded.map((file) => file.id);
+      const nextFileIds = uniqueStrings([...entryFileIds, ...uploadedIds]);
+      setEntryFileIds(nextFileIds);
+      syncEntryFilesCache(nextFileIds, uploaded);
+      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
       await queryClient.invalidateQueries({ queryKey: ["files-library"] });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
@@ -788,17 +788,17 @@ export function HomePage() {
       setIsUploadingFiles(false);
       setUploadingFileNames([]);
     }
-  }, [entryFileUids, queryClient, syncEntryFilesCache]);
+  }, [entryFileIds, queryClient, syncEntryFilesCache]);
 
-  const handleSelectLibraryFiles = useCallback((fileUids: string[], files: FileRecord[]) => {
-    const nextFileUids = uniqueStrings(fileUids);
-    setEntryFileUids(nextFileUids);
+  const handleSelectLibraryFiles = useCallback((fileIds: string[], files: FileRecord[]) => {
+    const nextFileIds = uniqueStrings(fileIds);
+    setEntryFileIds(nextFileIds);
     setError(null);
     if (files.length > 0) {
-      syncEntryFilesCache(nextFileUids, files);
+      syncEntryFilesCache(nextFileIds, files);
     }
-    if (nextFileUids.length > 0) {
-      void queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileUids) });
+    if (nextFileIds.length > 0) {
+      void queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
     }
   }, [queryClient, syncEntryFilesCache]);
 
@@ -821,7 +821,7 @@ export function HomePage() {
     const readyCount = entryFilesData?.ready_count ?? uploadedFiles.filter((file) => file.markdown_ready).length;
     const processingCount =
       entryFilesData?.processing_count ??
-      uploadedFiles.filter((file) => !file.markdown_ready && !file.error_message?.trim()).length;
+      uploadedFiles.filter((file) => !file.markdown_ready && file.status !== "failed" && !file.error_message?.trim()).length;
     const failedCount =
       entryFilesData?.failed_count ??
       uploadedFiles.filter((file) => Boolean(file.error_message?.trim()) || file.status === "failed").length;
@@ -848,8 +848,8 @@ export function HomePage() {
     setIsStartingBuild(true);
     try {
       const subjectId = await ensureDraftSubjectId();
-      if (entryFileUids.length > 0) {
-        await linkFilesToSubject(subjectId, entryFileUids);
+      if (entryFileIds.length > 0) {
+        await linkFilesToSubject(subjectId, entryFileIds);
         await queryClient.invalidateQueries({ queryKey: ["subjects"] });
         await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
       }
@@ -894,14 +894,14 @@ export function HomePage() {
     void uploadPendingFiles(droppedFiles);
   }, [uploadPendingFiles]);
 
-  const handleRemoveEntryFile = useCallback((uid: string) => {
-    const nextFileUids = entryFileUids.filter((item) => item !== uid);
-    setEntryFileUids(nextFileUids);
+  const handleRemoveEntryFile = useCallback((fileId: string) => {
+    const nextFileIds = entryFileIds.filter((item) => item !== fileId);
+    setEntryFileIds(nextFileIds);
     setError(null);
-    if (nextFileUids.length > 0) {
-      syncEntryFilesCache(nextFileUids, uploadedFiles.filter((file) => file.uid !== uid));
+    if (nextFileIds.length > 0) {
+      syncEntryFilesCache(nextFileIds, uploadedFiles.filter((file) => file.id !== fileId));
     }
-  }, [entryFileUids, syncEntryFilesCache, uploadedFiles]);
+  }, [entryFileIds, syncEntryFilesCache, uploadedFiles]);
 
   const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
   const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
@@ -999,7 +999,7 @@ export function HomePage() {
                     const meta = homeFileStatusMeta(file);
                     return (
                       <div
-                        key={file.uid}
+                        key={file.id}
                         className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800/80"
                       >
                         <span className="shrink-0">{homeFileIcon(file)}</span>
@@ -1009,7 +1009,7 @@ export function HomePage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleRemoveEntryFile(file.uid)}
+                          onClick={() => handleRemoveEntryFile(file.id)}
                           title="从本次新建中移除"
                           className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -1275,7 +1275,7 @@ export function HomePage() {
       {libraryPickerOpen && (
         <LibraryPickerModal
           key="library-picker"
-          selectedFileUids={entryFileUids}
+          selectedFileIds={entryFileIds}
           onClose={() => setLibraryPickerOpen(false)}
           onConfirm={handleSelectLibraryFiles}
         />

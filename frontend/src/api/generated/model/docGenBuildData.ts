@@ -11,8 +11,8 @@ import type { SubjectVectorStatusResponse } from './subjectVectorStatusResponse'
  * Knowledge docs build response data.
  */
 export interface DocGenBuildData {
-  /** Accepted ready raw file UIDs. */
-  accepted_file_uids?: string[];
+  /** Accepted ready raw file IDs. */
+  accepted_file_ids?: string[];
   /** Effective user prompt for the docs build after planner overrides are applied. */
   prompt?: string | null;
   /** Current ready file count for this subject. */

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any
 
 import structlog
 
@@ -12,7 +11,6 @@ from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     use_llm_runtime_snapshot,
 )
-from app.shared.infra.observability.trace import langsmith_trace
 from app.shared.infra.storage import SubjectStorageScope
 from app.shared.infra.knowledge.build_store import (
     read_knowledge_manifest,
@@ -25,14 +23,9 @@ from app.workflows.digest.kg_doc_sync.inputs import (
     load_knowledge_doc_sync_input,
     resolve_graph_input_paths,
 )
-from app.workflows.digest.kg_doc_sync.graph import RUN_NAME_KG_DOC_SYNC
+from app.workflows.digest.kg_doc_sync.lib.prefetch import consume_docgen_kg_prefetch
 
 logger = structlog.get_logger(__name__)
-
-
-def _end_trace_run(trace_run: Any | None, outputs: dict[str, Any]) -> None:
-    if trace_run is not None:
-        trace_run.end(outputs=outputs)
 
 
 def _write_graph_status(
@@ -96,6 +89,11 @@ def _base_doc_sync_metrics(
         "stable_anchor_count": 0,
         "deprecated_unit_count": 0,
         "deprecated_edge_count": 0,
+        "prefetch_section_count": 0,
+        "prefetch_reused_section_count": 0,
+        "prefetch_catchup_section_count": 0,
+        "prefetch_stale_section_count": 0,
+        "prefetch_failed_section_count": 0,
     }
 
 
@@ -135,6 +133,11 @@ def _completed_doc_sync_metrics(
             "stable_anchor_count": sync_report.stable_anchor_count,
             "deprecated_unit_count": sync_report.deprecated_unit_count,
             "deprecated_edge_count": sync_report.deprecated_edge_count,
+            "prefetch_section_count": sync_report.prefetch_section_count,
+            "prefetch_reused_section_count": sync_report.prefetch_reused_section_count,
+            "prefetch_catchup_section_count": sync_report.prefetch_catchup_section_count,
+            "prefetch_stale_section_count": sync_report.prefetch_stale_section_count,
+            "prefetch_failed_section_count": sync_report.prefetch_failed_section_count,
         }
     )
     return metrics
@@ -146,7 +149,7 @@ async def run_graph_docs_sync_after_doc_build(
     requested_at: datetime,
     build_group_id: str,
     build_session_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
@@ -175,6 +178,14 @@ async def run_graph_docs_sync_after_doc_build(
         chapter_count=len(doc_chapter_metadatas),
         doc_version_no=doc_version_no,
     )
+    prefetched_sections = []
+    prefetch_metrics: dict[str, int | str] = {}
+    if docgen_state is not None and build_session_id:
+        prefetched_sections, prefetch_metrics = await consume_docgen_kg_prefetch(
+            subject_id=subject_id,
+            build_session_id=build_session_id,
+        )
+        base_metrics.update(prefetch_metrics)
     if not knowledge_doc_markdown.strip():
         return base_metrics
 
@@ -197,47 +208,39 @@ async def run_graph_docs_sync_after_doc_build(
         metrics={"processed_chunks": 0, **base_metrics},
         current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
-    with langsmith_trace(
-        name=RUN_NAME_KG_DOC_SYNC,
-        run_type="chain",
-        subject_id=subject_id,
-        build_session_id=build_session_id,
-        workflow="digest.kg_doc_sync",
-        lane="kg_doc_sync",
-        inputs={
-            "subject_id": subject_id,
-            "build_group_id": build_group_id,
-            "knowledge_doc_source": knowledge_doc_source,
-            "chapter_count": len(doc_chapter_metadatas),
-            "doc_version_no": doc_version_no,
-        },
-        extra_metadata={
-            "build_group_id": build_group_id,
-            "doc_version_no": doc_version_no,
-            "knowledge_doc_source": knowledge_doc_source,
-        },
-        extra_tags=["workflow:digest.kg_doc_sync", "lane:kg_doc_sync"],
-    ) as trace_run:
-        with use_llm_runtime_snapshot(llm_snapshot):
-            sync_result = await run_graph_docs_sync_workflow(
-                subject_id=subject_id,
-                markdown=knowledge_doc_markdown,
-                build_session_id=build_session_id,
-                structured_context=sync_input.structured_context,
-            )
-        if sync_result.failed:
-            _end_trace_run(trace_run, {"status": "failed", "error": sync_result.error.detail})
-            raise RuntimeError(sync_result.error.detail)
-
-        sync_report = sync_result.require_value()
-        completed_metrics = _completed_doc_sync_metrics(
-            knowledge_doc_source=knowledge_doc_source,
-            chapter_count=len(doc_chapter_metadatas),
-            doc_version_no=doc_version_no,
-            sync_report=sync_report,
+    with use_llm_runtime_snapshot(llm_snapshot):
+        sync_result = await run_graph_docs_sync_workflow(
+            subject_id=subject_id,
+            markdown=knowledge_doc_markdown,
+            build_revision_no=doc_version_no,
+            build_session_id=build_session_id,
+            structured_context=sync_input.structured_context,
+            prefetched_sections=prefetched_sections,
+            trace_metadata={
+                "build_group_id": build_group_id,
+                "doc_version_no": doc_version_no,
+                "knowledge_doc_source": knowledge_doc_source,
+                "chapter_count": len(doc_chapter_metadatas),
+            },
         )
-        _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
-        return completed_metrics
+    if sync_result.failed:
+        raise RuntimeError(sync_result.error.detail)
+
+    sync_report = sync_result.require_value()
+    completed_metrics = _completed_doc_sync_metrics(
+        knowledge_doc_source=knowledge_doc_source,
+        chapter_count=len(doc_chapter_metadatas),
+        doc_version_no=doc_version_no,
+        sync_report=sync_report,
+    )
+    completed_metrics.update(
+        {
+            key: value
+            for key, value in prefetch_metrics.items()
+            if key not in completed_metrics
+        }
+    )
+    return completed_metrics
 
 
 async def run_graph_docs_sync_manual_build(
@@ -246,7 +249,7 @@ async def run_graph_docs_sync_manual_build(
     requested_at: datetime,
     build_group_id: str,
     build_session_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     subject_scope: SubjectStorageScope | None = None,
@@ -275,7 +278,7 @@ async def run_graph_docs_sync_auto_build(
     requested_at: datetime,
     build_group_id: str,
     build_session_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
@@ -305,7 +308,7 @@ async def _run_graph_docs_sync_build(
     requested_at: datetime,
     build_group_id: str,
     build_session_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
     prompt: str | None,
     llm_snapshot: LLMRuntimeSnapshot | None,
     docgen_state: dict[str, object] | None,

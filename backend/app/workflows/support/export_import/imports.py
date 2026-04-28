@@ -385,11 +385,20 @@ def _exported_raw_file_segments(extract_dir: Path) -> dict[Any, str]:
     segments: dict[Any, str] = {}
     for record in data.get("records", []):
         old_id = record.get("id")
-        file_uid = record.get("uid")
-        if old_id is None or not file_uid:
+        file_id = record.get("uid") or record.get("id")
+        if old_id is None or not file_id:
             continue
+        segments[str(old_id)] = build_file_storage_segment(
+            file_id=str(file_id),
+            filename=record.get("filename"),
+        )
+        if record.get("uid") is not None:
+            segments[str(record.get("uid"))] = build_file_storage_segment(
+                file_id=str(file_id),
+                filename=record.get("filename"),
+            )
         segments[old_id] = build_file_storage_segment(
-            file_uid=str(file_uid),
+            file_id=str(file_id),
             filename=record.get("filename"),
         )
     return segments
@@ -410,7 +419,7 @@ def _unpack_files(
 
     def _raw_file_for_old_id(old_id: Any) -> RawFile | None:
         new_id = _lookup_imported_id(old_id, file_id_map) or old_id
-        return session.get(RawFile, new_id) if isinstance(new_id, int) else None
+        return session.get(RawFile, str(new_id)) if new_id is not None else None
 
     file_segments = _exported_raw_file_segments(extract_dir)
     for old_id, file_segment in file_segments.items():
@@ -514,7 +523,7 @@ def _rebuild_imported_embeddings(
                 RetrievalChunk.subject_id == subject_id,
                 RetrievalChunk.is_active.is_(True),
             )
-            .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
+            .order_by(RetrievalChunk.file_id, RetrievalChunk.chunk_index)
         ).all()
     )
     chunk_rows = [chunk for chunk in chunks if chunk.id is not None]

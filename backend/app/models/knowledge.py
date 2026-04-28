@@ -16,9 +16,10 @@ class RetrievalChunk(SQLModel, table=True):
     __tablename__ = "retrieval_chunk"
     __table_args__ = (
         UniqueConstraint(
-            "document_id",
+            "subject_id",
+            "file_id",
             "chunk_index",
-            name="uq_retrieval_chunk_document_id_chunk_index",
+            name="uq_retrieval_chunk_subject_file_id_chunk_index",
         ),
         UniqueConstraint(
             "subject_id",
@@ -29,7 +30,7 @@ class RetrievalChunk(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     subject_id: str = Field(foreign_key="subject.id", index=True)
-    document_id: int = Field(foreign_key="raw_file.id", index=True)
+    file_id: str = Field(foreign_key="raw_file.id", index=True)
     title: str
     level: int
     header_path: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))

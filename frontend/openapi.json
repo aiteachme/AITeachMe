@@ -1093,7 +1093,7 @@
         "operationId": "list_user_files_api_api_v1_files_get",
         "parameters": [
           {
-            "name": "file_uids",
+            "name": "file_ids",
             "in": "query",
             "required": false,
             "schema": {
@@ -1108,7 +1108,7 @@
                   "type": "null"
                 }
               ],
-              "title": "File Uids"
+              "title": "File Ids"
             }
           }
         ],
@@ -1237,21 +1237,21 @@
         }
       }
     },
-    "/api/v1/files/assets/{file_uid}/{asset_path}": {
+    "/api/v1/files/assets/{file_id}/{asset_path}": {
       "get": {
         "tags": [
           "files"
         ],
         "summary": "Serve a parsed asset for a user-library file",
-        "operationId": "serve_user_file_asset_api_v1_files_assets__file_uid___asset_path__get",
+        "operationId": "serve_user_file_asset_api_v1_files_assets__file_id___asset_path__get",
         "parameters": [
           {
-            "name": "file_uid",
+            "name": "file_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "File Uid"
+              "title": "File Id"
             }
           },
           {
@@ -4793,7 +4793,7 @@
             }
           },
           {
-            "name": "sample_file_uids",
+            "name": "sample_file_ids",
             "in": "query",
             "required": false,
             "schema": {
@@ -4808,7 +4808,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Sample File Uids"
+              "title": "Sample File Ids"
             }
           }
         ],
@@ -8419,16 +8419,9 @@
             "type": "string",
             "title": "Digest Mode"
           },
-          "selected_file_uids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Selected File Uids"
-          },
           "selected_file_ids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
             "title": "Selected File Ids"
@@ -8492,7 +8485,7 @@
       },
       "BuildPlannerCreateRequest": {
         "properties": {
-          "file_uids": {
+          "file_ids": {
             "anyOf": [
               {
                 "items": {
@@ -8504,8 +8497,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Uids",
-            "description": "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed."
+            "title": "File Ids",
+            "description": "Optional uploaded file IDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed."
           },
           "user_prompt": {
             "type": "string",
@@ -8569,12 +8562,12 @@
             "type": "string",
             "title": "Subject Id"
           },
-          "selected_file_uids": {
+          "selected_file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Selected File Uids"
+            "title": "Selected File Ids"
           },
           "user_prompt": {
             "type": "string",
@@ -9103,10 +9096,10 @@
             "title": "Chunk Id",
             "description": "Knowledge chunk ID."
           },
-          "document_id": {
-            "type": "integer",
-            "title": "Document Id",
-            "description": "Document ID."
+          "file_id": {
+            "type": "string",
+            "title": "File Id",
+            "description": "Raw file ID."
           },
           "title": {
             "type": "string",
@@ -9205,7 +9198,7 @@
         "type": "object",
         "required": [
           "chunk_id",
-          "document_id",
+          "file_id",
           "title",
           "header_path",
           "score"
@@ -9924,9 +9917,9 @@
             "type": "integer",
             "title": "Chunk Id"
           },
-          "document_id": {
-            "type": "integer",
-            "title": "Document Id"
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
           },
           "document_title": {
             "type": "string",
@@ -9948,7 +9941,7 @@
         "type": "object",
         "required": [
           "chunk_id",
-          "document_id",
+          "file_id",
           "document_title",
           "chunk_title",
           "chunk_header_path",
@@ -10066,13 +10059,13 @@
       },
       "DocGenBuildData": {
         "properties": {
-          "accepted_file_uids": {
+          "accepted_file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Accepted File Uids",
-            "description": "Accepted ready raw file UIDs."
+            "title": "Accepted File Ids",
+            "description": "Accepted ready raw file IDs."
           },
           "prompt": {
             "anyOf": [
@@ -10148,7 +10141,7 @@
       },
       "DocGenBuildRequest": {
         "properties": {
-          "file_uids": {
+          "file_ids": {
             "anyOf": [
               {
                 "items": {
@@ -10160,8 +10153,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Uids",
-            "description": "Optional parsed raw file UIDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided."
+            "title": "File Ids",
+            "description": "Optional parsed raw file IDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided."
           },
           "prompt": {
             "anyOf": [
@@ -10217,7 +10210,7 @@
         "example": {
           "build_type": "docs",
           "embedding_resolution": "rebuild",
-          "file_uids": [
+          "file_ids": [
             "file_xxx",
             "file_yyy"
           ],
@@ -10250,13 +10243,13 @@
             "title": "Updated At",
             "description": "Last updated time of the merged markdown."
           },
-          "source_file_uids": {
+          "source_file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Source File Uids",
-            "description": "Source raw file UIDs used by the published docs."
+            "title": "Source File Ids",
+            "description": "Source raw file IDs used by the published docs."
           },
           "prompt": {
             "anyOf": [
@@ -10424,9 +10417,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "document_id": {
-            "type": "integer",
-            "title": "Document Id"
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
           },
           "chunk_id": {
             "type": "integer",
@@ -10452,7 +10445,7 @@
         "type": "object",
         "required": [
           "id",
-          "document_id",
+          "file_id",
           "chunk_id",
           "quote_text",
           "evidence_role",
@@ -10481,7 +10474,7 @@
             "title": "User Prompt",
             "description": "Optional user requirements for exam generation."
           },
-          "sample_file_uids": {
+          "sample_file_ids": {
             "anyOf": [
               {
                 "items": {
@@ -10493,8 +10486,8 @@
                 "type": "null"
               }
             ],
-            "title": "Sample File Uids",
-            "description": "Optional uploaded sample-paper file UIDs."
+            "title": "Sample File Ids",
+            "description": "Optional uploaded sample-paper file IDs."
           },
           "num_questions": {
             "anyOf": [
@@ -10576,12 +10569,12 @@
             ],
             "title": "Exam Paper Id"
           },
-          "sample_file_uids": {
+          "sample_file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Sample File Uids"
+            "title": "Sample File Ids"
           }
         },
         "type": "object",
@@ -11559,13 +11552,13 @@
       },
       "FileDeleteData": {
         "properties": {
-          "deleted_file_uids": {
+          "deleted_file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Deleted File Uids",
-            "description": "Deleted public file UIDs."
+            "title": "Deleted File Ids",
+            "description": "Deleted public file IDs."
           }
         },
         "type": "object",
@@ -11574,7 +11567,7 @@
       },
       "FileDeleteRequest": {
         "properties": {
-          "file_uid": {
+          "file_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -11583,10 +11576,10 @@
                 "type": "null"
               }
             ],
-            "title": "File Uid",
-            "description": "Single public file UID."
+            "title": "File Id",
+            "description": "Single public file ID."
           },
-          "file_uids": {
+          "file_ids": {
             "anyOf": [
               {
                 "items": {
@@ -11598,8 +11591,8 @@
                 "type": "null"
               }
             ],
-            "title": "File Uids",
-            "description": "Multiple public file UIDs."
+            "title": "File Ids",
+            "description": "Multiple public file IDs."
           }
         },
         "type": "object",
@@ -11608,13 +11601,13 @@
       },
       "FileLinkRequest": {
         "properties": {
-          "file_uids": {
+          "file_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "File Uids",
-            "description": "Public file UIDs to link."
+            "title": "File Ids",
+            "description": "Public file IDs to link."
           }
         },
         "type": "object",
@@ -11623,10 +11616,10 @@
       },
       "FileRecord": {
         "properties": {
-          "uid": {
+          "id": {
             "type": "string",
-            "title": "Uid",
-            "description": "Stable public file UID."
+            "title": "Id",
+            "description": "Stable public file ID."
           },
           "filename": {
             "type": "string",
@@ -11818,7 +11811,7 @@
         },
         "type": "object",
         "required": [
-          "uid",
+          "id",
           "filename",
           "filetype",
           "status",
@@ -12698,11 +12691,11 @@
           },
           "source_file_ids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
             "title": "Source File Ids",
-            "description": "Persisted source raw file ids from the docs manifest."
+            "description": "Persisted source raw file IDs from the docs manifest."
           },
           "message": {
             "type": "string",
@@ -12790,13 +12783,13 @@
           "backbone_unit_count": {
             "type": "integer",
             "title": "Backbone Unit Count",
-            "description": "Knowledge units seeded from DocGen document_backbone.",
+            "description": "Knowledge units seeded from DocGen document_backbone; kept for compatibility, currently should be 0.",
             "default": 0
           },
           "backbone_edge_count": {
             "type": "integer",
             "title": "Backbone Edge Count",
-            "description": "Knowledge edges seeded from DocGen document_backbone.",
+            "description": "Knowledge edges added from DocGen document_backbone between already extracted units.",
             "default": 0
           },
           "stable_anchor_count": {
@@ -12815,6 +12808,48 @@
             "type": "integer",
             "title": "Deprecated Edge Count",
             "description": "Knowledge edges deprecated by the latest docs-sync.",
+            "default": 0
+          },
+          "prefetch_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefetch Status",
+            "description": "DocGen-side KG prefetch status for the latest auto sync."
+          },
+          "prefetch_section_count": {
+            "type": "integer",
+            "title": "Prefetch Section Count",
+            "description": "Section payloads produced by the DocGen-side KG prefetch.",
+            "default": 0
+          },
+          "prefetch_reused_section_count": {
+            "type": "integer",
+            "title": "Prefetch Reused Section Count",
+            "description": "Prefetched section payloads reused by final graph sync.",
+            "default": 0
+          },
+          "prefetch_catchup_section_count": {
+            "type": "integer",
+            "title": "Prefetch Catchup Section Count",
+            "description": "Final sections that required normal catch-up extraction.",
+            "default": 0
+          },
+          "prefetch_stale_section_count": {
+            "type": "integer",
+            "title": "Prefetch Stale Section Count",
+            "description": "Prefetched section payloads discarded because final content changed.",
+            "default": 0
+          },
+          "prefetch_failed_section_count": {
+            "type": "integer",
+            "title": "Prefetch Failed Section Count",
+            "description": "Prefetch section payloads that failed before final graph sync.",
             "default": 0
           }
         },
@@ -12896,7 +12931,7 @@
           },
           "source_file_ids": {
             "items": {
-              "type": "integer"
+              "type": "string"
             },
             "type": "array",
             "title": "Source File Ids"

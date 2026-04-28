@@ -20,8 +20,8 @@ export interface KnowledgeGraphBuildData {
   build_group_id?: string | null;
   /** Graph sync session id. */
   build_session_id?: string | null;
-  /** Persisted source raw file ids from the docs manifest. */
-  source_file_ids?: number[];
+  /** Persisted source raw file IDs from the docs manifest. */
+  source_file_ids?: string[];
   /** User-facing response message. */
   message?: string;
 }

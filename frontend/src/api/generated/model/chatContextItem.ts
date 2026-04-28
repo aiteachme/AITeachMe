@@ -12,8 +12,8 @@
 export interface ChatContextItem {
   /** Knowledge chunk ID. */
   chunk_id: number;
-  /** Document ID. */
-  document_id: number;
+  /** Raw file ID. */
+  file_id: string;
   /** Chunk title. */
   title: string;
   /** Chunk header path. */

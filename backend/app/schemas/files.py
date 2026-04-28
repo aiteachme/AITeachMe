@@ -25,7 +25,7 @@ class FileAssetItem(BaseModel):
 class FileRecord(BaseModel):
     """Unified file record for list, preview, and upload responses."""
 
-    uid: str = Field(description="Stable public file UID.")
+    id: str = Field(description="Stable public file ID.")
     filename: str = Field(description="Filename.")
     filetype: str = Field(description="File extension.")
     status: TaskStatusValue = Field(description="Task status.")
@@ -72,31 +72,31 @@ class FilesUploadData(BaseModel):
 class FileDeleteRequest(BaseModel):
     """Delete request."""
 
-    file_uid: str | None = Field(default=None, description="Single public file UID.")
-    file_uids: list[str] | None = Field(default=None, description="Multiple public file UIDs.")
+    file_id: str | None = Field(default=None, description="Single public file ID.")
+    file_ids: list[str] | None = Field(default=None, description="Multiple public file IDs.")
 
     @model_validator(mode="after")
     def validate_ids(self) -> "FileDeleteRequest":
-        if self.file_uid is None and not self.file_uids:
-            raise ValueError("file_uid or file_uids is required.")
+        if self.file_id is None and not self.file_ids:
+            raise ValueError("file_id or file_ids is required.")
         return self
 
 
 class FileDeleteData(BaseModel):
     """Delete result."""
 
-    deleted_file_uids: list[str] = Field(default_factory=list, description="Deleted public file UIDs.")
+    deleted_file_ids: list[str] = Field(default_factory=list, description="Deleted public file IDs.")
 
 
 class FileLinkRequest(BaseModel):
     """Link existing user-library files to a subject."""
 
-    file_uids: list[str] = Field(default_factory=list, description="Public file UIDs to link.")
+    file_ids: list[str] = Field(default_factory=list, description="Public file IDs to link.")
 
     @model_validator(mode="after")
     def validate_ids(self) -> "FileLinkRequest":
-        if not self.file_uids:
-            raise ValueError("file_uids is required.")
+        if not self.file_ids:
+            raise ValueError("file_ids is required.")
         return self
 
 

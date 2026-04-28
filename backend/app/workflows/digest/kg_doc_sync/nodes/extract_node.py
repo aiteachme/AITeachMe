@@ -52,6 +52,11 @@ def _payload_metrics(
         "empty_llm_result_count": int(diagnostics.get("empty_llm_result_count", 0) or 0),
         "empty_repair_attempt_count": int(diagnostics.get("empty_repair_attempt_count", 0) or 0),
         "empty_repair_success_count": int(diagnostics.get("empty_repair_success_count", 0) or 0),
+        "prefetch_section_count": int(diagnostics.get("prefetch_section_count", 0) or 0),
+        "prefetch_reused_section_count": int(diagnostics.get("prefetch_reused_section_count", 0) or 0),
+        "prefetch_catchup_section_count": int(diagnostics.get("prefetch_catchup_section_count", 0) or 0),
+        "prefetch_stale_section_count": int(diagnostics.get("prefetch_stale_section_count", 0) or 0),
+        "prefetch_failed_section_count": int(diagnostics.get("prefetch_failed_section_count", 0) or 0),
         **graph_extraction_parallelism(),
     }
 
@@ -80,6 +85,11 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
             markdown=state["markdown"],
             subject_context=subject_context,
             run_context=run_context,
+            prefetched_records=(
+                list(state.get("prefetched_sections") or [])
+                if state.get("prefetched_sections")
+                else None
+            ),
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         if payload is None:

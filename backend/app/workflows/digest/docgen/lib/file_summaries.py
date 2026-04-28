@@ -31,8 +31,8 @@ _QUESTION_RE = re.compile(r"(例题|习题|选择题|填空题|简答题|证明�
 _EVIDENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
 
 
-def _sections_for_file(sections: Sequence[SectionPacket], file_id: int) -> list[SectionPacket]:
-    return [section for section in sections if int(section.source_file_id or 0) == file_id]
+def _sections_for_file(sections: Sequence[SectionPacket], file_id: str) -> list[SectionPacket]:
+    return [section for section in sections if section.source_file_id == file_id]
 
 
 def fallback_file_summary(
@@ -41,7 +41,7 @@ def fallback_file_summary(
     sections: Sequence[SectionPacket],
     chapters: Sequence[Mapping[str, Any]],
 ) -> FileMaterialSummary:
-    file_sections = _sections_for_file(sections, int(packet.file_id))
+    file_sections = _sections_for_file(sections, packet.file_id)
     headings = clean_string_list(
         [
             *[section.title for section in file_sections if section.title],
@@ -67,7 +67,7 @@ def fallback_file_summary(
         hits = sum(1 for term in terms if term.casefold() in haystack)
         affinity[chapter_index] = min(1.0, hits / max(2, len(terms) or 1))
     return FileMaterialSummary(
-        file_id=int(packet.file_id),
+        file_id=packet.file_id,
         filename=packet.filename,
         summary=f"{packet.filename} 包含 {len(file_sections)} 个切片，约 {packet.char_count} 字。",
         concepts=headings[:10],
@@ -116,7 +116,7 @@ def _normalize_summary_slices(
         normalized.append(
             ChapterSourceSlice(
                 chapter_index=source_slice.chapter_index,
-                file_id=int(packet.file_id),
+                file_id=packet.file_id,
                 filename=packet.filename,
                 section_ref=source_slice.section_ref,
                 section_title=source_slice.section_title or str(catalog_item.get("title") or ""),
@@ -182,7 +182,7 @@ def derive_source_affinity_and_evidence(
     """Derive source signals, preferring LLM-routed section slices."""
 
     sections = list(material_context.section_packets or [])
-    summaries_by_file = {int(summary.file_id): summary for summary in summaries if int(summary.file_id or 0) > 0}
+    summaries_by_file = {summary.file_id: summary for summary in summaries if summary.file_id}
     llm_slices_by_chapter: dict[int, list[ChapterSourceSlice]] = {}
     for summary in summaries:
         for source_slice in list(summary.chapter_slices or []):
@@ -205,9 +205,9 @@ def derive_source_affinity_and_evidence(
         if llm_slices:
             section_refs = clean_string_list([item.section_ref for item in llm_slices], limit=14)
             file_ids = []
-            seen_file_ids: set[int] = set()
+            seen_file_ids: set[str] = set()
             for source_slice in llm_slices:
-                if source_slice.file_id <= 0 or source_slice.file_id in seen_file_ids:
+                if not source_slice.file_id or source_slice.file_id in seen_file_ids:
                     continue
                 seen_file_ids.add(source_slice.file_id)
                 file_ids.append(source_slice.file_id)
@@ -216,7 +216,7 @@ def derive_source_affinity_and_evidence(
         else:
             for section in sections:
                 summary_score = summaries_by_file.get(
-                    int(section.source_file_id or 0),
+                    section.source_file_id,
                     FileMaterialSummary(),
                 ).chapter_affinity.get(chapter_index, 0.0)
                 section_score = _section_score_for_chapter(section, terms)
@@ -237,16 +237,16 @@ def derive_source_affinity_and_evidence(
             section_refs = [section.digest_chunk_uid for score, section in scored_sections if score >= 0.18][:12]
             file_ids = list(
                 dict.fromkeys(
-                    int(section.source_file_id)
+                    section.source_file_id
                     for _score, section in scored_sections[:16]
-                    if int(section.source_file_id or 0) > 0
+                    if section.source_file_id
                 )
             )[:8]
             if not file_ids:
                 file_ids = [
                     summary.file_id
                     for summary in sorted(summaries, key=lambda item: item.chapter_affinity.get(chapter_index, 0.0), reverse=True)
-                    if summary.file_id > 0
+                    if summary.file_id
                 ][:5]
         affinity_items.append(
             SourceAffinityByChapter(
@@ -352,7 +352,7 @@ async def _summarize_one_file(
         for chapter in chapters
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     ]
-    file_sections = _sections_for_file(sections, int(packet.file_id))
+    file_sections = _sections_for_file(sections, packet.file_id)
     section_catalog = build_section_catalog_for_file(packet, sections=file_sections)
     excerpt = str(packet.normalized_content or "").strip()
     if not excerpt.strip():
@@ -385,7 +385,7 @@ async def _summarize_one_file(
         summary = response if isinstance(response, FileMaterialSummary) else FileMaterialSummary.model_validate(response)
     except Exception:
         return fallback
-    summary.file_id = int(packet.file_id)
+    summary.file_id = packet.file_id
     summary.filename = packet.filename
     summary = _normalize_summary_slices(summary, packet=packet, sections=file_sections)
     summary.fallback_used = False

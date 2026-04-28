@@ -10,6 +10,6 @@
  * Link existing user-library files to a subject.
  */
 export interface FileLinkRequest {
-  /** Public file UIDs to link. */
-  file_uids?: string[];
+  /** Public file IDs to link. */
+  file_ids?: string[];
 }

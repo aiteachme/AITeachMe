@@ -50,7 +50,7 @@ def _seed_titles_from_goal_and_files(
     return titles
 
 
-def _build_seed_material_context(*, subject_id: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
+def _build_seed_material_context(*, subject_id: str, file_ids: list[str], user_prompt: str | None) -> DigestMaterialContext:
     with managed_session() as session:
         raw_files = list_raw_files_by_ids(session, subject_id, file_ids)
 
@@ -62,7 +62,7 @@ def _build_seed_material_context(*, subject_id: str, file_ids: list[int], user_p
 
     source_documents = [
         SourcePacket(
-            file_id=int(raw_file.id),
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
             filetype=raw_file.file_ext,
             markdown_path=raw_file.markdown_path or "",
@@ -109,7 +109,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             subject_id=state.get("subject_id", ""),
             operation=state.get("planner_operation", ""),
             file_id_count=len(state.get("file_ids", []) or []),
-            requested_file_uid_count=len(state.get("requested_file_uids", []) or []),
+            requested_file_id_count=len(state.get("requested_file_ids", []) or []),
         )
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}

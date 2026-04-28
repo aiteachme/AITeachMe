@@ -10,7 +10,7 @@ from sqlmodel import Session
 from app.shared.infra.exceptions import InvalidRawFileStateError
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import update_raw_file
-from app.utils.presenters import require_id, require_uid
+from app.utils.presenters import require_id
 from app.workflows.ingest import run_parse_file_workflow
 from app.workflows.ingest.fast_parse.lib.lifecycle import (
     dispatch_enhancement_if_needed,
@@ -27,7 +27,7 @@ def _start_parse_for_files(
     *,
     owner_user_id: str,
     subject_id: str | None,
-    file_ids: list[int],
+    file_ids: list[str],
 ) -> list[RawFile]:
     raw_files = (
         get_subject_files_or_raise(session, subject_id=subject_id, file_ids=file_ids)
@@ -42,7 +42,6 @@ def _start_parse_for_files(
         raw_file_states=[
             {
                 "file_id": require_id(item.id, "RawFile.id"),
-                "file_uid": require_uid(item.uid, "RawFile.uid"),
                 "status": item.status,
                 "markdown_ready": bool(item.markdown_path),
                 "filename": item.filename,
@@ -52,10 +51,9 @@ def _start_parse_for_files(
     )
 
     for raw_file in raw_files:
-        raw_file_id = require_id(raw_file.id, "RawFile.id")
-        raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
+        file_id = require_id(raw_file.id, "RawFile.id")
         if raw_file.status != TaskStatus.PENDING.value:
-            raise InvalidRawFileStateError(raw_file_uid or raw_file_id, raw_file.status, TaskStatus.PENDING.value)
+            raise InvalidRawFileStateError(file_id, raw_file.status, TaskStatus.PENDING.value)
 
         update_raw_file(
             session,
@@ -71,7 +69,6 @@ def _start_parse_for_files(
         subject_id=subject_id or "",
         user_id=owner_user_id,
         accepted_file_ids=file_ids,
-        accepted_file_uids=[require_uid(item.uid, "RawFile.uid") for item in raw_files],
         accepted_count=len(file_ids),
     )
     return (
@@ -84,7 +81,7 @@ def _start_parse_for_files(
 async def run_parse_files_background(
     *,
     user_id: str,
-    file_ids: list[int],
+    file_ids: list[str],
     subject_id: str | None = None,
     background_task_registry=None,
 ) -> None:
@@ -98,7 +95,7 @@ async def run_parse_files_background(
 
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def _run_one(file_id: int) -> None:
+    async def _run_one(file_id: str) -> None:
         async with semaphore:
             batch_logger.info("file_parse_background_dispatch", file_id=file_id)
             try:

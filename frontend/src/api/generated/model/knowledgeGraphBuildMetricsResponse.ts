@@ -30,9 +30,9 @@ export interface KnowledgeGraphBuildMetricsResponse {
   knowledge_doc_chapter_count?: number;
   /** Structured provenance refs written by the latest graph sync. */
   source_ref_count?: number;
-  /** Knowledge units seeded from DocGen document_backbone. */
+  /** Knowledge units seeded from DocGen document_backbone; kept for compatibility, currently should be 0. */
   backbone_unit_count?: number;
-  /** Knowledge edges seeded from DocGen document_backbone. */
+  /** Knowledge edges added from DocGen document_backbone between already extracted units. */
   backbone_edge_count?: number;
   /** Stable graph anchors seen during the latest docs-sync. */
   stable_anchor_count?: number;
@@ -40,4 +40,16 @@ export interface KnowledgeGraphBuildMetricsResponse {
   deprecated_unit_count?: number;
   /** Knowledge edges deprecated by the latest docs-sync. */
   deprecated_edge_count?: number;
+  /** DocGen-side KG prefetch status for the latest auto sync. */
+  prefetch_status?: string | null;
+  /** Section payloads produced by the DocGen-side KG prefetch. */
+  prefetch_section_count?: number;
+  /** Prefetched section payloads reused by final graph sync. */
+  prefetch_reused_section_count?: number;
+  /** Final sections that required normal catch-up extraction. */
+  prefetch_catchup_section_count?: number;
+  /** Prefetched section payloads discarded because final content changed. */
+  prefetch_stale_section_count?: number;
+  /** Prefetch section payloads that failed before final graph sync. */
+  prefetch_failed_section_count?: number;
 }

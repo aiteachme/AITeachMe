@@ -131,7 +131,7 @@ async def search_knowledge(
             chunks.append(
                 RetrievedChunk(
                     chunk_id=int(chunk.id or 0),
-                    document_id=int(chunk.document_id),
+                    file_id=chunk.file_id,
                     title=chunk.title,
                     header_path=chunk.header_path,
                     content=chunk.content,

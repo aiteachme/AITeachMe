@@ -10,8 +10,8 @@
  * Delete request.
  */
 export interface FileDeleteRequest {
-  /** Single public file UID. */
-  file_uid?: string | null;
-  /** Multiple public file UIDs. */
-  file_uids?: string[] | null;
+  /** Single public file ID. */
+  file_id?: string | null;
+  /** Multiple public file IDs. */
+  file_ids?: string[] | null;
 }

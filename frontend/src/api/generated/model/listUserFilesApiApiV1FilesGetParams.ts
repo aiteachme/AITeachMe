@@ -7,5 +7,5 @@
  */
 
 export type ListUserFilesApiApiV1FilesGetParams = {
-file_uids?: string[] | null;
+file_ids?: string[] | null;
 };

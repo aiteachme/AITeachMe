@@ -10,8 +10,8 @@
  * Create a new planner session and generate the first plan draft.
  */
 export interface BuildPlannerCreateRequest {
-  /** Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed. */
-  file_uids?: string[] | null;
+  /** Optional uploaded file IDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed. */
+  file_ids?: string[] | null;
   /** Learner prompt or requested document target. */
   user_prompt: string;
   /** Optional requested digest mode. */

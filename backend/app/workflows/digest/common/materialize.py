@@ -32,8 +32,8 @@ class ChunkManifestEntry(BaseModel):
     """Persisted metadata for one canonical retrieval chunk."""
 
     digest_chunk_uid: str
-    source_file_id: int
-    document_id: int
+    source_file_id: str
+    document_id: str
     chunk_id: int
     content_hash: str
     title: str
@@ -49,7 +49,7 @@ class KnowledgeChunkManifest(BaseModel):
     subject_id: str
     updated_at: datetime
     build_session_id: str
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
     chunks: list[ChunkManifestEntry] = Field(default_factory=list)
 
 
@@ -115,7 +115,6 @@ async def materialize_shared_inputs(
             [
                 RawFile(
                     id=packet.file_id,
-                    uid=f"file_{uuid4().hex}",
                     origin_subject_id=subject_id,
                     filename=packet.filename,
                     filetype="markdown",
@@ -127,9 +126,9 @@ async def materialize_shared_inputs(
             ],
         )
         document_id_by_file_id = {
-            packet.file_id: int(document.id)
+            packet.file_id: document.id
             for packet, document in zip(shared_inputs.source_packets, documents, strict=False)
-            if document.id is not None
+            if document.id
         }
 
         existing_chunks = knowledge_repo.get_chunks_by_source_file_ids(
@@ -165,13 +164,13 @@ async def materialize_shared_inputs(
         reused_count = 0
 
         for section in desired_sections:
-            document_id = document_id_by_file_id[section.source_file_id]
+            file_id = document_id_by_file_id[section.source_file_id]
             existing_chunk = existing_chunk_by_uid.get(section.digest_chunk_uid)
             if existing_chunk is None:
                 new_chunk_models.append(
                     RetrievalChunk(
                         subject_id=subject_id,
-                        document_id=document_id,
+                        file_id=file_id,
                         title=section.title,
                         level=section.level,
                         header_path=section.header_path,
@@ -185,7 +184,7 @@ async def materialize_shared_inputs(
 
             metadata_changed = any(
                 [
-                    existing_chunk.document_id != document_id,
+                    existing_chunk.file_id != file_id,
                     existing_chunk.title != section.title,
                     existing_chunk.level != section.level,
                     existing_chunk.header_path != section.header_path,
@@ -196,7 +195,7 @@ async def materialize_shared_inputs(
                 ]
             )
             if metadata_changed:
-                existing_chunk.document_id = document_id
+                existing_chunk.file_id = file_id
                 existing_chunk.title = section.title
                 existing_chunk.level = section.level
                 existing_chunk.header_path = section.header_path
@@ -280,9 +279,9 @@ async def materialize_shared_inputs(
             )
 
         for document in documents:
-            if document.id is None:
+            if not document.id:
                 continue
-            knowledge_repo.update_document_step(session, int(document.id), DigestStep.EMBEDDED.value)
+            knowledge_repo.update_document_step(session, document.id, DigestStep.EMBEDDED.value)
 
         materialized_chunks = [*reused_chunks, *chunk_rows]
         chunk_ids = [int(chunk.id) for chunk in materialized_chunks if chunk.id is not None]
@@ -307,8 +306,8 @@ async def materialize_shared_inputs(
                 continue
             manifest_entries[chunk.digest_chunk_uid] = ChunkManifestEntry(
                 digest_chunk_uid=chunk.digest_chunk_uid,
-                source_file_id=int(chunk.document_id),
-                document_id=int(chunk.document_id),
+                source_file_id=chunk.file_id,
+                document_id=chunk.file_id,
                 chunk_id=int(chunk.id),
                 content_hash=_chunk_content_hash(title=chunk.title, content=chunk.content),
                 title=chunk.title,
@@ -321,7 +320,7 @@ async def materialize_shared_inputs(
     materialized = MaterializedSections(
         build_session_id=session_id,
         source_file_ids=source_file_ids,
-        document_ids=[int(document.id) for document in documents if document.id is not None],
+        document_ids=[document.id for document in documents if document.id],
         chunk_ids=chunk_ids,
         chunk_uid_to_chunk_id=chunk_uid_to_chunk_id,
         chunk_id_to_chunk_uid=chunk_id_to_chunk_uid,

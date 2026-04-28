@@ -19,6 +19,7 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
@@ -133,6 +134,31 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
+        kg_prefetch_started = start_docgen_kg_prefetch(
+            subject_id=state["subject_id"],
+            build_session_id=state.get("build_session_id", ""),
+            chapters=[item.model_dump(mode="json") for item in enhanced_items],
+            document_backbone=state.get("document_backbone") or {},
+            docgen_manifest={
+                "intent_profile": dict(state.get("intent_profile") or state.get("intent_core") or {}),
+                "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
+                "chapter_execution_briefs": list(state.get("chapter_execution_briefs") or []),
+                "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
+                "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
+                "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
+                "digest_mode": str(state.get("digest_mode") or ""),
+            },
+        )
+        if kg_prefetch_started:
+            append_knowledge_build_recent_event(
+                state["subject_id"],
+                requested_at=state["requested_at"],
+                event={
+                    "stage": "kg_prefetch_started",
+                    "summary": "知识图谱预抽取已在后台启动，不阻塞知识文档复核和发布。",
+                    "created_at": utcnow(),
+                },
+            )
         update_knowledge_build_status(
             state["subject_id"],
             requested_at=state["requested_at"],
@@ -150,6 +176,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 "asset_count": sum(len(item.assets) for item in asset_manifests),
                 "practice_count": sum(len(item.questions) for item in practice_manifests),
                 "warning_count": sum(len(item.warnings) for item in enhanced_items),
+                "kg_prefetch_started": kg_prefetch_started,
             },
         )
         return {

@@ -117,7 +117,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     SettingsCatalogSection(
         id="connection",
         label="模型接入",
-        description="统一模型网关、提供商识别与必要授权。",
+        description="模型服务地址、密钥、提供商识别与请求等待策略。",
         entries=(
             env(
                 "llm.api_key",
@@ -169,8 +169,8 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     ),
     SettingsCatalogSection(
         id="models",
-        label="模型路由",
-        description="文本生成、视觉理解、文档解析与检索能力模型。默认只预填文本生成与 embedding，其它能力按需启用。",
+        label="模型配置",
+        description="配置不同任务使用的模型，包括对话生成、深度推理、轻量任务、视觉理解、文档解析和检索能力。",
         entries=(
             setting(
                 "models.primary",
@@ -268,7 +268,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     SettingsCatalogSection(
         id="learning",
         label="学习引擎",
-        description="上传限制、学习规划、知识文档策略与图谱联动开关。",
+        description="上传限制、课程规划、知识文档生成与知识图谱联动。",
         entries=(
             setting(
                 "ingest.max_upload_size_mb",
@@ -376,12 +376,33 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_group="图谱联动",
                 ui_order=140,
             ),
+            setting(
+                "knowledge_graph.prefetch_during_docgen",
+                "DocGen 期间预抽取图谱",
+                description="启用后，章节进入稳定增强态时会在后台预抽取图谱候选；不会阻塞知识文档发布。",
+                ui_group="图谱联动",
+                ui_order=145,
+            ),
+            setting(
+                "knowledge_graph.prefetch_concurrency",
+                "图谱预抽取并发",
+                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 6 路。",
+                ui_group="图谱联动",
+                ui_order=150,
+            ),
+            setting(
+                "knowledge_graph.max_parallel_extractions",
+                "图谱最大抽取并发",
+                description="发布后正式图谱同步的最大章节/子章节抽取并发；默认 32，仍会受全局 LLM 并发限制。",
+                ui_group="图谱联动",
+                ui_order=155,
+            ),
         ),
     ),
     SettingsCatalogSection(
         id="search",
-        label="检索与联网",
-        description="本地 RAG 策略、联网检索授权与学术搜索授权。",
+        label="检索配置",
+        description="本地资料检索、联网搜索和学术检索授权。",
         entries=(
             setting(
                 "rag.top_k",
@@ -568,7 +589,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     SettingsCatalogSection(
         id="observability",
         label="观测与集成",
-        description="观测开关与 LangSmith 接入状态。",
+        description="运行追踪、LLM 调用统计和 LangSmith 集成状态。",
         entries=(
             setting(
                 "observability.tracing_enabled",

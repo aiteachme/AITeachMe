@@ -51,7 +51,7 @@ def build_finalize_success_node(
             await cs.upload_dir(local_asset_dir, state["asset_upload_prefix"])
 
             asset_rows = _build_asset_rows(
-                raw_file_id=state["file_id"],
+                file_id=state["file_id"],
                 asset_dir=local_asset_dir,
                 asset_storage_dir=state["asset_storage_dir"],
                 storage_backend=state["storage_backend"],
@@ -76,7 +76,7 @@ def build_finalize_success_node(
                         "error": f"raw_file_not_found:{state['file_id']}",
                     }
 
-                replace_raw_file_assets(session, raw_file_id=state["file_id"], assets=asset_rows)
+                replace_raw_file_assets(session, file_id=state["file_id"], assets=asset_rows)
                 update_raw_file(
                     session,
                     raw_file,

@@ -10,8 +10,8 @@
  * Trigger knowledge-doc generation.
  */
 export interface DocGenBuildRequest {
-  /** Optional parsed raw file UIDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided. */
-  file_uids?: string[] | null;
+  /** Optional parsed raw file IDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided. */
+  file_ids?: string[] | null;
   /** Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is provided and the confirmed plan already freezes the build goal. */
   prompt?: string | null;
   /** Optional subject-level embedding resolution chosen after a precheck conflict. */

@@ -20,8 +20,8 @@ export interface DocGenGetResponse {
   markdown?: string;
   /** Last updated time of the merged markdown. */
   updated_at?: string | null;
-  /** Source raw file UIDs used by the published docs. */
-  source_file_uids?: string[];
+  /** Source raw file IDs used by the published docs. */
+  source_file_ids?: string[];
   /** User prompt used for the published docs. */
   prompt?: string | null;
   /** Current staging draft markdown content, if available. */

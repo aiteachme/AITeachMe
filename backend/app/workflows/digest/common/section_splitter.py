@@ -26,7 +26,7 @@ MAX_SECTION_CHARS = 1800
 TARGET_SECTION_CHARS = 1200
 
 
-def split_into_sections(content: str, file_id: int, filename: str) -> list[SectionPacket]:
+def split_into_sections(content: str, file_id: str, filename: str) -> list[SectionPacket]:
     """Split one normalized markdown source into canonical section packets."""
 
     stripped = content.strip()
@@ -111,7 +111,7 @@ def _extract_page_context(content: str, *, fallback_page_num: int | None) -> tup
 def _build_section_packet(
     *,
     content: str,
-    file_id: int,
+    file_id: str,
     filename: str,
     chunk_index: int,
     page_num: int | None,
@@ -150,7 +150,7 @@ def _build_section_packet(
 def _build_section_packets(
     *,
     content: str,
-    file_id: int,
+    file_id: str,
     filename: str,
     start_chunk_index: int,
     page_num: int | None,
@@ -293,4 +293,3 @@ def _extract_image_refs(content: str) -> list[str]:
             continue
         refs.append(Path(raw.strip()).name)
     return list(dict.fromkeys(refs))
-

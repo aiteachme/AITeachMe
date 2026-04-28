@@ -11,7 +11,7 @@
  */
 export interface ChunkContextResponse {
   chunk_id: number;
-  document_id: number;
+  file_id: string;
   document_title: string;
   chunk_title: string;
   chunk_header_path: string;

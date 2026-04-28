@@ -28,7 +28,7 @@ from app.repositories.chats_repo import (
     get_chat_session,
     touch_chat_session,
 )
-from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids, list_raw_files_by_uids
+from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
@@ -46,7 +46,7 @@ from app.shared.infra.exceptions import (
     PlannerMaterialsNotReadyError,
     RawFileNotFoundError,
 )
-from app.utils.presenters import require_id, require_uid
+from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
@@ -63,18 +63,18 @@ def _select_planner_files(
     session: Session,
     *,
     subject_id: str,
-    file_uids: list[str] | None,
+    file_ids: list[str] | None,
 ) -> list[RawFile]:
-    available_files = [item for item in list_all_raw_files_by_subject(session, subject_id) if item.id is not None]
-    if not file_uids:
+    available_files = [item for item in list_all_raw_files_by_subject(session, subject_id) if item.id]
+    if not file_ids:
         return available_files
-    requested = list_raw_files_by_uids(session, subject_id, file_uids)
-    found_uids = {require_uid(item.uid, "RawFile.uid") for item in requested}
-    missing = [uid for uid in file_uids if uid not in found_uids]
+    requested = list_raw_files_by_ids(session, subject_id, file_ids)
+    found_ids = {require_id(item.id, "RawFile.id") for item in requested}
+    missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
         raise RawFileNotFoundError(missing[0])
     available_ids = {require_id(item.id, "RawFile.id") for item in available_files}
-    return [item for item in requested if item.id is not None and require_id(item.id, "RawFile.id") in available_ids]
+    return [item for item in requested if item.id and require_id(item.id, "RawFile.id") in available_ids]
 
 
 def _select_planner_workflow_files(raw_files: list[RawFile]) -> list[RawFile]:
@@ -82,22 +82,8 @@ def _select_planner_workflow_files(raw_files: list[RawFile]) -> list[RawFile]:
     return ready or raw_files
 
 
-def _file_ids(raw_files: list[RawFile]) -> list[int]:
-    return [require_id(item.id, "RawFile.id") for item in raw_files if item.id is not None]
-
-
-def _file_uids(raw_files: list[RawFile]) -> list[str]:
-    return [require_uid(item.uid, "RawFile.uid") for item in raw_files if item.uid is not None]
-
-
-def _file_uids_from_ids(session: Session, *, subject_id: str, file_ids: list[int]) -> list[str]:
-    files = list_raw_files_by_ids(session, subject_id, file_ids)
-    by_id = {
-        require_id(item.id, "RawFile.id"): require_uid(item.uid, "RawFile.uid")
-        for item in files
-        if item.id is not None and item.uid is not None
-    }
-    return [by_id[file_id] for file_id in file_ids if file_id in by_id]
+def _file_ids(raw_files: list[RawFile]) -> list[str]:
+    return [require_id(item.id, "RawFile.id") for item in raw_files if item.id]
 
 
 def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnResponse:
@@ -121,14 +107,16 @@ def _planner_plan(session_item: ChatSession) -> dict[str, Any]:
     return dict(_planner_meta(session_item).get("latest_plan") or {})
 
 
-def _planner_selected_file_ids(session_item: ChatSession) -> list[int]:
+def _planner_selected_file_ids(session_item: ChatSession) -> list[str]:
     values = _planner_meta(session_item).get("selected_file_ids") or []
-    result: list[int] = []
+    result: list[str] = []
+    seen: set[str] = set()
     for value in values:
-        try:
-            result.append(int(value))
-        except (TypeError, ValueError):
+        file_id = str(value or "").strip()
+        if not file_id or file_id in seen:
             continue
+        seen.add(file_id)
+        result.append(file_id)
     return result
 
 
@@ -138,7 +126,7 @@ def _planner_session_meta(
     status: str,
     user_prompt: str,
     digest_mode: str,
-    selected_file_ids: list[int],
+    selected_file_ids: list[str],
     latest_plan: dict[str, Any] | None = None,
     latest_summary: str = "",
     confirmed_plan_id: str | None = None,
@@ -338,7 +326,7 @@ def _list_planner_turns(session: Session, *, session_id: str, subject_id: str, u
 def _plan_response(
     *,
     subject_id: str,
-    selected_file_uids: list[str],
+    selected_file_ids: list[str],
     session_id: str,
     confirmed_plan_id: str | None,
     status: str,
@@ -346,7 +334,7 @@ def _plan_response(
 ) -> BuildPlannerPlanResponse:
     return BuildPlannerPlanResponse(
         subject_id=subject_id,
-        selected_file_uids=selected_file_uids,
+        selected_file_ids=selected_file_ids,
         user_prompt=str(plan.get("user_prompt") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
         chapter_plan=list(plan.get("chapter_plan") or []),
@@ -403,7 +391,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
         revision=len(turns),
         latest_plan=_plan_response(
             subject_id=subject_id,
-            selected_file_uids=list(final_state.get("selected_file_uids") or []),
+            selected_file_ids=list(final_state.get("selected_file_ids") or []),
             session_id=session_id,
             confirmed_plan_id=record.get("confirmed_plan_id"),
             status=status,
@@ -420,7 +408,7 @@ def _planner_session_response(
     record: ChatSession,
     *,
     subject_id: str,
-    selected_file_uids: list[str],
+    selected_file_ids: list[str],
     plan: dict[str, Any],
     turns: list[ChatMessage],
 ) -> BuildPlannerSessionResponse:
@@ -433,7 +421,7 @@ def _planner_session_response(
         revision=len(turns),
         latest_plan=_plan_response(
             subject_id=subject_id,
-            selected_file_uids=selected_file_uids,
+            selected_file_ids=selected_file_ids,
             session_id=record.id,
             confirmed_plan_id=meta.get("confirmed_plan_id"),
             status=_planner_status(record),
@@ -626,7 +614,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         operation=operation,
         subject_id=state.get("subject_id"),
         planner_session_id=state.get("planner_session_id"),
-        requested_file_uid_count=len(state.get("requested_file_uids") or []),
+        requested_file_id_count=len(state.get("requested_file_ids") or []),
     )
     if operation == "generate_only":
         logger.info("planner_prepare_run_skipped_for_generate_only")
@@ -651,7 +639,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             planner_files = _select_planner_files(
                 session,
                 subject_id=subject_id,
-                file_uids=list(state.get("requested_file_uids") or []),
+                file_ids=list(state.get("requested_file_ids") or []),
             )
             workflow_files = _workflow_files_or_raise(
                 subject_id=subject_id,
@@ -659,7 +647,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             selected_file_ids = _file_ids(planner_files)
             workflow_file_ids = _file_ids(workflow_files)
-            selected_file_uids = _file_uids(planner_files)
+            selected_file_ids = _file_ids(planner_files)
             session_title = str(
                 state.get("session_title")
                 or user_prompt
@@ -693,12 +681,11 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 planner_session_id=record.id,
                 selected_file_count=len(selected_file_ids),
                 workflow_file_count=len(workflow_file_ids),
-                selected_file_uids=selected_file_uids,
+                selected_file_ids=selected_file_ids,
             )
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
-                "selected_file_uids": selected_file_uids,
                 "user_prompt": user_prompt,
                 "digest_mode": digest_mode,
                 "message_history": [user_prompt],
@@ -749,15 +736,10 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
             if selected_file_ids and not workflow_file_ids:
                 raise PlannerMaterialsNotReadyError(subject_id)
-            selected_file_uids = [
-                require_uid(item.uid, "RawFile.uid")
-                for item in raw_files
-                if item.id is not None and item.uid is not None
-            ]
+            selected_file_ids = _file_ids(raw_files)
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
-                "selected_file_uids": selected_file_uids,
                 "user_prompt": str(meta.get("user_prompt") or ""),
                 "digest_mode": str(meta.get("digest_mode") or ""),
                 "message_history": [turn.content for turn in turns if turn.content.strip()],
@@ -865,11 +847,6 @@ def save_planner_result(
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
             "selected_file_ids": selected_file_ids,
-            "selected_file_uids": _file_uids_from_ids(
-                session,
-                subject_id=subject_id,
-                file_ids=selected_file_ids,
-            ),
             "planner_record": _record_snapshot(record),
             "planner_turns": [_turn_snapshot(turn) for turn in turns],
         }
@@ -1036,14 +1013,12 @@ def confirm_planner_session(
         planner_status="confirmed",
     )
     selected_file_ids = _planner_selected_file_ids(record)
-    file_uids = _file_uids_from_ids(session, subject_id=subject.id, file_ids=selected_file_ids)
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
         subject_id=subject.id,
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
-        selected_file_uids=file_uids,
         selected_file_ids=list(confirmed.selected_file_ids_json),
         user_prompt=confirmed.user_prompt,
         plan_summary=confirmed.plan_summary,
@@ -1080,11 +1055,7 @@ def get_latest_planner_session(
     return _planner_session_response(
         record,
         subject_id=subject.id,
-        selected_file_uids=_file_uids_from_ids(
-            session,
-            subject_id=subject.id,
-            file_ids=_planner_selected_file_ids(record),
-        ),
+        selected_file_ids=_planner_selected_file_ids(record),
         plan=plan_payload,
         turns=turns,
     )

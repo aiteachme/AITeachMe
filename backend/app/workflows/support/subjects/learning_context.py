@@ -210,20 +210,16 @@ def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str
 
 def _source_file_metadata(
     *,
-    raw_file_id: int,
-    source_file_lookup: Mapping[int, Mapping[str, Any]] | None,
+    file_id: str,
+    source_file_lookup: Mapping[str, Mapping[str, Any]] | None,
 ) -> dict[str, Any]:
-    metadata = _as_mapping((source_file_lookup or {}).get(raw_file_id))
+    metadata = _as_mapping((source_file_lookup or {}).get(file_id))
     result: dict[str, Any] = {
-        "file_id": raw_file_id,
-        "raw_file_id": raw_file_id,
+        "file_id": file_id,
     }
-    file_uid = _clean_text(metadata.get("uid") or metadata.get("file_uid"), max_chars=120)
     filename = _clean_text(metadata.get("filename"), max_chars=180)
     markdown_path = _clean_text(metadata.get("markdown_path"), max_chars=500)
     markdown_uri = _clean_text(metadata.get("markdown_uri"), max_chars=500)
-    if file_uid:
-        result["file_uid"] = file_uid
     if filename:
         result["filename"] = filename
     if markdown_path:
@@ -233,33 +229,34 @@ def _source_file_metadata(
     return result
 
 
-def _file_uids_for_ids(
-    source_file_ids: Sequence[int],
+def _file_ids_for_ids(
+    source_file_ids: Sequence[str],
     *,
-    source_file_lookup: Mapping[int, Mapping[str, Any]] | None,
+    source_file_lookup: Mapping[str, Mapping[str, Any]] | None,
 ) -> list[str]:
-    uids: list[str] = []
+    file_ids: list[str] = []
     seen: set[str] = set()
     for raw_file_id in source_file_ids:
-        metadata = _as_mapping((source_file_lookup or {}).get(int(raw_file_id)))
-        uid = _clean_text(metadata.get("uid") or metadata.get("file_uid"), max_chars=120)
-        if not uid or uid in seen:
+        raw_file_id = str(raw_file_id or "").strip()
+        metadata = _as_mapping((source_file_lookup or {}).get(raw_file_id))
+        file_id = _clean_text(metadata.get("file_id") or raw_file_id, max_chars=120)
+        if not file_id or file_id in seen:
             continue
-        seen.add(uid)
-        uids.append(uid)
-    return uids
+        seen.add(file_id)
+        file_ids.append(file_id)
+    return file_ids
 
 
 def _file_summary_snapshot(
     docgen_artifacts: Mapping[str, Any],
     *,
-    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
+    source_file_lookup: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
     for item in _mapping_items(docgen_artifacts.get("file_summaries"), limit=12):
-        raw_file_id = _safe_int(item.get("file_id"))
+        raw_file_id = _clean_text(item.get("file_id"), max_chars=120)
         file_payload = _source_file_metadata(
-            raw_file_id=raw_file_id,
+            file_id=raw_file_id,
             source_file_lookup=source_file_lookup,
         )
         file_payload["filename"] = _clean_text(
@@ -288,7 +285,7 @@ def _source_slices_snapshot(value: Any, *, limit: int = 12) -> list[dict[str, An
         slices.append(
             {
                 "chapter_index": _safe_int(item.get("chapter_index"), default=0),
-                "file_id": _safe_int(item.get("file_id"), default=0),
+                "file_id": _clean_text(item.get("file_id"), max_chars=120),
                 "filename": _clean_text(item.get("filename"), max_chars=180),
                 "section_ref": section_ref,
                 "section_title": _clean_text(item.get("section_title"), max_chars=180),
@@ -329,7 +326,7 @@ def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, A
             max_chars=500,
         ),
         "constraints": _clean_string_list(plan.get("constraints") or plan.get("requirements"), limit=10, max_chars=160),
-        "selected_file_ids": _clean_int_list(plan.get("selected_file_ids"), limit=100),
+        "selected_file_ids": _clean_string_list(plan.get("selected_file_ids"), limit=100, max_chars=120),
         "chapter_plan": chapter_plan,
     }
 
@@ -339,12 +336,12 @@ def _source_file_ids_for_chapter(
     chapter: Mapping[str, Any],
     assignment: Mapping[str, Any],
     doc: KnowledgeDoc | None,
-) -> list[int]:
-    ids = _clean_int_list(chapter.get("source_file_ids"), limit=50)
+) -> list[str]:
+    ids = _clean_string_list(chapter.get("source_file_ids"), limit=50, max_chars=120)
     if not ids:
-        ids = _clean_int_list(assignment.get("source_file_ids"), limit=50)
+        ids = _clean_string_list(assignment.get("source_file_ids"), limit=50, max_chars=120)
     if not ids and doc is not None:
-        ids = _clean_int_list(_load_json_list(doc.source_file_ids), limit=50)
+        ids = _clean_string_list(_load_json_list(doc.source_file_ids), limit=50, max_chars=120)
     return ids
 
 
@@ -354,7 +351,7 @@ def _build_chapter_snapshots(
     chapter_assignments: Sequence[Mapping[str, Any]],
     knowledge_docs: Sequence[KnowledgeDoc],
     docgen_artifacts: Mapping[str, Any],
-    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
+    source_file_lookup: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     plan_by_index = _chapter_plan_lookup(docgen_artifacts)
     docs_by_index = {_safe_int(doc.chapter_index): doc for doc in knowledge_docs}
@@ -385,9 +382,7 @@ def _build_chapter_snapshots(
         source_file_ids = _source_file_ids_for_chapter(chapter=chapter, assignment=assignment, doc=doc)
         chapter_payload.update(
             {
-                "source_file_ids": source_file_ids,
-                "source_raw_file_ids": source_file_ids,
-                "source_file_uids": _file_uids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
+                "source_file_ids": _file_ids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
                 "digest_mode": _clean_text(
                     chapter.get("digest_mode") or (doc.digest_mode if doc is not None else ""),
                     max_chars=80,
@@ -410,7 +405,7 @@ def build_subject_learning_context_payload(
     docgen_artifacts: Mapping[str, Any] | None = None,
     subject_user_intent: str | None = None,
     subject_description: str | None = None,
-    source_file_lookup: Mapping[int, Mapping[str, Any]] | None = None,
+    source_file_lookup: Mapping[str, Mapping[str, Any]] | None = None,
     version_no: int | None = None,
     build_session_id: str | None = None,
     requested_at: datetime | None = None,
@@ -528,11 +523,9 @@ def build_subject_learning_context_payload(
         "plan_summary": plan_summary,
         "chapter_count": len(chapters),
         "chapter_titles": chapter_titles,
-        "source_file_ids": source_file_ids,
-        "source_raw_file_ids": source_file_ids,
-        "source_file_uids": _file_uids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
+        "source_file_ids": _file_ids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
         "source_files": [
-            _source_file_metadata(raw_file_id=file_id, source_file_lookup=source_file_lookup)
+            _source_file_metadata(file_id=file_id, source_file_lookup=source_file_lookup)
             for file_id in source_file_ids
         ],
         "confirmed_plan": confirmed_plan,
@@ -676,19 +669,19 @@ def _collect_source_file_ids_for_lookup(
     chapter_assignments: Sequence[Mapping[str, Any]] | None,
     knowledge_docs: Sequence[KnowledgeDoc] | None,
     docgen_artifacts: Mapping[str, Any] | None,
-) -> list[int]:
-    ids: list[int] = []
+) -> list[str]:
+    ids: list[str] = []
     for item in _mapping_items(chapter_metadatas):
-        ids.extend(_clean_int_list(item.get("source_file_ids"), limit=100))
+        ids.extend(_clean_string_list(item.get("source_file_ids"), limit=100, max_chars=120))
     for item in _mapping_items(chapter_assignments):
-        ids.extend(_clean_int_list(item.get("source_file_ids"), limit=100))
+        ids.extend(_clean_string_list(item.get("source_file_ids"), limit=100, max_chars=120))
     for doc in list(knowledge_docs or []):
-        ids.extend(_clean_int_list(_load_json_list(doc.source_file_ids), limit=100))
+        ids.extend(_clean_string_list(_load_json_list(doc.source_file_ids), limit=100, max_chars=120))
     artifacts = _as_mapping(docgen_artifacts)
     confirmed_plan = _as_mapping(artifacts.get("confirmed_plan"))
-    ids.extend(_clean_int_list(confirmed_plan.get("selected_file_ids"), limit=100))
+    ids.extend(_clean_string_list(confirmed_plan.get("selected_file_ids"), limit=100, max_chars=120))
     for item in _mapping_items(artifacts.get("file_summaries"), limit=100):
-        ids.extend(_clean_int_list(item.get("file_id"), limit=1))
+        ids.extend(_clean_string_list(item.get("file_id"), limit=1, max_chars=120))
     return sorted(set(ids))
 
 
@@ -700,7 +693,7 @@ def _build_source_file_lookup(
     chapter_assignments: Sequence[Mapping[str, Any]] | None,
     knowledge_docs: Sequence[KnowledgeDoc] | None,
     docgen_artifacts: Mapping[str, Any] | None,
-) -> dict[int, dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     source_file_ids = _collect_source_file_ids_for_lookup(
         chapter_metadatas=chapter_metadatas,
         chapter_assignments=chapter_assignments,
@@ -715,12 +708,12 @@ def _build_source_file_lookup(
         raw_files = list_raw_files_by_ids(session, subject_id, source_file_ids)
     except Exception:
         return {}
-    lookup: dict[int, dict[str, Any]] = {}
+    lookup: dict[str, dict[str, Any]] = {}
     for raw_file in raw_files:
-        if raw_file.id is None:
+        if not raw_file.id:
             continue
-        lookup[int(raw_file.id)] = {
-            "uid": raw_file.uid,
+        lookup[raw_file.id] = {
+            "file_id": raw_file.id,
             "filename": raw_file.filename,
             "markdown_path": raw_file.markdown_path,
             "markdown_uri": raw_file.markdown_uri,

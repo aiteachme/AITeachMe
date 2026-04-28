@@ -54,7 +54,7 @@ class DigestModeDecision(BaseModel):
 class SourcePacket(BaseModel):
     """A normalized source file payload prepared once per build."""
 
-    file_id: int
+    file_id: str
     filename: str
     filetype: str
     markdown_path: str
@@ -71,7 +71,7 @@ class SectionPacket(BaseModel):
     """Canonical source unit shared by docs, graph, and curriculum."""
 
     digest_chunk_uid: str
-    source_file_id: int
+    source_file_id: str
     source_filename: str
     chunk_index: int
     page_num: int | None = None
@@ -91,7 +91,7 @@ class AssetItem(BaseModel):
     """One image-like asset extracted by ingest."""
 
     filename: str
-    file_id: int
+    file_id: str
     page_number: int | None = None
     asset_type: str
     file_size: int
@@ -105,7 +105,7 @@ class AssetRegistry(BaseModel):
     asset_dir: str = ""
     assets: list[AssetItem] = Field(default_factory=list)
 
-    def get_assets_for_file(self, file_id: int) -> list[AssetItem]:
+    def get_assets_for_file(self, file_id: str) -> list[AssetItem]:
         """Return all assets for one file."""
 
         return [asset for asset in self.assets if asset.file_id == file_id]
@@ -131,8 +131,8 @@ class MaterializedSections(BaseModel):
     """Canonical chunk materialization persisted for one digest lane run."""
 
     build_session_id: str
-    source_file_ids: list[int] = Field(default_factory=list)
-    document_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
     chunk_ids: list[int] = Field(default_factory=list)
     chunk_uid_to_chunk_id: dict[str, int] = Field(default_factory=dict)
     chunk_id_to_chunk_uid: dict[int, str] = Field(default_factory=dict)

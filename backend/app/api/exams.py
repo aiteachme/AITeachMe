@@ -132,7 +132,7 @@ def _build_exam_title(paper: ExamPaper) -> str:
     return f"{paper.exam_mode} · {paper.created_at.strftime('%m/%d %H:%M')}"
 
 
-def _normalized_sample_file_uids(values: list[str] | None) -> list[str]:
+def _normalized_sample_file_ids(values: list[str] | None) -> list[str]:
     seen: set[str] = set()
     normalized: list[str] = []
     for value in values or []:
@@ -182,7 +182,7 @@ def _build_exam_config_snapshot(
     exam_mode: str,
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     knowledge_unit_ids: list[int],
     mastery_fingerprint: str,
 ) -> dict[str, object]:
@@ -193,7 +193,7 @@ def _build_exam_config_snapshot(
         "exam_mode": exam_mode,
         "num_questions": int(question_count),
         "user_prompt": _normalize_exam_user_prompt(user_prompt),
-        "sample_file_uids": _normalized_sample_file_uids(sample_file_uids),
+        "sample_file_ids": _normalized_sample_file_ids(sample_file_ids),
         "knowledge_unit_ids": sorted({int(unit_id) for unit_id in knowledge_unit_ids if int(unit_id or 0) > 0}),
         "mastery_fingerprint": mastery_fingerprint,
     }
@@ -930,7 +930,7 @@ def _build_exam_selection_context(
     source: str,
     knowledge_unit_ids: list[int],
     user_prompt: str | None,
-    sample_file_uids: list[str],
+    sample_file_ids: list[str],
     config_hash: str | None = None,
     config_snapshot: dict[str, object] | None = None,
     generation_origin: str = "user",
@@ -941,7 +941,7 @@ def _build_exam_selection_context(
         "source": source,
         "knowledge_unit_ids": knowledge_unit_ids,
         "user_prompt": user_prompt,
-        "sample_file_uids": sample_file_uids,
+        "sample_file_ids": sample_file_ids,
         "generation_origin": generation_origin,
         "generation_status": generation_status,
     }
@@ -1156,7 +1156,7 @@ def _create_exam_generation_paper(
     exam_mode: str,
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     unit_ids: list[int],
     config_snapshot: dict[str, object],
     config_hash: str,
@@ -1184,7 +1184,7 @@ def _create_exam_generation_paper(
                 source="knowledge_unit_pool",
                 knowledge_unit_ids=unit_ids,
                 user_prompt=user_prompt,
-                sample_file_uids=_normalized_sample_file_uids(sample_file_uids),
+                sample_file_ids=_normalized_sample_file_ids(sample_file_ids),
                 config_hash=config_hash,
                 config_snapshot=config_snapshot,
                 generation_origin=generation_origin,
@@ -1202,7 +1202,7 @@ def _reserve_exam_prewarm_paper(
     exam_mode: str,
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     unit_ids: list[int],
     config_snapshot: dict[str, object],
     config_hash: str,
@@ -1223,7 +1223,7 @@ def _reserve_exam_prewarm_paper(
         exam_mode=exam_mode,
         question_count=question_count,
         user_prompt=user_prompt,
-        sample_file_uids=sample_file_uids,
+        sample_file_ids=sample_file_ids,
         unit_ids=unit_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
@@ -1253,7 +1253,7 @@ def _schedule_exam_prewarm_task(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
 ) -> None:
@@ -1267,7 +1267,7 @@ def _schedule_exam_prewarm_task(
             unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=user_prompt,
-            sample_file_uids=sample_file_uids,
+            sample_file_ids=sample_file_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
         ),
@@ -1285,7 +1285,7 @@ async def _run_exam_prewarm_background(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
 ) -> None:
@@ -1298,7 +1298,7 @@ async def _run_exam_prewarm_background(
             exam_mode=exam_mode,
             question_count=question_count,
             user_prompt=user_prompt,
-            sample_file_uids=sample_file_uids,
+            sample_file_ids=sample_file_ids,
             unit_ids=unit_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
@@ -1315,7 +1315,7 @@ async def _run_exam_prewarm_background(
         unit_ids=unit_ids,
         question_count=question_count,
         user_prompt=user_prompt,
-        sample_file_uids=sample_file_uids,
+        sample_file_ids=sample_file_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
         schedule_replacement=False,
@@ -1332,7 +1332,7 @@ async def _run_exam_generation_background(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None = None,
+    sample_file_ids: list[str] | None = None,
     config_snapshot: dict[str, object] | None = None,
     config_hash: str = "",
     schedule_replacement: bool = False,
@@ -1777,7 +1777,7 @@ async def _run_exam_generation_background(
                 unit_ids=unit_ids,
                 question_count=question_count,
                 user_prompt=user_prompt,
-                sample_file_uids=sample_file_uids,
+                sample_file_ids=sample_file_ids,
                 config_snapshot=config_snapshot,
                 config_hash=config_hash,
             )
@@ -1857,7 +1857,7 @@ async def _spawn_exam_generation_after_response(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
     schedule_replacement: bool,
@@ -1871,7 +1871,7 @@ async def _spawn_exam_generation_after_response(
             unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=user_prompt,
-            sample_file_uids=sample_file_uids,
+            sample_file_ids=sample_file_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
             schedule_replacement=schedule_replacement,
@@ -1892,7 +1892,7 @@ async def _spawn_exam_prewarm_after_response(
     unit_ids: list[int],
     question_count: int,
     user_prompt: str | None,
-    sample_file_uids: list[str] | None,
+    sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
 ) -> None:
@@ -1904,7 +1904,7 @@ async def _spawn_exam_prewarm_after_response(
         unit_ids=unit_ids,
         question_count=question_count,
         user_prompt=user_prompt,
-        sample_file_uids=sample_file_uids,
+        sample_file_ids=sample_file_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
     )
@@ -2421,7 +2421,7 @@ async def generate_exam(
         exam_mode=mode,
         question_count=question_count,
         user_prompt=body.user_prompt,
-        sample_file_uids=body.sample_file_uids,
+        sample_file_ids=body.sample_file_ids,
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, subject_id=normalized, user_id=user.user_id),
     )
@@ -2444,7 +2444,7 @@ async def generate_exam(
             unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=body.user_prompt,
-            sample_file_uids=body.sample_file_uids or [],
+            sample_file_ids=body.sample_file_ids or [],
             config_snapshot=config_snapshot,
             config_hash=config_hash,
         )
@@ -2460,7 +2460,7 @@ async def generate_exam(
                 exam_mode=paper.exam_mode,
                 num_questions=paper.total_items or question_count,
                 exam_paper_id=paper_id,
-                sample_file_uids=body.sample_file_uids or [],
+                sample_file_ids=body.sample_file_ids or [],
             )
         )
 
@@ -2471,7 +2471,7 @@ async def generate_exam(
         exam_mode=mode,
         question_count=question_count,
         user_prompt=body.user_prompt,
-        sample_file_uids=body.sample_file_uids,
+        sample_file_ids=body.sample_file_ids,
         unit_ids=unit_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
@@ -2489,7 +2489,7 @@ async def generate_exam(
         unit_ids=unit_ids,
         question_count=question_count,
         user_prompt=body.user_prompt,
-        sample_file_uids=body.sample_file_uids or [],
+        sample_file_ids=body.sample_file_ids or [],
         config_snapshot=config_snapshot,
         config_hash=config_hash,
         schedule_replacement=not served_from_prepared,
@@ -2506,7 +2506,7 @@ async def generate_exam(
             exam_mode=paper.exam_mode,
             num_questions=question_count,
             exam_paper_id=paper_id,
-            sample_file_uids=body.sample_file_uids or [],
+            sample_file_ids=body.sample_file_ids or [],
         )
     )
 
@@ -2540,7 +2540,7 @@ async def exam_prewarm_status(
     exam_mode: str = Query("web_practice"),
     num_questions: int = Query(DEFAULT_AUTO_PREWARM_QUESTION_COUNT, ge=1, le=200),
     user_prompt: str | None = Query(default=None),
-    sample_file_uids: list[str] | None = Query(default=None),
+    sample_file_ids: list[str] | None = Query(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPrewarmStatusResponse]:
@@ -2566,7 +2566,7 @@ async def exam_prewarm_status(
         exam_mode=mode,
         question_count=question_count,
         user_prompt=user_prompt,
-        sample_file_uids=sample_file_uids or [],
+        sample_file_ids=sample_file_ids or [],
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, subject_id=normalized, user_id=user.user_id),
     )
@@ -2587,7 +2587,7 @@ async def exam_prewarm_status(
             exam_mode=mode,
             question_count=question_count,
             user_prompt=user_prompt,
-            sample_file_uids=sample_file_uids or [],
+            sample_file_ids=sample_file_ids or [],
             unit_ids=unit_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
@@ -2605,7 +2605,7 @@ async def exam_prewarm_status(
             unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=user_prompt,
-            sample_file_uids=sample_file_uids or [],
+            sample_file_ids=sample_file_ids or [],
             config_snapshot=config_snapshot,
             config_hash=config_hash,
             schedule_replacement=False,
@@ -2653,7 +2653,7 @@ async def exam_history(
             exam_mode="web_practice",
             question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
             user_prompt=None,
-            sample_file_uids=[],
+            sample_file_ids=[],
             knowledge_unit_ids=default_unit_ids,
             mastery_fingerprint=_exam_mastery_fingerprint(session, subject_id=normalized, user_id=user.user_id),
         )
@@ -2673,7 +2673,7 @@ async def exam_history(
                 unit_ids=default_unit_ids,
                 question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
                 user_prompt=None,
-                sample_file_uids=[],
+                sample_file_ids=[],
                 config_snapshot=default_config_snapshot,
                 config_hash=default_config_hash,
             )

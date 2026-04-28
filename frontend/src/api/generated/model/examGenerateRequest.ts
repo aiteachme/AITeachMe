@@ -14,8 +14,8 @@ export interface ExamGenerateRequest {
   exam_mode: string;
   /** Optional user requirements for exam generation. */
   user_prompt?: string | null;
-  /** Optional uploaded sample-paper file UIDs. */
-  sample_file_uids?: string[] | null;
+  /** Optional uploaded sample-paper file IDs. */
+  sample_file_ids?: string[] | null;
   /** Optional target question count. */
   num_questions?: number | null;
 }

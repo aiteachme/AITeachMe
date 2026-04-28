@@ -1,4 +1,4 @@
-﻿# Planner 链路说明
+# Planner 链路说明
 
 最后更新：2026-04-17
 
@@ -36,17 +36,17 @@ Planner 的流程直接按下面理解。它只做“确认前规划”，不做
 
 ```text
 load_planner_materials
-  输入：planner_operation / requested_file_uids / file_ids / user_prompt / message_history / latest_plan
+  输入：planner_operation / requested_file_ids / file_ids / user_prompt / message_history / latest_plan
     - planner_operation：create / append / generate_only，决定是否读写 planner session。
-    - requested_file_uids：用户本轮选择的文件 UID。
+    - requested_file_ids：用户本轮选择的文件 UID。
     - file_ids：实际进入资料准备的文件 ID。
     - user_prompt：用户本轮学习目标。
     - message_history：Planner 会话历史和修改意见。
     - latest_plan：append 时上一版 plan。
-  输出：material_context / digest_mode / selected_file_ids / selected_file_uids / planner_record / planner_turns
+  输出：material_context / digest_mode / selected_file_ids / selected_file_ids / planner_record / planner_turns
     - material_context：资料理解包，包含文件、切片、画像、统计、材料 digest。
     - digest_mode：sprint 或 systematic。
-    - selected_file_ids / selected_file_uids：会话绑定的文件选择。
+    - selected_file_ids / selected_file_ids：会话绑定的文件选择。
     - planner_record / planner_turns：来自 `chat_session` / `chat_message` 的 Planner 对话快照。
   作用：准备会话、文件选择和资料上下文。正文未解析时可用文件名和目标生成 seed context。
 

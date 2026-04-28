@@ -43,6 +43,11 @@ class KnowledgeSyncReport:
     backbone_unit_count: int = 0
     backbone_edge_count: int = 0
     stable_anchor_count: int = 0
+    prefetch_section_count: int = 0
+    prefetch_reused_section_count: int = 0
+    prefetch_catchup_section_count: int = 0
+    prefetch_stale_section_count: int = 0
+    prefetch_failed_section_count: int = 0
 
     @property
     def unit_change_count(self) -> int:
@@ -72,7 +77,7 @@ class MarkdownExtractedEdge:
     source_kind: str = "llm_relation"
     knowledge_document_id: int | None = None
     chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
     quote_text: str = ""
 
 
@@ -89,7 +94,7 @@ class PendingMarkdownExtractedEdge:
     source_kind: str = "llm_relation"
     knowledge_document_id: int | None = None
     chapter_index: int = 0
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
     quote_text: str = ""
 
 
@@ -105,7 +110,7 @@ class SectionExtractionContext:
     primary_name: str = ""
     primary_type: str = ""
     knowledge_document_id: int | None = None
-    source_file_ids: list[int] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True, frozen=True)
@@ -116,7 +121,9 @@ class ChapterSourceContext:
     chapter_index: int = 0
     title: str = ""
     summary: str = ""
-    source_file_ids: list[int] = field(default_factory=list)
+    digest_mode: str = ""
+    docgen_hints: list[str] = field(default_factory=list)
+    source_file_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -131,6 +138,20 @@ class SectionExtractionPayload:
     node_contexts_by_anchor: dict[str, dict[str, object]]
     section_context: SectionExtractionContext
     diagnostics: dict[str, int]
+
+
+@dataclass(slots=True)
+class SectionExtractionRecord:
+    """One section-level extraction result that can be cached before publish."""
+
+    section_key: str
+    content_hash: str
+    task_index: int
+    source_chapter_index: int
+    source_kind: str
+    title: str
+    payload: SectionExtractionPayload | None = None
+    error: str = ""
 
 
 @dataclass(slots=True)
@@ -162,5 +183,6 @@ __all__ = [
     "MarkdownExtractedEdge",
     "PendingMarkdownExtractedEdge",
     "SectionExtractionContext",
+    "SectionExtractionRecord",
     "SectionExtractionPayload",
 ]

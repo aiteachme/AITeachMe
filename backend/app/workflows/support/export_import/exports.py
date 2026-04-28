@@ -1,4 +1,4 @@
-﻿"""Subject-level export/import support commands.
+"""Subject-level export/import support commands.
 
 The table registry drives export/import order and foreign-key remapping.
 """
@@ -168,13 +168,13 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "subject_file",
         SubjectFileLink,
-        fk_remap={"raw_file_id": "raw_file"},
+        fk_remap={"file_id": "raw_file"},
         optional_group="raw_file_metadata",
     ),
     _TableSpec(
         "retrieval_chunk",
         RetrievalChunk,
-        fk_remap={"document_id": "raw_file"},
+        fk_remap={"file_id": "raw_file"},
         optional_group="raw_markdowns",
     ),
     _TableSpec(
@@ -590,6 +590,15 @@ def _import_table(
         if "user_id" in record_data:
             record_data["user_id"] = user_id
 
+        if spec.name == "subject_file":
+            legacy_raw_file_id = record_data.pop("raw_file_id", None)
+            if "file_id" not in record_data and legacy_raw_file_id is not None:
+                record_data["file_id"] = legacy_raw_file_id
+        if spec.name == "retrieval_chunk":
+            legacy_document_id = record_data.pop("document_id", None)
+            if "file_id" not in record_data and legacy_document_id is not None:
+                record_data["file_id"] = legacy_document_id
+
         # Remap foreign keys after the referenced tables have been imported.
         for fk_field, ref_table in spec.fk_remap.items():
             if fk_field in self_fk_fields:
@@ -611,8 +620,9 @@ def _import_table(
             )
 
         # Clear absolute-path fields so they can be rebuilt during import
+        legacy_uid = record_data.pop("uid", None) if spec.name == "raw_file" else None
         if spec.name == "raw_file":
-            record_data["uid"] = f"file_{uuid.uuid4().hex}"  # Prevent unique-constraint conflicts
+            record_data["id"] = f"file_{uuid.uuid4().hex}"  # Prevent identity conflicts
             record_data["origin_subject_id"] = new_subject_id
             record_data["origin_subject_name"] = new_name
             record_data["markdown_path"] = None
@@ -639,20 +649,20 @@ def _import_table(
 
         # Rebuild storage keys under the new subject namespace.
         cs = get_content_store()
-        if spec.name == "raw_file" and isinstance(new_id, int):
+        if spec.name == "raw_file" and isinstance(new_id, str):
             file_scope = cs.user_file_scope(user_id=user_id)
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
             instance.file_path = file_scope.raw_file_key(
-                file_uid=instance.uid,
+                file_id=instance.id,
                 filename=instance.filename,
                 extension=ext,
             )
             instance.markdown_path = file_scope.raw_markdown_key(
-                file_uid=instance.uid,
+                file_id=instance.id,
                 filename=instance.filename,
             )
             instance.asset_dir = file_scope.asset_prefix(
-                file_uid=instance.uid,
+                file_id=instance.id,
                 filename=instance.filename,
             ).rstrip("/")
             instance.storage_backend = "s3" if is_cloud_mode() else "local"
@@ -661,6 +671,8 @@ def _import_table(
 
         if old_id is not None:
             table_id_map[old_id] = new_id
+        if spec.name == "raw_file" and legacy_uid is not None:
+            table_id_map[legacy_uid] = new_id
 
         if self_fk_fields:
             pending_self_refs.append((instance, old_self_refs, old_id))
@@ -754,16 +766,13 @@ def _remap_json_int_list_text_field(
         values = []
 
     ref_map = id_map.get(ref_table) or {}
-    remapped: list[int] = []
+    remapped: list[Any] = []
     for old_id in values:
         new_id = _lookup_mapped_id(old_id, ref_map)
         if new_id is None:
             warnings.append(f"{table_name}.{field_name}: ref {old_id} not found in {ref_table}")
             continue
-        try:
-            remapped.append(int(new_id))
-        except (TypeError, ValueError):
-            continue
+        remapped.append(new_id)
     record[field_name] = json.dumps(remapped, ensure_ascii=False)
 
 

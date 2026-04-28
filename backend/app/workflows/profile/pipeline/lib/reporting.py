@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import structlog
-from langsmith import traceable
 
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import SYSTEM, USER
 from app.workflows.profile.pipeline.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS

@@ -1,4 +1,4 @@
-﻿"""Knowledge-domain API schemas."""
+"""Knowledge-domain API schemas."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ class DocGenBuildRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "file_uids": ["file_xxx", "file_yyy"],
+                "file_ids": ["file_xxx", "file_yyy"],
                 "prompt": "Generate review-oriented notes",
                 "embedding_resolution": "rebuild",
                 "build_type": "docs",
@@ -24,10 +24,10 @@ class DocGenBuildRequest(BaseModel):
         }
     )
 
-    file_uids: list[str] | None = Field(
+    file_ids: list[str] | None = Field(
         default=None,
         description=(
-            "Optional parsed raw file UIDs; omitted means auto-pick all available ready files for "
+            "Optional parsed raw file IDs; omitted means auto-pick all available ready files for "
             "the subject. Ignored when `confirmed_plan_id` is provided."
         ),
     )
@@ -158,7 +158,7 @@ class SubjectVectorStatusResponse(BaseModel):
 class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 
-    accepted_file_uids: list[str] = Field(default_factory=list, description="Accepted ready raw file UIDs.")
+    accepted_file_ids: list[str] = Field(default_factory=list, description="Accepted ready raw file IDs.")
     prompt: str | None = Field(
         default=None,
         description="Effective user prompt for the docs build after planner overrides are applied.",
@@ -192,7 +192,7 @@ class KnowledgeGraphBuildData(BaseModel):
     requested_at: datetime = Field(description="Graph build request timestamp.")
     build_group_id: str | None = Field(default=None, description="Runtime build group id.")
     build_session_id: str | None = Field(default=None, description="Graph sync session id.")
-    source_file_ids: list[int] = Field(default_factory=list, description="Persisted source raw file ids from the docs manifest.")
+    source_file_ids: list[str] = Field(default_factory=list, description="Persisted source raw file IDs from the docs manifest.")
     message: str = Field(default="已开始重建知识图谱。", description="User-facing response message.")
 
 
@@ -304,11 +304,17 @@ class KnowledgeGraphBuildMetricsResponse(BaseModel):
     knowledge_doc_source: str | None = Field(default=None, description="Source of the knowledge document markdown used for docs-sync.")
     knowledge_doc_chapter_count: int = Field(default=0, description="Knowledge document chapter count seen by docs-sync.")
     source_ref_count: int = Field(default=0, description="Structured provenance refs written by the latest graph sync.")
-    backbone_unit_count: int = Field(default=0, description="Knowledge units seeded from DocGen document_backbone.")
-    backbone_edge_count: int = Field(default=0, description="Knowledge edges seeded from DocGen document_backbone.")
+    backbone_unit_count: int = Field(default=0, description="Knowledge units seeded from DocGen document_backbone; kept for compatibility, currently should be 0.")
+    backbone_edge_count: int = Field(default=0, description="Knowledge edges added from DocGen document_backbone between already extracted units.")
     stable_anchor_count: int = Field(default=0, description="Stable graph anchors seen during the latest docs-sync.")
     deprecated_unit_count: int = Field(default=0, description="Knowledge units deprecated by the latest docs-sync.")
     deprecated_edge_count: int = Field(default=0, description="Knowledge edges deprecated by the latest docs-sync.")
+    prefetch_status: str | None = Field(default=None, description="DocGen-side KG prefetch status for the latest auto sync.")
+    prefetch_section_count: int = Field(default=0, description="Section payloads produced by the DocGen-side KG prefetch.")
+    prefetch_reused_section_count: int = Field(default=0, description="Prefetched section payloads reused by final graph sync.")
+    prefetch_catchup_section_count: int = Field(default=0, description="Final sections that required normal catch-up extraction.")
+    prefetch_stale_section_count: int = Field(default=0, description="Prefetched section payloads discarded because final content changed.")
+    prefetch_failed_section_count: int = Field(default=0, description="Prefetch section payloads that failed before final graph sync.")
 
 
 class KnowledgeBuildStatusResponse(BaseModel):
@@ -361,7 +367,7 @@ class DocGenGetResponse(BaseModel):
     exists: bool = Field(description="Whether a merged knowledge document exists.")
     markdown: str = Field(default="", description="Merged markdown content.")
     updated_at: datetime | None = Field(default=None, description="Last updated time of the merged markdown.")
-    source_file_uids: list[str] = Field(default_factory=list, description="Source raw file UIDs used by the published docs.")
+    source_file_ids: list[str] = Field(default_factory=list, description="Source raw file IDs used by the published docs.")
     prompt: str | None = Field(default=None, description="User prompt used for the published docs.")
     draft_markdown: str = Field(default="", description="Current staging draft markdown content, if available.")
     draft_updated_at: datetime | None = Field(default=None, description="Last updated time of the staging draft.")
@@ -402,7 +408,7 @@ class EvidenceSummary(BaseModel):
     """Evidence summary used in node detail."""
 
     id: int
-    document_id: int
+    file_id: str
     chunk_id: int
     quote_text: str
     evidence_role: str
@@ -414,7 +420,7 @@ class ChunkContextResponse(BaseModel):
     """Chat chunk context response."""
 
     chunk_id: int
-    document_id: int
+    file_id: str
     document_title: str
     chunk_title: str
     chunk_header_path: str
@@ -458,7 +464,7 @@ class KnowledgeGraphSourceRefResponse(BaseModel):
     graph_revision_no: int = 0
     source_kind: str = ""
     anchor: str = ""
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
     quote_text: str = ""
     confidence: float = 1.0
     created_at: datetime
@@ -595,10 +601,10 @@ class ClearKnowledgeResponse(BaseModel):
 class BuildPlannerCreateRequest(BaseModel):
     """Create a new planner session and generate the first plan draft."""
 
-    file_uids: list[str] | None = Field(
+    file_ids: list[str] | None = Field(
         default=None,
         description=(
-            "Optional uploaded file UIDs to bind to the planner session. Files may still be parsing; "
+            "Optional uploaded file IDs to bind to the planner session. Files may still be parsing; "
             "planner prefers parsed content and falls back to filenames/metadata when needed."
         ),
     )
@@ -652,7 +658,7 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 
 class BuildPlannerPlanResponse(BaseModel):
     subject_id: str
-    selected_file_uids: list[str] = Field(default_factory=list)
+    selected_file_ids: list[str] = Field(default_factory=list)
     user_prompt: str
     digest_mode: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
@@ -682,8 +688,7 @@ class BuildPlannerConfirmResponse(BaseModel):
     subject_id: str
     status: str
     digest_mode: str
-    selected_file_uids: list[str] = Field(default_factory=list)
-    selected_file_ids: list[int] = Field(default_factory=list)
+    selected_file_ids: list[str] = Field(default_factory=list)
     user_prompt: str
     plan_summary: str
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
