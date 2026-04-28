@@ -171,6 +171,14 @@ def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
         )
         if descriptor is None:
             continue
+        if not _remote_package_exists(descriptor.package_url):
+            logger.warning(
+                "demo_course_catalog_item_skipped",
+                identifier=descriptor.identifier,
+                reason="package_url_unavailable",
+                package_url=descriptor.package_url,
+            )
+            continue
         descriptors.append(descriptor)
     return descriptors
 
@@ -419,6 +427,29 @@ def _validate_remote_content_length(response: httpx.Response) -> None:
         return
     if content_length > MAX_IMPORT_PACKAGE_BYTES:
         raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
+
+
+def _remote_package_exists(package_url: str) -> bool:
+    timeout = _get_demo_courses_timeout_s()
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            response = client.head(package_url)
+            if response.status_code < 400:
+                return True
+            if response.status_code in {404, 410}:
+                return False
+
+            with client.stream("GET", package_url, headers={"Range": "bytes=0-0"}) as fallback:
+                if fallback.status_code in {404, 410}:
+                    return False
+                return fallback.status_code < 400
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "demo_course_package_probe_failed",
+            package_url=package_url,
+            error=str(exc),
+        )
+        return False
 
 
 __all__ = [

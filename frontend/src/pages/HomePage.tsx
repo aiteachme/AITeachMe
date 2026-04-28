@@ -712,6 +712,7 @@ export function HomePage() {
     onError: (err: unknown) => {
       const message = getApiErrorMessage(err, "演示课程导入失败");
       setError(message);
+      void queryClient.invalidateQueries({ queryKey: ["available-courses"] });
       toast({
         title: "导入失败",
         description: message,
