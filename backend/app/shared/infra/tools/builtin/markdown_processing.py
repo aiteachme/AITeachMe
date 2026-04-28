@@ -280,6 +280,38 @@ def _strip_quote_prefix(line: str) -> str:
     return BLOCKQUOTE_PREFIX_PATTERN.sub("", str(line or ""), count=1).rstrip()
 
 
+def _quoted_markdown_body(line: str) -> str | None:
+    match = re.match(r"^\s*>\s?(.*)$", str(line or ""))
+    if match is None:
+        return None
+    return str(match.group(1) or "").rstrip()
+
+
+def _math_fence_prefix(line: str) -> str:
+    match = re.match(r"^(\s*>\s*)?\$\$\s*$", str(line or ""))
+    if match is None:
+        return ""
+    return str(match.group(1) or "")
+
+
+def _normalize_math_fence_line(line: str) -> str:
+    return f"{_math_fence_prefix(line)}$$"
+
+
+def _collect_loose_display_math_block(lines: list[str], start_index: int) -> tuple[list[str], int]:
+    body_lines = ["$$"]
+    index = start_index + 1
+    while index < len(lines):
+        current = lines[index].rstrip()
+        quoted = _quoted_markdown_body(current)
+        body_line = quoted if quoted is not None else current
+        body_lines.append(body_line)
+        index += 1
+        if MATH_FENCE_PATTERN.match(body_line):
+            break
+    return body_lines, index
+
+
 def _is_markdown_boundary_inside_math(line: str) -> bool:
     stripped = _strip_quote_prefix(line).strip()
     if not stripped:
@@ -293,19 +325,29 @@ def _repair_display_math_boundaries(markdown: str) -> str:
     lines = str(markdown or "").split("\n")
     fixed: list[str] = []
     in_math = False
+    math_prefix = ""
     for raw_line in lines:
         line = raw_line.rstrip()
         if MATH_FENCE_PATTERN.match(line):
-            fixed.append("$$")
-            in_math = not in_math
+            delimiter_prefix = _math_fence_prefix(line)
+            if in_math:
+                fixed.append(f"{delimiter_prefix or math_prefix}$$")
+                in_math = False
+                math_prefix = ""
+            else:
+                math_prefix = delimiter_prefix
+                fixed.append(f"{math_prefix}$$")
+                in_math = True
             continue
         if in_math and _is_markdown_boundary_inside_math(line):
-            if not fixed or fixed[-1] != "$$":
-                fixed.append("$$")
+            closing_delimiter = f"{math_prefix}$$"
+            if not fixed or fixed[-1] != closing_delimiter:
+                fixed.append(closing_delimiter)
             in_math = False
+            math_prefix = ""
         fixed.append(line)
     if in_math:
-        fixed.append("$$")
+        fixed.append(f"{math_prefix}$$")
     return "\n".join(fixed)
 
 
@@ -342,10 +384,19 @@ def _normalize_callout_blocks(markdown: str) -> str:
             index += 1
             while index < len(lines):
                 body_line = lines[index].rstrip()
-                quote_match = re.match(r"^\s*>\s?(.*)$", body_line)
-                if quote_match is None:
+                inner = _quoted_markdown_body(body_line)
+                if inner is None:
+                    if MATH_FENCE_PATTERN.match(body_line):
+                        math_lines, index = _collect_loose_display_math_block(lines, index)
+                        body_lines.extend(math_lines)
+                        continue
+                    if not body_line.strip():
+                        next_line = lines[index + 1].rstrip() if index + 1 < len(lines) else ""
+                        if _quoted_markdown_body(next_line) is not None or MATH_FENCE_PATTERN.match(next_line):
+                            body_lines.append("")
+                            index += 1
+                            continue
                     break
-                inner = str(quote_match.group(1) or "").rstrip()
                 if inner.strip() and CALLOUT_LINE_PATTERN.match(inner):
                     break
                 body_lines.append(inner)
@@ -452,7 +503,7 @@ def _escape_unpaired_inline_dollars(markdown: str) -> str:
             continue
         if MATH_FENCE_PATTERN.match(line):
             in_math = not in_math
-            fixed.append("$$")
+            fixed.append(_normalize_math_fence_line(line))
             continue
         if in_math:
             fixed.append(line)
@@ -486,7 +537,7 @@ def _escape_unsafe_inline_math_spans(markdown: str) -> str:
             continue
         if MATH_FENCE_PATTERN.match(line):
             in_math = not in_math
-            fixed.append("$$")
+            fixed.append(_normalize_math_fence_line(line))
             continue
         if in_math:
             fixed.append(line)
@@ -535,7 +586,7 @@ def _trim_inline_math_padding(markdown: str) -> str:
             continue
         if MATH_FENCE_PATTERN.match(line):
             in_math = not in_math
-            fixed.append("$$")
+            fixed.append(_normalize_math_fence_line(line))
             continue
         if in_math:
             fixed.append(line)
@@ -585,7 +636,7 @@ def _normalize_list_embedded_headings(markdown: str) -> str:
             continue
         if MATH_FENCE_PATTERN.match(line):
             in_math = not in_math
-            fixed.append("$$")
+            fixed.append(_normalize_math_fence_line(line))
             continue
         if in_math:
             fixed.append(line)
@@ -616,6 +667,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     lines = text.split("\n")
     fixed: list[str] = []
     in_math = False
+    math_prefix = ""
     in_fence = False
 
     for raw_line in lines:
@@ -624,10 +676,14 @@ def normalize_markdown_rendering(markdown: str) -> str:
 
         if in_math:
             if MATH_FENCE_PATTERN.match(line):
-                fixed.append("$$")
+                delimiter_prefix = _math_fence_prefix(line)
+                fixed.append(f"{delimiter_prefix or math_prefix}$$")
                 in_math = False
+                math_prefix = ""
                 continue
-            cleaned_math_line = _strip_quote_prefix(line) if BLOCKQUOTE_PREFIX_PATTERN.match(line) else line
+            cleaned_math_line = (
+                line if math_prefix else _strip_quote_prefix(line) if BLOCKQUOTE_PREFIX_PATTERN.match(line) else line
+            )
             if not cleaned_math_line.strip():
                 continue
             fixed.append(cleaned_math_line)
@@ -652,10 +708,12 @@ def normalize_markdown_rendering(markdown: str) -> str:
             continue
 
         if MATH_FENCE_PATTERN.match(line):
-            if fixed and fixed[-1].strip() == ">":
+            delimiter_prefix = _math_fence_prefix(line)
+            if not delimiter_prefix and fixed and fixed[-1].strip() == ">":
                 fixed[-1] = ""
-            fixed.append("$$")
+            fixed.append(f"{delimiter_prefix}$$")
             in_math = True
+            math_prefix = delimiter_prefix
             continue
 
         if stripped.startswith("> ```"):

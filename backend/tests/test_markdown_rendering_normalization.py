@@ -71,6 +71,27 @@ def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> 
     assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
 
 
+def test_normalize_keeps_loose_display_math_inside_callout() -> None:
+    raw = "\n".join(
+        [
+            "> [!IMPORTANT]",
+            ">",
+            "> 浮点数标准形式为：",
+            "$$",
+            "(-1)^S \\times M \\times 2^E",
+            "$$",
+            "> 其中 $S$ 为符号位，$M$ 为尾数，$E$ 为阶码。",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "> [!IMPORTANT]\n>\n> 浮点数标准形式为：" in fixed
+    assert "> $$\n> (-1)^S \\times M \\times 2^E\n> $$" in fixed
+    assert "> 其中 $S$ 为符号位，$M$ 为尾数，$E$ 为阶码。" in fixed
+    assert "display math 内混入 blockquote 前缀。" not in find_markdown_rendering_issues(fixed)
+
+
 def test_normalize_flattens_headings_inside_list_items() -> None:
     raw = "- # 数与代数：从运算到表达式的思维跃迁\n1. ### 章节复盘"
 

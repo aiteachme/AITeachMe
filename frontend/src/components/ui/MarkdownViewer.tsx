@@ -87,6 +87,10 @@ type MarkdownHeadingComponentProps = ComponentPropsWithoutRef<"h1"> & {
   node?: unknown;
 };
 
+type MarkdownBlockquoteComponentProps = ComponentPropsWithoutRef<"blockquote"> & {
+  node?: unknown;
+};
+
 type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
   node?: unknown;
 };
@@ -447,6 +451,42 @@ function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[
   }
 }
 
+function quotedMarkdownBody(line: string): string | null {
+  const match = line.match(/^\s*>\s?(.*)$/);
+  return match ? (match[1] ?? "") : null;
+}
+
+function isBareDisplayMathDelimiter(line: string): boolean {
+  return /^\s*\$\$\s*$/.test(line);
+}
+
+function displayMathDelimiterForRender(line: string): string {
+  return `${displayMathPrefixForRender(line)}$$`;
+}
+
+function displayMathPrefixForRender(line: string): string {
+  const match = line.match(/^(\s*>\s*)?\$\$\s*$/);
+  return match?.[1] ?? "";
+}
+
+function collectLooseDisplayMathBlock(lines: string[], startIndex: number): { body: string[]; nextIndex: number } {
+  const body: string[] = ["$$"];
+  let cursor = startIndex + 1;
+
+  while (cursor < lines.length) {
+    const current = lines[cursor];
+    const quoted = quotedMarkdownBody(current);
+    const bodyLine = quoted ?? current;
+    body.push(bodyLine.trimEnd());
+    cursor += 1;
+    if (isBareDisplayMathDelimiter(bodyLine)) {
+      break;
+    }
+  }
+
+  return { body, nextIndex: cursor };
+}
+
 function isCalloutBoundary(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -492,12 +532,25 @@ function preprocessCalloutSyntax(content: string): string {
 
       let cursor = index + 1;
       while (cursor < lines.length) {
-        const quotedBody = lines[cursor].match(/^\s*>\s?(.*)$/);
-        if (!quotedBody) {
+        const current = lines[cursor];
+        const bodyLine = quotedMarkdownBody(current);
+        if (bodyLine === null) {
+          if (isBareDisplayMathDelimiter(current)) {
+            const mathBlock = collectLooseDisplayMathBlock(lines, cursor);
+            body.push(...mathBlock.body);
+            cursor = mathBlock.nextIndex;
+            continue;
+          }
+          if (!current.trim()) {
+            const next = lines[cursor + 1] ?? "";
+            if (quotedMarkdownBody(next) !== null || isBareDisplayMathDelimiter(next)) {
+              body.push("");
+              cursor += 1;
+              continue;
+            }
+          }
           break;
         }
-
-        const bodyLine = quotedBody[1] ?? "";
         if (bodyLine.trim().match(new RegExp(`^\\[!(${CALLOUT_PATTERN})\\]`, "i"))) {
           break;
         }
@@ -661,27 +714,38 @@ function repairDisplayMathBoundariesForRender(markdown: string): string {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
   let inDisplayMath = false;
+  let displayMathPrefix = "";
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
     if (isDisplayMathDelimiterLine(line)) {
-      output.push("$$");
-      inDisplayMath = !inDisplayMath;
+      const delimiterPrefix = displayMathPrefixForRender(line);
+      if (inDisplayMath) {
+        output.push(`${delimiterPrefix || displayMathPrefix}$$`);
+        inDisplayMath = false;
+        displayMathPrefix = "";
+      } else {
+        displayMathPrefix = delimiterPrefix;
+        output.push(`${displayMathPrefix}$$`);
+        inDisplayMath = true;
+      }
       continue;
     }
 
     if (inDisplayMath && isMarkdownBoundaryInsideMath(line)) {
-      if (output[output.length - 1] !== "$$") {
-        output.push("$$");
+      const closingDelimiter = `${displayMathPrefix}$$`;
+      if (output[output.length - 1] !== closingDelimiter) {
+        output.push(closingDelimiter);
       }
       inDisplayMath = false;
+      displayMathPrefix = "";
     }
 
     output.push(line);
   }
 
   if (inDisplayMath) {
-    output.push("$$");
+    output.push(`${displayMathPrefix}$$`);
   }
 
   return output.join("\n");
@@ -776,7 +840,7 @@ function repairInlineMathForRender(markdown: string): string {
 
     if (isDisplayMathDelimiterLine(line)) {
       inDisplayMath = !inDisplayMath;
-      output.push("$$");
+      output.push(displayMathDelimiterForRender(line));
       continue;
     }
 
@@ -816,7 +880,7 @@ function normalizeListEmbeddedHeadingsForRender(markdown: string): string {
 
     if (isDisplayMathDelimiterLine(line)) {
       inDisplayMath = !inDisplayMath;
-      output.push("$$");
+      output.push(displayMathDelimiterForRender(line));
       continue;
     }
 
@@ -993,6 +1057,91 @@ function extractMarkdownAstText(node: MarkdownAstNode | undefined): string {
   if (typeof node.value === "string") return node.value;
   if (!Array.isArray(node.children)) return "";
   return node.children.map(extractMarkdownAstText).join("");
+}
+
+function normalizeCalloutKind(value: string | undefined): CalloutKind | null {
+  const normalized = value?.toLowerCase();
+  if (
+    normalized === "note" ||
+    normalized === "tip" ||
+    normalized === "important" ||
+    normalized === "warning" ||
+    normalized === "caution"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function extractCalloutMarker(paragraph: MarkdownAstNode): CalloutKind | null {
+  const children = paragraph.children;
+  if (!Array.isArray(children) || children.length === 0) {
+    return null;
+  }
+
+  const firstTextIndex = children.findIndex((child) => child.type === "text" && typeof child.value === "string");
+  if (firstTextIndex < 0) {
+    return null;
+  }
+
+  const firstText = children[firstTextIndex];
+  const match = String(firstText.value ?? "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*/i);
+  const kind = normalizeCalloutKind(match?.[1]);
+  if (!match || !kind || firstTextIndex > 0) {
+    return null;
+  }
+
+  const remaining = String(firstText.value ?? "").slice(match[0].length);
+  if (remaining) {
+    firstText.value = remaining;
+  } else {
+    children.splice(firstTextIndex, 1);
+  }
+
+  if (children.length === 0) {
+    paragraph.children = [];
+  }
+
+  return kind;
+}
+
+function remarkCallouts() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      const children = node.children;
+      if (!Array.isArray(children)) {
+        return;
+      }
+
+      for (const child of children) {
+        if (child.type === "blockquote") {
+          const firstChild = child.children?.[0];
+          if (firstChild?.type === "paragraph") {
+            const kind = extractCalloutMarker(firstChild);
+            if (kind) {
+              child.data = {
+                ...(child.data ?? {}),
+                hProperties: {
+                  ...(child.data?.hProperties ?? {}),
+                  "data-callout-kind": kind,
+                },
+              };
+
+              if (!firstChild.children?.length) {
+                child.children?.shift();
+              }
+            }
+          }
+        }
+
+        if (child.type !== "math" && child.type !== "inlineMath") {
+          visit(child);
+        }
+      }
+    };
+
+    visit(tree);
+  };
 }
 
 function isHeadingNode(node: MarkdownAstNode): node is MarkdownAstNode & { depth: number } {
@@ -1504,7 +1653,7 @@ export function MarkdownViewer({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, headingStructurePlugin]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkCallouts, headingStructurePlugin]}
       rehypePlugins={[
         [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
         rehypeHighlight,
@@ -1539,8 +1688,11 @@ export function MarkdownViewer({
         ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
         ol: ({ children }) => <ol className={styles.orderedList}>{children}</ol>,
         li: ({ children }) => <li className={styles.listItem}>{children}</li>,
-        blockquote: ({ children }) => {
-          const callout = parseCallout(children);
+        blockquote: ({ children, ...props }: MarkdownBlockquoteComponentProps) => {
+          const propKind = normalizeCalloutKind(readStringProp(props, "data-callout-kind"));
+          const callout = propKind
+            ? { kind: propKind, body: Children.toArray(children).filter((item) => item !== "\n") }
+            : parseCallout(children);
           if (!callout) {
             return <blockquote className={styles.blockquote}>{children}</blockquote>;
           }
