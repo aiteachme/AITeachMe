@@ -16,6 +16,7 @@ __pycache__
 # 密钥和本地环境变量必须由部署平台注入，不能被 COPY 进镜像。
 .env
 .env.*
+settings.private.yaml
 
 # 后端运行时数据、虚拟环境、测试和调试材料不进入生产镜像。
 backend/.venv

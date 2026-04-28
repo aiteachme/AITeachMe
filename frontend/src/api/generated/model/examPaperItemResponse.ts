@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.0.1
  */
 import type { ExamNodeLinkResponse } from './examNodeLinkResponse';
+import type { ExamPaperItemResponseSelectionContext } from './examPaperItemResponseSelectionContext';
 
 export interface ExamPaperItemResponse {
   id: number;
@@ -18,6 +19,7 @@ export interface ExamPaperItemResponse {
   correct_answer?: string | null;
   explanation: string;
   knowledge_unit_links?: ExamNodeLinkResponse[];
+  selection_context?: ExamPaperItemResponseSelectionContext;
   user_answer?: string | null;
   is_correct?: boolean | null;
   score_obtained?: number | null;

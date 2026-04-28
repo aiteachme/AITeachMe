@@ -12,7 +12,7 @@
 export interface KnowledgeGraphBuildMetricsResponse {
   /** Legacy parsed-file chunk count; docs-sync builds keep this at 0. */
   processed_chunks?: number;
-  /** Knowledge-doc sections analyzed by kg_docs_sync. */
+  /** Knowledge-doc sections analyzed by kg_doc_sync. */
   doc_sync_section_count?: number;
   /** Knowledge units created or updated by docs-sync. */
   doc_sync_unit_changes?: number;

@@ -8,12 +8,11 @@ from app.workflows.profile.pipeline.lib.mastery import (
 )
 from app.workflows.profile.pipeline.lib.reporting import generate_report_suggestions
 from app.workflows.profile.pipeline.lib.reviews import compute_sm2_interval, schedule_reviews
+from app.schemas.profile import SubjectProfileSummary, UserProfileSummary
 from app.workflows.profile.pipeline.lib.subject_profile import (
-    SubjectProfileSummary,
     build_subject_profile_summary,
 )
 from app.workflows.profile.pipeline.lib.user_profile import (
-    UserProfileSummary,
     build_user_profile_summary,
 )
 from app.workflows.profile.pipeline.lib.weakness import WeaknessItem, analyze_weakness
