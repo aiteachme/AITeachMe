@@ -30,7 +30,7 @@ AITeachMe 同时支持：
 | --- | --- |
 | 运行模式 | `backend/app/shared/infra/runtime/` |
 | 数据库初始化 | `backend/app/shared/infra/database/core.py` |
-| 迁移 | `backend/alembic/` |
+| 迁移 | `backend/migrations/` + `backend/alembic.ini` |
 | 存储抽象 | `backend/app/shared/infra/storage/` |
 | 设置系统 | `backend/app/workflows/support/system/` |
 | 鉴权 | `backend/app/workflows/support/auth/` |

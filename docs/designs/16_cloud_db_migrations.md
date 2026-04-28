@@ -30,7 +30,7 @@
 
 - `backend/alembic.ini`
 - `backend/migrations/env.py`
-- `backend/migrations/versions/20260421_0001_initial_postgres_schema.py`
+- `backend/migrations/versions/`
 
 职责：
 
@@ -53,12 +53,14 @@
 
 ### Render pre-deploy 工具
 
+- `backend/scripts/bootstrap_cloud_db.py`
 - `backend/scripts/prepare_cloud_db.py`
 - `backend/scripts/check_cloud_db.py`
 - `backend/scripts/check_migration_sql.py`
 
 职责：
 
+- `bootstrap_cloud_db.py`：云端 pre-deploy 的单一入口，执行 Alembic upgrade、运行时对象准备和最终检查；遇到 legacy 脏库时要求显式 `--reset-db` 或 `ALLOW_CLOUD_DB_RESET=true`。
 - `prepare_cloud_db.py`：创建/校验运行时对象。
 - `check_cloud_db.py`：检查 DB 是否达到“可切流”状态。
 - `check_migration_sql.py`：检查离线 migration SQL 中是否出现危险 DDL。
@@ -89,15 +91,18 @@
 
 ## 4. Render 配置
 
-Render Native Python runtime 建议配置：
+Render Native Python runtime 如果只跑纯 Python 依赖，可以配置：
 
 ```bash
 # Pre-deploy command
-cd backend && alembic upgrade head && python scripts/prepare_cloud_db.py && python scripts/check_cloud_db.py
+cd backend && python scripts/bootstrap_cloud_db.py
 
 # Start command
 cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
+
+Render Docker runtime 使用 `infra/deployment/docker/backend.Dockerfile` 时，镜像默认命令会在单副本场景下调用
+`python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}`。多副本平台仍建议把迁移拆成独立 Job，只让 Web 容器启动 Uvicorn。
 
 推荐环境变量：
 
@@ -180,8 +185,10 @@ soffice --headless --version
 - `knowledge_unit`
 - `knowledge_edge`
 - `question_template`
+- `question_knowledge_unit_link`
 - `exam_paper`
 - `exam_paper_item`
+- `exam_study_guide_cache`
 - `user_knowledge_state`
 - `chat_session`
 - `chat_message`
@@ -255,12 +262,12 @@ python scripts/check_migration_sql.py
 建议使用本地 `pgvector/pgvector` 容器或临时 Render 空库：
 
 ```bash
-APP_MODE=cloud DATABASE_URL=<pg-url> alembic upgrade head
+APP_MODE=cloud DATABASE_URL=<pg-url> python scripts/bootstrap_cloud_db.py
 APP_MODE=cloud DATABASE_URL=<pg-url> python scripts/prepare_cloud_db.py
 APP_MODE=cloud DATABASE_URL=<pg-url> python scripts/check_cloud_db.py
 ```
 
-至少跑两次，确认幂等性。
+通常只需要跑 `bootstrap_cloud_db.py`；后两条可在排障时单独执行。至少跑两次，确认幂等性。
 
 ### Step 6：跑测试
 

@@ -40,6 +40,8 @@
 - `question_type_registry`：题型注册表。
 - `question_template`：题目模板。
 - `exam_paper`、`exam_paper_item`：试卷与试卷题目。
+- `question_knowledge_unit_link`：题目模板或试卷题目与 `knowledge_unit` 的加权覆盖关系，供出题、判题和掌握度回写使用。
+- `exam_study_guide_cache`：试卷判分后生成的学习指南缓存，避免重复生成并支持异步返回。
 - `user_knowledge_state`：用户对某个 `knowledge_unit` 的掌握度状态。
 - `chat_session`、`chat_message`：伴读对话会话与消息；Planner 已确认构建方案内联在对应 `chat_session.meta_json.confirmed_plan` 中。
 
@@ -69,4 +71,5 @@
 
 - 不手动新增旧课程结构表。
 - API、导入导出和前端展示都以 `knowledge_document + knowledge_unit + knowledge_edge + knowledge_graph_source_ref` 为当前 Digest/图谱产物。
-- 数据库迁移仍是 PostgreSQL 的生产来源；本地 SQLite 由模型创建并清理历史结构。
+- PostgreSQL 生产 schema 由 `backend/migrations/versions/` 下的 Alembic migration 维护；本地 SQLite 由模型创建并清理历史结构。
+- 新增表、字段、唯一约束或外键时，必须同时检查 `backend/app/shared/infra/database/core.py` 的 `_SCHEMA_MODELS`、云端检查脚本和本文清单是否需要同步。
