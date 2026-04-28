@@ -12,9 +12,11 @@ All functions are synchronous so ingest workflows should call them via
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
 import structlog
 
@@ -27,6 +29,8 @@ DEFAULT_PADDLE_OCR_OPTIONAL_PAYLOAD = {
 }
 
 logger = structlog.get_logger(__name__)
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target>[^)]+)\)")
+_HTML_IMAGE_RE = re.compile(r'(<img\b[^>]*?\bsrc=["\'])(?P<src>[^"\']+)(["\'])', re.IGNORECASE)
 
 
 def _get_requests():
@@ -202,27 +206,47 @@ def _download_and_materialize_jsonl(
             raise RuntimeError(f"PaddleOCR JSONL 解析失败: {exc}") from exc
 
         for layout_index, layout_result in enumerate(result.get("layoutParsingResults") or [], start=1):
-            markdown_block = ((layout_result.get("markdown") or {}).get("text") or "").strip()
+            markdown_payload = layout_result.get("markdown") or {}
+            markdown_block = (markdown_payload.get("text") or "").strip()
+            markdown_images = markdown_payload.get("images") or {}
+            output_images = layout_result.get("outputImages") or {}
+
             if markdown_block:
+                referenced_names = _collect_referenced_image_names(markdown_block)
+                rename_map: dict[str, str] = {}
+                skipped_markdown_images = 0
+
+                for raw_name, image_url in markdown_images.items():
+                    normalized_name = Path(str(raw_name)).name
+                    if normalized_name.lower() not in referenced_names:
+                        skipped_markdown_images += 1
+                        continue
+                    image_counter += 1
+                    filename = _download_image(
+                        image_url=str(image_url),
+                        dest_dir=images_dir,
+                        preferred_name=f"{image_counter:03d}_{normalized_name}",
+                    )
+                    rename_map[normalized_name.lower()] = filename
+                    logger.info("paddle_ocr_cloud_markdown_image_saved", filename=filename, raw_name=normalized_name)
+
+                if rename_map:
+                    markdown_block = _rewrite_markdown_image_names(markdown_block, rename_map)
+                if skipped_markdown_images:
+                    logger.info(
+                        "paddle_ocr_cloud_markdown_images_skipped",
+                        skipped=skipped_markdown_images,
+                        layout_index=layout_index,
+                    )
+
+                if output_images:
+                    logger.info(
+                        "paddle_ocr_cloud_output_images_ignored",
+                        ignored=len(output_images),
+                        layout_index=layout_index,
+                    )
+
                 sections.append(markdown_block)
-
-            for raw_name, image_url in ((layout_result.get("markdown") or {}).get("images") or {}).items():
-                image_counter += 1
-                filename = _download_image(
-                    image_url=str(image_url),
-                    dest_dir=images_dir,
-                    preferred_name=f"{image_counter:03d}_{Path(str(raw_name)).name}",
-                )
-                logger.info("paddle_ocr_cloud_markdown_image_saved", filename=filename)
-
-            for output_name, image_url in (layout_result.get("outputImages") or {}).items():
-                image_counter += 1
-                filename = _download_image(
-                    image_url=str(image_url),
-                    dest_dir=images_dir,
-                    preferred_name=f"{image_counter:03d}_{Path(str(output_name)).name}.jpg",
-                )
-                logger.info("paddle_ocr_cloud_output_image_saved", filename=filename)
 
             if markdown_block:
                 sections.append("")
@@ -246,6 +270,87 @@ def _download_image(*, image_url: str, dest_dir: Path, preferred_name: str) -> s
     filename = _dedupe_filename(dest_dir=dest_dir, preferred_name=preferred_name)
     (dest_dir / filename).write_bytes(response.content)
     return filename
+
+
+def _collect_referenced_image_names(markdown: str) -> set[str]:
+    referenced: set[str] = set()
+
+    for match in _MARKDOWN_IMAGE_RE.finditer(markdown):
+        target = _extract_markdown_target_path(match.group("target"))
+        if not target:
+            continue
+        referenced.add(Path(unquote(target)).name.lower())
+
+    for match in _HTML_IMAGE_RE.finditer(markdown):
+        src = (match.group("src") or "").strip()
+        if not src:
+            continue
+        referenced.add(Path(unquote(src)).name.lower())
+
+    return referenced
+
+
+def _rewrite_markdown_image_names(markdown: str, rename_map: dict[str, str]) -> str:
+    if not rename_map:
+        return markdown
+
+    def _replace_markdown_image(match):
+        target = match.group("target")
+        path, suffix = _split_markdown_target(target)
+        replaced = _replace_target_basename(path, rename_map)
+        if replaced == path:
+            return match.group(0)
+        return f"![{match.group('alt')}]({replaced}{suffix})"
+
+    rewritten = _MARKDOWN_IMAGE_RE.sub(_replace_markdown_image, markdown)
+
+    def _replace_html_image(match):
+        src = match.group("src")
+        replaced = _replace_target_basename(src, rename_map)
+        if replaced == src:
+            return match.group(0)
+        return f"{match.group(1)}{replaced}{match.group(3)}"
+
+    return _HTML_IMAGE_RE.sub(_replace_html_image, rewritten)
+
+
+def _split_markdown_target(target: str) -> tuple[str, str]:
+    trimmed = target.strip()
+    if trimmed.startswith("<") and ">" in trimmed:
+        end = trimmed.find(">")
+        return trimmed[1:end], trimmed[end + 1 :]
+    match = re.match(r'(?P<path>\S+)(?P<suffix>\s+["\'][^"\']*["\'])?$', trimmed)
+    if match is None:
+        return trimmed, ""
+    return match.group("path"), match.group("suffix") or ""
+
+
+def _extract_markdown_target_path(target: str) -> str:
+    path, _ = _split_markdown_target(target)
+    return path.strip()
+
+
+def _replace_target_basename(target: str, rename_map: dict[str, str]) -> str:
+    trimmed = target.strip()
+    if not trimmed:
+        return target
+
+    quote_prefix = ""
+    quote_suffix = ""
+    if trimmed.startswith("<") and trimmed.endswith(">"):
+        quote_prefix = "<"
+        quote_suffix = ">"
+        trimmed = trimmed[1:-1].strip()
+
+    path_obj = Path(unquote(trimmed))
+    filename = path_obj.name
+    replacement = rename_map.get(filename.lower())
+    if replacement is None:
+        return target
+
+    parent = path_obj.parent
+    replaced_path = replacement if str(parent) in ("", ".") else f"{parent.as_posix()}/{replacement}"
+    return f"{quote_prefix}{replaced_path}{quote_suffix}"
 
 
 def _dedupe_filename(*, dest_dir: Path, preferred_name: str) -> str:
