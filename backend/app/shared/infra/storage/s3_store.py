@@ -198,8 +198,14 @@ class S3ArtifactStore(ArtifactStore):
 
         parsed = _DogeCloudTmpTokenResponse.model_validate(payload)
         if parsed.code != 200 or parsed.data is None or not parsed.data.buckets:
+            hint = (
+                "请确认 DOGECLOUD_SPACE_NAME 是 DogeCloud 控制台里的存储空间名，"
+                "不是 tmp_token 返回的 S3 bucket；如果要直接使用 S3 bucket / endpoint / AKSK，"
+                "请改用 S3_CREDENTIAL_MODE=static。"
+            )
             raise RuntimeError(
-                f"DogeCloud tmp_token 接口返回异常: code={parsed.code}, msg={parsed.msg or 'unknown'}"
+                f"DogeCloud tmp_token 接口返回异常: code={parsed.code}, "
+                f"msg={parsed.msg or 'unknown'}。{hint}"
             )
 
         bucket_info = parsed.data.buckets[0]
