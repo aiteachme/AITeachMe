@@ -307,7 +307,7 @@ def build_chapter_title_resolution_messages(
     system_prompt = """
 你是 AITeachMe 的课程命名助手。
 你的任务是根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。
-你只输出一个标题，不输出解释、编号或 Markdown；标题不要写“1.”、“(1).”、“（一）”、“一、”、“第 1 章”等展示编号。
+你只输出一个语义清晰的标题，不输出解释、编号或 Markdown。
 """.strip()
     user_prompt = f"""
 请为下面这一章生成一个新的中文章节标题。
@@ -330,7 +330,7 @@ def build_chapter_title_resolution_messages(
 1. 只输出一个中文标题。
 2. 不要出现“全景导论”“总结与延展”“主题导入”“概念定义”等模板化命名。
 3. 标题要像真实讲义章节名，体现知识主线或问题意识。
-4. 不要输出编号，不要输出解释，不要输出 Markdown；如果来源标题带编号，只保留语义标题。
+4. 不要输出编号、解释或 Markdown；如果来源标题带编号，只保留语义标题。
 """.strip()
     return [
         {"role": "system", "content": system_prompt},
@@ -641,9 +641,9 @@ def build_chapter_guide(
     goal_line = objective.strip() or f"理解《{title}》这一章最核心的知识主线。"
     focus_items = required_elements[:4] or _default_required_elements(normalized_mode)
     evidence_line = (
-        f"本章整合了 {source_count} 条筛选后的参考来源。"
-        if source_count > 0
-        else "本章基于构建方案与当前可用学习素材整理而成。"
+        "先抓住本章目标和核心结构，再用例题、条件和易错边界检查理解。"
+        if normalized_mode == "sprint"
+        else "先理解本章在整体知识中的位置，再进入定义、推理和应用。"
     )
 
     lines = [
@@ -818,7 +818,8 @@ def _build_mode_sections(
                     [
                         resolved_headings["map"],
                         "",
-                        f"<!-- [MERMAID: {title} 的整体知识脉络图] -->",
+                        f"- 先把《{title}》看成本门内容的入口，确认它要连接哪些概念和方法。",
+                        "- 再顺着后续章节回看这一章，判断哪些定义、符号或思路会被反复调用。",
                     ]
                 ).strip(),
             )

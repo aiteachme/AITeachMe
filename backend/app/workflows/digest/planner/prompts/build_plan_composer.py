@@ -64,7 +64,7 @@ def build_plan_composer_messages(
     chapter_count_hint = (
         f"章节数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。"
         f"不要为了粗颗粒而压成少于 {mode_config.min_chapters} 章；"
-        "如果资料覆盖多个知识簇、题型或学习阶段，应主动拆到更细的 5-7 章。"
+        "如果资料覆盖多个知识簇、题型或学习阶段，应在模式允许范围内主动拆细。"
     )
     # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
     # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。

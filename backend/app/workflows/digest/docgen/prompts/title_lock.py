@@ -21,8 +21,8 @@ def build_title_lock_messages(
 你是 AITeachMe 的 DocGen 章节标题锁定器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
 你只能在 confirmed title 的基础上做轻微收束和具体化，不能引入新主题。
-标题必须像课程目录，不要使用比喻、拟人或文学化表达，例如“知识网络的初步编织”“启航”“探索之旅”。
-标题本身不要包含任何展示编号，例如“1.”、“(1).”、“（一）”、“一、”、“第 1 章”等。
+标题要像真实课程目录，避免空泛比喻、拟人或文学化表达。
+标题本身不要包含编号或样式说明。
 """.strip()
     prompt = f"""
 请为下面这一章锁定最终发布标题。
@@ -51,7 +51,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 1. enhanced_title 会成为最终发布标题。
 2. 只能做轻微收束、补足和具体化，不能新增学习主题。
 3. 如果不确定，enhanced_title 必须直接沿用 confirmed_title。
-4. confirmed_title 和 enhanced_title 都不要带编号；如果原标题带编号，只保留后面的语义标题。
+4. confirmed_title 和 enhanced_title 都只保留语义标题；如果原标题带编号，只保留后面的语义部分。
 5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的学科对象，例如“跨模块联系：代数、几何与统计的综合应用”。
 6. 不要输出任何教学大纲、检索词、媒体请求或其他字段。
 """.strip()

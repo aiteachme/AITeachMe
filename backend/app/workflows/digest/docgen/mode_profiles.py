@@ -15,7 +15,7 @@ DocGenMode = Literal["sprint", "systematic"]
 BASE_WRITING_RULES: tuple[str, ...] = (
     "严格按用户确认的章节边界写作，不新增、删除或重排章节。",
     "优先使用本地学习资料；外部来源只用于补缺和校准。",
-    "例题若非原始资料或可靠来源，不得称为真题，只能称为自测例题或变式练习。",
+    "没有原始资料或可靠来源支撑的题目，不要称为真题。",
     "所有术语、公式和推理必须给出可读解释，避免只抛结论。",
 )
 
@@ -173,8 +173,8 @@ _SPRINT_PROFILE = DocGenModeProfile(
     mode_writing_rule="冲刺模式要突出题型、速判、例题解析和易错辨析。",
     prompt_label="冲刺型",
     prompt_priority="抓重点、抓题型、抓易错点",
-    prompt_opening_guidance="如果这是课程开篇，本章必须先用直观场景、常见题型或学习动机破题，再建立概念直觉。",
-    prompt_closing_guidance="如果这是课程收束章，本章必须回收高频题型、易错点和综合例题解析。",
+    prompt_opening_guidance="如果这是课程开篇，优先用直观场景、常见题型或学习动机破题，再建立概念直觉。",
+    prompt_closing_guidance="如果这是课程收束章，优先回收高频题型、易错点和综合例题解析。",
     prompt_research_focus="高频考点、题型线索、典型例题和易错点",
     seed_target_length=950,
     fallback_teaching_outline=("先标出高频考点和题型", "用典型题带出最短方法", "最后辨析易错边界"),
@@ -221,8 +221,8 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
     mode_writing_rule="系统模式要突出定义、结构、推理、例子和迁移。",
     prompt_label="系统型",
     prompt_priority="定义、定理、推导、应用与章节之间的结构关系",
-    prompt_opening_guidance="如果这是课程开篇，本章必须给出整体知识脉络；不要自行输出任何资产占位符。",
-    prompt_closing_guidance="如果这是课程收束章，本章必须回收全文主线，并给出进一步深入学习的建议。",
+    prompt_opening_guidance="如果这是课程开篇，优先给出整体知识脉络。",
+    prompt_closing_guidance="如果这是课程收束章，优先回收全文主线，并给出进一步深入学习的建议。",
     prompt_research_focus="定义、推导、适用条件、结构关系和可迁移例子",
     prompt_extra_contract="如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。",
     seed_target_length=1300,

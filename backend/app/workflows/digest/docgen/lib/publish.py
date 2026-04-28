@@ -34,6 +34,7 @@ from app.shared.infra.knowledge.build_store import (
     write_knowledge_manifest,
 )
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
+from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.support.subjects.learning_context import update_subject_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
@@ -77,6 +78,7 @@ def _prepare_chapter_markdown(
     focus_items: list[str] | None = None,
 ) -> str:
     cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+    cleaned = sanitize_public_markdown(cleaned)
     cleaned = normalize_textbook_headings(
         cleaned,
         digest_mode=digest_mode,
@@ -124,7 +126,7 @@ def build_merged_markdown(
     """Merge chapter markdown into the published knowledge-doc layout."""
 
     deduped_chapters = _dedupe_chapter_metadatas(chapters)
-    include_sources = bool((document_context or {}).get("include_sources", True))
+    include_sources = bool((document_context or {}).get("include_sources", False))
     separator = "\n\n---\n\n"
     body: list[str] = []
     all_source_details: list[dict[str, object]] = []
@@ -149,7 +151,7 @@ def build_merged_markdown(
     merged = separator.join(body).strip()
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
-    return normalize_mermaid_blocks(merged.strip()) + "\n"
+    return sanitize_public_markdown(normalize_mermaid_blocks(merged.strip()))
 
 
 
@@ -243,6 +245,13 @@ def _build_source_scope(chapter: dict) -> dict[str, object]:
         "domains": domains,
         "sources": source_details,
     }
+
+
+def _collect_reference_debug_section(chapters: list[dict]) -> str:
+    all_source_details: list[dict[str, object]] = []
+    for chapter in chapters:
+        all_source_details.extend(list(chapter.get("source_details") or []))
+    return build_reference_section(all_source_details, heading="## 构建调试来源").strip()
 
 
 def _clean_source_file_ids(value: object) -> list[str]:
@@ -339,6 +348,9 @@ async def stage_knowledge_docs(
         cover_markdown=cover_markdown,
     )
     await cs.write_text(subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md", merged_markdown)
+    reference_debug = _collect_reference_debug_section(sorted_chapters)
+    if reference_debug:
+        await cs.write_text(subject_scope.knowledge_build_prefix() + "source_references.md", reference_debug + "\n")
     if docgen_artifacts is not None:
         await cs.write_json_raw(subject_scope.knowledge_build_prefix() + "docgen_manifest.json", docgen_artifacts)
 

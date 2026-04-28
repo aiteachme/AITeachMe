@@ -70,7 +70,7 @@ class DocGenContext(DocGenBaseModel):
     planner_context: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
-    include_sources: bool = True
+    include_sources: bool = False
     local_source_count: int = 0
     section_count: int = 0
 

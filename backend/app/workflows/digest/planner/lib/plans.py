@@ -222,7 +222,7 @@ def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: S
         "target_chapter_count": target_count,
         "target_length": config.target_length,
         "include_exercises": True,
-        "include_sources": True,
+        "include_sources": False,
         "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
     }
 

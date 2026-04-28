@@ -30,7 +30,6 @@ backend/app/workflows/digest/
 - `docgen/`：知识文档生成。
 - `kg_doc_sync/`：知识文档和知识图谱同步的正式链路。
 - `common/`：跨 lane 共享能力。
-- `workflows/support/knowledge_graph/`：图谱触发、状态、总览和查询用例，不是 digest lane。
 
 ## 2. Planner 当前定位
 
@@ -139,14 +138,20 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 
 ## 7. KG lane
 
-当前图谱主线是：
+当前图谱构建主线只有 `kg_doc_sync/`；support 层只保留 API-facing 的查询、总览、来源解释和手动重建用例。
 
 - `kg_doc_sync/`
 - `workflows/support/knowledge_graph/`
 
+知识图谱不再直接从上传文件独立入图。DocGen 发布知识文档后可以自动触发
+`kg_doc_sync`；知识图谱面板也可以调用
+`POST /api/v1/subjects/{subject}/knowledge/build/graph` 手动重建当前发布文档对应的图谱。
+API-facing 的图谱查询、总览、来源解释和手动重建入口都通过
+`app.workflows.digest.kg_doc_sync` 暴露稳定用例，不再另建 support 影子模块。
+
 自动同步支持 DocGen sidecar 预抽取：章节增强完成后可在后台生成 section 级候选缓存；发布成功后 `kg_doc_sync` 用最终 Markdown 的 hash 复用命中的缓存，对变更章节补抽，再统一写入正式图谱表。手动图谱重建仍只读取已发布 KnowledgeDoc，不依赖预抽取缓存。
 
-旧的 `kg_file_ingest` 文件级图谱入口已退出产品主线。后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询和触发也收口在 `kg_doc_sync` 与 `workflows/support/knowledge_graph/`。
+旧的 `kg_file_ingest` 文件级图谱入口已退出产品主线。后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询、总览、来源解释和手动重建入口也收口在 `kg_doc_sync` 与 `workflows/support/knowledge_graph/`。
 
 ## 8. common 使用规则
 

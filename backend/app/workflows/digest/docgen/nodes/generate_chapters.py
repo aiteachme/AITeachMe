@@ -298,14 +298,10 @@ def _research_preview_markdown(
 ) -> str:
     read_url_count = int(research_trace.budget_used.get("read_url_count", 0) or 0)
     document_count = int(research_trace.budget_used.get("document_count", 0) or 0)
-    source_titles = [
-        str(item.get("title") or item.get("source_title") or item.get("url") or "").strip()
-        for item in source_details
-    ]
     lines = [
         f"# {title}",
         "",
-        "检索与证据整理已完成，正在进入正文写作。这里先展示本章已经锁定的资料范围和证据线索。",
+        "检索与证据整理已完成，正在进入正文写作。",
         "",
         "## 检索结果",
         "",
@@ -318,10 +314,7 @@ def _research_preview_markdown(
     if fallback_used:
         lines.append("- 检索出现异常，系统会使用章节 brief 兜底生成。")
     _append_preview_list(lines, "执行过的查询", research_trace.executed_queries, limit=5)
-    _append_preview_list(lines, "已纳入证据来源", source_titles, limit=5)
     _append_preview_list(lines, "仍需补强的点", research_trace.gap_notes, limit=4)
-    if dense_context.strip():
-        lines.extend(["", "## 上下文摘录", "", build_draft_excerpt(dense_context, max_chars=420)])
     return _trim_preview_markdown("\n".join(lines), max_chars=1400)
 
 
