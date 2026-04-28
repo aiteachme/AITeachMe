@@ -22,30 +22,30 @@ def _backfill_duplicate_default_signatures() -> None:
             "WHERE parse_request_signature IS NULL OR parse_request_signature = ''"
         )
     )
-    rows = connection.execute(
+    connection.execute(
         sa.text(
-            "SELECT id, user_id, content_hash, file_size_bytes, filetype "
-            "FROM raw_file "
-            "WHERE status != 'failed' "
-            "AND content_hash IS NOT NULL "
-            "AND file_size_bytes IS NOT NULL "
-            "AND parse_request_signature = 'default' "
-            "ORDER BY created_at ASC, id ASC"
+            """
+            WITH ranked AS (
+                SELECT
+                    id,
+                    row_number() OVER (
+                        PARTITION BY user_id, content_hash, file_size_bytes, filetype
+                        ORDER BY created_at ASC, id ASC
+                    ) AS duplicate_rank
+                FROM raw_file
+                WHERE status != 'failed'
+                AND content_hash IS NOT NULL
+                AND file_size_bytes IS NOT NULL
+                AND parse_request_signature = 'default'
+            )
+            UPDATE raw_file
+            SET parse_request_signature = 'legacy:' || CAST(id AS TEXT)
+            WHERE id IN (
+                SELECT id FROM ranked WHERE duplicate_rank > 1
+            )
+            """
         )
-    ).mappings()
-    seen: set[tuple[object, object, object, object]] = set()
-    duplicate_ids: list[int] = []
-    for row in rows:
-        key = (row["user_id"], row["content_hash"], row["file_size_bytes"], row["filetype"])
-        if key in seen:
-            duplicate_ids.append(int(row["id"]))
-        else:
-            seen.add(key)
-    for raw_file_id in duplicate_ids:
-        connection.execute(
-            sa.text("UPDATE raw_file SET parse_request_signature = :signature WHERE id = :raw_file_id"),
-            {"signature": f"legacy:{raw_file_id}", "raw_file_id": raw_file_id},
-        )
+    )
 
 
 def upgrade() -> None:

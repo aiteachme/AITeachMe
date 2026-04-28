@@ -717,7 +717,7 @@ repair_trace
 可以：
 
 - Mermaid、交互占位处理、公式清洗、Markdown 结构，以及按需追加例题/练习。
-- 根据 digest mode 和章节合同决定表现层策略；当前不再生成讲义配图。
+- 根据 digest mode 和章节合同决定表现层策略；正文表现优先使用标准 Markdown 表格、加粗和 `[!IMPORTANT]` / `[!TIP]` / `[!WARNING]` callout，让前端渲染出清晰的重点、技巧和易错提示；当前不再生成讲义配图。
 
 不能：
 

@@ -129,6 +129,26 @@ soffice --headless --version
 
 注意：Render Web Service 必须监听 `0.0.0.0:$PORT`。当前 Dockerfile 默认兼容 Render 的 `PORT=10000`，Compose 会覆盖为 `9020`。
 
+### Render / OSS 上线检查
+
+后端镜像部署完成后，先用平台 Shell 或一次性任务确认基础服务可用：
+
+```bash
+python scripts/check_cloud_db.py
+python scripts/test_env.py
+which soffice
+soffice --headless --version
+```
+
+对象存储检查：
+
+- `STORAGE_BACKEND=s3` 时必须同时配置 `S3_BUCKET`、`S3_ENDPOINT`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`。
+- 如果前端需要直接访问解析资产，配置 `S3_PUBLIC_BASE_URL`，并在 OSS/CDN 侧允许前端域名访问对应对象。
+- 首次上线可临时开启 `S3_STARTUP_SMOKE_TEST=true`，确认启动日志里没有 bucket 读写错误；验证完成后关闭，避免每次启动都做额外探测。
+- 解析链路上传 PDF、PPTX、DOCX 和图片各一份，确认 `/api/v1/subjects/{subject}/files` 返回 `markdown_ready=true`，并且知识文档页面能展示图片或图表资产。
+
+后续迁移到 Sealos 或多副本时，把数据库迁移与服务启动拆开：迁移只由 Job 执行一次，后端 App 只启动 Uvicorn，避免多个副本同时 bootstrap。
+
 ## Sealos 部署
 
 推荐部署形态：

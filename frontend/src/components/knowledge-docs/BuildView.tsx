@@ -9,6 +9,7 @@ import type {
   KnowledgeBuildMetrics,
   KnowledgeBuildPreview,
 } from "./types";
+import { BuildMetricsBadges } from "./BuildMetricsBadges";
 import { useBuildTimelineSteps } from "./BuildProcessTimeline";
 import { buildChapterStatusLabel, formatBuildEventTime } from "./utils";
 import { useBuildEventStream } from "../../hooks/useBuildEventStream";
@@ -100,6 +101,18 @@ function formatBuildModeReason(reason?: string | null): string | null {
 
 function formatCompactCount(value: number): string {
   return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+function countReadySourceFiles(files: FileRecord[]): number {
+  return files.filter((file) => file.markdown_ready).length;
+}
+
+function countProcessingSourceFiles(files: FileRecord[]): number {
+  return files.filter((file) => !file.markdown_ready && file.status !== "failed").length;
+}
+
+function countFailedSourceFiles(files: FileRecord[]): number {
+  return files.filter((file) => file.status === "failed" || Boolean(file.error_message)).length;
 }
 
 function buildEventIdentity(event: BuildEventItem): string {
@@ -215,6 +228,9 @@ export function BuildView({
   progress,
   statusText,
   buildPreview,
+  buildMetrics,
+  sourceFiles,
+  sourceFilesFetching,
   buildStage,
   isDocumentReady = false,
   className,
@@ -293,6 +309,9 @@ export function BuildView({
 
   const recentEvents = events.slice(0, 8);
   const buildModeLabel = formatBuildModeReason(buildPreview?.mode_reason);
+  const readySourceCount = countReadySourceFiles(sourceFiles);
+  const processingSourceCount = countProcessingSourceFiles(sourceFiles);
+  const failedSourceCount = countFailedSourceFiles(sourceFiles);
 
   useEffect(() => {
     if (chapters.length === 0) {
@@ -381,6 +400,33 @@ export function BuildView({
               <span className="w-12 rounded-md bg-zinc-50 px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 ring-1 ring-zinc-200 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
                 {roundedProgress}%
               </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[11px] text-zinc-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                <FileText className="h-3 w-3 text-zinc-400 dark:text-slate-500" />
+                {sourceFiles.length > 0
+                  ? `${readySourceCount}/${sourceFiles.length} 份资料可用`
+                  : sourceFilesFetching
+                    ? "资料同步中"
+                    : "暂无本地资料"}
+              </span>
+              {sourceFilesFetching && sourceFiles.length > 0 ? (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  刷新资料
+                </span>
+              ) : null}
+              {processingSourceCount > 0 ? (
+                <span className="rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                  {processingSourceCount} 份解析中
+                </span>
+              ) : null}
+              {failedSourceCount > 0 ? (
+                <span className="rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+                  {failedSourceCount} 份解析失败
+                </span>
+              ) : null}
+              <BuildMetricsBadges metrics={buildMetrics} preview={buildPreview} />
             </div>
           </div>
         </div>
