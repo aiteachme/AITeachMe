@@ -39,7 +39,7 @@ class RetrievalConfig:
 @dataclass
 class RetrievedChunk:
     chunk_id: int
-    document_id: int
+    file_id: str
     title: str
     header_path: str
     content: str

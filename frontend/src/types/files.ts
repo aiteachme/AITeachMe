@@ -5,7 +5,7 @@ export interface FileAssetItem {
 }
 
 export interface FileRecord {
-  uid: string;
+  id: string;
   filename: string;
   filetype: string;
   status: string;

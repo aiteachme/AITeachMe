@@ -1,4 +1,4 @@
-﻿"""Knowledge docs API routes."""
+"""Knowledge docs API routes."""
 
 from __future__ import annotations
 
@@ -82,11 +82,11 @@ logger = structlog.get_logger(__name__)
 _ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
 
 
-def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[int]:
+def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[str]:
     """Resolve source file ids from persisted docs-sync context."""
 
-    collected: list[int] = []
-    seen: set[int] = set()
+    collected: list[str] = []
+    seen: set[str] = set()
     chapters = structured_context.get("chapters")
     if not isinstance(chapters, list):
         return collected
@@ -97,11 +97,8 @@ def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> lis
         if not isinstance(raw_ids, list):
             continue
         for raw_id in raw_ids:
-            try:
-                parsed = int(raw_id)
-            except (TypeError, ValueError):
-                continue
-            if parsed <= 0 or parsed in seen:
+            parsed = str(raw_id or "").strip()
+            if not parsed or parsed in seen:
                 continue
             seen.add(parsed)
             collected.append(parsed)
@@ -286,7 +283,7 @@ async def knowledge_build_plan_create_stream(
         "planner_create_stream_requested",
         subject=normalized,
         user_id=user.user_id,
-        file_uid_count=len(body.file_uids or []),
+        file_id_count=len(body.file_ids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
     )
     return _planner_stream_response(
@@ -449,7 +446,7 @@ async def knowledge_build(
         user_id=user.user_id,
         build_type=body.build_type,
         confirmed_plan_id=body.confirmed_plan_id,
-        file_uid_count=len(body.file_uids or []),
+        file_id_count=len(body.file_ids or []),
     )
     subject_record = get_subject_record(
         session,
@@ -461,7 +458,7 @@ async def knowledge_build(
         session,
         subject=subject_record,
         user_id=user.user_id,
-        file_uids=body.file_uids,
+        file_ids=body.file_ids,
         prompt=body.prompt,
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,

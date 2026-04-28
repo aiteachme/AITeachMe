@@ -40,16 +40,16 @@ def sanitize_storage_file_stem(filename: str | None) -> str:
     return _sanitize_storage_segment(stem, default="untitled", max_length=80)
 
 
-def build_file_storage_segment(*, file_uid: str, filename: str | None) -> str:
+def build_file_storage_segment(*, file_id: str, filename: str | None) -> str:
     """Build a stable per-file storage segment.
 
-    The uid remains the identity anchor; the sanitized filename stem is only
+    The file ID remains the identity anchor; the sanitized filename stem is only
     for operator readability when browsing local data dirs or object storage.
     """
 
-    safe_uid = _sanitize_storage_segment(file_uid, default="file", max_length=64)
+    safe_file_id = _sanitize_storage_segment(file_id, default="file", max_length=64)
     safe_stem = sanitize_storage_file_stem(filename)
-    return f"{safe_uid}__{safe_stem}"
+    return f"{safe_file_id}__{safe_stem}"
 
 
 def _normalize_extension(extension: str) -> str:
@@ -73,21 +73,21 @@ class UserFileStorageScope:
     def namespace(self) -> str:
         return f"users/{self.user_segment}/files"
 
-    def file_prefix(self, *, file_uid: str, filename: str | None) -> str:
-        return f"{self.namespace}/{build_file_storage_segment(file_uid=file_uid, filename=filename)}/"
+    def file_prefix(self, *, file_id: str, filename: str | None) -> str:
+        return f"{self.namespace}/{build_file_storage_segment(file_id=file_id, filename=filename)}/"
 
-    def raw_file_key(self, *, file_uid: str, filename: str | None, extension: str) -> str:
+    def raw_file_key(self, *, file_id: str, filename: str | None, extension: str) -> str:
         normalized_extension = _normalize_extension(extension)
-        return f"{self.file_prefix(file_uid=file_uid, filename=filename)}raw{normalized_extension}"
+        return f"{self.file_prefix(file_id=file_id, filename=filename)}raw{normalized_extension}"
 
-    def raw_markdown_key(self, *, file_uid: str, filename: str | None) -> str:
-        return f"{self.file_prefix(file_uid=file_uid, filename=filename)}markdown.md"
+    def raw_markdown_key(self, *, file_id: str, filename: str | None) -> str:
+        return f"{self.file_prefix(file_id=file_id, filename=filename)}markdown.md"
 
-    def asset_key(self, *, file_uid: str, filename: str | None, name: str) -> str:
-        return f"{self.file_prefix(file_uid=file_uid, filename=filename)}assets/{name}"
+    def asset_key(self, *, file_id: str, filename: str | None, name: str) -> str:
+        return f"{self.file_prefix(file_id=file_id, filename=filename)}assets/{name}"
 
-    def asset_prefix(self, *, file_uid: str, filename: str | None) -> str:
-        return f"{self.file_prefix(file_uid=file_uid, filename=filename)}assets/"
+    def asset_prefix(self, *, file_id: str, filename: str | None) -> str:
+        return f"{self.file_prefix(file_id=file_id, filename=filename)}assets/"
 
 
 @dataclass(frozen=True)
@@ -108,23 +108,23 @@ class SubjectStorageScope:
     def subject_prefix(self) -> str:
         return f"{self.namespace}/"
 
-    def file_storage_segment(self, *, file_uid: str, filename: str | None) -> str:
-        return build_file_storage_segment(file_uid=file_uid, filename=filename)
+    def file_storage_segment(self, *, file_id: str, filename: str | None) -> str:
+        return build_file_storage_segment(file_id=file_id, filename=filename)
 
-    def raw_file_key(self, *, file_uid: str, filename: str | None, extension: str) -> str:
+    def raw_file_key(self, *, file_id: str, filename: str | None, extension: str) -> str:
         normalized_extension = _normalize_extension(extension)
-        segment = self.file_storage_segment(file_uid=file_uid, filename=filename)
+        segment = self.file_storage_segment(file_id=file_id, filename=filename)
         return f"{self.namespace}/raw_files/{segment}/raw{normalized_extension}"
 
-    def raw_markdown_key(self, *, file_uid: str, filename: str | None) -> str:
-        segment = self.file_storage_segment(file_uid=file_uid, filename=filename)
+    def raw_markdown_key(self, *, file_id: str, filename: str | None) -> str:
+        segment = self.file_storage_segment(file_id=file_id, filename=filename)
         return f"{self.namespace}/raw_markdowns/{segment}/markdown.md"
 
-    def asset_key(self, *, file_uid: str, filename: str | None, name: str) -> str:
-        return f"{self.asset_prefix(file_uid=file_uid, filename=filename)}{name}"
+    def asset_key(self, *, file_id: str, filename: str | None, name: str) -> str:
+        return f"{self.asset_prefix(file_id=file_id, filename=filename)}{name}"
 
-    def asset_prefix(self, *, file_uid: str, filename: str | None) -> str:
-        segment = self.file_storage_segment(file_uid=file_uid, filename=filename)
+    def asset_prefix(self, *, file_id: str, filename: str | None) -> str:
+        segment = self.file_storage_segment(file_id=file_id, filename=filename)
         return f"{self.namespace}/assets/{segment}/"
 
     def knowledge_doc_key(self, filename: str) -> str:

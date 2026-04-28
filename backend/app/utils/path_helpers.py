@@ -182,15 +182,13 @@ def _sanitize_storage_token(value: str) -> str:
 def build_asset_name_prefix(
     *,
     filename: str | None = None,
-    file_uid: str | None = None,
-    file_id: int | None = None,
+    file_id: str | None = None,
 ) -> str:
     """Build a deterministic asset filename prefix for one raw file."""
 
-    del file_id
     stem = Path(filename or "").stem or "file"
     safe_stem = _sanitize_storage_token(stem)[:24]
-    identity = file_uid or safe_stem
+    identity = file_id or safe_stem
     safe_identity = _sanitize_storage_token(identity)[:48]
     return f"{safe_stem}__{safe_identity}__"
 

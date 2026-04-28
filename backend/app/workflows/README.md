@@ -290,14 +290,14 @@ from app.shared.infra.workflow import (
     run_state_graph,
     workflow_tracer,
 )
-from langsmith import traceable
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 ```
 
 对应关系：
 
 1. workflow root：用 `run_state_graph(...)` 或 `invoke_state_graph(...)`。
 2. graph node：用 `workflow_tracer(...).node(handler, ...)`。
-3. prompt / helper：用官方 `@traceable`，或 lane 内统一 prompt tracing helper。
+3. prompt / helper：用统一的 `traceable_with_context` 包装，或 lane 内统一 prompt tracing helper。
 
 标准 root 写法：
 
@@ -351,7 +351,7 @@ def build_planner_prompt(...):
 ```text
 workflow root   -> run_state_graph / invoke_state_graph
 workflow node   -> workflow_tracer().node(handler, ...)
-prompt/helper   -> @traceable / lane prompt tracing helper
+prompt/helper   -> traceable_with_context / lane prompt tracing helper
 frontend 进度   -> 看 PROGRESS.md
 ```
 

@@ -1,4 +1,4 @@
-﻿"""DocGen build lifecycle around the graph runtime.
+"""DocGen build lifecycle around the graph runtime.
 
 This module owns the API-facing lifecycle around one DocGen request:
 file selection, confirmed-plan loading, build locking, background
@@ -70,7 +70,7 @@ from app.shared.infra.subject import (
     resolve_subject_build_vector_status,
 )
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
-from app.utils.presenters import require_id, require_uid
+from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
@@ -92,16 +92,16 @@ def _select_ready_docgen_files_by_ids(
     session: Session,
     *,
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     allow_empty: bool = False,
 ) -> tuple[list[RawFile], int]:
     all_files = list_all_raw_files_by_subject(session, subject)
-    ready_files = [item for item in all_files if item.id is not None and is_markdown_ready_for_digest(item)]
+    ready_files = [item for item in all_files if item.id and is_markdown_ready_for_digest(item)]
     ready_ids = {require_id(item.id, "RawFile.id") for item in ready_files}
     requested = {
         require_id(item.id, "RawFile.id"): item
         for item in list_raw_files_by_ids(session, subject, file_ids)
-        if item.id is not None
+        if item.id
     }
     accepted = [requested[file_id] for file_id in file_ids if file_id in requested and file_id in ready_ids]
     if not accepted and not allow_empty:
@@ -109,24 +109,8 @@ def _select_ready_docgen_files_by_ids(
     return accepted, len(ready_files)
 
 
-def _resolve_file_uids(raw_files: list[RawFile]) -> list[str]:
-    return [require_uid(item.uid, "RawFile.uid") for item in raw_files]
-
-
-def _resolve_file_ids(raw_files: list[RawFile]) -> list[int]:
+def _resolve_file_ids(raw_files: list[RawFile]) -> list[str]:
     return [require_id(item.id, "RawFile.id") for item in raw_files]
-
-
-def _resolve_file_uids_from_ids(session: Session, *, subject: str, file_ids: list[int]) -> list[str]:
-    if not file_ids:
-        return []
-    raw_files = list_raw_files_by_ids(session, subject, file_ids)
-    uid_by_id = {
-        require_id(item.id, "RawFile.id"): require_uid(item.uid, "RawFile.uid")
-        for item in raw_files
-        if item.id is not None and item.uid is not None
-    }
-    return [uid_by_id[file_id] for file_id in file_ids if file_id in uid_by_id]
 
 
 def _new_build_session_id() -> str:
@@ -566,11 +550,11 @@ def trigger_docgen_build(
     *,
     subject: Subject,
     user_id: str,
-    file_uids: list[str] | None,
+    file_ids: list[str] | None,
     prompt: str | None,
     embedding_resolution: str | None,
     confirmed_plan_id: str | None,
-) -> tuple[DocGenBuildData, list[int], str]:
+) -> tuple[DocGenBuildData, list[str], str]:
     """处理知识文档构建请求的同步前置阶段。
 
     这里还没有启动 LangGraph。它只负责确认 plan、选择可用文件、处理向量
@@ -628,12 +612,12 @@ def trigger_docgen_build(
         allow_empty=True,
     )
     plan_prompt = _clean_prompt(plan.user_prompt) or _clean_prompt(plan.plan_summary)
-    if file_uids:
+    if file_ids:
         logger.warning(
             "knowledge_build_file_selection_ignored_for_confirmed_plan",
             subject=subject.slug,
             confirmed_plan_id=confirmed_plan_id,
-            requested_file_uid_count=len(file_uids),
+            requested_file_id_count=len(file_ids),
         )
     if cleaned_prompt and plan_prompt and cleaned_prompt != plan_prompt:
         logger.warning(
@@ -643,7 +627,6 @@ def trigger_docgen_build(
         )
     cleaned_prompt = plan_prompt or cleaned_prompt
     accepted_file_ids = _resolve_file_ids(accepted_files)
-    accepted_file_uids = _resolve_file_uids(accepted_files)
     search_only_mode = not accepted_file_ids
     if search_only_mode:
         recent_events.append(
@@ -706,7 +689,7 @@ def trigger_docgen_build(
         build_group_id=build_group_id,
     )
     build_data = DocGenBuildData(
-        accepted_file_uids=accepted_file_uids,
+        accepted_file_ids=accepted_file_ids,
         ready_file_count=ready_file_count,
         prompt=cleaned_prompt,
         requested_at=requested_at,
@@ -721,7 +704,7 @@ def trigger_docgen_build(
 async def run_docgen_background(
     *,
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     prompt: str | None,
     requested_at: datetime,
     build_group_id: str,
@@ -1073,22 +1056,7 @@ def get_docgen_result(
         if docgen_build_status is not None and docgen_build_status.draft_updated_at is not None
         else None
     )
-    source_file_uids: list[str] = []
-    if manifest is not None:
-        try:
-            with _session_context(session) as db_session:
-                source_file_uids = _resolve_file_uids_from_ids(
-                    db_session,
-                    subject=subject,
-                    file_ids=manifest.source_file_ids,
-                )
-        except Exception as exc:
-            logger.warning(
-                "docgen_result_source_files_degraded",
-                subject=subject,
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
+    source_file_ids: list[str] = list(manifest.source_file_ids) if manifest is not None else []
     try:
         build_response = _resolve_runtime_build_status(
             subject=subject,
@@ -1127,7 +1095,7 @@ def get_docgen_result(
         exists=bool(markdown.strip()),
         markdown=markdown,
         updated_at=updated_at,
-        source_file_uids=source_file_uids,
+        source_file_ids=source_file_ids,
         prompt=(manifest.prompt if manifest is not None else None),
         draft_markdown=draft_markdown,
         draft_updated_at=draft_updated_at,

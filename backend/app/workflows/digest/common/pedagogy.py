@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from langsmith import traceable
+from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.tools.builtin.content_analysis import (
     build_term_coverage,
     extract_key_terms,

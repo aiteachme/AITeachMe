@@ -42,7 +42,7 @@ async def publish_docgen_progress(
 def normalize_chapter_assignments(
     chapters: list[dict[str, Any]],
     *,
-    default_source_file_ids: list[int],
+    default_source_file_ids: list[str],
 ) -> list[dict[str, Any]]:
     return [
         DigestChapterContract.model_validate(chapter).to_assignment(

@@ -28,7 +28,7 @@ export interface KnowledgeBuildPrecheckConflictData {
 }
 
 export interface KnowledgeBuildRequestInput {
-  file_uids?: string[];
+  file_ids?: string[];
   prompt?: string;
   confirmed_plan_id?: string;
 }

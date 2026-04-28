@@ -1,4 +1,4 @@
-﻿"""Load persisted planner session data and parsed source materials."""
+"""Load persisted planner session data and parsed source materials."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def _seed_titles_from_goal_and_files(
     return titles
 
 
-def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
+def _build_seed_material_context(*, subject: str, file_ids: list[str], user_prompt: str | None) -> DigestMaterialContext:
     with managed_session() as session:
         raw_files = list_raw_files_by_ids(session, subject, file_ids)
 
@@ -62,7 +62,7 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prom
 
     source_documents = [
         SourcePacket(
-            file_id=int(raw_file.id),
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
             filetype=raw_file.file_ext,
             markdown_path=raw_file.markdown_path or "",
@@ -109,7 +109,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             subject=state.get("subject", ""),
             operation=state.get("planner_operation", ""),
             file_id_count=len(state.get("file_ids", []) or []),
-            requested_file_uid_count=len(state.get("requested_file_uids", []) or []),
+            requested_file_id_count=len(state.get("requested_file_ids", []) or []),
         )
         session_update = prepare_planner_run(state)
         working_state = {**state, **session_update}

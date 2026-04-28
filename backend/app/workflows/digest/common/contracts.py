@@ -75,7 +75,7 @@ class DigestChapterContract(BaseModel):
     objective: str = ""
     required_elements: list[str] = Field(default_factory=list)
     writing_instructions: str = ""
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
 
     @field_validator("title", "resolved_title", "objective", "writing_instructions", mode="before")
     @classmethod
@@ -89,13 +89,13 @@ class DigestChapterContract(BaseModel):
 
     @field_validator("source_file_ids", mode="before")
     @classmethod
-    def _normalize_source_file_ids(cls, value: Any) -> list[int]:
-        return _clean_int_list(value)
+    def _normalize_source_file_ids(cls, value: Any) -> list[str]:
+        return _clean_string_list(value)
 
     def to_assignment(
         self,
         *,
-        default_source_file_ids: list[int],
+        default_source_file_ids: list[str],
     ) -> dict[str, Any]:
         chapter_index = max(1, int(self.chapter_index or 1))
         title = self.title or f"第 {chapter_index} 章"
@@ -145,7 +145,7 @@ class DigestConfirmedPlanContract(BaseModel):
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
     build_constraints: DigestBuildConstraints = Field(default_factory=DigestBuildConstraints)
     plan_summary: str = ""
-    selected_file_ids: list[int] = Field(default_factory=list)
+    selected_file_ids: list[str] = Field(default_factory=list)
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
     mode_reason: str = ""
@@ -166,8 +166,8 @@ class DigestConfirmedPlanContract(BaseModel):
 
     @field_validator("selected_file_ids", mode="before")
     @classmethod
-    def _normalize_selected_file_ids(cls, value: Any) -> list[int]:
-        return _clean_int_list(value)
+    def _normalize_selected_file_ids(cls, value: Any) -> list[str]:
+        return _clean_string_list(value)
 
     def normalized_digest_mode(self) -> str:
         return normalize_digest_mode(self.digest_mode)
@@ -182,7 +182,7 @@ class DigestConfirmedPlanContract(BaseModel):
     def to_payload(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
 
-    def to_chapter_assignments(self, *, default_source_file_ids: list[int]) -> list[dict[str, Any]]:
+    def to_chapter_assignments(self, *, default_source_file_ids: list[str]) -> list[dict[str, Any]]:
         return [
             chapter.to_assignment(
                 default_source_file_ids=default_source_file_ids,

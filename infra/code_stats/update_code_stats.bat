@@ -1,26 +1,27 @@
 @echo off
-REM ¸üĞÂ´úÂëÍ³¼ÆÊı¾İ²¢¸üĞÂ README
-echo ÕıÔÚÔöÁ¿¸üĞÂ´úÂëÍ³¼ÆÊı¾İ...
+chcp 65001 >nul
+REM æ›´æ–°ä»£ç ç»Ÿè®¡æ•°æ®å¹¶æ›´æ–° README
+echo æ­£åœ¨å¢é‡æ›´æ–°ä»£ç ç»Ÿè®¡æ•°æ®...
 python tools/code_stats/generate_code_stats.py
 
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo ÕıÔÚ¸üĞÂ README...
+    echo æ­£åœ¨æ›´æ–° README...
     python tools/code_stats/auto_update_readme.py
-    
+
     if %ERRORLEVEL% EQU 0 (
         echo.
-        echo ? Í³¼ÆÊı¾İºÍ README ÒÑ¸üĞÂ
-        echo ? Çë²é¿´ tools/code_stats/code_stats.json ºÍ README.md
+        echo [OK] ç»Ÿè®¡æ•°æ®å’Œ README å·²æ›´æ–°
+        echo [INFO] è¯·æŸ¥çœ‹ tools/code_stats/code_stats.json å’Œ README.md
         echo.
-        echo ? ÌáÊ¾: ÈçĞèÍêÈ«ÖØ½¨Í³¼ÆÊı¾İ£¬Ê¹ÓÃ:
+        echo [TIP] æç¤º: å¦‚éœ€å®Œå…¨é‡å»ºç»Ÿè®¡æ•°æ®ï¼Œä½¿ç”¨:
         echo    python tools/code_stats/generate_code_stats.py --full
     ) else (
         echo.
-        echo ??  README ¸üĞÂÊ§°Ü£¬µ«Í³¼ÆÊı¾İÒÑÉú³É
+        echo [WARN] README æ›´æ–°å¤±è´¥ï¼Œä½†ç»Ÿè®¡æ•°æ®å·²ç”Ÿæˆ
     )
 ) else (
     echo.
-    echo ? ¸üĞÂÊ§°Ü
+    echo [ERROR] æ›´æ–°å¤±è´¥
     exit /b 1
 )

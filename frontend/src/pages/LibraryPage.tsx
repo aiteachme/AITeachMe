@@ -52,11 +52,11 @@ async function uploadLibraryFiles(files: File[]): Promise<FilesUploadData> {
   return response.data;
 }
 
-async function deleteLibraryFile(fileUid: string): Promise<void> {
-  await apiClient<ApiResponse<{ deleted_file_uids: string[] }>>({
+async function deleteLibraryFile(fileId: string): Promise<void> {
+  await apiClient<ApiResponse<{ deleted_file_ids: string[] }>>({
     method: "POST",
     url: "/api/v1/files/delete",
-    data: { file_uid: fileUid },
+    data: { file_id: fileId },
   });
 }
 
@@ -285,7 +285,7 @@ export function LibraryPage() {
             {files.map((file) => {
               const meta = statusMeta(file);
               return (
-                <div key={file.uid} className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_120px_150px_110px_56px] md:items-center md:gap-4">
+                <div key={file.id} className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_120px_150px_110px_56px] md:items-center md:gap-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
                       {fileIcon(file)}
@@ -317,7 +317,7 @@ export function LibraryPage() {
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => deleteMutation.mutate(file.uid)}
+                      onClick={() => deleteMutation.mutate(file.id)}
                       disabled={deleteMutation.isPending}
                       className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30 dark:hover:text-red-300"
                       title="删除资料"

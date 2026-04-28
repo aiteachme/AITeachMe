@@ -196,7 +196,7 @@ def test_prefetched_section_payload_is_reused_and_context_is_finalized() -> None
     assert diagnostics["prefetch_reused_section_count"] == 1
     assert diagnostics["prefetch_catchup_section_count"] == 0
     assert units[0].knowledge_document_id == 42
-    assert units[0].source_file_ids == [7]
+    assert units[0].source_file_ids == ["7"]
 
 
 def test_stale_prefetch_payload_falls_back_to_catchup(monkeypatch) -> None:

@@ -1,4 +1,4 @@
-﻿"""Shared preparation entrypoint for digest builds."""
+"""Shared preparation entrypoint for digest builds."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[
 
 async def prepare_shared_inputs(
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
@@ -105,7 +105,7 @@ async def prepare_shared_inputs(
 
 async def prepare_material_context(
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
@@ -114,7 +114,7 @@ async def prepare_material_context(
     return await prepare_shared_inputs(subject, file_ids, user_prompt=user_prompt)
 
 
-async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
+async def load_source_packets(subject: str, file_ids: list[str]) -> list[SourcePacket]:
     """Load parsed raw markdown and normalize it into source packets."""
 
     cs = get_content_store()
@@ -123,17 +123,17 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
     with managed_session() as session:
         raw_files = sorted(
             list_raw_files_by_ids(session, subject, file_ids),
-            key=lambda raw_file: requested_order.get(int(raw_file.id or 0), len(requested_order)),
+            key=lambda raw_file: requested_order.get(raw_file.id, len(requested_order)),
         )
 
     async def load_one(raw_file: RawFile) -> SourcePacket | None:
-        if raw_file.id is None:
+        if not raw_file.id:
             return None
 
-        file_id = int(raw_file.id)
+        file_id = raw_file.id
         file_scope = cs.user_file_scope(user_id=raw_file.user_id or subject_scope.user_id)
         md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
-            file_uid=raw_file.uid,
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
         )
         content = await cs.read_text(md_key, default="") or ""
@@ -144,7 +144,7 @@ async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourceP
 
         markdown_path_str = md_key
         asset_dir_str = getattr(raw_file, "asset_dir", None) or file_scope.asset_prefix(
-            file_uid=raw_file.uid,
+            file_id=raw_file.id,
             filename=raw_file.original_filename,
         ).rstrip("/")
 

@@ -6,11 +6,15 @@ Canonical location: ``app.utils.presenters``.
 
 from __future__ import annotations
 
+from typing import TypeVar
 
-def require_id(value: int | None, field_name: str) -> int:
-    """Ensure a persisted integer primary key exists."""
+_ID = TypeVar("_ID", int, str)
 
-    if value is None:
+
+def require_id(value: _ID | None, field_name: str) -> _ID:
+    """Ensure a persisted primary key exists."""
+
+    if value is None or (isinstance(value, str) and not value.strip()):
         raise ValueError(f"{field_name} must not be empty after persistence.")
     return value
 

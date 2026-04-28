@@ -159,7 +159,7 @@ function NodeDetailPanel({
             <FileText className="w-3 h-3" />图谱来源 ({sourceRefs.length})
           </div>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: number[]; quote_text?: string }) => (
+            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: string[]; quote_text?: string }) => (
               <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium text-slate-700">

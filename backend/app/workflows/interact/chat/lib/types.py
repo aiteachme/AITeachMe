@@ -57,7 +57,7 @@ class RetrievedContext(BaseModel):
     """One retrieved KnowledgeUnit-backed context formatted for prompting and citations."""
 
     chunk_id: int
-    document_id: int
+    file_id: str
     title: str
     header_path: str
     content: str
@@ -76,7 +76,7 @@ class RetrievedContext(BaseModel):
 
         return ChatContextItem(
             chunk_id=self.chunk_id,
-            document_id=self.document_id,
+            file_id=self.file_id,
             title=self.title,
             header_path=self.header_path,
             score=round(self.score, 4),

@@ -608,7 +608,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
 def create_docgen_initial_state(
     *,
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None,
     requested_at: datetime,
@@ -746,7 +746,7 @@ def get_langgraph_dev_docgen_graph() -> StateGraph:
 async def run_docgen_workflow(
     *,
     subject: str,
-    file_ids: list[int],
+    file_ids: list[str],
     user_id: str | None = None,
     user_prompt: str | None = None,
     requested_at: datetime,

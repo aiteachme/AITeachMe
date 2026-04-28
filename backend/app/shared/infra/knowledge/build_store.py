@@ -157,7 +157,7 @@ class KnowledgeDocsManifest(BaseModel):
 
     updated_at: datetime
     version_no: int = 0
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
     prompt: str | None = None
     chapter_count: int = 0
     chapter_titles: list[str] = Field(default_factory=list)
@@ -170,7 +170,7 @@ class KnowledgeBuildLock(BaseModel):
 
     requested_at: datetime
     build_group_id: str | None = None
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
     prompt: str | None = None
 
 
@@ -187,7 +187,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     build_session_id: str | None = None
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
-    source_file_ids: list[int] = Field(default_factory=list)
+    source_file_ids: list[str] = Field(default_factory=list)
     prompt: str | None = None
     error_message: str | None = None
     draft_available: bool = False

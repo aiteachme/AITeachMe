@@ -46,26 +46,23 @@ def _key(subject: str, build_session_id: str) -> tuple[str, str]:
     return str(subject or "").strip(), str(build_session_id or "").strip()
 
 
-def _clean_int_list(value: object) -> list[int]:
+def _clean_string_list(value: object) -> list[str]:
     items = value if isinstance(value, list) else ([] if value is None else [value])
-    cleaned: list[int] = []
-    seen: set[int] = set()
+    cleaned: list[str] = []
+    seen: set[str] = set()
     for item in items:
-        try:
-            parsed = int(item)
-        except (TypeError, ValueError):
-            continue
-        if parsed <= 0 or parsed in seen:
+        parsed = str(item or "").strip()
+        if not parsed or parsed in seen:
             continue
         seen.add(parsed)
         cleaned.append(parsed)
     return cleaned
 
 
-def _chapter_source_file_ids(chapter: dict[str, Any]) -> list[int]:
+def _chapter_source_file_ids(chapter: dict[str, Any]) -> list[str]:
     source_scope = chapter.get("source_scope")
     source_scope = dict(source_scope) if isinstance(source_scope, dict) else {}
-    return _clean_int_list(
+    return _clean_string_list(
         chapter.get("source_file_ids")
         or source_scope.get("source_file_ids")
         or [

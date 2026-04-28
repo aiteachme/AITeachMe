@@ -283,10 +283,10 @@ export function useDocMarkdown(): DocMarkdownState {
   const sourceFiles = useMemo(() => {
     const items = sourceFilesQuery.data ?? [];
     if (items.length === 0) return [];
-    const selectedFileUids = new Set(docMarkdownQuery.data?.source_file_uids ?? []);
+    const selectedFileIds = new Set(docMarkdownQuery.data?.source_file_ids ?? []);
     const filtered =
-      selectedFileUids.size > 0
-        ? items.filter((file) => selectedFileUids.has(file.uid))
+      selectedFileIds.size > 0
+        ? items.filter((file) => selectedFileIds.has(file.id))
         : items.filter(
             (file) =>
               Boolean(file.markdown_ready) ||
@@ -302,7 +302,7 @@ export function useDocMarkdown(): DocMarkdownState {
         return bTime - aTime;
       })
       .slice(0, 6);
-  }, [docMarkdownQuery.data?.source_file_uids, sourceFilesQuery.data]);
+  }, [docMarkdownQuery.data?.source_file_ids, sourceFilesQuery.data]);
 
   useEffect(() => {
     if (!hasLiveDocMarkdown && hasDraftDocMarkdown) {

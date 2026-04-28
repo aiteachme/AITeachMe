@@ -11,7 +11,7 @@ from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
-from app.repositories.files_repo import get_raw_file_by_uid_for_user
+from app.repositories.files_repo import get_raw_file_by_id_for_user
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
 from app.shared.infra.storage import get_content_store
@@ -111,12 +111,12 @@ async def upload_user_files(
     responses=build_error_responses([400, 500]),
 )
 async def list_user_files_api(
-    file_uids: list[str] | None = Query(default=None),
+    file_ids: list[str] | None = Query(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FilesData]:
-    unique_file_uids = list(dict.fromkeys(file_uids or [])) or None
-    return ok_response(list_user_files(session, owner_user_id=user.user_id, file_uids=unique_file_uids))
+    unique_file_ids = list(dict.fromkeys(file_ids or [])) or None
+    return ok_response(list_user_files(session, owner_user_id=user.user_id, file_ids=unique_file_ids))
 
 
 @router.post(
@@ -130,36 +130,36 @@ async def delete_user_files_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FileDeleteData]:
-    file_uids = [body.file_uid] if body.file_uid is not None else []
-    if body.file_uids:
-        file_uids.extend(body.file_uids)
-    unique_file_uids = list(dict.fromkeys(file_uids))
+    file_ids = [body.file_id] if body.file_id is not None else []
+    if body.file_ids:
+        file_ids.extend(body.file_ids)
+    unique_file_ids = list(dict.fromkeys(file_ids))
     return ok_response(
         await delete_user_files(
             session,
             owner_user_id=user.user_id,
-            file_uids=unique_file_uids,
+            file_ids=unique_file_ids,
         )
     )
 
 
 @router.get(
-    "/assets/{file_uid}/{asset_path:path}",
+    "/assets/{file_id}/{asset_path:path}",
     summary="Serve a parsed asset for a user-library file",
     responses=build_error_responses([404, 500]),
 )
 async def serve_user_file_asset(
-    file_uid: str = Path(...),
+    file_id: str = Path(...),
     asset_path: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> Response:
-    raw_file = get_raw_file_by_uid_for_user(session, user_id=user.user_id, file_uid=file_uid)
+    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
     if raw_file is None:
         return Response(status_code=404, content=b"Not found")
 
     base_prefix = raw_file.asset_dir or get_content_store().user_file_scope(user_id=user.user_id).asset_prefix(
-        file_uid=raw_file.uid,
+        file_id=raw_file.id,
         filename=raw_file.filename,
     )
     normalized_asset_path = asset_path.lstrip("/\\")

@@ -21,7 +21,7 @@ from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
 from app.shared.infra.search.llamaindex_index import prepare_postgres_store  # noqa: E402
 
 _REQUIRED_UNIQUE_CONSTRAINTS = (
-    ("retrieval_chunk", "uq_retrieval_chunk_document_id_chunk_index"),
+    ("retrieval_chunk", "uq_retrieval_chunk_file_id_chunk_index"),
     ("retrieval_chunk", "uq_retrieval_chunk_subject_digest_chunk_uid"),
     ("knowledge_unit", "uq_unit_subject_type_name"),
     ("knowledge_edge", "uq_edge_subject_src_tgt_type"),
@@ -33,13 +33,13 @@ _REQUIRED_UNIQUE_INDEXES = (
     "ix_user_email",
     "ix_user_device_key",
     "ix_subject_slug",
-    "ix_raw_file_uid",
+    "ix_raw_file_id",
     "uq_user_knowledge_state_node",
 )
 _REQUIRED_FOREIGN_KEYS = (
     ("subject", "user_id", "user"),
     ("retrieval_chunk", "subject", "subject"),
-    ("retrieval_chunk", "document_id", "raw_file"),
+    ("retrieval_chunk", "file_id", "raw_file"),
     ("knowledge_edge", "source_node_id", "knowledge_unit"),
     ("knowledge_edge", "target_node_id", "knowledge_unit"),
     ("exam_paper_item", "exam_paper_id", "exam_paper"),

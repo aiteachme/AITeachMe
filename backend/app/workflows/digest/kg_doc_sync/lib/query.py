@@ -76,21 +76,18 @@ def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
     )
 
 
-def _json_int_list(raw: str | None) -> list[int]:
+def _json_string_list(raw: str | None) -> list[str]:
     try:
         payload = json.loads(raw or "[]")
     except json.JSONDecodeError:
         return []
     if not isinstance(payload, list):
         return []
-    cleaned: list[int] = []
-    seen: set[int] = set()
+    cleaned: list[str] = []
+    seen: set[str] = set()
     for item in payload:
-        try:
-            parsed = int(item)
-        except (TypeError, ValueError):
-            continue
-        if parsed <= 0 or parsed in seen:
+        parsed = str(item or "").strip()
+        if not parsed or parsed in seen:
             continue
         seen.add(parsed)
         cleaned.append(parsed)
@@ -138,7 +135,7 @@ def _list_source_refs_by_entity(
                 graph_revision_no=(int(sync_run.graph_revision_no or 0) if sync_run is not None else 0),
                 source_kind=ref.source_kind,
                 anchor=ref.anchor,
-                source_file_ids=_json_int_list(ref.source_file_ids_json),
+                source_file_ids=_json_string_list(ref.source_file_ids_json),
                 quote_text=ref.quote_text,
                 confidence=ref.confidence,
                 created_at=ref.created_at,
@@ -204,7 +201,7 @@ def get_knowledge_unit_detail(
     evidence = [
         EvidenceSummary(
             id=item.id,  # type: ignore[arg-type]
-            document_id=item.document_id,
+            file_id=item.file_id,
             chunk_id=item.chunk_id,
             quote_text=item.quote_text,
             evidence_role=item.evidence_role,
@@ -487,7 +484,7 @@ def explain_relation_path(
         evidence = [
             EvidenceSummary(
                 id=item.id,  # type: ignore[arg-type]
-                document_id=item.document_id,
+                file_id=item.file_id,
                 chunk_id=item.chunk_id,
                 quote_text=item.quote_text,
                 evidence_role=item.evidence_role,
@@ -519,13 +516,13 @@ def get_chunk_context(
     if chunk is None:
         raise KnowledgeChunkNotFoundError(chunk_id)
 
-    document = knowledge_repo.get_document_by_id(session, chunk.document_id)
+    document = knowledge_repo.get_document_by_id(session, chunk.file_id)
     if document is None or document.subject != subject:
         raise KnowledgeChunkNotFoundError(chunk_id)
 
     return ChunkContextResponse(
         chunk_id=chunk.id,  # type: ignore[arg-type]
-        document_id=document.id,  # type: ignore[arg-type]
+        file_id=document.id,
         document_title=document.filename,
         chunk_title=chunk.title,
         chunk_header_path=chunk.header_path,
