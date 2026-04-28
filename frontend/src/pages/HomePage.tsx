@@ -36,6 +36,7 @@ import {
   partitionUploadFiles,
 } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
+import { notifySubjectsImported } from "../lib/subjectEvents";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { SubjectExportModal } from "../components/subject/SubjectExportModal";
@@ -699,6 +700,7 @@ export function HomePage() {
       importCourseByFilename(filename, newName),
     onSuccess: (result) => {
       setError(null);
+      notifySubjectsImported({ subjectId: result.subject_id });
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
       queryClient.invalidateQueries({ queryKey: ["available-courses"] });
       toast({
@@ -1278,6 +1280,7 @@ export function HomePage() {
           key="import"
           onClose={() => setImportOpen(false)}
           onSuccess={(result) => {
+            notifySubjectsImported({ subjectId: result.subject_id });
             queryClient.invalidateQueries({ queryKey: ["subjects"] });
             toast({
               title: "导入成功",

@@ -200,7 +200,7 @@ def _extract_catalog_items(payload: Any) -> list[dict[str, Any]]:
             candidate = payload.get(key)
             if isinstance(candidate, list):
                 return [item for item in candidate if isinstance(item, dict)]
-        if any(key in payload for key in ("course_id", "id", "slug", "package_url", "download_url")):
+        if any(key in payload for key in ("course_id", "id", "subject_id", "package_url", "download_url")):
             return [payload]
 
     logger.warning(
@@ -262,7 +262,7 @@ def _build_remote_course_descriptor(
     identifier = _first_non_empty_str(
         item.get("course_id"),
         item.get("id"),
-        item.get("slug"),
+        item.get("subject_id"),
         item.get("filename"),
     ) or Path(package_filename).stem or f"course_{index}"
 

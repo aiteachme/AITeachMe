@@ -33,6 +33,7 @@ import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { resolveSubjectIcon } from "../../lib/subjectIcons";
+import { SUBJECTS_IMPORTED_EVENT, type SubjectsImportedDetail } from "../../lib/subjectEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { SubjectExportModal } from "../subject/SubjectExportModal";
@@ -268,6 +269,19 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [openMenuId]);
+
+  useEffect(() => {
+    const handleSubjectsImported = (event: Event) => {
+      const detail = (event as CustomEvent<SubjectsImportedDetail>).detail;
+      updateSubjectSectionExpanded(true);
+      setIsCollapsed(false);
+      if (detail?.subjectId) {
+        setExpandedSubjects((prev) => new Set([...prev, detail.subjectId as string]));
+      }
+    };
+    window.addEventListener(SUBJECTS_IMPORTED_EVENT, handleSubjectsImported);
+    return () => window.removeEventListener(SUBJECTS_IMPORTED_EVENT, handleSubjectsImported);
+  }, [updateSubjectSectionExpanded]);
 
   useEffect(() => {
     const match = location.pathname.match(/^\/subject\/([^/]+)/);

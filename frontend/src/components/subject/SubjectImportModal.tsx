@@ -4,6 +4,7 @@ import { FileArchive, Loader2, PackagePlus, Upload, X } from "lucide-react";
 
 import { getApiErrorMessage } from "../../api/client";
 import { importSubjectPackage, type ImportResultData } from "../../lib/subjectPackage";
+import { notifySubjectsImported } from "../../lib/subjectEvents";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
@@ -60,6 +61,7 @@ export function SubjectImportModal({ onClose, onImported }: SubjectImportModalPr
       return importSubjectPackage(selectedFile, customName);
     },
     onSuccess: async (result) => {
+      notifySubjectsImported({ subjectId: result.subject_id });
       await queryClient.invalidateQueries({ queryKey: ["subjects"] });
       await queryClient.invalidateQueries({ queryKey: ["available-courses"] });
       toast({
