@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -18,7 +19,11 @@ from app.shared.infra.database import (  # noqa: E402
 )
 from app.shared.infra.database.core import _SCHEMA_TABLES  # noqa: E402
 from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
+from app.shared.infra.storage import get_artifact_store, run_store_sync  # noqa: E402
+from app.shared.infra.storage.config import storage_is_s3  # noqa: E402
 from app.shared.infra.search.llamaindex_index import prepare_postgres_store  # noqa: E402
+
+_STORAGE_HEALTHCHECK_DATA = b"aiteachme-cloud-storage-ok"
 
 _REQUIRED_UNIQUE_CONSTRAINTS = (
     ("retrieval_chunk", "uq_retrieval_chunk_subject_file_id_chunk_index"),
@@ -222,6 +227,31 @@ def _collect_deep_schema_errors(connection: sa.Connection) -> list[str]:
     return errors
 
 
+def _collect_storage_errors() -> list[str]:
+    if not storage_is_s3():
+        return []
+
+    errors: list[str] = []
+    test_key = f"__healthcheck/predeploy/{uuid.uuid4().hex}.txt"
+    store = None
+    try:
+        store = get_artifact_store()
+        run_store_sync(store.write_bytes, test_key, _STORAGE_HEALTHCHECK_DATA)
+        read_back = run_store_sync(store.read_bytes, test_key)
+        if read_back != _STORAGE_HEALTHCHECK_DATA:
+            errors.append("object storage validation failed: read-back content mismatch")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"object storage validation failed: {exc}")
+    finally:
+        if store is not None:
+            try:
+                run_store_sync(store.delete, test_key)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"object storage cleanup failed: {exc}")
+
+    return errors
+
+
 def main() -> int:
     if not is_cloud_mode():
         print("check_cloud_db requires APP_MODE=cloud.", file=sys.stderr)
@@ -237,13 +267,15 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"LlamaIndex PGVectorStore initialization failed: {exc}")
 
+    errors.extend(_collect_storage_errors())
+
     if errors:
-        print("cloud database validation failed:", file=sys.stderr)
+        print("cloud runtime validation failed:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("cloud database validation passed")
+    print("cloud runtime validation passed")
     return 0
 
 
