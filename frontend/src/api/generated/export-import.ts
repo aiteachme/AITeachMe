@@ -79,16 +79,16 @@ export type exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse = (exp
 export const getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/export/preview`
 }
 
 export const exportPreviewApiApiV1SubjectsSubjectExportPreviewPost = async (subject: string,
     exportOptions: ExportOptions, options?: RequestInit): Promise<exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse> => {
-  
+
   return orvalApiClient<exportPreviewApiApiV1SubjectsSubjectExportPreviewPostResponse>(getExportPreviewApiApiV1SubjectsSubjectExportPreviewPostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -96,7 +96,7 @@ export const exportPreviewApiApiV1SubjectsSubjectExportPreviewPost = async (subj
       exportOptions,)
   }
 );}
-  
+
 
 
 
@@ -111,7 +111,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportPreviewApiApiV1SubjectsSubjectExportPreviewPost>>, {subject: string;data: ExportOptions}> = (props) => {
@@ -122,7 +122,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -180,16 +180,16 @@ export type exportSubjectApiApiV1SubjectsSubjectExportPostResponse = (exportSubj
 export const getExportSubjectApiApiV1SubjectsSubjectExportPostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/export`
 }
 
 export const exportSubjectApiApiV1SubjectsSubjectExportPost = async (subject: string,
     exportOptions: ExportOptions, options?: RequestInit): Promise<exportSubjectApiApiV1SubjectsSubjectExportPostResponse> => {
-  
+
   return orvalApiClient<exportSubjectApiApiV1SubjectsSubjectExportPostResponse>(getExportSubjectApiApiV1SubjectsSubjectExportPostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -197,7 +197,7 @@ export const exportSubjectApiApiV1SubjectsSubjectExportPost = async (subject: st
       exportOptions,)
   }
 );}
-  
+
 
 
 
@@ -212,7 +212,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportSubjectApiApiV1SubjectsSubjectExportPost>>, {subject: string;data: ExportOptions}> = (props) => {
@@ -223,7 +223,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -264,8 +264,13 @@ export type importSubjectApiApiV1SubjectsImportPostResponse409 = {
   status: 409
 }
 
+export type importSubjectApiApiV1SubjectsImportPostResponse413 = {
+  data: ErrorResponse
+  status: 413
+}
+
 export type importSubjectApiApiV1SubjectsImportPostResponse422 = {
-  data: HTTPValidationError
+  data: ErrorResponse
   status: 422
 }
 
@@ -277,7 +282,7 @@ export type importSubjectApiApiV1SubjectsImportPostResponse500 = {
 export type importSubjectApiApiV1SubjectsImportPostResponseSuccess = (importSubjectApiApiV1SubjectsImportPostResponse200) & {
   headers: Headers;
 };
-export type importSubjectApiApiV1SubjectsImportPostResponseError = (importSubjectApiApiV1SubjectsImportPostResponse400 | importSubjectApiApiV1SubjectsImportPostResponse409 | importSubjectApiApiV1SubjectsImportPostResponse422 | importSubjectApiApiV1SubjectsImportPostResponse500) & {
+export type importSubjectApiApiV1SubjectsImportPostResponseError = (importSubjectApiApiV1SubjectsImportPostResponse400 | importSubjectApiApiV1SubjectsImportPostResponse409 | importSubjectApiApiV1SubjectsImportPostResponse413 | importSubjectApiApiV1SubjectsImportPostResponse422 | importSubjectApiApiV1SubjectsImportPostResponse500) & {
   headers: Headers;
 };
 
@@ -286,7 +291,7 @@ export type importSubjectApiApiV1SubjectsImportPostResponse = (importSubjectApiA
 export const getImportSubjectApiApiV1SubjectsImportPostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/import`
 }
@@ -299,19 +304,19 @@ if(bodyImportSubjectApiApiV1SubjectsImportPost.new_subject_name !== undefined &&
  }
 
   return orvalApiClient<importSubjectApiApiV1SubjectsImportPostResponse>(getImportSubjectApiApiV1SubjectsImportPostUrl(),
-  {      
+  {
     ...options,
     method: 'POST'
     ,
-    body: 
+    body:
       formData,
   }
 );}
-  
 
 
 
-export const getImportSubjectApiApiV1SubjectsImportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+
+export const getImportSubjectApiApiV1SubjectsImportPostMutationOptions = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>, TError,{data: BodyImportSubjectApiApiV1SubjectsImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>, TError,{data: BodyImportSubjectApiApiV1SubjectsImportPost}, TContext> => {
 
@@ -322,7 +327,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>, {data: BodyImportSubjectApiApiV1SubjectsImportPost}> = (props) => {
@@ -333,19 +338,19 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type ImportSubjectApiApiV1SubjectsImportPostMutationResult = NonNullable<Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>>
     export type ImportSubjectApiApiV1SubjectsImportPostMutationBody = BodyImportSubjectApiApiV1SubjectsImportPost
-    export type ImportSubjectApiApiV1SubjectsImportPostMutationError = ErrorResponse | HTTPValidationError
+    export type ImportSubjectApiApiV1SubjectsImportPostMutationError = ErrorResponse
 
     /**
  * @summary 导入学科（上传）
  */
-export const useImportSubjectApiApiV1SubjectsImportPost = <TError = ErrorResponse | HTTPValidationError,
+export const useImportSubjectApiApiV1SubjectsImportPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>, TError,{data: BodyImportSubjectApiApiV1SubjectsImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof importSubjectApiApiV1SubjectsImportPost>>,
@@ -386,22 +391,22 @@ export type listCoursesApiApiV1CoursesGetResponse = (listCoursesApiApiV1CoursesG
 export const getListCoursesApiApiV1CoursesGetUrl = () => {
 
 
-  
+
 
   return `/api/v1/courses`
 }
 
 export const listCoursesApiApiV1CoursesGet = async ( options?: RequestInit): Promise<listCoursesApiApiV1CoursesGetResponse> => {
-  
+
   return orvalApiClient<listCoursesApiApiV1CoursesGetResponse>(getListCoursesApiApiV1CoursesGetUrl(),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -412,7 +417,7 @@ export const getListCoursesApiApiV1CoursesGetQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListCoursesApiApiV1CoursesGetQueryOptions = <TData = Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
@@ -420,13 +425,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListCoursesApiApiV1CoursesGetQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>> = ({ signal }) => listCoursesApiApiV1CoursesGet({ signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -465,7 +470,7 @@ export function useListCoursesApiApiV1CoursesGet<TData = Awaited<ReturnType<type
 
 export function useListCoursesApiApiV1CoursesGet<TData = Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>, TError = ErrorResponse>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCoursesApiApiV1CoursesGetQueryOptions(options)
@@ -492,8 +497,13 @@ export type importCourseApiApiV1CoursesFilenameImportPostResponse404 = {
   status: 404
 }
 
+export type importCourseApiApiV1CoursesFilenameImportPostResponse413 = {
+  data: ErrorResponse
+  status: 413
+}
+
 export type importCourseApiApiV1CoursesFilenameImportPostResponse422 = {
-  data: HTTPValidationError
+  data: ErrorResponse
   status: 422
 }
 
@@ -515,7 +525,7 @@ export type importCourseApiApiV1CoursesFilenameImportPostResponse503 = {
 export type importCourseApiApiV1CoursesFilenameImportPostResponseSuccess = (importCourseApiApiV1CoursesFilenameImportPostResponse200) & {
   headers: Headers;
 };
-export type importCourseApiApiV1CoursesFilenameImportPostResponseError = (importCourseApiApiV1CoursesFilenameImportPostResponse404 | importCourseApiApiV1CoursesFilenameImportPostResponse422 | importCourseApiApiV1CoursesFilenameImportPostResponse500 | importCourseApiApiV1CoursesFilenameImportPostResponse502 | importCourseApiApiV1CoursesFilenameImportPostResponse503) & {
+export type importCourseApiApiV1CoursesFilenameImportPostResponseError = (importCourseApiApiV1CoursesFilenameImportPostResponse404 | importCourseApiApiV1CoursesFilenameImportPostResponse413 | importCourseApiApiV1CoursesFilenameImportPostResponse422 | importCourseApiApiV1CoursesFilenameImportPostResponse500 | importCourseApiApiV1CoursesFilenameImportPostResponse502 | importCourseApiApiV1CoursesFilenameImportPostResponse503) & {
   headers: Headers;
 };
 
@@ -524,16 +534,16 @@ export type importCourseApiApiV1CoursesFilenameImportPostResponse = (importCours
 export const getImportCourseApiApiV1CoursesFilenameImportPostUrl = (filename: string,) => {
 
 
-  
+
 
   return `/api/v1/courses/${filename}/import`
 }
 
 export const importCourseApiApiV1CoursesFilenameImportPost = async (filename: string,
     bodyImportCourseApiApiV1CoursesFilenameImportPost: BodyImportCourseApiApiV1CoursesFilenameImportPost, options?: RequestInit): Promise<importCourseApiApiV1CoursesFilenameImportPostResponse> => {
-  
+
   return orvalApiClient<importCourseApiApiV1CoursesFilenameImportPostResponse>(getImportCourseApiApiV1CoursesFilenameImportPostUrl(filename),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -541,11 +551,11 @@ export const importCourseApiApiV1CoursesFilenameImportPost = async (filename: st
       bodyImportCourseApiApiV1CoursesFilenameImportPost,)
   }
 );}
-  
 
 
 
-export const getImportCourseApiApiV1CoursesFilenameImportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+
+export const getImportCourseApiApiV1CoursesFilenameImportPostMutationOptions = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>, TError,{filename: string;data: BodyImportCourseApiApiV1CoursesFilenameImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>, TError,{filename: string;data: BodyImportCourseApiApiV1CoursesFilenameImportPost}, TContext> => {
 
@@ -556,7 +566,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>, {filename: string;data: BodyImportCourseApiApiV1CoursesFilenameImportPost}> = (props) => {
@@ -567,19 +577,19 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type ImportCourseApiApiV1CoursesFilenameImportPostMutationResult = NonNullable<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>>
     export type ImportCourseApiApiV1CoursesFilenameImportPostMutationBody = BodyImportCourseApiApiV1CoursesFilenameImportPost
-    export type ImportCourseApiApiV1CoursesFilenameImportPostMutationError = ErrorResponse | HTTPValidationError
+    export type ImportCourseApiApiV1CoursesFilenameImportPostMutationError = ErrorResponse
 
     /**
  * @summary 从演示课程导入
  */
-export const useImportCourseApiApiV1CoursesFilenameImportPost = <TError = ErrorResponse | HTTPValidationError,
+export const useImportCourseApiApiV1CoursesFilenameImportPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>, TError,{filename: string;data: BodyImportCourseApiApiV1CoursesFilenameImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof importCourseApiApiV1CoursesFilenameImportPost>>,
@@ -589,4 +599,3 @@ export const useImportCourseApiApiV1CoursesFilenameImportPost = <TError = ErrorR
       > => {
       return useMutation(getImportCourseApiApiV1CoursesFilenameImportPostMutationOptions(options), queryClient);
     }
-    

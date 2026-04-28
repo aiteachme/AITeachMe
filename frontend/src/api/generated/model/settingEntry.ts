@@ -24,6 +24,8 @@ export interface SettingEntry {
   default_value?: unknown | null;
   /** 当前用户覆盖值。 */
   user_value?: unknown | null;
+  /** 本地模式下可按需查看的敏感配置明文。 */
+  reveal_value?: string | null;
   /** 格式化展示值。 */
   display_value?: string | null;
   /** 当前配置状态。 */

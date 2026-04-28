@@ -10,8 +10,15 @@
  * 用户体验与问题反馈请求。
  */
 export interface FeedbackRequest {
-  /** 反馈内容。 */
+  /**
+   * 反馈内容。
+   * @minLength 1
+   * @maxLength 2000
+   */
   content: string;
-  /** 可选的 Base64 截图列表。 */
+  /**
+   * 可选的 Base64 截图列表。
+   * @maxItems 3
+   */
   images?: string[];
 }
