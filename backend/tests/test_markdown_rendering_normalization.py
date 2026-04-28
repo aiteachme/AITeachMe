@@ -171,6 +171,16 @@ def test_public_markdown_hides_source_debug_and_post_reading_note() -> None:
     assert "`PROMPT $P$G`" in fixed
 
 
+def test_public_markdown_hides_legacy_mermaid_placeholder() -> None:
+    raw = "# 函数\n\n<!-- [MERMAID: 函数的整体知识脉络图] -->\n\n正文。"
+
+    fixed = sanitize_public_markdown(raw)
+
+    assert "MERMAID:" not in fixed
+    assert "<!--" not in fixed
+    assert "正文。" in fixed
+
+
 def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:
     raw = "\n".join(
         [

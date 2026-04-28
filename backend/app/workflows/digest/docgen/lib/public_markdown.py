@@ -14,6 +14,7 @@ _LLM_SOURCE_SECTION_RE = re.compile(
 _SOURCE_SLICE_SUBSECTION_RE = re.compile(
     r"(?ms)^###[ \t]+来源切片：[^\n]*\n.*?(?=^#{1,3}[ \t]+|\Z)"
 )
+_LEGACY_MERMAID_PLACEHOLDER_RE = re.compile(r"(?m)^\s*<!--\s*\[MERMAID:[\s\S]*?\]\s*-->\s*$")
 
 
 def _strip_source_debug_lines(markdown: str) -> str:
@@ -67,6 +68,7 @@ def sanitize_public_markdown(markdown: str) -> str:
     text = _REFERENCE_HEADING_RE.sub("", text)
     text = _LLM_SOURCE_SECTION_RE.sub("", text)
     text = _SOURCE_SLICE_SUBSECTION_RE.sub("", text)
+    text = _LEGACY_MERMAID_PLACEHOLDER_RE.sub("", text)
     text = _strip_source_debug_lines(text)
     text = _strip_post_reading_note(text)
     text = re.sub(r"\n{3,}", "\n\n", text)
