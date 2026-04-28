@@ -10,7 +10,7 @@ from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 def build_title_lock_messages(
     *,
-    subject: str,
+    subject_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -26,7 +26,7 @@ def build_title_lock_messages(
     prompt = f"""
 请为下面这一章锁定最终发布标题。
 
-主题：{subject}
+主题：{subject_name}
 模式：{digest_mode}
 用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
@@ -60,7 +60,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
     return trace_prompt_build(
         "chapter_title_lock",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "digest_mode": digest_mode,
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
             "has_history": bool(docgen_history_brief),

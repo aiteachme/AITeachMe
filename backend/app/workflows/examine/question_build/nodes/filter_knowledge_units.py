@@ -340,7 +340,7 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
             filter_strategy = "llm_graph"
             filter_rationale = ""
             selection = await select_exam_knowledge_units(
-                subject=str(state.get("subject") or ""),
+                subject_id=str(state.get("subject_id") or ""),
                 subject_name=str(state.get("subject_name") or ""),
                 subject_description=str(state.get("subject_description") or ""),
                 subject_user_intent=str(state.get("subject_user_intent") or ""),

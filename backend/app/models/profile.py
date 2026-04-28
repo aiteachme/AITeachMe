@@ -18,7 +18,7 @@ class UserKnowledgeState(SQLModel, table=True):
         sa.Index(
             "uq_user_knowledge_state_node",
             "user_id",
-            "subject",
+            "subject_id",
             "knowledge_unit_id",
             unique=True,
             sqlite_where=sa.text("knowledge_unit_id IS NOT NULL"),
@@ -28,7 +28,7 @@ class UserKnowledgeState(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", index=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     knowledge_unit_id: int | None = Field(default=None, foreign_key="knowledge_unit.id", index=True)
     mastery_score: float = Field(default=0.0, ge=0.0, le=1.0)
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)

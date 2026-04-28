@@ -8,7 +8,7 @@ This package contains shared workflow support only:
 """
 
 from app.shared.infra.workflow.authoring import WorkflowTraceBinding, workflow_tracer
-from app.shared.infra.workflow.context import LANGGRAPH_DEV_SUBJECT, WorkflowContext, create_langgraph_dev_context
+from app.shared.infra.workflow.context import LANGGRAPH_DEV_SUBJECT_ID, WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus, LoggedWorkflowEvent, WorkflowEvent
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
@@ -25,7 +25,7 @@ __all__ = [
     "AsyncNode",
     "GraphBuilder",
     "InProcessEventBus",
-    "LANGGRAPH_DEV_SUBJECT",
+    "LANGGRAPH_DEV_SUBJECT_ID",
     "LoggedWorkflowEvent",
     "StateT",
     "WorkflowContext",

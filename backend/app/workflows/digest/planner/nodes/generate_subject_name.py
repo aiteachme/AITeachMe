@@ -84,7 +84,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             logger.info(
                 "planner_subject_name_generation_started",
                 planner_session_id=state.get("planner_session_id") or "",
-                subject=state.get("subject") or "",
+                subject_id=state.get("subject_id") or "",
                 topic_hint_count=len(topic_hints),
             )
             title = await acompletion_with_fallback(
@@ -99,7 +99,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
             logger.exception(
                 "planner_subject_name_generation_failed",
                 planner_session_id=state.get("planner_session_id") or "",
-                subject=state.get("subject") or "",
+                subject_id=state.get("subject_id") or "",
             )
             return {"generated_subject_name": "", "generated_subject_icon_key": ""}
 
@@ -107,7 +107,7 @@ def build_generate_subject_name_node(*, context: WorkflowContext):
         logger.info(
             "planner_subject_name_generation_completed",
             planner_session_id=state.get("planner_session_id") or "",
-            subject=state.get("subject") or "",
+            subject_id=state.get("subject_id") or "",
             generated_subject_name=cleaned or None,
         )
         icon_key = (

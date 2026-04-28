@@ -23,7 +23,7 @@ _BULLET_PREFIX_CHARS = "0123456789.\u3001- "
 @traceable(name="profile.generate_report_suggestions", run_type="chain")
 async def generate_report_suggestions(
     *,
-    subject: str,
+    subject_name: str,
     overall_mastery: float | None,
     weak_points: list[dict],
 ) -> list[str]:
@@ -34,7 +34,7 @@ async def generate_report_suggestions(
 
     prompt = populate_prompt(
         SYSTEM_PROMPT_REPORT_SUGGESTIONS,
-        subject=subject,
+        subject_name=subject_name,
         overall_mastery=f"{overall_mastery:.0%}" if overall_mastery is not None else _NO_DATA_TEXT,
         weak_points="\n".join(
             f"- {item['knowledge_point']}\uff08\u638c\u63e1\u5ea6\uff1a{item['mastery_text']}\uff09"
@@ -57,5 +57,5 @@ async def generate_report_suggestions(
         ]
         return lines or [_DEFAULT_SUGGESTION]
     except Exception as exc:
-        logger.warning("generate_report_suggestions_failed", subject=subject, error=str(exc))
+        logger.warning("generate_report_suggestions_failed", subject_name=subject_name, error=str(exc))
         raise

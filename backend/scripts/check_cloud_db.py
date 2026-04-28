@@ -32,13 +32,14 @@ _REQUIRED_UNIQUE_INDEXES = (
     "ix_user_username",
     "ix_user_email",
     "ix_user_device_key",
-    "ix_subject_slug",
     "ix_raw_file_uid",
     "uq_user_knowledge_state_node",
 )
 _REQUIRED_FOREIGN_KEYS = (
     ("subject", "user_id", "user"),
-    ("retrieval_chunk", "subject", "subject"),
+    ("retrieval_chunk", "subject_id", "subject"),
+    ("subject_file", "subject_id", "subject"),
+    ("raw_file", "origin_subject_id", "subject"),
     ("retrieval_chunk", "document_id", "raw_file"),
     ("knowledge_edge", "source_node_id", "knowledge_unit"),
     ("knowledge_edge", "target_node_id", "knowledge_unit"),

@@ -34,7 +34,7 @@ from app.shared.infra.exceptions import (
 )
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
-    _create_unique_slug,
+    _create_unique_subject_id,
     _import_table,
     _read_manifest,
 )
@@ -76,7 +76,7 @@ def import_subject(
         except (OSError, ValueError, ValidationError) as exc:
             raise InvalidImportPackageError(str(exc)) from exc
 
-        new_slug = _create_unique_slug(session)
+        new_subject_id = _create_unique_subject_id(session)
         new_name = (options.new_subject_name or manifest.subject.name or "导入课程").strip() or "导入课程"
 
         id_map: dict[str, dict[Any, Any]] = {}
@@ -96,7 +96,7 @@ def import_subject(
                     spec,
                     records,
                     id_map=id_map,
-                    new_slug=new_slug,
+                    new_subject_id=new_subject_id,
                     new_name=new_name,
                     user_id=user_id,
                     warnings=warnings,
@@ -106,7 +106,7 @@ def import_subject(
             legacy_plan_count = _import_legacy_confirmed_build_plans(
                 session,
                 tmpdir=tmpdir,
-                subject_slug=new_slug,
+                subject_id=new_subject_id,
                 user_id=user_id,
                 id_map=id_map,
                 warnings=warnings,
@@ -116,42 +116,42 @@ def import_subject(
 
             _require_imported_subject(
                 session,
-                subject_slug=new_slug,
+                subject_id=new_subject_id,
                 imported_counts=imported_counts,
             )
             _unpack_files(
                 session,
                 tmpdir,
-                new_slug,
+                new_subject_id,
                 user_id=user_id,
                 file_id_map=id_map.get("raw_file", {}),
             )
             _reconcile_imported_planner_metadata(
                 session,
-                subject_slug=new_slug,
+                subject_id=new_subject_id,
                 id_map=id_map,
             )
             session.commit()
         except Exception:
             session.rollback()
-            _cleanup_import_artifacts(new_slug, user_id=user_id)
+            _cleanup_import_artifacts(new_subject_id, user_id=user_id)
             raise
 
         _rebuild_imported_embeddings(
             session,
-            subject_slug=new_slug,
+            subject_id=new_subject_id,
             imported_counts=imported_counts,
             warnings=warnings,
         )
 
         logger.info(
             "subject_imported",
-            subject=new_slug,
-            name=new_name,
+            subject_id=new_subject_id,
+            subject_name=new_name,
             counts=imported_counts,
         )
         return ImportResultData(
-            subject_id=new_slug,
+            subject_id=new_subject_id,
             subject_name=new_name,
             imported_counts=imported_counts,
             warnings=warnings,
@@ -161,7 +161,7 @@ def import_subject(
 def _reconcile_imported_planner_metadata(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
     id_map: dict[str, dict[Any, Any]],
 ) -> None:
     """Remap planner chat-session metadata after all import ids are known."""
@@ -171,7 +171,7 @@ def _reconcile_imported_planner_metadata(
     if not file_id_map and not plan_id_map:
         return
 
-    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject == subject_slug)).all())
+    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject_id == subject_id)).all())
     for item in sessions:
         raw_meta = item.meta_json or {}
         if isinstance(raw_meta, str):
@@ -215,7 +215,7 @@ def _import_legacy_confirmed_build_plans(
     session: Session,
     *,
     tmpdir: Path,
-    subject_slug: str,
+    subject_id: str,
     user_id: str,
     id_map: dict[str, dict[Any, Any]],
     warnings: list[str],
@@ -255,7 +255,7 @@ def _import_legacy_confirmed_build_plans(
                 selected_file_ids.append(new_file_id)
 
         plan_json = dict(record.get("plan_json") or {})
-        plan_json["subject"] = subject_slug
+        plan_json["subject_id"] = subject_id
         plan_json["selected_file_ids"] = selected_file_ids
         plan_json["planner_session_id"] = str(new_session_id)
         plan_json["confirmed_plan_id"] = new_plan_id
@@ -270,7 +270,7 @@ def _import_legacy_confirmed_build_plans(
         meta["confirmed_plan_id"] = new_plan_id
         meta["confirmed_plan"] = {
             "id": new_plan_id,
-            "subject": subject_slug,
+            "subject_id": subject_id,
             "planner_session_id": str(new_session_id),
             "user_id": user_id,
             "status": record.get("status") or "confirmed",
@@ -363,7 +363,7 @@ def _read_table_records(db_file: Path, table_name: str) -> list[dict[str, Any]]:
 def _require_imported_subject(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
     imported_counts: dict[str, int],
 ) -> None:
     """Fail malformed packages before returning a phantom import success."""
@@ -371,7 +371,7 @@ def _require_imported_subject(
     if int(imported_counts.get("subject", 0) or 0) != 1:
         raise InvalidImportPackageError("课程包缺少有效的 subject 数据。")
 
-    subject = session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
+    subject = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if subject is None:
         raise InvalidImportPackageError("课程包未能生成有效课程。")
 
@@ -398,14 +398,14 @@ def _exported_raw_file_segments(extract_dir: Path) -> dict[Any, str]:
 def _unpack_files(
     session: Session,
     extract_dir: Path,
-    new_slug: str,
+    new_subject_id: str,
     *,
     user_id: str,
     file_id_map: dict[Any, Any],
 ) -> None:
     """Write packaged files into ContentStore using remapped file ids."""
 
-    subject_scope = build_subject_storage_scope(user_id=user_id, subject=new_slug)
+    subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=new_subject_id)
     cs = get_content_store()
 
     def _raw_file_for_old_id(old_id: Any) -> RawFile | None:
@@ -449,20 +449,20 @@ def _unpack_files(
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
 
 
-def _cleanup_import_artifacts(subject_slug: str, *, user_id: str) -> None:
+def _cleanup_import_artifacts(subject_id: str, *, user_id: str) -> None:
     """Best-effort cleanup when import fails after files have been written."""
 
     cs = get_content_store()
     try:
         run_store_sync(
             cs.delete_prefix,
-            build_subject_storage_scope(user_id=user_id, subject=subject_slug).subject_prefix(),
+            build_subject_storage_scope(user_id=user_id, subject_id=subject_id).subject_prefix(),
             default=0,
         )
     except Exception as exc:  # pragma: no cover - best-effort cleanup
         logger.warning(
             "subject_import_artifact_cleanup_failed",
-            subject=subject_slug,
+            subject_id=subject_id,
             error=str(exc),
         )
 
@@ -470,7 +470,7 @@ def _cleanup_import_artifacts(subject_slug: str, *, user_id: str) -> None:
 def _rebuild_imported_embeddings(
     session: Session,
     *,
-    subject_slug: str,
+    subject_id: str,
     imported_counts: dict[str, int],
     warnings: list[str],
 ) -> None:
@@ -479,30 +479,30 @@ def _rebuild_imported_embeddings(
     if int(imported_counts.get("retrieval_chunk", 0) or 0) <= 0:
         return
 
-    subject = session.exec(select(Subject).where(Subject.slug == subject_slug)).first()
-    if subject is None:
+    subject_record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
+    if subject_record is None:
         warnings.append("embedding_rebuild: imported subject not found after commit")
         return
 
     try:
         resolve_subject_build_vector_status(
             session,
-            subject=subject,
+            subject=subject_record,
             embedding_resolution=None,
         )
     except Exception as exc:
         logger.warning(
             "subject_import_embedding_precheck_failed",
-            subject=subject_slug,
+            subject_id=subject_id,
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: precheck failed: {exc}")
         return
 
-    if not should_generate_subject_embeddings(session, subject_slug=subject_slug):
+    if not should_generate_subject_embeddings(session, subject_id=subject_id):
         logger.info(
             "subject_import_embedding_skipped",
-            subject=subject_slug,
+            subject_id=subject_id,
             reason="subject_vectors_disabled_or_unavailable",
         )
         return
@@ -511,7 +511,7 @@ def _rebuild_imported_embeddings(
         session.exec(
             select(RetrievalChunk)
             .where(
-                RetrievalChunk.subject == subject_slug,
+                RetrievalChunk.subject_id == subject_id,
                 RetrievalChunk.is_active.is_(True),
             )
             .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
@@ -526,7 +526,7 @@ def _rebuild_imported_embeddings(
     if not embeddings:
         logger.warning(
             "subject_import_embedding_soft_failed",
-            subject=subject_slug,
+            subject_id=subject_id,
             chunk_count=len(chunk_rows),
         )
         warnings.append("embedding_rebuild: skipped because embedding service is unavailable")
@@ -535,14 +535,14 @@ def _rebuild_imported_embeddings(
     try:
         knowledge_repo.bulk_insert_embeddings(
             session,
-            subject=subject_slug,
+            subject_id=subject_id,
             chunk_ids=[int(chunk.id) for chunk in chunk_rows],
             embeddings=embeddings,
         )
     except Exception as exc:
         logger.warning(
             "subject_import_embedding_rebuild_failed",
-            subject=subject_slug,
+            subject_id=subject_id,
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: failed: {exc}")

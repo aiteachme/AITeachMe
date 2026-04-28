@@ -16,14 +16,14 @@ class QuestionTemplate(SQLModel, table=True):
     __tablename__ = "question_template"
     __table_args__ = (
         UniqueConstraint(
-            "subject",
+            "subject_id",
             "stem_hash",
             name="uq_template_subject_stem",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     question_type: str
     difficulty: str
     stem: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
@@ -43,14 +43,14 @@ class QuestionTypeRegistry(SQLModel, table=True):
 
     __tablename__ = "question_type_registry"
     __table_args__ = (
-        UniqueConstraint("scope", "subject", "type_key", name="uq_question_type_scope_subject_key"),
+        UniqueConstraint("scope", "subject_id", "type_key", name="uq_question_type_scope_subject_key"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     type_key: str = Field(index=True)
     display_name: str
     scope: str = Field(default="global", index=True)
-    subject: str = Field(default="", index=True)
+    subject_id: str = Field(default="", index=True)
     description: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
     answer_format: str = Field(default="")
     grading_method: str = Field(default="llm")
@@ -70,7 +70,7 @@ class ExamPaper(SQLModel, table=True):
     __tablename__ = "exam_paper"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str
     status: str = Field(default="draft", index=True)
@@ -169,7 +169,7 @@ class ExamStudyGuideCache(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     exam_paper_id: int = Field(foreign_key="exam_paper.id", index=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     user_id: str = Field(default="local", index=True)
     status: str = Field(default="completed", index=True)
     guide_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))

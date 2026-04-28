@@ -154,7 +154,7 @@ subject
 
 重点规则：
 
-- `subject.slug` 导入时始终生成新 slug，避免覆盖现有课程。
+- `subject.id` 导入时始终生成新的 `subject_id`，避免覆盖现有课程。
 - `raw_file.uid` 会重新生成，避免跨环境唯一约束冲突。
 - Planner 已确认计划内联在 `chat_session.meta_json.confirmed_plan`，导入时会重新生成 `confirmed_plan_id`。
 - `retrieval_chunk.document_id`、`knowledge_edge.source_node_id / target_node_id`、试题和画像中的 `knowledge_unit_id` 必须按新 ID 重映射。

@@ -49,7 +49,7 @@ async def acompletion_with_fallback(
 
     try:
         with langsmith_tracing_scope(
-            subject=trace.subject,
+            subject_id=trace.subject_id,
             build_session_id=trace.build_session_id,
             workflow=trace.workflow,
             lane=trace.lane,
@@ -78,7 +78,7 @@ async def acompletion_with_fallback(
             requested_call_purpose=resolved_purpose.value,
             requested_model=model_selector,
             error=str(exc),
-            subject=trace.subject,
+            subject_id=trace.subject_id,
             build_session_id=trace.build_session_id,
             workflow=trace.workflow,
             lane=trace.lane,

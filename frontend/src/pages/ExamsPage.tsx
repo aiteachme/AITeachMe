@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+﻿import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
-  getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey,
-  useExamHistoryApiV1SubjectsSubjectExamsHistoryGet,
-  useGenerateExamApiV1SubjectsSubjectExamsGeneratePost,
+  getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey,
+  useExamHistoryApiV1SubjectsSubjectIdExamsHistoryGet,
+  useGenerateExamApiV1SubjectsSubjectIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
@@ -219,7 +219,7 @@ export function ExamsPage() {
     refetchInterval: 8000,
   });
 
-  const historyQuery = useExamHistoryApiV1SubjectsSubjectExamsHistoryGet(subjectId ?? "", { page: 1, size: 24 });
+  const historyQuery = useExamHistoryApiV1SubjectsSubjectIdExamsHistoryGet(subjectId ?? "", { page: 1, size: 24 });
   const history = useMemo(
     () => unwrapOrvalResponse<{ items?: ExamHistoryItem[] }>(historyQuery.data),
     [historyQuery.data],
@@ -238,7 +238,7 @@ export function ExamsPage() {
   useEffect(() => {
     if (!subjectId || !generatingPaperIds.length) return;
 
-    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, {
+    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, {
       page: 1,
       size: 24,
     });
@@ -306,7 +306,7 @@ export function ExamsPage() {
     },
     onSuccess: async (_response, paperId) => {
       await queryClient.invalidateQueries({
-        queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+        queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
       });
       toast({
         title: "考卷已删除",
@@ -323,13 +323,13 @@ export function ExamsPage() {
     },
   });
 
-  const generateExam = useGenerateExamApiV1SubjectsSubjectExamsGeneratePost({
+  const generateExam = useGenerateExamApiV1SubjectsSubjectIdExamsGeneratePost({
     mutation: {
       onSuccess: async (response) => {
         const created = unwrapOrvalResponse(response);
         if (!created?.exam_paper_id) return;
         await queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+          queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
         });
         await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", subjectId ?? ""] });
         navigate(`/subject/${subjectId}/exams/${created.exam_paper_id}`);
@@ -353,7 +353,7 @@ export function ExamsPage() {
     if (!subjectId || generateExam.isPending) return;
     const config = currentCreateConfig ?? loadCreateExamConfig(subjectId);
     generateExam.mutate({
-      subject: subjectId,
+      subjectId,
       data: toExamGenerateRequest(config),
     });
   };

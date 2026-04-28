@@ -46,7 +46,7 @@
 - 每个 LangSmith 节点 metadata 都带 `node_key`、`node_description`、`reads`、`writes`、`emits`、`state_inputs`、`state_outputs`，排障时先看这些字段判断节点职责。
 - 所有 LLM 输出默认使用 `primary` 模型选择器；`流式生成回答` 节点的最终回答必须以 SSE token 形式推送。
 - 工具扩展只改 `lib/tooling.py` 的工具计划策略；节点不直接硬编码工具清单。
-- Prompt 面向模型时使用 `subject.name` 作为学科展示名；`subject.slug`/内部 id 只作为状态和数据库定位字段，不应该出现在“围绕某学科教学”的自然语言位置。
+- Prompt 面向模型时使用 `subject.name` 作为学科展示名；`subject.id`/内部 id 只作为状态和数据库定位字段，不应该出现在“围绕某学科教学”的自然语言位置。
 - 学科背景由 `subject_context` 提供，包括学科说明、学习目标、学科简介、教学背景摘要和用户整体画像。
 - 划选文本会进入检索 query 和 prompt，但会做长度截断，避免大段选区挤占上下文。
 - 如果用户在划词入口问“看不懂这个”，prompt 必须把“这个”绑定到划选内容；近期错题只作为个性化背景。

@@ -16,9 +16,8 @@ class Subject(SQLModel, table=True):
 
     __tablename__ = "subject"
 
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(primary_key=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
-    slug: str = Field(index=True, unique=True)
     name: str
     description: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
     user_intent: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))

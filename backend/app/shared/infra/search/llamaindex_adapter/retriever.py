@@ -6,7 +6,7 @@ from workflow nodes.
 
 Usage::
 
-    retriever = build_knowledge_retriever(subject="math101", top_k=5)
+    retriever = build_knowledge_retriever(subject_id="subj_math101", top_k=5)
     nodes = await retriever.aretrieve("什么是微积分？")
 """
 
@@ -42,11 +42,11 @@ class ATMKnowledgeRetriever:
     def __init__(
         self,
         *,
-        subject: str,
+        subject_id: str,
         top_k: int = 5,
         enable_rerank: bool | None = None,
     ) -> None:
-        self.subject = subject
+        self.subject_id = subject_id
         self.top_k = top_k
 
         settings = get_settings()
@@ -60,14 +60,14 @@ class ATMKnowledgeRetriever:
         binding_model: str | None = None
         with managed_session() as session:
             subject_row = session.exec(
-                select(Subject).where(Subject.slug == subject)
+                select(Subject).where(Subject.id == subject_id)
             ).first()
             if subject_row is not None:
                 binding = get_subject_embedding_binding(subject_row)
                 if binding is not None:
                     binding_model = binding.embedding_model
         self._embed_model = ATMEmbedding(model_name=binding_model)
-        self._vector_store = ATMVectorStore(subject=subject)
+        self._vector_store = ATMVectorStore(subject_id=subject_id)
         self._index = VectorStoreIndex.from_vector_store(
             vector_store=self._vector_store,
             embed_model=self._embed_model,
@@ -115,7 +115,7 @@ class ATMKnowledgeRetriever:
 
 
 def build_knowledge_retriever(
-    subject: str,
+    subject_id: str,
     *,
     top_k: int = 5,
     enable_rerank: bool | None = None,
@@ -123,7 +123,7 @@ def build_knowledge_retriever(
     """Factory: create a ready-to-use knowledge retriever for one subject.
 
     Args:
-        subject: The subject slug to search within.
+        subject_id: The subject ID to search within.
         top_k: Number of final results to return.
         enable_rerank: Override rerank behaviour. ``None`` means auto-detect
             from runtime settings (``models.rerank``).
@@ -132,7 +132,7 @@ def build_knowledge_retriever(
         An ``ATMKnowledgeRetriever`` instance.
     """
     return ATMKnowledgeRetriever(
-        subject=subject,
+        subject_id=subject_id,
         top_k=top_k,
         enable_rerank=enable_rerank,
     )

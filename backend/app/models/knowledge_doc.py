@@ -16,7 +16,7 @@ class KnowledgeDocument(SQLModel, table=True):
     __tablename__ = "knowledge_document"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     root_document_id: int | None = Field(default=None, foreign_key="knowledge_document.id", index=True)
     parent_document_id: int | None = Field(default=None, foreign_key="knowledge_document.id", index=True)
     package_key: str | None = Field(default=None, index=True)

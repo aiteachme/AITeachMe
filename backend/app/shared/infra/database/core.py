@@ -577,13 +577,19 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
     existing_tables = set(inspector.get_table_names())
     if "confirmed_build_plan" not in existing_tables or "chat_session" not in existing_tables:
         return
+    plan_columns = {column["name"] for column in inspector.get_columns("confirmed_build_plan")}
+    chat_columns = {column["name"] for column in inspector.get_columns("chat_session")}
+    plan_subject_column = "subject_id" if "subject_id" in plan_columns else "subject" if "subject" in plan_columns else None
+    chat_subject_column = "subject_id" if "subject_id" in chat_columns else "subject" if "subject" in chat_columns else None
+    if plan_subject_column is None or chat_subject_column is None:
+        return
 
     with engine.begin() as connection:
         plan_rows = list(
             connection.execute(
                 sa.text(
-                    """
-                    SELECT id, subject, planner_session_id, user_id, status, user_prompt,
+                    f"""
+                    SELECT id, {plan_subject_column} AS subject_id, planner_session_id, user_id, status, user_prompt,
                            digest_mode, selected_file_ids_json, chapter_plan_json,
                            build_constraints_json, plan_summary, plan_json,
                            created_at, updated_at
@@ -597,18 +603,18 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
         for row in plan_rows:
             session_row = connection.execute(
                 sa.text(
-                    """
+                    f"""
                     SELECT meta_json
                     FROM chat_session
                     WHERE id = :session_id
-                      AND subject = :subject
+                      AND {chat_subject_column} = :subject_id
                       AND user_id = :user_id
                       AND source = 'build_planner'
                     """
                 ),
                 {
                     "session_id": row.get("planner_session_id"),
-                    "subject": row.get("subject"),
+                    "subject_id": row.get("subject_id"),
                     "user_id": row.get("user_id"),
                 },
             ).mappings().first()
@@ -617,7 +623,7 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
             meta = _sqlite_json_object(session_row.get("meta_json"))
             plan_payload = {
                 "id": row.get("id"),
-                "subject": row.get("subject"),
+                "subject_id": row.get("subject_id"),
                 "planner_session_id": row.get("planner_session_id"),
                 "user_id": row.get("user_id"),
                 "status": row.get("status") or "confirmed",
@@ -1251,14 +1257,14 @@ def _ensure_builtin_question_types(engine: sa.Engine) -> None:
             existing = session.exec(
                 select(QuestionTypeRegistry).where(
                     QuestionTypeRegistry.scope == "global",
-                    QuestionTypeRegistry.subject == "",
+                    QuestionTypeRegistry.subject_id == "",
                     QuestionTypeRegistry.type_key == payload["type_key"],
                 )
             ).first()
             if existing is None:
                 existing = QuestionTypeRegistry(
                     scope="global",
-                    subject="",
+                    subject_id="",
                     source="system",
                     is_system=True,
                     is_active=True,

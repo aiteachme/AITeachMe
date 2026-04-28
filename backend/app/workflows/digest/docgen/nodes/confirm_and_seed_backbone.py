@@ -59,7 +59,7 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="backbone_seed_ready",
@@ -70,7 +70,7 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
             current_stage_description="章节标题已锁定，DocGen 骨架 seed 已确认，开始构建整本文档知识骨架。",
         )
         append_knowledge_build_recent_event(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "backbone_seed_ready",

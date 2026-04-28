@@ -42,7 +42,7 @@ def upsert_knowledge_state(
     target_ref_id = _validate_target_ref(knowledge_unit_id=state.knowledge_unit_id)
     insert_values = {
         "user_id": state.user_id,
-        "subject": state.subject,
+        "subject_id": state.subject_id,
         "knowledge_unit_id": state.knowledge_unit_id,
         "mastery_score": state.mastery_score,
         "confidence_score": state.confidence_score,
@@ -68,10 +68,10 @@ def upsert_knowledge_state(
     set_values = {
         key: value
         for key, value in insert_values.items()
-        if key not in {"user_id", "subject", "knowledge_unit_id"}
+        if key not in {"user_id", "subject_id", "knowledge_unit_id"}
     }
 
-    conflict_columns = ["user_id", "subject", "knowledge_unit_id"]
+    conflict_columns = ["user_id", "subject_id", "knowledge_unit_id"]
     conflict_where = "knowledge_unit_id IS NOT NULL"
 
     if is_postgres():
@@ -101,7 +101,7 @@ def upsert_knowledge_state(
     persisted = get_knowledge_state(
         session,
         user_id=state.user_id,
-        subject=state.subject,
+        subject_id=state.subject_id,
         knowledge_unit_id=target_ref_id,
     )
     if persisted is None:
@@ -113,12 +113,12 @@ def get_knowledge_state(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
-        UserKnowledgeState.subject == subject,
+        UserKnowledgeState.subject_id == subject_id,
     )
     stmt = _apply_state_target_filter(
         stmt,
@@ -131,12 +131,12 @@ def list_knowledge_states(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
-        UserKnowledgeState.subject == subject,
+        UserKnowledgeState.subject_id == subject_id,
     )
     stmt = _apply_state_target_filter(stmt, target_kind=target_kind)
     return list(session.exec(stmt.order_by(UserKnowledgeState.updated_at.desc())).all())
@@ -146,7 +146,7 @@ def list_weak_knowledge_states(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     threshold: float = 0.8,
     target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
@@ -154,7 +154,7 @@ def list_weak_knowledge_states(
         select(UserKnowledgeState)
         .where(
             UserKnowledgeState.user_id == user_id,
-            UserKnowledgeState.subject == subject,
+            UserKnowledgeState.subject_id == subject_id,
             UserKnowledgeState.mastery_score < threshold,
         )
         .order_by(UserKnowledgeState.mastery_score.asc())
@@ -167,7 +167,7 @@ def list_due_knowledge_states(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     as_of: datetime,
     target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
@@ -175,7 +175,7 @@ def list_due_knowledge_states(
         select(UserKnowledgeState)
         .where(
             UserKnowledgeState.user_id == user_id,
-            UserKnowledgeState.subject == subject,
+            UserKnowledgeState.subject_id == subject_id,
             UserKnowledgeState.forgetting_due_at.is_not(None),
             UserKnowledgeState.forgetting_due_at <= as_of,
         )
@@ -189,7 +189,7 @@ def list_weak_knowledge_unit_summaries(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     threshold: float = 0.8,
     limit: int = 10,
 ) -> list[tuple[str, float]]:
@@ -198,10 +198,10 @@ def list_weak_knowledge_unit_summaries(
         .join(KnowledgeUnit, UserKnowledgeState.knowledge_unit_id == KnowledgeUnit.id)
         .where(
             UserKnowledgeState.user_id == user_id,
-            UserKnowledgeState.subject == subject,
+            UserKnowledgeState.subject_id == subject_id,
             UserKnowledgeState.knowledge_unit_id.is_not(None),
             UserKnowledgeState.mastery_score < threshold,
-            KnowledgeUnit.subject == subject,
+            KnowledgeUnit.subject_id == subject_id,
         )
         .order_by(
             UserKnowledgeState.mastery_score.asc(),
@@ -220,7 +220,7 @@ def list_recent_wrong_attempt_summaries(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     knowledge_unit_ids: list[int] | None = None,
     limit: int = 5,
 ) -> list[dict[str, str]]:
@@ -245,7 +245,7 @@ def list_recent_wrong_attempt_summaries(
         .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
         .where(
             ExamPaper.user_id == user_id,
-            ExamPaper.subject == subject,
+            ExamPaper.subject_id == subject_id,
             ExamPaperItem.is_correct.is_(False),
         )
         .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
@@ -300,13 +300,13 @@ def find_pending_review(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     knowledge_unit_id: int | None = None,
 ) -> UserKnowledgeState | None:
     _validate_target_ref(knowledge_unit_id=knowledge_unit_id)
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.user_id == user_id,
-        UserKnowledgeState.subject == subject,
+        UserKnowledgeState.subject_id == subject_id,
         UserKnowledgeState.review_status == "pending",
     )
     stmt = _apply_state_target_filter(
@@ -320,14 +320,14 @@ def list_pending_reviews(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     target_kind: str | None = None,
 ) -> list[UserKnowledgeState]:
     stmt = (
         select(UserKnowledgeState)
         .where(
             UserKnowledgeState.user_id == user_id,
-            UserKnowledgeState.subject == subject,
+            UserKnowledgeState.subject_id == subject_id,
             UserKnowledgeState.review_status == "pending",
         )
         .order_by(
@@ -345,13 +345,13 @@ def complete_review_task(
     *,
     task_id: int,
     user_id: str,
-    subject: str,
+    subject_id: str,
     auto_commit: bool = True,
 ) -> UserKnowledgeState | None:
     stmt = select(UserKnowledgeState).where(
         UserKnowledgeState.id == task_id,
         UserKnowledgeState.user_id == user_id,
-        UserKnowledgeState.subject == subject,
+        UserKnowledgeState.subject_id == subject_id,
     )
     state = session.exec(stmt).first()
     if state is None:

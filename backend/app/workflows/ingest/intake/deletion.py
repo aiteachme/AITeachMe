@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
+from app.shared.infra.exceptions import RawFileInUseError
 from app.shared.infra.storage import get_content_store
-from app.repositories.files_repo import delete_raw_file, unlink_raw_files_from_subject
+from app.repositories.files_repo import delete_raw_file, list_linked_subjects_for_raw_file, unlink_raw_files_from_subject
 from app.schemas.files import FileDeleteData
 from app.utils.presenters import require_uid
 from app.workflows.ingest.intake.catalog import get_subject_files_by_uid_or_raise, get_user_files_by_uid_or_raise
@@ -14,15 +15,15 @@ from app.workflows.ingest.intake.catalog import get_subject_files_by_uid_or_rais
 async def delete_files(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     owner_user_id: str,
     file_uids: list[str],
 ) -> FileDeleteData:
-    raw_files = get_subject_files_by_uid_or_raise(session, subject=subject, file_uids=file_uids)
+    raw_files = get_subject_files_by_uid_or_raise(session, subject_id=subject_id, file_uids=file_uids)
     unlinked = unlink_raw_files_from_subject(
         session,
         owner_user_id=owner_user_id,
-        subject=subject,
+        subject_id=subject_id,
         raw_files=raw_files,
     )
     return FileDeleteData(deleted_file_uids=[require_uid(item.uid, "RawFile.uid") for item in unlinked])
@@ -40,6 +41,16 @@ async def delete_user_files(
 
     for raw_file in raw_files:
         raw_file_uid = require_uid(raw_file.uid, "RawFile.uid")
+        if raw_file.id is not None:
+            linked_subjects = list_linked_subjects_for_raw_file(session, raw_file_id=raw_file.id)
+            if linked_subjects:
+                raise RawFileInUseError(
+                    raw_file_uid,
+                    [
+                        {"subject_id": item.id, "name": item.name}
+                        for item in linked_subjects
+                    ],
+                )
         if raw_file.file_path:
             await content_store.delete(raw_file.file_path)
         if raw_file.markdown_path:

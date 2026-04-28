@@ -64,7 +64,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                     selected_context=state.get("selected_context"),
                     selection_context=state.get("selection_context"),
                 ),
-                subject=state["subject"],
+                subject_id=state["subject_id"],
                 top_k=settings.rag.top_k,
                 similarity_threshold=settings.rag.similarity_threshold,
                 user_id=state["user_id"],

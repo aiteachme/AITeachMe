@@ -40,7 +40,7 @@ def _markdown_metrics(markdown: str) -> dict[str, object]:
 def prepare_node(state: DocsSyncState) -> DocsSyncState:
     """Validate the published knowledge doc before opening a graph sync run."""
 
-    subject = str(state.get("subject") or "").strip()
+    subject_id = str(state.get("subject_id") or "").strip()
     markdown = str(state.get("markdown") or "")
     structured_context = dict(state.get("structured_context") or {})
     metrics = {
@@ -48,7 +48,7 @@ def prepare_node(state: DocsSyncState) -> DocsSyncState:
         **_markdown_metrics(markdown),
         **_structured_context_metrics(structured_context),
     }
-    if not subject:
+    if not subject_id:
         return with_node_error(state, "prepare", "docs_sync_missing_subject", metrics=metrics)
     if not markdown.strip():
         return with_node_error(state, "prepare", "docs_sync_missing_markdown", metrics=metrics)
@@ -58,9 +58,9 @@ def prepare_node(state: DocsSyncState) -> DocsSyncState:
         {
             **metrics,
             "ok": True,
-            "subject": subject,
+            "subject_id": subject_id,
         },
-        subject=subject,
+        subject_id=subject_id,
         structured_context=structured_context,
         error=None,
     )

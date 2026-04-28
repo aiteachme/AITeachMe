@@ -904,7 +904,7 @@ def _validate_generation_prompts(
 
 async def _select_exam_knowledge_units_once(
     *,
-    subject: str,
+    subject_id: str,
     subject_name: str,
     subject_description: str,
     subject_user_intent: str,
@@ -956,7 +956,7 @@ async def _select_exam_knowledge_units_once(
         max_tokens=1400,
         extra_metadata={
             "substep": "exam.question_build.filter_units",
-            "subject": subject,
+            "subject_id": subject_id,
             "exam_mode": exam_mode,
             "question_count": question_count,
             "candidate_limit": candidate_limit,
@@ -974,7 +974,7 @@ async def _select_exam_knowledge_units_once(
 
 async def select_exam_knowledge_units(
     *,
-    subject: str = "",
+    subject_id: str = "",
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
@@ -1002,7 +1002,7 @@ async def select_exam_knowledge_units(
     priority_ids = [int(unit_id) for unit_id in list(priority_unit_ids or []) if int(unit_id or 0) > 0]
 
     selection = await _select_exam_knowledge_units_once(
-        subject=subject,
+        subject_id=subject_id,
         subject_name=subject_name,
         subject_description=subject_description,
         subject_user_intent=subject_user_intent,
@@ -1024,7 +1024,7 @@ async def select_exam_knowledge_units(
 
 async def allocate_exam_question_knowledge_units(
     *,
-    subject: str = "",
+    subject_id: str = "",
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
@@ -1063,7 +1063,7 @@ async def allocate_exam_question_knowledge_units(
             max_tokens=max_tokens,
             extra_metadata={
                 "substep": "exam.question_build.allocate_knowledge_units",
-                "subject": subject,
+                "subject_id": subject_id,
                 "exam_mode": exam_mode,
                 "question_count": normalized_count,
                 "unit_count": len(units),
@@ -1251,7 +1251,7 @@ async def generate_exam_questions_for_units(
 
 async def generate_exam_from_text(
     *,
-    subject: str,
+    subject_name: str,
     knowledge_text: str,
     num_questions: int = 5,
     difficulty: DifficultyLiteral = "medium",
@@ -1260,7 +1260,7 @@ async def generate_exam_from_text(
 
     normalized_count = max(1, min(int(num_questions), 12))
     messages = build_text_exam_messages(
-        subject=subject,
+        subject_name=subject_name,
         knowledge_text=knowledge_text,
         num_questions=normalized_count,
         difficulty=difficulty,
@@ -1274,7 +1274,7 @@ async def generate_exam_from_text(
         max_tokens=2800,
         extra_metadata={
             "substep": "exam.question_build.playground",
-            "subject": subject,
+            "subject_name": subject_name,
             "question_count": normalized_count,
         },
     )

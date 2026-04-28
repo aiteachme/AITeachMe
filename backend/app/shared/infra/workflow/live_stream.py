@@ -66,7 +66,7 @@ def _enqueue(subscriber: _Subscriber, item: WorkflowStreamEvent) -> None:
 def publish_workflow_stream_event(channel: str, event: str, data: dict[str, Any]) -> None:
     """Publish a live event to active in-process subscribers.
 
-    The channel is usually a normalized subject slug. Data remains opaque to
+    The channel is usually a normalized subject ID. Data remains opaque to
     infra; workflow/API layers decide the event names and payload schema.
     """
 

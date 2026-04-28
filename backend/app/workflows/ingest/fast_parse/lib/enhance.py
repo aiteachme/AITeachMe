@@ -60,7 +60,7 @@ async def _run_deep_enhance_background(
     *,
     user_id: str,
     file_id: int,
-    subject: str = "",
+    subject_id: str = "",
 ) -> None:
     """Background Phase 2: LLM Vision OCR enhancement.
 
@@ -68,7 +68,7 @@ async def _run_deep_enhance_background(
     Phase 1 markdown, enhances it with OCR, and updates the DB status.
     """
 
-    enhance_logger = logger.bind(subject=subject, user_id=user_id, file_id=file_id, phase="deep_enhance")
+    enhance_logger = logger.bind(subject_id=subject_id, user_id=user_id, file_id=file_id, phase="deep_enhance")
     enhance_logger.info("deep_enhance_background_started")
 
     cs = get_content_store()

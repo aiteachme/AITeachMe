@@ -60,7 +60,7 @@ _SubjectBackgroundMode = Literal["full", "chat_scope", "entry_context"]
 @traceable(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
-    subject: str,
+    subject_id: str,
     strategy_mode: StrategyMode,
     retrieval_results: list[RetrievedContext],
     recent_messages: list[RecentMessage],
@@ -97,9 +97,9 @@ def build_chat_messages(
     )
     system_prompt = populate_prompt(
         get_system_prompt_template(prompt_scene),
-        subject_name=_subject_display_name(subject, subject_context),
+        subject_name=_subject_display_name(subject_id, subject_context),
         subject_background=_format_subject_background(
-            subject,
+            subject_id,
             subject_context,
             mode=_subject_background_mode(prompt_scene),
         ),
@@ -394,22 +394,22 @@ def _tokens(text: str) -> list[str]:
     ]
 
 
-def _subject_display_name(subject: str, context: SubjectContextSummary | None) -> str:
+def _subject_display_name(subject_id: str, context: SubjectContextSummary | None) -> str:
     name = (context.subject_name if context else "").strip()
     if name:
         return name
-    if _is_global_subject_label(subject):
+    if _is_global_subject_label(subject_id):
         return "通用"
-    return subject or "当前学习空间"
+    return "当前学习空间"
 
 
 def _format_subject_background(
-    subject: str,
+    subject_id: str,
     context: SubjectContextSummary | None,
     *,
     mode: _SubjectBackgroundMode = "full",
 ) -> str:
-    display_name = _subject_display_name(subject, context)
+    display_name = _subject_display_name(subject_id, context)
     if mode == "chat_scope":
         return "\n".join(
             [

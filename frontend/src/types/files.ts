@@ -26,7 +26,7 @@ export interface FileRecord {
 }
 
 export interface FilesData {
-  subject: string;
+  subject_id?: string | null;
   total: number;
   ready_count: number;
   processing_count: number;
@@ -35,7 +35,7 @@ export interface FilesData {
 }
 
 export interface FilesUploadData {
-  subject: string;
+  subject_id?: string | null;
   filenames: string[];
   uploaded_items: FileRecord[];
   started_parse_count: number;

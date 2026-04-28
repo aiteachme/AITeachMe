@@ -41,7 +41,7 @@ def _render_plan_queries(plan_intent: PlanIntent) -> str:
 
 def build_plan_composer_messages(
     *,
-    subject: str,
+    subject_name: str,
     user_prompt: str | None = None,
     digest_mode: str,
     material_context: DigestMaterialContext,
@@ -83,7 +83,7 @@ def build_plan_composer_messages(
 - Planner 现在只制定研究/整理计划，不代表已经执行检索。
 - 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
 
-主题：{subject}
+主题：{subject_name}
 用户提示：{resolved_user_prompt}
 模式：{digest_mode}
 
@@ -155,7 +155,7 @@ few-shot 规律：
     return trace_prompt_build(
         "planner_plan_composer",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "user_prompt_chars": len(resolved_user_prompt),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history or []),
@@ -171,7 +171,7 @@ few-shot 规律：
 
 def build_plan_outline_repair_messages(
     *,
-    subject: str,
+    subject_name: str,
     user_prompt: str | None = None,
     digest_mode: str,
     material_context: DigestMaterialContext,
@@ -205,7 +205,7 @@ def build_plan_outline_repair_messages(
 解析错误：
 {parse_error}
 
-主题：{subject}
+主题：{subject_name}
 用户提示：{resolved_user_prompt}
 模式：{digest_mode}
 
@@ -260,7 +260,7 @@ def build_plan_outline_repair_messages(
     return trace_prompt_build(
         "planner_plan_outline_repair",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "user_prompt_chars": len(resolved_user_prompt),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history or []),

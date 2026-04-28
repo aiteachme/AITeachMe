@@ -1,4 +1,4 @@
-﻿"""Stream the visible plan outline and parse its hidden JSON draft."""
+"""Stream the visible plan outline and parse its hidden JSON draft."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.workflows.digest.planner.lib.model_policy import (
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
-from app.workflows.digest.planner.lib.plans import _resolve_subject_display_name
+from app.workflows.digest.planner.lib.plans import _resolve_subject_name
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_JSON_END_MARKER,
     PLAN_JSON_MARKER,
@@ -33,8 +33,8 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTAL
 
 def _subject_for_prompt(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    return _resolve_subject_display_name(
-        state["subject"],
+    return _resolve_subject_name(
+        state["subject_id"],
         shared_inputs=material_context,
         user_prompt=state.get("user_prompt") or "",
     )
@@ -189,14 +189,14 @@ async def _stream_composer_response(
         logger.info(
             "planner_compose_llm_starting",
             planner_session_id=state.get("planner_session_id") or "",
-            subject=state.get("subject", ""),
+            subject_id=state.get("subject_id", ""),
             material_digest_chars=len(material_context.material_digest or ""),
             brief_chars=len(planner_brief.markdown or ""),
             query_count=len(plan_intent.plan_queries),
         )
         stream = acompletion_stream(
             build_plan_composer_messages(
-                subject=_subject_for_prompt(state),
+                subject_name=_subject_for_prompt(state),
                 user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
@@ -240,7 +240,7 @@ async def _stream_composer_response(
         logger.exception(
             "planner_composer_stream_failed",
             planner_session_id=state.get("planner_session_id") or "",
-            subject=state.get("subject") or "",
+            subject_id=state.get("subject_id") or "",
         )
         raise
     if pending_visible and not visible_closed:
@@ -249,7 +249,7 @@ async def _stream_composer_response(
     logger.info(
         "planner_compose_llm_completed",
         planner_session_id=state.get("planner_session_id") or "",
-        subject=state.get("subject", ""),
+        subject_id=state.get("subject_id", ""),
         token_count=len(tokens),
         response_chars=len(text),
         visible_closed=visible_closed,
@@ -271,13 +271,13 @@ async def _repair_outline_sketch_with_llm(
     logger.warning(
         "planner_composer_parse_repair_llm_starting",
         planner_session_id=state.get("planner_session_id") or "",
-        subject=state.get("subject") or "",
+        subject_id=state.get("subject_id") or "",
         error=str(parse_error),
         raw_response_chars=len(raw_response or ""),
     )
     result = await acompletion_with_fallback(
         build_plan_outline_repair_messages(
-            subject=_subject_for_prompt(state),
+            subject_name=_subject_for_prompt(state),
             user_prompt=state.get("user_prompt") or "",
             digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
             material_context=material_context,
@@ -317,7 +317,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
         logger.info(
             "planner_compose_node_started",
             planner_session_id=state.get("planner_session_id", ""),
-            subject=state.get("subject", ""),
+            subject_id=state.get("subject_id", ""),
         )
         material_context = state["material_context"]
         planner_brief = PlannerBrief.model_validate(state.get("planner_brief") or {})
@@ -349,7 +349,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             logger.exception(
                 "planner_composer_parse_failed",
                 planner_session_id=state.get("planner_session_id") or "",
-                subject=state.get("subject") or "",
+                subject_id=state.get("subject_id") or "",
             )
             try:
                 sketch = await _repair_outline_sketch_with_llm(
@@ -378,7 +378,7 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 logger.exception(
                     "planner_composer_parse_repair_failed",
                     planner_session_id=state.get("planner_session_id") or "",
-                    subject=state.get("subject") or "",
+                    subject_id=state.get("subject_id") or "",
                 )
                 await emit_planner_event(
                     state,

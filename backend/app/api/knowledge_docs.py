@@ -14,7 +14,7 @@ from app.api.deps import (
     CurrentUserContext,
     get_current_user_context,
     get_db,
-    normalize_subject_slug,
+    normalize_subject_id,
 )
 from app.api.openapi import build_error_responses
 from app.models import Subject
@@ -111,7 +111,7 @@ def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> lis
 def _storage_scope_for_subject_record(subject: Subject) -> SubjectStorageScope:
     """Build storage scope from the already-authorized subject record."""
 
-    return build_subject_storage_scope(user_id=subject.user_id, subject=subject.slug)
+    return build_subject_storage_scope(user_id=subject.user_id, subject_id=subject.id)
 
 
 async def _spawn_registered_task_after_response(
@@ -119,7 +119,7 @@ async def _spawn_registered_task_after_response(
     coro_factory,
     *,
     kind: str,
-    subject: str,
+    subject_id: str,
     name: str,
 ) -> None:
     """Register a long-running workflow only after the HTTP response is flushed."""
@@ -127,7 +127,7 @@ async def _spawn_registered_task_after_response(
     request.app.state.background_task_registry.spawn(
         coro_factory(),
         kind=kind,
-        subject=subject,
+        subject_id=subject_id,
         name=name,
     )
 
@@ -223,12 +223,12 @@ def _planner_stream_response(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def knowledge_build_plan_create(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     body: BuildPlannerCreateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerSessionResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     data = await create_build_planner_session(
         subject=subject_record,
@@ -245,12 +245,12 @@ async def knowledge_build_plan_create(
     responses=build_error_responses([400, 404, 500]),
 )
 def knowledge_build_plan_latest(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerSessionResponse | None]:
-    normalized = normalize_subject_slug(subject)
-    logger.info("planner_latest_requested", subject=normalized, user_id=user.user_id)
+    normalized = normalize_subject_id(subject_id)
+    logger.info("planner_latest_requested", subject_id=normalized, user_id=user.user_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     data = get_latest_planner_session(
         session,
@@ -259,7 +259,7 @@ def knowledge_build_plan_latest(
     )
     logger.info(
         "planner_latest_completed",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         found=bool(data),
         session_id=getattr(data, "session_id", "") if data else "",
@@ -275,16 +275,16 @@ def knowledge_build_plan_latest(
 async def knowledge_build_plan_create_stream(
     request: Request,
     response: Response,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     body: BuildPlannerCreateRequest = Body(...),
 ) -> StreamingResponse:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     logger.info(
         "planner_create_stream_requested",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         file_uid_count=len(body.file_uids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
@@ -309,13 +309,13 @@ async def knowledge_build_plan_create_stream(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def knowledge_build_plan_message(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     session_id: str = Path(...),
     body: BuildPlannerMessageRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerSessionResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     data = await append_build_planner_message(
         subject=subject_record,
@@ -334,17 +334,17 @@ async def knowledge_build_plan_message(
 async def knowledge_build_plan_message_stream(
     request: Request,
     response: Response,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     session_id: str = Path(...),
     body: BuildPlannerMessageRequest = Body(...),
 ) -> StreamingResponse:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     logger.info(
         "planner_message_stream_requested",
-        subject=normalized,
+        subject_id=normalized,
         session_id=session_id,
         user_id=user.user_id,
         message_preview=(body.message or "")[:80],
@@ -370,15 +370,15 @@ async def knowledge_build_plan_message_stream(
     responses=build_error_responses([400, 404, 500]),
 )
 def knowledge_build_plan_adjust_click(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     session_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerAdjustClickResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     logger.info(
         "planner_adjust_click_requested",
-        subject=normalized,
+        subject_id=normalized,
         session_id=session_id,
         user_id=user.user_id,
     )
@@ -399,15 +399,15 @@ def knowledge_build_plan_adjust_click(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 def knowledge_build_plan_confirm(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     session_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[BuildPlannerConfirmResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     logger.info(
         "knowledge_build_plan_confirm_requested",
-        subject=normalized,
+        subject_id=normalized,
         session_id=session_id,
         user_id=user.user_id,
     )
@@ -420,7 +420,7 @@ def knowledge_build_plan_confirm(
     )
     logger.info(
         "knowledge_build_plan_confirm_completed",
-        subject=normalized,
+        subject_id=normalized,
         session_id=session_id,
         confirmed_plan_id=data.confirmed_plan_id,
         user_id=user.user_id,
@@ -437,15 +437,15 @@ def knowledge_build_plan_confirm(
 async def knowledge_build(
     request: Request,
     background_tasks: BackgroundTasks,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     body: DocGenBuildRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildData]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     logger.info(
         "knowledge_build_request_received",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         build_type=body.build_type,
         confirmed_plan_id=body.confirmed_plan_id,
@@ -469,7 +469,7 @@ async def knowledge_build(
 
     logger.info(
         "knowledge_build_docs_background_spawning",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         confirmed_plan_id=data.confirmed_plan_id,
         accepted_file_count=len(accepted_file_ids),
@@ -479,7 +479,8 @@ async def knowledge_build(
         _spawn_registered_task_after_response,
         request,
         lambda: run_docgen_background(
-            subject=normalized,
+            subject_id=normalized,
+            subject_name=subject_record.name,
             file_ids=accepted_file_ids,
             prompt=data.prompt,
             requested_at=data.requested_at,
@@ -490,12 +491,12 @@ async def knowledge_build(
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),
         kind="knowledge.build.docs",
-        subject=normalized,
+        subject_id=normalized,
         name=f"knowledge.build.docs:{normalized}",
     )
     logger.info(
         "knowledge_build_request_accepted",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         build_type=body.build_type,
         confirmed_plan_id=data.confirmed_plan_id,
@@ -514,11 +515,11 @@ async def knowledge_build(
 async def knowledge_graph_build(
     request: Request,
     background_tasks: BackgroundTasks,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeGraphBuildData]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     subject_scope = _storage_scope_for_subject_record(subject_record)
 
@@ -585,7 +586,7 @@ async def knowledge_graph_build(
         _spawn_registered_task_after_response,
         request,
         lambda: run_graph_docs_sync_manual_build(
-            subject=normalized,
+            subject_id=normalized,
             requested_at=requested_at,
             build_group_id=build_group_id,
             build_session_id=build_session_id,
@@ -595,12 +596,12 @@ async def knowledge_graph_build(
             subject_scope=subject_scope,
         ),
         kind="knowledge.build.graph",
-        subject=normalized,
+        subject_id=normalized,
         name=f"knowledge.build.graph:{normalized}",
     )
     logger.info(
         "knowledge_graph_build_request_accepted",
-        subject=normalized,
+        subject_id=normalized,
         user_id=user.user_id,
         requested_at=requested_at.isoformat(),
         build_group_id=build_group_id,
@@ -609,7 +610,7 @@ async def knowledge_graph_build(
     )
     return ok_response(
         KnowledgeGraphBuildData(
-            subject=normalized,
+            subject_id=normalized,
             status="accepted",
             requested_at=requested_at,
             build_group_id=build_group_id,
@@ -627,11 +628,11 @@ async def knowledge_graph_build(
 )
 async def knowledge_build_cancel(
     request: Request,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[DocGenBuildCancelData]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
     subject_scope = _storage_scope_for_subject_record(subject_record)
     runtime = read_knowledge_build_runtime(normalized, subject_scope=subject_scope)
@@ -641,15 +642,15 @@ async def knowledge_build_cancel(
     cancelled_task_count = 0
     registry = getattr(request.app.state, "background_task_registry", None)
     if registry is not None:
-        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.docs", subject=normalized)
-        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.graph", subject=normalized)
+        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.docs", subject_id=normalized)
+        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.graph", subject_id=normalized)
 
     requested_at = aggregate_status.requested_at if aggregate_status is not None else utcnow()
     confirmed_plan_id = docgen_status.confirmed_plan_id if docgen_status is not None else None
     if confirmed_plan_id:
         mark_confirmed_build_plan_status(
             session,
-            subject=normalized,
+            subject_id=normalized,
             user_id=user.user_id,
             plan_id=confirmed_plan_id,
             status="cancelled",
@@ -685,7 +686,7 @@ async def knowledge_build_cancel(
     release_knowledge_build_lock(normalized)
     return ok_response(
         DocGenBuildCancelData(
-            subject=normalized,
+            subject_id=normalized,
             cancelled_task_count=cancelled_task_count,
             requested_at=requested_at,
         )
@@ -701,14 +702,14 @@ async def knowledge_build_cancel(
 async def knowledge_build_runtime(
     request: Request,
     response: Response,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
 ) -> ApiResponse[KnowledgeBuildRuntimeResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
         subject_scope = _storage_scope_for_subject_record(subject_record)
-    return ok_response(get_knowledge_build_runtime_result(subject=normalized, subject_scope=subject_scope))
+    return ok_response(get_knowledge_build_runtime_result(subject_id=normalized, subject_scope=subject_scope))
 
 
 @router.get(
@@ -719,13 +720,13 @@ async def knowledge_build_runtime(
 async def knowledge_build_stream(
     request: Request,
     response: Response,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
 ) -> StreamingResponse:
     """SSE endpoint for live build runtime, direct deltas and fallback snapshots."""
     import hashlib
     import json
 
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
@@ -796,7 +797,7 @@ async def knowledge_build_stream(
                 with managed_session() as snapshot_session:
                     result = get_knowledge_build_runtime_result(
                         snapshot_session,
-                        subject=normalized,
+                        subject_id=normalized,
                         subject_scope=subject_scope,
                     )
             except Exception:
@@ -884,14 +885,14 @@ async def knowledge_build_stream(
 async def knowledge_docs(
     request: Request,
     response: Response,
-    subject: str = Path(...),
+    subject_id: str = Path(...),
 ) -> ApiResponse[DocGenGetResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
         subject_scope = _storage_scope_for_subject_record(subject_record)
-    return ok_response(get_docgen_result(subject=normalized, subject_scope=subject_scope))
+    return ok_response(get_docgen_result(subject_id=normalized, subject_scope=subject_scope))
 
 
 @router.post(
@@ -901,17 +902,17 @@ async def knowledge_docs(
     responses=build_error_responses([400, 404, 500]),
 )
 async def knowledge_overview(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     body: KnowledgeOverviewRequest = Body(default=KnowledgeOverviewRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeOverviewResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_knowledge_overview(
             session,
-            subject=normalized,
+            subject_id=normalized,
             include=body.include,
             full=body.full,
         )
@@ -925,11 +926,11 @@ async def knowledge_overview(
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def knowledge_clear(
-    subject: str = Path(...),
+    subject_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ClearKnowledgeResponse]:
-    normalized = normalize_subject_slug(subject)
+    normalized = normalize_subject_id(subject_id)
     get_subject_record(session, normalized, owner_user_id=user.user_id)
-    counts = clear_subject_knowledge(session, subject=normalized)
-    return ok_response(ClearKnowledgeResponse(subject=normalized, deleted_counts=counts))
+    counts = clear_subject_knowledge(session, subject_id=normalized)
+    return ok_response(ClearKnowledgeResponse(subject_id=normalized, deleted_counts=counts))

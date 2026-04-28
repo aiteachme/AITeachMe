@@ -40,10 +40,10 @@ class CurrentUserContext:
     auth_source: str = "device"
 
 
-def normalize_subject_slug(subject: str | None, *, allow_global: bool = False) -> str:
+def normalize_subject_id(subject_id: str | None, *, allow_global: bool = False) -> str:
     """统一规范化学科标识。"""
 
-    return normalize_subject_scope(subject, allow_global=allow_global)
+    return normalize_subject_scope(subject_id, allow_global=allow_global)
 
 
 def get_db() -> Generator[Session, None, None]:

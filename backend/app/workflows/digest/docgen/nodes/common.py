@@ -1,4 +1,4 @@
-﻿"""DocGen 节点公共辅助函数。"""
+"""DocGen 节点公共辅助函数。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ async def publish_docgen_progress(
 
     await context.event_bus.publish(
         LoggedWorkflowEvent(
-            subject=state["subject"],
+            subject_id=state["subject_id"],
             workflow_name=context.workflow_name,
             payload={
                 "kind": "docgen_progress",

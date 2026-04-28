@@ -35,7 +35,6 @@ from app.models import (
     UserKnowledgeState,
 )
 from app.schemas.subject import SubjectDeleteImpactItem, SubjectDeletePreviewData
-from app.utils.time import utcnow
 from app.utils.path_helpers import build_subject_dir, get_data_dir
 
 logger = structlog.get_logger()
@@ -69,61 +68,58 @@ def _sum_counts(counts: dict[str, int], keys: list[str]) -> int:
     return sum(counts.get(key, 0) for key in keys)
 
 
-def _bulk_delete_by_subject(session: Session, model: type, *, subject: str) -> None:
+def _bulk_delete_by_subject(session: Session, model: type, *, subject_id: str) -> None:
     session.exec(
         sa.delete(model)
-        .where(model.subject == subject)
+        .where(model.subject_id == subject_id)
         .execution_options(synchronize_session=False)
     )
 
 
-def _raw_file_subject_membership_condition(subject: str):
-    linked_file_ids = select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject == subject)
-    return sa.or_(
-        RawFile.subject == subject,
-        RawFile.id.in_(linked_file_ids),
-    )
+def _raw_file_subject_membership_condition(subject_id: str):
+    linked_file_ids = select(SubjectFileLink.raw_file_id).where(SubjectFileLink.subject_id == subject_id)
+    return RawFile.id.in_(linked_file_ids)
 
 
-def _count_raw_files_by_subject(session: Session, *, subject: str) -> int:
-    return _count_rows(session, RawFile, _raw_file_subject_membership_condition(subject))
+def _count_raw_files_by_subject(session: Session, *, subject_id: str) -> int:
+    return _count_rows(session, RawFile, _raw_file_subject_membership_condition(subject_id))
 
 
-def collect_subject_delete_counts(session: Session, *, subject: str) -> dict[str, int]:
+def collect_subject_delete_counts(session: Session, *, subject_id: str) -> dict[str, int]:
     return {
-        "raw_file": _count_raw_files_by_subject(session, subject=subject),
-        "retrieval_chunk": _count_rows(session, RetrievalChunk, RetrievalChunk.subject == subject),
+        "raw_file": _count_raw_files_by_subject(session, subject_id=subject_id),
+        "retrieval_chunk": _count_rows(session, RetrievalChunk, RetrievalChunk.subject_id == subject_id),
         "knowledge_document": _count_rows(
             session,
             KnowledgeDocument,
-            KnowledgeDocument.subject == subject,
+            KnowledgeDocument.subject_id == subject_id,
         ),
-        "chat_message": _count_rows(session, ChatMessage, ChatMessage.subject == subject),
-        "chat_session": _count_rows(session, ChatSession, ChatSession.subject == subject),
-        "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.subject == subject),
-        "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.subject == subject),
-        "exam_paper": _count_rows(session, ExamPaper, ExamPaper.subject == subject),
+        "chat_message": _count_rows(session, ChatMessage, ChatMessage.subject_id == subject_id),
+        "chat_session": _count_rows(session, ChatSession, ChatSession.subject_id == subject_id),
+        "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.subject_id == subject_id),
+        "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.subject_id == subject_id),
+        "exam_paper": _count_rows(session, ExamPaper, ExamPaper.subject_id == subject_id),
         "exam_paper_item": _count_query(
             session,
             select(func.count())
             .select_from(ExamPaperItem)
             .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
-            .where(ExamPaper.subject == subject),
+            .where(ExamPaper.subject_id == subject_id),
         ),
-        "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject == subject),
-        "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject == subject),
-        "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject == subject),
-        "knowledge_graph_sync_run": _count_rows(session, KnowledgeGraphSyncRun, KnowledgeGraphSyncRun.subject == subject),
+        "user_knowledge_state": _count_rows(session, UserKnowledgeState, UserKnowledgeState.subject_id == subject_id),
+        "knowledge_edge": _count_rows(session, KnowledgeEdge, KnowledgeEdge.subject_id == subject_id),
+        "knowledge_unit": _count_rows(session, KnowledgeUnit, KnowledgeUnit.subject_id == subject_id),
+        "knowledge_graph_sync_run": _count_rows(session, KnowledgeGraphSyncRun, KnowledgeGraphSyncRun.subject_id == subject_id),
         "knowledge_graph_source_ref": _count_rows(
             session,
             KnowledgeGraphSourceRef,
-            KnowledgeGraphSourceRef.subject == subject,
+            KnowledgeGraphSourceRef.subject_id == subject_id,
         ),
     }
 
 
 def build_subject_delete_preview(session: Session, *, subject: Subject) -> SubjectDeletePreviewData:
-    detail_counts = collect_subject_delete_counts(session, subject=subject.slug)
+    detail_counts = collect_subject_delete_counts(session, subject_id=subject.id)
     total_related_records = sum(detail_counts.values())
     impact_items = [
         SubjectDeleteImpactItem(
@@ -158,7 +154,7 @@ def build_subject_delete_preview(session: Session, *, subject: Subject) -> Subje
         ),
     ]
     return SubjectDeletePreviewData(
-        subject_id=subject.slug,
+        subject_id=subject.id,
         subject_name=subject.name,
         has_content=total_related_records > 0,
         total_related_records=total_related_records,
@@ -174,17 +170,17 @@ def delete_subject_with_all_content(
     background_task_registry: Any | None = None,
     counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
-    subject_slug = subject.slug
+    subject_id = subject.id
     owner_user_id = subject.user_id
-    counts = dict(counts) if counts is not None else collect_subject_delete_counts(session, subject=subject_slug)
+    counts = dict(counts) if counts is not None else collect_subject_delete_counts(session, subject_id=subject_id)
     try:
-        _delete_profiles(session, subject=subject_slug)
-        _delete_exam_records(session, subject=subject_slug)
-        _delete_chat_messages(session, subject=subject_slug)
-        _delete_knowledge_and_curriculum(session, subject=subject_slug)
-        _delete_documents_and_chunks(session, subject=subject_slug)
-        _delete_planner_records(session, subject=subject_slug)
-        _delete_raw_files_and_artifacts(session, subject=subject_slug, owner_user_id=owner_user_id)
+        _delete_profiles(session, subject_id=subject_id)
+        _delete_exam_records(session, subject_id=subject_id)
+        _delete_chat_messages(session, subject_id=subject_id)
+        _delete_knowledge_and_curriculum(session, subject_id=subject_id)
+        _delete_documents_and_chunks(session, subject_id=subject_id)
+        _delete_planner_records(session, subject_id=subject_id)
+        _delete_raw_files_and_artifacts(session, subject_id=subject_id, owner_user_id=owner_user_id)
         session.delete(subject)
         session.commit()
     except Exception:
@@ -192,74 +188,74 @@ def delete_subject_with_all_content(
         raise
 
     _schedule_subject_external_cleanup(
-        subject_slug,
+        subject_id,
         owner_user_id=owner_user_id,
         background_task_registry=background_task_registry,
     )
     deleted_counts = {"subject": 1, **counts}
-    logger.info("subject_deleted_with_all_content", subject=subject_slug, deleted_counts=deleted_counts)
+    logger.info("subject_deleted_with_all_content", subject_id=subject_id, subject_name=subject.name, deleted_counts=deleted_counts)
     return deleted_counts
 
 
-async def delete_subject_artifacts_async(subject_slug: str, *, user_id: str | None = None) -> None:
+async def delete_subject_artifacts_async(subject_id: str, *, user_id: str | None = None) -> None:
     """Delete all stored files for one subject through ContentStore."""
 
     cs = get_content_store()
     scope = (
-        build_subject_storage_scope(user_id=user_id, subject=subject_slug)
+        build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
         if user_id
-        else resolve_subject_storage_scope(subject_slug)
+        else resolve_subject_storage_scope(subject_id)
     )
     await cs.delete_prefix(scope.subject_prefix())
     # Also clean local runtime directories when present.
-    _delete_subject_directory(subject_slug, user_id=user_id)
+    _delete_subject_directory(subject_id, user_id=user_id)
 
 
-def _delete_subject_artifacts_best_effort(subject_slug: str, *, user_id: str | None) -> None:
+def _delete_subject_artifacts_best_effort(subject_id: str, *, user_id: str | None) -> None:
     cs = get_content_store()
     try:
-        scope = build_subject_storage_scope(user_id=user_id or "local", subject=subject_slug)
+        scope = build_subject_storage_scope(user_id=user_id or "local", subject_id=subject_id)
         run_store_sync(cs.delete_prefix, scope.subject_prefix(), default=0)
     except Exception as exc:  # pragma: no cover - best-effort cleanup
-        logger.warning("subject_artifact_prefix_cleanup_failed", subject=subject_slug, error=str(exc))
-    _delete_subject_directory(subject_slug, user_id=user_id)
+        logger.warning("subject_artifact_prefix_cleanup_failed", subject_id=subject_id, error=str(exc))
+    _delete_subject_directory(subject_id, user_id=user_id)
 
 
 def _schedule_subject_external_cleanup(
-    subject_slug: str,
+    subject_id: str,
     *,
     owner_user_id: str | None,
     background_task_registry: Any | None,
 ) -> None:
     if background_task_registry is None:
-        _delete_subject_external_artifacts_best_effort(subject_slug, user_id=owner_user_id)
+        _delete_subject_external_artifacts_best_effort(subject_id, user_id=owner_user_id)
         return
 
     background_task_registry.spawn(
-        _delete_subject_external_artifacts_async(subject_slug, user_id=owner_user_id),
+        _delete_subject_external_artifacts_async(subject_id, user_id=owner_user_id),
         kind="subjects.delete.cleanup",
-        subject=subject_slug,
-        name=f"subjects.delete.cleanup:{subject_slug}",
+        subject_id=subject_id,
+        name=f"subjects.delete.cleanup:{subject_id}",
     )
 
 
-async def _delete_subject_external_artifacts_async(subject_slug: str, *, user_id: str | None) -> None:
+async def _delete_subject_external_artifacts_async(subject_id: str, *, user_id: str | None) -> None:
     await asyncio.to_thread(
         _delete_subject_external_artifacts_best_effort,
-        subject_slug,
+        subject_id,
         user_id=user_id,
     )
 
 
-def _delete_subject_external_artifacts_best_effort(subject_slug: str, *, user_id: str | None) -> None:
-    _clear_subject_vector_index_best_effort(subject_slug, user_id=user_id)
-    _delete_subject_artifacts_best_effort(subject_slug, user_id=user_id)
-    logger.info("subject_external_artifacts_cleanup_finished", subject=subject_slug, user_id=user_id)
+def _delete_subject_external_artifacts_best_effort(subject_id: str, *, user_id: str | None) -> None:
+    _clear_subject_vector_index_best_effort(subject_id, user_id=user_id)
+    _delete_subject_artifacts_best_effort(subject_id, user_id=user_id)
+    logger.info("subject_external_artifacts_cleanup_finished", subject_id=subject_id, user_id=user_id)
 
 
-def _delete_exam_records(session: Session, *, subject: str) -> None:
-    paper_ids = select(ExamPaper.id).where(ExamPaper.subject == subject)
-    template_ids = select(QuestionTemplate.id).where(QuestionTemplate.subject == subject)
+def _delete_exam_records(session: Session, *, subject_id: str) -> None:
+    paper_ids = select(ExamPaper.id).where(ExamPaper.subject_id == subject_id)
+    template_ids = select(QuestionTemplate.id).where(QuestionTemplate.subject_id == subject_id)
     paper_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))
     template_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
 
@@ -285,43 +281,43 @@ def _delete_exam_records(session: Session, *, subject: str) -> None:
         .execution_options(synchronize_session=False)
     )
 
-    _bulk_delete_by_subject(session, ExamPaper, subject=subject)
-    _bulk_delete_by_subject(session, QuestionTemplate, subject=subject)
-    _bulk_delete_by_subject(session, QuestionTypeRegistry, subject=subject)
+    _bulk_delete_by_subject(session, ExamPaper, subject_id=subject_id)
+    _bulk_delete_by_subject(session, QuestionTemplate, subject_id=subject_id)
+    _bulk_delete_by_subject(session, QuestionTypeRegistry, subject_id=subject_id)
 
 
-def _delete_chat_messages(session: Session, *, subject: str) -> None:
-    _bulk_delete_by_subject(session, ChatMessage, subject=subject)
-    _bulk_delete_by_subject(session, ChatSession, subject=subject)
+def _delete_chat_messages(session: Session, *, subject_id: str) -> None:
+    _bulk_delete_by_subject(session, ChatMessage, subject_id=subject_id)
+    _bulk_delete_by_subject(session, ChatSession, subject_id=subject_id)
 
 
-def _delete_profiles(session: Session, *, subject: str) -> None:
-    _bulk_delete_by_subject(session, UserKnowledgeState, subject=subject)
+def _delete_profiles(session: Session, *, subject_id: str) -> None:
+    _bulk_delete_by_subject(session, UserKnowledgeState, subject_id=subject_id)
 
 
-def _delete_knowledge_and_curriculum(session: Session, *, subject: str) -> None:
+def _delete_knowledge_and_curriculum(session: Session, *, subject_id: str) -> None:
     session.exec(
         sa.update(KnowledgeDocument)
-        .where(KnowledgeDocument.subject == subject)
+        .where(KnowledgeDocument.subject_id == subject_id)
         .values(root_document_id=None, parent_document_id=None)
     )
     session.exec(
         sa.update(KnowledgeUnit)
-        .where(KnowledgeUnit.subject == subject)
+        .where(KnowledgeUnit.subject_id == subject_id)
         .values(merged_into_knowledge_unit_id=None)
     )
-    _bulk_delete_by_subject(session, KnowledgeGraphSourceRef, subject=subject)
-    _bulk_delete_by_subject(session, KnowledgeGraphSyncRun, subject=subject)
-    _bulk_delete_by_subject(session, KnowledgeEdge, subject=subject)
-    _bulk_delete_by_subject(session, KnowledgeDocument, subject=subject)
-    _bulk_delete_by_subject(session, KnowledgeUnit, subject=subject)
+    _bulk_delete_by_subject(session, KnowledgeGraphSourceRef, subject_id=subject_id)
+    _bulk_delete_by_subject(session, KnowledgeGraphSyncRun, subject_id=subject_id)
+    _bulk_delete_by_subject(session, KnowledgeEdge, subject_id=subject_id)
+    _bulk_delete_by_subject(session, KnowledgeDocument, subject_id=subject_id)
+    _bulk_delete_by_subject(session, KnowledgeUnit, subject_id=subject_id)
 
 
-def _delete_documents_and_chunks(session: Session, *, subject: str) -> None:
-    _bulk_delete_by_subject(session, RetrievalChunk, subject=subject)
+def _delete_documents_and_chunks(session: Session, *, subject_id: str) -> None:
+    _bulk_delete_by_subject(session, RetrievalChunk, subject_id=subject_id)
 
 
-def _clear_subject_vector_index_best_effort(subject: str, *, user_id: str | None) -> None:
+def _clear_subject_vector_index_best_effort(subject_id: str, *, user_id: str | None) -> None:
     try:
         from app.shared.infra.runtime import is_cloud_mode
 
@@ -332,7 +328,7 @@ def _clear_subject_vector_index_best_effort(subject: str, *, user_id: str | None
                 extract_postgres_subject_index_data_table_name,
             )
 
-            vector_ref = build_subject_index_ref(subject, owner_user_id=user_id or "local")
+            vector_ref = build_subject_index_ref(subject_id, owner_user_id=user_id or "local")
             data_table = extract_postgres_subject_index_data_table_name(vector_ref)
             if not data_table or not _POSTGRES_IDENTIFIER_RE.fullmatch(data_table):
                 return
@@ -341,49 +337,30 @@ def _clear_subject_vector_index_best_effort(subject: str, *, user_id: str | None
         else:
             from app.shared.infra.search.llamaindex_index import clear_subject_index
 
-            clear_subject_index(subject)
+            clear_subject_index(subject_id)
     except Exception as exc:  # pragma: no cover - best-effort index cleanup
-        logger.warning("subject_vector_index_cleanup_failed", subject=subject, error=str(exc))
+        logger.warning("subject_vector_index_cleanup_failed", subject_id=subject_id, error=str(exc))
 
 
-def _delete_planner_records(session: Session, *, subject: str) -> None:
-    del session, subject
+def _delete_planner_records(session: Session, *, subject_id: str) -> None:
+    del session, subject_id
 
 
-def _delete_raw_files_and_artifacts(session: Session, *, subject: str, owner_user_id: str) -> None:
+def _delete_raw_files_and_artifacts(session: Session, *, subject_id: str, owner_user_id: str) -> None:
     session.exec(
         sa.delete(SubjectFileLink)
         .where(
             SubjectFileLink.user_id == owner_user_id,
-            SubjectFileLink.subject == subject,
+            SubjectFileLink.subject_id == subject_id,
         )
-        .execution_options(synchronize_session=False)
-    )
-    next_subject = (
-        select(SubjectFileLink.subject)
-        .where(
-            SubjectFileLink.user_id == owner_user_id,
-            SubjectFileLink.raw_file_id == RawFile.id,
-        )
-        .order_by(SubjectFileLink.created_at.asc(), SubjectFileLink.id.asc())  # type: ignore[union-attr]
-        .limit(1)
-        .scalar_subquery()
-    )
-    session.exec(
-        sa.update(RawFile)
-        .where(
-            RawFile.user_id == owner_user_id,
-            RawFile.subject == subject,
-        )
-        .values(subject=next_subject, updated_at=utcnow())
         .execution_options(synchronize_session=False)
     )
 
 
-def _delete_subject_directory(subject: str, *, user_id: str | None = None) -> None:
+def _delete_subject_directory(subject_id: str, *, user_id: str | None = None) -> None:
     subject_dirs = {
-        build_subject_dir(subject, user_id=user_id),
-        get_data_dir() / subject,  # Best-effort cleanup for legacy top-level folders.
+        build_subject_dir(subject_id, user_id=user_id),
+        get_data_dir() / subject_id,  # Best-effort cleanup for legacy top-level folders.
     }
     for subject_dir in subject_dirs:
         if subject_dir.exists():

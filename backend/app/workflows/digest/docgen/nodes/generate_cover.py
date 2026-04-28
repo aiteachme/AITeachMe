@@ -18,11 +18,13 @@ def build_generate_cover_node(*, context: WorkflowContext):
 
     async def generate_cover_node(state: DocGenState) -> dict:
         started_at = perf_counter()
+        document_context = dict(state.get("document_context") or {})
         artifact = await generate_docgen_cover_artifact(
-            subject=state["subject"],
+            subject_id=state["subject_id"],
+            subject_name=str(document_context.get("subject_name") or "未命名学科"),
             build_session_id=state.get("build_session_id") or "",
             user_prompt=state.get("user_prompt"),
-            plan_summary=str((state.get("document_context") or {}).get("plan_summary") or ""),
+            plan_summary=str(document_context.get("plan_summary") or ""),
             digest_mode=state.get("digest_mode"),
             confirmed_plan=state.get("confirmed_plan"),
             requested_at=state.get("requested_at"),

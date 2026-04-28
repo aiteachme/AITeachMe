@@ -104,7 +104,7 @@ def fallback_locked_title(
 
 async def lock_title_for_chapter(
     *,
-    subject: str,
+    subject_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -117,7 +117,7 @@ async def lock_title_for_chapter(
         async with get_title_lock_semaphore():
             response = await acompletion_with_fallback(
                 build_title_lock_messages(
-                    subject=subject,
+                    subject_name=subject_name,
                     digest_mode=digest_mode,
                     user_prompt=user_prompt,
                     plan_summary=plan_summary,

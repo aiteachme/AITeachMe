@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from app.models.subject import Subject
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import SubjectRegistryNotFoundError
-from app.utils.subject import validate_subject
+from app.utils.subject import validate_subject_id
 
 _INVALID_USER_SEGMENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _INVALID_STORAGE_SEGMENT_RE = re.compile(r"[^\w.-]+", re.UNICODE)
@@ -95,7 +95,7 @@ class SubjectStorageScope:
     """Canonical persisted storage namespace for one user-owned subject."""
 
     user_id: str
-    subject: str
+    subject_id: str
 
     @property
     def user_segment(self) -> str:
@@ -103,7 +103,7 @@ class SubjectStorageScope:
 
     @property
     def namespace(self) -> str:
-        return f"users/{self.user_segment}/subjects/{self.subject}"
+        return f"users/{self.user_segment}/subjects/{self.subject_id}"
 
     def subject_prefix(self) -> str:
         return f"{self.namespace}/"
@@ -149,12 +149,12 @@ class SubjectStorageScope:
         return f"{self.namespace}/cache/node_embedding_cache.json"
 
 
-def build_subject_storage_scope(*, user_id: str, subject: str) -> SubjectStorageScope:
+def build_subject_storage_scope(*, user_id: str, subject_id: str) -> SubjectStorageScope:
     """Create the canonical storage scope for one user-owned subject."""
 
     return SubjectStorageScope(
         user_id=str(user_id or "local"),
-        subject=validate_subject(subject),
+        subject_id=validate_subject_id(subject_id),
     )
 
 
@@ -164,26 +164,26 @@ def build_user_file_storage_scope(*, user_id: str) -> UserFileStorageScope:
     return UserFileStorageScope(user_id=str(user_id or "local"))
 
 
-def resolve_subject_storage_scope(subject: str, *, session: Session | None = None) -> SubjectStorageScope:
-    """Resolve a subject slug into its persisted storage scope."""
+def resolve_subject_storage_scope(subject_id: str, *, session: Session | None = None) -> SubjectStorageScope:
+    """Resolve a subject id into its persisted storage scope."""
 
-    normalized_subject = validate_subject(subject)
+    normalized_subject = validate_subject_id(subject_id)
     if session is not None:
-        record = session.exec(select(Subject).where(Subject.slug == normalized_subject)).first()
+        record = session.exec(select(Subject).where(Subject.id == normalized_subject)).first()
         if record is None:
             raise SubjectRegistryNotFoundError(normalized_subject)
         return build_subject_storage_scope(
             user_id=record.user_id,
-            subject=record.slug,
+            subject_id=record.id,
         )
 
     with managed_session() as session:
-        record = session.exec(select(Subject).where(Subject.slug == normalized_subject)).first()
+        record = session.exec(select(Subject).where(Subject.id == normalized_subject)).first()
         if record is None:
             raise SubjectRegistryNotFoundError(normalized_subject)
         return build_subject_storage_scope(
             user_id=record.user_id,
-            subject=record.slug,
+            subject_id=record.id,
         )
 
 

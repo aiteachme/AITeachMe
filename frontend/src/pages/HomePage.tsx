@@ -66,7 +66,7 @@ async function fetchFiles(fileUids: string[]): Promise<FilesData> {
     url: `/api/v1/files${query ? `?${query}` : ""}`,
   });
   return response.data ?? {
-    subject: "library",
+    subject_id: null,
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -749,7 +749,7 @@ export function HomePage() {
           Date.parse(left.latest_updated_at || left.created_at || ""),
       );
       return {
-        subject: "library",
+        subject_id: null,
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
         processing_count: nextItems.filter((item) => !item.markdown_ready && !item.error_message?.trim()).length,

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import {
-  clearChatApiApiV1SubjectsSubjectChatsClearPost,
-  getSendChatApiV1SubjectsSubjectChatsSendPostUrl,
-  listChatApiApiV1SubjectsSubjectChatsListPost,
+  clearChatApiApiV1SubjectsSubjectIdChatsClearPost,
+  getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl,
+  listChatApiApiV1SubjectsSubjectIdChatsListPost,
 } from "../api/generated/chats";
 import type { ChatContextItem, ChatMessageItem, ChatSendRequest } from "../api/generated/model";
 import { getApiErrorMessage, postSseJson } from "../api/client";
@@ -165,7 +165,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
       setHistoryLoaded(false);
       try {
-        const response = await listChatApiApiV1SubjectsSubjectChatsListPost(subjectId, {
+        const response = await listChatApiApiV1SubjectsSubjectIdChatsListPost(subjectId, {
           page: 1,
           size: 100,
           session_id: sessionId ?? undefined,
@@ -274,7 +274,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
     try {
       const streamResult = await postSseJson(
-        getSendChatApiV1SubjectsSubjectChatsSendPostUrl(subjectId),
+        getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl(subjectId),
         {
           ...input,
           question,
@@ -459,9 +459,9 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     abortStream();
     try {
       if (sessionId) {
-        await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, { session_id: sessionId });
+        await clearChatApiApiV1SubjectsSubjectIdChatsClearPost(subjectId, { session_id: sessionId });
       } else {
-        await clearChatApiApiV1SubjectsSubjectChatsClearPost(subjectId, {});
+        await clearChatApiApiV1SubjectsSubjectIdChatsClearPost(subjectId, {});
       }
       setMessages([]);
       setMessagesSessionId(sessionId ?? null);

@@ -6,7 +6,7 @@ from typing import TypedDict
 
 
 class ProfileWorkflowState(TypedDict, total=False):
-    subject: str
+    subject_id: str
     user_id: str
     exam_paper_id: int
     top_n: int

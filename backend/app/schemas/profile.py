@@ -25,7 +25,7 @@ class MasteryStateResponse(BaseModel):
 
 
 class SubjectProfileSummary(BaseModel):
-    subject: str
+    subject_id: str
     generated_at: datetime
     avg_mastery: float | None = None
     weak_knowledge_unit_count: int = 0
@@ -60,7 +60,7 @@ class UserProfileSummary(BaseModel):
 
 
 class MasteryOverviewResponse(BaseModel):
-    subject: str
+    subject_id: str
     user_id: str
     weak_knowledge_unit_count: int
     knowledge_unit_states: list[MasteryStateResponse] = Field(default_factory=list)
@@ -71,7 +71,7 @@ class MasteryOverviewResponse(BaseModel):
 class ReviewTaskResponse(BaseModel):
     id: int
     user_id: str
-    subject: str
+    subject_id: str
     knowledge_unit_id: int
     knowledge_unit_name: str | None = None
     knowledge_unit_type: str | None = None

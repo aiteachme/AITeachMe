@@ -58,7 +58,7 @@ class RetrievalPipeline:
     async def retrieve(
         self,
         query: str,
-        subject: str,
+        subject_id: str,
         *,
         config: RetrievalConfig | None = None,
         query_embedding: list[float] | None = None,
@@ -67,14 +67,14 @@ class RetrievalPipeline:
         chunks: list[RetrievedChunk] = []
 
         if self._vector and query_embedding:
-            results = await self._vector(query_embedding, subject, cfg.top_k)
+            results = await self._vector(query_embedding, subject_id, cfg.top_k)
             for chunk in results:
                 chunk.source = "vector"
             chunks.extend(results)
 
         if cfg.enable_keyword and self._keyword:
             seen = {chunk.chunk_id for chunk in chunks}
-            for chunk in await self._keyword(query, subject, cfg.top_k):
+            for chunk in await self._keyword(query, subject_id, cfg.top_k):
                 if chunk.chunk_id not in seen:
                     chunk.source = "keyword"
                     chunks.append(chunk)
@@ -85,7 +85,7 @@ class RetrievalPipeline:
 
         chunks.sort(key=lambda chunk: chunk.score, reverse=True)
         result = chunks[: cfg.top_k]
-        logger.info("retrieval_done", subject=subject, returned=len(result))
+        logger.info("retrieval_done", subject_id=subject_id, returned=len(result))
         return result
 
 

@@ -122,25 +122,25 @@ def _grade_objective_correctness(item: ExamPaperItem) -> bool:
 @traceable_with_context(
     name="考试：客观题反馈",
     run_type="chain",
-    metadata_factory=lambda subject, item, is_correct: {
+    metadata_factory=lambda subject_name, item, is_correct: {
         "substep": "exam.grade.objective_feedback",
         "question_type": item.question_type,
         "item_order": item.item_order,
         "question_template_id": item.question_template_id,
         "is_correct": bool(is_correct),
     },
-    tags_factory=lambda subject, item, is_correct: [
+    tags_factory=lambda subject_name, item, is_correct: [
         "exam-grade",
         "objective",
         f"question-type:{str(item.question_type or '').strip().lower() or 'unknown'}",
         f"judgement:{'correct' if is_correct else 'incorrect'}",
     ],
 )
-async def _generate_objective_feedback(subject: str, item: ExamPaperItem, *, is_correct: bool) -> tuple[str, str | None]:
+async def _generate_objective_feedback(subject_name: str, item: ExamPaperItem, *, is_correct: bool) -> tuple[str, str | None]:
     try:
         result = await acompletion_with_fallback(
             build_objective_feedback_messages(
-                subject=subject,
+                subject_name=subject_name,
                 question_type=item.question_type,
                 stem=item.stem_snapshot,
                 options=_parse_options(item.options_snapshot_json),
@@ -171,19 +171,19 @@ async def _generate_objective_feedback(subject: str, item: ExamPaperItem, *, is_
 @traceable_with_context(
     name="考试：主观题判分",
     run_type="chain",
-    metadata_factory=lambda subject, item: {
+    metadata_factory=lambda subject_name, item: {
         "substep": "exam.grade.subjective_item",
         "question_type": item.question_type,
         "item_order": item.item_order,
         "question_template_id": item.question_template_id,
     },
-    tags_factory=lambda subject, item: [
+    tags_factory=lambda subject_name, item: [
         "exam-grade",
         "subjective",
         f"question-type:{str(item.question_type or '').strip().lower() or 'unknown'}",
     ],
 )
-async def _grade_subjective_item(subject: str, item: ExamPaperItem) -> ExamItemGradeDecision:
+async def _grade_subjective_item(subject_name: str, item: ExamPaperItem) -> ExamItemGradeDecision:
     user_answer = _normalize_text(item.answer_content)
     if not user_answer:
         return ExamItemGradeDecision(
@@ -198,7 +198,7 @@ async def _grade_subjective_item(subject: str, item: ExamPaperItem) -> ExamItemG
     try:
         result = await acompletion_with_fallback(
             build_subjective_grade_messages(
-                subject=subject,
+                subject_name=subject_name,
                 question_type=item.question_type,
                 stem=item.stem_snapshot,
                 correct_answer=item.answer_snapshot,
@@ -256,26 +256,26 @@ def _parse_options(raw: str | None) -> list[str] | None:
 @traceable_with_context(
     name="考试：整卷判题",
     run_type="chain",
-    metadata_factory=lambda *, subject, items: {
+    metadata_factory=lambda *, subject_name, items: {
         "substep": "exam.grade.paper",
-        "subject": subject,
+        "subject_name": subject_name,
         "item_count": len(items),
     },
-    tags_factory=lambda *, subject, items: [
+    tags_factory=lambda *, subject_name, items: [
         "exam-grade",
         "paper-grading",
     ],
 )
 async def grade_exam_items_with_workflow(
     *,
-    subject: str,
+    subject_name: str,
     items: list[ExamPaperItem],
 ) -> list[ExamItemGradeDecision]:
     async def _grade_item(item: ExamPaperItem) -> ExamItemGradeDecision:
         if _is_objective_type(item.question_type):
             is_correct = _grade_objective_correctness(item)
             feedback_text, error_cause_label = await _generate_objective_feedback(
-                subject,
+                subject_name,
                 item,
                 is_correct=is_correct,
             )
@@ -289,10 +289,10 @@ async def grade_exam_items_with_workflow(
             )
 
         if (item.question_type or "").strip().lower() in _SUBJECTIVE_TYPES:
-            return await _grade_subjective_item(subject, item)
+            return await _grade_subjective_item(subject_name, item)
 
         # Unknown question types degrade to subjective handling.
-        return await _grade_subjective_item(subject, item)
+        return await _grade_subjective_item(subject_name, item)
 
     return list(await asyncio.gather(*[_grade_item(item) for item in items]))
 

@@ -30,6 +30,7 @@ def build_allocate_knowledge_units_node(*, context: WorkflowContext):
         )
         try:
             planned = await allocate_exam_question_knowledge_units(
+                subject_id=str(state.get("subject_id") or ""),
                 subject_name=str(state.get("subject_name") or ""),
                 subject_description=str(state.get("subject_description") or ""),
                 subject_user_intent=str(state.get("subject_user_intent") or ""),

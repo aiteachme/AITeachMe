@@ -15,12 +15,12 @@ class KnowledgeGraphSyncRun(SQLModel, table=True):
 
     __tablename__ = "knowledge_graph_sync_run"
     __table_args__ = (
-        Index("ix_kg_sync_run_subject_revision", "subject", "graph_revision_no"),
-        Index("ix_kg_sync_run_subject_doc_version", "subject", "doc_version_no"),
+        Index("ix_kg_sync_run_subject_revision", "subject_id", "graph_revision_no"),
+        Index("ix_kg_sync_run_subject_doc_version", "subject_id", "doc_version_no"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     build_session_id: str | None = Field(default=None, index=True)
     doc_version_no: int = Field(default=0, index=True)
     graph_revision_no: int = Field(default=0, index=True)
@@ -39,11 +39,11 @@ class KnowledgeGraphSourceRef(SQLModel, table=True):
     __tablename__ = "knowledge_graph_source_ref"
     __table_args__ = (
         Index("ix_kg_source_ref_entity", "entity_type", "entity_id"),
-        Index("ix_kg_source_ref_subject_chapter", "subject", "chapter_index"),
+        Index("ix_kg_source_ref_subject_chapter", "subject_id", "chapter_index"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     entity_type: str = Field(index=True)
     entity_id: int = Field(index=True)
     sync_run_id: int | None = Field(default=None, foreign_key="knowledge_graph_sync_run.id", index=True)

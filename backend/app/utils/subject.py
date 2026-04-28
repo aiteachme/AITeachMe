@@ -1,4 +1,4 @@
-"""学科外部标识工具。"""
+"""Subject external identifier helpers."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ SUBJECT_ID_SIZE = 12
 GLOBAL_SUBJECT = ""
 GLOBAL_SUBJECT_ALIASES = frozenset({"", "global", "_global", "__global__"})
 _SUBJECT_ID_PATTERN = re.compile(r"^subj_[a-z0-9]{12}$")
-_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def _generate_suffix() -> str:
@@ -28,13 +27,13 @@ def _generate_suffix() -> str:
 
 
 def generate_subject_id() -> str:
-    """生成对外稳定的短 opaque subject_id。"""
+    """Generate a stable opaque public subject_id."""
 
     return f"{SUBJECT_ID_PREFIX}{_generate_suffix()}"
 
 
 def validate_subject_id(subject_id: str) -> str:
-    """校验并规范化 subject_id。"""
+    """Validate and normalize a subject_id."""
 
     normalized = subject_id.strip().lower()
     if any(item in normalized for item in ("/", "\\")) or ".." in normalized:
@@ -44,33 +43,20 @@ def validate_subject_id(subject_id: str) -> str:
     return normalized
 
 
-def validate_subject(subject: str) -> str:
-    """兼容当前代码中仍在使用的 slug 校验。"""
-
-    normalized = subject.strip().lower()
-    if any(item in normalized for item in ("/", "\\")) or ".." in normalized:
-        raise InvalidSubjectError(subject)
-    if normalized.startswith(SUBJECT_ID_PREFIX):
-        return validate_subject_id(normalized)
-    if not _SLUG_PATTERN.match(normalized):
-        raise InvalidSubjectError(subject)
-    return normalized
-
-
-def is_global_subject(subject: str | None) -> bool:
+def is_global_subject(subject_id: str | None) -> bool:
     """Return whether a raw subject token means the global chat scope."""
 
-    normalized = (subject or "").strip().lower()
+    normalized = (subject_id or "").strip().lower()
     return normalized in GLOBAL_SUBJECT_ALIASES
 
 
 def normalize_subject_scope(
-    subject: str | None,
+    subject_id: str | None,
     *,
     allow_global: bool = False,
 ) -> str:
-    """Normalize a subject token, optionally accepting the global chat scope."""
+    """Normalize a subject id, optionally accepting the global chat scope."""
 
-    if allow_global and is_global_subject(subject):
+    if allow_global and is_global_subject(subject_id):
         return GLOBAL_SUBJECT
-    return validate_subject(subject or "")
+    return validate_subject_id(subject_id or "")

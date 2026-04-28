@@ -83,12 +83,12 @@ def _expire_outdated_pending_reviews(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     auto_commit: bool = True,
 ) -> None:
     now = utcnow()
     changed = False
-    for state in profile_repo.list_pending_reviews(session, user_id=user_id, subject=subject):
+    for state in profile_repo.list_pending_reviews(session, user_id=user_id, subject_id=subject_id):
         if state.scheduled_review_at is None:
             continue
         if _as_utc(state.scheduled_review_at) + timedelta(days=7) > now:
@@ -107,7 +107,7 @@ def _expire_outdated_pending_reviews(
 def schedule_reviews(
     session: Session,
     user_id: str,
-    subject: str,
+    subject_id: str,
     updated_state_ids: list[int],
     *,
     auto_commit: bool = True,
@@ -117,7 +117,7 @@ def schedule_reviews(
     _expire_outdated_pending_reviews(
         session,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         auto_commit=auto_commit,
     )
 
@@ -129,7 +129,7 @@ def schedule_reviews(
         state = session.get(UserKnowledgeState, state_id)
         if state is None:
             continue
-        if state.user_id != user_id or state.subject != subject:
+        if state.user_id != user_id or state.subject_id != subject_id:
             continue
 
         due_days = _compute_forgetting_due_days(

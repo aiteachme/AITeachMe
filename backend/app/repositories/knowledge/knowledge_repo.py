@@ -61,12 +61,12 @@ def get_document_by_id(session: Session, document_id: int) -> RawFile | None:
 def get_documents_by_source_file_ids(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_file_ids: list[int],
 ) -> list[RawFile]:
     if not source_file_ids:
         return []
-    return list_raw_files_by_ids(session, subject, source_file_ids)
+    return list_raw_files_by_ids(session, subject_id, source_file_ids)
 
 
 def update_document_content(
@@ -133,7 +133,7 @@ def get_chunks_by_document_ids(session: Session, document_ids: list[int]) -> lis
 def get_chunks_by_source_file_ids(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_file_ids: list[int],
 ) -> list[RetrievalChunk]:
     if not source_file_ids:
@@ -141,7 +141,7 @@ def get_chunks_by_source_file_ids(
     statement = (
         select(RetrievalChunk)
         .where(
-            RetrievalChunk.subject == subject,
+            RetrievalChunk.subject_id == subject_id,
             RetrievalChunk.document_id.in_(source_file_ids),
         )
         .order_by(RetrievalChunk.document_id, RetrievalChunk.chunk_index)
@@ -169,18 +169,18 @@ def get_chunks_by_ids(session: Session, chunk_ids: list[int]) -> list[RetrievalC
     return list(session.exec(statement).all())
 
 
-def delete_chunks_by_document_ids(session: Session, *, subject: str, document_ids: list[int]) -> int:
+def delete_chunks_by_document_ids(session: Session, *, subject_id: str, document_ids: list[int]) -> int:
     chunks = get_chunks_by_document_ids(session, document_ids)
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
     if chunk_ids:
-        delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
+        delete_embeddings_by_chunk_ids(session, subject_id=subject_id, chunk_ids=chunk_ids)
     for chunk in chunks:
         session.delete(chunk)
     session.commit()
     return len(chunks)
 
 
-def delete_chunks_by_ids(session: Session, *, subject: str | None = None, chunk_ids: list[int]) -> int:
+def delete_chunks_by_ids(session: Session, *, subject_id: str | None = None, chunk_ids: list[int]) -> int:
     if not chunk_ids:
         return 0
     chunks = [
@@ -190,10 +190,10 @@ def delete_chunks_by_ids(session: Session, *, subject: str | None = None, chunk_
     ]
     if not chunks:
         return 0
-    resolved_subject = subject or chunks[0].subject
+    resolved_subject_id = subject_id or chunks[0].subject_id
     delete_embeddings_by_chunk_ids(
         session,
-        subject=resolved_subject,
+        subject_id=resolved_subject_id,
         chunk_ids=[chunk.id for chunk in chunks if chunk.id is not None],
     )
     for chunk in chunks:
@@ -205,16 +205,16 @@ def delete_chunks_by_ids(session: Session, *, subject: str | None = None, chunk_
 def delete_documents_by_source_file_ids(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     source_file_ids: list[int],
 ) -> tuple[int, int]:
     documents = get_documents_by_source_file_ids(
         session,
-        subject=subject,
+        subject_id=subject_id,
         source_file_ids=source_file_ids,
     )
     document_ids = [document.id for document in documents if document.id is not None]
-    chunk_count = delete_chunks_by_document_ids(session, subject=subject, document_ids=document_ids)
+    chunk_count = delete_chunks_by_document_ids(session, subject_id=subject_id, document_ids=document_ids)
     return len(documents), chunk_count
 
 
@@ -227,16 +227,16 @@ def count_embeddings_for_chunk_ids(
     from app.shared.infra.search.llamaindex_index import count_indexed_chunks
 
     del table_name
-    subject = _subject_for_chunk_ids(session, chunk_ids)
-    if subject is None:
+    subject_id = _subject_for_chunk_ids(session, chunk_ids)
+    if subject_id is None:
         return 0
-    return count_indexed_chunks(subject, chunk_ids)
+    return count_indexed_chunks(subject_id, chunk_ids)
 
 
 def _subject_for_chunk_ids(session: Session, chunk_ids: list[int]) -> str | None:
     if not chunk_ids:
         return None
-    statement = select(RetrievalChunk.subject).where(RetrievalChunk.id.in_(chunk_ids))
+    statement = select(RetrievalChunk.subject_id).where(RetrievalChunk.id.in_(chunk_ids))
     subjects = [str(item) for item in session.exec(statement).all() if item]
     return subjects[0] if subjects else None
 
@@ -244,7 +244,7 @@ def _subject_for_chunk_ids(session: Session, chunk_ids: list[int]) -> str | None
 def update_chunk_vector_metadata(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     chunk_ids: list[int],
     embedding_model: str | None,
     vector_ref: str | None,
@@ -253,7 +253,7 @@ def update_chunk_vector_metadata(
         return
 
     statement = select(RetrievalChunk).where(
-        RetrievalChunk.subject == subject,
+        RetrievalChunk.subject_id == subject_id,
         RetrievalChunk.id.in_(chunk_ids),
     )
     chunks = list(session.exec(statement).all())
@@ -268,26 +268,26 @@ def update_chunk_vector_metadata(
 def clear_chunk_vector_metadata(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
 ) -> int:
     """Clear one subject's chunk-level vector metadata and backing embeddings."""
 
     chunk_ids = [
         chunk_id
         for chunk_id in session.exec(
-            select(RetrievalChunk.id).where(RetrievalChunk.subject == subject)
+            select(RetrievalChunk.id).where(RetrievalChunk.subject_id == subject_id)
         ).all()
         if chunk_id is not None
     ]
     if not chunk_ids:
         return 0
 
-    delete_embeddings_by_chunk_ids(session, subject=subject, chunk_ids=chunk_ids)
+    delete_embeddings_by_chunk_ids(session, subject_id=subject_id, chunk_ids=chunk_ids)
 
     chunks = list(
         session.exec(
             select(RetrievalChunk).where(
-                RetrievalChunk.subject == subject,
+                RetrievalChunk.subject_id == subject_id,
                 RetrievalChunk.id.in_(chunk_ids),
             )
         ).all()
@@ -304,16 +304,16 @@ def clear_chunk_vector_metadata(
 def _sync_subject_vector_binding(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     embedding_model: str | None,
     embedding_dim: int,
 ) -> None:
-    if not subject or not embedding_model or embedding_dim <= 0:
+    if not subject_id or not embedding_model or embedding_dim <= 0:
         return
 
-    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    subject_row = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if subject_row is None:
-        raise RuntimeError(f"Subject `{subject}` not found while syncing vector binding.")
+        raise RuntimeError(f"Subject `{subject_id}` not found while syncing vector binding.")
 
     expected_ref = build_subject_index_ref_for_subject(subject_row)
     binding = get_subject_embedding_binding(subject_row)
@@ -329,7 +329,7 @@ def _sync_subject_vector_binding(
     set_subject_embedding_binding(
         subject_row,
         build_enabled_binding(
-            subject_slug=subject,
+            subject_id=subject_id,
             owner_user_id=subject_row.user_id,
             embedding_model=embedding_model,
             embedding_dim=embedding_dim,
@@ -342,7 +342,7 @@ def _sync_subject_vector_binding(
 def bulk_insert_embeddings(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     chunk_ids: list[int],
     embeddings: list[list[float]],
     embedding_model: str | None = None,
@@ -367,7 +367,7 @@ def bulk_insert_embeddings(
             )
 
     statement = select(RetrievalChunk).where(
-        RetrievalChunk.subject == subject,
+        RetrievalChunk.subject_id == subject_id,
         RetrievalChunk.id.in_(chunk_ids),
     )
     chunks = list(session.exec(statement).all())
@@ -381,7 +381,7 @@ def bulk_insert_embeddings(
             IndexedChunk(
                 chunk_id=int(chunk.id),
                 document_id=int(chunk.document_id),
-                subject=chunk.subject,
+                subject_id=chunk.subject_id,
                 title=chunk.title,
                 header_path=chunk.header_path,
                 content=chunk.content,
@@ -393,28 +393,28 @@ def bulk_insert_embeddings(
     if not indexed_chunks:
         return
 
-    upsert_chunks(subject, indexed_chunks)
+    upsert_chunks(subject_id, indexed_chunks)
     resolved_embedding_model = embedding_model or get_settings().normalized_embedding_model
-    subject_row = session.exec(select(Subject).where(Subject.slug == subject)).first()
+    subject_row = session.exec(select(Subject).where(Subject.id == subject_id)).first()
     if subject_row is None:
-        raise RuntimeError(f"Subject `{subject}` not found while writing embeddings.")
+        raise RuntimeError(f"Subject `{subject_id}` not found while writing embeddings.")
 
     _sync_subject_vector_binding(
         session,
-        subject=subject,
+        subject_id=subject_id,
         embedding_model=resolved_embedding_model,
         embedding_dim=embedding_dim,
     )
     update_chunk_vector_metadata(
         session,
-        subject=subject,
+        subject_id=subject_id,
         chunk_ids=[chunk.chunk_id for chunk in indexed_chunks],
         embedding_model=resolved_embedding_model,
         vector_ref=build_subject_index_ref_for_subject(subject_row),
     )
     logger.info(
         "bulk_insert_embeddings_completed",
-        subject=subject,
+        subject_id=subject_id,
         chunk_count=len(indexed_chunks),
         embedding_dim=embedding_dim,
         backend="llamaindex",
@@ -424,14 +424,14 @@ def bulk_insert_embeddings(
 def delete_embeddings_by_chunk_ids(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     chunk_ids: list[int],
 ) -> None:
     from app.shared.infra.search.llamaindex_index import delete_chunks
 
     if not chunk_ids:
         return
-    delete_chunks(subject, chunk_ids)
+    delete_chunks(subject_id, chunk_ids)
 
 
 @dataclass
@@ -445,7 +445,7 @@ class ChunkSearchResult:
 def vector_search(
     session: Session,
     query_embedding: list[float],
-    subject: str,
+    subject_id: str,
     *,
     top_k: int = 5,
 ) -> list[ChunkSearchResult]:
@@ -454,7 +454,7 @@ def vector_search(
     if top_k <= 0 or not query_embedding:
         return []
 
-    hits = query_subject_index(subject, query_embedding, top_k=top_k)
+    hits = query_subject_index(subject_id, query_embedding, top_k=top_k)
     if not hits:
         return []
         

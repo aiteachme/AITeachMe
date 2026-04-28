@@ -29,11 +29,11 @@ from app.shared.infra.subject.vectors import (
     SubjectVectorCapability,
     build_subject_vector_status,
     get_runtime_embedding_config,
-    get_subject_record_by_slug,
+    get_subject_record_by_id,
     get_subject_vector_capability,
     get_subject_vector_search_notice,
     get_subject_vector_status,
-    get_subject_vector_status_by_slug,
+    get_subject_vector_status_by_id,
     should_generate_subject_embeddings,
     subject_has_retrieval_chunks,
 )
@@ -102,7 +102,7 @@ def inspect_subject_build_precheck(
         )
     expected_ref = build_subject_index_ref_for_subject(subject)
     if not binding.vector_table or binding.vector_table != expected_ref:
-        if not subject_has_retrieval_chunks(session, subject.slug):
+        if not subject_has_retrieval_chunks(session, subject.id):
             return None
         return _build_precheck_conflict(
             reason="vector_table_missing",
@@ -132,10 +132,10 @@ def inspect_subject_build_precheck(
         from app.shared.infra.search.llamaindex_index import subject_index_exists
 
         connection = None
-        index_exists = subject_index_exists(subject.slug)
+        index_exists = subject_index_exists(subject.id)
 
     if not index_exists:
-        if not subject_has_retrieval_chunks(session, subject.slug):
+        if not subject_has_retrieval_chunks(session, subject.id):
             return None
         return _build_precheck_conflict(
             reason="vector_table_missing",
@@ -199,7 +199,7 @@ def resolve_subject_build_vector_status(
     ):
         logger.info(
             "embedding_auto_rebuild",
-            subject=subject.slug,
+            subject=subject.id,
             reason=conflict.reason,
             runtime_model=conflict.runtime_model,
             runtime_dim=conflict.runtime_dim,
@@ -213,7 +213,7 @@ def resolve_subject_build_vector_status(
     if embedding_resolution is None and conflict.reason in _RUNTIME_UNAVAILABLE_REASONS:
         logger.info(
             "embedding_unavailable_build_continues_without_vectors",
-            subject=subject.slug,
+            subject=subject.id,
             reason=conflict.reason,
             runtime_model=conflict.runtime_model,
             runtime_dim=conflict.runtime_dim,
@@ -230,7 +230,7 @@ def resolve_subject_build_vector_status(
         set_subject_embedding_binding(
             subject,
             build_disabled_binding(
-                subject_slug=subject.slug,
+                subject_id=subject.id,
                 owner_user_id=subject.user_id,
                 disabled_reason=_USER_DISABLED_REASON,
                 previous_binding=get_subject_embedding_binding(subject),
@@ -253,7 +253,7 @@ def resolve_subject_build_vector_status(
     set_subject_embedding_binding(
         subject,
         build_enabled_binding(
-            subject_slug=subject.slug,
+            subject_id=subject.id,
             owner_user_id=subject.user_id,
             embedding_model=runtime.embedding_model,
             embedding_dim=runtime.embedding_dim,
@@ -262,7 +262,7 @@ def resolve_subject_build_vector_status(
     save_subject(session, subject)
     from app.shared.infra.search.llamaindex_index import clear_subject_index
 
-    clear_subject_index(subject.slug)
+    clear_subject_index(subject.id)
     status = get_subject_vector_status(session, subject)
 
     if auto_rebuild_reason is not None:
@@ -283,11 +283,11 @@ __all__ = [
     "SubjectVectorCapability",
     "build_subject_vector_status",
     "get_runtime_embedding_config",
-    "get_subject_record_by_slug",
+    "get_subject_record_by_id",
     "get_subject_vector_capability",
     "get_subject_vector_search_notice",
     "get_subject_vector_status",
-    "get_subject_vector_status_by_slug",
+    "get_subject_vector_status_by_id",
     "inspect_subject_build_precheck",
     "resolve_subject_build_vector_status",
     "should_generate_subject_embeddings",

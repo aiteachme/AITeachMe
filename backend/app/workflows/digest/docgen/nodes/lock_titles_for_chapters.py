@@ -29,7 +29,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
 
         async def _lock_one(chapter: dict) -> dict:
             locked = await lock_title_for_chapter(
-                subject=state["subject"],
+                subject_name=docgen_context.subject_name,
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary,
@@ -43,7 +43,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
                 },
             )
             append_knowledge_build_recent_event(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 event={
                     "stage": "chapter_title_locked",

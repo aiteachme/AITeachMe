@@ -44,14 +44,14 @@ structured schema; do not include commentary or extra text.
 
 def _subject_payload(
     *,
-    subject: str,
+    subject_id: str,
     subject_name: str = "",
     subject_description: str = "",
     subject_user_intent: str = "",
 ) -> dict[str, str]:
     return {
-        "subject_id": subject,
-        "subject_name": subject_name or subject,
+        "subject_id": subject_id,
+        "subject_name": subject_name or "未命名学科",
         "subject_description": subject_description or "",
         "user_intent": subject_user_intent or "",
     }
@@ -307,13 +307,13 @@ Input: {json.dumps(payload, ensure_ascii=False, indent=2)}
 
 def build_text_exam_messages(
     *,
-    subject: str,
+    subject_name: str,
     knowledge_text: str,
     num_questions: int,
     difficulty: str,
 ) -> list[ChatMessage]:
     payload = {
-        "subject": subject,
+        "subject_name": subject_name,
         "num_questions": num_questions,
         "difficulty": difficulty,
         "knowledge_text": knowledge_text[:12000],

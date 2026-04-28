@@ -39,7 +39,7 @@ def delete_subject_record(
     subject = get_subject_record(session, subject_id, owner_user_id=owner_user_id)
     preview = build_subject_delete_preview(session, subject=subject)
     if preview.has_content and not force:
-        raise SubjectInUseError(subject.slug)
+        raise SubjectInUseError(subject.id)
     deleted_counts = (
         delete_subject_with_all_content(
             session,
@@ -57,7 +57,7 @@ def delete_subject_record(
     )
     return SubjectDeleteData(
         deleted=True,
-        subject_id=subject.slug,
+        subject_id=subject.id,
         deleted_counts=deleted_counts,
     )
 

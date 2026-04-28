@@ -249,7 +249,7 @@ def _upsert_state_from_attempts(
     session: Session,
     *,
     user_id: str,
-    subject: str,
+    subject_id: str,
     knowledge_unit_id: int | None = None,
     attempts: list[_WeightedAttempt],
     now: datetime,
@@ -264,7 +264,7 @@ def _upsert_state_from_attempts(
     existing = profile_repo.get_knowledge_state(
         session,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         knowledge_unit_id=knowledge_unit_id,
     )
 
@@ -291,7 +291,7 @@ def _upsert_state_from_attempts(
 
     state = UserKnowledgeState(
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         knowledge_unit_id=knowledge_unit_id,
         mastery_score=mastery_score,
         confidence_score=confidence_score,
@@ -375,7 +375,7 @@ def update_mastery_from_exam(
         persisted = _upsert_state_from_attempts(
             session,
             user_id=exam_paper.user_id,
-            subject=exam_paper.subject,
+            subject_id=exam_paper.subject_id,
             knowledge_unit_id=target_id,
             attempts=target_attempts,
             now=now,

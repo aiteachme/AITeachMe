@@ -2,7 +2,6 @@ import { http, HttpResponse } from "msw";
 import { MOCK_DOCUMENT_MARKDOWN } from "../../components/knowledge-docs/mock";
 
 export interface SubjectItem {
-  id: number;
   subject_id: string;
   name: string;
   description?: string;
@@ -14,7 +13,6 @@ export interface SubjectItem {
 
 let mockSubjects: SubjectItem[] = [
   {
-    id: 1,
     subject_id: "subj_2gr8k4m9q7pn",
     name: "高数",
     description: "",
@@ -24,8 +22,6 @@ let mockSubjects: SubjectItem[] = [
     updated_at: "2026-03-01T00:00:00Z",
   },
 ];
-
-let nextId = 2;
 
 function buildMockSubjectId() {
   return `subj_${Math.random().toString(36).slice(2, 14).padEnd(12, "0").slice(0, 12)}`;
@@ -43,7 +39,6 @@ export const subjectHandlers = [
     const body = (await request.json()) as { name: string; description?: string; user_intent?: string };
     const now = new Date().toISOString();
     const newSubject: SubjectItem = {
-      id: nextId++,
       subject_id: buildMockSubjectId(),
       name: body.name,
       description: body.description ?? "",
@@ -81,7 +76,7 @@ export const subjectHandlers = [
       code: 0,
       data: {
         subject_id: body.subject_id,
-        subject_name: subject?.name ?? body.subject_id,
+        subject_name: subject?.name ?? "未命名学科",
         has_content: true,
         total_related_records: 12,
         impact_items: [
@@ -166,7 +161,7 @@ export const subjectHandlers = [
       code: 0,
       data: {
         subject_id: subjectId,
-        subject_name: subject?.name ?? subjectId,
+        subject_name: subject?.name ?? "未命名学科",
         stats: {
           raw_file_count: 1,
           total_raw_file_size_bytes: 1024 * 1024 * 4,
@@ -205,7 +200,6 @@ export const subjectHandlers = [
       (file?.name ? file.name.replace(/\.(atmx|zip)$/i, "").trim() : "") ||
       "导入课程";
     const newSubject: SubjectItem = {
-      id: nextId++,
       subject_id: buildMockSubjectId(),
       name: subjectName,
       description: "从课程包导入的学科",

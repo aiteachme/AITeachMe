@@ -63,7 +63,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         self,
         *,
         queries: list[str],
-        local_rag_subject: str | None = None,
+        local_rag_subject_id: str | None = None,
         local_sections: list[Any] | None = None,
         chapter_title: str = "",
         objective: str = "",
@@ -138,11 +138,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
         allow_oi_wiki_sources = self._allows_oi_wiki_sources(resolved_retrieval_profile)
         external_search_enabled = bool(settings.docgen.allow_external_search)
-        local_retriever = LocalRAGRetriever(subject=local_rag_subject, local_sections=local_sections)
+        local_retriever = LocalRAGRetriever(subject_id=local_rag_subject_id, local_sections=local_sections)
         other_retrievers = [
             retriever
             for retriever in get_retrievers_for_subject(
-                subject=local_rag_subject,
+                subject_id=local_rag_subject_id,
                 local_sections=local_sections,
                 profile=resolved_retrieval_profile or None,
                 include_external=external_search_enabled,
@@ -152,7 +152,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         ]
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
-            include_local_rag=bool(local_rag_subject or local_sections),
+            include_local_rag=bool(local_rag_subject_id or local_sections),
             include_external=external_search_enabled,
             include_fallback=True,
         )

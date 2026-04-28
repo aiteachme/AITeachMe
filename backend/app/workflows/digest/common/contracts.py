@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 DEFAULT_DIGEST_MODE = "systematic"
@@ -137,9 +137,9 @@ class DigestBuildConstraints(BaseModel):
 class DigestConfirmedPlanContract(BaseModel):
     """Typed confirmed-plan contract shared by planner and docgen lanes."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    subject: str = ""
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
     user_prompt: str = ""
     digest_mode: str = DEFAULT_DIGEST_MODE
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
@@ -151,7 +151,7 @@ class DigestConfirmedPlanContract(BaseModel):
     mode_reason: str = ""
 
     @field_validator(
-        "subject",
+        "subject_name",
         "user_prompt",
         "digest_mode",
         "plan_summary",
@@ -176,7 +176,7 @@ class DigestConfirmedPlanContract(BaseModel):
         return resolve_digest_retrieval_profile(
             self.digest_mode,
             user_prompt=self.user_prompt,
-            subject_name=self.subject,
+            subject_name=self.subject_name,
         )
 
     def to_payload(self) -> dict[str, Any]:

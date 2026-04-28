@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def clean_text(value: Any) -> str:
@@ -56,12 +56,12 @@ def clean_unit_float(value: Any, *, default: float = 0.0) -> float:
 
 
 class DocGenBaseModel(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
 class DocGenContext(DocGenBaseModel):
-    subject: str = ""
-    subject_display_name: str = ""
+    subject_id: str = Field(default="", validation_alias=AliasChoices("subject_id", "subject"))
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject_display_name"))
     digest_mode: str = "systematic"
     retrieval_profile: str = ""
     user_prompt: str = ""
@@ -75,8 +75,8 @@ class DocGenContext(DocGenBaseModel):
     section_count: int = 0
 
     @field_validator(
-        "subject",
-        "subject_display_name",
+        "subject_id",
+        "subject_name",
         "digest_mode",
         "retrieval_profile",
         "user_prompt",
@@ -420,7 +420,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 
 
 class ChapterGenerationPlanSeed(DocGenBaseModel):
-    subject: str = ""
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
     digest_mode: str = "systematic"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
@@ -429,7 +429,7 @@ class ChapterGenerationPlanSeed(DocGenBaseModel):
     chapters: list[ChapterGenerationTaskSeed] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject", "digest_mode", "source_policy", mode="before")
+    @field_validator("subject_name", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -582,7 +582,7 @@ class ChapterGenerationTask(DocGenBaseModel):
 
 
 class ChapterGenerationPlan(DocGenBaseModel):
-    subject: str = ""
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
     digest_mode: str = "systematic"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
@@ -591,7 +591,7 @@ class ChapterGenerationPlan(DocGenBaseModel):
     chapters: list[ChapterGenerationTask] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject", "digest_mode", "source_policy", mode="before")
+    @field_validator("subject_name", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)

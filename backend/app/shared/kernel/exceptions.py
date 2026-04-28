@@ -1,4 +1,4 @@
-﻿"""Shared domain exception definitions."""
+"""Shared domain exception definitions."""
 
 from __future__ import annotations
 
@@ -41,41 +41,41 @@ class InvalidSubjectError(AITeachMeError):
     error_code = "INVALID_SUBJECT"
     status_code = HTTPStatus.BAD_REQUEST
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject slug `{subject}` is invalid.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject ID `{subject_id}` is invalid.")
 
 
 class SubjectAlreadyExistsError(AITeachMeError):
     error_code = "SUBJECT_ALREADY_EXISTS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` already exists.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject `{subject_id}` already exists.")
 
 
 class SubjectRegistryNotFoundError(AITeachMeError):
     error_code = "SUBJECT_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` does not exist.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject `{subject_id}` does not exist.")
 
 
 class SubjectInUseError(AITeachMeError):
     error_code = "SUBJECT_IN_USE"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` still has content.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject `{subject_id}` still has content.")
 
 
 class KnowledgeClearConflictError(AITeachMeError):
     error_code = "KNOWLEDGE_CLEAR_CONFLICT"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject: str, blocking_details: str) -> None:
+    def __init__(self, subject_id: str, blocking_details: str) -> None:
         super().__init__(
-            detail=f"Subject `{subject}` still has linked data and cannot be cleared: {blocking_details}.",
+            detail=f"Subject `{subject_id}` still has linked data and cannot be cleared: {blocking_details}.",
         )
 
 
@@ -200,8 +200,8 @@ class NoReadyFilesForDocGenError(AITeachMeError):
     error_code = "NO_READY_FILES_FOR_DOCGEN"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` has no ready parsed files for doc generation.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject `{subject_id}` has no ready parsed files for doc generation.")
 
 
 class ConfirmedBuildPlanRequiredError(AITeachMeError):
@@ -216,8 +216,8 @@ class SubjectBuildLockConflictError(AITeachMeError):
     error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject: str) -> None:
-        super().__init__(detail=f"Subject `{subject}` is currently building.")
+    def __init__(self, subject_id: str) -> None:
+        super().__init__(detail=f"Subject `{subject_id}` is currently building.")
 
 
 class KnowledgeBuildPrecheckConflictError(AITeachMeError):

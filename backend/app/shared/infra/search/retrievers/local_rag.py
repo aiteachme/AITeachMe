@@ -45,8 +45,8 @@ class LocalRAGRetriever(BaseRetriever):
     aliases = ("rag",)
     cacheable = False
 
-    def __init__(self, *, subject: str | None = None, local_sections: list[Any] | None = None) -> None:
-        self.subject = (subject or "").strip()
+    def __init__(self, *, subject_id: str | None = None, local_sections: list[Any] | None = None) -> None:
+        self.subject_id = (subject_id or "").strip()
         self.local_sections = list(local_sections or [])
         self._vector_search_available: bool | None = None
         self._vector_search_notice: str | None = None
@@ -67,12 +67,12 @@ class LocalRAGRetriever(BaseRetriever):
             if results:
                 return results[:count]
 
-        should_try_vector = bool(self.subject)
+        should_try_vector = bool(self.subject_id)
         if should_try_vector and self.local_sections:
             should_try_vector = await self._refresh_vector_search_availability()
-        if should_try_vector and self.subject:
+        if should_try_vector and self.subject_id:
             try:
-                vector_results = await search_knowledge(normalized_query, self.subject, top_k=count)
+                vector_results = await search_knowledge(normalized_query, self.subject_id, top_k=count)
             except Exception:
                 vector_results = []
             results.extend(self._from_chunks(vector_results))
@@ -94,13 +94,13 @@ class LocalRAGRetriever(BaseRetriever):
         if self._vector_search_available is not None:
             return self._vector_search_available
 
-        notice = await get_knowledge_search_notice(self.subject)
+        notice = await get_knowledge_search_notice(self.subject_id)
         self._vector_search_notice = notice
         self._vector_search_available = notice is None
         if notice and not self._vector_notice_logged:
             logger.info(
                 "local_rag_vector_search_bypassed",
-                subject=self.subject,
+                subject_id=self.subject_id,
                 reason=notice,
                 fallback="section_fallback",
             )

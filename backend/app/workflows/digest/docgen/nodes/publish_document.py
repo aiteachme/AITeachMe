@@ -38,9 +38,9 @@ def build_publish_document_node(*, context: WorkflowContext):
 
         started_at = perf_counter()
         node_logger = context.get_logger().bind(node="publish_document")
-        subject = state["subject"]
+        subject_id = state["subject_id"]
         user_id = str(state.get("user_id") or "").strip()
-        subject_scope = build_subject_storage_scope(user_id=user_id, subject=subject) if user_id else None
+        subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=subject_id) if user_id else None
         chapter_metadatas = sorted(
             list(state.get("chapter_metadatas", [])),
             key=lambda item: item.get("chapter_index", 0),
@@ -112,7 +112,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             return {"error": "当前没有可用于最终发布的章节内容。"}
 
         update_knowledge_build_status(
-            subject,
+            subject_id,
             subject_scope=subject_scope,
             requested_at=requested_at,
             status="publishing",
@@ -129,7 +129,7 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
 
         staged_docs = await stage_knowledge_docs(
-            subject=subject,
+            subject_id=subject_id,
             chapter_metadatas=chapter_metadatas,
             document_context=document_context,
             cover_markdown=cover_markdown,
@@ -140,7 +140,7 @@ def build_publish_document_node(*, context: WorkflowContext):
         doc_ids: list[int] = []
         if standalone:
             doc_ids = publish_staged_knowledge_docs(
-                subject=subject,
+                subject_id=subject_id,
                 chapter_metadatas=chapter_metadatas,
                 chapter_assignments=chapter_assignments,
                 document_context=document_context,
@@ -155,7 +155,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 
         update_knowledge_build_merge_preview(
-            subject,
+            subject_id,
             subject_scope=subject_scope,
             requested_at=requested_at,
             merge_preview={
@@ -172,7 +172,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             if title == "练习与自检":
                 continue
             upsert_knowledge_build_chapter_progress(
-                subject,
+                subject_id,
                 subject_scope=subject_scope,
                 requested_at=requested_at,
                 chapter_progress={
@@ -197,7 +197,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             published=standalone,
         )
         append_knowledge_build_recent_event(
-            subject,
+            subject_id,
             subject_scope=subject_scope,
             requested_at=requested_at,
             event={

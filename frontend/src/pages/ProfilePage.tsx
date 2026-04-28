@@ -1,14 +1,14 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, Sparkles } from "lucide-react";
 import { useParams } from "react-router-dom";
 
 import {
-  getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey,
-  getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryKey,
-  useCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost,
-  useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet,
-  useReviewTasksApiV1SubjectsSubjectProfileReviewsGet,
+  getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey,
+  getReviewTasksApiV1SubjectsSubjectIdProfileReviewsGetQueryKey,
+  useCompleteReviewApiV1SubjectsSubjectIdProfileReviewsTaskIdCompletePost,
+  useMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGet,
+  useReviewTasksApiV1SubjectsSubjectIdProfileReviewsGet,
 } from "../api/generated/profile";
 import type { MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse } from "../api/generated/model";
 import { getApiErrorMessage } from "../api/client";
@@ -40,8 +40,8 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const masteryQuery = useMasteryOverviewApiV1SubjectsSubjectProfileMasteryGet(subjectId ?? "");
-  const reviewsQuery = useReviewTasksApiV1SubjectsSubjectProfileReviewsGet(subjectId ?? "");
+  const masteryQuery = useMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGet(subjectId ?? "");
+  const reviewsQuery = useReviewTasksApiV1SubjectsSubjectIdProfileReviewsGet(subjectId ?? "");
 
   const mastery = useMemo<MasteryOverviewResponse | null>(
     () => unwrapOrvalResponse<MasteryOverviewResponse>(masteryQuery.data),
@@ -52,16 +52,16 @@ export function ProfilePage() {
     [reviewsQuery.data],
   );
 
-  const completeReview = useCompleteReviewApiV1SubjectsSubjectProfileReviewsTaskIdCompletePost({
+  const completeReview = useCompleteReviewApiV1SubjectsSubjectIdProfileReviewsTaskIdCompletePost({
     mutation: {
       onSuccess: async () => {
         if (!subjectId) return;
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey(subjectId),
+            queryKey: getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey(subjectId),
           }),
           queryClient.invalidateQueries({
-            queryKey: getReviewTasksApiV1SubjectsSubjectProfileReviewsGetQueryKey(subjectId),
+            queryKey: getReviewTasksApiV1SubjectsSubjectIdProfileReviewsGetQueryKey(subjectId),
           }),
         ]);
         toast({
@@ -261,7 +261,7 @@ export function ProfilePage() {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => completeReview.mutate({ subject: subjectId, taskId: task.id })}
+                        onClick={() => completeReview.mutate({ subjectId, taskId: task.id })}
                         disabled={completeReview.isPending}
                       >
                         完成

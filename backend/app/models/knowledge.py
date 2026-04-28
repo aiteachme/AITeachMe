@@ -21,14 +21,14 @@ class RetrievalChunk(SQLModel, table=True):
             name="uq_retrieval_chunk_document_id_chunk_index",
         ),
         UniqueConstraint(
-            "subject",
+            "subject_id",
             "digest_chunk_uid",
             name="uq_retrieval_chunk_subject_digest_chunk_uid",
         ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(foreign_key="subject.slug", index=True)
+    subject_id: str = Field(foreign_key="subject.id", index=True)
     document_id: int = Field(foreign_key="raw_file.id", index=True)
     title: str
     level: int

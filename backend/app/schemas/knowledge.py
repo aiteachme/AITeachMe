@@ -177,7 +177,7 @@ class DocGenBuildData(BaseModel):
 class DocGenBuildCancelData(BaseModel):
     """Result of cancelling the active knowledge build."""
 
-    subject: str
+    subject_id: str
     status: str = "cancelled"
     cancelled_task_count: int = 0
     requested_at: datetime | None = None
@@ -187,7 +187,7 @@ class DocGenBuildCancelData(BaseModel):
 class KnowledgeGraphBuildData(BaseModel):
     """Knowledge graph rebuild response data."""
 
-    subject: str = Field(description="Subject slug.")
+    subject_id: str = Field(description="Subject ID.")
     status: str = Field(default="accepted", description="accepted / running")
     requested_at: datetime = Field(description="Graph build request timestamp.")
     build_group_id: str | None = Field(default=None, description="Runtime build group id.")
@@ -387,7 +387,7 @@ class KnowledgeUnitResponse(BaseModel):
     """KnowledgeUnit list item."""
 
     id: int
-    subject: str
+    subject_id: str
     knowledge_unit_type: str
     canonical_name: str
     status: str
@@ -476,7 +476,7 @@ class KnowledgeUnitDetailResponse(BaseModel):
     """KnowledgeUnit detail response."""
 
     id: int
-    subject: str
+    subject_id: str
     knowledge_unit_type: str
     canonical_name: str
     normalized_name: str
@@ -508,7 +508,7 @@ class KnowledgeRelationResponse(BaseModel):
     """Knowledge relation with endpoint metadata."""
 
     id: int
-    subject: str
+    subject_id: str
     source_node_id: int
     source_node_name: str
     source_node_type: str
@@ -572,7 +572,7 @@ class KnowledgeOverviewStats(BaseModel):
 class KnowledgeOverviewResponse(BaseModel):
     """Knowledge overview aggregated payload for summary tabs."""
 
-    subject: str
+    subject_id: str
     generated_at: datetime
     graph: FullGraphResponse | None = None
     stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
@@ -588,7 +588,7 @@ class KnowledgeOverviewResponse(BaseModel):
 class ClearKnowledgeResponse(BaseModel):
     """Knowledge clear response."""
 
-    subject: str
+    subject_id: str
     deleted_counts: dict[str, int] = Field(default_factory=dict)
 
 
@@ -618,7 +618,7 @@ class BuildPlannerAdjustClickResponse(BaseModel):
 
     acknowledged: bool = True
     planner_session_id: str
-    subject: str
+    subject_id: str
     status: str = ""
     has_latest_plan: bool = False
     latest_plan_chapter_count: int = 0
@@ -651,7 +651,7 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 
 
 class BuildPlannerPlanResponse(BaseModel):
-    subject: str
+    subject_id: str
     selected_file_uids: list[str] = Field(default_factory=list)
     user_prompt: str
     digest_mode: str
@@ -665,7 +665,7 @@ class BuildPlannerPlanResponse(BaseModel):
 
 class BuildPlannerSessionResponse(BaseModel):
     session_id: str
-    subject: str
+    subject_id: str
     title: str
     status: str
     revision: int
@@ -679,7 +679,7 @@ class BuildPlannerSessionResponse(BaseModel):
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
     confirmed_plan_id: str
-    subject: str
+    subject_id: str
     status: str
     digest_mode: str
     selected_file_uids: list[str] = Field(default_factory=list)

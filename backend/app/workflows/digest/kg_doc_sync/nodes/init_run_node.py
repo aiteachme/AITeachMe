@@ -34,7 +34,7 @@ def init_run_node(state: DocsSyncState) -> DocsSyncState:
         with managed_session() as session:
             run_context = initialize_knowledge_graph_sync_run(
                 session,
-                subject=state["subject"],
+                subject_id=state["subject_id"],
                 markdown=state["markdown"],
                 build_revision_no=state.get("build_revision_no"),
                 structured_context=dict(state.get("structured_context") or {}),
@@ -54,7 +54,7 @@ def init_run_node(state: DocsSyncState) -> DocsSyncState:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.warning(
             "kg_doc_sync_init_run_failed",
-            subject=state.get("subject"),
+            subject_id=state.get("subject_id"),
             build_session_id=state.get("build_session_id"),
             error_type=type(exc).__name__,
             error=str(exc),

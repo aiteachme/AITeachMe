@@ -30,17 +30,17 @@ IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[
 
 
 async def prepare_shared_inputs(
-    subject: str,
+    subject_id: str,
     file_ids: list[int],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
     """Prepare shared inputs once for a digest build."""
 
-    logger.info("shared_prepare_started", subject=subject, file_count=len(file_ids))
-    source_packets = await load_source_packets(subject, file_ids)
+    logger.info("shared_prepare_started", subject_id=subject_id, file_count=len(file_ids))
+    source_packets = await load_source_packets(subject_id, file_ids)
     if not source_packets:
-        logger.warning("shared_prepare_empty", subject=subject)
+        logger.warning("shared_prepare_empty", subject_id=subject_id)
         return DigestMaterialContext()
 
     section_packets = [
@@ -62,7 +62,7 @@ async def prepare_shared_inputs(
     )
     fast_hints = extract_fast_topic_hints(section_packets)
     subject_profile = recognize_subject_profile(
-        subject_slug=subject,
+        subject_id=subject_id,
         source_packets=source_packets,
         section_packets=section_packets,
         fast_hints=fast_hints,
@@ -82,14 +82,14 @@ async def prepare_shared_inputs(
         material_sections=section_packets,
         chunk_identity_map=chunk_identity_map,
         material_hints=fast_hints,
-        material_assets=build_asset_registry(subject, source_packets),
+        material_assets=build_asset_registry(subject_id, source_packets),
         learning_domain_profile=subject_profile,
         material_stats_profile=material_profile,
         course_mode_decision=digest_mode_decision,
     )
     logger.info(
         "shared_prepare_completed",
-        subject=subject,
+        subject_id=subject_id,
         source_count=len(source_packets),
         section_count=len(section_packets),
         asset_count=len(material_context.material_assets.assets),
@@ -104,25 +104,25 @@ async def prepare_shared_inputs(
 
 
 async def prepare_material_context(
-    subject: str,
+    subject_id: str,
     file_ids: list[int],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
     """New canonical name for shared material preparation."""
 
-    return await prepare_shared_inputs(subject, file_ids, user_prompt=user_prompt)
+    return await prepare_shared_inputs(subject_id, file_ids, user_prompt=user_prompt)
 
 
-async def load_source_packets(subject: str, file_ids: list[int]) -> list[SourcePacket]:
+async def load_source_packets(subject_id: str, file_ids: list[int]) -> list[SourcePacket]:
     """Load parsed raw markdown and normalize it into source packets."""
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = resolve_subject_storage_scope(subject_id)
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
-            list_raw_files_by_ids(session, subject, file_ids),
+            list_raw_files_by_ids(session, subject_id, file_ids),
             key=lambda raw_file: requested_order.get(int(raw_file.id or 0), len(requested_order)),
         )
 

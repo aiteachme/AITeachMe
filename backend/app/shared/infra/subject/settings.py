@@ -49,8 +49,8 @@ def _sanitize_user_segment(user_id: str | None) -> str:
     return cleaned or "local"
 
 
-def _normalize_subject_index_token(subject_slug: str, *, owner_user_id: str | None = None) -> str:
-    raw_subject = (subject_slug or "").strip().lower()
+def _normalize_subject_index_token(subject_id: str, *, owner_user_id: str | None = None) -> str:
+    raw_subject = (subject_id or "").strip().lower()
     raw_user = _sanitize_user_segment(owner_user_id).lower()
     normalized_subject = re.sub(r"[^a-z0-9_]+", "_", raw_subject).strip("_") or "subject"
     normalized_user = re.sub(r"[^a-z0-9_]+", "_", raw_user).strip("_") or "local"
@@ -60,17 +60,17 @@ def _normalize_subject_index_token(subject_slug: str, *, owner_user_id: str | No
     return f"{trimmed_user}_{trimmed_subject}_{digest}"
 
 
-def build_postgres_subject_index_name(subject_slug: str, *, owner_user_id: str) -> str:
+def build_postgres_subject_index_name(subject_id: str, *, owner_user_id: str) -> str:
     """Return the deterministic PGVector index name for one subject."""
 
     return (
         f"{_POSTGRES_LLAMA_INDEX_NAME_PREFIX}"
-        f"{_normalize_subject_index_token(subject_slug, owner_user_id=owner_user_id)}"
+        f"{_normalize_subject_index_token(subject_id, owner_user_id=owner_user_id)}"
     )
 
 
 def build_postgres_subject_index_data_table_name(
-    subject_slug: str,
+    subject_id: str,
     *,
     owner_user_id: str,
 ) -> str:
@@ -78,7 +78,7 @@ def build_postgres_subject_index_data_table_name(
 
     return (
         f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}"
-        f"{build_postgres_subject_index_name(subject_slug, owner_user_id=owner_user_id)}"
+        f"{build_postgres_subject_index_name(subject_id, owner_user_id=owner_user_id)}"
     )
 
 
@@ -101,18 +101,18 @@ def extract_postgres_subject_index_data_table_name(vector_ref: str | None) -> st
     return f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}{index_name}"
 
 
-def build_subject_index_ref(subject_slug: str, *, owner_user_id: str) -> str:
+def build_subject_index_ref(subject_id: str, *, owner_user_id: str) -> str:
     """Return the subject-scoped LlamaIndex storage reference."""
 
     if is_cloud_mode():
         return (
             f"{_POSTGRES_LLAMA_INDEX_REF_PREFIX}"
-            f"{build_postgres_subject_index_name(subject_slug, owner_user_id=owner_user_id)}"
+            f"{build_postgres_subject_index_name(subject_id, owner_user_id=owner_user_id)}"
         )
     user_segment = _sanitize_user_segment(owner_user_id)
     return (
         f"{_LOCAL_LLAMA_INDEX_REF_PREFIX}"
-        f"users/{user_segment}/subjects/{subject_slug.strip()}/rag_index"
+        f"users/{user_segment}/subjects/{subject_id.strip()}/rag_index"
     )
 
 
@@ -120,7 +120,7 @@ def build_subject_index_ref_for_subject(subject: Subject) -> str:
     """Return the deterministic vector reference for one subject record."""
 
     return build_subject_index_ref(
-        subject.slug,
+        subject.id,
         owner_user_id=subject.user_id,
     )
 
@@ -160,7 +160,7 @@ def set_subject_embedding_binding(subject: Subject, binding: SubjectEmbeddingBin
 
 def build_enabled_binding(
     *,
-    subject_slug: str,
+    subject_id: str,
     owner_user_id: str,
     embedding_model: str,
     embedding_dim: int,
@@ -172,7 +172,7 @@ def build_enabled_binding(
         mode=SubjectEmbeddingMode.ENABLED,
         embedding_model=embedding_model,
         embedding_dim=embedding_dim,
-        vector_table=build_subject_index_ref(subject_slug, owner_user_id=owner_user_id),
+        vector_table=build_subject_index_ref(subject_id, owner_user_id=owner_user_id),
         disabled_reason=None,
         updated_at=updated_at or utcnow(),
     )
@@ -180,7 +180,7 @@ def build_enabled_binding(
 
 def build_disabled_binding(
     *,
-    subject_slug: str,
+    subject_id: str,
     owner_user_id: str,
     disabled_reason: str,
     previous_binding: SubjectEmbeddingBinding | None = None,
@@ -199,7 +199,7 @@ def build_disabled_binding(
         vector_table=(
             previous_binding.vector_table
             if previous_binding is not None
-            else build_subject_index_ref(subject_slug, owner_user_id=owner_user_id)
+            else build_subject_index_ref(subject_id, owner_user_id=owner_user_id)
         ),
         disabled_reason=disabled_reason,
         updated_at=updated_at or utcnow(),

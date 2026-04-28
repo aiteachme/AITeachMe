@@ -102,7 +102,7 @@ def _file_summary_cues(file_summaries: list[Mapping[str, Any]] | None, *, limit:
 
 def _build_cover_prompt(
     *,
-    subject: str,
+    subject_name: str,
     user_prompt: str,
     plan_summary: str,
     digest_mode: str,
@@ -111,7 +111,7 @@ def _build_cover_prompt(
     intent_profile: Mapping[str, Any] | None = None,
 ) -> str:
     chapter_titles = "；".join(_chapter_titles(confirmed_plan)) or "课程主线"
-    course_cues = "；".join(_course_cues(confirmed_plan)) or subject
+    course_cues = "；".join(_course_cues(confirmed_plan)) or subject_name
     file_cues = "；".join(_file_summary_cues(file_summaries)) or course_cues
     mode_hint = (
         "compressed, focused, tense but elegant, like dusk before an exam"
@@ -135,7 +135,7 @@ def _build_cover_prompt(
         "- leave clean breathing space so it can sit above the document as a cover\n"
         "\n"
         "Course signals to loosely absorb, not literally depict:\n"
-        f"- subject: {subject}\n"
+        f"- subject: {subject_name}\n"
         f"- build intent: {user_prompt or 'teaching document cover'}\n"
         f"- plan summary: {plan_summary or 'structured learning document'}\n"
         f"- chapter arc: {chapter_titles}\n"
@@ -215,15 +215,15 @@ async def _cleanup_stale_docgen_covers(*, namespace: str, keep_key: str) -> None
         logger.warning("docgen_cover_cleanup_failed", namespace=namespace, error=str(exc))
 
 
-async def read_docgen_cover_artifact(subject: str) -> dict[str, Any] | None:
+async def read_docgen_cover_artifact(subject_id: str) -> dict[str, Any] | None:
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = resolve_subject_storage_scope(subject_id)
     payload = await cs.read_json_raw(subject_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME)
     return payload if isinstance(payload, dict) else None
 
 
 async def wait_for_docgen_cover_artifact(
-    subject: str,
+    subject_id: str,
     *,
     max_wait_seconds: float = 4.0,
     poll_interval_seconds: float = 0.2,
@@ -236,7 +236,7 @@ async def wait_for_docgen_cover_artifact(
 
     waited = 0.0
     while waited <= max_wait_seconds:
-        artifact = await read_docgen_cover_artifact(subject)
+        artifact = await read_docgen_cover_artifact(subject_id)
         if artifact:
             return artifact
         await asyncio.sleep(poll_interval_seconds)
@@ -246,7 +246,8 @@ async def wait_for_docgen_cover_artifact(
 
 async def generate_docgen_cover_artifact(
     *,
-    subject: str,
+    subject_id: str,
+    subject_name: str,
     build_session_id: str,
     user_prompt: str | None,
     plan_summary: str | None,
@@ -264,15 +265,15 @@ async def generate_docgen_cover_artifact(
     if not settings.image_generation_enabled:
         logger.info(
             "docgen_cover_generation_skipped",
-            subject=subject,
+            subject_id=subject_id,
             reason="image_generation_disabled",
         )
         return None
 
-    subject_scope = resolve_subject_storage_scope(subject)
+    subject_scope = resolve_subject_storage_scope(subject_id)
     cs = get_content_store()
     prompt = _build_cover_prompt(
-        subject=subject,
+        subject_name=subject_name,
         user_prompt=str(user_prompt or "").strip(),
         plan_summary=str(plan_summary or "").strip(),
         digest_mode=str(digest_mode or "").strip().lower(),
@@ -297,7 +298,8 @@ async def generate_docgen_cover_artifact(
                 extra_metadata={
                     **model_policy.metadata(),
                     "docgen_stage": "cover_generation",
-                    "subject": subject,
+                    "subject_id": subject_id,
+                    "subject_name": subject_name,
                     "build_session_id": build_session_id,
                 },
             )
@@ -329,7 +331,7 @@ async def generate_docgen_cover_artifact(
                 artifact,
             )
             append_knowledge_build_recent_event(
-                subject,
+                subject_id,
                 requested_at=requested_at,
                 event={
                     "stage": "docgen_cover_ready",
@@ -339,7 +341,8 @@ async def generate_docgen_cover_artifact(
             )
             logger.info(
                 "docgen_cover_generation_completed",
-                subject=subject,
+                subject_id=subject_id,
+                subject_name=subject_name,
                 build_session_id=build_session_id,
                 size=size,
                 asset_path=asset_path,
@@ -349,14 +352,16 @@ async def generate_docgen_cover_artifact(
             last_error = exc
             logger.warning(
                 "docgen_cover_generation_attempt_failed",
-                subject=subject,
+                subject_id=subject_id,
+                subject_name=subject_name,
                 build_session_id=build_session_id,
                 size=size,
                 error=str(exc),
             )
     logger.warning(
         "docgen_cover_generation_failed",
-        subject=subject,
+        subject_id=subject_id,
+        subject_name=subject_name,
         build_session_id=build_session_id,
         error=str(last_error) if last_error else "",
     )

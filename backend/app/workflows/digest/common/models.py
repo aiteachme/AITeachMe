@@ -26,7 +26,7 @@ class MaterialStats(BaseModel):
 class MaterialProfile(BaseModel):
     """A compact profile for the current digest input set."""
 
-    subject: str = ""
+    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
     sub_subjects: list[str] = Field(default_factory=list)
     material_types: dict[str, int] = Field(default_factory=dict)
     stats: MaterialStats = Field(default_factory=MaterialStats)
@@ -101,7 +101,7 @@ class AssetItem(BaseModel):
 class AssetRegistry(BaseModel):
     """Registry of source assets available during docs generation."""
 
-    subject: str = ""
+    subject_id: str = Field(default="", validation_alias=AliasChoices("subject_id", "subject"))
     asset_dir: str = ""
     assets: list[AssetItem] = Field(default_factory=list)
 
@@ -160,7 +160,7 @@ class SubjectProfile(BaseModel):
     规划和写作应以 user_prompt、资料内容和 confirmed plan 为准。
     """
 
-    subject_slug: str = ""
+    subject_id: str = ""
     subject_name: str = ""
     subject_description: str = ""
     discipline: str = ""  # e.g. "数学", "物理", "计算机科学"

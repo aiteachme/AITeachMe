@@ -55,7 +55,7 @@ _SAFE_LANGSMITH_FIELDS = {
 class LLMTraceContext:
     """Context automatically attached to nested LLM calls."""
 
-    subject: str = ""
+    subject_id: str = ""
     build_session_id: str = ""
     workflow: str = ""
     lane: str = ""
@@ -282,7 +282,7 @@ def sanitize_langsmith_output(
 
 def build_langsmith_metadata(
     *,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -293,8 +293,8 @@ def build_langsmith_metadata(
         "app": "aiteachme-backend",
         "app_version": get_app_version(),
     }
-    if subject:
-        metadata["subject"] = subject
+    if subject_id:
+        metadata["subject_id"] = subject_id
     if build_session_id:
         metadata["build_session_id"] = build_session_id
     if workflow:
@@ -324,7 +324,7 @@ def build_langsmith_tags(
     """Build sparse LangSmith tags.
 
     Keep tags low-cardinality for filtering. Detailed dimensions such as
-    subject, build_session_id, node, mode, retrieval profile, or chapter index
+    subject_id, build_session_id, node, mode, retrieval profile, or chapter index
     belong in metadata.
     """
 
@@ -340,7 +340,7 @@ def build_langsmith_tags(
 
 def _build_langsmith_context(
     *,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -350,7 +350,7 @@ def _build_langsmith_context(
 ) -> tuple[str | None, dict[str, Any], list[str]]:
     project_name = get_langsmith_project_name()
     metadata = build_langsmith_metadata(
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         workflow=workflow,
         lane=lane,
@@ -368,7 +368,7 @@ def _build_langsmith_context(
 
 def build_langsmith_extra(
     *,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -380,7 +380,7 @@ def build_langsmith_extra(
         return None
 
     project_name, metadata, tags = _build_langsmith_context(
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         workflow=workflow,
         lane=lane,
@@ -411,7 +411,7 @@ def suppress_langsmith_child_runs() -> Iterator[None]:
 @contextmanager
 def llm_trace_scope(
     *,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -421,7 +421,7 @@ def llm_trace_scope(
 
     current = _TRACE_CONTEXT.get() or LLMTraceContext()
     merged = LLMTraceContext(
-        subject=subject or current.subject,
+        subject_id=subject_id or current.subject_id,
         build_session_id=build_session_id or current.build_session_id,
         workflow=workflow or current.workflow,
         lane=lane or current.lane,
@@ -437,7 +437,7 @@ def llm_trace_scope(
 @contextmanager
 def langsmith_tracing_scope(
     *,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -452,7 +452,7 @@ def langsmith_tracing_scope(
         return
 
     project_name, metadata, tags = _build_langsmith_context(
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         workflow=workflow,
         lane=lane,
@@ -475,7 +475,7 @@ def langsmith_trace(
     name: str,
     run_type: str,
     inputs: dict[str, Any] | None = None,
-    subject: str = "",
+    subject_id: str = "",
     build_session_id: str = "",
     workflow: str = "",
     lane: str = "",
@@ -494,7 +494,7 @@ def langsmith_trace(
         return
 
     project_name, metadata, tags = _build_langsmith_context(
-        subject=subject,
+        subject_id=subject_id,
         build_session_id=build_session_id,
         workflow=workflow,
         lane=lane,
@@ -535,7 +535,7 @@ def trace_substep(
         name=name,
         run_type=run_type,
         inputs=dict(inputs or {}),
-        subject=context.subject,
+        subject_id=context.subject_id,
         build_session_id=context.build_session_id,
         workflow=context.workflow,
         lane=context.lane,
@@ -593,7 +593,7 @@ def _build_dynamic_langsmith_extra(
     extra_metadata = metadata_factory(*args, **kwargs) if metadata_factory is not None else None
     extra_tags = list(tags_factory(*args, **kwargs) or []) if tags_factory is not None else None
     extra = build_langsmith_extra(
-        subject=context.subject,
+        subject_id=context.subject_id,
         build_session_id=context.build_session_id,
         workflow=context.workflow,
         lane=context.lane,

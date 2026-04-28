@@ -7,7 +7,7 @@
     from app.shared.infra.events import emit_event, get_events
 
     # 记录事件
-    await emit_event("exam_completed", user_id="u1", subject="math",
+    await emit_event("exam_completed", user_id="u1", subject_id="math",
                      data={"score": 85, "weak_points": ["贝叶斯"]})
 
     # 查询事件
@@ -53,7 +53,7 @@ class TeachingEvent:
     event_id: str
     event_type: str
     user_id: str
-    subject: str
+    subject_id: str
     data: dict[str, Any]
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -80,7 +80,7 @@ class _EventStore:
                     id          TEXT PRIMARY KEY,
                     event_type  TEXT NOT NULL,
                     user_id     TEXT NOT NULL DEFAULT 'default',
-                    subject     TEXT DEFAULT '',
+                    subject_id     TEXT DEFAULT '',
                     data        TEXT DEFAULT '{}',
                     created_at  TEXT NOT NULL
                 )
@@ -89,9 +89,13 @@ class _EventStore:
                 CREATE INDEX IF NOT EXISTS idx_events_user_type
                     ON teaching_events(user_id, event_type, created_at)
             """)
+            try:
+                conn.execute("ALTER TABLE teaching_events ADD COLUMN subject_id TEXT DEFAULT ''")
+            except Exception:
+                pass
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_events_subject
-                    ON teaching_events(user_id, subject, created_at)
+                    ON teaching_events(user_id, subject_id, created_at)
             """)
             conn.commit()
             self._initialized = True
@@ -103,10 +107,10 @@ class _EventStore:
         conn = self._get_conn()
         try:
             conn.execute(
-                """INSERT INTO teaching_events (id, event_type, user_id, subject, data, created_at)
+                """INSERT INTO teaching_events (id, event_type, user_id, subject_id, data, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (event.event_id, event.event_type, event.user_id,
-                 event.subject, json.dumps(event.data, ensure_ascii=False),
+                 event.subject_id, json.dumps(event.data, ensure_ascii=False),
                  event.created_at.isoformat()),
             )
             conn.commit()
@@ -118,22 +122,22 @@ class _EventStore:
         *,
         user_id: str = "default",
         event_type: str | None = None,
-        subject: str | None = None,
+        subject_id: str | None = None,
         days: int = 30,
         limit: int = 100,
     ) -> list[TeachingEvent]:
         self._ensure_table()
         conn = self._get_conn()
         try:
-            sql = "SELECT id, event_type, user_id, subject, data, created_at FROM teaching_events WHERE user_id = ?"
+            sql = "SELECT id, event_type, user_id, subject_id, data, created_at FROM teaching_events WHERE user_id = ?"
             params: list = [user_id]
 
             if event_type:
                 sql += " AND event_type = ?"
                 params.append(event_type)
-            if subject:
-                sql += " AND subject = ?"
-                params.append(subject)
+            if subject_id:
+                sql += " AND subject_id = ?"
+                params.append(subject_id)
 
             sql += " AND created_at >= datetime('now', ?) ORDER BY created_at DESC LIMIT ?"
             params.extend([f"-{days} days", limit])
@@ -142,7 +146,7 @@ class _EventStore:
             return [
                 TeachingEvent(
                     event_id=row[0], event_type=row[1], user_id=row[2],
-                    subject=row[3],
+                    subject_id=row[3],
                     data=json.loads(row[4]) if row[4] else {},
                     created_at=datetime.fromisoformat(row[5]),
                 )
@@ -190,7 +194,7 @@ async def emit_event(
     event_type: str,
     *,
     user_id: str = "default",
-    subject: str = "",
+    subject_id: str = "",
     data: dict[str, Any] | None = None,
 ) -> str:
     """发射一个教学事件。
@@ -198,7 +202,7 @@ async def emit_event(
     Args:
         event_type: 事件类型（使用 EventType 常量或自定义字符串）。
         user_id: 用户标识。
-        subject: 学科标识。
+        subject_id: 学科标识。
         data: 事件附加数据。
 
     Returns:
@@ -207,19 +211,19 @@ async def emit_event(
     Example::
 
         await emit_event(EventType.EXAM_COMPLETED, user_id="u1",
-                         subject="math", data={"score": 85})
+                         subject_id="math", data={"score": 85})
     """
 
     event = TeachingEvent(
         event_id=uuid4().hex[:16],
         event_type=event_type,
         user_id=user_id,
-        subject=subject,
+        subject_id=subject_id,
         data=data or {},
     )
     await _get_store().save(event)
     logger.info("event_emitted", event_type=event_type,
-                user_id=user_id, subject=subject)
+                user_id=user_id, subject_id=subject_id)
     return event.event_id
 
 
@@ -227,7 +231,7 @@ async def get_events(
     *,
     user_id: str = "default",
     event_type: str | None = None,
-    subject: str | None = None,
+    subject_id: str | None = None,
     days: int = 30,
     limit: int = 100,
 ) -> list[TeachingEvent]:
@@ -236,7 +240,7 @@ async def get_events(
     Args:
         user_id: 用户标识。
         event_type: 可选过滤事件类型。
-        subject: 可选过滤学科。
+        subject_id: 可选过滤学科。
         days: 回溯天数。
         limit: 最大返回数量。
 
@@ -246,7 +250,7 @@ async def get_events(
 
     return await _get_store().query(
         user_id=user_id, event_type=event_type,
-        subject=subject, days=days, limit=limit,
+        subject_id=subject_id, days=days, limit=limit,
     )
 
 

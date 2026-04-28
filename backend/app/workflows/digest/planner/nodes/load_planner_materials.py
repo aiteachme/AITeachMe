@@ -1,4 +1,4 @@
-﻿"""Load persisted planner session data and parsed source materials."""
+"""Load persisted planner session data and parsed source materials."""
 
 from __future__ import annotations
 
@@ -18,14 +18,14 @@ from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
 
-_SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
+_SUBJECT_ID_RE = re.compile(r"^subj_[a-z0-9]+$", re.IGNORECASE)
 logger = structlog.get_logger(__name__)
 
 
 def _seed_titles_from_goal_and_files(
     filenames: list[str],
     *,
-    subject: str,
+    subject_id: str,
     user_prompt: str | None,
 ) -> list[str]:
     seeds: list[str] = []
@@ -35,8 +35,8 @@ def _seed_titles_from_goal_and_files(
         stem = Path(filename).stem.strip()
         if stem:
             seeds.append(stem.replace("_", " ").replace("-", " ").strip())
-    if subject and not _SUBJECT_SLUG_RE.fullmatch(subject.strip()):
-        seeds.append(subject)
+    if subject_id and not _SUBJECT_ID_RE.fullmatch(subject_id.strip()):
+        seeds.append(subject_id)
 
     titles: list[str] = []
     seen: set[str] = set()
@@ -50,12 +50,12 @@ def _seed_titles_from_goal_and_files(
     return titles
 
 
-def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
+def _build_seed_material_context(*, subject_id: str, file_ids: list[int], user_prompt: str | None) -> DigestMaterialContext:
     with managed_session() as session:
-        raw_files = list_raw_files_by_ids(session, subject, file_ids)
+        raw_files = list_raw_files_by_ids(session, subject_id, file_ids)
 
     filenames = [raw_file.original_filename for raw_file in raw_files if raw_file.original_filename]
-    seed_titles = _seed_titles_from_goal_and_files(filenames, subject=subject, user_prompt=user_prompt)
+    seed_titles = _seed_titles_from_goal_and_files(filenames, subject_id=subject_id, user_prompt=user_prompt)
     discipline_counts = Counter(str(raw_file.detected_discipline).strip() for raw_file in raw_files if raw_file.detected_discipline)
     sub_discipline_counts = Counter(str(raw_file.detected_sub_discipline).strip() for raw_file in raw_files if raw_file.detected_sub_discipline)
     content_type_counts = Counter(str(raw_file.detected_content_type).strip() for raw_file in raw_files if raw_file.detected_content_type)
@@ -82,7 +82,7 @@ def _build_seed_material_context(*, subject: str, file_ids: list[int], user_prom
         source_documents=source_documents,
         material_hints=FastTopicHints(chapter_candidates=seed_titles),
         learning_domain_profile=SubjectProfile(
-            subject_slug=subject,
+            subject_id=subject_id,
             subject_name="",
             discipline=(discipline_counts.most_common(1)[0][0] if discipline_counts else ""),
             sub_discipline=(sub_discipline_counts.most_common(1)[0][0] if sub_discipline_counts else ""),
@@ -106,7 +106,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
         logger.info(
             "planner_load_materials_started",
             planner_session_id=state.get("planner_session_id", ""),
-            subject=state.get("subject", ""),
+            subject_id=state.get("subject_id", ""),
             operation=state.get("planner_operation", ""),
             file_id_count=len(state.get("file_ids", []) or []),
             requested_file_uid_count=len(state.get("requested_file_uids", []) or []),
@@ -127,7 +127,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             detail="正在读取学习目标和资料理解包...",
         )
         material_context = await build_digest_material_context(
-            working_state["subject"],
+            working_state["subject_id"],
             working_state.get("file_ids", []),
             user_prompt=working_state.get("user_prompt"),
         )
@@ -147,7 +147,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户提示生成临时方案。",
             )
             material_context = _build_seed_material_context(
-                subject=working_state["subject"],
+                subject_id=working_state["subject_id"],
                 file_ids=list(working_state.get("file_ids", [])),
                 user_prompt=working_state.get("user_prompt"),
             )

@@ -1,4 +1,4 @@
-﻿import { knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost } from "../api/generated/knowledge";
+﻿import { knowledgeOverviewApiV1SubjectsSubjectIdKnowledgeOverviewPost } from "../api/generated/knowledge";
 import type { KnowledgeOverviewRequest, KnowledgeOverviewResponse } from "../api/generated/model";
 import { unwrapOrvalResponse } from "./unwrapOrvalResponse";
 
@@ -21,14 +21,14 @@ export async function fetchKnowledgeOverview(
   subjectId: string,
   include: readonly KnowledgeOverviewSection[],
 ): Promise<KnowledgeOverviewResponse> {
-  const raw = await knowledgeOverviewApiV1SubjectsSubjectKnowledgeOverviewPost(subjectId, {
+  const raw = await knowledgeOverviewApiV1SubjectsSubjectIdKnowledgeOverviewPost(subjectId, {
     full: false,
     include: [...include],
   });
 
   return (
     unwrapOrvalResponse<KnowledgeOverviewResponse>(raw) ?? {
-      subject: subjectId,
+      subject_id: subjectId,
       generated_at: new Date().toISOString(),
       graph: null,
       stats: {

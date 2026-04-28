@@ -17,7 +17,7 @@ PLAN_QUERY_MAX = 8
 
 def build_plan_intent_messages(
     *,
-    subject: str,
+    subject_name: str,
     user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
@@ -34,7 +34,7 @@ PlanIntent 只服务后续计划合成，不是对用户的最终展示，也不
 请先识别用户学习意图，再把结果整理成内部 PlanIntent。
 PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
 
-学科/主题：{subject}
+学科/主题：{subject_name}
 用户提示：{user_prompt}
 请求模式：{digest_mode}
 
@@ -75,7 +75,7 @@ few-shot 示例：
     return trace_prompt_build(
         "planner_plan_intent",
         inputs={
-            "subject": subject,
+            "subject_name": subject_name,
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),

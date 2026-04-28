@@ -162,9 +162,9 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
     )
 
 
-def get_subject_file_or_raise(session: Session, *, subject: str, file_id: int) -> RawFile:
+def get_subject_file_or_raise(session: Session, *, subject_id: str, file_id: int) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
-    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject=subject):
+    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject_id=subject_id):
         raise RawFileNotFoundError(file_id)
     return raw_file
 
@@ -188,10 +188,10 @@ def get_user_files_or_raise(
 def get_subject_files_or_raise(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     file_ids: list[int],
 ) -> list[RawFile]:
-    items = list_raw_files_by_ids(session, subject, file_ids)
+    items = list_raw_files_by_ids(session, subject_id, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
@@ -204,10 +204,10 @@ def get_subject_files_or_raise(
 def get_subject_files_by_uid_or_raise(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
     file_uids: list[str],
 ) -> list[RawFile]:
-    items = list_raw_files_by_uids(session, subject, file_uids)
+    items = list_raw_files_by_uids(session, subject_id, file_uids)
     found_uids = {require_uid(item.uid, "RawFile.uid") for item in items}
     missing = [file_uid for file_uid in file_uids if file_uid not in found_uids]
     if missing:
@@ -236,18 +236,18 @@ def get_user_files_by_uid_or_raise(
 def list_subject_files(
     session: Session,
     *,
-    subject: str,
+    subject_id: str,
 ) -> FilesData:
     raw_files, total = list_raw_files_by_subject(
         session,
-        subject,
+        subject_id,
         limit=1000,
         offset=0,
         status=None,
     )
     records = [build_file_record(item) for item in raw_files]
     return FilesData(
-        subject=subject,
+        subject_id=subject_id,
         total=total,
         ready_count=sum(1 for item in records if item.markdown_ready),
         processing_count=sum(
@@ -274,7 +274,7 @@ def list_user_files(
     )
     records = [build_file_record(item) for item in raw_files]
     return FilesData(
-        subject="library",
+        subject_id=None,
         total=total,
         ready_count=sum(1 for item in records if item.markdown_ready),
         processing_count=sum(

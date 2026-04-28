@@ -100,7 +100,7 @@ function buildFilesResponse(subject: string): FilesData {
     .map((file) => serializeFile(subject, file));
 
   return {
-    subject,
+    subject_id: subject === "library" ? null : subject,
     total: items.length,
     ready_count: items.filter((item) => item.markdown_ready).length,
     processing_count: items.filter((item) => !item.markdown_ready && item.status !== "failed").length,

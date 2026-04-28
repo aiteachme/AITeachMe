@@ -84,7 +84,7 @@ async def upload_user_files(
 
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
-        subject=None,
+        subject_id=None,
         owner_user_id=user.user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
@@ -98,7 +98,7 @@ async def upload_user_files(
                 background_task_registry=request.app.state.background_task_registry,
             ),
             kind="files.parse",
-            subject=registry_subject,
+            subject_id=registry_subject,
             name=f"files.parse:{registry_subject}",
         )
     return ok_response(data)

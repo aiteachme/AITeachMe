@@ -79,7 +79,7 @@ _CONTENT_TYPE_SIGNALS: dict[str, list[str]] = {
 
 def recognize_subject_profile(
     *,
-    subject_slug: str,
+    subject_id: str,
     source_packets: list[SourcePacket],
     section_packets: list[SectionPacket],
     fast_hints: FastTopicHints,
@@ -115,7 +115,7 @@ def recognize_subject_profile(
     )
 
     profile = SubjectProfile(
-        subject_slug=subject_slug,
+        subject_id=subject_id,
         subject_name="",
         discipline=discipline,
         sub_discipline=sub_discipline,
@@ -129,7 +129,7 @@ def recognize_subject_profile(
     )
     logger.info(
         "subject_profile_recognized",
-        subject=subject_slug,
+        subject_id=subject_id,
         discipline=discipline,
         sub_discipline=sub_discipline,
         content_type=content_type,

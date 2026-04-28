@@ -22,7 +22,7 @@ async def main() -> None:
 
     source = text_files[0]
     questions = await generate_exam_from_text(
-        subject="manual-playground",
+        subject_name="manual-playground",
         knowledge_text=source.read_text(encoding="utf-8"),
         num_questions=5,
     )

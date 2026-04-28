@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListChecks, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
-  getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey,
-  getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey,
-  useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet,
-  useSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost,
+  getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey,
+  getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey,
+  useExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGet,
+  useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost,
 } from "../../api/generated/exams";
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
-import { getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey } from "../../api/generated/profile";
+import { getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../../api/client";
 import {
   AI_SOURCE_EXAM_QUESTION,
@@ -79,7 +79,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     }
   }, [isSidebarOpen]);
 
-  const examDetailQuery = useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subjectId, paperId, {
+  const examDetailQuery = useExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGet(subjectId, paperId, {
     query: {
       enabled: Boolean(subjectId && paperId),
     },
@@ -223,8 +223,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
-    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
-    const detailQueryKey = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId);
+    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
+    const detailQueryKey = getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId);
 
     const refreshPaper = () => {
       void Promise.all([
@@ -416,19 +416,19 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     });
   }, [keepQuestionHighlight, openAiInteraction, paper, subjectId]);
 
-  const submitExam = useSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost({
+  const submitExam = useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost({
     mutation: {
       onSuccess: async (response) => {
         const graded = unwrapOrvalResponse(response);
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
+            queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
           }),
           queryClient.invalidateQueries({
-            queryKey: getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subjectId, paperId),
+            queryKey: getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId),
           }),
           queryClient.invalidateQueries({
-            queryKey: getMasteryOverviewApiV1SubjectsSubjectProfileMasteryGetQueryKey(subjectId),
+            queryKey: getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey(subjectId),
           }),
         ]);
         toast({
@@ -673,7 +673,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                     className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] ${paper.status === "graded" ? "hidden" : ""}`}
                     onClick={() =>
                       submitExam.mutate({
-                        subject: subjectId,
+                        subjectId,
                         examPaperId: paperId,
                         data: {
                           answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({

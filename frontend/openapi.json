@@ -1306,21 +1306,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/upload": {
+    "/api/v1/subjects/{subject_id}/files/upload": {
       "post": {
         "tags": [
           "files"
         ],
         "summary": "Upload files and start parsing immediately",
-        "operationId": "upload_files_api_v1_subjects__subject__files_upload_post",
+        "operationId": "upload_files_api_v1_subjects__subject_id__files_upload_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1329,7 +1329,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_files_api_v1_subjects__subject__files_upload_post"
+                "$ref": "#/components/schemas/Body_upload_files_api_v1_subjects__subject_id__files_upload_post"
               }
             }
           }
@@ -1398,21 +1398,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files": {
+    "/api/v1/subjects/{subject_id}/files": {
       "get": {
         "tags": [
           "files"
         ],
         "summary": "Get all subject files with full data",
-        "operationId": "list_files_api_api_v1_subjects__subject__files_get",
+        "operationId": "list_files_api_api_v1_subjects__subject_id__files_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1470,21 +1470,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/link": {
+    "/api/v1/subjects/{subject_id}/files/link": {
       "post": {
         "tags": [
           "files"
         ],
         "summary": "Link existing user files to a subject",
-        "operationId": "link_files_api_api_v1_subjects__subject__files_link_post",
+        "operationId": "link_files_api_api_v1_subjects__subject_id__files_link_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1552,21 +1552,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/delete": {
+    "/api/v1/subjects/{subject_id}/files/delete": {
       "post": {
         "tags": [
           "files"
         ],
         "summary": "Delete files",
-        "operationId": "delete_files_api_api_v1_subjects__subject__files_delete_post",
+        "operationId": "delete_files_api_api_v1_subjects__subject_id__files_delete_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1644,22 +1644,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/files/assets/{asset_path}": {
+    "/api/v1/subjects/{subject_id}/files/assets/{asset_path}": {
       "get": {
         "tags": [
           "files"
         ],
         "summary": "Serve file asset (images, etc.)",
         "description": "代理访问文件资产。\n\ncloud 模式：优先 302 到 CDN，无 CDN 时流式返回。\nlocal 模式：从本地文件系统返回。",
-        "operationId": "serve_file_asset_api_v1_subjects__subject__files_assets__asset_path__get",
+        "operationId": "serve_file_asset_api_v1_subjects__subject_id__files_assets__asset_path__get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -1714,22 +1714,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session",
-        "operationId": "knowledge_build_plan_create_api_v1_subjects__subject__knowledge_build_plans_post",
+        "operationId": "knowledge_build_plan_create_api_v1_subjects__subject_id__knowledge_build_plans_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1797,22 +1797,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/latest": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/latest": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Get the latest build planner session for this subject",
-        "operationId": "knowledge_build_plan_latest_api_v1_subjects__subject__knowledge_build_plans_latest_post",
+        "operationId": "knowledge_build_plan_latest_api_v1_subjects__subject_id__knowledge_build_plans_latest_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1870,22 +1870,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/stream": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/stream": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session with SSE progress",
-        "operationId": "knowledge_build_plan_create_stream_api_v1_subjects__subject__knowledge_build_plans_stream_post",
+        "operationId": "knowledge_build_plan_create_stream_api_v1_subjects__subject_id__knowledge_build_plans_stream_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -1951,22 +1951,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/messages": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback and regenerate the plan",
-        "operationId": "knowledge_build_plan_message_api_v1_subjects__subject__knowledge_build_plans__session_id__messages_post",
+        "operationId": "knowledge_build_plan_message_api_v1_subjects__subject_id__knowledge_build_plans__session_id__messages_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -2043,22 +2043,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/messages/stream": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/messages/stream": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback with SSE progress",
-        "operationId": "knowledge_build_plan_message_stream_api_v1_subjects__subject__knowledge_build_plans__session_id__messages_stream_post",
+        "operationId": "knowledge_build_plan_message_stream_api_v1_subjects__subject_id__knowledge_build_plans__session_id__messages_stream_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -2133,22 +2133,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/adjust-click": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/adjust-click": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Record that the user opened planner adjustment mode",
-        "operationId": "knowledge_build_plan_adjust_click_api_v1_subjects__subject__knowledge_build_plans__session_id__adjust_click_post",
+        "operationId": "knowledge_build_plan_adjust_click_api_v1_subjects__subject_id__knowledge_build_plans__session_id__adjust_click_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -2215,22 +2215,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/confirm": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/confirm": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Confirm the current planner draft and freeze a build plan",
-        "operationId": "knowledge_build_plan_confirm_api_v1_subjects__subject__knowledge_build_plans__session_id__confirm_post",
+        "operationId": "knowledge_build_plan_confirm_api_v1_subjects__subject_id__knowledge_build_plans__session_id__confirm_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -2297,22 +2297,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build": {
+    "/api/v1/subjects/{subject_id}/knowledge/build": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Trigger a knowledge-doc build with optional graph sync",
-        "operationId": "knowledge_build_api_v1_subjects__subject__knowledge_build_post",
+        "operationId": "knowledge_build_api_v1_subjects__subject_id__knowledge_build_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2390,22 +2390,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/graph": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/graph": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Rebuild the knowledge graph from the latest published knowledge docs",
-        "operationId": "knowledge_graph_build_api_v1_subjects__subject__knowledge_build_graph_post",
+        "operationId": "knowledge_graph_build_api_v1_subjects__subject_id__knowledge_build_graph_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2473,22 +2473,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/cancel": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/cancel": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Cancel the active digest build for this subject",
-        "operationId": "knowledge_build_cancel_api_v1_subjects__subject__knowledge_build_cancel_post",
+        "operationId": "knowledge_build_cancel_api_v1_subjects__subject_id__knowledge_build_cancel_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2546,22 +2546,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/runtime": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/runtime": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch aggregate/docgen/graph runtime state",
-        "operationId": "knowledge_build_runtime_api_v1_subjects__subject__knowledge_build_runtime_post",
+        "operationId": "knowledge_build_runtime_api_v1_subjects__subject_id__knowledge_build_runtime_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2619,7 +2619,7 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/build/stream": {
+    "/api/v1/subjects/{subject_id}/knowledge/build/stream": {
       "get": {
         "tags": [
           "knowledge",
@@ -2627,15 +2627,15 @@
         ],
         "summary": "SSE stream for live build progress snapshots",
         "description": "SSE endpoint for live build runtime, direct deltas and fallback snapshots.",
-        "operationId": "knowledge_build_stream_api_v1_subjects__subject__knowledge_build_stream_get",
+        "operationId": "knowledge_build_stream_api_v1_subjects__subject_id__knowledge_build_stream_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2691,22 +2691,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/docs": {
+    "/api/v1/subjects/{subject_id}/knowledge/docs": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch knowledge docs and minimal build state",
-        "operationId": "knowledge_docs_api_v1_subjects__subject__knowledge_docs_post",
+        "operationId": "knowledge_docs_api_v1_subjects__subject_id__knowledge_docs_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2764,22 +2764,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/overview": {
+    "/api/v1/subjects/{subject_id}/knowledge/overview": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch aggregated knowledge overview",
-        "operationId": "knowledge_overview_api_v1_subjects__subject__knowledge_overview_post",
+        "operationId": "knowledge_overview_api_v1_subjects__subject_id__knowledge_overview_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2849,22 +2849,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/clear": {
+    "/api/v1/subjects/{subject_id}/knowledge/clear": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Clear knowledge artifacts for one subject",
-        "operationId": "knowledge_clear_api_v1_subjects__subject__knowledge_clear_post",
+        "operationId": "knowledge_clear_api_v1_subjects__subject_id__knowledge_clear_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -2932,22 +2932,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "List KnowledgeUnits",
-        "operationId": "graph_knowledge_units_api_v1_subjects__subject__knowledge_graph_knowledge_units_post",
+        "operationId": "graph_knowledge_units_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3014,22 +3014,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/detail": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/detail": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch KnowledgeUnit detail",
-        "operationId": "graph_knowledge_unit_detail_api_v1_subjects__subject__knowledge_graph_knowledge_units_detail_post",
+        "operationId": "graph_knowledge_unit_detail_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_detail_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3097,22 +3097,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/relations": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/relations": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "List KnowledgeUnit relations",
-        "operationId": "graph_knowledge_unit_relations_api_v1_subjects__subject__knowledge_graph_knowledge_units_relations_post",
+        "operationId": "graph_knowledge_unit_relations_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_relations_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3180,22 +3180,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/knowledge-units/path": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/path": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Find a KnowledgeUnit path",
-        "operationId": "graph_knowledge_unit_path_api_v1_subjects__subject__knowledge_graph_knowledge_units_path_post",
+        "operationId": "graph_knowledge_unit_path_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_path_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3263,22 +3263,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/subgraph": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/subgraph": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch a focused knowledge subgraph",
-        "operationId": "graph_focus_subgraph_api_v1_subjects__subject__knowledge_graph_subgraph_post",
+        "operationId": "graph_focus_subgraph_api_v1_subjects__subject_id__knowledge_graph_subgraph_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3345,22 +3345,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/relations/explain": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/relations/explain": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Explain a relation path with evidence",
-        "operationId": "graph_relation_explanation_api_v1_subjects__subject__knowledge_graph_relations_explain_post",
+        "operationId": "graph_relation_explanation_api_v1_subjects__subject_id__knowledge_graph_relations_explain_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3428,22 +3428,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/graph/full": {
+    "/api/v1/subjects/{subject_id}/knowledge/graph/full": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch full knowledge graph",
-        "operationId": "graph_full_api_v1_subjects__subject__knowledge_graph_full_post",
+        "operationId": "graph_full_api_v1_subjects__subject_id__knowledge_graph_full_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -3501,22 +3501,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/knowledge/chunks/context": {
+    "/api/v1/subjects/{subject_id}/knowledge/chunks/context": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch source chunk context",
-        "operationId": "chunk_context_api_v1_subjects__subject__knowledge_chunks_context_post",
+        "operationId": "chunk_context_api_v1_subjects__subject_id__knowledge_chunks_context_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4041,22 +4041,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/send": {
+    "/api/v1/subjects/{subject_id}/chats/send": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "发送消息",
-        "description": "保留原生 SSE 返回。",
-        "operationId": "send_chat_api_v1_subjects__subject__chats_send_post",
+        "summary": "Send subject chat message",
+        "description": "Returns native SSE.",
+        "operationId": "send_chat_api_v1_subjects__subject_id__chats_send_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4072,7 +4072,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE 事件流。",
+            "description": "SSE event stream.",
             "content": {
               "application/json": {
                 "schema": {}
@@ -4142,21 +4142,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/list": {
+    "/api/v1/subjects/{subject_id}/chats/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "聊天记录列表",
-        "operationId": "list_chat_api_api_v1_subjects__subject__chats_list_post",
+        "summary": "鑱婂ぉ璁板綍鍒楄〃",
+        "operationId": "list_chat_api_api_v1_subjects__subject_id__chats_list_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4227,21 +4227,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/clear": {
+    "/api/v1/subjects/{subject_id}/chats/clear": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "清空聊天记录",
-        "operationId": "clear_chat_api_api_v1_subjects__subject__chats_clear_post",
+        "summary": "娓呯┖鑱婂ぉ璁板綍",
+        "operationId": "clear_chat_api_api_v1_subjects__subject_id__chats_clear_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4309,21 +4309,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/sessions/list": {
+    "/api/v1/subjects/{subject_id}/chats/sessions/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "会话列表",
-        "operationId": "list_chat_sessions_api_api_v1_subjects__subject__chats_sessions_list_post",
+        "summary": "浼氳瘽鍒楄〃",
+        "operationId": "list_chat_sessions_api_api_v1_subjects__subject_id__chats_sessions_list_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4395,21 +4395,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/threads/list": {
+    "/api/v1/subjects/{subject_id}/chats/threads/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "划词问答轮次列表",
-        "operationId": "list_chat_threads_api_api_v1_subjects__subject__chats_threads_list_post",
+        "summary": "鍒掕瘝闂瓟杞鍒楄〃",
+        "operationId": "list_chat_threads_api_api_v1_subjects__subject_id__chats_threads_list_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4481,21 +4481,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/sessions/create": {
+    "/api/v1/subjects/{subject_id}/chats/sessions/create": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "创建会话",
-        "operationId": "create_chat_session_api_api_v1_subjects__subject__chats_sessions_create_post",
+        "summary": "鍒涘缓浼氳瘽",
+        "operationId": "create_chat_session_api_api_v1_subjects__subject_id__chats_sessions_create_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4563,21 +4563,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/chats/sessions/delete": {
+    "/api/v1/subjects/{subject_id}/chats/sessions/delete": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "删除会话",
-        "operationId": "delete_chat_session_api_api_v1_subjects__subject__chats_sessions_delete_post",
+        "summary": "鍒犻櫎浼氳瘽",
+        "operationId": "delete_chat_session_api_api_v1_subjects__subject_id__chats_sessions_delete_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4645,21 +4645,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/generate": {
+    "/api/v1/subjects/{subject_id}/exams/generate": {
       "post": {
         "tags": [
           "exams"
         ],
         "summary": "Generate an exam from KnowledgeUnits",
-        "operationId": "generate_exam_api_v1_subjects__subject__exams_generate_post",
+        "operationId": "generate_exam_api_v1_subjects__subject_id__exams_generate_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -4737,21 +4737,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/prewarm-status": {
+    "/api/v1/subjects/{subject_id}/exams/prewarm-status": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Get background-prepared exam status for the current generation options",
-        "operationId": "exam_prewarm_status_api_v1_subjects__subject__exams_prewarm_status_get",
+        "operationId": "exam_prewarm_status_api_v1_subjects__subject_id__exams_prewarm_status_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -4866,21 +4866,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/history": {
+    "/api/v1/subjects/{subject_id}/exams/history": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "List exam history",
-        "operationId": "exam_history_api_v1_subjects__subject__exams_history_get",
+        "operationId": "exam_history_api_v1_subjects__subject_id__exams_history_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -4958,21 +4958,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/question-templates": {
+    "/api/v1/subjects/{subject_id}/exams/question-templates": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "List question templates for the subject",
-        "operationId": "question_templates_api_v1_subjects__subject__exams_question_templates_get",
+        "operationId": "question_templates_api_v1_subjects__subject_id__exams_question_templates_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -5030,21 +5030,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/question-types": {
+    "/api/v1/subjects/{subject_id}/exams/question-types": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "List global and subject question types",
-        "operationId": "question_types_api_v1_subjects__subject__exams_question_types_get",
+        "operationId": "question_types_api_v1_subjects__subject_id__exams_question_types_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -5102,21 +5102,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/stream": {
+    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/stream": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "SSE stream for exam generation status",
-        "operationId": "exam_generation_stream_api_v1_subjects__subject__exams__exam_paper_id__stream_get",
+        "operationId": "exam_generation_stream_api_v1_subjects__subject_id__exams__exam_paper_id__stream_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5181,21 +5181,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}": {
+    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Fetch exam detail",
-        "operationId": "exam_detail_api_v1_subjects__subject__exams__exam_paper_id__get",
+        "operationId": "exam_detail_api_v1_subjects__subject_id__exams__exam_paper_id__get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5266,15 +5266,15 @@
           "exams"
         ],
         "summary": "Delete exam paper",
-        "operationId": "delete_exam_paper_api_v1_subjects__subject__exams__exam_paper_id__delete",
+        "operationId": "delete_exam_paper_api_v1_subjects__subject_id__exams__exam_paper_id__delete",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5341,21 +5341,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/study-guide": {
+    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/study-guide": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Generate study guide from a graded exam",
-        "operationId": "exam_study_guide_api_v1_subjects__subject__exams__exam_paper_id__study_guide_get",
+        "operationId": "exam_study_guide_api_v1_subjects__subject_id__exams__exam_paper_id__study_guide_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5432,21 +5432,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/exams/{exam_paper_id}/submit": {
+    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
           "exams"
         ],
         "summary": "Submit answers and update KnowledgeUnit mastery",
-        "operationId": "submit_exam_api_v1_subjects__subject__exams__exam_paper_id__submit_post",
+        "operationId": "submit_exam_api_v1_subjects__subject_id__exams__exam_paper_id__submit_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5533,21 +5533,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/mastery": {
+    "/api/v1/subjects/{subject_id}/profile/mastery": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Fetch mastery overview",
-        "operationId": "mastery_overview_api_v1_subjects__subject__profile_mastery_get",
+        "operationId": "mastery_overview_api_v1_subjects__subject_id__profile_mastery_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -5605,21 +5605,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/reviews": {
+    "/api/v1/subjects/{subject_id}/profile/reviews": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Fetch pending review tasks",
-        "operationId": "review_tasks_api_v1_subjects__subject__profile_reviews_get",
+        "operationId": "review_tasks_api_v1_subjects__subject_id__profile_reviews_get",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -5677,21 +5677,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/profile/reviews/{task_id}/complete": {
+    "/api/v1/subjects/{subject_id}/profile/reviews/{task_id}/complete": {
       "post": {
         "tags": [
           "profile"
         ],
         "summary": "Mark one review task as completed",
-        "operationId": "complete_review_api_v1_subjects__subject__profile_reviews__task_id__complete_post",
+        "operationId": "complete_review_api_v1_subjects__subject_id__profile_reviews__task_id__complete_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           },
           {
@@ -5758,22 +5758,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/export/preview": {
+    "/api/v1/subjects/{subject_id}/export/preview": {
       "post": {
         "tags": [
           "export-import"
         ],
         "summary": "导出预览",
         "description": "获取学科导出内容摘要。",
-        "operationId": "export_preview_api_api_v1_subjects__subject__export_preview_post",
+        "operationId": "export_preview_api_api_v1_subjects__subject_id__export_preview_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -5838,22 +5838,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject}/export": {
+    "/api/v1/subjects/{subject_id}/export": {
       "post": {
         "tags": [
           "export-import"
         ],
         "summary": "导出学科",
         "description": "将学科全部产物打包为 .atmx 文件下载。",
-        "operationId": "export_subject_api_api_v1_subjects__subject__export_post",
+        "operationId": "export_subject_api_api_v1_subjects__subject_id__export_post",
         "parameters": [
           {
-            "name": "subject",
+            "name": "subject_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject"
+              "title": "Subject Id"
             }
           }
         ],
@@ -8135,7 +8135,7 @@
         ],
         "title": "Body_import_subject_api_api_v1_subjects_import_post"
       },
-      "Body_upload_files_api_v1_subjects__subject__files_upload_post": {
+      "Body_upload_files_api_v1_subjects__subject_id__files_upload_post": {
         "properties": {
           "files": {
             "items": {
@@ -8227,7 +8227,7 @@
         "required": [
           "files"
         ],
-        "title": "Body_upload_files_api_v1_subjects__subject__files_upload_post"
+        "title": "Body_upload_files_api_v1_subjects__subject_id__files_upload_post"
       },
       "Body_upload_user_files_api_v1_files_upload_post": {
         "properties": {
@@ -8334,9 +8334,9 @@
             "type": "string",
             "title": "Planner Session Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "status": {
             "type": "string",
@@ -8357,7 +8357,7 @@
         "type": "object",
         "required": [
           "planner_session_id",
-          "subject"
+          "subject_id"
         ],
         "title": "BuildPlannerAdjustClickResponse",
         "description": "Acknowledgement for entering planner adjustment mode."
@@ -8407,9 +8407,9 @@
             "type": "string",
             "title": "Confirmed Plan Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "status": {
             "type": "string",
@@ -8480,7 +8480,7 @@
         "required": [
           "planner_session_id",
           "confirmed_plan_id",
-          "subject",
+          "subject_id",
           "status",
           "digest_mode",
           "user_prompt",
@@ -8565,9 +8565,9 @@
       },
       "BuildPlannerPlanResponse": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "selected_file_uids": {
             "items": {
@@ -8631,7 +8631,7 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "user_prompt",
           "digest_mode"
         ],
@@ -8661,9 +8661,9 @@
             "type": "string",
             "title": "Session Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "title": {
             "type": "string",
@@ -8711,7 +8711,7 @@
         "type": "object",
         "required": [
           "session_id",
-          "subject",
+          "subject_id",
           "title",
           "status",
           "revision",
@@ -9649,7 +9649,7 @@
               }
             ],
             "title": "Subject Id",
-            "description": "Subject slug this session belongs to."
+            "description": "Subject ID this session belongs to."
           },
           "subject_name": {
             "anyOf": [
@@ -9959,9 +9959,9 @@
       },
       "ClearKnowledgeResponse": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "deleted_counts": {
             "additionalProperties": {
@@ -9973,7 +9973,7 @@
         },
         "type": "object",
         "required": [
-          "subject"
+          "subject_id"
         ],
         "title": "ClearKnowledgeResponse",
         "description": "Knowledge clear response."
@@ -10025,9 +10025,9 @@
       },
       "DocGenBuildCancelData": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "status": {
             "type": "string",
@@ -10059,7 +10059,7 @@
         },
         "type": "object",
         "required": [
-          "subject"
+          "subject_id"
         ],
         "title": "DocGenBuildCancelData",
         "description": "Result of cancelling the active knowledge build."
@@ -10549,9 +10549,9 @@
             "format": "date-time",
             "title": "Updated At"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "user_id": {
             "type": "string",
@@ -10590,7 +10590,7 @@
           "status",
           "created_at",
           "updated_at",
-          "subject",
+          "subject_id",
           "user_id",
           "exam_mode",
           "num_questions"
@@ -10675,9 +10675,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "user_id": {
             "type": "string",
@@ -10753,7 +10753,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "user_id",
           "exam_mode",
           "status",
@@ -10820,9 +10820,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "user_id": {
             "type": "string",
@@ -10910,7 +10910,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "user_id",
           "exam_mode",
           "status",
@@ -11182,9 +11182,9 @@
             "type": "integer",
             "title": "Exam Paper Id"
           },
-          "subject": {
+          "subject_name": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Name"
           },
           "generated_at": {
             "type": "string",
@@ -11234,7 +11234,7 @@
         "type": "object",
         "required": [
           "exam_paper_id",
-          "subject",
+          "subject_name",
           "generated_at",
           "overall_summary"
         ],
@@ -11833,10 +11833,17 @@
       },
       "FilesData": {
         "properties": {
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "Subject slug, or library scope for unassigned files."
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "Subject ID, or null for the user library."
           },
           "total": {
             "type": "integer",
@@ -11869,7 +11876,6 @@
         },
         "type": "object",
         "required": [
-          "subject",
           "total",
           "ready_count",
           "processing_count",
@@ -11880,10 +11886,17 @@
       },
       "FilesUploadData": {
         "properties": {
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "Subject slug, or library scope for unassigned files."
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id",
+            "description": "Subject ID, or null for the user library."
           },
           "filenames": {
             "items": {
@@ -11910,7 +11923,6 @@
         },
         "type": "object",
         "required": [
-          "subject",
           "filenames"
         ],
         "title": "FilesUploadData",
@@ -12643,10 +12655,10 @@
       },
       "KnowledgeGraphBuildData": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject",
-            "description": "Subject slug."
+            "title": "Subject Id",
+            "description": "Subject ID."
           },
           "status": {
             "type": "string",
@@ -12701,7 +12713,7 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "requested_at"
         ],
         "title": "KnowledgeGraphBuildData",
@@ -12945,9 +12957,9 @@
       },
       "KnowledgeOverviewResponse": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "generated_at": {
             "type": "string",
@@ -13010,7 +13022,7 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "generated_at"
         ],
         "title": "KnowledgeOverviewResponse",
@@ -13163,9 +13175,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "source_node_id": {
             "type": "integer",
@@ -13212,7 +13224,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "source_node_id",
           "source_node_name",
           "source_node_type",
@@ -13336,9 +13348,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "knowledge_unit_type": {
             "type": "string",
@@ -13422,7 +13434,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "knowledge_unit_type",
           "canonical_name",
           "normalized_name",
@@ -13517,9 +13529,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "knowledge_unit_type": {
             "type": "string",
@@ -13561,7 +13573,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "knowledge_unit_type",
           "canonical_name",
           "status",
@@ -13645,9 +13657,9 @@
       },
       "MasteryOverviewResponse": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "user_id": {
             "type": "string",
@@ -13687,7 +13699,7 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "user_id",
           "weak_knowledge_unit_count"
         ],
@@ -14191,9 +14203,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "question_type": {
             "type": "string",
@@ -14264,7 +14276,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject",
+          "subject_id",
           "question_type",
           "difficulty",
           "stem",
@@ -14295,9 +14307,9 @@
             "type": "string",
             "title": "Scope"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "description": {
             "type": "string",
@@ -14354,7 +14366,7 @@
           "type_key",
           "display_name",
           "scope",
-          "subject",
+          "subject_id",
           "description",
           "answer_format",
           "grading_method",
@@ -14412,9 +14424,9 @@
             "type": "string",
             "title": "User Id"
           },
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "knowledge_unit_id": {
             "type": "integer",
@@ -14506,7 +14518,7 @@
         "required": [
           "id",
           "user_id",
-          "subject",
+          "subject_id",
           "knowledge_unit_id",
           "priority",
           "status",
@@ -14830,19 +14842,19 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "展示名称。可留空，Planner 会在首次对话后自动命名。",
+            "description": "Display name. Planner may fill it after the first conversation.",
             "default": ""
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "学科简单介绍。",
+            "description": "Short subject description.",
             "default": ""
           },
           "user_intent": {
             "type": "string",
             "title": "User Intent",
-            "description": "用户目标/意图描述。",
+            "description": "User learning goal or intent.",
             "default": ""
           }
         },
@@ -14859,12 +14871,12 @@
           "deleted": {
             "type": "boolean",
             "title": "Deleted",
-            "description": "是否删除成功。"
+            "description": "Whether deletion succeeded."
           },
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           },
           "deleted_counts": {
             "additionalProperties": {
@@ -14872,7 +14884,7 @@
             },
             "type": "object",
             "title": "Deleted Counts",
-            "description": "本次删除涉及的记录统计。"
+            "description": "Deleted record counts."
           }
         },
         "type": "object",
@@ -14887,23 +14899,23 @@
           "key": {
             "type": "string",
             "title": "Key",
-            "description": "影响项唯一标识。"
+            "description": "Impact item key."
           },
           "label": {
             "type": "string",
             "title": "Label",
-            "description": "影响项展示名称。"
+            "description": "Impact item label."
           },
           "count": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Count",
-            "description": "影响数量。"
+            "description": "Impact count."
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "影响项说明。"
+            "description": "Impact description."
           }
         },
         "type": "object",
@@ -14920,23 +14932,23 @@
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           },
           "subject_name": {
             "type": "string",
             "title": "Subject Name",
-            "description": "学科名称。"
+            "description": "Subject name."
           },
           "has_content": {
             "type": "boolean",
             "title": "Has Content",
-            "description": "学科下是否仍有关联内容。"
+            "description": "Whether the subject has related content."
           },
           "total_related_records": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Total Related Records",
-            "description": "关联记录总数。"
+            "description": "Total related record count."
           },
           "impact_items": {
             "items": {
@@ -14944,7 +14956,7 @@
             },
             "type": "array",
             "title": "Impact Items",
-            "description": "用户可读的删除影响列表。"
+            "description": "Human-readable deletion impact items."
           },
           "detail_counts": {
             "additionalProperties": {
@@ -14952,7 +14964,7 @@
             },
             "type": "object",
             "title": "Detail Counts",
-            "description": "内部明细统计。"
+            "description": "Internal detail counts."
           }
         },
         "type": "object",
@@ -14969,7 +14981,7 @@
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           }
         },
         "type": "object",
@@ -14983,12 +14995,12 @@
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           },
           "force": {
             "type": "boolean",
             "title": "Force",
-            "description": "是否确认级联删除学科下的全部内容。",
+            "description": "Whether to confirm cascading deletion of subject content.",
             "default": false
           }
         },
@@ -15000,30 +15012,25 @@
       },
       "SubjectItem": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id",
-            "description": "学科 ID。"
-          },
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           },
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "展示名称。"
+            "description": "Display name."
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "学科简单介绍。"
+            "description": "Short subject description."
           },
           "user_intent": {
             "type": "string",
             "title": "User Intent",
-            "description": "用户目标/意图描述。"
+            "description": "User learning goal or intent."
           },
           "icon_key": {
             "anyOf": [
@@ -15035,24 +15042,23 @@
               }
             ],
             "title": "Icon Key",
-            "description": "学科图标 key。"
+            "description": "Subject icon key."
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "创建时间。"
+            "description": "Created time."
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At",
-            "description": "更新时间。"
+            "description": "Updated time."
           }
         },
         "type": "object",
         "required": [
-          "id",
           "subject_id",
           "name",
           "description",
@@ -15099,7 +15105,7 @@
               }
             ],
             "title": "Prompt",
-            "description": "用户输入的学习目标。"
+            "description": "User input learning goal."
           },
           "filenames": {
             "anyOf": [
@@ -15114,7 +15120,7 @@
               }
             ],
             "title": "Filenames",
-            "description": "上传的文件名列表。"
+            "description": "Uploaded filenames."
           }
         },
         "type": "object",
@@ -15125,7 +15131,7 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "AI 生成的学科名称。"
+            "description": "AI-generated subject name."
           }
         },
         "type": "object",
@@ -15136,9 +15142,9 @@
       },
       "SubjectProfileSummary": {
         "properties": {
-          "subject": {
+          "subject_id": {
             "type": "string",
-            "title": "Subject"
+            "title": "Subject Id"
           },
           "generated_at": {
             "type": "string",
@@ -15237,7 +15243,7 @@
         },
         "type": "object",
         "required": [
-          "subject",
+          "subject_id",
           "generated_at"
         ],
         "title": "SubjectProfileSummary"
@@ -15247,7 +15253,7 @@
           "subject_id": {
             "type": "string",
             "title": "Subject Id",
-            "description": "学科外部标识。"
+            "description": "Subject id."
           },
           "name": {
             "anyOf": [
@@ -15260,7 +15266,7 @@
               }
             ],
             "title": "Name",
-            "description": "展示名称。"
+            "description": "Display name."
           },
           "description": {
             "anyOf": [
@@ -15272,7 +15278,7 @@
               }
             ],
             "title": "Description",
-            "description": "学科简单介绍。"
+            "description": "Short subject description."
           },
           "user_intent": {
             "anyOf": [
@@ -15284,7 +15290,7 @@
               }
             ],
             "title": "User Intent",
-            "description": "用户目标/意图描述。"
+            "description": "User learning goal or intent."
           }
         },
         "type": "object",

@@ -49,7 +49,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         }
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="enhancing_chapters",
@@ -59,7 +59,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
 
         async def _enhance_one(draft: ChapterDraft):
             traced_context = TracedExecutionContext(
-                subject=state["subject"],
+                subject_id=state["subject_id"],
                 build_session_id=state.get("build_session_id", ""),
                 workflow_context=context,
                 planner_session_id=state.get("planner_session_id", ""),
@@ -69,12 +69,12 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 chapter_index=draft.chapter_index,
             )
             upsert_knowledge_build_chapter_progress(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "enhancing"},
             )
             upsert_knowledge_build_chapter_preview(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
@@ -92,7 +92,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
@@ -105,7 +105,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 },
             )
             upsert_knowledge_build_chapter_progress(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 chapter_progress={
                     "chapter_index": draft.chapter_index,
@@ -116,7 +116,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 },
             )
             append_knowledge_build_recent_event(
-                state["subject"],
+                state["subject_id"],
                 requested_at=state["requested_at"],
                 event={
                     "stage": "chapter_enhanced",
@@ -134,7 +134,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
         update_knowledge_build_status(
-            state["subject"],
+            state["subject_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="chapters_enhanced",
