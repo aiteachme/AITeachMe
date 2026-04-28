@@ -27,7 +27,7 @@ def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
     fixed = normalize_markdown_rendering(raw)
 
     assert "\n$$\n- **十进制 -> 二进制**" in fixed
-    assert "\n> [!TIP]\n> 快速转换技巧" in fixed
+    assert "\n> [!TIP]\n>\n> 快速转换技巧" in fixed
     assert "display math 疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
 
@@ -50,8 +50,25 @@ def test_normalize_trims_inline_math_padding_inside_callout() -> None:
 
     fixed = normalize_markdown_rendering(raw)
 
+    assert fixed.startswith("> [!WARNING]\n>\n> **易错点")
     assert "$35 \\times 86 = 3010$" in fixed
     assert "$ 35 \\times 86 = 3010 $" not in fixed
+
+
+def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:
+    raw = "\n".join(
+        [
+            "> [!IMPORTANT]",
+            "> 从方程到函数的转化，本质是从点态求解转向整体建模。",
+            "",
+            "> [!WARNING] 不要把无实数根误判为无解。",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "> [!IMPORTANT]\n>\n> 从方程到函数的转化" in fixed
+    assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
 
 
 def test_normalize_flattens_headings_inside_list_items() -> None:
@@ -94,4 +111,4 @@ def test_review_surface_patch_applies_deterministic_markdown_repair() -> None:
     assert actions[0].status == "applied"
     assert trace[0].changed is True
     assert "\n$$\n- **错误吞入的列表**" in repaired[0].markdown
-    assert "\n> [!WARNING]\n> 不要把提示块写成裸标记" in repaired[0].markdown
+    assert "\n> [!WARNING]\n>\n> 不要把提示块写成裸标记" in repaired[0].markdown

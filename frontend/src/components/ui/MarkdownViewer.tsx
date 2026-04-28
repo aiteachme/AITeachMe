@@ -441,6 +441,7 @@ function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[
   if (body.length === 0) {
     return;
   }
+  target.push(">");
   for (const line of body) {
     target.push(line.trim() ? `> ${line}` : ">");
   }
@@ -477,6 +478,36 @@ function preprocessCalloutSyntax(content: string): string {
 
     if (activeFence) {
       output.push(line);
+      continue;
+    }
+
+    const quotedCallout = line.match(new RegExp(`^\\s*>\\s*\\[!(${CALLOUT_PATTERN})\\]\\s*(.*)$`, "i"));
+    if (quotedCallout) {
+      const kind = quotedCallout[1];
+      const body: string[] = [];
+      const inlineBody = quotedCallout[2]?.trim();
+      if (inlineBody) {
+        body.push(inlineBody);
+      }
+
+      let cursor = index + 1;
+      while (cursor < lines.length) {
+        const quotedBody = lines[cursor].match(/^\s*>\s?(.*)$/);
+        if (!quotedBody) {
+          break;
+        }
+
+        const bodyLine = quotedBody[1] ?? "";
+        if (bodyLine.trim().match(new RegExp(`^\\[!(${CALLOUT_PATTERN})\\]`, "i"))) {
+          break;
+        }
+
+        body.push(bodyLine);
+        cursor += 1;
+      }
+
+      pushCanonicalCallout(output, kind, body);
+      index = cursor - 1;
       continue;
     }
 

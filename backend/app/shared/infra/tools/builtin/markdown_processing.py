@@ -60,6 +60,28 @@ INLINE_MATH_MARKDOWN_PATTERN = re.compile(
 _MARKDOWN_PARSER = MarkdownIt("commonmark")
 
 
+def _trim_blank_lines(lines: list[str]) -> list[str]:
+    trimmed = list(lines)
+    while trimmed and not trimmed[0].strip():
+        trimmed.pop(0)
+    while trimmed and not trimmed[-1].strip():
+        trimmed.pop()
+    return trimmed
+
+
+def _append_callout_block(output: list[str], *, kind: str, body_lines: list[str]) -> None:
+    body = _trim_blank_lines(body_lines)
+    output.append(f"> [!{kind.upper()}]")
+    if not body:
+        return
+    # react-markdown does not implement GitHub's callout extension. Keeping the
+    # marker in its own blockquote paragraph lets the frontend recognize it
+    # without flattening the marker and body into one ordinary quote paragraph.
+    output.append(">")
+    for body_line in body:
+        output.append(f"> {body_line}" if body_line.strip() else ">")
+
+
 
 def extract_mermaid_placeholders(markdown: str) -> list[str]:
     return [match.strip() for match in MERMAID_PLACEHOLDER_PATTERN.findall(markdown)]
@@ -287,8 +309,8 @@ def _repair_display_math_boundaries(markdown: str) -> str:
     return "\n".join(fixed)
 
 
-def _normalize_bare_callouts(markdown: str) -> str:
-    """Convert bare GitHub callout markers to blockquote syntax."""
+def _normalize_callout_blocks(markdown: str) -> str:
+    """Convert GitHub callout variants to a frontend-stable blockquote shape."""
 
     lines = str(markdown or "").split("\n")
     output: list[str] = []
@@ -308,16 +330,32 @@ def _normalize_bare_callouts(markdown: str) -> str:
             continue
 
         match = CALLOUT_LINE_PATTERN.match(line)
-        if match is None or match.group("quote"):
+        if match is None:
             output.append(line)
             index += 1
             continue
 
         kind = str(match.group("kind") or "").upper()
         rest = str(match.group("rest") or "").strip()
-        output.append(f"> [!{kind}]")
+        if match.group("quote"):
+            body_lines: list[str] = [rest] if rest else []
+            index += 1
+            while index < len(lines):
+                body_line = lines[index].rstrip()
+                quote_match = re.match(r"^\s*>\s?(.*)$", body_line)
+                if quote_match is None:
+                    break
+                inner = str(quote_match.group(1) or "").rstrip()
+                if inner.strip() and CALLOUT_LINE_PATTERN.match(inner):
+                    break
+                body_lines.append(inner)
+                index += 1
+            _append_callout_block(output, kind=kind, body_lines=body_lines)
+            continue
+
+        body_lines = [rest] if rest else []
         if rest:
-            output.append(f"> {rest}")
+            _append_callout_block(output, kind=kind, body_lines=body_lines)
             index += 1
             continue
 
@@ -333,8 +371,9 @@ def _normalize_bare_callouts(markdown: str) -> str:
                 break
             if CALLOUT_LINE_PATTERN.match(body_line):
                 break
-            output.append(f"> {body_line}" if body_line else ">")
+            body_lines.append(body_line)
             index += 1
+        _append_callout_block(output, kind=kind, body_lines=body_lines)
     return "\n".join(output)
 
 
@@ -570,7 +609,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _escape_unsafe_inline_math_spans(text)
     text = _trim_inline_math_padding(text)
     text = _normalize_list_embedded_headings(text)
-    text = _normalize_bare_callouts(text)
+    text = _normalize_callout_blocks(text)
     if not text:
         return ""
 
