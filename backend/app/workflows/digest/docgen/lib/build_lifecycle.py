@@ -949,21 +949,6 @@ async def run_docgen_background(
                 prompt=prompt,
                 current_stage_description="已关闭文档构建后自动图谱同步，可在知识图谱面板手动构建。",
             )
-        _write_docgen_status(
-            subject,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            subject_scope=subject_scope,
-            status="completed",
-            stage="completed",
-            build_session_id=build_session_id,
-            planner_session_id=planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            digest_mode=resolved_digest_mode,
-            error_message=None,
-            draft_available=False,
-            current_stage_description="知识文档已发布完成。",
-        )
         _mark_confirmed_plan_status(
             subject=subject,
             user_id=user_id,

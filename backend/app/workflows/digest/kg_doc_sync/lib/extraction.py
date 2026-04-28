@@ -617,13 +617,14 @@ async def _extract_candidates_internal(
                         error_type=type(exc).__name__,
                     )
 
+    question_mode = _looks_like_question_chunk(chunk_content)
     result = _finalize_candidate_result(
         result,
         chunk_title=chunk_title,
         header_path=header_path,
         chapter_topic_hints=chapter_topic_hints,
         subject_context=subject_context,
-        question_mode=_looks_like_question_chunk(chunk_content),
+        question_mode=question_mode,
     )
 
     logger.info(
@@ -632,9 +633,9 @@ async def _extract_candidates_internal(
         header_path=header_path,
         node_count=len(result.nodes),
         edge_count=len(result.edges),
-        question_like_chunk=_looks_like_question_chunk(chunk_content),
+        question_like_chunk=question_mode,
     )
-    diagnostics.question_like_chunk = _looks_like_question_chunk(chunk_content)
+    diagnostics.question_like_chunk = question_mode
     diagnostics.node_count = len(result.nodes)
     diagnostics.edge_count = len(result.edges)
     diagnostics.elapsed_ms = int((perf_counter() - started_at) * 1000)

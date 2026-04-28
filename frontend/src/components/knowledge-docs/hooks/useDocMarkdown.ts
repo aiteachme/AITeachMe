@@ -41,6 +41,31 @@ async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
   return response.data?.items ?? [];
 }
 
+function hasLiveMarkdown(data: DocGenGetResponse | undefined): boolean {
+  const liveMarkdown = cleanKnowledgeMarkdownForDisplay(data?.markdown ?? "");
+  return Boolean(data?.exists && liveMarkdown.trim().length > 0);
+}
+
+function hasRequestedLiveMarkdown(
+  data: DocGenGetResponse | undefined,
+  {
+    status,
+    targetRequestedAtMs,
+  }: {
+    status: string;
+    targetRequestedAtMs: number | null;
+  },
+): boolean {
+  if (!hasLiveMarkdown(data)) return false;
+  if (targetRequestedAtMs === null) return true;
+
+  const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
+  if (updatedAtMs === null) {
+    return TERMINAL_DOC_BUILD_READY_STATUSES.has(status);
+  }
+  return updatedAtMs >= targetRequestedAtMs;
+}
+
 export interface DocMarkdownState {
   subjectId: string | undefined;
   requestedAt: string | null;
@@ -107,24 +132,17 @@ export function useDocMarkdown(): DocMarkdownState {
       const data = query.state.data;
       const build = data?.build;
       const status = (build?.status ?? "").trim();
-      const liveMarkdown = cleanKnowledgeMarkdownForDisplay(data?.markdown ?? "");
-      const hasLiveDocMarkdown = Boolean(data?.exists && liveMarkdown.trim().length > 0);
-      if (hasLiveDocMarkdown) return false;
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(build?.requested_at ?? null);
-      const updatedAtMs = parseIsoTimestamp(data?.updated_at ?? null);
-      const hasRequestedLiveDoc =
-        hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null ||
-          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
-          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+      const hasRequestedLiveDoc = hasRequestedLiveMarkdown(data, { status, targetRequestedAtMs });
+      if (hasRequestedLiveDoc) return false;
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
       if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
-        return hasRequestedLiveDoc ? false : 1200;
+        return 1200;
       }
       if (status === "failed" || status === "cancelled") return false;
       if (!status || status === "idle") return false;
-      return hasRequestedLiveDoc ? false : 2500;
+      return 2500;
     },
   });
 
@@ -139,24 +157,20 @@ export function useDocMarkdown(): DocMarkdownState {
       if (failureBackoff !== null) return failureBackoff;
       const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
       const status = (docgen?.status ?? "").trim();
-      const liveMarkdown = cleanKnowledgeMarkdownForDisplay(docMarkdownQuery.data?.markdown ?? "");
-      const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
-      if (hasLiveDocMarkdown) return false;
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(docgen?.requested_at ?? null);
-      const updatedAtMs = parseIsoTimestamp(docMarkdownQuery.data?.updated_at ?? null);
-      const hasRequestedLiveDoc =
-        hasLiveDocMarkdown &&
-        (targetRequestedAtMs === null ||
-          TERMINAL_DOC_BUILD_READY_STATUSES.has(status) ||
-          (updatedAtMs !== null && updatedAtMs >= targetRequestedAtMs));
+      const hasRequestedLiveDoc = hasRequestedLiveMarkdown(docMarkdownQuery.data, {
+        status,
+        targetRequestedAtMs,
+      });
+      if (hasRequestedLiveDoc) return false;
 
       if (status && ACTIVE_DOC_BUILD_STATUSES.has(status)) return 2500;
       if (TERMINAL_DOC_BUILD_READY_STATUSES.has(status)) {
-        return hasRequestedLiveDoc ? false : 1200;
+        return 1200;
       }
       if (status === "failed" || status === "cancelled") return false;
       if (!status || status === "idle") return false;
-      return hasRequestedLiveDoc ? false : 2500;
+      return 2500;
     },
   });
 
@@ -179,19 +193,21 @@ export function useDocMarkdown(): DocMarkdownState {
     buildStatus && buildStatus !== "idle"
       ? requestedAtMs ?? buildRequestedAtMs
       : null;
-  const isBuildActive = Boolean(!hasLiveDocMarkdown && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
+  const isRequestedBuildReady = hasRequestedLiveMarkdown(docMarkdownQuery.data, {
+    status: buildStatus ?? "",
+    targetRequestedAtMs,
+  });
+  const isBuildActive = Boolean(!isRequestedBuildReady && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
-  const isRequestedBuildReady = hasLiveDocMarkdown;
   const isWaitingForRequestedBuild =
-    !hasLiveDocMarkdown &&
-    !isBuildFailure &&
     !isRequestedBuildReady &&
+    !isBuildFailure &&
     Boolean(
       hasDraftDocMarkdown ||
       isBuildActive ||
       isBuildReadyStatus ||
-      (targetRequestedAtMs !== null && !hasLiveDocMarkdown)
+      targetRequestedAtMs !== null
     );
 
   useEffect(() => {
@@ -311,7 +327,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const showDocUpdatingBanner =
     !docMarkdownQuery.isError &&
     hasRenderedMarkdown &&
-    (effectiveDocViewMode === "draft" || (!hasLiveDocMarkdown && hasDraftDocMarkdown));
+    (effectiveDocViewMode === "draft" || isWaitingForRequestedBuild);
 
   return {
     subjectId,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -27,6 +28,11 @@ from app.workflows.digest.kg_doc_sync.inputs import (
 from app.workflows.digest.kg_doc_sync.graph import RUN_NAME_KG_DOC_SYNC
 
 logger = structlog.get_logger(__name__)
+
+
+def _end_trace_run(trace_run: Any | None, outputs: dict[str, Any]) -> None:
+    if trace_run is not None:
+        trace_run.end(outputs=outputs)
 
 
 def _write_graph_status(
@@ -164,12 +170,13 @@ async def run_graph_docs_sync_after_doc_build(
         sync_input.structured_context.get("doc_version_no")
         or _current_doc_version_no(subject, subject_scope=subject_scope)
     )
+    base_metrics = _base_doc_sync_metrics(
+        knowledge_doc_source=knowledge_doc_source,
+        chapter_count=len(doc_chapter_metadatas),
+        doc_version_no=doc_version_no,
+    )
     if not knowledge_doc_markdown.strip():
-        return _base_doc_sync_metrics(
-            knowledge_doc_source=knowledge_doc_source,
-            chapter_count=len(doc_chapter_metadatas),
-            doc_version_no=doc_version_no,
-        )
+        return base_metrics
 
     _write_graph_status(
         subject,
@@ -187,26 +194,7 @@ async def run_graph_docs_sync_after_doc_build(
             file_ids=file_ids,
             knowledge_doc_markdown=knowledge_doc_markdown,
         ),
-        metrics={
-            "knowledge_doc_source": knowledge_doc_source,
-            "knowledge_doc_chapter_count": len(doc_chapter_metadatas),
-            "last_synced_doc_version_no": doc_version_no,
-            "doc_sync_chapter_split_count": 0,
-            "doc_sync_chapter_task_count": 0,
-            "doc_sync_subsection_task_count": 0,
-            "doc_sync_successful_section_count": 0,
-            "doc_sync_failed_section_count": 0,
-            "doc_sync_llm_error_count": 0,
-            "doc_sync_empty_llm_result_count": 0,
-            "doc_sync_empty_repair_attempt_count": 0,
-            "doc_sync_empty_repair_success_count": 0,
-            "source_ref_count": 0,
-            "backbone_unit_count": 0,
-            "backbone_edge_count": 0,
-            "stable_anchor_count": 0,
-            "deprecated_unit_count": 0,
-            "deprecated_edge_count": 0,
-        },
+        metrics={"processed_chunks": 0, **base_metrics},
         current_stage_description="正在从最新知识文档同步知识点、知识图像和关系。",
     )
     with langsmith_trace(
@@ -237,27 +225,19 @@ async def run_graph_docs_sync_after_doc_build(
                 build_session_id=build_session_id,
                 structured_context=sync_input.structured_context,
             )
-    if sync_result.failed:
-        if trace_run is not None:
-            trace_run.end(outputs={"status": "failed", "error": sync_result.error.detail})
-        raise RuntimeError(sync_result.error.detail)
+        if sync_result.failed:
+            _end_trace_run(trace_run, {"status": "failed", "error": sync_result.error.detail})
+            raise RuntimeError(sync_result.error.detail)
 
-    sync_report = sync_result.require_value()
-    if trace_run is not None:
-        trace_run.end(
-            outputs={
-                "status": "completed",
-                "unit_change_count": sync_report.unit_change_count,
-                "edge_change_count": sync_report.edge_change_count,
-                "failed_section_count": sync_report.failed_section_count,
-            }
+        sync_report = sync_result.require_value()
+        completed_metrics = _completed_doc_sync_metrics(
+            knowledge_doc_source=knowledge_doc_source,
+            chapter_count=len(doc_chapter_metadatas),
+            doc_version_no=doc_version_no,
+            sync_report=sync_report,
         )
-    return _completed_doc_sync_metrics(
-        knowledge_doc_source=knowledge_doc_source,
-        chapter_count=len(doc_chapter_metadatas),
-        doc_version_no=doc_version_no,
-        sync_report=sync_report,
-    )
+        _end_trace_run(trace_run, {"status": "completed", **completed_metrics})
+        return completed_metrics
 
 
 async def run_graph_docs_sync_manual_build(

@@ -264,7 +264,7 @@ def _normalize_docs_sync_inputs(
     markdown: str,
     build_revision_no: int | None = None,
 ) -> tuple[str, str, int | None]:
-    return subject.strip(), markdown or "", build_revision_no
+    return str(subject or "").strip(), str(markdown or ""), build_revision_no
 
 
 async def run_graph_docs_sync_workflow(
