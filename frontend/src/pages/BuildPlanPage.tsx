@@ -99,7 +99,8 @@ const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
 const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
 
 function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
-  console.info(`[planner] ${event}`, payload);
+  void event;
+  void payload;
 }
 
 interface PlannerRuntimeStep {
