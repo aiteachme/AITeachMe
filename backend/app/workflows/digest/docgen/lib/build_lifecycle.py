@@ -69,7 +69,7 @@ from app.shared.infra.subject import (
     inspect_subject_build_precheck,
     resolve_subject_build_vector_status,
 )
-from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
+from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering, normalize_mermaid_blocks
 from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
@@ -213,12 +213,14 @@ def _load_current_published_markdown(
 ) -> tuple[str, datetime | None]:
     cs = get_content_store()
     stored_markdown = normalize_mermaid_blocks(
-        run_store_sync(
-            cs.read_text,
-            subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
-            default="",
+        normalize_markdown_rendering(
+            run_store_sync(
+                cs.read_text,
+                subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
+                default="",
+            )
+            or ""
         )
-        or ""
     ).strip()
     if stored_markdown:
         return stored_markdown, manifest.updated_at if manifest is not None else None
@@ -228,7 +230,9 @@ def _load_current_published_markdown(
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
-        markdown = normalize_mermaid_blocks(str(doc.markdown_content or doc.content_markdown or "").strip())
+        markdown = normalize_mermaid_blocks(
+            normalize_markdown_rendering(str(doc.markdown_content or doc.content_markdown or "").strip())
+        )
         if markdown:
             parts.append(markdown)
         for candidate in (doc.updated_at, doc.published_at, doc.created_at):
@@ -1063,7 +1067,9 @@ def get_docgen_result(
             error=str(exc),
         )
         markdown, published_updated_at = "", None
-    draft_markdown = normalize_mermaid_blocks(run_store_sync(cs.read_text, draft_key, default="") or "")
+    draft_markdown = normalize_mermaid_blocks(
+        normalize_markdown_rendering(run_store_sync(cs.read_text, draft_key, default="") or "")
+    )
     updated_at = published_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
         docgen_build_status.draft_updated_at

@@ -508,7 +508,7 @@ def build_subject_learning_context_payload(
         "source": "docgen.publish",
         "generated_at": utcnow().isoformat(),
         "requested_at": requested_at.isoformat() if requested_at is not None else None,
-        "subject": subject,
+        "subject_id": subject_id,
         "subject_name": display_name,
         "subject_description": subject_description,
         "subject_user_intent": subject_user_intent,
