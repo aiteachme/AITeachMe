@@ -215,14 +215,18 @@ def _build_text_parser_availability() -> dict[str, dict[str, bool]]:
 
 
 def _build_audio_parser_mapping() -> dict[str, dict[str, Parser]]:
+    # 功能尚未扩展链路：当前上传白名单不允许音频文件。
+    # AI 提示：除非任务明确要求恢复音频上传，否则可以先不读这组 helper。
     return {extension: {"audio_transcription": parse_audio_with_transcription} for extension in AUDIO_EXTENSIONS}
 
 
 def _build_audio_parser_chain() -> dict[str, list[str]]:
+    # 功能尚未扩展链路：当前上传白名单不允许音频文件。
     return {extension: ["audio_transcription"] for extension in AUDIO_EXTENSIONS}
 
 
 def _build_audio_parser_availability() -> dict[str, dict[str, bool]]:
+    # 功能尚未扩展链路：当前上传白名单不允许音频文件。
     return {
         extension: {"audio_transcription": is_audio_transcription_available(extension)}
         for extension in AUDIO_EXTENSIONS
@@ -230,6 +234,8 @@ def _build_audio_parser_availability() -> dict[str, dict[str, bool]]:
 
 
 def _build_markitdown_generic_mapping() -> dict[str, dict[str, Parser]]:
+    # demo / 未扩展链路：当前上传白名单不会走到通用 MarkItDown 格式。
+    # AI 提示：如果任务不是恢复 xls/html/csv 等上传，可以跳过这组 helper。
     return {
         extension: {"markitdown_generic": parse_with_markitdown_generic}
         for extension in MARKITDOWN_GENERIC_EXTENSIONS
@@ -237,10 +243,12 @@ def _build_markitdown_generic_mapping() -> dict[str, dict[str, Parser]]:
 
 
 def _build_markitdown_generic_chain() -> dict[str, list[str]]:
+    # demo / 未扩展链路：当前上传白名单不会走到通用 MarkItDown 格式。
     return {extension: ["markitdown_generic"] for extension in MARKITDOWN_GENERIC_EXTENSIONS}
 
 
 def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
+    # demo / 未扩展链路：当前上传白名单不会走到通用 MarkItDown 格式。
     return {
         extension: {"markitdown_generic": GENERIC_MARKITDOWN_AVAILABLE}
         for extension in MARKITDOWN_GENERIC_EXTENSIONS
@@ -249,11 +257,13 @@ def _build_markitdown_generic_availability() -> dict[str, dict[str, bool]]:
 
 PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
     **_build_pdf_parser_mapping(),
-    ".doc": {
-        "doc_markitdown": parse_doc_with_markitdown,
-        "doc_mammoth": parse_doc_with_mammoth,
-        "doc_native": parse_doc_with_native,
-    },
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # AI 提示：除非任务明确要求恢复 .doc 支持，否则可以先不读这些 parser。
+    # ".doc": {
+    #     "doc_markitdown": parse_doc_with_markitdown,
+    #     "doc_mammoth": parse_doc_with_mammoth,
+    #     "doc_native": parse_doc_with_native,
+    # },
     ".docx": {
         "mammoth": parse_docx_with_mammoth,
         "markitdown": parse_docx_with_markitdown,
@@ -269,61 +279,70 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
         "markitdown": parse_pptx_with_markitdown,
         "python_pptx_native": parse_pptx_with_python_pptx,
     },
-    ".png": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".jpg": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".jpeg": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".webp": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".gif": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".bmp": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".tif": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    ".tiff": {
-        "llm_vision": parse_image_with_llm_vision,
-    },
-    **_build_audio_parser_mapping(),
-    **_build_markitdown_generic_mapping(),
+    # 未扩展链路：当前上传白名单不开放图片直传解析。
+    # AI 提示：如果任务没有要求恢复图片上传，可以先不读 raw image parser 细节。
+    # ".png": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".jpg": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".jpeg": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".webp": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".gif": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".bmp": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".tif": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # ".tiff": {
+    #     "llm_vision": parse_image_with_llm_vision,
+    # },
+    # 功能尚未扩展链路：当前上传白名单不开放音频直传解析。
+    # **_build_audio_parser_mapping(),
+    # demo / 未扩展链路：当前上传白名单不开放通用 MarkItDown 格式。
+    # **_build_markitdown_generic_mapping(),
     **_build_text_parser_mapping(),
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     **_build_pdf_parser_chain(),
-    ".doc": ["doc_markitdown", "doc_mammoth", "doc_native"],
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # ".doc": ["doc_markitdown", "doc_mammoth", "doc_native"],
     ".docx": ["markitdown", "mammoth", "docx_native"],
     ".ppt": ["markitdown", "python_pptx_native"],
     ".pptx": ["markitdown", "python_pptx_native"],
-    ".png": ["llm_vision"],
-    ".jpg": ["llm_vision"],
-    ".jpeg": ["llm_vision"],
-    ".webp": ["llm_vision"],
-    ".gif": ["llm_vision"],
-    ".bmp": ["llm_vision"],
-    ".tif": ["llm_vision"],
-    ".tiff": ["llm_vision"],
-    **_build_audio_parser_chain(),
-    **_build_markitdown_generic_chain(),
+    # 未扩展链路：当前上传白名单不开放图片直传解析。
+    # ".png": ["llm_vision"],
+    # ".jpg": ["llm_vision"],
+    # ".jpeg": ["llm_vision"],
+    # ".webp": ["llm_vision"],
+    # ".gif": ["llm_vision"],
+    # ".bmp": ["llm_vision"],
+    # ".tif": ["llm_vision"],
+    # ".tiff": ["llm_vision"],
+    # 功能尚未扩展链路：当前上传白名单不开放音频直传解析。
+    # **_build_audio_parser_chain(),
+    # demo / 未扩展链路：当前上传白名单不开放通用 MarkItDown 格式。
+    # **_build_markitdown_generic_chain(),
     **_build_text_parser_chain(),
 }
 
 _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     **_build_pdf_parser_availability(),
-    ".doc": {
-        "doc_markitdown": DOCX_MARKITDOWN_AVAILABLE,
-        "doc_mammoth": DOCX_MAMMOTH_AVAILABLE,
-        "doc_native": DOCX_NATIVE_AVAILABLE,
-    },
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # ".doc": {
+    #     "doc_markitdown": DOCX_MARKITDOWN_AVAILABLE,
+    #     "doc_mammoth": DOCX_MAMMOTH_AVAILABLE,
+    #     "doc_native": DOCX_NATIVE_AVAILABLE,
+    # },
     ".docx": {
         "mammoth": DOCX_MAMMOTH_AVAILABLE,
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
@@ -339,8 +358,10 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
         "markitdown": PPTX_MARKITDOWN_AVAILABLE,
         "python_pptx_native": PPTX_NATIVE_AVAILABLE,
     },
-    **_build_audio_parser_availability(),
-    **_build_markitdown_generic_availability(),
+    # 功能尚未扩展链路：当前上传白名单不开放音频直传解析。
+    # **_build_audio_parser_availability(),
+    # demo / 未扩展链路：当前上传白名单不开放通用 MarkItDown 格式。
+    # **_build_markitdown_generic_availability(),
     **_build_text_parser_availability(),
 }
 
@@ -407,9 +428,10 @@ def log_parser_availability() -> None:
     environment. Missing packages result in degraded capability, not crashes.
     """
     core_parsers = {
-        "doc_via_docx": DOC_VIA_DOCX_AVAILABLE,
-        "doc_word_com": DOC_WORD_COM_AVAILABLE,
-        "doc_soffice": DOC_SOFFICE_AVAILABLE,
+        # 旧链路：.doc 已停用，不再支持上传和解析。
+        # "doc_via_docx": DOC_VIA_DOCX_AVAILABLE,
+        # "doc_word_com": DOC_WORD_COM_AVAILABLE,
+        # "doc_soffice": DOC_SOFFICE_AVAILABLE,
         "pymupdf_native": _pdf_parser_available("pymupdf_native"),
         "pymupdf4llm": _pdf_parser_available("pymupdf4llm"),
         "pdfplumber": _pdf_parser_available("pdfplumber"),

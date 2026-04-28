@@ -32,7 +32,9 @@ from app.workflows.ingest.intake.catalog import build_file_record
 from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
-SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
+# 当前产品入口真正开放的 ingest 文件类型白名单：
+# .doc / .ppt / .pptx 已停用，建议用户先转成 .pdf 后上传。
+SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".md"})
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
 
 
@@ -192,12 +194,11 @@ async def save_uploaded_file(
     scope = cs.user_file_scope(user_id=owner_user_id)
     normalized_subject_id = validate_subject_id(subject_id) if subject_id else None
     content = await file.read()
+    filename = file.filename or "unknown"
+    extension = _validate_upload_extension(filename)
     max_upload_size_mb = settings.ingest.max_upload_size_mb
     if len(content) > max_upload_size_mb * 1024 * 1024:
         raise FileTooLargeError(max_upload_size_mb)
-
-    filename = file.filename or "unknown"
-    extension = _validate_upload_extension(filename)
     content_hash = hashlib.sha256(content).hexdigest()
     parse_request_signature = build_parse_request_signature(parse_request_metadata)
     reusable_raw_file = get_reusable_raw_file_by_content_hash(

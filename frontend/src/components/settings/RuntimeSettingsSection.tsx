@@ -27,7 +27,7 @@ function renderGroupNote(label: string) {
   if (label === "解析服务授权") {
     return (
       <p className={SETTINGS_STYLES.section.groupNote}>
-        填入 MinerU 或 PaddleOCR Token 后，支持的文档会优先尝试云端解析；未配置或不可用时自动回退到本地解析。
+        填入 PaddleOCR 或 MinerU Token 后，支持的文档会优先尝试 PaddleOCR，再回退到 MinerU，最后回退到本地解析；未配置时直接使用本地解析。
       </p>
     );
   }

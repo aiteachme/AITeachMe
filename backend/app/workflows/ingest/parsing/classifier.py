@@ -74,23 +74,28 @@ def classify_file(file_path: str | Path, filetype: str) -> ClassificationResult:
         return _classify_pdf(path)
     if extension in {".ppt", ".pptx"}:
         return _classify_pptx(path)
-    if extension == ".doc":
-        return _classify_doc(path)
+    # 旧链路：.doc 已停用，不再支持上传和解析。
+    # AI 提示：除非任务明确要求恢复 .doc 支持，否则可以先不读这段旧分支。
+    # if extension == ".doc":
+    #     return _classify_doc(path)
     if extension == ".docx":
         return _classify_docx(path)
     if is_text_extension(extension):
         return _classify_text_file(path, extension)
-    if is_markitdown_generic_extension(extension):
-        return ClassificationResult(
-            file_category="markitdown_generic",
-            recommended_parser="markitdown_generic",
-        )
-    if is_image_extension(extension):
-        return ClassificationResult(
-            file_category="image",
-            estimated_pages=1,
-            recommended_parser="llm_vision",
-        )
+    # demo / 未扩展链路：当前上传白名单不开放通用 MarkItDown 格式上传。
+    # AI 提示：如果任务不是恢复 xls/html/csv 等格式，这段分类分支可以先不读。
+    # if is_markitdown_generic_extension(extension):
+    #     return ClassificationResult(
+    #         file_category="markitdown_generic",
+    #         recommended_parser="markitdown_generic",
+    #     )
+    # 未扩展链路：当前上传白名单不开放原始图片直传。
+    # if is_image_extension(extension):
+    #     return ClassificationResult(
+    #         file_category="image",
+    #         estimated_pages=1,
+    #         recommended_parser="llm_vision",
+    #     )
     if is_probably_text_file(path):
         return _classify_text_file(path, extension)
     return ClassificationResult(
@@ -287,6 +292,7 @@ def _classify_docx(path: Path) -> ClassificationResult:
 
 
 def _classify_doc(path: Path) -> ClassificationResult:
+    # 旧链路：.doc 已停用，当前不会走到这里。
     return ClassificationResult(
         file_category="doc",
         text_density=0.0,
