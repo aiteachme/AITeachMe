@@ -49,7 +49,7 @@ export function DocUpdatingBanner({
               {isFetching ? (
                 <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[#3370FF] dark:text-sky-300" />
               ) : (
-                <div className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#3370FF] dark:bg-sky-300" />
+                <div className="build-live-dot h-1.5 w-1.5 text-[#3370FF] dark:text-sky-300" />
               )}
               <p className="truncate text-[13px] font-medium text-[#1F2329] dark:text-slate-100">
                 {statusText}
@@ -105,7 +105,7 @@ export function DocUpdatingBanner({
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            className="h-full rounded-full bg-[#3370FF] dark:bg-sky-400"
+            className="h-full rounded-full bg-[#3370FF] progress-bar-active progress-bar-breathing dark:bg-sky-400"
           />
         </div>
       </motion.div>

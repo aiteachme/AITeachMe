@@ -469,7 +469,7 @@ function BuildInProgressBubble({
           </p>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
             <div
-              className="h-full rounded-full bg-zinc-950 animate-pulse transition-all duration-500"
+              className="h-full rounded-full bg-zinc-950 build-plan-progress-breathing transition-all duration-500"
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
