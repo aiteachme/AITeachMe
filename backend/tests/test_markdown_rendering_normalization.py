@@ -45,6 +45,26 @@ def test_normalize_escapes_inline_math_that_swallows_markdown() -> None:
     assert "内联公式疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
 
 
+def test_normalize_trims_inline_math_padding_inside_callout() -> None:
+    raw = "> [!WARNING]\n> **易错点：误算为 $ 35 \\times 86 = 3010 $，再除以 10 得 301。**"
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "$35 \\times 86 = 3010$" in fixed
+    assert "$ 35 \\times 86 = 3010 $" not in fixed
+
+
+def test_normalize_flattens_headings_inside_list_items() -> None:
+    raw = "- # 数与代数：从运算到表达式的思维跃迁\n1. ### 章节复盘"
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "- 数与代数：从运算到表达式的思维跃迁" in fixed
+    assert "1. 章节复盘" in fixed
+    assert "- #" not in fixed
+    assert "1. ###" not in fixed
+
+
 def test_review_surface_patch_applies_deterministic_markdown_repair() -> None:
     raw = "\n".join(
         [

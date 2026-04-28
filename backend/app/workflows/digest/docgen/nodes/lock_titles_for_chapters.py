@@ -6,7 +6,10 @@ import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
+from app.shared.infra.knowledge.build_store import (
+    append_knowledge_build_recent_event,
+    upsert_knowledge_build_chapter_progress,
+)
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.lib.title_lock import lock_title_for_chapter
@@ -50,6 +53,15 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
                     "chapter_index": locked.chapter_index,
                     "summary": f"第 {locked.chapter_index} 章标题已锁定为《{locked.enhanced_title}》。",
                     "created_at": utcnow(),
+                },
+            )
+            upsert_knowledge_build_chapter_progress(
+                state["subject"],
+                requested_at=state["requested_at"],
+                chapter_progress={
+                    "chapter_index": locked.chapter_index,
+                    "title": locked.enhanced_title,
+                    "status": "planned",
                 },
             )
             return locked.model_dump(mode="json")

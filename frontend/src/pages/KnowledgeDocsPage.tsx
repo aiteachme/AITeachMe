@@ -1244,7 +1244,10 @@ const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: st
     <div className="text-xs text-slate-700 leading-relaxed break-words [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ul]:mb-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_ol]:mb-1.5 [&_li]:leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-blue-200 [&_blockquote]:bg-blue-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_code]:font-mono [&_code]:text-[11px] [&_code]:bg-slate-100 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:text-[11px] [&_table]:border [&_table]:border-slate-200 [&_table]:rounded-md [&_thead]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-slate-100 [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329" }], rehypeHighlight]}
+        rehypePlugins={[
+          [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
+          rehypeHighlight,
+        ]}
       >
         {preprocessMarkdownForRender(content) || " "}
       </ReactMarkdown>

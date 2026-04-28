@@ -364,17 +364,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
     ) -> str:
         mode_profile = get_docgen_mode_profile(digest_mode)
-        focus = choose_heading_focus(missing_requirements, fallback=title)
-        heading = build_textbook_heading(
-            "summary",
-            digest_mode=digest_mode,
-            focus=focus,
-            fallback_title=title,
-        )
         context_points = self._extract_context_points(dense_context, limit=2)
         lines = [
-            heading,
-            "",
             f"读完《{title}》后，可以把剩下的注意力收回到几个容易漏掉的连接点上。",
         ]
         if objective.strip():
@@ -538,11 +529,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         return round(min(1.0, score), 4)
 
     def _extract_context_points(self, dense_context: str, *, limit: int) -> list[str]:
-        fragments = [
-            fragment.strip(" -")
-            for fragment in re.split(r"[\n。；;]+", str(dense_context or "").strip())
-            if fragment.strip()
-        ]
+        fragments: list[str] = []
+        for raw_fragment in re.split(r"[\n。；;]+", str(dense_context or "").strip()):
+            fragment = raw_fragment.strip(" -")
+            fragment = re.sub(r"^#{1,6}\s*", "", fragment).strip()
+            if not fragment or fragment.startswith(("[!", "![", "```")):
+                continue
+            fragments.append(fragment)
         deduped: list[str] = []
         seen: set[str] = set()
         for fragment in fragments:

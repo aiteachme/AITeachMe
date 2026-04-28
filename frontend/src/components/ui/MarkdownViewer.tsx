@@ -759,6 +759,44 @@ function repairMathDelimitersForRender(markdown: string): string {
   return repairInlineMathForRender(repairDisplayMathBoundariesForRender(markdown));
 }
 
+function normalizeListEmbeddedHeadingsForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let inDisplayMath = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    if (isDisplayMathDelimiterLine(line)) {
+      inDisplayMath = !inDisplayMath;
+      output.push("$$");
+      continue;
+    }
+
+    output.push(
+      inDisplayMath ? line : line.replace(/^(\s*(?:[-*+]|\d+[.)])\s+)#{1,6}\s+(.+)$/, "$1$2"),
+    );
+  }
+
+  return output.join("\n");
+}
+
 function repairMalformedMermaidFencesForRender(markdown: string): string {
   const normalizedMarkdown = splitStuckMathFences(markdown);
   if (!normalizedMarkdown.includes("```")) return normalizedMarkdown;
@@ -866,7 +904,9 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
 
 export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
-    repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+    normalizeListEmbeddedHeadingsForRender(
+      repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+    ),
   );
 }
 
@@ -933,6 +973,10 @@ function getHeadingAstId(node: MarkdownAstNode): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
+function isNestedHeadingContainer(node: MarkdownAstNode): boolean {
+  return ["blockquote", "list", "listItem", "table", "tableRow", "tableCell"].includes(node.type ?? "");
+}
+
 function formatHeadingNumber(level: number, counters: number[]): string {
   const parts: number[] = [];
   for (let index = 1; index <= level; index += 1) {
@@ -944,8 +988,12 @@ function formatHeadingNumber(level: number, counters: number[]): string {
   return level === 1 ? `${parts[0]}.` : parts.join(".");
 }
 
-function annotateHeadingIds(node: MarkdownAstNode, nextHeadingId: (text: string) => string) {
-  if (isHeadingNode(node)) {
+function annotateHeadingIds(
+  node: MarkdownAstNode,
+  nextHeadingId: (text: string) => string,
+  insideNestedHeadingContext = false,
+) {
+  if (isHeadingNode(node) && !insideNestedHeadingContext) {
     const id = nextHeadingId(extractMarkdownAstText(node));
     const hProperties = {
       ...(node.data?.hProperties ?? {}),
@@ -960,12 +1008,18 @@ function annotateHeadingIds(node: MarkdownAstNode, nextHeadingId: (text: string)
   }
 
   if (Array.isArray(node.children)) {
-    node.children.forEach((child) => annotateHeadingIds(child, nextHeadingId));
+    const nextNestedHeadingContext = insideNestedHeadingContext || isNestedHeadingContainer(node);
+    node.children.forEach((child) => annotateHeadingIds(child, nextHeadingId, nextNestedHeadingContext));
   }
 }
 
-function annotateHeadingNumbers(node: MarkdownAstNode, numberedLevels: Set<number>, counters: number[] = Array(7).fill(0)) {
-  if (isHeadingNode(node)) {
+function annotateHeadingNumbers(
+  node: MarkdownAstNode,
+  numberedLevels: Set<number>,
+  counters: number[] = Array(7).fill(0),
+  insideNestedHeadingContext = false,
+) {
+  if (isHeadingNode(node) && !insideNestedHeadingContext) {
     const level = node.depth;
     if (numberedLevels.has(level)) {
       counters[level] += 1;
@@ -984,7 +1038,10 @@ function annotateHeadingNumbers(node: MarkdownAstNode, numberedLevels: Set<numbe
   }
 
   if (Array.isArray(node.children)) {
-    node.children.forEach((child) => annotateHeadingNumbers(child, numberedLevels, counters));
+    const nextNestedHeadingContext = insideNestedHeadingContext || isNestedHeadingContainer(node);
+    node.children.forEach((child) =>
+      annotateHeadingNumbers(child, numberedLevels, counters, nextNestedHeadingContext),
+    );
   }
 }
 
@@ -1417,7 +1474,10 @@ export function MarkdownViewer({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, headingStructurePlugin]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329" }], rehypeHighlight]}
+      rehypePlugins={[
+        [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
+        rehypeHighlight,
+      ]}
       components={{
         h1: makeHeading(1),
         h2: makeHeading(2),

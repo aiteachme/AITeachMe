@@ -477,6 +477,85 @@ def _escape_unsafe_inline_math_spans(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _trim_inline_math_padding(markdown: str) -> str:
+    """Remove padding just inside paired single-dollar math delimiters."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append("$$")
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+
+        positions = _unescaped_single_dollar_positions(line)
+        if len(positions) < 2 or len(positions) % 2 != 0:
+            fixed.append(line)
+            continue
+
+        rebuilt: list[str] = []
+        cursor = 0
+        changed = False
+        for left, right in zip(positions[0::2], positions[1::2], strict=False):
+            body = line[left + 1 : right]
+            trimmed = body.strip()
+            rebuilt.append(line[cursor:left])
+            if trimmed and trimmed != body:
+                rebuilt.append("$")
+                rebuilt.append(trimmed)
+                rebuilt.append("$")
+                changed = True
+            else:
+                rebuilt.append(line[left : right + 1])
+            cursor = right + 1
+        rebuilt.append(line[cursor:])
+        fixed.append("".join(rebuilt) if changed else line)
+    return "\n".join(fixed)
+
+
+def _normalize_list_embedded_headings(markdown: str) -> str:
+    """Turn list items that accidentally contain Markdown headings back into text."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append("$$")
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+
+        fixed.append(re.sub(r"^(\s*(?:[-*+]|\d+[.)])\s+)#{1,6}\s+(.+)$", r"\1\2", line))
+    return "\n".join(fixed)
+
+
 def normalize_markdown_rendering(markdown: str) -> str:
     """修复学生文档里最容易破坏渲染的 Markdown 结构。
 
@@ -489,6 +568,8 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _repair_display_math_boundaries(text)
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
+    text = _trim_inline_math_padding(text)
+    text = _normalize_list_embedded_headings(text)
     text = _normalize_bare_callouts(text)
     if not text:
         return ""

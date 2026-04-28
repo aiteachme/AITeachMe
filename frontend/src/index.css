@@ -110,6 +110,25 @@
   }
 }
 
+/* Keep KaTeX's accessibility-only MathML out of the visual flow even when
+   package CSS order changes in dev, desktop, or packaged builds. */
+.katex .katex-mathml {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.katex annotation {
+  display: none !important;
+}
+
 .electron-window-frame {
   position: relative;
   display: flex;
