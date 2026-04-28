@@ -278,6 +278,8 @@ from app.workflows.interact import stream_chat_workflow
 
 LangSmith 是研发排障的唯一 trace 真相源。progress 只给前端展示，不是第二套 trace。LangGraph 已经负责 root / node span，我们只补上下文。
 
+同一次产品动作只应该对应一条 workflow root trace；这条 trace 下面用多个 LangGraph node span 展示阶段。不要为每个节点、每个内部 helper 或同一条链路的后台续跑再手写一个平级 root trace。确实拆成独立后台任务时，必须用 `subject / build_session_id / lane` 元数据把它和触发动作关联起来。
+
 Workflow 作者只需要记住 3 个入口：
 
 ```python

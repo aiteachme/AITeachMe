@@ -17,6 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 from typing import Generator
 
 import sqlalchemy as sa
@@ -262,9 +263,46 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
     }
 
 
+def _sqlite_file_paths(db_path: Path) -> tuple[Path, ...]:
+    return tuple(Path(f"{db_path}{suffix}") for suffix in ("", "-shm", "-wal"))
+
+
+def _backup_sqlite_files_before_rebuild(db_path: Path) -> Path | None:
+    existing_paths = [path for path in _sqlite_file_paths(db_path) if path.exists()]
+    if not existing_paths:
+        return None
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_root = db_path.parent / "backups"
+    backup_dir = backup_root / f"{db_path.name}.schema-drift.{timestamp}"
+    counter = 1
+    while backup_dir.exists():
+        counter += 1
+        backup_dir = backup_root / f"{db_path.name}.schema-drift.{timestamp}.{counter}"
+
+    backup_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        for path in existing_paths:
+            shutil.copy2(path, backup_dir / path.name)
+    except Exception:
+        logger.exception(
+            "local_sqlite_database_backup_failed",
+            db_path=str(db_path),
+            backup_dir=str(backup_dir),
+        )
+        raise
+
+    logger.warning(
+        "local_sqlite_database_backup_created",
+        db_path=str(db_path),
+        backup_dir=str(backup_dir),
+    )
+    return backup_dir
+
+
 def _remove_sqlite_files(db_path: Path) -> None:
-    for suffix in ("", "-shm", "-wal"):
-        Path(f"{db_path}{suffix}").unlink(missing_ok=True)
+    for path in _sqlite_file_paths(db_path):
+        path.unlink(missing_ok=True)
 
 
 def _drop_sqlite_indexes_for_columns(
@@ -875,11 +913,13 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
         unexpected_columns=drift["unexpected_columns"],
     )
     reset_runtime_state()
+    backup_dir = _backup_sqlite_files_before_rebuild(db_path)
     _remove_sqlite_files(db_path)
     rebuilt_engine = get_engine()
     logger.warning(
         "local_sqlite_database_rebuilt",
         db_path=str(db_path),
+        backup_dir=str(backup_dir) if backup_dir else "",
     )
     return rebuilt_engine
 

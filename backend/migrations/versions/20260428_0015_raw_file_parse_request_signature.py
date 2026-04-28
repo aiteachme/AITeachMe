@@ -22,27 +22,55 @@ def _backfill_duplicate_default_signatures() -> None:
             "WHERE parse_request_signature IS NULL OR parse_request_signature = ''"
         )
     )
+
+    if op.get_context().dialect.name == "sqlite":
+        connection.execute(
+            sa.text(
+                """
+                WITH duplicate_defaults AS (
+                    SELECT id,
+                           row_number() OVER (
+                               PARTITION BY user_id, content_hash, file_size_bytes, filetype
+                               ORDER BY created_at ASC, id ASC
+                           ) AS row_rank
+                    FROM raw_file
+                    WHERE status != 'failed'
+                      AND content_hash IS NOT NULL
+                      AND file_size_bytes IS NOT NULL
+                      AND parse_request_signature = 'default'
+                )
+                UPDATE raw_file
+                SET parse_request_signature = 'legacy:' || id
+                WHERE id IN (
+                    SELECT id
+                    FROM duplicate_defaults
+                    WHERE row_rank > 1
+                )
+                """
+            )
+        )
+        return
+
     connection.execute(
         sa.text(
             """
-            WITH ranked AS (
-                SELECT
-                    id,
-                    row_number() OVER (
-                        PARTITION BY user_id, content_hash, file_size_bytes, filetype
-                        ORDER BY created_at ASC, id ASC
-                    ) AS duplicate_rank
+            WITH duplicate_defaults AS (
+                SELECT id,
+                       row_number() OVER (
+                           PARTITION BY user_id, content_hash, file_size_bytes, filetype
+                           ORDER BY created_at ASC, id ASC
+                       ) AS row_rank
                 FROM raw_file
                 WHERE status != 'failed'
-                AND content_hash IS NOT NULL
-                AND file_size_bytes IS NOT NULL
-                AND parse_request_signature = 'default'
+                  AND content_hash IS NOT NULL
+                  AND file_size_bytes IS NOT NULL
+                  AND parse_request_signature = 'default'
             )
-            UPDATE raw_file
-            SET parse_request_signature = 'legacy:' || CAST(id AS TEXT)
-            WHERE id IN (
-                SELECT id FROM ranked WHERE duplicate_rank > 1
-            )
+            UPDATE raw_file AS target
+            SET parse_request_signature = 'legacy:' || target.id::text
+            FROM duplicate_defaults AS duplicate
+            WHERE target.id = duplicate.id
+              AND duplicate.row_rank > 1
             """
         )
     )

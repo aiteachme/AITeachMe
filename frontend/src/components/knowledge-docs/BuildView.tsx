@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, ChevronRight, Code2, FileText, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
+import { Activity, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Files, Gauge, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
@@ -9,7 +9,6 @@ import type {
   KnowledgeBuildMetrics,
   KnowledgeBuildPreview,
 } from "./types";
-import { BuildMetricsBadges } from "./BuildMetricsBadges";
 import { useBuildTimelineSteps } from "./BuildProcessTimeline";
 import { buildChapterStatusLabel, formatBuildEventTime } from "./utils";
 import { useBuildEventStream } from "../../hooks/useBuildEventStream";
@@ -113,6 +112,29 @@ function countProcessingSourceFiles(files: FileRecord[]): number {
 
 function countFailedSourceFiles(files: FileRecord[]): number {
   return files.filter((file) => file.status === "failed" || Boolean(file.error_message)).length;
+}
+
+function formatDurationMs(value: number | null | undefined): string {
+  const normalized = Number(value ?? 0);
+  if (!Number.isFinite(normalized) || normalized <= 0) return "--";
+  if (normalized < 1000) return `${Math.round(normalized)} ms`;
+  return `${(normalized / 1000).toFixed(normalized < 10_000 ? 1 : 0)} s`;
+}
+
+function summarizeSourceFiles(files: FileRecord[]): string {
+  const names = files.map((file) => file.filename).filter(Boolean);
+  if (names.length === 0) return "等待资料接入";
+  const visible = names.slice(0, 2).join("、");
+  return names.length > 2 ? `${visible} 等 ${names.length} 份` : visible;
+}
+
+function summarizeSourceFileState(files: FileRecord[], processingCount: number, failedCount: number): string {
+  const summary = summarizeSourceFiles(files);
+  const details = [
+    processingCount > 0 ? `${formatCompactCount(processingCount)} 份解析中` : "",
+    failedCount > 0 ? `${formatCompactCount(failedCount)} 份失败` : "",
+  ].filter(Boolean);
+  return details.length > 0 ? `${summary}；${details.join("，")}` : summary;
 }
 
 function buildEventIdentity(event: BuildEventItem): string {
@@ -274,6 +296,10 @@ export function BuildView({
   const chapters = mergedChapters;
   const events = mergedEvents;
   const chapterPreviews = mergedChapterPreviews;
+  const sourceFileCount = sourceFiles.length;
+  const llmTotalCalls = buildMetrics?.llm_total_calls ?? 0;
+  const failedLlmCalls = buildMetrics?.failed_llm_call_count ?? 0;
+  const avgLlmLatencyLabel = formatDurationMs(buildMetrics?.llm_avg_latency_ms);
   const rawProgress = Math.max(0, Math.min(100, Math.round(
     sseSnapshot?.docgen?.progress_pct ?? progress
   )));
@@ -312,6 +338,53 @@ export function BuildView({
   const readySourceCount = countReadySourceFiles(sourceFiles);
   const processingSourceCount = countProcessingSourceFiles(sourceFiles);
   const failedSourceCount = countFailedSourceFiles(sourceFiles);
+  const sourceStateDetail = sourceFilesFetching
+    ? "正在读取资料列表"
+    : summarizeSourceFileState(sourceFiles, processingSourceCount, failedSourceCount);
+  const overviewItems = [
+    {
+      key: "sources",
+      label: "资料",
+      value: sourceFilesFetching
+        ? "同步中"
+        : sourceFileCount > 0
+          ? `${formatCompactCount(readySourceCount)}/${formatCompactCount(sourceFileCount)} 可用`
+          : "暂无",
+      detail: sourceStateDetail,
+      icon: <Files className="h-4 w-4" />,
+      tone: failedSourceCount > 0
+        ? "text-rose-700 bg-rose-50 ring-rose-100 dark:text-rose-300 dark:bg-rose-500/10 dark:ring-rose-500/20"
+        : processingSourceCount > 0
+          ? "text-amber-700 bg-amber-50 ring-amber-100 dark:text-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/20"
+          : "text-sky-600 bg-sky-50 ring-sky-100 dark:text-sky-300 dark:bg-sky-500/10 dark:ring-sky-500/20",
+    },
+    {
+      key: "chapters",
+      label: "章节",
+      value: chapters.length > 0 ? `${formatCompactCount(chapters.length)} 章` : "--",
+      detail: spotlightChapter?.title ? `当前：${spotlightChapter.title}` : "等待章节计划",
+      icon: <FileText className="h-4 w-4" />,
+      tone: "text-blue-600 bg-blue-50 ring-blue-100 dark:text-blue-300 dark:bg-blue-500/10 dark:ring-blue-500/20",
+    },
+    {
+      key: "llm-calls",
+      label: "模型调用",
+      value: llmTotalCalls > 0 ? `${formatCompactCount(llmTotalCalls)} 次` : "--",
+      detail: failedLlmCalls > 0 ? `${formatCompactCount(failedLlmCalls)} 次失败已记录` : "暂无失败调用",
+      icon: <Activity className="h-4 w-4" />,
+      tone: failedLlmCalls > 0
+        ? "text-amber-700 bg-amber-50 ring-amber-100 dark:text-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/20"
+        : "text-emerald-700 bg-emerald-50 ring-emerald-100 dark:text-emerald-300 dark:bg-emerald-500/10 dark:ring-emerald-500/20",
+    },
+    {
+      key: "latency",
+      label: "平均耗时",
+      value: avgLlmLatencyLabel,
+      detail: "LLM 调用平均延迟",
+      icon: avgLlmLatencyLabel === "--" ? <Gauge className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />,
+      tone: "text-zinc-600 bg-zinc-50 ring-zinc-200 dark:text-slate-300 dark:bg-slate-900 dark:ring-slate-800",
+    },
+  ];
 
   useEffect(() => {
     if (chapters.length === 0) {
@@ -401,32 +474,28 @@ export function BuildView({
                 {roundedProgress}%
               </span>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[11px] text-zinc-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                <FileText className="h-3 w-3 text-zinc-400 dark:text-slate-500" />
-                {sourceFiles.length > 0
-                  ? `${readySourceCount}/${sourceFiles.length} 份资料可用`
-                  : sourceFilesFetching
-                    ? "资料同步中"
-                    : "暂无本地资料"}
-              </span>
-              {sourceFilesFetching && sourceFiles.length > 0 ? (
-                <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  刷新资料
-                </span>
-              ) : null}
-              {processingSourceCount > 0 ? (
-                <span className="rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                  {processingSourceCount} 份解析中
-                </span>
-              ) : null}
-              {failedSourceCount > 0 ? (
-                <span className="rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
-                  {failedSourceCount} 份解析失败
-                </span>
-              ) : null}
-              <BuildMetricsBadges metrics={buildMetrics} preview={buildPreview} />
+            <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+              {overviewItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="min-w-0 border border-zinc-100 bg-zinc-50/60 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/60"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="truncate text-[11px] font-medium text-zinc-400 dark:text-slate-500">
+                      {item.label}
+                    </span>
+                    <span className={cn("inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ring-1", item.tone)}>
+                      {item.icon}
+                    </span>
+                  </div>
+                  <div className="truncate text-[17px] font-semibold tabular-nums text-zinc-950 dark:text-slate-100">
+                    {item.value}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] text-zinc-500 dark:text-slate-400" title={item.detail}>
+                    {item.detail}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
