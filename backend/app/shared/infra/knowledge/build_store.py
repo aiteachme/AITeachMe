@@ -6,7 +6,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlmodel import Session
@@ -710,8 +710,19 @@ def _subject_scope_or_resolve(subject: str, subject_scope: SubjectStorageScope |
     return subject_scope or resolve_subject_storage_scope(subject)
 
 
-def _legacy_build_manifest_key(subject_scope: SubjectStorageScope) -> str:
+def _staged_build_manifest_key(subject_scope: SubjectStorageScope) -> str:
     return f"{subject_scope.knowledge_build_prefix()}manifest.json"
+
+
+def _migrate_staged_manifest_if_needed(
+    cs: Any,
+    subject_scope: SubjectStorageScope,
+    manifest: KnowledgeDocsManifest,
+) -> None:
+    """Move old staged manifests to the published manifest key on first read."""
+
+    run_store_sync(cs.write_json, subject_scope.build_manifest_key(), manifest)
+    run_store_sync(cs.delete, _staged_build_manifest_key(subject_scope), default=None)
 
 
 def _read_legacy_knowledge_build_status(
@@ -1173,18 +1184,23 @@ def read_knowledge_manifest(
 
     cs = get_content_store()
     resolved_scope = _subject_scope_or_resolve(subject, subject_scope)
+    manifest_key = resolved_scope.build_manifest_key()
     manifest = run_store_sync(
         cs.read_json,
-        resolved_scope.build_manifest_key(),
+        manifest_key,
         KnowledgeDocsManifest,
     )
     if manifest is not None:
         return manifest
-    return run_store_sync(
+
+    staged_manifest = run_store_sync(
         cs.read_json,
-        _legacy_build_manifest_key(resolved_scope),
+        _staged_build_manifest_key(resolved_scope),
         KnowledgeDocsManifest,
     )
+    if staged_manifest is not None:
+        _migrate_staged_manifest_if_needed(cs, resolved_scope, staged_manifest)
+    return staged_manifest
 
 
 def write_knowledge_manifest(
@@ -1275,7 +1291,7 @@ def clear_knowledge_runtime_artifacts(
 
     cs = get_content_store()
     run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
-    run_store_sync(cs.delete, _legacy_build_manifest_key(resolved_scope), default=None)
+    run_store_sync(cs.delete, _staged_build_manifest_key(resolved_scope), default=None)
 
     release_knowledge_build_lock(subject)
 

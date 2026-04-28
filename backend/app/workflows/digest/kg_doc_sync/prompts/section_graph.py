@@ -1,4 +1,9 @@
-"""Prompt builders for extracting graph candidates from one knowledge-doc section."""
+"""Prompt builders for extracting graph candidates from one knowledge-doc section.
+
+This prompt is used only by the ``extract`` node. One call sees one
+chapter/subsection, returns candidate nodes and candidate edges, and leaves
+deduplication, stable anchors and DB writes to later code.
+"""
 
 from app.workflows.digest.kg_doc_sync.lib.ontology import (
     format_ontology_relation_direction_bullets,
@@ -34,6 +39,7 @@ SYSTEM_PROMPT_KNOWLEDGE_EXTRACT = f"""
 7. 不要为整章、整节、阅读导语、容器标题建节点，除非标题本身就是一个原子概念。
 8. 宁可返回 1-3 个强节点，也不要返回一堆弱节点；不要把同一小节拆成大量近义主题壳。
 9. 严格拒绝教学包装语，例如学习目标、章节大纲、复习口号、任务指令、题干句；只抽取明确可复用的概念、定义、公式、性质、方法、例题或证明步骤。
+10. 本次只负责候选抽取；不要考虑数据库去重、跨章节合并或旧节点废弃，这些由后续 persist 节点处理。
 
 ## 层级规则
 1. 如果片段标题本身是一个真实概念或主题，且正文不是纯流程噪声，可以包含这个概念。

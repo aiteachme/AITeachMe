@@ -1,4 +1,9 @@
-"""Small state helpers shared by kg_doc_sync nodes."""
+"""Small state helpers shared by kg_doc_sync nodes.
+
+Every node records its own entry under ``state["node_metrics"][node_key]``.
+The graph routes only on ``state["error"]``; this keeps node bodies readable
+and makes success/error output shape consistent across the lane.
+"""
 
 from __future__ import annotations
 

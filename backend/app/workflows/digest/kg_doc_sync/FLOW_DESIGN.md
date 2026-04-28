@@ -130,7 +130,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 / subsection 2.1 extraction
     └─ chapter N / subsection N.x extraction
-  默认最多 10 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
+  默认最多 12 路并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -392,7 +392,8 @@ _build_extraction_tasks
   规则：
     - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000` 且至少有 2 个可抽取子章节时，按子章节拆分。
     - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
-    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 10` 封顶。
+    - 总并发由 `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12` 封顶；`KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 可向下覆盖，但不会超过 12。
+    - 任务规划会先以章节为基线；章节少而大章很长时，再按子章节和字符预算自适应拆分，最多扩展到 12 路。
   设计目的：
     - 章节少但单章很长时，仍然可以并行抽取，减少长章卡住整条链路的情况。
     - 所有语义候选仍由结构化 LLM 抽取或 LLM 空结果修复产生，不引入本地关键词造点。
@@ -406,13 +407,13 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10`
-    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 10`
+    - `_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 12`，可用 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT` 向下覆盖。
+    - `_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12`
     - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
     - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
-    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 40`，只作为单章断路保护，不作为提速手段。
+    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90`，与共享 EXTRACT LLM profile 对齐，避免外层短超时把结构化调用取消成 `CancelledError` 噪声。
     - `_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000`，主抽取仍走 LLM，但会限制单章输入窗口。
   SectionExtractionPayload 包含：
     - units：本章候选 MarkdownKnowledgeUnit。
@@ -424,7 +425,7 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2600`。
     - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
     - 结构化抽取失败会按任务重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
 

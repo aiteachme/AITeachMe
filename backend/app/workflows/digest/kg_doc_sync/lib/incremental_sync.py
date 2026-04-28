@@ -21,6 +21,7 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
+from app.shared.infra.env_support import get_env_int
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.search.api import search_knowledge
 from app.utils.knowledge_helpers import normalize_name
@@ -68,13 +69,28 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 10
-_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 10
+_DOCS_SYNC_HARD_PARALLEL_LIMIT = 12
+_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 12
+_DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 12
+_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = max(
+    1,
+    min(
+        _DOCS_SYNC_HARD_PARALLEL_LIMIT,
+        get_env_int("KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS", _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS),
+    ),
+)
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
 _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 9000
+_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 7000
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
-_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
+_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = max(
+    1,
+    min(
+        _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        get_env_int("KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT", _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT),
+    ),
+)
 _DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
 _DOCS_SYNC_CHAPTER_RETRY_DELAY_S = _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S
 _DOCS_SYNC_SECTION_CONCURRENCY_LIMIT = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
@@ -563,6 +579,8 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
+        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "planned_task_count": 0,
         "successful_section_count": 0,
         "failed_section_count": 0,
         "llm_section_count": 0,
@@ -579,10 +597,7 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
 
 
 def _chapter_concurrency_limit() -> int:
-    configured = _DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT
-    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT:
-        configured = _DOCS_SYNC_SECTION_CONCURRENCY_LIMIT
-    return max(1, min(_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS, int(configured)))
+    return max(1, min(_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS, int(_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT)))
 
 
 def _effective_concurrency_limit(task_count: int) -> int:
@@ -609,10 +624,12 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
     return {
         "chapter_concurrency_limit": _chapter_concurrency_limit(),
         "max_parallel_extractions": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
+        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
         "chapter_max_retries": _chapter_max_retries(),
         "chapter_retry_delay_s": _chapter_retry_delay_s(),
         "split_min_child_sections": _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS,
         "split_min_chapter_chars": _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS,
+        "split_target_task_chars": _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS,
         "section_llm_timeout_s": docs_section_llm_timeout_s(),
         "section_llm_max_content_chars": docs_section_llm_max_content_chars(),
     }
@@ -622,13 +639,16 @@ def _is_extractable_section_chunk(chunk: MarkdownSectionChunk, *, parent_title: 
     body = str(chunk.body_markdown or "").strip()
     if not body:
         return False
+    non_heading_body = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith("#")).strip()
+    if not non_heading_body and len(body) < 400:
+        return False
     if normalize_name(chunk.title) == normalize_name(parent_title) and len(body) < 400:
         return False
     return True
 
 
 def _chapter_child_chunks(chapter: MarkdownSectionChunk) -> list[MarkdownSectionChunk]:
-    chunks = extract_markdown_section_chunks(chapter.body_markdown)
+    chunks = extract_markdown_section_chunks(chapter.body_markdown, max_body_chars=None)
     if len(chunks) <= 1:
         return []
     parent_level = min(chunk.heading_level for chunk in chunks)
@@ -647,22 +667,127 @@ def _should_split_chapter(chapter: MarkdownSectionChunk, child_chunks: list[Mark
     )
 
 
+def _chunk_chars(chunk: MarkdownSectionChunk) -> int:
+    return len(chunk.body_markdown or "")
+
+
+def _desired_child_task_count(
+    chapter: MarkdownSectionChunk,
+    child_chunks: list[MarkdownSectionChunk],
+    *,
+    extra_task_budget: int,
+) -> int:
+    if extra_task_budget <= 0:
+        return 1
+    by_chars = max(
+        2,
+        (_chunk_chars(chapter) + _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS - 1)
+        // _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS,
+    )
+    return max(1, min(len(child_chunks), by_chars, extra_task_budget + 1))
+
+
+def _merge_child_chunk_group(
+    parent: MarkdownSectionChunk,
+    child_group: list[MarkdownSectionChunk],
+    *,
+    group_index: int,
+    group_count: int,
+) -> MarkdownSectionChunk:
+    if len(child_group) == 1:
+        return child_group[0]
+    first = child_group[0]
+    last = child_group[-1]
+    title = f"{parent.title} ({group_index}/{group_count})"
+    header_path = f"{parent.header_path} > {first.title} - {last.title}"
+    body_markdown = "\n\n".join(
+        str(child.body_markdown or "").strip()
+        for child in child_group
+        if child.body_markdown
+    )
+    return MarkdownSectionChunk(
+        title=title,
+        anchor=f"{parent.anchor}-part-{group_index}",
+        header_path=header_path,
+        body_markdown=body_markdown,
+        summary="；".join(child.summary for child in child_group if child.summary),
+        knowledge_images=[image for child in child_group for image in child.knowledge_images],
+        line_no=first.line_no,
+        heading_level=first.heading_level,
+    )
+
+
+def _group_child_chunks(
+    parent: MarkdownSectionChunk,
+    child_chunks: list[MarkdownSectionChunk],
+    *,
+    group_count: int,
+) -> list[MarkdownSectionChunk]:
+    if group_count <= 1:
+        return [parent]
+    if len(child_chunks) <= group_count:
+        return child_chunks
+
+    total_chars = sum(max(1, _chunk_chars(chunk)) for chunk in child_chunks)
+    target_chars = max(1, (total_chars + group_count - 1) // group_count)
+    groups: list[list[MarkdownSectionChunk]] = []
+    current: list[MarkdownSectionChunk] = []
+    current_chars = 0
+    for chunk in child_chunks:
+        chunk_chars = max(1, _chunk_chars(chunk))
+        if current and len(groups) < group_count - 1 and current_chars + chunk_chars > target_chars:
+            groups.append(current)
+            current = []
+            current_chars = 0
+        current.append(chunk)
+        current_chars += chunk_chars
+    if current:
+        groups.append(current)
+
+    return [
+        _merge_child_chunk_group(
+            parent,
+            group,
+            group_index=index,
+            group_count=len(groups),
+        )
+        for index, group in enumerate(groups, start=1)
+    ]
+
+
 def _build_extraction_tasks(
     chapters: list[MarkdownSectionChunk],
     chapter_contexts: dict[int, ChapterSourceContext],
 ) -> tuple[list[_ExtractionTask], dict[str, int]]:
     tasks: list[_ExtractionTask] = []
+    split_budget = max(0, _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS - len(chapters))
     metrics = {
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
+        "planned_task_limit": _DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS,
     }
     for source_chapter_index, chapter in enumerate(chapters, start=1):
         chapter_context = _chapter_context_for_index(chapter_contexts, source_chapter_index)
         child_chunks = _chapter_child_chunks(chapter)
-        if _should_split_chapter(chapter, child_chunks):
+        if _should_split_chapter(chapter, child_chunks) and split_budget > 0:
+            child_task_count = _desired_child_task_count(
+                chapter,
+                child_chunks,
+                extra_task_budget=split_budget,
+            )
+            planned_child_chunks = _group_child_chunks(
+                chapter,
+                child_chunks,
+                group_count=child_task_count,
+            )
+        else:
+            planned_child_chunks = []
+
+        if len(planned_child_chunks) > 1:
             metrics["chapter_split_count"] += 1
-            for child_chunk in child_chunks:
+            split_budget -= len(planned_child_chunks) - 1
+            for child_chunk in planned_child_chunks:
                 metrics["subsection_task_count"] += 1
                 tasks.append(
                     _ExtractionTask(
@@ -670,7 +795,7 @@ def _build_extraction_tasks(
                         source_chapter_index=source_chapter_index,
                         chunk=child_chunk,
                         chapter_context=chapter_context,
-                        source_kind="subsection",
+                        source_kind="subsection" if child_chunk in child_chunks else "subsection_group",
                     )
                 )
             continue
@@ -685,6 +810,7 @@ def _build_extraction_tasks(
                 source_kind="chapter",
             )
         )
+    metrics["planned_task_count"] = len(tasks)
     return tasks, metrics
 
 
@@ -694,7 +820,7 @@ async def _extract_markdown_graph_items_async(
     subject_context: str | None = None,
     structured_context: dict[str, object] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
-    chapters = extract_markdown_chapter_chunks(markdown)
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
     sections = extract_markdown_section_chunks(markdown)
     if not chapters:
         return [], [], _empty_extraction_diagnostics()

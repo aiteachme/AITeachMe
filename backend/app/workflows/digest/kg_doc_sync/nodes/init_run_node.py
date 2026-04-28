@@ -27,6 +27,8 @@ def _run_metrics(run_context: KnowledgeSyncRunContext, *, elapsed_ms: int) -> di
 
 
 def init_run_node(state: DocsSyncState) -> DocsSyncState:
+    """Create the durable sync run and attach graph revision context to state."""
+
     started_at = perf_counter()
     try:
         with managed_session() as session:

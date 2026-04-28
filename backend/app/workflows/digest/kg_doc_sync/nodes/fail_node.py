@@ -26,6 +26,8 @@ def _resolve_error_message(state: DocsSyncState) -> str:
 
 
 def fail_node(state: DocsSyncState) -> DocsSyncState:
+    """Mark the durable sync run failed and keep the error on graph state."""
+
     run_context = state.get("sync_run_context")
     error_message = _resolve_error_message(state)
     if run_context is None:

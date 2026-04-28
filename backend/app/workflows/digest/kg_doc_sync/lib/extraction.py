@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 import re
 from typing import Literal
@@ -43,7 +42,10 @@ logger = structlog.get_logger()
 
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
-_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 40
+# Keep this aligned with the shared EXTRACT profile. A shorter outer wait_for
+# would cancel the structured-call helper and show up as noisy CancelledError
+# traces even though the section merely hit our local breaker.
+_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90
 _DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000
 _DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS = 1600
 
@@ -579,10 +581,7 @@ async def _extract_candidates_internal(
                 section_timeout_s=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S,
             ),
         )
-        if doc_source_type == "knowledge_doc_markdown":
-            result = await asyncio.wait_for(llm_call, timeout=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S)
-        else:
-            result = await llm_call
+        result = await llm_call
     except Exception as exc:
         diagnostics.llm_error_count += 1
         logger.warning(

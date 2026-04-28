@@ -70,7 +70,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_EXTRACT: {
         "description": (
-            "把知识文档切成章节任务，特别长的大章会继续拆成子章节任务，并以最多 10 路并发调用结构化 LLM "
+            "把知识文档切成章节任务，特别长的大章会继续拆成子章节任务，并以配置的并发上限调用结构化 LLM "
             "抽取候选 KnowledgeUnit 和关系；随后合并 DocGen backbone、标题结构边和跨章节语义边。"
             "本节点只产出 extraction_payload，不写图谱表；缺失 payload 会直接进入 fail，不会继续写入。"
             "语义候选必须来自 LLM/LLM 修复或显式结构化来源。"

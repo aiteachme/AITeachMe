@@ -29,6 +29,9 @@ class _FakeJsonContentStore:
     async def write_json(self, key: str, model) -> None:
         self.payloads[key] = model.model_dump_json()
 
+    async def delete(self, key: str) -> None:
+        self.payloads.pop(key, None)
+
 
 def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) -> None:
     subject_scope = build_subject_storage_scope(user_id="user_a", subject="linear-algebra")
@@ -77,7 +80,7 @@ def test_knowledge_manifest_is_written_outside_staging_prefix(monkeypatch) -> No
     assert build_store.read_knowledge_manifest("linear-algebra", subject_scope=subject_scope) == manifest
 
 
-def test_knowledge_manifest_read_falls_back_to_legacy_staging_key(monkeypatch) -> None:
+def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:
     subject_scope = build_subject_storage_scope(user_id="user_a", subject="linear-algebra")
     manifest = KnowledgeDocsManifest(
         updated_at=datetime(2026, 4, 28, tzinfo=timezone.utc),
@@ -89,3 +92,5 @@ def test_knowledge_manifest_read_falls_back_to_legacy_staging_key(monkeypatch) -
     monkeypatch.setattr(build_store, "get_content_store", lambda: fake_store)
 
     assert build_store.read_knowledge_manifest("linear-algebra", subject_scope=subject_scope) == manifest
+    assert subject_scope.build_manifest_key() in fake_store.payloads
+    assert f"{subject_scope.knowledge_build_prefix()}manifest.json" not in fake_store.payloads

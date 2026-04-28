@@ -57,6 +57,13 @@ def _payload_metrics(
 
 
 async def extract_node(state: DocsSyncState) -> DocsSyncState:
+    """Fan out markdown sections into LLM extraction tasks and fan in candidates.
+
+    This node intentionally does not write graph tables. It only returns an
+    extraction payload plus diagnostics, so partial section failures can still
+    be persisted with the successful sections.
+    """
+
     started_at = perf_counter()
     run_context = state.get("sync_run_context")
     if run_context is None:

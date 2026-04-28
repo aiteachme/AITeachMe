@@ -38,6 +38,8 @@ def _markdown_metrics(markdown: str) -> dict[str, object]:
 
 
 def prepare_node(state: DocsSyncState) -> DocsSyncState:
+    """Validate the published knowledge doc before opening a graph sync run."""
+
     subject = str(state.get("subject") or "").strip()
     markdown = str(state.get("markdown") or "")
     structured_context = dict(state.get("structured_context") or {})

@@ -241,7 +241,11 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
     ]
 
 
-def extract_markdown_section_chunks(markdown: str) -> list[MarkdownSectionChunk]:
+def extract_markdown_section_chunks(
+    markdown: str,
+    *,
+    max_body_chars: int | None = 8000,
+) -> list[MarkdownSectionChunk]:
     """Extract heading-scoped markdown chunks for chunk-level knowledge parsing."""
 
     lines = markdown.splitlines()
@@ -274,7 +278,7 @@ def extract_markdown_section_chunks(markdown: str) -> list[MarkdownSectionChunk]
         anchor = _extract_anchor_from_line(line) or build_knowledge_unit_anchor(title, used=used_anchors)
         next_index = heading_meta[position + 1][0] if position + 1 < len(heading_meta) else len(lines)
         section_lines = lines[index:next_index]
-        body_markdown = _build_body_markdown(section_lines)
+        body_markdown = _build_body_markdown(section_lines, max_chars=max_body_chars)
         summary = _build_summary(section_lines)
         chunks.append(
             MarkdownSectionChunk(
@@ -291,7 +295,11 @@ def extract_markdown_section_chunks(markdown: str) -> list[MarkdownSectionChunk]
     return chunks
 
 
-def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]:
+def extract_markdown_chapter_chunks(
+    markdown: str,
+    *,
+    max_body_chars: int | None = 8000,
+) -> list[MarkdownSectionChunk]:
     """Extract top-level chapter chunks delimited by level-1 headings."""
 
     lines = markdown.splitlines()
@@ -314,7 +322,7 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
     if len(heading_meta) == 1:
         h2_chunks = [
             chunk
-            for chunk in extract_markdown_section_chunks(markdown)
+            for chunk in extract_markdown_section_chunks(markdown, max_body_chars=max_body_chars)
             if chunk.heading_level == 2
         ]
         if len(h2_chunks) >= 2:
@@ -336,7 +344,7 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
         section_chunks = extract_markdown_section_chunks(markdown)
         if section_chunks:
             first = section_chunks[0]
-            body_markdown = _build_body_markdown(lines)
+            body_markdown = _build_body_markdown(lines, max_chars=max_body_chars)
             return [
                 MarkdownSectionChunk(
                     title=first.title,
@@ -350,7 +358,7 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
                 )
             ]
         if markdown.strip():
-            body_markdown = _build_body_markdown(lines)
+            body_markdown = _build_body_markdown(lines, max_chars=max_body_chars)
             return [
                 MarkdownSectionChunk(
                     title="Knowledge Document",
@@ -369,7 +377,7 @@ def extract_markdown_chapter_chunks(markdown: str) -> list[MarkdownSectionChunk]
     for position, (index, title, anchor) in enumerate(heading_meta):
         next_index = heading_meta[position + 1][0] if position + 1 < len(heading_meta) else len(lines)
         chapter_lines = lines[index:next_index]
-        body_markdown = _build_body_markdown(chapter_lines)
+        body_markdown = _build_body_markdown(chapter_lines, max_chars=max_body_chars)
         chunks.append(
             MarkdownSectionChunk(
                 title=title,
@@ -464,9 +472,9 @@ def _collect_unit_section_lines(lines: list[str], index: int) -> list[str]:
     return section
 
 
-def _build_body_markdown(lines: list[str]) -> str:
+def _build_body_markdown(lines: list[str], *, max_chars: int | None = 8000) -> str:
     body = "\n".join(line.rstrip() for line in lines).strip()
-    return body[:8000]
+    return body if max_chars is None else body[:max(0, max_chars)]
 
 
 def _extract_knowledge_images(body_markdown: str) -> list[str]:

@@ -48,6 +48,8 @@ def _report_metrics(report: KnowledgeSyncReport, *, elapsed_ms: int) -> dict[str
 
 
 def persist_node(state: DocsSyncState) -> DocsSyncState:
+    """Persist successful extraction payloads into graph tables and sync metrics."""
+
     started_at = perf_counter()
     run_context = state.get("sync_run_context")
     payload = state.get("extraction_payload")

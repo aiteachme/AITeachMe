@@ -33,6 +33,8 @@ def _final_report_metrics(report: KnowledgeSyncReport) -> dict[str, object]:
 
 
 def finalize_node(state: DocsSyncState) -> DocsSyncState:
+    """Expose the final sync report to the graph runner and build runtime."""
+
     report = state.get("report")
     if report is None and not state.get("error"):
         return with_node_error(state, "finalize", "docs_sync_report_missing")
