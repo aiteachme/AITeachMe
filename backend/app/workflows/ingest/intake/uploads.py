@@ -16,7 +16,13 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, RawFile, TaskStatus
-from app.repositories.files_repo import create_raw_file, delete_raw_file, link_raw_files_to_subject, update_raw_file
+from app.repositories.files_repo import (
+    create_raw_file,
+    delete_raw_file,
+    get_reusable_raw_file_by_content_hash,
+    link_raw_files_to_subject,
+    update_raw_file,
+)
 from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import build_temp_dir
 from app.utils.presenters import require_id
@@ -46,6 +52,28 @@ def _build_upload_data(*, subject: str | None, raw_files: list[RawFile], started
         uploaded_items=[build_file_record(item) for item in raw_files],
         started_parse_count=started_parse_count,
     )
+
+
+def _unique_file_ids(raw_files: list[RawFile], *, status: str | None = None) -> list[int]:
+    seen: set[int] = set()
+    file_ids: list[int] = []
+    for raw_file in raw_files:
+        if status is not None and raw_file.status != status:
+            continue
+        raw_file_id = require_id(raw_file.id, "RawFile.id")
+        if raw_file_id in seen:
+            continue
+        seen.add(raw_file_id)
+        file_ids.append(raw_file_id)
+    return file_ids
+
+
+def _replace_refreshed_raw_files(raw_files: list[RawFile], refreshed: list[RawFile]) -> list[RawFile]:
+    refreshed_by_id = {require_id(item.id, "RawFile.id"): item for item in refreshed}
+    return [
+        refreshed_by_id.get(require_id(item.id, "RawFile.id"), item)
+        for item in raw_files
+    ]
 
 
 async def _save_uploaded_raw_files(
@@ -93,8 +121,18 @@ async def save_uploaded_file(
 
     filename = file.filename or "unknown"
     extension = _validate_upload_extension(filename)
-    file_uid = _generate_file_uid()
     content_hash = hashlib.sha256(content).hexdigest()
+    reusable_raw_file = get_reusable_raw_file_by_content_hash(
+        session,
+        user_id=owner_user_id,
+        content_hash=content_hash,
+        file_size_bytes=len(content),
+        filetype=extension.lstrip("."),
+    )
+    if reusable_raw_file is not None:
+        return reusable_raw_file
+
+    file_uid = _generate_file_uid()
     temp_dir = build_temp_dir(normalized_subject or "library", user_id=owner_user_id)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
@@ -194,16 +232,19 @@ async def save_uploaded_files_and_request_parse(
             subject=normalized_subject,
             raw_files=saved,
         )
-    file_ids = [require_id(item.id, "RawFile.id") for item in saved]
-    refreshed_items = _start_parse_for_files(
-        session,
-        owner_user_id=owner_user_id,
-        subject=normalized_subject,
-        file_ids=file_ids,
-    )
+    file_ids = _unique_file_ids(saved, status=TaskStatus.PENDING.value)
+    refreshed_items = []
+    if file_ids:
+        refreshed_items = _start_parse_for_files(
+            session,
+            owner_user_id=owner_user_id,
+            subject=normalized_subject,
+            file_ids=file_ids,
+        )
+    response_items = _replace_refreshed_raw_files(saved, refreshed_items)
     return _build_upload_data(
         subject=normalized_subject,
-        raw_files=refreshed_items,
+        raw_files=response_items,
         started_parse_count=len(file_ids),
     ), file_ids
 
