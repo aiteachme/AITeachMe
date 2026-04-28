@@ -50,6 +50,17 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     sample_file_uids: list[str] = Field(default_factory=list)
 
 
+class ExamPrewarmStatusResponse(BaseModel):
+    status: Literal["ready", "preparing", "missing", "failed", "stale"]
+    exam_mode: str
+    num_questions: int
+    prepared_at: datetime | None = None
+    expires_at: datetime | None = None
+    updated_at: datetime | None = None
+    background_requested: bool = False
+    error_message: str | None = None
+
+
 class ExamGradeResponse(RuntimeStatusResponse):
     exam_paper_id: int
     score: float | None = None
