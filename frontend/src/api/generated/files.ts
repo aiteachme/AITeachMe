@@ -85,7 +85,7 @@ export type uploadUserFilesApiV1FilesUploadPostResponse = (uploadUserFilesApiV1F
 export const getUploadUserFilesApiV1FilesUploadPostUrl = () => {
 
 
-  
+
 
   return `/api/v1/files/upload`
 }
@@ -98,6 +98,9 @@ if(bodyUploadUserFilesApiV1FilesUploadPost.parser_provider !== undefined && body
  }
 if(bodyUploadUserFilesApiV1FilesUploadPost.mineru_api_token !== undefined && bodyUploadUserFilesApiV1FilesUploadPost.mineru_api_token !== null) {
  formData.append(`mineru_api_token`, bodyUploadUserFilesApiV1FilesUploadPost.mineru_api_token);
+ }
+if(bodyUploadUserFilesApiV1FilesUploadPost.paddle_ocr_api_token !== undefined && bodyUploadUserFilesApiV1FilesUploadPost.paddle_ocr_api_token !== null) {
+ formData.append(`paddle_ocr_api_token`, bodyUploadUserFilesApiV1FilesUploadPost.paddle_ocr_api_token);
  }
 if(bodyUploadUserFilesApiV1FilesUploadPost.mineru_model_version !== undefined && bodyUploadUserFilesApiV1FilesUploadPost.mineru_model_version !== null) {
  formData.append(`mineru_model_version`, bodyUploadUserFilesApiV1FilesUploadPost.mineru_model_version);
@@ -113,15 +116,15 @@ if(bodyUploadUserFilesApiV1FilesUploadPost.mineru_is_ocr !== undefined && bodyUp
  }
 
   return orvalApiClient<uploadUserFilesApiV1FilesUploadPostResponse>(getUploadUserFilesApiV1FilesUploadPostUrl(),
-  {      
+  {
     ...options,
     method: 'POST'
     ,
-    body: 
+    body:
       formData,
   }
 );}
-  
+
 
 
 
@@ -136,7 +139,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadUserFilesApiV1FilesUploadPost>>, {data: BodyUploadUserFilesApiV1FilesUploadPost}> = (props) => {
@@ -147,7 +150,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -205,7 +208,7 @@ export const getListUserFilesApiApiV1FilesGetUrl = (params?: ListUserFilesApiApi
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    
+
     if (value !== undefined) {
       normalizedParams.append(key, value === null ? 'null' : value.toString())
     }
@@ -217,16 +220,16 @@ export const getListUserFilesApiApiV1FilesGetUrl = (params?: ListUserFilesApiApi
 }
 
 export const listUserFilesApiApiV1FilesGet = async (params?: ListUserFilesApiApiV1FilesGetParams, options?: RequestInit): Promise<listUserFilesApiApiV1FilesGetResponse> => {
-  
+
   return orvalApiClient<listUserFilesApiApiV1FilesGetResponse>(getListUserFilesApiApiV1FilesGetUrl(params),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -237,7 +240,7 @@ export const getListUserFilesApiApiV1FilesGetQueryKey = (params?: ListUserFilesA
     ] as const;
     }
 
-    
+
 export const getListUserFilesApiApiV1FilesGetQueryOptions = <TData = Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>, TError = ErrorResponse | HTTPValidationError>(params?: ListUserFilesApiApiV1FilesGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
@@ -245,13 +248,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListUserFilesApiApiV1FilesGetQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>> = ({ signal }) => listUserFilesApiApiV1FilesGet(params, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -290,7 +293,7 @@ export function useListUserFilesApiApiV1FilesGet<TData = Awaited<ReturnType<type
 
 export function useListUserFilesApiApiV1FilesGet<TData = Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>, TError = ErrorResponse | HTTPValidationError>(
  params?: ListUserFilesApiApiV1FilesGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listUserFilesApiApiV1FilesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListUserFilesApiApiV1FilesGetQueryOptions(params,options)
@@ -348,15 +351,15 @@ export type deleteUserFilesApiApiV1FilesDeletePostResponse = (deleteUserFilesApi
 export const getDeleteUserFilesApiApiV1FilesDeletePostUrl = () => {
 
 
-  
+
 
   return `/api/v1/files/delete`
 }
 
 export const deleteUserFilesApiApiV1FilesDeletePost = async (fileDeleteRequest: FileDeleteRequest, options?: RequestInit): Promise<deleteUserFilesApiApiV1FilesDeletePostResponse> => {
-  
+
   return orvalApiClient<deleteUserFilesApiApiV1FilesDeletePostResponse>(getDeleteUserFilesApiApiV1FilesDeletePostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -364,7 +367,7 @@ export const deleteUserFilesApiApiV1FilesDeletePost = async (fileDeleteRequest: 
       fileDeleteRequest,)
   }
 );}
-  
+
 
 
 
@@ -379,7 +382,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteUserFilesApiApiV1FilesDeletePost>>, {data: FileDeleteRequest}> = (props) => {
@@ -390,7 +393,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -448,23 +451,23 @@ export const getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetUrl = (file
     assetPath: string,) => {
 
 
-  
+
 
   return `/api/v1/files/assets/${fileUid}/${assetPath}`
 }
 
 export const serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet = async (fileUid: string,
     assetPath: string, options?: RequestInit): Promise<serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGetResponse> => {
-  
+
   return orvalApiClient<serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGetResponse>(getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetUrl(fileUid,assetPath),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -476,7 +479,7 @@ export const getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetQueryKey = 
     ] as const;
     }
 
-    
+
 export const getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetQueryOptions = <TData = Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(fileUid: string,
     assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -485,13 +488,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetQueryKey(fileUid,assetPath);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>> = ({ signal }) => serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet(fileUid,assetPath, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(fileUid && assetPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -534,7 +537,7 @@ export function useServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGet<TData =
 export function useServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGet<TData = Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
  fileUid: string,
     assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileUidAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getServeUserFileAssetApiV1FilesAssetsFileUidAssetPathGetQueryOptions(fileUid,assetPath,options)
@@ -592,7 +595,7 @@ export type uploadFilesApiV1SubjectsSubjectFilesUploadPostResponse = (uploadFile
 export const getUploadFilesApiV1SubjectsSubjectFilesUploadPostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/files/upload`
 }
@@ -624,15 +627,15 @@ if(bodyUploadFilesApiV1SubjectsSubjectFilesUploadPost.mineru_is_ocr !== undefine
  }
 
   return orvalApiClient<uploadFilesApiV1SubjectsSubjectFilesUploadPostResponse>(getUploadFilesApiV1SubjectsSubjectFilesUploadPostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST'
     ,
-    body: 
+    body:
       formData,
   }
 );}
-  
+
 
 
 
@@ -647,7 +650,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadFilesApiV1SubjectsSubjectFilesUploadPost>>, {subject: string;data: BodyUploadFilesApiV1SubjectsSubjectFilesUploadPost}> = (props) => {
@@ -658,7 +661,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -720,22 +723,22 @@ export type listFilesApiApiV1SubjectsSubjectFilesGetResponse = (listFilesApiApiV
 export const getListFilesApiApiV1SubjectsSubjectFilesGetUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/files`
 }
 
 export const listFilesApiApiV1SubjectsSubjectFilesGet = async (subject: string, options?: RequestInit): Promise<listFilesApiApiV1SubjectsSubjectFilesGetResponse> => {
-  
+
   return orvalApiClient<listFilesApiApiV1SubjectsSubjectFilesGetResponse>(getListFilesApiApiV1SubjectsSubjectFilesGetUrl(subject),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -746,7 +749,7 @@ export const getListFilesApiApiV1SubjectsSubjectFilesGetQueryKey = (subject: str
     ] as const;
     }
 
-    
+
 export const getListFilesApiApiV1SubjectsSubjectFilesGetQueryOptions = <TData = Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
@@ -754,13 +757,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListFilesApiApiV1SubjectsSubjectFilesGetQueryKey(subject);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>> = ({ signal }) => listFilesApiApiV1SubjectsSubjectFilesGet(subject, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -799,7 +802,7 @@ export function useListFilesApiApiV1SubjectsSubjectFilesGet<TData = Awaited<Retu
 
 export function useListFilesApiApiV1SubjectsSubjectFilesGet<TData = Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listFilesApiApiV1SubjectsSubjectFilesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListFilesApiApiV1SubjectsSubjectFilesGetQueryOptions(subject,options)
@@ -852,16 +855,16 @@ export type linkFilesApiApiV1SubjectsSubjectFilesLinkPostResponse = (linkFilesAp
 export const getLinkFilesApiApiV1SubjectsSubjectFilesLinkPostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/files/link`
 }
 
 export const linkFilesApiApiV1SubjectsSubjectFilesLinkPost = async (subject: string,
     fileLinkRequest: FileLinkRequest, options?: RequestInit): Promise<linkFilesApiApiV1SubjectsSubjectFilesLinkPostResponse> => {
-  
+
   return orvalApiClient<linkFilesApiApiV1SubjectsSubjectFilesLinkPostResponse>(getLinkFilesApiApiV1SubjectsSubjectFilesLinkPostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -869,7 +872,7 @@ export const linkFilesApiApiV1SubjectsSubjectFilesLinkPost = async (subject: str
       fileLinkRequest,)
   }
 );}
-  
+
 
 
 
@@ -884,7 +887,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof linkFilesApiApiV1SubjectsSubjectFilesLinkPost>>, {subject: string;data: FileLinkRequest}> = (props) => {
@@ -895,7 +898,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -962,16 +965,16 @@ export type deleteFilesApiApiV1SubjectsSubjectFilesDeletePostResponse = (deleteF
 export const getDeleteFilesApiApiV1SubjectsSubjectFilesDeletePostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/files/delete`
 }
 
 export const deleteFilesApiApiV1SubjectsSubjectFilesDeletePost = async (subject: string,
     fileDeleteRequest: FileDeleteRequest, options?: RequestInit): Promise<deleteFilesApiApiV1SubjectsSubjectFilesDeletePostResponse> => {
-  
+
   return orvalApiClient<deleteFilesApiApiV1SubjectsSubjectFilesDeletePostResponse>(getDeleteFilesApiApiV1SubjectsSubjectFilesDeletePostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -979,7 +982,7 @@ export const deleteFilesApiApiV1SubjectsSubjectFilesDeletePost = async (subject:
       fileDeleteRequest,)
   }
 );}
-  
+
 
 
 
@@ -994,7 +997,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteFilesApiApiV1SubjectsSubjectFilesDeletePost>>, {subject: string;data: FileDeleteRequest}> = (props) => {
@@ -1005,7 +1008,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1067,23 +1070,23 @@ export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetUrl = (
     assetPath: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/files/assets/${assetPath}`
 }
 
 export const serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet = async (subject: string,
     assetPath: string, options?: RequestInit): Promise<serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse> => {
-  
+
   return orvalApiClient<serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetResponse>(getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetUrl(subject,assetPath),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -1095,7 +1098,7 @@ export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryKe
     ] as const;
     }
 
-    
+
 export const getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryOptions = <TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -1104,13 +1107,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryKey(subject,assetPath);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>> = ({ signal }) => serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet(subject,assetPath, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject && assetPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1153,7 +1156,7 @@ export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TDa
 export function useServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet<TData = Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getServeFileAssetApiV1SubjectsSubjectFilesAssetsAssetPathGetQueryOptions(subject,assetPath,options)

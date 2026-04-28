@@ -17,6 +17,26 @@ OUTPUT_PATH = PROJECT_ROOT / "frontend" / "openapi.json"
 FRONTEND_GENERATED_DIR = PROJECT_ROOT / "frontend" / "src" / "api" / "generated"
 
 
+def _normalize_generated_typescript(root: Path) -> int:
+    """Normalize generated TypeScript files to keep diffs and checks stable."""
+
+    if not root.exists():
+        return 0
+
+    changed_count = 0
+    for path in root.rglob("*.ts"):
+        original = path.read_text(encoding="utf-8")
+        has_final_newline = original.endswith(("\n", "\r"))
+        cleaned = "\n".join(line.rstrip(" \t") for line in original.splitlines())
+        if has_final_newline:
+            cleaned += "\n"
+        if cleaned == original:
+            continue
+        path.write_text(cleaned, encoding="utf-8", newline="\n")
+        changed_count += 1
+    return changed_count
+
+
 def export_openapi_schema(app: object) -> bool:
     """Export the OpenAPI schema from an imported FastAPI app."""
 
@@ -26,6 +46,7 @@ def export_openapi_schema(app: object) -> bool:
         OUTPUT_PATH.write_text(
             json.dumps(schema, indent=2, ensure_ascii=False),
             encoding="utf-8",
+            newline="\n",
         )
         print(f"openapi.json exported to {OUTPUT_PATH}")
 
@@ -34,7 +55,10 @@ def export_openapi_schema(app: object) -> bool:
             shutil.rmtree(FRONTEND_GENERATED_DIR)
             print(f"Removed stale generated client: {FRONTEND_GENERATED_DIR}")
         print("Running `npx orval` to sync frontend client...")
-        subprocess.run("npx orval", shell=True, cwd=str(frontend_dir), check=False)
+        subprocess.run("npx orval", shell=True, cwd=str(frontend_dir), check=True)
+        changed_count = _normalize_generated_typescript(FRONTEND_GENERATED_DIR)
+        if changed_count:
+            print(f"Normalized generated TypeScript whitespace: {changed_count} files")
         return True
     except Exception as exc:
         print(f"Export OpenAPI failed: {exc}")

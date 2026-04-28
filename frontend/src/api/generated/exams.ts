@@ -29,6 +29,7 @@ import type {
   ApiResponseExamGradeResponse,
   ApiResponseExamPaperDeleteResponse,
   ApiResponseExamPaperDetailResponse,
+  ApiResponseExamPrewarmStatusResponse,
   ApiResponseExamStudyGuideResponse,
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
@@ -36,6 +37,7 @@ import type {
   ErrorResponse,
   ExamGenerateRequest,
   ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams,
+  ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams,
   ExamSubmitRequest,
   HTTPValidationError
 } from './model';
@@ -93,16 +95,16 @@ export type generateExamApiV1SubjectsSubjectExamsGeneratePostResponse = (generat
 export const getGenerateExamApiV1SubjectsSubjectExamsGeneratePostUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/generate`
 }
 
 export const generateExamApiV1SubjectsSubjectExamsGeneratePost = async (subject: string,
     examGenerateRequest: ExamGenerateRequest, options?: RequestInit): Promise<generateExamApiV1SubjectsSubjectExamsGeneratePostResponse> => {
-  
+
   return orvalApiClient<generateExamApiV1SubjectsSubjectExamsGeneratePostResponse>(getGenerateExamApiV1SubjectsSubjectExamsGeneratePostUrl(subject),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -110,7 +112,7 @@ export const generateExamApiV1SubjectsSubjectExamsGeneratePost = async (subject:
       examGenerateRequest,)
   }
 );}
-  
+
 
 
 
@@ -125,7 +127,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateExamApiV1SubjectsSubjectExamsGeneratePost>>, {subject: string;data: ExamGenerateRequest}> = (props) => {
@@ -136,7 +138,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -159,6 +161,153 @@ export const useGenerateExamApiV1SubjectsSubjectExamsGeneratePost = <TError = Er
       return useMutation(getGenerateExamApiV1SubjectsSubjectExamsGeneratePostMutationOptions(options), queryClient);
     }
     /**
+ * @summary Get background-prepared exam status for the current generation options
+ */
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse200 = {
+  data: ApiResponseExamPrewarmStatusResponse
+  status: 200
+}
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponseSuccess = (examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse200) & {
+  headers: Headers;
+};
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponseError = (examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse400 | examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse404 | examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse422 | examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse500) & {
+  headers: Headers;
+};
+
+export type examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse = (examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponseSuccess | examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponseError)
+
+export const getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetUrl = (subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/subjects/${subject}/exams/prewarm-status?${stringifiedParams}` : `/api/v1/subjects/${subject}/exams/prewarm-status`
+}
+
+export const examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet = async (subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options?: RequestInit): Promise<examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse> => {
+
+  return orvalApiClient<examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetResponse>(getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetUrl(subject,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryKey = (subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams,) => {
+    return [
+    `/api/v1/subjects/${subject}/exams/prewarm-status`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryOptions = <TData = Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryKey(subject,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>> = ({ signal }) => examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet(subject,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryResult = NonNullable<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>>
+export type ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet<TData = Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params: undefined |  ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>,
+          TError,
+          Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet<TData = Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>,
+          TError,
+          Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet<TData = Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get background-prepared exam status for the current generation options
+ */
+
+export function useExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet<TData = Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError = ErrorResponse | HTTPValidationError>(
+ subject: string,
+    params?: ExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamPrewarmStatusApiV1SubjectsSubjectExamsPrewarmStatusGetQueryOptions(subject,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
  * @summary List exam history
  */
 export type examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse200 = {
@@ -200,7 +349,7 @@ export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetUrl = (subject: st
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    
+
     if (value !== undefined) {
       normalizedParams.append(key, value === null ? 'null' : value.toString())
     }
@@ -213,16 +362,16 @@ export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetUrl = (subject: st
 
 export const examHistoryApiV1SubjectsSubjectExamsHistoryGet = async (subject: string,
     params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: RequestInit): Promise<examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse> => {
-  
+
   return orvalApiClient<examHistoryApiV1SubjectsSubjectExamsHistoryGetResponse>(getExamHistoryApiV1SubjectsSubjectExamsHistoryGetUrl(subject,params),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -234,7 +383,7 @@ export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey = (subjec
     ] as const;
     }
 
-    
+
 export const getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryOptions = <TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -243,13 +392,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryKey(subject,params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>> = ({ signal }) => examHistoryApiV1SubjectsSubjectExamsHistoryGet(subject,params, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -292,7 +441,7 @@ export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaite
 export function useExamHistoryApiV1SubjectsSubjectExamsHistoryGet<TData = Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     params?: ExamHistoryApiV1SubjectsSubjectExamsHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1SubjectsSubjectExamsHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamHistoryApiV1SubjectsSubjectExamsHistoryGetQueryOptions(subject,params,options)
@@ -345,22 +494,22 @@ export type questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetRespon
 export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/question-templates`
 }
 
 export const questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet = async (subject: string, options?: RequestInit): Promise<questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse> => {
-  
+
   return orvalApiClient<questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetResponse>(getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetUrl(subject),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -371,7 +520,7 @@ export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQu
     ] as const;
     }
 
-    
+
 export const getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryOptions = <TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
@@ -379,13 +528,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryKey(subject);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>> = ({ signal }) => questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet(subject, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -424,7 +573,7 @@ export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGe
 
 export function useQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet<TData = Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getQuestionTemplatesApiV1SubjectsSubjectExamsQuestionTemplatesGetQueryOptions(subject,options)
@@ -477,22 +626,22 @@ export type questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse = (qu
 export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetUrl = (subject: string,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/question-types`
 }
 
 export const questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet = async (subject: string, options?: RequestInit): Promise<questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse> => {
-  
+
   return orvalApiClient<questionTypesApiV1SubjectsSubjectExamsQuestionTypesGetResponse>(getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetUrl(subject),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -503,7 +652,7 @@ export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryKey =
     ] as const;
     }
 
-    
+
 export const getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryOptions = <TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
@@ -511,13 +660,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryKey(subject);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>> = ({ signal }) => questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet(subject, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -556,7 +705,7 @@ export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData 
 
 export function useQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGet<TData = Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1SubjectsSubjectExamsQuestionTypesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getQuestionTypesApiV1SubjectsSubjectExamsQuestionTypesGetQueryOptions(subject,options)
@@ -610,23 +759,23 @@ export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGe
     examPaperId: number,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}/stream`
 }
 
 export const examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet = async (subject: string,
     examPaperId: number, options?: RequestInit): Promise<examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse> => {
-  
+
   return orvalApiClient<examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetResponse>(getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetUrl(subject,examPaperId),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -638,7 +787,7 @@ export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGe
     ] as const;
     }
 
-    
+
 export const getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryOptions = <TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -647,13 +796,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryKey(subject,examPaperId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>> = ({ signal }) => examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet(subject,examPaperId, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -696,7 +845,7 @@ export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStrea
 export function useExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet<TData = Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamGenerationStreamApiV1SubjectsSubjectExamsExamPaperIdStreamGetQueryOptions(subject,examPaperId,options)
@@ -750,23 +899,23 @@ export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetUrl = (subject:
     examPaperId: number,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}`
 }
 
 export const examDetailApiV1SubjectsSubjectExamsExamPaperIdGet = async (subject: string,
     examPaperId: number, options?: RequestInit): Promise<examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse> => {
-  
+
   return orvalApiClient<examDetailApiV1SubjectsSubjectExamsExamPaperIdGetResponse>(getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetUrl(subject,examPaperId),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -778,7 +927,7 @@ export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey = (sub
     ] as const;
     }
 
-    
+
 export const getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryOptions = <TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -787,13 +936,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryKey(subject,examPaperId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>> = ({ signal }) => examDetailApiV1SubjectsSubjectExamsExamPaperIdGet(subject,examPaperId, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -836,7 +985,7 @@ export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awa
 export function useExamDetailApiV1SubjectsSubjectExamsExamPaperIdGet<TData = Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1SubjectsSubjectExamsExamPaperIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamDetailApiV1SubjectsSubjectExamsExamPaperIdGetQueryOptions(subject,examPaperId,options)
@@ -890,23 +1039,23 @@ export const getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteUrl = (
     examPaperId: number,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}`
 }
 
 export const deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete = async (subject: string,
     examPaperId: number, options?: RequestInit): Promise<deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse> => {
-  
+
   return orvalApiClient<deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteResponse>(getDeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteUrl(subject,examPaperId),
-  {      
+  {
     ...options,
     method: 'DELETE'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -921,7 +1070,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>, {subject: string;examPaperId: number}> = (props) => {
@@ -932,13 +1081,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDelete>>>
-    
+
     export type DeleteExamPaperApiV1SubjectsSubjectExamsExamPaperIdDeleteMutationError = ErrorResponse | HTTPValidationError
 
     /**
@@ -1000,23 +1149,23 @@ export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetU
     examPaperId: number,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}/study-guide`
 }
 
 export const examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet = async (subject: string,
     examPaperId: number, options?: RequestInit): Promise<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse> => {
-  
+
   return orvalApiClient<examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetResponse>(getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetUrl(subject,examPaperId),
-  {      
+  {
     ...options,
     method: 'GET'
-    
-    
+
+
   }
 );}
-  
+
 
 
 
@@ -1028,7 +1177,7 @@ export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQ
     ] as const;
     }
 
-    
+
 export const getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions = <TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
@@ -1037,13 +1186,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryKey(subject,examPaperId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>> = ({ signal }) => examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet(subject,examPaperId, { signal, ...requestOptions });
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(subject && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1086,7 +1235,7 @@ export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideG
 export function useExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(
  subject: string,
     examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getExamStudyGuideApiV1SubjectsSubjectExamsExamPaperIdStudyGuideGetQueryOptions(subject,examPaperId,options)
@@ -1145,7 +1294,7 @@ export const getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostUrl = (s
     examPaperId: number,) => {
 
 
-  
+
 
   return `/api/v1/subjects/${subject}/exams/${examPaperId}/submit`
 }
@@ -1153,9 +1302,9 @@ export const getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostUrl = (s
 export const submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost = async (subject: string,
     examPaperId: number,
     examSubmitRequest: ExamSubmitRequest, options?: RequestInit): Promise<submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse> => {
-  
+
   return orvalApiClient<submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostResponse>(getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostUrl(subject,examPaperId),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -1163,7 +1312,7 @@ export const submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost = async (s
       examSubmitRequest,)
   }
 );}
-  
+
 
 
 
@@ -1178,7 +1327,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost>>, {subject: string;examPaperId: number;data: ExamSubmitRequest}> = (props) => {
@@ -1189,7 +1338,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1211,4 +1360,3 @@ export const useSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPost = <TErr
       > => {
       return useMutation(getSubmitExamApiV1SubjectsSubjectExamsExamPaperIdSubmitPostMutationOptions(options), queryClient);
     }
-    

@@ -5,10 +5,10 @@ from __future__ import annotations
 import mimetypes
 from typing import Iterable
 
-from sqlalchemy import delete as sa_delete, or_
+from sqlalchemy import case, delete as sa_delete, or_
 from sqlmodel import Session, func, select
 
-from app.models import RawFile, RawFileAsset, SubjectFileLink
+from app.models import RawFile, RawFileAsset, SubjectFileLink, TaskStatus
 from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
 from app.utils.time import utcnow
 
@@ -28,6 +28,37 @@ def get_raw_file_by_id(session: Session, raw_file_id: int) -> RawFile | None:
 
 def get_raw_file_by_uid_for_user(session: Session, *, user_id: str, file_uid: str) -> RawFile | None:
     stmt = select(RawFile).where(RawFile.user_id == user_id, RawFile.uid == file_uid)
+    return session.exec(stmt).first()
+
+
+def get_reusable_raw_file_by_content_hash(
+    session: Session,
+    *,
+    user_id: str,
+    content_hash: str,
+    file_size_bytes: int,
+    filetype: str,
+) -> RawFile | None:
+    """Return an existing user-owned file that can satisfy the same upload."""
+
+    status_rank = case(
+        (RawFile.status == TaskStatus.COMPLETED.value, 0),
+        (RawFile.status == TaskStatus.PROCESSING.value, 1),
+        (RawFile.status == TaskStatus.PENDING.value, 2),
+        else_=3,
+    )
+    stmt = (
+        select(RawFile)
+        .where(
+            RawFile.user_id == user_id,
+            RawFile.content_hash == content_hash,
+            RawFile.file_size_bytes == file_size_bytes,
+            RawFile.filetype == filetype.lstrip("."),
+            RawFile.status != TaskStatus.FAILED.value,
+        )
+        .order_by(status_rank, RawFile.created_at.asc())  # type: ignore[union-attr]
+        .limit(1)
+    )
     return session.exec(stmt).first()
 
 
@@ -185,7 +216,7 @@ def link_raw_files_to_subject(
     subject: str,
     raw_files: list[RawFile],
 ) -> list[RawFile]:
-    raw_file_ids = [int(item.id) for item in raw_files if item.id is not None]
+    raw_file_ids = list(dict.fromkeys(int(item.id) for item in raw_files if item.id is not None))
     if not raw_file_ids:
         return []
 
@@ -213,6 +244,7 @@ def link_raw_files_to_subject(
                     updated_at=now,
                 )
             )
+            existing_link_ids.add(raw_file.id)
         if not raw_file.subject:
             raw_file.subject = subject
             raw_file.updated_at = now

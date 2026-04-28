@@ -5,10 +5,9 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.0.1
  */
+import type { PaperPreviewRowGenerationStatus } from './paperPreviewRowGenerationStatus';
 import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus';
 import type { PaperPreviewRowShape } from './paperPreviewRowShape';
-
-export type PaperPreviewRowGenerationStatus = 'pending' | 'planned' | 'generated' | 'failed';
 
 export interface PaperPreviewRow {
   order: number;

@@ -2133,6 +2133,88 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/adjust-click": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Record that the user opened planner adjustment mode",
+        "operationId": "knowledge_build_plan_adjust_click_api_v1_subjects__subject__knowledge_build_plans__session_id__adjust_click_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuildPlannerAdjustClickResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/knowledge/build/plans/{session_id}/confirm": {
       "post": {
         "tags": [
@@ -2251,6 +2333,89 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_DocGenBuildData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subjects/{subject}/knowledge/build/graph": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Rebuild the knowledge graph from the latest published knowledge docs",
+        "operationId": "knowledge_graph_build_api_v1_subjects__subject__knowledge_build_graph_post",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeGraphBuildData_"
                 }
               }
             }
@@ -4572,6 +4737,135 @@
         }
       }
     },
+    "/api/v1/subjects/{subject}/exams/prewarm-status": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Get background-prepared exam status for the current generation options",
+        "operationId": "exam_prewarm_status_api_v1_subjects__subject__exams_prewarm_status_get",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "exam_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "web_practice",
+              "title": "Exam Mode"
+            }
+          },
+          {
+            "name": "num_questions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 8,
+              "title": "Num Questions"
+            }
+          },
+          {
+            "name": "user_prompt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Prompt"
+            }
+          },
+          {
+            "name": "sample_file_uids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sample File Uids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPrewarmStatusResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject}/exams/history": {
       "get": {
         "tags": [
@@ -5671,8 +5965,8 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "413": {
+            "description": "上传文件超出大小限制。",
             "content": {
               "application/json": {
                 "schema": {
@@ -5682,11 +5976,21 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "业务校验未通过。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -5785,6 +6089,26 @@
               }
             }
           },
+          "413": {
+            "description": "上传文件超出大小限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -5811,16 +6135,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5898,6 +6212,40 @@
         },
         "type": "object",
         "title": "ApiResponse[AuthSessionData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_BuildPlannerAdjustClickResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlannerAdjustClickResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[BuildPlannerAdjustClickResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -6380,6 +6728,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ExamPrewarmStatusResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPrewarmStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamPrewarmStatusResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ExamStudyGuideResponse_": {
         "properties": {
           "code": {
@@ -6714,6 +7096,40 @@
         },
         "type": "object",
         "title": "ApiResponse[KnowledgeBuildRuntimeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeGraphBuildData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeGraphBuildData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeGraphBuildData]",
         "example": {
           "code": 0,
           "data": {},
@@ -7845,6 +8261,17 @@
             ],
             "title": "Mineru Api Token"
           },
+          "paddle_ocr_api_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paddle Ocr Api Token"
+          },
           "mineru_model_version": {
             "anyOf": [
               {
@@ -7895,6 +8322,45 @@
           "files"
         ],
         "title": "Body_upload_user_files_api_v1_files_upload_post"
+      },
+      "BuildPlannerAdjustClickResponse": {
+        "properties": {
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": true
+          },
+          "planner_session_id": {
+            "type": "string",
+            "title": "Planner Session Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "has_latest_plan": {
+            "type": "boolean",
+            "title": "Has Latest Plan",
+            "default": false
+          },
+          "latest_plan_chapter_count": {
+            "type": "integer",
+            "title": "Latest Plan Chapter Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "planner_session_id",
+          "subject"
+        ],
+        "title": "BuildPlannerAdjustClickResponse",
+        "description": "Acknowledgement for entering planner adjustment mode."
       },
       "BuildPlannerChapterPlanResponse": {
         "properties": {
@@ -10003,18 +10469,6 @@
             "title": "Exam Mode",
             "description": "Exam mode: web_practice | paper_exam (legacy values are compatible)."
           },
-          "difficulty": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Difficulty",
-            "description": "Optional difficulty override: easy | medium | hard | mixed. Omit for auto/profile-driven difficulty."
-          },
           "user_prompt": {
             "anyOf": [
               {
@@ -10025,31 +10479,7 @@
               }
             ],
             "title": "User Prompt",
-            "description": "Optional user prompt for general generation hints."
-          },
-          "style_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Style Prompt",
-            "description": "Optional prompt that describes the desired paper style."
-          },
-          "focus_prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus Prompt",
-            "description": "Optional prompt describing key focus areas."
+            "description": "Optional user requirements for exam generation."
           },
           "sample_file_uids": {
             "anyOf": [
@@ -10346,10 +10776,6 @@
             "type": "number",
             "title": "Coverage Weight"
           },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
           "mastery_score": {
             "anyOf": [
               {
@@ -10366,8 +10792,7 @@
         "required": [
           "knowledge_unit_id",
           "knowledge_unit_name",
-          "coverage_weight",
-          "role"
+          "coverage_weight"
         ],
         "title": "ExamNodeLinkResponse"
       },
@@ -10556,6 +10981,11 @@
             "type": "array",
             "title": "Knowledge Unit Links"
           },
+          "selection_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Selection Context"
+          },
           "user_answer": {
             "anyOf": [
               {
@@ -10623,6 +11053,88 @@
           "explanation"
         ],
         "title": "ExamPaperItemResponse"
+      },
+      "ExamPrewarmStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "preparing",
+              "missing",
+              "failed",
+              "stale"
+            ],
+            "title": "Status"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "num_questions": {
+            "type": "integer",
+            "title": "Num Questions"
+          },
+          "prepared_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "background_requested": {
+            "type": "boolean",
+            "title": "Background Requested",
+            "default": false
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "exam_mode",
+          "num_questions"
+        ],
+        "title": "ExamPrewarmStatusResponse"
       },
       "ExamStudyGuideFocusUnit": {
         "properties": {
@@ -10930,6 +11442,8 @@
         "properties": {
           "content": {
             "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
             "title": "Content",
             "description": "反馈内容。"
           },
@@ -10938,6 +11452,7 @@
               "type": "string"
             },
             "type": "array",
+            "maxItems": 3,
             "title": "Images",
             "description": "可选的 Base64 截图列表。"
           }
@@ -11840,12 +12355,6 @@
             "description": "How many docs-sync sections attempted structured LLM extraction.",
             "default": 0
           },
-          "doc_sync_fallback_section_count": {
-            "type": "integer",
-            "title": "Doc Sync Fallback Section Count",
-            "description": "How many docs-sync sections fell back after extraction.",
-            "default": 0
-          },
           "discovered_node_count": {
             "type": "integer",
             "title": "Discovered Node Count",
@@ -12132,6 +12641,72 @@
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
       },
+      "KnowledgeGraphBuildData": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "Subject slug."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "accepted / running",
+            "default": "accepted"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "Graph build request timestamp."
+          },
+          "build_group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Group Id",
+            "description": "Runtime build group id."
+          },
+          "build_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Session Id",
+            "description": "Graph sync session id."
+          },
+          "source_file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Source File Ids",
+            "description": "Persisted source raw file ids from the docs manifest."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User-facing response message.",
+            "default": "已开始重建知识图谱。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "requested_at"
+        ],
+        "title": "KnowledgeGraphBuildData",
+        "description": "Knowledge graph rebuild response data."
+      },
       "KnowledgeGraphBuildMetricsResponse": {
         "properties": {
           "processed_chunks": {
@@ -12143,7 +12718,7 @@
           "doc_sync_section_count": {
             "type": "integer",
             "title": "Doc Sync Section Count",
-            "description": "Knowledge-doc sections analyzed by kg_docs_sync.",
+            "description": "Knowledge-doc sections analyzed by kg_doc_sync.",
             "default": 0
           },
           "doc_sync_unit_changes": {
@@ -13588,6 +14163,17 @@
             ],
             "title": "Result Status",
             "default": "ungraded"
+          },
+          "generation_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "planned",
+              "generated",
+              "failed"
+            ],
+            "title": "Generation Status",
+            "default": "generated"
           }
         },
         "type": "object",
@@ -14076,6 +14662,18 @@
             ],
             "title": "User Value",
             "description": "当前用户覆盖值。"
+          },
+          "reveal_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reveal Value",
+            "description": "本地模式下可按需查看的敏感配置明文。"
           },
           "display_value": {
             "anyOf": [

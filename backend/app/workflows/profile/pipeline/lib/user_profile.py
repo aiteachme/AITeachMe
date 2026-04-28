@@ -6,7 +6,6 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta
 
-from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.models import (
@@ -18,28 +17,11 @@ from app.models import (
     UserKnowledgeState,
     exam_mode_value,
 )
+from app.schemas.profile import SubjectProfileSummary, UserProfileSummary
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
-from app.workflows.profile.pipeline.lib.subject_profile import SubjectProfileSummary
 
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80
-
-
-class UserProfileSummary(BaseModel):
-    user_id: str
-    generated_at: datetime
-    active_subject_count: int = 0
-    active_subject_ids: list[str] = Field(default_factory=list)
-    recent_subject_ids: list[str] = Field(default_factory=list)
-    preferred_question_types: list[str] = Field(default_factory=list)
-    preferred_exam_modes: list[str] = Field(default_factory=list)
-    dominant_exam_mode: str = ExamMode.WEB_PRACTICE.value
-    explanation_style: str = "balanced"
-    pace_preference: str = "steady"
-    consistency_level: str = "building"
-    pending_review_count: int = 0
-    due_review_count: int = 0
-    notes: list[str] = Field(default_factory=list)
 
 
 def _parse_json_object(raw: str | None) -> dict[str, object]:

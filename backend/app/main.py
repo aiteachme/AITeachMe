@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.database import init_db
-from app.shared.infra.env_support import get_env, get_env_list
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_list
 from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
@@ -117,28 +117,28 @@ def _log_infra_diagnostics(settings) -> None:
             lines.append(
                 f"    DogeCloud Space Name   : {resolve_dogecloud_space_name() or '!! NOT_SET !!'}"
             )
-        # ── S3 冒烟测试（写→读→删）── 后续可删除此段 ──
-        try:
-            from app.shared.infra.storage import get_artifact_store, run_store_sync
-            store = get_artifact_store()
-            test_key = "__healthcheck/startup_test.txt"
-            test_data = b"aiteachme-s3-smoke-test-ok"
-            # 1. 写入
-            run_store_sync(store.write_bytes, test_key, test_data)
-            lines.append(f"    S3 Write               : OK")
-            # 2. 读取并验证
-            read_back = run_store_sync(store.read_bytes, test_key)
-            if read_back == test_data:
-                lines.append(f"    S3 Read & Verify       : OK ({len(read_back)} bytes)")
-            else:
-                lines.append(f"    S3 Read & Verify       : MISMATCH!")
-            # 3. 删除
-            run_store_sync(store.delete, test_key)
-            exists_after = run_store_sync(store.exists, test_key)
-            lines.append(f"    S3 Delete              : {'OK' if not exists_after else 'FAILED - still exists'}")
-            lines.append(f"    S3 Smoke Test          : ALL PASSED")
-        except Exception as exc:
-            lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
+        if get_env_bool("S3_STARTUP_SMOKE_TEST", False):
+            try:
+                from app.shared.infra.storage import get_artifact_store, run_store_sync
+
+                store = get_artifact_store()
+                test_key = "__healthcheck/startup_test.txt"
+                test_data = b"aiteachme-s3-smoke-test-ok"
+                run_store_sync(store.write_bytes, test_key, test_data)
+                lines.append("    S3 Write               : OK")
+                read_back = run_store_sync(store.read_bytes, test_key)
+                if read_back == test_data:
+                    lines.append(f"    S3 Read & Verify       : OK ({len(read_back)} bytes)")
+                else:
+                    lines.append("    S3 Read & Verify       : MISMATCH!")
+                run_store_sync(store.delete, test_key)
+                exists_after = run_store_sync(store.exists, test_key)
+                lines.append(f"    S3 Delete              : {'OK' if not exists_after else 'FAILED - still exists'}")
+                lines.append("    S3 Smoke Test          : ALL PASSED")
+            except Exception as exc:
+                lines.append(f"    S3 Smoke Test          : FAILED - {exc}")
+        else:
+            lines.append("    S3 Smoke Test          : skipped (set S3_STARTUP_SMOKE_TEST=true)")
     else:
         lines.append(f"    Data Dir               : {get_runtime_data_dir()}")
 
