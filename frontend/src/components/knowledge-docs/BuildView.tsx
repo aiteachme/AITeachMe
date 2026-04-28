@@ -338,7 +338,7 @@ export function BuildView({
                   ) : null}
                   {(sseConnected || isBuildActive) ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "animate-pulse bg-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
                       {sseConnected ? "实时更新" : "等待实时更新"}
                     </span>
                   ) : null}
@@ -450,10 +450,7 @@ export function BuildView({
                   >
                     <div className="mt-1 relative flex items-center justify-center shrink-0 w-3 h-3">
                       {isStreaming ? (
-                        <>
-                          <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", isSelected ? "bg-blue-300" : "bg-blue-400")} />
-                          <span className={cn("relative inline-flex rounded-full h-1.5 w-1.5", isSelected ? "bg-blue-300" : "bg-blue-500")} />
-                        </>
+                        <span className={cn("build-live-dot h-1.5 w-1.5", isSelected ? "text-blue-300" : "text-blue-500")} />
                       ) : isDone ? (
                         <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-emerald-300" : "bg-emerald-400")} />
                       ) : (
@@ -542,8 +539,7 @@ export function BuildView({
                     {(isStreaming || sseConnected) && (
                       <div className="shrink-0 flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-blue-500 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 dark:bg-blue-400" />
+                          <span className="build-live-dot h-2 w-2 text-blue-500 dark:text-blue-400" />
                         </span>
                         <span className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">
                           {usingSseDelta ? "实时流" : "进行中"}
@@ -772,7 +768,7 @@ const LiveTextDocument = memo(function LiveTextDocument({
           <span
             className={cn(
               "h-1.5 w-1.5 rounded-full",
-              isStreaming ? "animate-pulse bg-blue-500" : "bg-emerald-500",
+              isStreaming ? "build-live-dot text-blue-500" : "bg-emerald-500",
             )}
           />
           {statusText}
