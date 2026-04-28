@@ -253,7 +253,7 @@ export function ExamsPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载考试中心。
         </div>
@@ -263,7 +263,7 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -786,7 +786,7 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-full bg-[linear-gradient(180deg,#fbfcff_0%,#f4f7fb_55%,#eef3f8_100%)] dark:bg-none dark:bg-slate-900 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
@@ -858,7 +858,7 @@ export function QuestionTemplatesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题库。
         </div>
@@ -930,7 +930,7 @@ export function QuestionTypesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题型。
         </div>
@@ -1003,7 +1003,7 @@ export function ExamPaperPage() {
 
   if (!subjectId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-full bg-[#f7f8fc] px-6 py-8">
+      <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少考卷信息，暂时无法进入考试页面。
         </div>
