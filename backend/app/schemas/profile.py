@@ -6,8 +6,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.workflows.profile import SubjectProfileSummary, UserProfileSummary
-
 
 class MasteryStateResponse(BaseModel):
     id: int
@@ -24,6 +22,41 @@ class MasteryStateResponse(BaseModel):
     last_attempt_at: datetime | None = None
     state_version: int
     updated_at: datetime
+
+
+class SubjectProfileSummary(BaseModel):
+    subject: str
+    generated_at: datetime
+    avg_mastery: float | None = None
+    weak_knowledge_unit_count: int = 0
+    pending_review_count: int = 0
+    due_review_count: int = 0
+    preferred_question_types: list[str] = Field(default_factory=list)
+    recommended_question_types: list[str] = Field(default_factory=list)
+    recommended_exam_mode: str = "web_practice"
+    recommended_question_count: int | None = None
+    difficulty_focus: str = "medium"
+    focus_knowledge_unit_ids: list[int] = Field(default_factory=list)
+    question_type_accuracy: dict[str, float] = Field(default_factory=dict)
+    difficulty_accuracy: dict[str, float] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)
+
+
+class UserProfileSummary(BaseModel):
+    user_id: str
+    generated_at: datetime
+    active_subject_count: int = 0
+    active_subject_ids: list[str] = Field(default_factory=list)
+    recent_subject_ids: list[str] = Field(default_factory=list)
+    preferred_question_types: list[str] = Field(default_factory=list)
+    preferred_exam_modes: list[str] = Field(default_factory=list)
+    dominant_exam_mode: str = "web_practice"
+    explanation_style: str = "balanced"
+    pace_preference: str = "steady"
+    consistency_level: str = "building"
+    pending_review_count: int = 0
+    due_review_count: int = 0
+    notes: list[str] = Field(default_factory=list)
 
 
 class MasteryOverviewResponse(BaseModel):

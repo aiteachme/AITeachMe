@@ -4,35 +4,16 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime
 
-from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.models import ExamMode, ExamPaper, ExamPaperItem, Subject, UserKnowledgeState
 from app.repositories import profile_repo
+from app.schemas.profile import SubjectProfileSummary
 from app.utils.time import is_at_or_before, utcnow
 
 _WEAK_THRESHOLD = 0.8
 _RECENT_EXAM_ITEM_LIMIT = 200
-
-
-class SubjectProfileSummary(BaseModel):
-    subject: str
-    generated_at: datetime
-    avg_mastery: float | None = None
-    weak_knowledge_unit_count: int = 0
-    pending_review_count: int = 0
-    due_review_count: int = 0
-    preferred_question_types: list[str] = Field(default_factory=list)
-    recommended_question_types: list[str] = Field(default_factory=list)
-    recommended_exam_mode: str = ExamMode.WEB_PRACTICE.value
-    recommended_question_count: int | None = None
-    difficulty_focus: str = "medium"
-    focus_knowledge_unit_ids: list[int] = Field(default_factory=list)
-    question_type_accuracy: dict[str, float] = Field(default_factory=dict)
-    difficulty_accuracy: dict[str, float] = Field(default_factory=dict)
-    notes: list[str] = Field(default_factory=list)
 
 
 def _parse_json_object(raw: str | None) -> dict[str, object]:
