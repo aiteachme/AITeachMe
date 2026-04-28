@@ -6,6 +6,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_markdown_rendering,
 )
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
+from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
 
 
@@ -122,6 +123,52 @@ def test_normalize_repairs_previous_inline_code_dollar_corruption() -> None:
     assert "display math 疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
     assert "display math 分隔符数量不成对。" not in find_markdown_rendering_issues(fixed)
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
+
+
+def test_public_markdown_hides_source_debug_and_post_reading_note() -> None:
+    raw = "\n".join(
+        [
+            "# DOS 命令",
+            "",
+            "正文内容。",
+            "",
+            "读完《DOS 命令》后，可以把剩下的注意力收回到几个容易漏掉的连接点上。",
+            "本章目标仍然是：掌握 DOS 命令。",
+            "",
+            "可以回看材料中的两条线索：",
+            "- LLM 预选的本地资料切片",
+            "- 来源切片：计算机基础.pdf / DOS (L1-L3)",
+            "",
+            "复习时优先检查这些点是否已经能用自己的话讲清：",
+            "- **PROMPT**：掌握提示符格式。",
+            "",
+            "## 典型例题",
+            "",
+            "`PROMPT $P$G` 显示为 `C>`。",
+            "",
+            "## LLM 预选的本地资料切片",
+            "",
+            "### 来源切片：计算机基础.pdf / DOS (L1-L3)",
+            "- 切片摘要：DOS 提示符。",
+            "",
+            "原文摘录：",
+            "1 PROMPT $P$G",
+            "",
+            "## 参考资料与延伸阅读",
+            "",
+            "- 计算机基础.pdf (docgen_source_slice)",
+        ]
+    )
+
+    fixed = sanitize_public_markdown(normalize_markdown_rendering(raw))
+
+    assert "读完《" not in fixed
+    assert "LLM 预选" not in fixed
+    assert "来源切片" not in fixed
+    assert "参考资料与延伸阅读" not in fixed
+    assert "计算机基础.pdf" not in fixed
+    assert "## 典型例题" in fixed
+    assert "`PROMPT $P$G`" in fixed
 
 
 def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:

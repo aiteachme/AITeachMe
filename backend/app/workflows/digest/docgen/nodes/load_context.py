@@ -86,7 +86,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "planner_context": planner_context,
             "build_constraints": build_constraints,
             "source_strategy": "local_first" if has_local_materials else "web_first",
-            "include_sources": bool(build_constraints.get("include_sources", True)),
+            "include_sources": False,
         }
         docgen_context = DocGenContext(
             subject_id=state["subject_id"],
@@ -99,7 +99,7 @@ def build_load_context_node(*, context: WorkflowContext):
             planner_context=planner_context,
             build_constraints=build_constraints,
             source_strategy="local_first" if has_local_materials else "web_first",
-            include_sources=bool(build_constraints.get("include_sources", True)),
+            include_sources=False,
             local_source_count=len(shared_inputs.source_packets),
             section_count=len(shared_inputs.section_packets),
         )

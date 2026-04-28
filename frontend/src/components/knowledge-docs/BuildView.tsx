@@ -263,6 +263,8 @@ export function BuildView({
   const isBuildCompleted =
     isDocumentReady && (buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText)));
   const roundedProgress = isBuildCompleted ? 100 : Math.min(rawProgress, 99);
+  const progressIsActive = isBuildActive && !isBuildCompleted;
+  const visibleProgress = progressIsActive ? Math.max(6, roundedProgress) : roundedProgress;
 
   const draftExcerpt = (
     mergePreview?.draft_excerpt ||
@@ -360,17 +362,24 @@ export function BuildView({
               </div>
             </div>
             <div className="mt-4 flex items-center gap-4">
-              <div className="relative h-1.5 flex-1 overflow-hidden rounded-sm bg-zinc-100 dark:bg-slate-800">
+              <div
+                className={cn(
+                  "relative h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-slate-800",
+                  progressIsActive ? "build-loading-progress-track" : "",
+                )}
+              >
                 <motion.div
                   className={cn(
-                    "relative h-full overflow-hidden rounded-sm",
+                    "relative h-full overflow-hidden rounded-full",
                     roundedProgress === 100
                       ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
-                      : "bg-blue-500 progress-bar-active progress-bar-breathing"
+                      : progressIsActive
+                        ? "bg-blue-500 build-loading-progress-fill"
+                        : "bg-blue-500"
                   )}
                   initial={{ width: 0 }}
                   animate={{
-                    width: `${roundedProgress}%`,
+                    width: `${visibleProgress}%`,
                   }}
                   transition={{
                     width: { duration: 0.35 },
@@ -504,7 +513,6 @@ export function BuildView({
                     : "";
               const selectedHeadings = preview?.latest_headings ?? [];
               const selectedWordCount = preview?.word_count ?? selChapter?.word_count ?? 0;
-              const selectedSourceCount = preview?.source_count ?? selChapter?.source_count ?? 0;
               const previewUpdatedAt = streamPreview?.updatedAt
                 ? formatBuildEventTime(streamPreview.updatedAt)
                 : preview?.updated_at
@@ -514,7 +522,6 @@ export function BuildView({
               const usingSseDelta = Boolean(streamExcerpt.trim());
               const hasPreviewMeta =
                 selectedWordCount > 0 ||
-                selectedSourceCount > 0 ||
                 usingMergeFallback ||
                 usingSseDelta;
 
@@ -564,11 +571,6 @@ export function BuildView({
                               {selectedWordCount > 0 ? (
                                 <span>
                                   约 {selectedWordCount} 字
-                                </span>
-                              ) : null}
-                              {selectedSourceCount > 0 ? (
-                                <span>
-                                  {selectedSourceCount} 个来源
                                 </span>
                               ) : null}
                               {usingMergeFallback ? (

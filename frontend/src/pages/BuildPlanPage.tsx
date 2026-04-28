@@ -469,14 +469,14 @@ function BuildInProgressBubble({
             {statusText || "正在启动知识文档构建..."}
           </p>
           <div
-            className={`mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100 ${
-              isActive ? "build-plan-progress-track-active" : ""
+            className={`mt-4 h-2 overflow-hidden rounded-full bg-zinc-100 ${
+              isActive ? "build-loading-progress-track" : ""
             }`}
           >
             <div
-              className={`h-full rounded-full bg-zinc-950 transition-all duration-500 ${
-                isActive ? "build-plan-progress-breathing" : ""
-              }`}
+              className={`h-full rounded-full transition-all duration-500 ${
+                isActive ? "build-loading-progress-fill" : ""
+              } ${isActive ? "bg-blue-500" : "bg-zinc-950"}`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>

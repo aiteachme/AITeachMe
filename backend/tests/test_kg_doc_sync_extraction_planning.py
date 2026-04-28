@@ -114,6 +114,31 @@ def test_published_knowledge_doc_starts_with_first_chapter_without_overview() ->
     assert markdown.startswith("# 行列式")
 
 
+def test_published_knowledge_doc_hides_source_appendix_by_default() -> None:
+    markdown = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "DOS 命令",
+                "markdown": "# DOS 命令\n\n## PROMPT\n\n`PROMPT $P$G` 用于设置提示符。",
+                "source_details": [
+                    {
+                        "url": "local://file/abc#L1-L3",
+                        "title": "计算机基础.pdf / DOS",
+                        "source": "docgen_source_slice",
+                        "score": 0.9,
+                    }
+                ],
+            }
+        ],
+        document_context={"subject_id": "subj_demo", "digest_mode": "sprint"},
+    )
+
+    assert "参考资料与延伸阅读" not in markdown
+    assert "计算机基础.pdf" not in markdown
+    assert "`PROMPT $P$G`" in markdown
+
+
 def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> None:
     markdown = "\n\n".join(
         [

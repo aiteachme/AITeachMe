@@ -364,15 +364,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         dense_context: str,
     ) -> str:
         mode_profile = get_docgen_mode_profile(digest_mode)
-        context_points = self._extract_context_points(dense_context, limit=2)
         lines = [
-            f"读完《{title}》后，可以把剩下的注意力收回到几个容易漏掉的连接点上。",
+            "## 补充掌握检查",
+            "",
+            f"围绕《{title}》，可以把注意力集中到几个容易漏掉的连接点上。",
         ]
         if objective.strip():
             lines.append(f"本章目标仍然是：{objective.strip()}")
-        if context_points:
-            lines.extend(["", "可以回看材料中的两条线索："])
-            lines.extend(f"- {item}" for item in context_points)
         lines.extend(["", "复习时优先检查这些点是否已经能用自己的话讲清："])
         for item in missing_requirements[:5]:
             lines.append(
@@ -413,7 +411,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             focus=focus,
             fallback_title=title,
         )
-        context_points = self._extract_context_points(dense_context, limit=2)
         lines = [
             heading,
             "",
@@ -422,9 +419,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
         ]
         for item in focus_items:
             lines.append(f"- **{item}**：回到正文里找到它承担的角色，再确认它对应的条件、步骤或例子。")
-        if context_points:
-            lines.extend(["", "可优先对照的材料线索："])
-            lines.extend(f"- {item}" for item in context_points)
         if mode_profile.is_sprint:
             lines.extend(
                 [

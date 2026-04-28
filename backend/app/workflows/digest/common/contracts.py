@@ -116,7 +116,7 @@ class DigestBuildConstraints(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     include_exercises: bool = True
-    include_sources: bool = True
+    include_sources: bool = False
     math_mode: bool = False
     min_chapters: int | None = None
     max_chapters: int | None = None
