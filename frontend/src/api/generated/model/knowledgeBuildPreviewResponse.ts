@@ -31,8 +31,6 @@ export interface KnowledgeBuildPreviewResponse {
   doc_sync_section_count?: number;
   /** How many docs-sync sections attempted structured LLM extraction. */
   doc_sync_llm_section_count?: number;
-  /** How many docs-sync sections fell back after extraction. */
-  doc_sync_fallback_section_count?: number;
   /** Current discovered knowledge-node count. */
   discovered_node_count?: number;
   /** Node counts by node type. */

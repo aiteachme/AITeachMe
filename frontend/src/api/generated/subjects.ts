@@ -79,15 +79,15 @@ export type createSubjectApiApiV1SubjectsAddPostResponse = (createSubjectApiApiV
 export const getCreateSubjectApiApiV1SubjectsAddPostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/add`
 }
 
 export const createSubjectApiApiV1SubjectsAddPost = async (subjectCreateRequest: SubjectCreateRequest, options?: RequestInit): Promise<createSubjectApiApiV1SubjectsAddPostResponse> => {
-  
+
   return orvalApiClient<createSubjectApiApiV1SubjectsAddPostResponse>(getCreateSubjectApiApiV1SubjectsAddPostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -95,7 +95,7 @@ export const createSubjectApiApiV1SubjectsAddPost = async (subjectCreateRequest:
       subjectCreateRequest,)
   }
 );}
-  
+
 
 
 
@@ -110,7 +110,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSubjectApiApiV1SubjectsAddPost>>, {data: SubjectCreateRequest}> = (props) => {
@@ -121,7 +121,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -173,15 +173,15 @@ export type listSubjectsApiApiV1SubjectsListPostResponse = (listSubjectsApiApiV1
 export const getListSubjectsApiApiV1SubjectsListPostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/list`
 }
 
 export const listSubjectsApiApiV1SubjectsListPost = async (subjectListRequest: SubjectListRequest, options?: RequestInit): Promise<listSubjectsApiApiV1SubjectsListPostResponse> => {
-  
+
   return orvalApiClient<listSubjectsApiApiV1SubjectsListPostResponse>(getListSubjectsApiApiV1SubjectsListPostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -189,7 +189,7 @@ export const listSubjectsApiApiV1SubjectsListPost = async (subjectListRequest: S
       subjectListRequest,)
   }
 );}
-  
+
 
 
 
@@ -204,7 +204,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof listSubjectsApiApiV1SubjectsListPost>>, {data: SubjectListRequest}> = (props) => {
@@ -215,7 +215,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -277,15 +277,15 @@ export type previewDeleteSubjectApiApiV1SubjectsDeletePreviewPostResponse = (pre
 export const getPreviewDeleteSubjectApiApiV1SubjectsDeletePreviewPostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/delete/preview`
 }
 
 export const previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost = async (subjectDeletePreviewRequest: SubjectDeletePreviewRequest, options?: RequestInit): Promise<previewDeleteSubjectApiApiV1SubjectsDeletePreviewPostResponse> => {
-  
+
   return orvalApiClient<previewDeleteSubjectApiApiV1SubjectsDeletePreviewPostResponse>(getPreviewDeleteSubjectApiApiV1SubjectsDeletePreviewPostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -293,7 +293,7 @@ export const previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost = async (subj
       subjectDeletePreviewRequest,)
   }
 );}
-  
+
 
 
 
@@ -308,7 +308,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost>>, {data: SubjectDeletePreviewRequest}> = (props) => {
@@ -319,7 +319,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -386,15 +386,15 @@ export type deleteSubjectApiApiV1SubjectsDeletePostResponse = (deleteSubjectApiA
 export const getDeleteSubjectApiApiV1SubjectsDeletePostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/delete`
 }
 
 export const deleteSubjectApiApiV1SubjectsDeletePost = async (subjectDeleteRequest: SubjectDeleteRequest, options?: RequestInit): Promise<deleteSubjectApiApiV1SubjectsDeletePostResponse> => {
-  
+
   return orvalApiClient<deleteSubjectApiApiV1SubjectsDeletePostResponse>(getDeleteSubjectApiApiV1SubjectsDeletePostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -402,7 +402,7 @@ export const deleteSubjectApiApiV1SubjectsDeletePost = async (subjectDeleteReque
       subjectDeleteRequest,)
   }
 );}
-  
+
 
 
 
@@ -417,7 +417,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSubjectApiApiV1SubjectsDeletePost>>, {data: SubjectDeleteRequest}> = (props) => {
@@ -428,7 +428,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -490,15 +490,15 @@ export type updateSubjectApiApiV1SubjectsUpdatePostResponse = (updateSubjectApiA
 export const getUpdateSubjectApiApiV1SubjectsUpdatePostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/update`
 }
 
 export const updateSubjectApiApiV1SubjectsUpdatePost = async (subjectUpdateRequest: SubjectUpdateRequest, options?: RequestInit): Promise<updateSubjectApiApiV1SubjectsUpdatePostResponse> => {
-  
+
   return orvalApiClient<updateSubjectApiApiV1SubjectsUpdatePostResponse>(getUpdateSubjectApiApiV1SubjectsUpdatePostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -506,7 +506,7 @@ export const updateSubjectApiApiV1SubjectsUpdatePost = async (subjectUpdateReque
       subjectUpdateRequest,)
   }
 );}
-  
+
 
 
 
@@ -521,7 +521,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSubjectApiApiV1SubjectsUpdatePost>>, {data: SubjectUpdateRequest}> = (props) => {
@@ -532,7 +532,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -589,15 +589,15 @@ export type suggestSubjectNameApiV1SubjectsSuggestNamePostResponse = (suggestSub
 export const getSuggestSubjectNameApiV1SubjectsSuggestNamePostUrl = () => {
 
 
-  
+
 
   return `/api/v1/subjects/suggest-name`
 }
 
 export const suggestSubjectNameApiV1SubjectsSuggestNamePost = async (subjectNameSuggestionRequest: SubjectNameSuggestionRequest, options?: RequestInit): Promise<suggestSubjectNameApiV1SubjectsSuggestNamePostResponse> => {
-  
+
   return orvalApiClient<suggestSubjectNameApiV1SubjectsSuggestNamePostResponse>(getSuggestSubjectNameApiV1SubjectsSuggestNamePostUrl(),
-  {      
+  {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -605,7 +605,7 @@ export const suggestSubjectNameApiV1SubjectsSuggestNamePost = async (subjectName
       subjectNameSuggestionRequest,)
   }
 );}
-  
+
 
 
 
@@ -620,7 +620,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof suggestSubjectNameApiV1SubjectsSuggestNamePost>>, {data: SubjectNameSuggestionRequest}> = (props) => {
@@ -631,7 +631,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -653,4 +653,3 @@ export const useSuggestSubjectNameApiV1SubjectsSuggestNamePost = <TError = Error
       > => {
       return useMutation(getSuggestSubjectNameApiV1SubjectsSuggestNamePostMutationOptions(options), queryClient);
     }
-    
