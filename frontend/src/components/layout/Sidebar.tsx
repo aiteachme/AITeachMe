@@ -555,7 +555,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex items-center gap-1.5 pb-2 pl-2 pr-0 pt-1">
+            <div className="flex items-center gap-1.5 pb-1 pl-2 pr-0 pt-1">
               <span className="whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-slate-400">学科</span>
               {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 dark:text-slate-500" /> : null}
               <div className="ml-auto flex items-center gap-1">
@@ -604,7 +604,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   >
                 <div
                   className={cn(
-                    "group flex items-center gap-1 rounded-md transition-colors",
+                    "group flex h-7 items-center gap-1 rounded-md transition-colors",
                     !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >

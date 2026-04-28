@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
   Loader2,
+  MessageSquareText,
   Plus,
   Sparkles,
   Trash2,
@@ -210,7 +211,7 @@ export function AiConversationSidebarSection({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const shouldLoadSessions = !collapsed && (isExpanded || isSidebarOpen);
+  const shouldLoadSessions = collapsed || isExpanded || isSidebarOpen;
   const hasActiveEmptyConversation =
     isSidebarOpen && activeConversationSessionId === null && !isPendingAnchoredRequest(sidebarRequest);
   const activeEmptyKind = getRequestKind(sidebarRequest);
@@ -325,9 +326,45 @@ export function AiConversationSidebarSection({
 
   if (collapsed) {
     return (
-      <div className="flex h-6 items-center px-1">
-        <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
-      </div>
+      <section className="space-y-0.5">
+        <div className="flex h-6 items-center px-1">
+          <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+        </div>
+        {isLoading && visibleSessions.length === 0 ? (
+          <div className="flex h-7 w-full items-center justify-center rounded-md text-slate-400 dark:text-slate-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          </div>
+        ) : null}
+        {visibleSessions.map((session) => {
+          const sessionId = getSessionId(session);
+          const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
+          const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
+          const subjectLabel = getSessionSubjectLabel(session);
+          return (
+            <button
+              key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
+              type="button"
+              onClick={() => openSession(session)}
+              className={cn(
+                "group flex h-7 w-full items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45",
+                isSelected
+                  ? kindStyle.selectedClassName
+                  : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+              )}
+              title={`${subjectLabel} - ${session.title || "未命名对话"}`}
+              aria-label={`打开对话：${session.title || "未命名对话"}`}
+            >
+              <MessageSquareText
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0",
+                  isSelected ? kindStyle.iconClassName : undefined,
+                )}
+                strokeWidth={2.2}
+              />
+            </button>
+          );
+        })}
+      </section>
     );
   }
 
@@ -364,10 +401,9 @@ export function AiConversationSidebarSection({
         {isExpanded ? (
           <motion.div
             key="conversation-list"
-            layout
             variants={conversationListMotion}
             initial={{ opacity: 0, height: 0 }}
-            animate="visible"
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             className="space-y-0.5 overflow-hidden pb-2"
@@ -382,7 +418,6 @@ export function AiConversationSidebarSection({
             <motion.button
               type="button"
               onClick={openNewConversation}
-              layout
               variants={conversationItemMotion}
               initial="hidden"
               animate="visible"
@@ -411,14 +446,13 @@ export function AiConversationSidebarSection({
               return (
                 <motion.div
                   key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
-                  layout
                   variants={conversationItemMotion}
                   initial="hidden"
                   animate="visible"
                   exit="exit"
                   whileTap={{ scale: 0.985 }}
                   className={cn(
-                    "group relative overflow-hidden rounded-md transition-colors",
+                    "group relative h-7 overflow-hidden rounded-md transition-colors",
                     isSelected
                       ? kindStyle.selectedClassName
                       : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
