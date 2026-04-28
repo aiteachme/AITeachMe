@@ -725,7 +725,7 @@ export function BuildPlanPage() {
     enabled: Boolean(subjectId),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
-      return items.some((item) => !item.markdown_ready && item.status !== "failed") ? 1500 : false;
+      return items.some((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()) ? 1500 : false;
     },
   });
 
