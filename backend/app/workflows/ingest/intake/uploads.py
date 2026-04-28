@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.shared.infra.exceptions import FileCountLimitError, FileParseError, FileTooLargeError, UnsupportedFileTypeError
@@ -32,6 +33,7 @@ from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
 SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".doc", ".docx", ".pdf", ".ppt", ".pptx", ".md"})
+DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
 
 
 def _generate_file_uid() -> str:
@@ -52,6 +54,78 @@ def _build_upload_data(*, subject: str | None, raw_files: list[RawFile], started
         uploaded_items=[build_file_record(item) for item in raw_files],
         started_parse_count=started_parse_count,
     )
+
+
+def _normalize_provider(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"", "auto", "default", "local"}:
+        return None
+    if normalized in {"paddleocr", "paddle-ocr"}:
+        return "paddle_ocr"
+    return normalized
+
+
+def _is_secret_parse_key(key: str) -> bool:
+    normalized = key.strip().lower()
+    return normalized in {"api_token", "token", "access_token", "api_key"} or normalized.endswith("_api_token")
+
+
+def _normalize_parse_request_value(key: str, value: object) -> object | None:
+    if key == "requested_parser_provider":
+        return _normalize_provider(value)
+    if isinstance(value, dict):
+        normalized_dict: dict[str, object] = {}
+        secret_seen = False
+        for child_key, child_value in sorted(value.items(), key=lambda item: str(item[0])):
+            child_key_str = str(child_key)
+            if _is_secret_parse_key(child_key_str):
+                secret_seen = secret_seen or bool(child_value)
+                continue
+            normalized_child = _normalize_parse_request_value(child_key_str, child_value)
+            if normalized_child is not None:
+                normalized_dict[child_key_str] = normalized_child
+        if secret_seen:
+            normalized_dict["api_token_provided"] = True
+        return normalized_dict or None
+    if isinstance(value, list):
+        normalized_list = [
+            normalized_item
+            for item in value
+            if (normalized_item := _normalize_parse_request_value("", item)) is not None
+        ]
+        return normalized_list or None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if value is None:
+        return None
+    return value
+
+
+def _normalize_parse_request_metadata(metadata: dict[str, object] | None) -> dict[str, object]:
+    if not metadata:
+        return {}
+    normalized: dict[str, object] = {}
+    for key, value in sorted(metadata.items(), key=lambda item: str(item[0])):
+        key_str = str(key)
+        if _is_secret_parse_key(key_str):
+            if value:
+                normalized["api_token_provided"] = True
+            continue
+        normalized_value = _normalize_parse_request_value(key_str, value)
+        if normalized_value is not None:
+            normalized[key_str] = normalized_value
+    return normalized
+
+
+def build_parse_request_signature(metadata: dict[str, object] | None) -> str:
+    normalized = _normalize_parse_request_metadata(metadata)
+    if not normalized:
+        return DEFAULT_PARSE_REQUEST_SIGNATURE
+    serialized = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"sha256:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def _unique_file_ids(raw_files: list[RawFile], *, status: str | None = None) -> list[int]:
@@ -122,12 +196,15 @@ async def save_uploaded_file(
     filename = file.filename or "unknown"
     extension = _validate_upload_extension(filename)
     content_hash = hashlib.sha256(content).hexdigest()
+    parse_request_signature = build_parse_request_signature(parse_request_metadata)
     reusable_raw_file = get_reusable_raw_file_by_content_hash(
         session,
         user_id=owner_user_id,
         content_hash=content_hash,
         file_size_bytes=len(content),
         filetype=extension.lstrip("."),
+        parse_request_signature=parse_request_signature,
+        allow_completed_cross_signature=parse_request_signature == DEFAULT_PARSE_REQUEST_SIGNATURE,
     )
     if reusable_raw_file is not None:
         return reusable_raw_file
@@ -145,24 +222,41 @@ async def save_uploaded_file(
             parse_request_json = json.dumps(parse_request_metadata, ensure_ascii=False)
         except Exception:
             parse_request_json = None
-    raw_file = create_raw_file(
-        session,
-        RawFile(
-            uid=file_uid,
-            subject=normalized_subject,
+    try:
+        raw_file = create_raw_file(
+            session,
+            RawFile(
+                uid=file_uid,
+                subject=normalized_subject,
+                user_id=owner_user_id,
+                filename=filename,
+                filetype=extension.lstrip("."),
+                file_path=str(temp_path),
+                mime_type=file.content_type or mimetypes.guess_type(filename)[0],
+                storage_backend=storage_backend,
+                status=TaskStatus.PENDING.value,
+                content_hash=content_hash,
+                file_size_bytes=len(content),
+                ingest_status=IngestStatus.PENDING.value,
+                parse_metadata_json=parse_request_json or "{}",
+                parse_request_signature=parse_request_signature,
+            ),
+        )
+    except IntegrityError:
+        session.rollback()
+        temp_path.unlink(missing_ok=True)
+        reusable_raw_file = get_reusable_raw_file_by_content_hash(
+            session,
             user_id=owner_user_id,
-            filename=filename,
-            filetype=extension.lstrip("."),
-            file_path=str(temp_path),
-            mime_type=file.content_type or mimetypes.guess_type(filename)[0],
-            storage_backend=storage_backend,
-            status=TaskStatus.PENDING.value,
             content_hash=content_hash,
             file_size_bytes=len(content),
-            ingest_status=IngestStatus.PENDING.value,
-            parse_metadata_json=parse_request_json or "{}",
-        ),
-    )
+            filetype=extension.lstrip("."),
+            parse_request_signature=parse_request_signature,
+            allow_completed_cross_signature=parse_request_signature == DEFAULT_PARSE_REQUEST_SIGNATURE,
+        )
+        if reusable_raw_file is not None:
+            return reusable_raw_file
+        raise
     raw_file_key = scope.raw_file_key(file_uid=file_uid, filename=filename, extension=extension)
     raw_markdown_key = scope.raw_markdown_key(file_uid=file_uid, filename=filename)
     asset_prefix = scope.asset_prefix(file_uid=file_uid, filename=filename)

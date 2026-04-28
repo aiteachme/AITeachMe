@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import mimetypes
+from datetime import datetime
 from typing import Iterable
 
-from sqlalchemy import case, delete as sa_delete, or_
+from sqlalchemy import delete as sa_delete, or_
 from sqlmodel import Session, func, select
 
 from app.models import RawFile, RawFileAsset, SubjectFileLink, TaskStatus
@@ -38,28 +39,68 @@ def get_reusable_raw_file_by_content_hash(
     content_hash: str,
     file_size_bytes: int,
     filetype: str,
+    parse_request_signature: str,
+    allow_completed_cross_signature: bool = False,
 ) -> RawFile | None:
     """Return an existing user-owned file that can satisfy the same upload."""
 
-    status_rank = case(
-        (RawFile.status == TaskStatus.COMPLETED.value, 0),
-        (RawFile.status == TaskStatus.PROCESSING.value, 1),
-        (RawFile.status == TaskStatus.PENDING.value, 2),
-        else_=3,
-    )
+    if not content_hash or file_size_bytes is None or not filetype or not parse_request_signature:
+        return None
+
+    filters = [
+        RawFile.user_id == user_id,
+        RawFile.content_hash == content_hash,
+        RawFile.file_size_bytes == file_size_bytes,
+        RawFile.filetype == filetype.lstrip("."),
+        RawFile.status != TaskStatus.FAILED.value,
+    ]
+    if allow_completed_cross_signature:
+        filters.append(
+            or_(
+                RawFile.parse_request_signature == parse_request_signature,
+                RawFile.status == TaskStatus.COMPLETED.value,
+            )
+        )
+    else:
+        filters.append(RawFile.parse_request_signature == parse_request_signature)
+
     stmt = (
         select(RawFile)
-        .where(
-            RawFile.user_id == user_id,
-            RawFile.content_hash == content_hash,
-            RawFile.file_size_bytes == file_size_bytes,
-            RawFile.filetype == filetype.lstrip("."),
-            RawFile.status != TaskStatus.FAILED.value,
-        )
-        .order_by(status_rank, RawFile.created_at.asc())  # type: ignore[union-attr]
-        .limit(1)
+        .where(*filters)
+        .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
     )
-    return session.exec(stmt).first()
+    candidates = list(session.exec(stmt).all())
+    if not candidates:
+        return None
+    return sorted(candidates, key=_reusable_raw_file_sort_key)[0]
+
+
+def _datetime_ts(value: datetime | None) -> float:
+    return value.timestamp() if value is not None else 0.0
+
+
+def _parser_rank(raw_file: RawFile) -> int:
+    parser = (raw_file.parser_used or "").strip().lower()
+    if parser == "paddle_ocr":
+        return 0
+    if parser == "mineru":
+        return 1
+    return 2
+
+
+def _reusable_raw_file_sort_key(raw_file: RawFile) -> tuple[int, int, float, int]:
+    status_rank = {
+        TaskStatus.COMPLETED.value: 0,
+        TaskStatus.PROCESSING.value: 1,
+        TaskStatus.PENDING.value: 2,
+    }.get(raw_file.status, 3)
+    parser_rank = _parser_rank(raw_file) if raw_file.status == TaskStatus.COMPLETED.value else 99
+    time_rank = (
+        -_datetime_ts(raw_file.updated_at)
+        if raw_file.status == TaskStatus.COMPLETED.value
+        else _datetime_ts(raw_file.created_at)
+    )
+    return (status_rank, parser_rank, time_rank, int(raw_file.id or 0))
 
 
 def _linked_raw_file_ids_for_subject(subject: str):
@@ -322,6 +363,7 @@ def update_raw_file(
     parsed_markdown: str | object = _UNSET,
     parser_used: str | None | object = _UNSET,
     parse_metadata_json: str | object = _UNSET,
+    parse_request_signature: str | object = _UNSET,
     parse_metadata: str | None | object = _UNSET,
     parse_error_message: str | None | object = _UNSET,
     error_message: str | None | object = _UNSET,
@@ -354,6 +396,8 @@ def update_raw_file(
         raw_file.parser_used = None if parser_used is None else str(parser_used)
     if parse_metadata_json is not _UNSET:
         raw_file.parse_metadata_json = str(parse_metadata_json)
+    if parse_request_signature is not _UNSET:
+        raw_file.parse_request_signature = str(parse_request_signature)
     if parse_metadata is not _UNSET:
         raw_file.parse_metadata = parse_metadata
     if parse_error_message is not _UNSET:
