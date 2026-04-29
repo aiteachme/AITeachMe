@@ -243,6 +243,7 @@ demo-courses/
 运行时职责：
 
 - 配置 `S3_PUBLIC_BASE_URL` 后读取 `demo-courses/catalog/v1/index.json`；未配置时返回空列表。
+- 后端读取 catalog 时必须带 no-cache 请求头和一次性 query，避免 CDN 某个地域节点继续返回旧索引；运维侧删除/重建后也应刷新 CDN 中的 catalog 对象。
 - 前端只消费统一后的课程目录 API，并在返回课程后展示演示课程区。
 - 真正导入时，由后端下载到临时目录后复用同一套 `import_subject()` 逻辑。
 - 后端只允许课程包 URL 位于配置出的 `<S3_PUBLIC_BASE_URL>/demo-courses/` 前缀下。

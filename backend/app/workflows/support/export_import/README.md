@@ -20,6 +20,7 @@
 - 演示课程主源：使用现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
 - 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
 - 课程索引由本机私有脚本 `scripts/private/demo_course_package.py` 自动维护；不要手写 OSS 上的 `index.json`
+- 后端读取课程索引时会加 no-cache 请求头和一次性 query，降低 CDN 地域节点返回旧 catalog 的概率；删除或重建演示课程后仍建议在 CDN 控制台刷新 `demo-courses/catalog/v1/index.json`
 - 未配置 `S3_PUBLIC_BASE_URL`：不请求 OSS，`GET /api/v1/courses` 返回空列表，手动 `.atmx` 上传导入仍可用
 
 ## Demo Course Paths
