@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, CheckCircle2, ChevronDown, CloudOff, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -48,6 +48,7 @@ interface QuestionTemplateItem {
   selection_hints: Record<string, unknown>;
   template_version: number;
   status: string;
+  is_marked?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -626,6 +627,16 @@ function QuestionTemplateCard({
       <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)]">
         <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)]" />
         <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
+        {item.is_marked ? (
+          <span className="pointer-events-none absolute left-4 top-0 z-20 h-[72px] w-5 drop-shadow-[0_8px_10px_rgba(127,29,29,0.28)]">
+            <span
+              className="absolute inset-0 bg-gradient-to-b from-red-500 via-red-600 to-red-700 shadow-[inset_1px_0_0_rgba(255,255,255,0.32),inset_-1px_0_0_rgba(127,29,29,0.36)]"
+              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%)" }}
+            />
+            <span className="absolute inset-x-0 top-0 h-1 bg-white/35" />
+            <span className="absolute left-[4px] top-2 h-12 w-px rounded-full bg-white/30" />
+          </span>
+        ) : null}
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
           <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600">
@@ -649,13 +660,9 @@ function QuestionTemplateCard({
           </span>
         </span>
 
-        <span className="relative mt-5 flex items-center justify-between gap-3 border-t border-slate-200 pl-8 pt-4">
+        <span className="relative mt-5 flex items-center gap-3 border-t border-slate-200 pl-8 pt-4">
           <span className="truncate text-xs font-medium text-slate-500">
             知识单元 #{getPrimaryKnowledgeUnitLabel(item)}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-sky-700">
-            <Eye className="h-3.5 w-3.5" />
-            查看
           </span>
         </span>
       </span>
@@ -693,6 +700,12 @@ function QuestionTemplateDetailCard({
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
               {item.status}
             </span>
+            {item.is_marked ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+                <Bookmark className="h-3.5 w-3.5 fill-current" />
+                已标记
+              </span>
+            ) : null}
             <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
               v{item.template_version}
             </span>
@@ -941,6 +954,7 @@ function ExamCatalogShell({
 export function QuestionTemplatesPage() {
   const { subjectId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
+  const [showMarkedOnly, setShowMarkedOnly] = useState(false);
 
   const templatesQuery = useQuery({
     queryKey: ["exam-question-templates", subjectId],
@@ -951,6 +965,11 @@ export function QuestionTemplatesPage() {
     },
   });
   const templates = templatesQuery.data ?? [];
+  const markedTemplates = useMemo(
+    () => templates.filter((item) => item.is_marked === true),
+    [templates],
+  );
+  const visibleTemplates = showMarkedOnly ? markedTemplates : templates;
 
   const typesQuery = useQuery({
     queryKey: ["exam-question-types", subjectId],
@@ -1011,16 +1030,45 @@ export function QuestionTemplatesPage() {
       )}
 
       {templates.length > 0 ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 px-1 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
-          {templates.map((item) => (
-            <QuestionTemplateCard
-              key={item.id}
-              item={item}
-              questionTypeLabel={getQuestionTypeLabel(item.question_type)}
-              onOpen={() => setSelectedTemplate(item)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 px-1">
+            <div className="text-sm text-slate-500">
+              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMarkedOnly((current) => !current)}
+              className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
+                showMarkedOnly
+                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+              aria-pressed={showMarkedOnly}
+            >
+              <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
+              只看已标记
+            </button>
+          </div>
+
+          {visibleTemplates.length > 0 ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 px-1 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+              {visibleTemplates.map((item) => (
+                <QuestionTemplateCard
+                  key={item.id}
+                  item={item}
+                  questionTypeLabel={getQuestionTypeLabel(item.question_type)}
+                  onOpen={() => setSelectedTemplate(item)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+              <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">还没有已标记题目</h3>
+              <p className="mt-2 text-sm text-slate-500">在做题页面点“标记”后，收藏的题目会出现在这里。</p>
+            </div>
+          )}
+        </>
       ) : null}
 
       <QuestionTemplateDetailCard
