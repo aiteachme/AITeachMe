@@ -55,7 +55,7 @@ interface MarkdownViewerProps {
   headingNumbering?: boolean;
   collapsibleHeadings?: CollapsibleHeadings;
   collapsedHeadingIds?: ReadonlySet<string>;
-  onHeadingCollapseChange?: (id: string, collapsed: boolean, source?: HTMLElement | null) => void;
+  onHeadingCollapseChange?: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
 }
 
 interface ViewerStyles {
@@ -1855,8 +1855,8 @@ export function MarkdownViewer({
       ? section.getAttribute("data-collapsed") !== "true"
       : !collapsedHeadingIdsRef.current.has(id);
 
-    if (onHeadingCollapseChange) {
-      onHeadingCollapseChange(id, nextCollapsed, source ?? null);
+    if (onHeadingCollapseChange?.(id, nextCollapsed, source ?? null) === true) {
+      return;
     }
 
     if (applyHeadingCollapseDomState(id, nextCollapsed, source)) {
@@ -1956,6 +1956,7 @@ export function MarkdownViewer({
           const isHeadingSection = readStringProp(props, "data-heading-section") === "true";
           const isCollapsibleSection = readStringProp(props, "data-collapsible-section") === "true";
           const isCollapsed = sectionId ? collapsedHeadingIds.has(sectionId) : false;
+          const sectionChildren = isCollapsibleSection ? Children.toArray(children) : [];
           return (
             <section
               data-heading-section={isHeadingSection ? "true" : undefined}
@@ -1965,7 +1966,16 @@ export function MarkdownViewer({
               data-collapsed={isCollapsibleSection && isCollapsed ? "true" : undefined}
               className={cn(isCollapsibleSection && "markdown-collapsible-section", className)}
             >
-              {children}
+              {isCollapsibleSection ? (
+                <>
+                  {sectionChildren[0] ?? null}
+                  {sectionChildren.length > 1 ? (
+                    <div data-heading-section-body="true" className="contents">
+                      {sectionChildren.slice(1)}
+                    </div>
+                  ) : null}
+                </>
+              ) : children}
             </section>
           );
         },

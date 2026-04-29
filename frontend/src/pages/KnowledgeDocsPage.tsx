@@ -1273,7 +1273,7 @@ const DocMarkdown = memo(function DocMarkdown({
   content: string;
   courseId?: string;
   headingNumbering: boolean;
-  onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => void;
+  onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
 }) {
   return (
     <MarkdownViewer
@@ -1878,6 +1878,7 @@ export function KnowledgeDocsPage() {
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
   const collapsedDocHeadingIdsRef = useRef<Set<string>>(new Set());
   const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
+  const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
@@ -1906,7 +1907,10 @@ export function KnowledgeDocsPage() {
     setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
   }, []);
 
-  const scheduleCollapsedDocHeadingStateCommit = useCallback((delayMs = 96) => {
+  const scheduleCollapsedDocHeadingStateCommit = useCallback((delayMs = 180) => {
+    if (!docCollapseLayoutRefreshNeededRef.current) {
+      return;
+    }
     if (collapsedDocHeadingCommitTimerRef.current !== null) {
       window.clearTimeout(collapsedDocHeadingCommitTimerRef.current);
     }
@@ -1926,15 +1930,33 @@ export function KnowledgeDocsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const needsRefresh = Boolean(
+      comments.length > 0 ||
+      selectionHighlights.length > 0 ||
+      floatingComment ||
+      showDesktopCommentPanel ||
+      isAssistantOpen
+    );
+    docCollapseLayoutRefreshNeededRef.current = needsRefresh;
+    if (needsRefresh) {
+      scheduleCollapsedDocHeadingStateCommit(0);
+    }
+  }, [
+    comments.length,
+    floatingComment,
+    isAssistantOpen,
+    scheduleCollapsedDocHeadingStateCommit,
+    selectionHighlights.length,
+    showDesktopCommentPanel,
+  ]);
+
   const handleDocHeadingCollapseChange = useCallback((id: string, collapsed: boolean, source?: HTMLElement | null) => {
     const container = scrollRef.current;
     const heading = findHeadingFromCollapseSource(contentAreaRef.current, id, source);
-    if (container && heading && isVisibleHeading(heading)) {
-      pendingHeadingCollapseScrollRef.current = {
-        id,
-        top: heading.getBoundingClientRect().top,
-      };
-    }
+    const previousTop = container && heading && isVisibleHeading(heading)
+      ? heading.getBoundingClientRect().top
+      : null;
 
     const next = new Set(collapsedDocHeadingIdsRef.current);
     if (collapsed) {
@@ -1943,6 +1965,36 @@ export function KnowledgeDocsPage() {
       next.delete(id);
     }
     collapsedDocHeadingIdsRef.current = next;
+
+    const handledDom = applyDocHeadingCollapseDomState(contentAreaRef.current, id, collapsed);
+    if (handledDom) {
+      if (container && previousTop !== null) {
+        const nextHeading = findHeadingFromCollapseSource(contentAreaRef.current, id, source);
+        if (nextHeading && isVisibleHeading(nextHeading)) {
+          const delta = nextHeading.getBoundingClientRect().top - previousTop;
+          if (Math.abs(delta) >= 0.5) {
+            const previousScrollBehavior = container.style.scrollBehavior;
+            container.style.scrollBehavior = "auto";
+            container.scrollTop += delta;
+            if (previousScrollBehavior) {
+              container.style.scrollBehavior = previousScrollBehavior;
+            } else {
+              container.style.removeProperty("scroll-behavior");
+            }
+          }
+        }
+      }
+      pendingHeadingCollapseScrollRef.current = null;
+      scheduleCollapsedDocHeadingStateCommit();
+      window.requestAnimationFrame(() => {
+        container?.dispatchEvent(new Event("scroll"));
+      });
+      return true;
+    }
+
+    if (container && previousTop !== null) {
+      pendingHeadingCollapseScrollRef.current = { id, top: previousTop };
+    }
     scheduleCollapsedDocHeadingStateCommit();
     window.requestAnimationFrame(() => {
       const pending = pendingHeadingCollapseScrollRef.current;
@@ -1965,6 +2017,7 @@ export function KnowledgeDocsPage() {
       pendingHeadingCollapseScrollRef.current = null;
       container.dispatchEvent(new Event("scroll"));
     });
+    return false;
   }, [scheduleCollapsedDocHeadingStateCommit]);
 
   useLayoutEffect(() => {
