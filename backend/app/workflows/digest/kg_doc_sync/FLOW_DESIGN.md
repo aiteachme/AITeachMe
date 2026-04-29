@@ -92,7 +92,7 @@ DocGen enhance_chapters
   如果 sync_after_docgen + prefetch_during_docgen 开启，启动 kg_prefetch sidecar。
   sidecar 读取增强章节 Markdown、document_backbone、intent_profile、chapter_task_seeds、chapter_execution_briefs 和 chapter_generation_plan。
   sidecar 只缓存 section_key + content_hash + SectionExtractionPayload，不写图谱表。
-  默认 prefetch_concurrency = 6，仍受全局 LLM semaphore 限制，并先让后续 DocGen review 调度。
+  默认 prefetch_concurrency = 2，仍受全局 LLM semaphore 限制，并先让后续 DocGen review 调度。
   |
   v
 DocGen review / repair / merge / publish
@@ -146,7 +146,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 / subsection 2.1 extraction
     └─ chapter N / subsection N.x extraction
-  正式同步默认最多 32 路抽取并发，每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
+  正式同步默认最多 16 路抽取并发，并会保留全局 LLM 并发余量；每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -453,7 +453,7 @@ _build_extraction_tasks
     - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400` 且至少有 2 个可抽取子章节时，按子章节拆分。
     - 即使章节未达到 2400 字，只要存在 4 个以上可抽取子章节，也按小节拆分，避免大章只触发一次超大块 LLM 抽取。
     - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
-    - 总任务规划上限来自 `settings.knowledge_graph.max_parallel_extractions`，默认 32；旧 `KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 只作为低层兜底。
+    - 总任务规划上限来自 `settings.knowledge_graph.max_parallel_extractions`，默认 16；旧 `KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 只作为低层兜底。
     - 任务规划会先以章节为基线；章节少而大章很长时，再按子章节和字符预算自适应拆分，最多扩展到配置上限。
   设计目的：
     - 章节少但单章较长或结构清晰时，仍然可以并行抽取，减少大块结构化输出失败和长章卡住整条链路的情况。
@@ -468,8 +468,8 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - 正式同步并发上限默认 32，来自 `settings.knowledge_graph.max_parallel_extractions`。
-    - DocGen sidecar 预抽取并发默认 6，来自 `settings.knowledge_graph.prefetch_concurrency`。
+    - 正式同步并发上限默认 16，来自 `settings.knowledge_graph.max_parallel_extractions`，并会为出题等交互任务预留一小段全局 LLM 并发余量。
+    - DocGen sidecar 预抽取并发默认 2，来自 `settings.knowledge_graph.prefetch_concurrency`。
     - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
     - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400`
     - `_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1800`

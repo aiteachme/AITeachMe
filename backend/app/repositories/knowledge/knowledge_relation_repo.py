@@ -85,6 +85,31 @@ def list_edges_by_knowledge_unit(
     return list(session.exec(stmt).all())
 
 
+def list_edges_for_knowledge_units(
+    session: Session,
+    course_id: str,
+    knowledge_unit_ids: list[int] | set[int],
+    *,
+    edge_type: str | None = None,
+    status: str | None = "active",
+) -> list[KnowledgeEdge]:
+    ids = {int(item) for item in knowledge_unit_ids if int(item or 0) > 0}
+    if not ids:
+        return []
+    stmt = select(KnowledgeEdge).where(
+        KnowledgeEdge.course_id == course_id,
+        or_(
+            KnowledgeEdge.source_node_id.in_(ids),
+            KnowledgeEdge.target_node_id.in_(ids),
+        ),
+    )
+    if edge_type is not None:
+        stmt = stmt.where(KnowledgeEdge.edge_type == normalize_relation_type(edge_type))
+    if status is not None:
+        stmt = stmt.where(KnowledgeEdge.status == status)
+    return list(session.exec(stmt.order_by(KnowledgeEdge.id)).all())
+
+
 def list_edges_by_type(
     session: Session,
     course_id: str,

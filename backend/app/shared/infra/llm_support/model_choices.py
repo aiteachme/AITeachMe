@@ -16,6 +16,7 @@ ALLOWED_RUNTIME_MODEL_OVERRIDES = frozenset(
     {
         "deepseek-v4-flash",
         "qwen3.6-flash",
+        "qwen-flash",
     }
 )
 

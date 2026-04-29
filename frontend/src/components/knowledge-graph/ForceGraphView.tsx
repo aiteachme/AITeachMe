@@ -34,6 +34,9 @@ const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }>
 };
 
 const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };
+const LIVE_LOAD_NODE_CAP = 180;
+const LIVE_LOAD_EXPANSION_LIMIT = 10;
+const LIVE_LOAD_DELAY_MS = 420;
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: number;
@@ -267,6 +270,10 @@ export function ForceGraphView({
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
   const [expandingNodeId, setExpandingNodeId] = useState<number | null>(null);
+  const [liveLoadEnabled, setLiveLoadEnabled] = useState(true);
+  const [liveExpansionCount, setLiveExpansionCount] = useState(0);
+  const [liveAttemptedNodeIds, setLiveAttemptedNodeIds] = useState<Set<number>>(new Set());
+  const [liveLoadFinished, setLiveLoadFinished] = useState(false);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
 
   const {
@@ -291,12 +298,23 @@ export function ForceGraphView({
     if (!initialSubgraph) return;
     setGraphData(compactSubgraph(initialSubgraph));
     setExpandedNodeIds(new Set());
+    setLiveExpansionCount(0);
+    setLiveAttemptedNodeIds(new Set());
+    setLiveLoadFinished(false);
     setSelectedNodeId(null);
   }, [initialSubgraph, course]);
 
   const expandNode = useCallback(
-    async (nodeId: number) => {
+    async (nodeId: number, options?: { source?: "auto" | "user" }) => {
       if (!course || expandedNodeIds.has(nodeId)) return;
+      const isAutoExpansion = options?.source === "auto";
+      if (isAutoExpansion) {
+        setLiveAttemptedNodeIds((current) => {
+          const next = new Set(current);
+          next.add(nodeId);
+          return next;
+        });
+      }
       setExpandingNodeId(nodeId);
       try {
         const payload =
@@ -316,6 +334,9 @@ export function ForceGraphView({
       } catch {
         // Keep the currently loaded graph visible if expansion fails.
       } finally {
+        if (isAutoExpansion) {
+          setLiveExpansionCount((count) => count + 1);
+        }
         setExpandingNodeId(null);
       }
     },
@@ -325,6 +346,9 @@ export function ForceGraphView({
   const resetGraph = useCallback(() => {
     setGraphData(null);
     setExpandedNodeIds(new Set());
+    setLiveExpansionCount(0);
+    setLiveAttemptedNodeIds(new Set());
+    setLiveLoadFinished(false);
     setSelectedNodeId(null);
     void refetchInitialSubgraph();
   }, [refetchInitialSubgraph]);
@@ -360,6 +384,48 @@ export function ForceGraphView({
 
     return { nodes, links, presentTypes: types, nodeCount: nodes.length, edgeCount: links.length };
   }, [rawData]);
+
+  useEffect(() => {
+    if (!liveLoadEnabled || !rawData || expandingNodeId || initialFetching) return;
+    const loadedNodes = rawData.nodes ?? [];
+    if (loadedNodes.length === 0) return;
+
+    const targetNodeCap = Math.min(totalNodeCount || LIVE_LOAD_NODE_CAP, LIVE_LOAD_NODE_CAP);
+    if (loadedNodes.length >= targetNodeCap || liveExpansionCount >= LIVE_LOAD_EXPANSION_LIMIT) {
+      setLiveLoadFinished(true);
+      return;
+    }
+
+    const degree = new Map<number, number>();
+    for (const edge of rawData.edges ?? []) {
+      degree.set(edge.source_node_id, (degree.get(edge.source_node_id) ?? 0) + 1);
+      degree.set(edge.target_node_id, (degree.get(edge.target_node_id) ?? 0) + 1);
+    }
+    const nextNode = [...loadedNodes]
+      .filter((node) => !expandedNodeIds.has(node.id) && !liveAttemptedNodeIds.has(node.id))
+      .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.id - b.id)[0];
+    if (!nextNode) {
+      setLiveLoadFinished(true);
+      return;
+    }
+
+    setLiveLoadFinished(false);
+    const timer = window.setTimeout(() => {
+      void expandNode(nextNode.id, { source: "auto" });
+    }, LIVE_LOAD_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    course,
+    expandedNodeIds,
+    expandingNodeId,
+    expandNode,
+    initialFetching,
+    liveAttemptedNodeIds,
+    liveExpansionCount,
+    liveLoadEnabled,
+    rawData,
+    totalNodeCount,
+  ]);
 
   // Measure container
   useEffect(() => {
@@ -577,6 +643,8 @@ export function ForceGraphView({
   }, [nodes, links, dimensions, showEdgeLabels, selectedNodeId, expandNode]);
 
   const graphIsLoading = initialLoading || (initialFetching && !rawData);
+  const liveLoadTarget = Math.min(totalNodeCount || LIVE_LOAD_NODE_CAP, LIVE_LOAD_NODE_CAP);
+  const liveLoadActive = liveLoadEnabled && !liveLoadFinished && nodeCount > 0 && nodeCount < liveLoadTarget;
 
   if (graphIsLoading) {
     return (
@@ -620,6 +688,24 @@ export function ForceGraphView({
           >
             {initialFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             刷新
+          </button>
+          <button
+            onClick={() => {
+              if (!liveLoadEnabled) setLiveLoadFinished(false);
+              setLiveLoadEnabled((enabled) => !enabled);
+            }}
+            className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
+            title="逐步加载更多相邻节点，保持图谱首屏响应"
+          >
+            {liveLoadActive || (liveLoadEnabled && expandingNodeId) ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: liveLoadEnabled ? "#22c55e" : "#cbd5e1" }}
+              />
+            )}
+            {liveLoadEnabled ? (liveLoadFinished ? "已加载" : "实时加载") : "暂停加载"}
           </button>
           {expandingNodeId ? (
             <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
