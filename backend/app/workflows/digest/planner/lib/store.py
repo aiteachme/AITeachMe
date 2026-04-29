@@ -863,9 +863,10 @@ def _normalized_plan_payload(
     planner_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     build_constraints = dict(plan.get("build_constraints") or {})
-    chapter_plan = _ensure_min_chapter_payload(
+    chapter_plan = _ensure_chapter_count_payload(
         list(plan.get("chapter_plan") or []),
         min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
+        max_chapters=int(build_constraints.get("max_chapters", 0) or 0),
         digest_mode=str(plan.get("digest_mode") or ""),
         user_prompt=str(plan.get("user_prompt") or ""),
         plan=plan,
@@ -925,15 +926,74 @@ def _supplement_topics_from_plan(
     return [f"{base}{suffix}" for suffix in suffixes]
 
 
-def _ensure_min_chapter_payload(
+def _dedupe_payload_texts(items: list[object], *, limit: int = 10) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = " ".join(str(item or "").strip().split())
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _reindex_chapter_payload(chapters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    reindexed: list[dict[str, Any]] = []
+    for index, chapter in enumerate(chapters, start=1):
+        item = dict(chapter)
+        item["chapter_index"] = index
+        reindexed.append(item)
+    return reindexed
+
+
+def _merge_chapter_payload_into(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    title = " ".join(str(extra.get("title") or "").strip().split())
+    required = list(merged.get("required_elements") or [])
+    if title:
+        required.append(f"超出章节预算后合并覆盖：{title}")
+    required.extend(list(extra.get("required_elements") or [])[:3])
+    merged["required_elements"] = _dedupe_payload_texts(required, limit=10)
+    objective = " ".join(str(merged.get("objective") or "").strip().split())
+    if title:
+        suffix = f"同时吸收《{title}》中的相邻内容。"
+        merged["objective"] = "；".join(_dedupe_payload_texts([objective, suffix], limit=2))
+    writing = " ".join(str(merged.get("writing_instructions") or "").strip().split())
+    if title:
+        guard = f"同时处理《{title}》的相邻内容，保持边界清楚，避免重复展开。"
+        merged["writing_instructions"] = " ".join(_dedupe_payload_texts([writing, guard], limit=2))
+    return merged
+
+
+def _cap_chapter_payload(
+    chapters: list[dict[str, Any]],
+    *,
+    max_chapters: int,
+) -> list[dict[str, Any]]:
+    if max_chapters <= 0 or len(chapters) <= max_chapters:
+        return _reindex_chapter_payload(chapters)
+    kept = [dict(item) for item in chapters[:max_chapters]]
+    for extra in chapters[max_chapters:]:
+        kept[-1] = _merge_chapter_payload_into(kept[-1], dict(extra))
+    return _reindex_chapter_payload(kept)
+
+
+def _ensure_chapter_count_payload(
     chapters: list[Any],
     *,
     min_chapters: int,
+    max_chapters: int = 0,
     digest_mode: str,
     user_prompt: str,
     plan: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     normalized = [dict(item) for item in chapters if isinstance(item, dict)]
+    effective_max = max(max_chapters, min_chapters) if max_chapters > 0 else 0
+    normalized = _cap_chapter_payload(normalized, max_chapters=effective_max)
     if min_chapters <= 0 or len(normalized) >= min_chapters:
         return normalized
     existing_titles = {
@@ -961,7 +1021,25 @@ def _ensure_min_chapter_payload(
                 user_prompt=user_prompt,
             )
         )
-    return normalized
+    return _cap_chapter_payload(normalized, max_chapters=effective_max)
+
+
+def _ensure_min_chapter_payload(
+    chapters: list[Any],
+    *,
+    min_chapters: int,
+    digest_mode: str,
+    user_prompt: str,
+    plan: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return _ensure_chapter_count_payload(
+        chapters,
+        min_chapters=min_chapters,
+        max_chapters=0,
+        digest_mode=digest_mode,
+        user_prompt=user_prompt,
+        plan=plan,
+    )
 
 
 def mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:

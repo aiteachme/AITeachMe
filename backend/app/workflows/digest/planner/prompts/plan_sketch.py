@@ -22,7 +22,7 @@ def build_plan_sketch_prompt(
     message_history: list[str],
 ) -> str:
     # sketch 是流式展示的“正在理解中”，不是最终计划。最终卡片只使用
-    # composer 生成的计划说明和初步大纲。
+    # 计划合成器生成的计划说明和初步大纲。
     mode_label = planner_mode_label(digest_mode)
     prompt = f"""
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。

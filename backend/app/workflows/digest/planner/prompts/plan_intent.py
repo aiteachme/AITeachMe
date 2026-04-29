@@ -60,7 +60,7 @@ def build_plan_intent_messages(
    - 用户意图：冲刺复习、系统学习、题型突破、速查复盘、入门理解等；
    - 产出用途：用来备考、复习、补弱、建立体系或快速查漏；
    - 组织主线：资料应该按知识簇、题型、概念依赖、易错点或应用场景来整理。
-2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给 composer 的内部拆题抓手。
+2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给计划合成器的内部拆题抓手。
 3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。

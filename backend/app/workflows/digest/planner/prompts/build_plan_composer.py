@@ -10,7 +10,7 @@ from app.workflows.digest.planner.lib.models import (
     PlanIntent,
     PlannerBrief,
 )
-from app.workflows.digest.planner.lib.plans import planner_mode_label
+from app.workflows.digest.planner.lib.plans import planner_mode_label, render_planner_chapter_contract
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config
 from app.workflows.digest.planner.prompts.context import (
     render_latest_plan,
@@ -51,7 +51,7 @@ def build_plan_composer_messages(
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """构造 Planner 最终大纲合成提示词。
+    """构造规划器最终大纲合成提示词。
 
     输出协议分两层：先流式给用户可见的计划说明，再在隐藏 JSON 中返回
     plan_text / plan_steps / chapters。前端只展示 marker 之前的内容。
@@ -62,18 +62,16 @@ def build_plan_composer_messages(
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_label = planner_mode_label(digest_mode)
-    mode_config = get_planner_mode_runtime_config(digest_mode)
-    chapter_count_hint = (
-        f"章节数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。"
-        f"不要为了粗颗粒而压成少于 {mode_config.min_chapters} 章；"
-        "如果资料覆盖多个知识簇、题型或学习阶段，应在模式允许范围内主动拆细。"
-    )
+    chapter_contract = render_planner_chapter_contract(digest_mode)
     # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
     # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
     system_prompt = f"""
 你是 AITeachMe 的构建计划合成器。
 你必须先输出用户可见的自然语言计划说明，再输出 {PLAN_JSON_MARKER} 包裹的机器可解析 JSON。
-你不能声称已经完成检索或已经读到外部来源；Planner 阶段只负责制定研究和整理计划。
+你不能声称已经完成检索或已经读到外部来源；规划阶段只负责制定研究和整理计划。
+你生成的章节是后续知识文档生成器的冻结执行合同，必须优先遵守下面的章节规划合同。
+
+{chapter_contract}
 """.strip()
     prompt = f"""
 你要生成一份构建前研究计划，分成三层：
@@ -82,7 +80,7 @@ def build_plan_composer_messages(
 3. 初步大纲：只给粗颗粒章节骨架，后续还会继续调整，不要写得像最终目录。
 
 重要边界：
-- Planner 现在只制定研究/整理计划，不代表已经执行检索。
+- 规划阶段现在只制定研究/整理计划，不代表已经执行检索。
 - 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
 
 主题：{course_name}
@@ -122,7 +120,8 @@ def build_plan_composer_messages(
 - plan_text 与可见计划说明语义一致。
 - plan_steps 是 4-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。
 - chapters 是很初步的粗颗粒骨架，不追求完整和细节。
-- {chapter_count_hint}
+- chapters 数量和章节边界必须遵守系统级章节规划合同。
+- 如果资料覆盖多个知识簇、任务类型或学习阶段，应在模式允许范围内主动拆细。
 
 JSON 形状：
 {{
@@ -184,10 +183,10 @@ def build_plan_outline_repair_messages(
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Build a structured repair prompt for malformed composer JSON.
+    """为格式异常的计划合成结果构造结构修复提示词。
 
-    This is still an LLM path: it repairs the machine contract from the streamed
-    composer response instead of inventing a local rule-based outline.
+    这里仍然走大模型路径：基于流式计划合成结果修复机器合同，
+    而不是用本地关键词规则臆造大纲。
     """
 
     resolved_user_prompt = (user_prompt or "").strip()
@@ -196,10 +195,14 @@ def build_plan_outline_repair_messages(
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_config = get_planner_mode_runtime_config(digest_mode)
     mode_label = planner_mode_label(digest_mode)
-    system_prompt = """
+    chapter_contract = render_planner_chapter_contract(digest_mode)
+    system_prompt = f"""
 你是 AITeachMe 的计划大纲结构修复器。
 你只输出合法 JSON 对象，不输出 Markdown、解释、注释、代码块或额外文本。
 你不能使用本地规则或关键词臆造章节；必须基于用户提示、资料上下文、内部规划意图和原始模型输出，重新生成可解析的大纲合同。
+你修复后的章节是后续知识文档生成器的冻结执行合同，必须优先遵守下面的章节规划合同。
+
+{chapter_contract}
 """.strip()
     prompt = f"""
 上一轮计划合成模型已经输出过内容，但机器 JSON 合同解析失败。
@@ -252,7 +255,7 @@ def build_plan_outline_repair_messages(
 1. plan_text 控制在 140-320 字，必须说明后续会如何查找、对照、整理和判断。
 2. plan_steps 输出 4-7 条动作步骤，不能声称已经完成检索。
 3. chapters 数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。
-4. 每章 key_points 输出 2-4 条，服务后续 DocGen 继续过大模型写正文。
+4. 每章 key_points 输出 2-4 条，服务后续知识文档生成器继续过大模型写正文。
 5. 没有上传资料时，只能基于用户提示生成通用初步计划，不要声称读过具体文件。
 6. 不要输出来源名单、网站名、论文名、后端字段、Markdown 代码块或 {PLAN_JSON_MARKER} 标记。
 """.strip()
