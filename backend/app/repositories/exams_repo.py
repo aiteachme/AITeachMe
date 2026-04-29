@@ -25,6 +25,37 @@ def create_question_template(session: Session, template: QuestionTemplate) -> Qu
     return template
 
 
+def set_question_template_mark(
+    session: Session,
+    *,
+    subject_id: str,
+    template_id: int,
+    is_marked: bool,
+) -> QuestionTemplate | None:
+    template = session.get(QuestionTemplate, template_id)
+    if template is None or template.subject_id != subject_id:
+        return None
+    template.is_marked = is_marked
+    template.updated_at = utcnow()
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return template
+
+
+def list_marked_question_template_ids(session: Session, template_ids: list[int]) -> set[int]:
+    ids = [int(item) for item in template_ids if int(item or 0) > 0]
+    if not ids:
+        return set()
+    rows = session.exec(
+        select(QuestionTemplate.id).where(
+            QuestionTemplate.id.in_(ids),
+            QuestionTemplate.is_marked == True,  # noqa: E712
+        )
+    ).all()
+    return {int(item) for item in rows if item is not None}
+
+
 def _normalize_link_refs(refs: list[dict[str, object]]) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     seen: set[int] = set()

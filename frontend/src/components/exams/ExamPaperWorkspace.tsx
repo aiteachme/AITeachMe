@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, ZoomIn, ZoomOut } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bookmark, ListChecks, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -49,6 +49,66 @@ async function getExamStudyGuide(subjectId: string, paperId: number, signal?: Ab
   );
 }
 
+type QuestionTemplateMarkResponse = {
+  question_template_id: number;
+  is_marked: boolean;
+};
+
+type QuestionTemplateMarkVariables = {
+  questionTemplateId: number;
+  isMarked: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function updateQuestionTemplateMark(
+  subjectId: string,
+  questionTemplateId: number,
+  isMarked: boolean,
+) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateMarkResponse } }>(
+    `/api/v1/subjects/${subjectId}/exams/question-templates/${questionTemplateId}/mark`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_marked: isMarked }),
+    },
+  );
+}
+
+function patchQuestionTemplateMarkInDetail(
+  current: unknown,
+  questionTemplateId: number,
+  isMarked: boolean,
+): unknown {
+  if (!isRecord(current) || !isRecord(current.data)) return current;
+  const apiPayload = current.data;
+  if (!isRecord(apiPayload.data)) return current;
+  const paper = apiPayload.data;
+  if (!Array.isArray(paper.items)) return current;
+
+  return {
+    ...current,
+    data: {
+      ...apiPayload,
+      data: {
+        ...paper,
+        items: paper.items.map((item) => (
+          isRecord(item) && item.question_template_id === questionTemplateId
+            ? { ...item, is_marked: isMarked }
+            : item
+        )),
+      },
+    },
+  };
+}
+
+function isQuestionTemplateMarked(item: ExamPaperItemResponse) {
+  return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
+}
+
 interface ExamPaperWorkspaceProps {
   subjectId: string;
   paperId: number;
@@ -88,6 +148,10 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const paper = useMemo<ExamPaperDetailResponse | null>(
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
+  );
+  const examDetailQueryKey = useMemo(
+    () => getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId),
+    [paperId, subjectId],
   );
   const generationErrorMessage = useMemo(() => {
     const raw = paper?.selection_context?.error_message;
@@ -416,6 +480,48 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     });
   }, [keepQuestionHighlight, openAiInteraction, paper, subjectId]);
 
+  const questionTemplateMarkMutation = useMutation({
+    mutationFn: ({ questionTemplateId, isMarked }: QuestionTemplateMarkVariables) =>
+      updateQuestionTemplateMark(subjectId, questionTemplateId, isMarked),
+    onMutate: async ({ questionTemplateId, isMarked }) => {
+      await queryClient.cancelQueries({ queryKey: examDetailQueryKey });
+      const previousDetail = queryClient.getQueryData(examDetailQueryKey);
+      queryClient.setQueryData(examDetailQueryKey, (current: unknown) =>
+        patchQuestionTemplateMarkInDetail(current, questionTemplateId, isMarked),
+      );
+      return { previousDetail };
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: examDetailQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["exam-question-templates", subjectId] }),
+      ]);
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousDetail) {
+        queryClient.setQueryData(examDetailQueryKey, context.previousDetail);
+      }
+      toast({
+        title: "标记失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
+
+  const toggleQuestionMark = useCallback((item: ExamPaperItemResponse, isMarked: boolean) => {
+    if (!item.question_template_id) {
+      return;
+    }
+    questionTemplateMarkMutation.mutate({
+      questionTemplateId: item.question_template_id,
+      isMarked,
+    });
+  }, [questionTemplateMarkMutation]);
+  const markingQuestionTemplateId = questionTemplateMarkMutation.isPending
+    ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
+    : null;
+
   const submitExam = useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost({
     mutation: {
       onSuccess: async (response) => {
@@ -565,12 +671,15 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                                 }
                                 revealQuestion(item.item_order);
                               }}
-                              className={`grid aspect-square w-full place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
+                              className={`relative grid aspect-square w-full place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
                                 isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white" : ""
                               }`}
                               aria-label={`跳转到第 ${item.item_order} 题`}
                             >
-                              {item.item_order}
+                              <span>{item.item_order}</span>
+                              {isQuestionTemplateMarked(item) ? (
+                                <Bookmark className="absolute right-1 top-1 h-2.5 w-2.5 fill-current opacity-80" />
+                              ) : null}
                             </button>
                           );
                         })}
@@ -652,6 +761,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                         keepQuestionHighlight(item.item_order);
                       }}
                       onQuestionAi={openQuestionAi}
+                      onQuestionMarkToggle={toggleQuestionMark}
+                      markingQuestionTemplateId={markingQuestionTemplateId}
                     />
                     <ExamQuestionAnalysisSheet item={selectedReviewItem} />
                     </div>
@@ -665,6 +776,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                     highlightedQuestionOrder={highlightedQuestionOrder}
                     setAnswers={setAnswers}
                     onQuestionAi={openQuestionAi}
+                    onQuestionMarkToggle={toggleQuestionMark}
+                    markingQuestionTemplateId={markingQuestionTemplateId}
                   />
                 )}
 

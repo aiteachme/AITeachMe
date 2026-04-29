@@ -34,12 +34,14 @@ import type {
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
   ApiResponsePaginatedDataExamHistoryItem,
+  ApiResponseQuestionTemplateMarkResponse,
   ErrorResponse,
   ExamGenerateRequest,
   ExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetParams,
   ExamPrewarmStatusApiV1SubjectsSubjectIdExamsPrewarmStatusGetParams,
   ExamSubmitRequest,
-  HTTPValidationError
+  HTTPValidationError,
+  QuestionTemplateMarkRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -593,6 +595,113 @@ export function useQuestionTemplatesApiV1SubjectsSubjectIdExamsQuestionTemplates
 
 
 /**
+ * @summary Mark or unmark a question template
+ */
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
+  data: ApiResponseQuestionTemplateMarkResponse
+  status: 200
+}
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseSuccess = (markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200) & {
+  headers: Headers;
+};
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseError = (markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse400 | markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse404 | markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse422 | markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse500) & {
+  headers: Headers;
+};
+
+export type markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse = (markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseSuccess | markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseError)
+
+export const getMarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchUrl = (subjectId: string,
+    questionTemplateId: number,) => {
+
+
+
+
+  return `/api/v1/subjects/${subjectId}/exams/question-templates/${questionTemplateId}/mark`
+}
+
+export const markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch = async (subjectId: string,
+    questionTemplateId: number,
+    questionTemplateMarkRequest: QuestionTemplateMarkRequest, options?: RequestInit): Promise<markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse> => {
+
+  return orvalApiClient<markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse>(getMarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchUrl(subjectId,questionTemplateId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      questionTemplateMarkRequest,)
+  }
+);}
+
+
+
+
+export const getMarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{subjectId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{subjectId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext> => {
+
+const mutationKey = ['markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, {subjectId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}> = (props) => {
+          const {subjectId,questionTemplateId,data} = props ?? {};
+
+          return  markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch(subjectId,questionTemplateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationResult = NonNullable<Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>>
+    export type MarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationBody = QuestionTemplateMarkRequest
+    export type MarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Mark or unmark a question template
+ */
+export const useMarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{subjectId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof markQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>,
+        TError,
+        {subjectId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest},
+        TContext
+      > => {
+      return useMutation(getMarkQuestionTemplateApiV1SubjectsSubjectIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationOptions(options), queryClient);
+    }
+    /**
  * @summary List global and subject question types
  */
 export type questionTypesApiV1SubjectsSubjectIdExamsQuestionTypesGetResponse200 = {

@@ -146,6 +146,7 @@ const papers = new Map<number, InternalPaper>();
 const generateJobs = new Map<number, GenerateJob>();
 const gradeJobs = new Map<number, GradeJob>();
 const activeGenerateSubject = new Set<string>();
+const markedQuestionTemplateIds = new Set<number>();
 const PAPER_PREVIEW_ROW_LIMIT = 7;
 
 let nextPaperId = 10;
@@ -335,6 +336,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       score_obtained: item.score_obtained,
       score_max: item.score_max,
       error_cause_label: item.error_cause_label,
+      is_marked: markedQuestionTemplateIds.has(item.question_template_id),
     })),
   };
 }
@@ -523,6 +525,26 @@ export const examHandlers = [
   http.post("/api/v1/subjects/:subject/exams/question-bank", ({ params }) => {
     const subject = String(params.subject);
     return HttpResponse.json({ code: 0, data: buildQuestionBank(subject) });
+  }),
+
+  http.patch("/api/v1/subjects/:subject/exams/question-templates/:questionTemplateId/mark", async ({ params, request }) => {
+    const questionTemplateId = Number(params.questionTemplateId);
+    const body = (await request.json()) as { is_marked?: boolean };
+    if (!Number.isFinite(questionTemplateId) || questionTemplateId <= 0) {
+      return HttpResponse.json({ code: 404, message: "template not found", data: null }, { status: 404 });
+    }
+    if (body.is_marked) {
+      markedQuestionTemplateIds.add(questionTemplateId);
+    } else {
+      markedQuestionTemplateIds.delete(questionTemplateId);
+    }
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        question_template_id: questionTemplateId,
+        is_marked: markedQuestionTemplateIds.has(questionTemplateId),
+      },
+    });
   }),
 
   http.post("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {

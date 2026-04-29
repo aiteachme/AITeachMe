@@ -5030,6 +5030,98 @@
         }
       }
     },
+    "/api/v1/subjects/{subject_id}/exams/question-templates/{question_template_id}/mark": {
+      "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Mark or unmark a question template",
+        "operationId": "mark_question_template_api_v1_subjects__subject_id__exams_question_templates__question_template_id__mark_patch",
+        "parameters": [
+          {
+            "name": "subject_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "question_template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Question Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTemplateMarkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTemplateMarkResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject_id}/exams/question-types": {
       "get": {
         "tags": [
@@ -7538,6 +7630,40 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[SubjectItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_QuestionTemplateMarkResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTemplateMarkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTemplateMarkResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -11069,6 +11195,11 @@
               }
             ],
             "title": "Error Cause Label"
+          },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "default": false
           }
         },
         "type": "object",
@@ -14333,6 +14464,11 @@
             "type": "string",
             "title": "Status"
           },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -14359,6 +14495,39 @@
           "updated_at"
         ],
         "title": "QuestionTemplateItemResponse"
+      },
+      "QuestionTemplateMarkRequest": {
+        "properties": {
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "description": "Whether the question template is marked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_marked"
+        ],
+        "title": "QuestionTemplateMarkRequest",
+        "description": "Update whether a question template is marked as a favorite."
+      },
+      "QuestionTemplateMarkResponse": {
+        "properties": {
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_template_id",
+          "is_marked"
+        ],
+        "title": "QuestionTemplateMarkResponse"
       },
       "QuestionTypeRegistryItemResponse": {
         "properties": {

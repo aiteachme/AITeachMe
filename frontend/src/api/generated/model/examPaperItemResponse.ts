@@ -25,4 +25,5 @@ export interface ExamPaperItemResponse {
   score_obtained?: number | null;
   score_max?: number | null;
   error_cause_label?: string | null;
+  is_marked?: boolean;
 }

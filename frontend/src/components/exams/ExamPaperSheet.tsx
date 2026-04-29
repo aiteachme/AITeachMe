@@ -24,6 +24,8 @@ interface ExamPaperSheetProps {
   showInlineReviewDetails?: boolean;
   onSelectQuestion?: (item: ExamPaperItemResponse) => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
+  onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
+  markingQuestionTemplateId?: number | null;
 }
 
 function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
@@ -198,6 +200,85 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
   );
 }
 
+function getQuestionResultMarkJitter(item: ExamPaperItemResponse) {
+  const seed = item.item_order * 37 + item.question_type.length * 11 + item.difficulty.length * 7;
+  return {
+    x: [-6, -4, -2, 0, 2, 4][seed % 6],
+    y: [-8, -5, -2, 2, 5, 8][Math.floor(seed / 5) % 6],
+    rotate: [-11, -7, -3, 4, 8, 12][Math.floor(seed / 11) % 6],
+  };
+}
+
+function QuestionReviewResultMark({ item }: { item: ExamPaperItemResponse }) {
+  const isCorrect = item.is_correct === true;
+  const jitter = getQuestionResultMarkJitter(item);
+  const style = {
+    transform: `translate(${jitter.x}px, calc(-50% + ${jitter.y}px)) rotate(${jitter.rotate}deg)`,
+  };
+
+  return (
+    <span
+      className={cn(
+        "pointer-events-none absolute -right-1 top-12 z-20 grid h-16 w-16 select-none place-items-center sm:right-1 lg:right-3",
+        isCorrect ? "text-emerald-600/85" : "text-rose-600/85",
+      )}
+      style={style}
+      aria-hidden="true"
+    >
+      <svg
+        className="h-full w-full overflow-visible drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]"
+        viewBox="0 0 96 96"
+        role="presentation"
+      >
+        {isCorrect ? (
+          <g fill="currentColor">
+            <path d="M12 53 C16 48 20 48 25 52 C31 57 35 62 40 66 C51 45 65 26 84 10 C89 6 92 8 88 14 C71 33 58 50 47 72 C44 77 40 79 36 75 C29 69 22 62 14 57 C11 55 10 55 12 53 Z" />
+            <path
+              d="M17 51 C23 54 31 61 38 68 C49 49 62 31 80 15"
+              fill="none"
+              stroke="rgba(255,255,255,0.34)"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="3"
+            />
+            <path
+              d="M23 58 C29 62 34 68 39 72"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth="2.2"
+              opacity="0.38"
+            />
+          </g>
+        ) : (
+          <g fill="currentColor">
+            <path d="M18 17 C20 13 24 13 29 18 C42 30 55 44 76 68 C81 74 78 80 72 76 C53 61 38 45 20 26 C16 22 15 19 18 17 Z" />
+            <path d="M73 15 C78 12 82 16 78 22 C64 41 47 58 23 78 C18 82 14 78 18 73 C31 55 50 36 73 15 Z" />
+            <path
+              d="M26 23 C39 36 52 50 70 70"
+              fill="none"
+              stroke="rgba(255,255,255,0.28)"
+              strokeLinecap="round"
+              strokeWidth="3"
+            />
+            <path
+              d="M72 21 C56 39 39 56 22 74"
+              fill="none"
+              stroke="rgba(255,255,255,0.24)"
+              strokeLinecap="round"
+              strokeWidth="2.8"
+            />
+          </g>
+        )}
+      </svg>
+    </span>
+  );
+}
+
+function isQuestionMarked(item: ExamPaperItemResponse) {
+  return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
+}
+
 export function ExamPaperSheet({
   paper,
   answers,
@@ -209,6 +290,8 @@ export function ExamPaperSheet({
   showInlineReviewDetails = true,
   onSelectQuestion,
   onQuestionAi,
+  onQuestionMarkToggle,
+  markingQuestionTemplateId,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
   const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
@@ -264,13 +347,13 @@ export function ExamPaperSheet({
                       ? ["True", "False"]
                       : (item.options ?? []);
                     const selectedMultiChoice = splitMultiChoiceAnswer(answerValue);
-                    const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
                     const isReadonly = isGraded;
-                    const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
+                    const isMarked = isQuestionMarked(item);
+                    const isMarking = markingQuestionTemplateId === item.question_template_id;
 
                     return (
                       <div
@@ -284,7 +367,7 @@ export function ExamPaperSheet({
                           }
                         }}
                         className={cn(
-                          "scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 sm:py-9",
+                          "relative scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 sm:py-9",
                           (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
                           isReviewStage && "cursor-pointer rounded-xl",
                           isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200",
@@ -292,6 +375,7 @@ export function ExamPaperSheet({
                         )}
                         aria-selected={isSelectedReviewItem || undefined}
                       >
+                        {isReviewStage ? <QuestionReviewResultMark item={item} /> : null}
                         <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
                           <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
                             <div className="font-serif text-2xl font-bold leading-none text-slate-950">
@@ -302,7 +386,7 @@ export function ExamPaperSheet({
                                 <button
                                   type="button"
                                   onClick={() => onQuestionAi(item, isReviewStage, answerValue)}
-                                  className="inline-flex min-h-10 min-w-10 flex-col items-center justify-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-2 text-[11px] font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100 hover:text-violet-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                  className="inline-flex flex-col items-center gap-1 rounded-md text-slate-400 transition hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                                   title={`围绕第 ${item.item_order} 题问 AI`}
                                   aria-label={`围绕第 ${item.item_order} 题问 AI`}
                                 >
@@ -310,10 +394,25 @@ export function ExamPaperSheet({
                                   问AI
                                 </button>
                               )}
-                              <span className="inline-flex flex-col items-center gap-1">
-                                <Bookmark className="h-4 w-4" />
-                                标记
-                              </span>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onQuestionMarkToggle?.(item, !isMarked);
+                                }}
+                                disabled={!onQuestionMarkToggle || isMarking}
+                                className={cn(
+                                  "inline-flex flex-col items-center gap-1 rounded-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                                  isMarked ? "text-slate-700 hover:text-slate-900" : "text-slate-400 hover:text-slate-600",
+                                  (!onQuestionMarkToggle || isMarking) && "cursor-default opacity-70",
+                                )}
+                                title={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
+                                aria-label={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
+                                aria-pressed={isMarked}
+                              >
+                                <Bookmark className={cn("h-4 w-4", isMarked && "fill-current")} />
+                                {isMarked ? "已标记" : "标记"}
+                              </button>
                               {isReviewStage && (
                                 <span className="inline-flex flex-col items-center gap-1">
                                   <Lightbulb className="h-4 w-4" />
@@ -339,11 +438,6 @@ export function ExamPaperSheet({
                                 const isSelected = isMultipleChoice
                                   ? selectedMultiChoice.has(optionValue)
                                   : answerValue === optionValue;
-                                const isCorrectOption = isMultipleChoice
-                                  ? correctMultiChoice.has(optionValue)
-                                  : (item.correct_answer ?? "") === optionValue;
-                                const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
-                                const isRightOption = isReviewStage && isCorrectOption;
                                 return (
                                   <button
                                     key={`${item.id}-${optionIndex}`}
@@ -372,69 +466,33 @@ export function ExamPaperSheet({
                                       });
                                     }}
                                     className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm leading-7 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-base ${
-                                      isReviewStage
-                                        ? isRightOption
-                                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                                          : isWrongSelectedOption
-                                            ? "border-rose-300 bg-rose-50 text-rose-900"
-                                            : "border-slate-200 bg-white text-slate-500"
+                                      isSelected
+                                        ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
                                         : isReadonly
-                                          ? isSelected
-                                            ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
-                                            : "border-slate-200 bg-white text-slate-700"
-                                        : isSelected
-                                          ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
+                                          ? "border-slate-200 bg-white text-slate-700"
                                           : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
                                       className={`grid h-5 w-5 shrink-0 place-items-center border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
-                                        isReviewStage
-                                          ? isRightOption
-                                            ? "border-emerald-600 bg-white"
-                                            : isWrongSelectedOption
-                                              ? "border-rose-600 bg-white"
-                                              : "border-slate-300 bg-white"
+                                        isSelected
+                                          ? "border-violet-600 bg-white"
                                           : isReadonly
-                                            ? isSelected
-                                              ? "border-violet-600 bg-white"
-                                              : "border-slate-400 bg-white"
-                                          : isSelected
-                                            ? "border-violet-600 bg-white"
+                                            ? "border-slate-400 bg-white"
                                             : "border-slate-300 bg-white"
                                       }`}
                                     >
                                       <span
                                         className={`${isMultipleChoice ? "h-2.5 w-2.5 rounded-[3px]" : "h-2.5 w-2.5 rounded-full"} ${
-                                          isReviewStage
-                                            ? isRightOption
-                                              ? "bg-emerald-600"
-                                              : isWrongSelectedOption
-                                                ? "bg-rose-600"
-                                                : "bg-transparent"
-                                            : isReadonly
-                                              ? isSelected
-                                                ? "bg-violet-600"
-                                                : "bg-transparent"
-                                            : isSelected
-                                              ? "bg-violet-600"
-                                              : "bg-transparent"
+                                          isSelected ? "bg-violet-600" : "bg-transparent"
                                         }`}
                                       />
                                     </span>
                                     <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-7 sm:[&_p]:text-base sm:[&_p]:leading-7 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
-                                      isReviewStage
-                                        ? isRightOption
-                                          ? "[&_p]:text-emerald-900"
-                                          : isWrongSelectedOption
-                                            ? "[&_p]:text-rose-900"
-                                            : "[&_p]:text-slate-500"
+                                      isSelected
+                                        ? "[&_p]:text-violet-900"
                                         : isReadonly
-                                          ? isSelected
-                                            ? "[&_p]:text-violet-900"
-                                            : "[&_p]:text-slate-700"
-                                        : isSelected
-                                          ? "[&_p]:text-violet-900"
+                                          ? "[&_p]:text-slate-700"
                                           : "[&_p]:text-slate-800"
                                     }`}>
                                       <div className="flex gap-3">
@@ -454,12 +512,8 @@ export function ExamPaperSheet({
                             <div className="mt-6 min-w-0">
                               <textarea
                                 className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
-                                  isReviewStage
-                                    ? isCorrect
-                                      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                                      : "border-rose-300 bg-rose-50 text-rose-900"
-                                    : isReadonly
-                                      ? "border-slate-200 bg-slate-50 text-slate-900"
+                                  isReadonly
+                                    ? "border-slate-200 bg-slate-50 text-slate-900"
                                     : "border-slate-200 bg-white text-slate-900 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                                 }`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
