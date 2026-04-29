@@ -18,6 +18,7 @@ import type {
   ChatSessionItem,
 } from "../../api/generated/model";
 import { type ChatSessionMessage, useChatSession } from "../../hooks/useChatSession";
+import { buildCoursePath, buildCourseSubPath, isCourseRouteActive } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
 import { ChatCitationModal } from "../chat/ChatCitationModal";
 import { ChatComposer } from "../chat/ChatComposer";
@@ -260,7 +261,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   } = useAiInteraction();
   const courseId = getAiConversationBackendCourseId(scope);
   const docsCourseId = scope?.type === "course" ? scope.courseId : null;
-  const isKnowledgeDocsPage = Boolean(docsCourseId && /^\/course\/[^/]+\/knowledge-docs$/.test(pathname));
+  const isKnowledgeDocsPage = Boolean(docsCourseId && isCourseRouteActive(pathname, docsCourseId, "knowledge-docs"));
 
   const [draft, setDraft] = useState("");
   const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
@@ -578,7 +579,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         selectedText: target.selectedText,
         sessionId: target.sessionId,
       };
-      const targetPath = `/course/${docsCourseId}/exams/${target.paperId}`;
+      const targetPath = buildCourseSubPath(docsCourseId, "exams", target.paperId);
       if (pathname !== targetPath) {
         navigate(targetPath, {
           state: {
@@ -598,7 +599,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       selectedText: target.selectedText,
     };
     if (!isKnowledgeDocsPage) {
-      navigate(`/course/${docsCourseId}/knowledge-docs`, {
+      navigate(buildCoursePath(docsCourseId, "knowledge-docs"), {
         state: {
           selectionJump: detail,
           selectionJumpAt: Date.now(),

@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, type ReactElement } from "react";
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
-import { COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
+import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 
@@ -69,6 +69,18 @@ const COURSE_PAGE_ELEMENTS: Record<CourseRouteId, ReactElement> = {
   profile: withRouteFallback(<ProfilePage />),
 };
 
+function LegacyCourseRouteRedirect({ buildPath }: { buildPath: (params: Record<string, string | undefined>) => string }) {
+  const params = useParams();
+  const location = useLocation();
+  return (
+    <Navigate
+      to={`${buildPath(params)}${location.search}${location.hash}`}
+      replace
+      state={location.state}
+    />
+  );
+}
+
 function RuntimeSettingsBootstrap() {
   useEffect(() => {
     const cachedOverview = getStoredSystemSettingsOverview();
@@ -119,30 +131,84 @@ function App() {
                   <Route path="library" element={withRouteFallback(<LibraryPage />)} />
                   {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
                     ([routeId, element]) => (
-                      <Route key={routeId} path={`course/:courseId/${routeId}`} element={element} />
+                      <Route key={routeId} path={`courses/:courseId/${routeId}`} element={element} />
                     ),
                   )}
                   <Route
-                    path="course/:courseId/knowledge-docs/interactive"
+                    path="courses/:courseId/knowledge-docs/interactive"
                     element={withRouteFallback(<KnowledgeInteractivePage />)}
                   />
                   <Route
-                    path="course/:courseId/exams/question-templates"
+                    path="courses/:courseId/exams/question-templates"
                     element={withRouteFallback(<QuestionTemplatesPage />)}
                   />
                   <Route
-                    path="course/:courseId/exams/question-types"
+                    path="courses/:courseId/exams/question-types"
                     element={withRouteFallback(<QuestionTypesPage />)}
                   />
                   <Route
-                    path="course/:courseId/exams/:examPaperId"
+                    path="courses/:courseId/exams/:examPaperId"
                     element={withRouteFallback(<ExamPaperPage />)}
                   />
                   {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
                     <Route
                       key={aliasPath}
-                      path={`course/:courseId/${aliasPath}`}
+                      path={`courses/:courseId/${aliasPath}`}
                       element={<Navigate to={`../${targetRoute}`} replace />}
+                    />
+                  ))}
+                  {(Object.keys(COURSE_PAGE_ELEMENTS) as CourseRouteId[]).map((routeId) => (
+                    <Route
+                      key={`legacy-${routeId}`}
+                      path={`course/:courseId/${routeId}`}
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId }) => buildCoursePath(courseId ?? "", routeId)}
+                        />
+                      }
+                    />
+                  ))}
+                  <Route
+                    path="course/:courseId/knowledge-docs/interactive"
+                    element={
+                      <LegacyCourseRouteRedirect
+                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "interactive")}
+                      />
+                    }
+                  />
+                  <Route
+                    path="course/:courseId/exams/question-templates"
+                    element={
+                      <LegacyCourseRouteRedirect
+                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-templates")}
+                      />
+                    }
+                  />
+                  <Route
+                    path="course/:courseId/exams/question-types"
+                    element={
+                      <LegacyCourseRouteRedirect
+                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-types")}
+                      />
+                    }
+                  />
+                  <Route
+                    path="course/:courseId/exams/:examPaperId"
+                    element={
+                      <LegacyCourseRouteRedirect
+                        buildPath={({ courseId, examPaperId }) => buildCourseSubPath(courseId ?? "", "exams", examPaperId)}
+                      />
+                    }
+                  />
+                  {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
+                    <Route
+                      key={`legacy-alias-${aliasPath}`}
+                      path={`course/:courseId/${aliasPath}`}
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId }) => buildCoursePath(courseId ?? "", targetRoute)}
+                        />
+                      }
                     />
                   ))}
                   <Route path="*" element={<Navigate to="/" replace />} />

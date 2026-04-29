@@ -63,6 +63,7 @@ import {
   partitionUploadFiles,
 } from "../lib/fileUpload";
 import { publicAssetPath } from "../lib/publicAsset";
+import { buildCoursePath } from "../lib/courseNavigation";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 type ChatRole = "user" | "assistant" | "system";
@@ -700,7 +701,7 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
     .reverse()
     .find((turn) => turn.role === "assistant" && turn.content.trim());
 
-  return assistantTurn?.content.trim() || response.latest_plan.plan_summary || fallbackContent;
+  return assistantTurn?.content.trim() || response.latest_plan?.plan_summary || fallbackContent;
 }
 
 export function BuildPlanPage() {
@@ -879,15 +880,10 @@ export function BuildPlanPage() {
     const autoStartPrompt = navState?.autoStart ? navState.initialPrompt?.trim() : "";
 
     if (autoStartPrompt) {
-      logPlannerDebug("skip_restore_for_autostart", { courseId });
-      setMessages(createInitialMessages());
-      setPlannerSessionId(null);
-      setCurrentPlan(null);
-      setInputValue(autoStartPrompt);
-      setPlannerNeedsRefresh(false);
-      setHasAutoUploaded(false);
-      setIsRevisingPlan(false);
-      hydratedCourseRef.current = null;
+      logPlannerDebug("skip_restore_for_autostart", {
+        courseId,
+        alreadyStarted: autoStartFiredRef.current,
+      });
       return;
     }
 
@@ -1021,7 +1017,7 @@ export function BuildPlanPage() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, plannerStreamingPreview]);
 
   // 从首页带 autoStart 进入时，自动发起一次 planner SSE 生成。
   useEffect(() => {
@@ -1212,7 +1208,7 @@ export function BuildPlanPage() {
 
       navigate(
         {
-          pathname: `/course/${courseId}/knowledge-docs`,
+          pathname: buildCoursePath(courseId, "knowledge-docs"),
           search: params.toString() ? `?${params.toString()}` : "",
         },
         {
@@ -1296,16 +1292,19 @@ export function BuildPlanPage() {
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {
         if (pendingId) {
-          return replaceMessageById(prev, pendingId, (message) => ({
+          const replaced = replaceMessageById(prev, pendingId, (message) => ({
             ...message,
             content: resolvedContent,
             plan: response.latest_plan,
             runtimeStats,
             streaming: false,
           }));
+          if (replaced !== prev) {
+            return replaced;
+          }
         }
         return [
-          ...prev,
+          ...sanitizePlannerMessages(prev),
           createMessage(
             "assistant",
             resolvedContent,
@@ -1324,7 +1323,7 @@ export function BuildPlanPage() {
     if (!courseId) {
       return;
     }
-    navigate(`/course/${courseId}/knowledge-docs${location.search}`);
+    navigate(`${buildCoursePath(courseId, "knowledge-docs")}${location.search}`);
   }, [location.search, navigate, courseId]);
 
   const handleCancelBuild = useCallback(() => {
@@ -1583,6 +1582,18 @@ export function BuildPlanPage() {
 
   const canOpenKnowledgeDocs =
     isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown;
+  const hasRenderedPlannerPlan = messages.some((message) => Boolean(message.plan));
+  const hasRenderedStreamingPlannerMessage = messages.some(
+    (message) => message.role === "assistant" && message.streaming && !message.plan,
+  );
+  const shouldShowCurrentPlanFallback = Boolean(currentPlan && !hasRenderedPlannerPlan && !plannerStreaming);
+  const shouldShowPlannerStreamingFallback = plannerStreaming && !hasRenderedStreamingPlannerMessage;
+  const shouldShowPlannerEmptyState =
+    messages.length === 0 &&
+    !currentPlan &&
+    !plannerStreaming &&
+    !shouldShowBuildDialog &&
+    !knowledgeBuild.errorMessage;
 
   return (
     <>
@@ -1604,6 +1615,42 @@ export function BuildPlanPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">
+            {shouldShowPlannerEmptyState ? (
+              <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">
+                <div className="max-w-xl text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
+                    <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
+                  </div>
+                  <h1 className="mt-5 text-xl font-semibold tracking-normal text-zinc-950 dark:text-slate-100">
+                    准备规划一门课程
+                  </h1>
+                  <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-slate-400">
+                    说出目标或加入资料后，我会整理一版可以确认和调整的构建方案。
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {shouldShowPlannerStreamingFallback ? (
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                  <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
+                </div>
+                <div className="max-w-[85%] space-y-2">
+                  <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
+                    {plannerStreamingPreview.trim() ? (
+                      <PlannerPreviewMarkdown markdown={plannerStreamingPreview} streaming />
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>{plannerPendingStatusText}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -1670,6 +1717,26 @@ export function BuildPlanPage() {
                 </div>
               </div>
             ))}
+
+            {shouldShowCurrentPlanFallback && currentPlan ? (
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                  <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
+                </div>
+                <div className="w-full max-w-[85%]">
+                  <PlannerOutlineCard
+                    plan={currentPlan}
+                    needsRefresh={plannerNeedsRefresh}
+                    isDisabled={isBuilding || isPlannerPending}
+                    isBuilding={isBuilding || isPlannerPending}
+                    publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
+                    onConfirm={handleConfirmBuild}
+                    onAdjust={handleContinueAdjust}
+                    onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">

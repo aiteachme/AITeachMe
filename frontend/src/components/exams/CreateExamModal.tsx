@@ -84,12 +84,14 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
 interface CreateExamModalProps {
   open: boolean;
   courseId: string;
+  courseName?: string | null;
   onClose: () => void;
 }
 
-export function CreateExamModal({ open, courseId, onClose }: CreateExamModalProps) {
+export function CreateExamModal({ open, courseId, courseName, onClose }: CreateExamModalProps) {
   const { toast } = useToast();
   const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId));
+  const displayName = courseName?.trim() || "当前课程";
 
   useEffect(() => {
     if (!open) return;
@@ -120,8 +122,8 @@ export function CreateExamModal({ open, courseId, onClose }: CreateExamModalProp
     <Modal open={open} onClose={onClose} title="新考卷配置" className="max-w-2xl rounded-[28px]">
       <div className="space-y-6">
         <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5 dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(30,41,59,0.76)_100%)]">
-          <p className="text-sm font-medium text-sky-600 dark:text-sky-300">面向当前学科</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">{courseId}</h3>
+          <p className="text-sm font-medium text-sky-600 dark:text-sky-300">面向当前课程</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">{displayName}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
             保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>

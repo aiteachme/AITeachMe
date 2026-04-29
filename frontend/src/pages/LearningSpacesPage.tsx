@@ -11,6 +11,7 @@ import { CourseImportModal } from "../components/course/CourseImportModal";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { resolveCourseIcon } from "../lib/courseIcons";
 import { cn } from "../lib/utils";
+import { buildCoursePath } from "../lib/courseNavigation";
 
 type CourseWithIcon = {
   course_id: string;
@@ -19,7 +20,7 @@ type CourseWithIcon = {
 };
 
 function displayCourseName(course: { name?: string | null }) {
-  return course.name?.trim() || "未命名学科";
+  return course.name?.trim() || "未命名课程";
 }
 
 function courseTone(name: string) {
@@ -98,7 +99,7 @@ export function LearningSpacesPage() {
               <div>
                 <h1 className="text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">学习空间</h1>
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  管理学科、资料和课程包迁移。每个学科都可以继续构建、查看知识库、导出备份。
+                  管理课程、资料和课程包迁移。每个课程都可以继续构建、查看知识库、导出备份。
                 </p>
               </div>
             </div>
@@ -109,7 +110,7 @@ export function LearningSpacesPage() {
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
               >
-                新建学科
+                新建课程
               </WorkspaceActionButton>
               <WorkspaceActionButton
                 icon={<Upload className="h-4 w-4" />}
@@ -128,9 +129,9 @@ export function LearningSpacesPage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">学科列表</h2>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">课程列表</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {isLoading ? "正在加载学科..." : courseCount > 0 ? `${courseCount} 个学科可继续学习` : "还没有创建学科"}
+                {isLoading ? "正在加载课程..." : courseCount > 0 ? `${courseCount} 门课程可继续学习` : "还没有创建课程"}
               </p>
             </div>
           </div>
@@ -151,7 +152,7 @@ export function LearningSpacesPage() {
               </div>
               <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                可以新建一个空学科，也可以直接导入别人分享的 .atmx 课程包。
+                可以新建一个空课程，也可以直接导入别人分享的 .atmx 课程包。
               </p>
               <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                 <WorkspaceActionButton
@@ -159,7 +160,7 @@ export function LearningSpacesPage() {
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
                 >
-                  新建学科
+                  新建课程
                 </WorkspaceActionButton>
               </div>
             </div>
@@ -195,7 +196,7 @@ export function LearningSpacesPage() {
                             {displayName}
                           </h3>
                           <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            学科
+                            课程
                           </span>
                         </div>
                         <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -213,7 +214,7 @@ export function LearningSpacesPage() {
                         ].map((item) => (
                           <Link
                             key={item.path}
-                            to={`/course/${course.course_id}/${item.path}`}
+                            to={buildCoursePath(course.course_id, item.path as "build" | "knowledge-docs" | "profile")}
                             className="rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                           >
                             {item.label}
@@ -223,7 +224,7 @@ export function LearningSpacesPage() {
 
                       <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                         <Link
-                          to={`/course/${course.course_id}/build`}
+                          to={buildCoursePath(course.course_id, "build")}
                           className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           <BookOpen className="h-4 w-4" />
@@ -231,7 +232,7 @@ export function LearningSpacesPage() {
                           <ArrowRight className="h-4 w-4" />
                         </Link>
                         <Link
-                          to={`/course/${course.course_id}/build`}
+                          to={buildCoursePath(course.course_id, "build")}
                           className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                           title="进入构建页添加资料"
                         >

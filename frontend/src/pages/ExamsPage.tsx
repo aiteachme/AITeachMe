@@ -34,6 +34,8 @@ import {
 } from "../components/exams/examGenerationStream";
 import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreference";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
+import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 
 
 interface ExamPaperDeleteResponse {
@@ -233,6 +235,7 @@ export function ExamsPage() {
     active: true,
     completed: true,
   });
+  const { courseName } = useCourseDisplayName(courseId);
 
   const currentCreateConfig = useMemo(
     () => (courseId ? loadCreateExamConfig(courseId) : null),
@@ -341,7 +344,7 @@ export function ExamsPage() {
   const deleteExamMutation = useMutation({
     mutationFn: async (paperId: number) => {
       if (!courseId) {
-        throw new Error("缺少学科标识，无法删除考卷。");
+        throw new Error("缺少课程标识，无法删除考卷。");
       }
       return deleteExamPaper(courseId, paperId);
     },
@@ -373,7 +376,7 @@ export function ExamsPage() {
           queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId ?? "", { page: 1, size: 24 }),
         });
         await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", courseId ?? ""] });
-        navigate(`/course/${courseId}/exams/${created.exam_paper_id}`);
+        navigate(buildCourseSubPath(courseId ?? "", "exams", created.exam_paper_id));
         toast({
           title: "试卷已创建",
           description: `已生成 ${created.num_questions} 题，马上开始考试。`,
@@ -403,7 +406,7 @@ export function ExamsPage() {
     return (
       <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载考试中心。
+          缺少课程标识，暂时无法加载考试中心。
         </div>
       </div>
     );
@@ -465,7 +468,7 @@ export function ExamsPage() {
                     size="lg"
                     variant="outline"
                     className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(`/course/${courseId}/exams/question-templates`)}
+                    onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
                   >
                     <BookOpen className="h-4 w-4" />
                     题库查看
@@ -474,7 +477,7 @@ export function ExamsPage() {
                     size="lg"
                     variant="outline"
                     className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(`/course/${courseId}/exams/question-types`)}
+                    onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
                   >
                     <Tags className="h-4 w-4" />
                     题型查看
@@ -552,7 +555,7 @@ export function ExamsPage() {
                                 item={item}
                                 resultDisplayMode={examResultDisplayMode}
                                 isDeleting={isDeleting}
-                                onOpen={() => navigate(`/course/${courseId}/exams/${item.id}`)}
+                                onOpen={() => navigate(buildCourseSubPath(courseId, "exams", item.id))}
                                 onDelete={handleDeleteExam}
                               />
                             );
@@ -571,6 +574,7 @@ export function ExamsPage() {
       <CreateExamModal
         open={isCreateConfigOpen}
         courseId={courseId}
+        courseName={courseName}
         onClose={() => {
           setIsCreateConfigOpen(false);
           setCreateConfigRevision((current) => current + 1);
@@ -908,7 +912,7 @@ function QuestionTemplateDetailCard({
 
 function getQuestionTypeScopeLabel(scope: string) {
   if (scope === "global") return "基础题型";
-  if (scope === "course") return "学科题型";
+  if (scope === "course") return "课程题型";
   return scope || "未分组";
 }
 
@@ -1078,7 +1082,7 @@ function ExamCatalogShell({
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
             type="button"
-            onClick={() => navigate(`/course/${courseId}/exams`)}
+            onClick={() => navigate(buildCoursePath(courseId, "exams"))}
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -1174,7 +1178,7 @@ export function QuestionTemplatesPage() {
     return (
       <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载题库。
+          缺少课程标识，暂时无法加载题库。
         </div>
       </div>
     );
@@ -1185,7 +1189,7 @@ export function QuestionTemplatesPage() {
       courseId={courseId}
       eyebrow="Question Bank"
       title="题库模板"
-      description="这里展示当前学科已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
+      description="这里展示当前课程已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
     >
       {templatesQuery.isLoading && (
         <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1312,7 +1316,7 @@ export function QuestionTypesPage() {
     return (
       <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载题型。
+          缺少课程标识，暂时无法加载题型。
         </div>
       </div>
     );
@@ -1327,7 +1331,7 @@ export function QuestionTypesPage() {
       courseId={courseId}
       eyebrow="Question Types"
       title="题型注册表"
-      description="这里展示系统基础题型和当前学科题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
+      description="这里展示系统基础题型和当前课程题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
     >
       {typesQuery.isLoading && (
         <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1345,7 +1349,7 @@ export function QuestionTypesPage() {
         <div className="grid gap-6">
           {[
             { title: "基础题型", rows: globalRows, icon: <Tags className="h-5 w-5" /> },
-            { title: "当前学科题型", rows: courseRows, icon: <Layers3 className="h-5 w-5" /> },
+            { title: "当前课程题型", rows: courseRows, icon: <Layers3 className="h-5 w-5" /> },
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
@@ -1395,7 +1399,7 @@ export function ExamPaperPage() {
     <ExamPaperWorkspace
       courseId={courseId}
       paperId={Number(examPaperId)}
-      backHref={`/course/${courseId}/exams`}
+      backHref={buildCoursePath(courseId, "exams")}
     />
   );
 }

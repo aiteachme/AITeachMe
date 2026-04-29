@@ -128,12 +128,13 @@ export const courseHandlers = [
 
   http.post("/api/v1/courses/delete", async ({ request }) => {
     const body = (await request.json()) as { course_id: string; force?: boolean };
+    const course = mockCourses.find((item) => item.course_id === body.course_id);
     if (!body.force) {
       return HttpResponse.json(
         {
           code: 409,
           error_code: "COURSE_IN_USE",
-          detail: `课程 \`${body.course_id}\` 下仍有内容，请先确认级联删除。`,
+          detail: `课程 \`${course?.name?.trim() || "未命名课程"}\` 下仍有内容，请先确认级联删除。`,
         },
         { status: 409 },
       );

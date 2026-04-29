@@ -35,6 +35,7 @@ import { resolveCourseIcon } from "../../lib/courseIcons";
 import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
+import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive } from "../../lib/courseNavigation";
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
@@ -147,7 +148,7 @@ function RenameCourseModal({
       />
       <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-28px_rgba(0,0,0,0.72)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">重命名课程</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200">
             <X className="h-4 w-4" />
           </button>
@@ -163,7 +164,7 @@ function RenameCourseModal({
               }
             }}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-700"
-            placeholder="输入学科名称"
+            placeholder="输入课程名称"
             autoFocus
           />
           {renameMutation.isError ? (
@@ -183,7 +184,7 @@ function RenameCourseModal({
 }
 
 function displayCourseName(course: CourseItem): string {
-  return course.name?.trim() || "无标题";
+  return course.name?.trim() || "未命名课程";
 }
 
 function readCourseSectionExpanded(): boolean {
@@ -283,11 +284,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }, [updateCourseSectionExpanded]);
 
   useEffect(() => {
-    const match = location.pathname.match(/^\/course\/([^/]+)/);
-    if (!match?.[1]) {
+    const activeCourseId = getCourseIdFromPathname(location.pathname);
+    if (!activeCourseId) {
       return;
     }
-    setExpandedCourses((prev) => new Set([...prev, match[1]]));
+    setExpandedCourses((prev) => new Set([...prev, activeCourseId]));
     updateCourseSectionExpanded(true);
     setIsCollapsed(false);
   }, [location.pathname, updateCourseSectionExpanded]);
@@ -336,7 +337,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       setDeletePreview(null);
-      if (location.pathname.startsWith(`/course/${courseId}/`)) {
+      if (getCourseIdFromPathname(location.pathname) === courseId) {
         navigate("/");
       }
     },
@@ -457,7 +458,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     state: { newEntryAt: Date.now() },
                   });
                 }}
-                title="新建学科"
+                title="新建课程"
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isCreateCourseActive
@@ -544,7 +545,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
                   )}
                 >
-                  新建学科
+                  新建课程
                 </span>
               </button>
 
@@ -636,7 +637,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
                 aria-expanded={isCourseSectionExpanded}
               >
-                <span className="truncate">学科</span>
+                <span className="truncate">课程</span>
                 <ChevronRight
                   className={cn(
                     "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
@@ -662,7 +663,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           )}
 
           {!isLoading && groupedCourses.length === 0 && !effectiveCollapsed && isCourseSectionExpanded ? (
-            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
+            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无课程</p>
           ) : null}
 
           <AnimatePresence initial={false}>
@@ -761,7 +762,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              setRenameTarget({ id: course.course_id, name: displayName === "无标题" ? "" : course.name });
+                              setRenameTarget({ id: course.course_id, name: displayName === "未命名课程" ? "" : course.name });
                             }}
                             className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
@@ -799,8 +800,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                         <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                           <AnimatePresence initial={false}>
                             {MODULES.map((moduleItem) => {
-                              const path = `/course/${course.course_id}/${moduleItem.id}`;
-                              const isActive = location.pathname === path;
+                              const path = buildCoursePath(course.course_id, moduleItem.id);
+                              const isActive = isCourseRouteActive(location.pathname, course.course_id, moduleItem.id);
                               const Icon = moduleItem.icon;
                               return (
                                 <motion.div

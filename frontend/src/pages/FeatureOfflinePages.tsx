@@ -32,7 +32,7 @@ export function ExamsPage() {
     if (!courseId) {
       return "考试功能已下线，后续将基于 node 语义重新设计。";
     }
-    return `课程 ${courseId} 的考试功能已下线，后续将基于 node 语义重新设计。`;
+    return "当前课程的考试功能已下线，后续将基于 node 语义重新设计。";
   }, [courseId]);
 
   return (
@@ -53,7 +53,7 @@ export function ProfilePage() {
     if (!courseId) {
       return "学习画像功能已下线，后续将基于 node 语义重新设计。";
     }
-    return `课程 ${courseId} 的学习画像功能已下线，后续将基于 node 语义重新设计。`;
+    return "当前课程的学习画像功能已下线，后续将基于 node 语义重新设计。";
   }, [courseId]);
 
   return (

@@ -3,7 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
-import { isFullBleedCoursePath } from "../../lib/courseNavigation";
+import { getCourseIdFromPathname, isFullBleedCoursePath } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
 import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
 import { isElectronRuntime } from "../../lib/electronRuntime";
@@ -16,18 +16,8 @@ export function Layout() {
   const { pathname } = useLocation();
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedCoursePath(pathname);
-  const isExamFocusPage = /^\/course\/[^/]+\/exams\/\d+$/.test(pathname);
-  const rawCourseId = pathname.match(/^\/course\/([^/]+)/)?.[1] ?? null;
-  const courseId = useMemo(() => {
-    if (!rawCourseId) {
-      return null;
-    }
-    try {
-      return decodeURIComponent(rawCourseId);
-    } catch {
-      return rawCourseId;
-    }
-  }, [rawCourseId]);
+  const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
+  const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (pathname === "/assistant") {
       return { type: "global" };

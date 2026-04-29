@@ -152,7 +152,7 @@ def _build_preview_url(*, course_id: str, asset_path: str, title: str) -> str:
     from urllib.parse import quote
 
     return (
-        f"/course/{quote(course_id)}/knowledge-docs/interactive"
+        f"/courses/{quote(course_id)}/knowledge-docs/interactive"
         f"?asset={quote(asset_path, safe='/')}"
         f"&title={quote(title)}"
     )

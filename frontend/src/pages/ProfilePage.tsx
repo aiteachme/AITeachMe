@@ -16,6 +16,7 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 import { cn } from "../lib/utils";
+import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 
 function StatTile({
   label,
@@ -39,6 +40,7 @@ export function ProfilePage() {
   const { courseId } = useParams();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { courseName } = useCourseDisplayName(courseId);
 
   const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(courseId ?? "");
   const reviewsQuery = useReviewTasksApiV1CoursesCourseIdProfileReviewsGet(courseId ?? "");
@@ -104,7 +106,9 @@ export function ProfilePage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Profile</p>
-              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">{courseId}</h1>
+              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">
+                {courseName ?? "当前课程"}
+              </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 基于当前 KnowledgeUnit 掌握度、最近答题结果和待复习任务生成个性化画像。
               </p>

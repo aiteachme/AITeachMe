@@ -5290,8 +5290,8 @@ export function KnowledgeDocsPage() {
           className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]"
         >
           <div className="border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">学科设置</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">仅作用于当前学科的知识文档阅读体验。</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">课程设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">仅作用于当前课程的知识文档阅读体验。</p>
           </div>
           <div className="p-3">
             <button
@@ -5396,11 +5396,11 @@ export function KnowledgeDocsPage() {
           type="button"
           onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
           className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100"
-          aria-label="打开学科设置"
+          aria-label="打开课程设置"
           aria-expanded={isSettingsPanelOpen}
         >
           <SlidersHorizontal className="h-4 w-4" />
-          <span className="hidden sm:inline">学科设置</span>
+          <span className="hidden sm:inline">课程设置</span>
         </button>
       )}
 

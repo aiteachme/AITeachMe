@@ -65,7 +65,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const maxSidebarWidth = isNarrowInitialViewport
     ? initialViewportWidth
     : Math.min(820, initialViewportWidth * 0.5);
-  const isBuildPage = /\/course\/[^/]+\/build\b/.test(pathname);
+  const isBuildPage = /\/courses?\/[^/]+\/build\b/.test(pathname);
   const isAssistantPage = pathname === "/assistant";
   const canShowSidebar = variant === "sidebar" && Boolean(activeScope) && !isBuildPage && !isAssistantPage;
   const panelScope = sidebarScope ?? activeScope;

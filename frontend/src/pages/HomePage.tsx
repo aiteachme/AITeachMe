@@ -36,6 +36,7 @@ import {
 } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { notifyCoursesImported } from "../lib/courseEvents";
+import { buildCoursePath } from "../lib/courseNavigation";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { CourseExportModal } from "../components/course/CourseExportModal";
@@ -277,7 +278,7 @@ function LibraryPickerModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">从资料库选择</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入这次新建学科</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入这次新建课程</p>
             </div>
           </div>
           <button
@@ -452,8 +453,8 @@ function ImportModal({
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的学科</p>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入课程</h3>
+              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的课程</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
@@ -512,7 +513,7 @@ function ImportModal({
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义学科名称（可选）</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义课程名称（可选）</label>
             <input
               type="text"
               value={customName}
@@ -589,7 +590,7 @@ function RenameModal({
         className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
-          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名课程</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
@@ -600,7 +601,7 @@ function RenameModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) renameMutation.mutate(); }}
-            placeholder="输入学科名称"
+            placeholder="输入课程名称"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             autoFocus
           />
@@ -709,7 +710,7 @@ export function HomePage() {
       queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
       toast({
         title: "导入成功",
-        description: `${result.course_name} 已加入左侧学科列表。`,
+        description: `${result.course_name} 已加入左侧课程列表。`,
         variant: "success",
       });
     },
@@ -736,7 +737,7 @@ export function HomePage() {
         await createCourseApiApiV1CoursesAddPost({ name: "" })
       );
       if (!created) {
-        throw new Error("创建学科失败");
+        throw new Error("创建课程失败");
       }
       setDraftCourseId(created.course_id);
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -876,7 +877,7 @@ export function HomePage() {
       }
       const userGoal = prompt.trim();
       const selectedModel = toChatRequestModel(chatModel);
-      navigate(`/course/${courseId}/build`, {
+      navigate(buildCoursePath(courseId, "build"), {
         state: userGoal || selectedModel
           ? { initialPrompt: userGoal || undefined, autoStart: Boolean(userGoal), model: selectedModel }
           : undefined,
@@ -1181,7 +1182,7 @@ export function HomePage() {
                   <button
                     onClick={() => setImportOpen(true)}
                     className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                    title="从文件导入学科包"
+                    title="从文件导入课程包"
                   >
                     <Upload className="w-4 h-4 text-emerald-500" />
                     上传导入
@@ -1239,7 +1240,7 @@ export function HomePage() {
                                       ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                                       : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
                                   )}
-                                  title={`导入 ${course.course_name} 到左侧学科列表`}
+                                  title={`导入 ${course.course_name} 到左侧课程列表`}
                                 >
                                   {courseImportMutation.isPending ? (
                                     <><Loader2 className="h-4 w-4 animate-spin" /> 导入中</>
@@ -1290,7 +1291,7 @@ export function HomePage() {
             queryClient.invalidateQueries({ queryKey: ["courses"] });
             toast({
               title: "导入成功",
-              description: `${result.course_name} 已加入左侧学科列表。`,
+              description: `${result.course_name} 已加入左侧课程列表。`,
               variant: "success",
             });
           }}

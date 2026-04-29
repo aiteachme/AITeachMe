@@ -63,14 +63,54 @@ const FULL_BLEED_COURSE_SEGMENTS = new Set<string>([
   ...Object.keys(COURSE_ROUTE_REDIRECTS),
 ]);
 
+export const COURSE_ROUTE_BASE = "/courses";
+export const LEGACY_COURSE_ROUTE_BASE = "/course";
+
+const COURSE_PATH_PATTERN = /^\/courses?\/([^/?#]+)(?:\/([^?#]*))?/;
+
+function encodeCoursePathSegment(segment: string): string {
+  return encodeURIComponent(segment);
+}
+
 export function buildCoursePath(courseId: string, routeId: CourseRouteId): string {
-  return `/course/${courseId}/${routeId}`;
+  return buildCourseSubPath(courseId, routeId);
+}
+
+export function buildCourseSubPath(courseId: string, ...segments: Array<string | number | null | undefined>): string {
+  const suffix = segments
+    .filter((segment): segment is string | number => segment !== null && segment !== undefined && `${segment}` !== "")
+    .map((segment) => encodeCoursePathSegment(String(segment)))
+    .join("/");
+  return suffix
+    ? `${COURSE_ROUTE_BASE}/${encodeCoursePathSegment(courseId)}/${suffix}`
+    : `${COURSE_ROUTE_BASE}/${encodeCoursePathSegment(courseId)}`;
+}
+
+export function getCourseIdFromPathname(pathname: string): string | null {
+  const match = pathname.match(COURSE_PATH_PATTERN);
+  if (!match?.[1]) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+export function getCourseRouteSegmentFromPathname(pathname: string): string | null {
+  const match = pathname.match(COURSE_PATH_PATTERN);
+  return match?.[2]?.split("/")[0] || null;
+}
+
+export function isCourseRouteActive(pathname: string, courseId: string, routeId: CourseRouteId): boolean {
+  return getCourseIdFromPathname(pathname) === courseId && getCourseRouteSegmentFromPathname(pathname) === routeId;
 }
 
 export function isFullBleedCoursePath(pathname: string): boolean {
-  const match = pathname.match(/^\/course\/[^/]+\/([^/?#]+)/);
-  if (!match?.[1]) {
+  const segment = getCourseRouteSegmentFromPathname(pathname);
+  if (!segment) {
     return false;
   }
-  return FULL_BLEED_COURSE_SEGMENTS.has(match[1]);
+  return FULL_BLEED_COURSE_SEGMENTS.has(segment);
 }

@@ -149,7 +149,7 @@ function getSessionId(session: ChatSessionItem): string | null {
 
 function getSessionCourseLabel(session: ChatSessionItem): string {
   const courseId = getSessionCourseId(session);
-  return session.course_name?.trim() || (courseId === GLOBAL_COURSE_ID ? "通用" : courseId);
+  return session.course_name?.trim() || (courseId === GLOBAL_COURSE_ID ? "通用" : "未命名课程");
 }
 
 function getSessionScope(session: ChatSessionItem): AiConversationScope {
