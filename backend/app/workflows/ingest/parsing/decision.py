@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from app.workflows.ingest.parsing.formats import (
-    IMAGE_EXTENSIONS,
-    MARKITDOWN_GENERIC_EXTENSIONS,
     normalize_extension,
 )
 from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
@@ -16,8 +14,6 @@ from app.workflows.ingest.parsing.provider_contracts import ParseDecision, Provi
 DEFAULT_MINERU_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".ppt",
-        ".pptx",
         # 当前链路调整：.docx 改为仅走本地解析，不再自动或显式走 MinerU。
         # ".docx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
@@ -37,8 +33,6 @@ DEFAULT_MINERU_EXTENSIONS = frozenset(
 DEFAULT_PADDLE_OCR_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".ppt",
-        ".pptx",
         # 当前链路调整：.docx 改为仅走本地解析，不再自动或显式走 PaddleOCR。
         # ".docx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
@@ -58,19 +52,20 @@ DEFAULT_MARKITDOWN_EXTENSIONS = frozenset(
     {
         ".pdf",
         ".docx",
-        ".ppt",
-        ".pptx",
+        # 当前上传入口只开放 PDF / DOCX / Markdown / 文本；
+        # PPT/PPTX 和通用 Office 表格类不再声明为本地 MarkItDown capability。
+        # 如后续恢复上传入口，再同步恢复这里和 parsers.py 的 registry。
+        # ".ppt",
+        # ".pptx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
         # ".doc",
-        *MARKITDOWN_GENERIC_EXTENSIONS,
+        # *MARKITDOWN_GENERIC_EXTENSIONS,
     }
 )
 
 DEFAULT_OCR_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".ppt",
-        ".pptx",
         # 未扩展链路：原始图片直传目前未开放，因此这里不再展开 IMAGE_EXTENSIONS。
         # *IMAGE_EXTENSIONS,
     }
@@ -79,8 +74,6 @@ DEFAULT_OCR_EXTENSIONS = frozenset(
 AUTO_EXTERNAL_DOCUMENT_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".ppt",
-        ".pptx",
         # 当前链路调整：.docx 改为本地解析优先，不再加入自动外部链路。
         # ".docx",
         # 旧链路：.doc 已停用。
@@ -115,7 +108,7 @@ def build_paddle_ocr_capability(*, available: bool) -> ProviderCapability:
 
 def build_markitdown_capability(*, available: bool) -> ProviderCapability:
     supported_extensions = set(DEFAULT_MARKITDOWN_EXTENSIONS)
-    features = {"markdown", "office", "pdf", "html", "spreadsheet"}
+    features = {"markdown", "office", "pdf"}
     if not builtin_pdf_parsing_enabled():
         supported_extensions.discard(".pdf")
         features.discard("pdf")

@@ -12,7 +12,6 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
-from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
     extract_usage,
@@ -28,9 +27,8 @@ from .common import (
     sleep_before_retry,
     track_call,
 )
+from .litellm_loader import load_litellm
 from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
-
-litellm = load_litellm()
 
 
 async def acompletion(
@@ -44,6 +42,7 @@ async def acompletion(
 ) -> str:
     """Async text completion."""
 
+    litellm = load_litellm()
     context = build_completion_context(
         task_type=task_type,
         call_purpose=call_purpose,

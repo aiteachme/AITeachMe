@@ -34,8 +34,6 @@ from .common import (
 from .litellm_loader import load_litellm
 from .observability import _end_langsmith_trace, _sanitize_langsmith_value
 
-litellm = load_litellm()
-
 DESCRIBE_ONLY_IMAGE_MODELS = frozenset({"describe"})
 ERROR_PREVIEW_CHARS = 240
 LITELLM_IMAGE_PROVIDER_PREFIXES = frozenset(
@@ -339,6 +337,7 @@ async def _agenerate_litellm_image(
     prompt: str,
     timeout_s: int | None,
 ) -> ImageGenerationResult:
+    litellm = load_litellm()
     response = await asyncio.wait_for(
         litellm.aimage_generation(**dict(call_kwargs)),
         timeout=timeout_s,
