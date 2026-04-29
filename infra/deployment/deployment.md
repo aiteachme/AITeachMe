@@ -207,6 +207,12 @@ ghcr.io/<github-owner>/aiteachme-backend:slim-latest
 
 如果 GHCR package 是 private，Sealos 拉取镜像时需要配置 registry credential；内测阶段也可以把对应 package visibility 改成 public，部署会更简单。
 
+如果 GitHub Actions 推送 GHCR 报 `403 Forbidden`：
+
+- 先确认仓库 `Settings -> Actions -> General -> Workflow permissions` 允许 `Read and write permissions`。
+- 如果 `ghcr.io/<owner>/aiteachme-backend` 这个 package 已经存在，到 package 的 `Package settings -> Manage Actions access` 给当前仓库授予写入权限，或删除旧 package 后重新由当前 workflow 创建。
+- 如果组织策略不允许 `GITHUB_TOKEN` 写包，创建 classic PAT，至少勾选 `write:packages`，私有仓库/私有包通常还需要 `read:packages` 和 `repo`，并在仓库 Secrets 中配置 `GHCR_TOKEN`；如果 PAT 所属用户不是触发 workflow 的账号，同时配置 `GHCR_USERNAME`。
+
 也可以在本地或其他 CI 从仓库根目录构建并推送后端镜像：
 
 ```bash
