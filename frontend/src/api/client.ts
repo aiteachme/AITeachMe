@@ -10,10 +10,12 @@ function resolveDesktopApiBaseUrl(): string {
 const API_BASE_URL = resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
 const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
+export const DEFAULT_API_TIMEOUT_MS = 10_000;
+export const LONG_RUNNING_API_TIMEOUT_MS = 120_000;
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
   withCredentials: true,
 });
 
@@ -26,6 +28,7 @@ export interface ApiErrorPayload {
 }
 
 type ApiErrorShape = {
+  code?: string;
   message?: string;
   response?: {
     status?: number;
@@ -440,6 +443,13 @@ export function getApiErrorMessage(
   fallback = "请求失败，请稍后重试",
 ): string {
   const apiError = error as ApiErrorShape;
+  if (
+    apiError.code === "ECONNABORTED" ||
+    (typeof apiError.message === "string" && /timeout of \d+ms exceeded/i.test(apiError.message))
+  ) {
+    return "请求处理时间超过预期，后端可能仍在继续执行。请稍后查看进度或重试。";
+  }
+
   const message =
     apiError.response?.data?.message ??
     apiError.response?.data?.detail ??

@@ -18,7 +18,12 @@ import {
   X,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage, postSseJson } from "../api/client";
+import {
+  LONG_RUNNING_API_TIMEOUT_MS,
+  apiClient,
+  getApiErrorMessage,
+  postSseJson,
+} from "../api/client";
 import type {
   BuildPlannerConfirmResponse,
   BuildPlannerPlanResponse,
@@ -594,6 +599,7 @@ async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelD
   const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
     method: "POST",
     url: `/api/v1/subjects/${subject}/knowledge/build/cancel`,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data ?? {
     subject_id: subject,
