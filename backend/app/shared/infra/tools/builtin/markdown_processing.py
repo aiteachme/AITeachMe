@@ -49,12 +49,12 @@ BARE_CALLOUT_PATTERN = re.compile(
 )
 MATH_MARKDOWN_BOUNDARY_PATTERN = re.compile(
     r"^(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
-    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|\|.+\|.+\||```)",
+    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|```)",
     re.IGNORECASE,
 )
 INLINE_MATH_MARKDOWN_PATTERN = re.compile(
     r"(^|\n)\s*(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
-    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|\|.+\|.+\||```)",
+    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|```)",
     re.IGNORECASE,
 )
 _MARKDOWN_PARSER = MarkdownIt("commonmark")
@@ -280,6 +280,93 @@ def _strip_quote_prefix(line: str) -> str:
     return BLOCKQUOTE_PREFIX_PATTERN.sub("", str(line or ""), count=1).rstrip()
 
 
+def _split_markdown_table_cells(line: str) -> list[str]:
+    stripped = _strip_quote_prefix(line).strip()
+    if "|" not in stripped:
+        return []
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in stripped:
+        if escaped:
+            current.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            current.append(char)
+            escaped = True
+            continue
+        if char == "|":
+            cells.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    cells.append("".join(current))
+    return cells
+
+
+def _is_table_separator_line(line: str) -> bool:
+    cells = _split_markdown_table_cells(line)
+    if len(cells) < 2:
+        return False
+    return all(re.fullmatch(r"\s*:?-{3,}:?\s*", cell or "") is not None for cell in cells)
+
+
+def _is_probable_table_row(line: str) -> bool:
+    stripped = _strip_quote_prefix(line).strip()
+    if not stripped:
+        return False
+    if not (stripped.startswith("|") or stripped.endswith("|")):
+        return False
+    cells = _split_markdown_table_cells(stripped)
+    return len(cells) >= 2 and any(cell.strip() for cell in cells)
+
+
+def _is_gfm_table_boundary(lines: list[str], index: int) -> bool:
+    if index < 0 or index >= len(lines):
+        return False
+    line = lines[index]
+    previous_line = lines[index - 1] if index > 0 else ""
+    next_line = lines[index + 1] if index + 1 < len(lines) else ""
+    if _is_table_separator_line(line):
+        return _is_probable_table_row(previous_line) or _is_probable_table_row(next_line)
+    if not _is_probable_table_row(line):
+        return False
+    return _is_table_separator_line(previous_line) or _is_table_separator_line(next_line)
+
+
+def _is_structural_markdown_boundary(lines: list[str], index: int) -> bool:
+    if index < 0 or index >= len(lines):
+        return False
+    stripped = _strip_quote_prefix(lines[index]).strip()
+    if not stripped:
+        return False
+    if MATH_MARKDOWN_BOUNDARY_PATTERN.match(stripped):
+        return True
+    if re.match(r"^(?:---|\*\*\*|___)\s*$", stripped):
+        return True
+    return _is_gfm_table_boundary(lines, index)
+
+
+def _next_nonempty_line_index(lines: list[str], start_index: int) -> int | None:
+    for index in range(start_index, len(lines)):
+        if lines[index].strip():
+            return index
+    return None
+
+
+def _is_orphan_display_math_opener(lines: list[str], index: int) -> bool:
+    next_index = _next_nonempty_line_index(lines, index + 1)
+    if next_index is None:
+        return True
+    return _is_structural_markdown_boundary(lines, next_index)
+
+
 def _quoted_markdown_body(line: str) -> str | None:
     match = re.match(r"^\s*>\s?(.*)$", str(line or ""))
     if match is None:
@@ -312,11 +399,15 @@ def _collect_loose_display_math_block(lines: list[str], start_index: int) -> tup
     return body_lines, index
 
 
-def _is_markdown_boundary_inside_math(line: str) -> bool:
+def _is_markdown_boundary_inside_math(line: str, *, lines: list[str] | None = None, index: int | None = None) -> bool:
     stripped = _strip_quote_prefix(line).strip()
     if not stripped:
         return False
-    return bool(MATH_MARKDOWN_BOUNDARY_PATTERN.match(stripped))
+    if MATH_MARKDOWN_BOUNDARY_PATTERN.match(stripped):
+        return True
+    if lines is None or index is None:
+        return False
+    return _is_gfm_table_boundary(lines, index)
 
 
 def _repair_display_math_boundaries(markdown: str) -> str:
@@ -326,9 +417,11 @@ def _repair_display_math_boundaries(markdown: str) -> str:
     fixed: list[str] = []
     in_math = False
     math_prefix = ""
-    for raw_line in lines:
+    for index, raw_line in enumerate(lines):
         line = raw_line.rstrip()
         if MATH_FENCE_PATTERN.match(line):
+            if not in_math and _is_orphan_display_math_opener(lines, index):
+                continue
             delimiter_prefix = _math_fence_prefix(line)
             if in_math:
                 fixed.append(f"{delimiter_prefix or math_prefix}$$")
@@ -339,7 +432,7 @@ def _repair_display_math_boundaries(markdown: str) -> str:
                 fixed.append(f"{math_prefix}$$")
                 in_math = True
             continue
-        if in_math and _is_markdown_boundary_inside_math(line):
+        if in_math and _is_markdown_boundary_inside_math(line, lines=lines, index=index):
             closing_delimiter = f"{math_prefix}$$"
             if not fixed or fixed[-1] != closing_delimiter:
                 fixed.append(closing_delimiter)
@@ -668,6 +761,93 @@ def _trim_inline_math_padding(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _normalize_vertical_bars_in_math_body(body: str) -> str:
+    """Use KaTeX-safe absolute value delimiters inside inline math table cells."""
+
+    def replace_absolute(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        if not inner:
+            return match.group(0)
+        return rf"\lvert {inner}\rvert"
+
+    return re.sub(r"(?<!\\)\|([^|\n]+?)(?<!\\)\|", replace_absolute, body)
+
+
+def _protect_inline_math_pipes_in_table_row(line: str) -> str:
+    positions = _unescaped_single_dollar_positions(line)
+    if len(positions) < 2 or len(positions) % 2 != 0:
+        return line
+
+    rebuilt: list[str] = []
+    cursor = 0
+    changed = False
+    for left, right in zip(positions[0::2], positions[1::2], strict=False):
+        body = line[left + 1 : right]
+        normalized_body = _normalize_vertical_bars_in_math_body(body.strip())
+        rebuilt.append(line[cursor:left])
+        if normalized_body != body:
+            rebuilt.append("$")
+            rebuilt.append(normalized_body)
+            rebuilt.append("$")
+            changed = True
+        else:
+            rebuilt.append(line[left : right + 1])
+        cursor = right + 1
+    rebuilt.append(line[cursor:])
+    return "".join(rebuilt) if changed else line
+
+
+def _normalize_table_inline_math_pipes(markdown: str) -> str:
+    """Protect raw pipes in inline math only while traversing GFM table rows."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    in_table = False
+    index = 0
+    while index < len(lines):
+        line = lines[index].rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            in_table = False
+            fixed.append(line)
+            index += 1
+            continue
+        if in_fence:
+            fixed.append(line)
+            index += 1
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            in_table = False
+            fixed.append(_normalize_math_fence_line(line))
+            index += 1
+            continue
+        if in_math:
+            fixed.append(line)
+            index += 1
+            continue
+
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        starts_table = _is_probable_table_row(line) and _is_table_separator_line(next_line)
+        if starts_table:
+            in_table = True
+            fixed.append(_protect_inline_math_pipes_in_table_row(line))
+            index += 1
+            continue
+        if in_table and _is_probable_table_row(line):
+            fixed.append(_protect_inline_math_pipes_in_table_row(line))
+            index += 1
+            continue
+
+        in_table = False
+        fixed.append(line)
+        index += 1
+    return "\n".join(fixed)
+
+
 def _normalize_list_embedded_headings(markdown: str) -> str:
     """Turn list items that accidentally contain Markdown headings back into text."""
 
@@ -711,6 +891,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
     text = _trim_inline_math_padding(text)
+    text = _normalize_table_inline_math_pipes(text)
     text = _normalize_list_embedded_headings(text)
     text = _normalize_callout_blocks(text)
     if not text:
@@ -722,7 +903,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     math_prefix = ""
     in_fence = False
 
-    for raw_line in lines:
+    for line_index, raw_line in enumerate(lines):
         line = raw_line.rstrip()
         stripped = line.strip()
 
@@ -760,6 +941,8 @@ def normalize_markdown_rendering(markdown: str) -> str:
             continue
 
         if MATH_FENCE_PATTERN.match(line):
+            if _is_orphan_display_math_opener(lines, line_index):
+                continue
             delimiter_prefix = _math_fence_prefix(line)
             if not delimiter_prefix and fixed and fixed[-1].strip() == ">":
                 fixed[-1] = ""
@@ -787,7 +970,7 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
     issues: list[str] = []
     if re.search(r"(?m)^>\s*.*```\s*[A-Za-z0-9_-]*\s*$", text):
         issues.append("代码块起始符被放在引用行内。")
-    if re.search(r"(?m)^>\s*$\n\$\$", text) or re.search(r"(?m)^\$\$\n>\s*", text):
+    if _display_math_has_mixed_blockquote_prefix(text):
         issues.append("display math 内混入 blockquote 前缀。")
     if text.count("```") % 2 != 0:
         issues.append("Markdown fenced code block 数量不成对。")
@@ -807,11 +990,35 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
 
 def _display_math_contains_markdown(markdown: str) -> bool:
     in_math = False
-    for line in str(markdown or "").split("\n"):
+    lines = str(markdown or "").split("\n")
+    for index, line in enumerate(lines):
         if MATH_FENCE_PATTERN.match(line):
             in_math = not in_math
             continue
-        if in_math and _is_markdown_boundary_inside_math(line):
+        if in_math and _is_markdown_boundary_inside_math(line, lines=lines, index=index):
+            return True
+    return False
+
+
+def _display_math_has_mixed_blockquote_prefix(markdown: str) -> bool:
+    in_math = False
+    math_prefix = ""
+    for line in str(markdown or "").split("\n"):
+        if MATH_FENCE_PATTERN.match(line):
+            if in_math:
+                in_math = False
+                math_prefix = ""
+            else:
+                in_math = True
+                math_prefix = _math_fence_prefix(line)
+            continue
+        if not in_math or not line.strip():
+            continue
+        if math_prefix:
+            if not line.startswith(math_prefix):
+                return True
+            continue
+        if BLOCKQUOTE_PREFIX_PATTERN.match(line):
             return True
     return False
 

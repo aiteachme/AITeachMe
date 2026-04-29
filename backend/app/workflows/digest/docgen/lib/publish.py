@@ -23,6 +23,7 @@ from app.shared.infra.storage import (
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
+    find_markdown_rendering_issues,
     normalize_markdown_rendering,
     normalize_source_details,
     normalize_mermaid_blocks,
@@ -85,7 +86,17 @@ def _prepare_chapter_markdown(
         fallback_title=title,
         focus_items=focus_items or [],
     )
-    return _ensure_chapter_structure(cleaned)
+    return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned))
+
+
+def _finalize_markdown_rendering(markdown: str) -> str:
+    """Run a last deterministic rendering guard before writing public docs."""
+
+    issues = find_markdown_rendering_issues(markdown)
+    if not issues:
+        return markdown
+    repaired = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+    return repaired if repaired else markdown
 
 
 def _ensure_chapter_structure(markdown: str) -> str:
@@ -151,7 +162,7 @@ def build_merged_markdown(
     merged = separator.join(body).strip()
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
-    return sanitize_public_markdown(normalize_mermaid_blocks(merged.strip()))
+    return _finalize_markdown_rendering(sanitize_public_markdown(normalize_mermaid_blocks(merged.strip())))
 
 
 
