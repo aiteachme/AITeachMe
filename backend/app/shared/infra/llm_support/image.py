@@ -447,7 +447,7 @@ async def agenerate_image(
                     result = await _agenerate_litellm_image(
                         call_kwargs=call_kwargs,
                         prompt=prompt_text,
-                        timeout_s=context_request_timeout_s(context),
+                        timeout_s=context_request_timeout_s(context, call_kwargs),
                     )
                     if response_format == "b64_json" and any(not image.b64_json and image.url for image in result.images):
                         result = ImageGenerationResult(
@@ -455,7 +455,7 @@ async def agenerate_image(
                             prompt=result.prompt,
                             images=await _materialize_b64_images(
                                 result.images,
-                                timeout_s=context_request_timeout_s(context),
+                                timeout_s=context_request_timeout_s(context, call_kwargs),
                             ),
                             raw_metadata=dict(result.raw_metadata),
                         )

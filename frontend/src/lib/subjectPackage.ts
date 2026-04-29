@@ -1,4 +1,4 @@
-import { apiClient, runTrackedApiFetch } from "../api/client";
+import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, runTrackedApiFetch } from "../api/client";
 import type { ExportOptions } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 
@@ -90,7 +90,7 @@ export async function importSubjectPackage(file: File, newName?: string): Promis
     url: "/api/v1/subjects/import",
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   if (!response.data) {
     throw new Error("导入结果为空");

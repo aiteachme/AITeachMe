@@ -14,6 +14,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -121,13 +122,13 @@ async def acompletion_stream(
             ) as trace_run:
                 response = await asyncio.wait_for(
                     litellm.acompletion(**prepared.call_kwargs),
-                    timeout=context_request_timeout_s(context),
+                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
                 )
                 usage = merge_usage(usage, extract_usage(response))
                 try:
                     async for chunk in _stream_chunks_with_timeout(
                         response,
-                        timeout_s=context_request_timeout_s(context),
+                        timeout_s=context_request_timeout_s(context, prepared.call_kwargs),
                     ):
                         usage = merge_usage(usage, extract_usage(chunk))
                         choices = getattr(chunk, "choices", None) or []
@@ -188,7 +189,9 @@ async def acompletion_stream(
                 success=False,
                 error="timeout",
             )
-            raise LLMTimeoutError(timeout_s=context.profile.timeout_s)
+            raise LLMTimeoutError(
+                timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+            )
         except asyncio.CancelledError:
             log_attempt_cancelled(
                 "llm_stream_cancelled",

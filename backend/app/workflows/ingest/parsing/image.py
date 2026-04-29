@@ -104,7 +104,6 @@ async def parse_image_bytes_with_llm_vision(
 
     try:
         completion_kwargs = {
-            "timeout": 120,
             "temperature": 0.3,
         }
         if base_url:

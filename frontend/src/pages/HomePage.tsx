@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 
 import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
-import { apiClient, getApiErrorMessage } from "../api/client";
+import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
@@ -123,7 +123,7 @@ async function importCourseByFilename(filename: string, newName?: string): Promi
     method: "POST",
     url: `/api/v1/courses/${encodeURIComponent(filename)}/import`,
     data: newName ? { new_subject_name: newName } : {},
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data;
 }
@@ -137,7 +137,7 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
     url: `/api/v1/subjects/import`,
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data;
 }

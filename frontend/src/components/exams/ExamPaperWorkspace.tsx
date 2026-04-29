@@ -14,6 +14,7 @@ import { getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey } fro
 import {
   buildApiUrl,
   getApiErrorMessage,
+  LONG_RUNNING_API_TIMEOUT_MS,
   orvalApiClient,
   registerBackendEventSource,
   reportBackendConnectionIssue,
@@ -51,6 +52,7 @@ async function getExamStudyGuide(subjectId: string, paperId: number, signal?: Ab
     {
       method: "GET",
       signal,
+      timeout: LONG_RUNNING_API_TIMEOUT_MS,
     },
   );
 }
@@ -427,6 +429,9 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   }, [keepQuestionHighlight, openAiInteraction, paper, subjectId]);
 
   const submitExam = useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost({
+    request: {
+      timeout: LONG_RUNNING_API_TIMEOUT_MS,
+    },
     mutation: {
       onSuccess: async (response) => {
         const graded = unwrapOrvalResponse(response);
