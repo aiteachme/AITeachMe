@@ -85,9 +85,6 @@ _TITLE_OUTLINE_PREFIX_RE = re.compile(
     rf"{_TITLE_NUMBER_TOKEN_RE}(?:\s*[.)）．、:：]\s*|\s+))",
     re.IGNORECASE,
 )
-_SLOGAN_TITLE_PREFIX_RE = re.compile(
-    r"^\s*[\u4e00-\u9fff]{1,4}得(?:准|清|明|对|会|稳|快|透|牢|熟|顺|懂|出|好|清楚|明白|准确)\s*[：:]\s*(?P<body>.+)$"
-)
 _GENERIC_TEMPLATE_SUFFIX_RE = re.compile(
     r"[:：]\s*(核心概念|公式方法|题型突破|易错辨析|综合迁移|考前速查|主题导入|概念定义|结构公式|方法推理|例题应用|边界辨析|总结延伸)\s*$"
 )
@@ -198,11 +195,6 @@ def clean_generated_chapter_title(raw_title: str) -> str:
         if next_cleaned == cleaned:
             break
         cleaned = next_cleaned
-    slogan_match = _SLOGAN_TITLE_PREFIX_RE.match(cleaned)
-    if slogan_match:
-        body = slogan_match.group("body").strip()
-        if len(body) >= 3 and re.search(r"[\u3400-\u9fffA-Za-z]", body):
-            cleaned = body
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip("：:，,。；; ")
 
