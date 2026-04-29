@@ -28,6 +28,7 @@ from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen
 from app.workflows.digest.docgen.lib.textbook_style import (
     build_textbook_heading,
     choose_heading_focus,
+    normalize_educational_callouts,
     normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
@@ -483,6 +484,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             fallback_title=title,
             focus_items=focus_items,
         )
+        cleaned = normalize_educational_callouts(cleaned)
         cleaned = normalize_markdown_rendering(cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if not cleaned.startswith("#"):

@@ -27,6 +27,7 @@ from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
+    normalize_educational_callouts,
     normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
@@ -287,6 +288,7 @@ async def enhance_chapter_draft(
             draft.title,
         ],
     )
+    markdown = normalize_educational_callouts(markdown)
 
     interactive_asset: dict[str, object] | None = None
     if settings.docgen.generate_interactive_html:
@@ -316,6 +318,7 @@ async def enhance_chapter_draft(
         else []
     )
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
+    markdown = normalize_educational_callouts(markdown)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

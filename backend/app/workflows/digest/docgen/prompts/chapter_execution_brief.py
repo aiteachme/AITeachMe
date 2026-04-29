@@ -24,15 +24,15 @@ def build_chapter_execution_brief_messages(
     course_flow = "；".join(profile.course_flow_hints)
     practice_focus = "；".join(profile.practice_focuses)
     system_prompt = """
-你是 AITeachMe 的 DocGen 章节执行 brief 设计器。
+你是 AITeachMe 的知识文档章节执行简报设计器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
 你的任务是生成“最小可执行脚手架”，不是写完整教学大纲。
 """.strip()
     prompt = f"""
-请为下面这一章生成简短执行 brief。
+请为下面这一章生成简短执行简报。
 
 主题：{course_name}
-模式：{profile.mode}（{profile.prompt_label}）
+模式：{profile.prompt_label}
 锁定标题：{locked_title}
 
 章节合同：
@@ -67,7 +67,7 @@ def build_chapter_execution_brief_messages(
 }}
 
 要求：
-1. 这是最小执行 brief，不是完整教学大纲。
+1. 这是最小执行简报，不是完整教学大纲。
 2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
 3. `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 各最多 2 条；`example_targets` 要优先体现本模式的例题/练习方向。
 4. `retrieval_queries` 最多 2 条。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
 def build_chapter_review_messages(
@@ -18,18 +19,19 @@ def build_chapter_review_messages(
 ) -> list[dict[str, str]]:
     """Build messages for read-only chapter review."""
 
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
 你是 AITeachMe 的内容质检员，只负责复核，不负责改写。
 你必须严格检查章节是否符合用户已确认的章节合同、是否有证据支撑、是否越界、是否适合学习。
-你不能新增事实，不能替正文打补丁，不能要求推翻 confirmed plan。
-如果问题可以局部修，输出 section_patch 或 evidence_patch；只有整章严重不可用时才输出 regenerate_chapter。
-证据不足时优先 evidence_patch，不要轻易要求整章重写。
+你不能新增事实，不能替正文打补丁，不能要求推翻已确认计划。
+如果问题可以局部修，输出 action_type 为 `section_patch` 或 `evidence_patch`；只有整章严重不可用时才输出 `regenerate_chapter`。
+证据不足时优先输出 action_type 为 `evidence_patch`，不要轻易要求整章重写。
 """.strip()
     user_prompt = f"""
 请复核下面这一章，并输出结构化结果。
 
 章节标题：{chapter_title}
-文档模式：{digest_mode}
+文档模式：{mode_label}
 
 章节执行合同：
 {chapter_task}
@@ -37,13 +39,13 @@ def build_chapter_review_messages(
 规则复核基线：
 {rule_review}
 
-ClaimLedger：
+主张台账：
 {claim_ledger}
 
-ClaimEvidenceMap：
+主张证据映射：
 {claim_evidence_map}
 
-ConflictReport：
+冲突报告：
 {conflict_report}
 
 章节 Markdown：
@@ -52,9 +54,9 @@ ConflictReport：
 复核要求：
 1. 判断是否覆盖执行合同中的关键点。
 2. 判断主张是否有足够证据支撑。
-3. 判断是否越过章节边界或推翻 confirmed plan。
+3. 判断是否越过章节边界或推翻已确认计划。
 4. 判断是否适合学生学习，不要只看格式。
-5. action 必须可执行，写清 target_anchor、instruction、constraints、expected_effect。
+5. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`。
 6. 只做复核判断，不输出修补后的正文。
 """.strip()
     messages = [

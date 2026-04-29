@@ -28,8 +28,13 @@ def _presentation_contract() -> str:
     return """
 使用标准 Markdown 表达教学结构：自然段讲清逻辑，表格/清单只在对比、分类、步骤或参数密集时使用。
 关键术语、条件、结论和易错边界可以加粗，但不要把整章写成高亮清单。
-重点提示块只在确实能帮助理解核心结论、方法提醒或易错边界时使用；没有必要时不要硬凑。
-可以少量使用与小节或清单语义强绑定的 emoji / 图标帮助识别，但不要堆叠装饰；公式、代码、命令和路径等字面内容保持原样。
+教学提示块优先使用引用式提示块语法，关键处自然出现 2-4 个即可，不要每段都塞。
+提示块映射：`> [!IMPORTANT]` 用于核心结论/关键前提；`> [!TIP]` 用于快速抓手/关键线索/捷径；`> [!WARNING]` 用于易错点/陷阱/不能硬套；`> [!NOTE]` 用于本章定位/补充联系。
+提示块格式必须是：
+> [!TIP]
+>
+> 💡 快速抓手：这里写真正有用的一句话或小清单。
+可以少量使用与小节、提示块或清单语义强绑定的表情符号 / 图标帮助识别，例如 💡、⚠️、🎯、📌、✅；不要堆叠装饰。公式、代码、命令和路径等字面内容保持原样。
 不要使用 HTML、内联样式或纯装饰性符号。
 """.strip()
 
@@ -79,7 +84,9 @@ def build_docgen_writer_messages(
     prompt builder 里静默截断材料。资产、练习和来源统一由后续节点处理。
     """
 
-    normalized_mode = get_docgen_mode_profile(digest_mode).mode
+    mode_profile = get_docgen_mode_profile(digest_mode)
+    normalized_mode = mode_profile.mode
+    mode_label = mode_profile.prompt_label
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})
     media_quota = dict(execution_contract.get("media_quota") or {})
@@ -108,7 +115,7 @@ def build_docgen_writer_messages(
     system_prompt = """
 你是 AITeachMe 的中文教学文档作者。
 你的任务是把研究材料写成可直接给学生阅读的高质量 Markdown 讲义。
-成品必须像真实课程讲义或考前讲义，不像聊天回复，不像研究笔记，也不像内部草稿。
+成品必须像真实课程讲义或冲刺讲义，不像聊天回复，不像研究笔记，也不像内部草稿。
 禁止输出英文标题、禁止输出英文段落、禁止把材料机械拼接。
 遇到公式要解释公式在说什么、什么时候能用、最容易错在哪里。
 如果材料不足，要坦诚用现有材料做稳健整理，不能编造事实或来源。
@@ -119,7 +126,7 @@ def build_docgen_writer_messages(
 
 章节标题：{title}
 学习目标：{objective or "把本章最核心的知识主线讲清楚。"}
-文档模式：{normalized_mode}
+文档模式：{mode_label}
 必须覆盖：{required_text}
 可用来源数量：{source_count}
 额外写作要求：{writing_instructions or "保持教学导向，强调理解路径与复习价值。"}
@@ -132,10 +139,10 @@ def build_docgen_writer_messages(
 
 写作口径：
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
-标题口径：二级标题来自本章知识对象、公式、方法、题型或应用场景，避免学习动作口号、问答提示或内部修补口吻。
+标题口径：二级标题来自本章知识对象、公式、方法、任务/题型或应用场景，避免学习动作口号、问答提示或内部修补口吻。
 版式口径：
 {_presentation_contract()}
-练习口径：如果本章适合用题目讲清方法，可以自然融入贴合本章的短例题或变式题；题目必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
+练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
 
 参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
@@ -148,8 +155,8 @@ def build_docgen_writer_messages(
 5. 公式、代码、命令、路径、文件名、环境变量、配置项等保持 Markdown 原生表达，并保留材料中的原始符号与含义。
 6. 不编造引用、文献、实验结果或材料中不存在的事实。
 7. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
-8. 先讲清概念、条件和判断依据，再讲题型、例子或应用，避免一上来堆技巧。
-9. 例题、练习、类比和应用必须来自本章课程语境，不要跨课程凑例子。
+8. 先讲清概念、条件和判断依据，再讲任务/题型、例子或应用，避免一上来堆技巧。
+9. 例题、练习、案例、任务、类比和应用必须来自本章课程语境，不要跨课程凑例子。
 10. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
 11. 不输出原始来源列表、内部 course id、研究笔记标题或草稿修补痕迹。
 12. 不在章节正文里插入参考资料附录；来源调试信息由系统单独保存和清理。
@@ -189,7 +196,9 @@ def build_docgen_heading_repair_messages(
     chapter_index: int | None = None,
     chapter_count: int | None = None,
 ) -> list[dict[str, str]]:
-    normalized_mode = get_docgen_mode_profile(digest_mode).mode
+    mode_profile = get_docgen_mode_profile(digest_mode)
+    normalized_mode = mode_profile.mode
+    mode_label = mode_profile.prompt_label
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     system_prompt = """
 你是 AITeachMe 的教学编辑助手。
@@ -204,7 +213,7 @@ def build_docgen_heading_repair_messages(
 请把下面这一章 Markdown 修订成“标题和结构更清楚，但仍保持原有教学内容”的版本。
 章节标题：{title}
 学习目标：{objective or "把本章最核心的知识主线讲清楚"}
-文档模式：{normalized_mode}
+文档模式：{mode_label}
 必须覆盖：{required_text}
 可用来源数量：{source_count}
 额外写作要求：{writing_instructions or "保持教学导向，优先让结构更清楚"}
@@ -216,7 +225,7 @@ def build_docgen_heading_repair_messages(
 输出要求：
 1. 只输出修订后的完整中文 Markdown。
 2. 一级标题必须保持为 `# {title}`。
-3. 二级和三级标题可以重新命名、合并重复项或改掉泛标题；标题要来自本章知识对象、方法、题型或应用场景。
+3. 二级和三级标题可以重新命名、合并重复项或改掉泛标题；标题要来自本章知识对象、方法、任务/题型或应用场景。
 4. 尽量保留已有正文、例子和公式，除非确实重复或跑题，不要大删内容。
 5. 只在结构确实不完整时补少量过渡句、总结句或提示句，不能凭空编造来源事实。
 6. 保持已有公式和代码类字面量的原意与 Markdown 表达。
@@ -228,7 +237,7 @@ def build_docgen_heading_repair_messages(
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
 版式口径：
 {_presentation_contract()}
-如果正文已有例题区，要保留“题目、解析、易错点”这类学习价值，不要改成只有题目列表。
+如果正文已有例题、案例或任务区，要保留“题目/案例、解析、易错点”这类学习价值，不要改成只有列表。
 
 参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
@@ -269,6 +278,7 @@ def build_docgen_research_purify_messages(
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     profile = get_docgen_mode_profile(digest_mode)
     normalized_mode = profile.mode
+    mode_label = profile.prompt_label
     system_prompt = """
 你是 AITeachMe 的研究整理助手。
 你的任务是把杂乱素材提纯成适合章节写作使用的中文研究笔记。
@@ -279,7 +289,7 @@ def build_docgen_research_purify_messages(
 
 章节标题：{chapter_title or "未命名章节"}
 章节目标：{objective or "为本章提供可教学、可解释、可举例的可靠材料。"}
-文档模式：{normalized_mode}
+文档模式：{mode_label}
 必须覆盖：{must_cover}
 
 输出要求：
@@ -365,9 +375,9 @@ def build_docgen_sub_query_messages(
 输出要求：
 1. 只输出适合中文搜索引擎或知识库检索的查询语句。
 2. 查询要彼此互补，不要只是同义改写。
-3. 优先覆盖：核心定义、推导/公式、应用例题、易错点/常见误区。
+3. 优先覆盖：核心定义、推导/公式、应用案例/例题、易错点/常见误区。
 4. 如果主题更偏系统课，可适当补“前置知识”“适用条件”“概念关系”。
-5. 如果主题更偏冲刺课，可适当补“真题”“高频题型”“防坑提醒”。
+5. 如果主题更偏冲刺课，可适当补“真题/真实案例”“常见任务/高频题型”“防坑提醒”。
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
 

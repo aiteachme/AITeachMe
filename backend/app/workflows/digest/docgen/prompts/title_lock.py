@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
 def build_title_lock_messages(
@@ -17,10 +18,11 @@ def build_title_lock_messages(
     chapter: Mapping[str, Any],
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
-你是 AITeachMe 的 DocGen 章节标题锁定器。
+你是 AITeachMe 的知识文档章节标题锁定器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
-你只能在 confirmed title 的基础上做轻微收束和具体化，不能引入新主题。
+你只能在已确认标题的基础上做轻微收束和具体化，不能引入新主题。
 标题要像真实课程目录，避免空泛比喻、拟人或文学化表达。
 标题本身不要包含编号或样式说明。
 """.strip()
@@ -28,10 +30,10 @@ def build_title_lock_messages(
 请为下面这一章锁定最终发布标题。
 
 主题：{course_name}
-模式：{digest_mode}
+模式：{mode_label}
 用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
-Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
+规划器对话与修改摘要：{docgen_history_brief or "暂无"}
 
 当前章节：
 - chapter_index: {chapter.get("chapter_index")}

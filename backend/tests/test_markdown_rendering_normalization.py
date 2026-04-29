@@ -8,6 +8,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
+from app.workflows.digest.docgen.lib.textbook_style import normalize_educational_callouts
 
 
 def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
@@ -301,6 +302,35 @@ def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> 
 
     assert "> [!IMPORTANT]\n>\n> 从方程到函数的转化" in fixed
     assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
+
+
+def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
+    raw = "\n".join(
+        [
+            "> 💡 **速判技巧**：看到平方差就先想共轭或因式分解。",
+            "",
+            "> ✅ **高频考点**：先抓题目条件，再选公式。",
+            "",
+            "> ⚠️ **易错点**：不要把定义域限制漏掉。",
+            "",
+            "> ✅ **答案**：5",
+            "",
+            "> 这是一段普通引用，后面会提醒注意事项。",
+            "",
+            "> 普通引用不应变化。",
+        ]
+    )
+
+    fixed = normalize_educational_callouts(raw)
+
+    assert "> [!TIP]\n>\n> 💡 **速判技巧**：看到平方差就先想共轭或因式分解。" in fixed
+    assert "> [!IMPORTANT]\n>\n> ✅ **高频考点**：先抓题目条件，再选公式。" in fixed
+    assert "> [!WARNING]\n>\n> ⚠️ **易错点**：不要把定义域限制漏掉。" in fixed
+    assert "> ✅ **答案**：5" in fixed
+    assert "> [!IMPORTANT]\n>\n> ✅ **答案**：5" not in fixed
+    assert "> 这是一段普通引用，后面会提醒注意事项。" in fixed
+    assert "> [!WARNING]\n>\n> 这是一段普通引用" not in fixed
+    assert "> 普通引用不应变化。" in fixed
 
 
 def test_normalize_keeps_loose_display_math_inside_callout() -> None:

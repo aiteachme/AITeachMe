@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
 def build_chapter_rewrite_messages(
@@ -14,9 +15,10 @@ def build_chapter_rewrite_messages(
     markdown: str,
     dense_context: str,
 ) -> list[dict[str, str]]:
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
 你是 AITeachMe 的章节审校改写器。
-你只能修复已有章节的主要质量问题，不能改变章节主题、章节顺序或 confirmed plan 语义。
+你只能修复已有章节的主要质量问题，不能改变章节主题、章节顺序或已确认计划语义。
 你只输出改写后的 Markdown，不输出解释。
 标题保持语义清晰，必要时去掉旧稿里的草稿痕迹或内部流程口吻。
 """.strip()
@@ -24,7 +26,7 @@ def build_chapter_rewrite_messages(
 请在不改变章节主题的前提下，修复下面章节的主要质量问题。
 
 章节：{title}
-模式：{digest_mode}
+模式：{mode_label}
 必须覆盖：{"、".join(required_points) or "核心概念、方法、例子、易错点"}
 发现的问题：{"；".join(warnings) or "内容不够扎实"}
 
@@ -38,9 +40,10 @@ def build_chapter_rewrite_messages(
 1. 只输出改写后的 Markdown。
 2. 保留学生可读的教学语气。
 3. 不要把生成题伪装成来源真题；没有证据支撑的内容不要写成外部事实。
-4. systematic 要讲清定义、结构和推理；sprint 要强化题型、速判和易错点。
+4. 系统模式要讲清定义、结构和推理；冲刺模式要强化常见任务/题型、快速抓手和易错点。
 5. 标题、列表和解析步骤保持标准 Markdown 结构。
 6. 保留公式、命令、路径、配置项等字面内容的原始符号和语义。
+7. 保留已有 `> [!TIP]`、`> [!IMPORTANT]`、`> [!WARNING]` 提示块；必要时把快速抓手、核心前提、易错提醒改成这种标准提示块，不要退化成普通引用。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

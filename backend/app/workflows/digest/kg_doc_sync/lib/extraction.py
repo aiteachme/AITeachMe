@@ -42,6 +42,9 @@ logger = structlog.get_logger()
 
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
+_CALLOUT_MARKER_LINE_RE = re.compile(
+    r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$",
+)
 # Keep this aligned with the shared EXTRACT profile. A shorter outer wait_for
 # would cancel the structured-call helper and show up as noisy CancelledError
 # traces even though the section merely hit our local breaker.
@@ -217,9 +220,13 @@ def _limit_llm_text(text: str, *, max_chars: int) -> str:
     )
 
 
+def _strip_callout_marker_lines(text: str) -> str:
+    return _CALLOUT_MARKER_LINE_RE.sub("", str(text or ""))
+
+
 def _prepare_llm_chunk_content(chunk_content: str) -> str:
     return _limit_llm_text(
-        chunk_content,
+        _strip_callout_marker_lines(chunk_content),
         max_chars=_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS,
     )
 

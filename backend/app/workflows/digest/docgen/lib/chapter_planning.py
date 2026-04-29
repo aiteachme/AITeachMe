@@ -23,6 +23,7 @@ from app.workflows.digest.docgen.lib.models import (
     SourceAffinityByChapter,
     clean_string_list,
 )
+from app.workflows.digest.docgen.lib.textbook_style import build_textbook_heading, choose_heading_focus
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
@@ -309,6 +310,38 @@ def assemble_chapter_generation_plan(
     )
 
 
+def _fallback_focus_items(task: ChapterGenerationTask, *, title: str, fields: Sequence[str]) -> list[str]:
+    items: list[str] = []
+    for field in fields:
+        value = getattr(task, field, None)
+        if isinstance(value, str):
+            items.append(value)
+        elif isinstance(value, Sequence):
+            items.extend(str(item) for item in value)
+    items.extend([*task.content_points, *task.required_elements, task.objective, title])
+    return clean_string_list(items, limit=8) or [title]
+
+
+def _fallback_heading(
+    kind: str,
+    *,
+    task: ChapterGenerationTask,
+    digest_mode: str,
+    title: str,
+    focus_fields: Sequence[str],
+) -> str:
+    focus = choose_heading_focus(
+        _fallback_focus_items(task, title=title, fields=focus_fields),
+        fallback=title,
+    )
+    return build_textbook_heading(
+        kind,
+        digest_mode=digest_mode,
+        focus=focus,
+        fallback_title=title,
+    )
+
+
 def build_fallback_chapter_markdown(
     *,
     task: ChapterGenerationTask,
@@ -318,50 +351,82 @@ def build_fallback_chapter_markdown(
     title = task.enhanced_title or task.confirmed_title or f"第 {task.chapter_index} 章"
     points = task.content_points or task.concept_targets or [task.objective or title]
     mode_profile = get_docgen_mode_profile(digest_mode)
+    structure_heading = _fallback_heading(
+        "structure",
+        task=task,
+        digest_mode=digest_mode,
+        title=title,
+        focus_fields=("concept_targets", "definition_targets"),
+    )
+    points_heading = _fallback_heading(
+        "points",
+        task=task,
+        digest_mode=digest_mode,
+        title=title,
+        focus_fields=("content_points", "required_elements", "formula_targets"),
+    )
+    example_heading = _fallback_heading(
+        "examples",
+        task=task,
+        digest_mode=digest_mode,
+        title=title,
+        focus_fields=("example_targets", "content_points"),
+    )
+    example_focus = choose_heading_focus(
+        _fallback_focus_items(task, title=title, fields=("example_targets", "concept_targets")),
+        fallback=title,
+    )
+    outline_items = clean_string_list(task.teaching_outline, limit=3)
     if mode_profile.is_sprint:
         lines = [
             f"# {title}",
             "",
-            f"## {title}的考点结构",
+            structure_heading,
             "",
-            task.objective or f"先把《{title}》最常考的抓手讲清楚。",
+            task.objective or f"先把《{title}》里最需要掌握的对象、条件和处理路径讲清楚。",
             "",
-            f"## {title}的高频考法",
+            points_heading,
             "",
-            *[f"- {item}" for item in points],
+            *[f"- {item}" for item in (outline_items or points)],
             "",
-            f"## {title}的典型例题解析",
+            example_heading,
             "",
-            "### 例题 1：基础判定",
+            f"### {example_focus}的基础练习",
             "",
-            f"**题目**：围绕《{title}》的核心结论设计一道基础题，判断应该使用哪个定义、公式或方法。",
+            f"**题目**：围绕《{title}》中的“{example_focus}”设计一个基础任务，判断应该使用哪个定义、结论或方法。",
             "",
             "**解析**：",
-            "1. 先识别题目给出的对象、条件和要求。",
-            "2. 再匹配本章对应的定义、公式或判定方法。",
-            "3. 最后检查结论是否满足题目条件。",
+            "1. 先识别任务给出的对象、条件和要求。",
+            "2. 再匹配本章对应的定义、结论或判定方法。",
+            "3. 最后检查结果是否满足原始条件。",
             "",
-            "**易错点**：只记结论、不看适用条件，容易把相似题型混用。",
+            "**易错点**：只记结论、不看适用条件，容易把相似任务混用。",
         ]
     else:
         lines = [
             f"# {title}",
             "",
-            f"## {title}的知识结构",
+            structure_heading,
             "",
             task.objective or f"本章围绕《{title}》建立一条完整的理解主线。",
             "",
-            "## 关键概念与定义",
+            points_heading,
             "",
             *[f"- {item}" for item in points],
             "",
-            "## 方法、结构与推理路径",
+            _fallback_heading(
+                "links",
+                task=task,
+                digest_mode=digest_mode,
+                title=title,
+                focus_fields=("definition_targets", "formula_targets", "concept_targets"),
+            ),
             "",
             "先明确概念和条件，再说明结论为什么成立，最后用例子把抽象内容落到具体情境。",
             "",
-            "## 例题与迁移",
+            example_heading,
             "",
-            f"- 选择《{title}》中的一个概念或方法，举一个新场景并说明适用条件。",
+            f"- 选择《{title}》中的“{example_focus}”，举一个新场景并说明适用条件。",
         ]
     lines.extend(["", f"> [!NOTE]", f"> 本章使用降级草稿生成：{reason}"])
     return "\n".join(lines).strip() + "\n"

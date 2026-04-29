@@ -97,11 +97,11 @@ type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
 };
 
 const CALLOUT_LABELS: Record<CalloutKind, string> = {
-  note: "提示",
-  tip: "诀窍",
-  important: "重点",
-  warning: "注意",
-  caution: "警告",
+  note: "📌 提示",
+  tip: "💡 诀窍",
+  important: "🎯 重点",
+  warning: "⚠️ 注意",
+  caution: "⛔ 警告",
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
