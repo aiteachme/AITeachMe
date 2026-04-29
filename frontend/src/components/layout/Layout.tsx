@@ -1,13 +1,16 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
-import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
 import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+
+const SettingsDialog = lazy(() =>
+  import("../settings/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
+);
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -36,13 +39,18 @@ export function Layout() {
   }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const settingsOverview = useSystemSettingsOverview();
   const isCloudRuntime = settingsOverview?.mode === "cloud";
   const shouldShowTopBar = !isExamFocusPage && isCloudRuntime;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
-    : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-6 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8";
+    : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8 lg:pt-6";
+  const openSettings = useCallback(() => {
+    setHasLoadedSettingsDialog(true);
+    setIsSettingsOpen(true);
+  }, []);
 
   return (
     <>
@@ -53,15 +61,7 @@ export function Layout() {
             isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
-          {!isSettingsOpen ? (
-            <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply dark:mix-blend-screen">
-              <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 dark:bg-indigo-900/20 blur-[72px] opacity-75 dark:opacity-40" />
-              <div className="absolute bottom-[-8%] right-[-4%] h-[420px] w-[420px] rounded-full bg-zinc-200/40 dark:bg-slate-800/30 blur-[72px] opacity-55 dark:opacity-40" />
-              <div className="absolute left-[32%] top-[22%] h-[520px] w-[520px] rounded-full bg-sky-100/24 dark:bg-sky-900/10 blur-[88px] opacity-60 dark:opacity-30" />
-            </div>
-          ) : null}
-
-          {!isExamFocusPage && <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />}
+          {!isExamFocusPage && <Sidebar onOpenSettings={openSettings} />}
           <div className="relative z-10 flex min-w-0 flex-1 flex-col">
             {shouldShowTopBar && (
               <header className="pointer-events-none absolute left-0 right-0 top-0 z-40 flex h-16 items-center justify-end px-4 md:px-6">
@@ -92,7 +92,11 @@ export function Layout() {
         </div>
       </AiInteractionProvider>
 
-      <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      {hasLoadedSettingsDialog ? (
+        <Suspense fallback={null}>
+          <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

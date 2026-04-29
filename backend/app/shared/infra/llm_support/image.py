@@ -34,8 +34,6 @@ from .common import (
 from .litellm_loader import load_litellm
 from .observability import _end_langsmith_trace, _sanitize_langsmith_value
 
-litellm = load_litellm()
-
 DESCRIBE_ONLY_IMAGE_MODELS = frozenset({"describe"})
 ERROR_PREVIEW_CHARS = 240
 LITELLM_IMAGE_PROVIDER_PREFIXES = frozenset(
@@ -339,6 +337,7 @@ async def _agenerate_litellm_image(
     prompt: str,
     timeout_s: int | None,
 ) -> ImageGenerationResult:
+    litellm = load_litellm()
     response = await asyncio.wait_for(
         litellm.aimage_generation(**dict(call_kwargs)),
         timeout=timeout_s,
@@ -448,7 +447,7 @@ async def agenerate_image(
                     result = await _agenerate_litellm_image(
                         call_kwargs=call_kwargs,
                         prompt=prompt_text,
-                        timeout_s=context_request_timeout_s(context),
+                        timeout_s=context_request_timeout_s(context, call_kwargs),
                     )
                     if response_format == "b64_json" and any(not image.b64_json and image.url for image in result.images):
                         result = ImageGenerationResult(
@@ -456,7 +455,7 @@ async def agenerate_image(
                             prompt=result.prompt,
                             images=await _materialize_b64_images(
                                 result.images,
-                                timeout_s=context_request_timeout_s(context),
+                                timeout_s=context_request_timeout_s(context, call_kwargs),
                             ),
                             raw_metadata=dict(result.raw_metadata),
                         )

@@ -19,11 +19,12 @@ from app.schemas.subject import (
     SubjectUpdateRequest,
 )
 from app.workflows.support.subjects import (
-    choose_subject_icon_key,
     create_subject_record,
     delete_subject_record,
+    infer_subject_icon_key,
     list_subject_records,
     preview_subject_delete,
+    schedule_subject_icon_refinement,
     update_subject_record,
 )
 
@@ -37,21 +38,27 @@ router = APIRouter(prefix="/api/v1/subjects", tags=["subjects"])
     responses=build_error_responses([400, 409, 500]),
 )
 async def create_subject_api(
+    request: Request,
     body: SubjectCreateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
-    icon_key = await choose_subject_icon_key(body.name)
-    return ok_response(
-        create_subject_record(
-            session,
-            owner_user_id=user.user_id,
-            name=body.name,
-            description=body.description,
-            user_intent=body.user_intent,
-            icon_key=icon_key,
-        )
+    icon_key = infer_subject_icon_key(body.name)
+    item = create_subject_record(
+        session,
+        owner_user_id=user.user_id,
+        name=body.name,
+        description=body.description,
+        user_intent=body.user_intent,
+        icon_key=icon_key,
     )
+    schedule_subject_icon_refinement(
+        _get_background_task_registry(request),
+        subject_id=item.subject_id,
+        owner_user_id=user.user_id,
+        subject_name=item.name,
+    )
+    return ok_response(item)
 
 
 @router.post(
@@ -113,6 +120,7 @@ async def delete_subject_api(
             owner_user_id=user.user_id,
             subject_id=body.subject_id,
             force=body.force,
+            known_detail_counts=body.known_detail_counts,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         )
     )
@@ -125,22 +133,33 @@ async def delete_subject_api(
     responses=build_error_responses([400, 404, 500]),
 )
 async def update_subject_api(
+    request: Request,
     body: SubjectUpdateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[SubjectItem]:
-    icon_key = await choose_subject_icon_key(body.name) if body.name is not None else None
-    return ok_response(
-        update_subject_record(
-            session,
-            owner_user_id=user.user_id,
-            subject_id=body.subject_id,
-            name=body.name,
-            description=body.description,
-            user_intent=body.user_intent,
-            icon_key=icon_key,
-        )
+    icon_key = infer_subject_icon_key(body.name) if body.name is not None else None
+    item = update_subject_record(
+        session,
+        owner_user_id=user.user_id,
+        subject_id=body.subject_id,
+        name=body.name,
+        description=body.description,
+        user_intent=body.user_intent,
+        icon_key=icon_key,
     )
+    if body.name is not None:
+        schedule_subject_icon_refinement(
+            _get_background_task_registry(request),
+            subject_id=item.subject_id,
+            owner_user_id=user.user_id,
+            subject_name=item.name,
+        )
+    return ok_response(item)
+
+
+def _get_background_task_registry(request: Request):
+    return getattr(request.app.state, "background_task_registry", None)
 
 
 @router.post(

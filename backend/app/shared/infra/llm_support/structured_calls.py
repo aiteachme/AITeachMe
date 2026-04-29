@@ -7,13 +7,9 @@ import time
 from collections.abc import Mapping
 from copy import deepcopy
 from functools import lru_cache
+from importlib import import_module
 from typing import Any
 from typing import TypeVar
-
-try:
-    import instructor
-except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
-    instructor = None
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
@@ -23,6 +19,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -46,7 +43,14 @@ from .structured import (
 )
 
 T = TypeVar("T")
-litellm = load_litellm()
+
+
+@lru_cache(maxsize=1)
+def _load_instructor():
+    try:
+        return import_module("instructor")
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
+        return None
 
 
 @lru_cache(maxsize=512)
@@ -55,6 +59,7 @@ def _supports_json_object_response_format(model: str, provider: str | None) -> b
 
     if not model:
         return False
+    litellm = load_litellm()
     try:
         supported_params = litellm.get_supported_openai_params(
             model=model,
@@ -153,6 +158,8 @@ async def acompletion_structured(
 ) -> T:
     """Async structured completion."""
 
+    litellm = load_litellm()
+    instructor = _load_instructor()
     context = build_completion_context(
         task_type=task_type,
         call_purpose=call_purpose,
@@ -248,7 +255,7 @@ async def acompletion_structured(
                                     max_retries=0,
                                     **prepared.call_kwargs,
                                 ),
-                                timeout=context_request_timeout_s(context),
+                                timeout=context_request_timeout_s(context, prepared.call_kwargs),
                             )
                             prompt_t, completion_t, total_t = extract_usage(result)
                         except asyncio.TimeoutError:
@@ -274,7 +281,7 @@ async def acompletion_structured(
                             )
                             raw_response = await asyncio.wait_for(
                                 litellm.acompletion(**repair_call_kwargs),
-                                timeout=context_request_timeout_s(context),
+                                timeout=context_request_timeout_s(context, repair_call_kwargs),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
                             raw_text = ""
@@ -288,7 +295,7 @@ async def acompletion_structured(
                     else:
                         response = await asyncio.wait_for(
                             litellm.acompletion(**prepared.call_kwargs),
-                            timeout=context_request_timeout_s(context),
+                            timeout=context_request_timeout_s(context, prepared.call_kwargs),
                         )
                         prompt_t, completion_t, total_t = extract_usage(response)
                         raw_content = response.choices[0].message.content or ""
@@ -322,7 +329,9 @@ async def acompletion_structured(
                 )
                 return result
             except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
+                last_error = LLMTimeoutError(
+                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                )
                 log_attempt_timeout(
                     "llm_structured_timeout",
                     attempt=prepared,

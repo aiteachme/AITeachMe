@@ -87,7 +87,7 @@ export function LearningSpacesPage() {
   const subjectCount = subjects.length;
   return (
     <>
-      <div className="min-h-full px-4 pb-12 pt-10 sm:px-6 md:px-10 lg:px-12 xl:px-16">
+      <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
         <div className="mx-auto w-full max-w-[1560px]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
@@ -174,7 +174,7 @@ export function LearningSpacesPage() {
                 return (
                   <motion.div
                     key={subject.subject_id}
-                    className="group flex min-h-[232px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    className="atm-deferred-card group flex min-h-[232px] flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{

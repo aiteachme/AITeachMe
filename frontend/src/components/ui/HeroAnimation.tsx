@@ -56,7 +56,7 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
   const strokeGradientId = `${id}-hero-stroke-grad`;
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsDrawn(true), 2800);
+    const timer = setTimeout(() => setIsDrawn(true), 700);
     return () => clearTimeout(timer);
   }, []);
 
@@ -113,8 +113,8 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
             initial={{ pathLength: 0, opacity: 0 }}
             animate={{ pathLength: 1, opacity: 1 }}
             transition={{
-              pathLength: { duration: 1.8, delay: i * 0.15, ease: "easeInOut" },
-              opacity: { duration: 0.3, delay: i * 0.15 },
+              pathLength: { duration: 0.75, delay: i * 0.045, ease: "easeInOut" },
+              opacity: { duration: 0.2, delay: i * 0.045 },
             }}
           />
         ))}

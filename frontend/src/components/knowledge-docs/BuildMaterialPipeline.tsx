@@ -20,7 +20,7 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
 
   return (
     <div className={cn("space-y-3", className)}>
-      {isFetching ? <div className="flex items-center gap-2 text-zinc-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /> 处理中...</div> : null}
+      {isFetching ? <div className="flex items-center gap-2 text-sm text-zinc-400 dark:text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> 处理中...</div> : null}
         {files.map((file, index) => {
           const label = resolveFileProcessingLabel(file);
           const progress = resolveFileProgressScore(file);
@@ -36,10 +36,10 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
               className={cn(
                 "rounded-xl border px-3.5 py-3 transition-colors",
                 hasError
-                  ? "border-rose-200 bg-rose-50/50"
+                  ? "border-rose-200 bg-rose-50/50 dark:border-rose-500/30 dark:bg-rose-500/10"
                   : isDone
-                    ? "border-zinc-200 bg-zinc-50/50 hover:bg-zinc-100/50"
-                    : "border-zinc-200 bg-white shadow-sm",
+                    ? "border-zinc-200 bg-zinc-50/50 hover:bg-zinc-100/50 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:bg-slate-800/80"
+                    : "border-zinc-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/80",
               )}
             >
               <div className="flex items-start gap-3">
@@ -47,10 +47,10 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
                   className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
                     hasError
-                      ? "bg-rose-50 text-rose-500 border-rose-100"
+                      ? "bg-rose-50 text-rose-500 border-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
                       : isDone
-                        ? "bg-zinc-100 text-zinc-500 border-zinc-200/80"
-                        : "bg-white text-zinc-900 border-zinc-200",
+                        ? "bg-zinc-100 text-zinc-500 border-zinc-200/80 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        : "bg-white text-zinc-900 border-zinc-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
                   )}
                 >
                   {hasError ? (
@@ -64,18 +64,18 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800">{file.filename}</p>
+                    <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800 dark:text-slate-100">{file.filename}</p>
                     {!hasError && !isDone ? (
-                      <span className="shrink-0 text-[11px] font-medium text-zinc-500">{progress}%</span>
+                      <span className="shrink-0 text-[11px] font-medium text-zinc-500 dark:text-slate-400">{progress}%</span>
                     ) : null}
                   </div>
 
-                  <p className={cn("mt-1 text-[12px] leading-snug", hasError ? "text-rose-500" : "text-zinc-500")}>
+                  <p className={cn("mt-1 text-[12px] leading-snug", hasError ? "text-rose-500 dark:text-rose-300" : "text-zinc-500 dark:text-slate-400")}>
                     {hasError ? file.error_message : label}
                   </p>
 
                   {!hasError && !isDone ? (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white dark:bg-slate-900">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${progress}%` }}

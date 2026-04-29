@@ -24,11 +24,10 @@ import {
 } from "lucide-react";
 
 import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
-import { apiClient, getApiErrorMessage } from "../api/client";
+import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
-import { useSystemSettingsOverview } from "../hooks/useSystemSettingsOverview";
 import {
   buildUnsupportedFilesMessage,
   FILE_ACCEPT,
@@ -128,7 +127,7 @@ async function importCourseByFilename(filename: string, newName?: string): Promi
     method: "POST",
     url: `/api/v1/courses/${encodeURIComponent(filename)}/import`,
     data: newName ? { new_subject_name: newName } : {},
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data;
 }
@@ -142,7 +141,7 @@ async function importSubject(file: File, newName?: string): Promise<ImportResult
     url: `/api/v1/subjects/import`,
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data;
 }
@@ -538,8 +537,8 @@ function ImportModal({
             className={cn(
               "flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all",
               selectedFile && !importMutation.isPending
-                ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
             )}
           >
             {importMutation.isPending ? (
@@ -619,8 +618,8 @@ function RenameModal({
             className={cn(
               "flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all",
               name.trim() && !renameMutation.isPending
-                ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
             )}
           >
             {renameMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -642,7 +641,6 @@ export function HomePage() {
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const settingsOverview = useSystemSettingsOverview();
 
   const [prompt, setPrompt] = useState("");
   const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
@@ -693,11 +691,12 @@ export function HomePage() {
   });
 
   // ── Courses query ──
-  const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
-    enabled: shouldShowDemoCourses,
+    retry: false,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
   });
 
   const courseImportMutation = useMutation({
@@ -740,7 +739,7 @@ export function HomePage() {
         throw new Error("创建学科失败");
       }
       setDraftSubjectId(created.subject_id);
-      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
       return created.subject_id;
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
@@ -802,8 +801,8 @@ export function HomePage() {
       const nextFileIds = uniqueStrings([...entryFileIds, ...uploadedIds]);
       setEntryFileIds(nextFileIds);
       syncEntryFilesCache(nextFileIds, uploaded);
-      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
-      await queryClient.invalidateQueries({ queryKey: ["files-library"] });
+      void queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
+      void queryClient.invalidateQueries({ queryKey: ["files-library"] });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
     } finally {
@@ -872,8 +871,8 @@ export function HomePage() {
       const subjectId = await ensureDraftSubjectId();
       if (entryFileIds.length > 0) {
         await linkFilesToSubject(subjectId, entryFileIds);
-        await queryClient.invalidateQueries({ queryKey: ["subjects"] });
-        await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+        void queryClient.invalidateQueries({ queryKey: ["subjects"] });
+        void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
       }
       const userGoal = prompt.trim();
       const selectedModel = toChatRequestModel(chatModel);
@@ -927,8 +926,7 @@ export function HomePage() {
   }, [entryFileIds, syncEntryFilesCache, uploadedFiles]);
 
   const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
-  const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
-  const shouldShowDemoCourseSection = shouldShowDemoCourses && (coursesLoading || hasDemoCourses);
+  const shouldShowDemoCourseSection = courses.length > 0;
 
   return (
     <>
@@ -966,7 +964,7 @@ export function HomePage() {
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 2.8 }}
+            transition={{ duration: 0.45, ease: "easeOut", delay: 0.35 }}
             className="flex flex-col items-center mt-3"
           >
             <h1
@@ -982,7 +980,7 @@ export function HomePage() {
         <motion.p
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 3.0, duration: 0.6 }}
+          transition={{ delay: 0.45, duration: 0.45 }}
           className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
@@ -992,7 +990,7 @@ export function HomePage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.35 }}
+          transition={{ delay: 0.18 }}
           className="w-full relative z-10"
         >
           <div className={cn(
@@ -1059,8 +1057,8 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <div className="flex flex-1 flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
                   <input 
                     type="file" 
                     title="选择要上传的文件资料"
@@ -1073,7 +1071,7 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles || isCreatingDraftSubject ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1086,7 +1084,7 @@ export function HomePage() {
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
@@ -1100,7 +1098,7 @@ export function HomePage() {
                   )}
                 </div>
 
-                <div className="ml-2 flex shrink-0 items-center gap-2">
+                <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:ml-2 sm:w-auto">
                   <ChatModelSelect
                     value={chatModel}
                     onChange={setChatModel}
@@ -1191,11 +1189,6 @@ export function HomePage() {
                 </div>
 
                   <div className="pt-2 pb-12">
-                    {coursesLoading && (
-                      <div className="py-8 flex justify-center">
-                        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-                      </div>
-                    )}
                     {courses.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {courses.map((course, i) => (
@@ -1205,13 +1198,13 @@ export function HomePage() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                           >
-                            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col hover:-translate-y-1">
+                            <div className="atm-deferred-card flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-slate-700">
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
-                                  <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
-                                  <p className="mt-1 text-xs font-medium text-emerald-600">演示课程</p>
+                                  <h3 className="line-clamp-1 text-lg font-bold text-slate-900 dark:text-slate-100">{course.subject_name}</h3>
+                                  <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-300">演示课程</p>
                                 </div>
-                                <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
+                                <div className="rounded-lg border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-2 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10">
                                   <Package className="w-5 h-5 text-emerald-500" />
                                 </div>
                               </div>
@@ -1219,32 +1212,32 @@ export function HomePage() {
                               {/* Stats chips */}
                               <div className="flex flex-wrap gap-1.5 mb-4">
                                 {course.stats.knowledge_unit_count > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {course.stats.knowledge_unit_count} 知识点
                                   </span>
                                 )}
                                 {course.stats.raw_file_count > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {course.stats.raw_file_count} 文件
                                   </span>
                                 )}
                                 {course.file_size_bytes > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {formatFileSize(course.file_size_bytes)}
                                   </span>
                                 )}
                               </div>
 
                               {/* Footer */}
-                              <div className="mt-auto border-t border-slate-100 pt-3">
+                              <div className="mt-auto border-t border-slate-100 pt-3 dark:border-slate-800">
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-all",
+                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all",
                                     !courseImportMutation.isPending
-                                      ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                      ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                      : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
                                   )}
                                   title={`导入 ${course.subject_name} 到左侧学科列表`}
                                 >

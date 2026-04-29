@@ -1,15 +1,25 @@
 import { lazy, Suspense, useEffect, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
-import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
+import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => !isBackendOfflineError(error) && failureCount < 1,
+    },
+  },
+});
 
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
 const GlobalAssistantPage = lazy(() =>
@@ -61,7 +71,31 @@ const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
 
 function RuntimeSettingsBootstrap() {
   useEffect(() => {
-    void ensureSystemSettingsOverviewLoaded(true);
+    const cachedOverview = getStoredSystemSettingsOverview();
+    void ensureSystemSettingsOverviewLoaded();
+    if (cachedOverview && typeof window !== "undefined") {
+      window.setTimeout(() => {
+        void ensureSystemSettingsOverviewLoaded(true);
+      }, 1200);
+    }
+  }, []);
+  return null;
+}
+
+function BackendConnectivityBridge() {
+  useEffect(() => {
+    const markOffline = () => onlineManager.setOnline(false);
+    const markOnline = () => onlineManager.setOnline(true);
+
+    window.addEventListener(BACKEND_OFFLINE_EVENT, markOffline);
+    window.addEventListener(BACKEND_ONLINE_EVENT, markOnline);
+    if (isBackendOffline()) {
+      markOffline();
+    }
+    return () => {
+      window.removeEventListener(BACKEND_OFFLINE_EVENT, markOffline);
+      window.removeEventListener(BACKEND_ONLINE_EVENT, markOnline);
+    };
   }, []);
   return null;
 }
@@ -72,6 +106,7 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey={THEME_STORAGE_KEY}>
       <QueryClientProvider client={queryClient}>
+        <BackendConnectivityBridge />
         <RuntimeSettingsBootstrap />
         <ToastProvider>
           <Router unstable_useTransitions={false}>

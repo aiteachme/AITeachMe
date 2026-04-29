@@ -33,7 +33,6 @@ from app.workflows.ingest.parsing.decision import build_parse_decision
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     get_text_language_hint,
-    is_image_extension,
     is_text_extension,
     normalize_extension,
 )
@@ -425,10 +424,6 @@ def build_plan_parse_node(*, context: WorkflowContext):
                             "ocr_vision",
                             *[name for name in parse_plan.parser_chain if name != "ocr_vision"],
                         ]
-                    elif extension in {".ppt", ".pptx"}:
-                        parser_chain = ["ocr_vision", "markitdown", "python_pptx_native"]
-                    elif is_image_extension(extension):
-                        parser_chain = ["llm_vision"]
                     else:
                         parser_chain = parse_plan.parser_chain
                     parse_plan = parse_plan.model_copy(

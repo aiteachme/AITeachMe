@@ -23,7 +23,6 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
     from sqlmodel import select
 
     from app.models.raw_file import RawFile
-    from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
     from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 
     dispatched = 0
@@ -66,6 +65,8 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                     user_id=user_id,
                     current_status=raw_file.ingest_status,
                 )
+                from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
+
                 enhance_coro = _run_deep_enhance_background(
                     user_id=user_id,
                     subject_id=subject_id,

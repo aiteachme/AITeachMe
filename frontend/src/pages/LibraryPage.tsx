@@ -176,7 +176,7 @@ export function LibraryPage() {
             type="button"
             onClick={() => filesQuery.refetch()}
             disabled={filesQuery.isFetching}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
           >
             <RefreshCw className={cn("h-4 w-4", filesQuery.isFetching && "animate-spin")} />
             刷新
@@ -213,7 +213,7 @@ export function LibraryPage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
             {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             上传资料
@@ -228,7 +228,7 @@ export function LibraryPage() {
           { label: "解析中", value: filesQuery.data?.processing_count ?? 0 },
           { label: "失败", value: filesQuery.data?.failed_count ?? 0 },
         ].map((item) => (
-          <div key={item.label} className="rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80">
+          <div key={item.label} className="rounded-lg border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80">
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</div>
             <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{item.value}</div>
           </div>
@@ -236,13 +236,13 @@ export function LibraryPage() {
       </div>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+        <div className="mt-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
           {error}
         </div>
       ) : null}
 
       {uploadingNames.length > 0 ? (
-        <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 dark:border-sky-900/60 dark:bg-sky-950/30">
+        <div className="mt-5 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 dark:border-sky-900/60 dark:bg-sky-950/30">
           <div className="flex items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在上传 {uploadingNames.length} 份资料
@@ -284,7 +284,7 @@ export function LibraryPage() {
       ) : null}
 
       {!filesQuery.isLoading && hasFiles ? (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_150px_110px_56px] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400 md:grid">
             <div>文件</div>
             <div>大小</div>
@@ -297,7 +297,7 @@ export function LibraryPage() {
             {files.map((file) => {
               const meta = statusMeta(file);
               return (
-                <div key={file.id} className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_120px_150px_110px_56px] md:items-center md:gap-4">
+                <div key={file.id} className="atm-deferred-row grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_120px_150px_110px_56px] md:items-center md:gap-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
                       {fileIcon(file)}

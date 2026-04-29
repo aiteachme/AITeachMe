@@ -125,11 +125,11 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
       id={`exam-question-${row.order}`}
       data-question-anchor="true"
       data-question-order={row.order}
-      className="exam-preview-unified-flow scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 sm:py-9"
+      className="exam-preview-unified-flow scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 dark:border-slate-800/90 sm:py-9"
     >
       <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
-        <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
-          <div className="font-serif text-2xl font-bold leading-none text-slate-950">{row.order}.</div>
+        <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 dark:border-slate-800 dark:text-slate-400 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
+          <div className="font-serif text-2xl font-bold leading-none text-slate-950 dark:text-slate-100">{row.order}.</div>
           <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
             <span className="inline-flex flex-col items-center gap-1">
               <Bookmark className="h-4 w-4" />
@@ -141,7 +141,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
         <div className="min-w-0 overflow-hidden">
           {isFailed ? (
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 生成失败
               </span>
@@ -149,15 +149,15 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
           ) : null}
 
           {isFailed ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 sm:px-6">
-              <div className="flex items-center gap-2 font-semibold text-rose-800">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 sm:px-6">
+              <div className="flex items-center gap-2 font-semibold text-rose-800 dark:text-rose-200">
                 <AlertTriangle className="h-4 w-4" />
                 本题生成失败
               </div>
               <p className="mt-2 text-rose-600">这道题已跳过，不会计入本次试卷题量和批改。</p>
             </div>
           ) : (
-          <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 sm:p-6">
+          <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 dark:border-slate-800 sm:p-6">
             <div className="space-y-3">
               {lineWidths.map((width, index) => (
                 <span
@@ -174,9 +174,9 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               {[0, 1, 2, 3].map((optionIndex) => (
                 <div
                   key={optionIndex}
-                  className="exam-preview-skeleton-panel flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
+                  className="exam-preview-skeleton-panel flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 dark:border-slate-800 sm:gap-4 sm:px-4 sm:py-3.5"
                 >
-                  <span className="relative z-[1] h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
+                  <span className="relative z-[1] h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900" />
                   <span
                     className={`exam-preview-flow-line relative z-[1] block h-2.5 rounded-full ${
                       optionIndex % 2 === 0 ? "w-8/12" : "w-6/12"
@@ -186,7 +186,7 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               ))}
             </div>
           ) : !isFailed ? (
-            <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4">
+            <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
               <div className="relative z-[1] space-y-3">
                 <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
                 <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
@@ -310,23 +310,23 @@ export function ExamPaperSheet({
                       : undefined
                   }
                 >
-                  <div className="absolute -right-5 top-5 bottom-8 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] lg:block" />
-                  <div className="absolute -right-2 top-2 bottom-4 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] lg:block" />
-                  <article className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)]">
+                  <div className="absolute bottom-8 -right-5 top-5 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_36px_rgba(0,0,0,0.42)] lg:block" />
+                  <div className="absolute bottom-4 -right-2 top-2 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_14px_30px_rgba(0,0,0,0.36)] lg:block" />
+                  <article className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]">
                     <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
-                      <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 sm:text-4xl">
+                      <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 dark:text-slate-100 sm:text-4xl">
                         {getExamPaperDisplayTitle(paper)}
                       </h1>
-                      <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400">
-                        <span className="h-px flex-1 bg-slate-300" />
-                        <span className="h-2 w-2 rotate-45 bg-slate-800" />
-                        <span className="h-px flex-1 bg-slate-300" />
+                      <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400 dark:text-slate-600">
+                        <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
+                        <span className="h-2 w-2 rotate-45 bg-slate-800 dark:bg-slate-300" />
+                        <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
                       </div>
-                      <p className="mt-4 font-serif text-base font-semibold text-slate-600">
+                      <p className="mt-4 font-serif text-base font-semibold text-slate-600 dark:text-slate-400">
                         本试卷共 {paper.total_items} 题，满分 {getExamTotalScore(paper)} 分，预计用时 {getEstimatedExamMinutes(paper)} 分钟
                       </p>
-                      <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 sm:text-base">
-                        <p className="font-bold text-slate-800">注意事项：</p>
+                      <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
+                        <p className="font-bold text-slate-800 dark:text-slate-200">注意事项：</p>
                         <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
                         <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查左侧题号状态。</p>
                       </div>
@@ -347,9 +347,11 @@ export function ExamPaperSheet({
                       ? ["True", "False"]
                       : (item.options ?? []);
                     const selectedMultiChoice = splitMultiChoiceAnswer(answerValue);
+                    const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
                     const isReadonly = isGraded;
+                    const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
                     const isMarked = isQuestionMarked(item);
@@ -367,18 +369,18 @@ export function ExamPaperSheet({
                           }
                         }}
                         className={cn(
-                          "relative scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 sm:py-9",
+                          "relative scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 dark:border-slate-800/90 sm:py-9",
                           (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
                           isReviewStage && "cursor-pointer rounded-xl",
-                          isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200",
-                          isQuestionHighlighted && "rounded-xl bg-slate-50/80 outline outline-1 outline-slate-200",
+                          isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200 dark:bg-slate-900/70 dark:outline-slate-700",
+                          isQuestionHighlighted && "rounded-xl bg-slate-50/80 outline outline-1 outline-slate-200 dark:bg-slate-900/70 dark:outline-slate-700",
                         )}
                         aria-selected={isSelectedReviewItem || undefined}
                       >
                         {isReviewStage ? <QuestionReviewResultMark item={item} /> : null}
                         <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
-                          <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
-                            <div className="font-serif text-2xl font-bold leading-none text-slate-950">
+                          <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 dark:border-slate-800 dark:text-slate-400 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
+                            <div className="font-serif text-2xl font-bold leading-none text-slate-950 dark:text-slate-100">
                               {item.item_order}.
                             </div>
                             <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
@@ -386,7 +388,7 @@ export function ExamPaperSheet({
                                 <button
                                   type="button"
                                   onClick={() => onQuestionAi(item, isReviewStage, answerValue)}
-                                  className="inline-flex flex-col items-center gap-1 rounded-md text-slate-400 transition hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                                  className="inline-flex flex-col items-center gap-1 rounded-md text-slate-400 transition hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:hover:text-slate-200 dark:focus-visible:ring-slate-600 dark:focus-visible:ring-offset-slate-950"
                                   title={`围绕第 ${item.item_order} 题问 AI`}
                                   aria-label={`围绕第 ${item.item_order} 题问 AI`}
                                 >
@@ -423,7 +425,7 @@ export function ExamPaperSheet({
                           </aside>
 
                           <div className="min-w-0 overflow-hidden">
-                            <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+                            <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 dark:text-slate-100 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
                           {isChoice ? (
@@ -438,6 +440,11 @@ export function ExamPaperSheet({
                                 const isSelected = isMultipleChoice
                                   ? selectedMultiChoice.has(optionValue)
                                   : answerValue === optionValue;
+                                const isCorrectOption = isMultipleChoice
+                                  ? correctMultiChoice.has(optionValue)
+                                  : (item.correct_answer ?? "") === optionValue;
+                                const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
+                                const isRightOption = isReviewStage && isCorrectOption;
                                 return (
                                   <button
                                     key={`${item.id}-${optionIndex}`}
@@ -466,34 +473,70 @@ export function ExamPaperSheet({
                                       });
                                     }}
                                     className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm leading-7 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-base ${
-                                      isSelected
-                                        ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)]"
+                                      isReviewStage
+                                        ? isRightOption
+                                           ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
+                                          : isWrongSelectedOption
+                                             ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+                                             : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400"
                                         : isReadonly
-                                          ? "border-slate-200 bg-white text-slate-700"
-                                          : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50"
+                                          ? isSelected
+                                             ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)] dark:border-violet-500/45 dark:bg-violet-500/10 dark:text-violet-100 dark:shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                             : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
+                                        : isSelected
+                                           ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)] dark:border-violet-500/45 dark:bg-violet-500/10 dark:text-violet-100 dark:shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                           : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
                                       className={`grid h-5 w-5 shrink-0 place-items-center border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
-                                        isSelected
-                                          ? "border-violet-600 bg-white"
+                                        isReviewStage
+                                          ? isRightOption
+                                            ? "border-emerald-600 bg-white dark:border-emerald-400 dark:bg-slate-950"
+                                            : isWrongSelectedOption
+                                              ? "border-rose-600 bg-white dark:border-rose-400 dark:bg-slate-950"
+                                              : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
                                           : isReadonly
-                                            ? "border-slate-400 bg-white"
-                                            : "border-slate-300 bg-white"
+                                            ? isSelected
+                                              ? "border-violet-600 bg-white dark:border-violet-400 dark:bg-slate-950"
+                                              : "border-slate-400 bg-white dark:border-slate-600 dark:bg-slate-950"
+                                          : isSelected
+                                            ? "border-violet-600 bg-white dark:border-violet-400 dark:bg-slate-950"
+                                            : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
                                       }`}
                                     >
                                       <span
                                         className={`${isMultipleChoice ? "h-2.5 w-2.5 rounded-[3px]" : "h-2.5 w-2.5 rounded-full"} ${
-                                          isSelected ? "bg-violet-600" : "bg-transparent"
+                                          isReviewStage
+                                            ? isRightOption
+                                              ? "bg-emerald-600"
+                                              : isWrongSelectedOption
+                                                ? "bg-rose-600"
+                                                : "bg-transparent"
+                                            : isReadonly
+                                              ? isSelected
+                                                ? "bg-violet-600"
+                                                : "bg-transparent"
+                                            : isSelected
+                                              ? "bg-violet-600"
+                                              : "bg-transparent"
                                         }`}
                                       />
                                     </span>
                                     <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-7 sm:[&_p]:text-base sm:[&_p]:leading-7 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
-                                      isSelected
-                                        ? "[&_p]:text-violet-900"
+                                      isReviewStage
+                                        ? isRightOption
+                                          ? "[&_p]:text-emerald-900 dark:[&_p]:text-emerald-100"
+                                          : isWrongSelectedOption
+                                            ? "[&_p]:text-rose-900 dark:[&_p]:text-rose-100"
+                                            : "[&_p]:text-slate-500 dark:[&_p]:text-slate-400"
                                         : isReadonly
-                                          ? "[&_p]:text-slate-700"
-                                          : "[&_p]:text-slate-800"
+                                          ? isSelected
+                                            ? "[&_p]:text-violet-900 dark:[&_p]:text-violet-100"
+                                            : "[&_p]:text-slate-700 dark:[&_p]:text-slate-300"
+                                        : isSelected
+                                          ? "[&_p]:text-violet-900 dark:[&_p]:text-violet-100"
+                                          : "[&_p]:text-slate-800 dark:[&_p]:text-slate-200"
                                     }`}>
                                       <div className="flex gap-3">
                                         {!isTrueFalse && (
@@ -512,9 +555,13 @@ export function ExamPaperSheet({
                             <div className="mt-6 min-w-0">
                               <textarea
                                 className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
-                                  isReadonly
-                                    ? "border-slate-200 bg-slate-50 text-slate-900"
-                                    : "border-slate-200 bg-white text-slate-900 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+                                  isReviewStage
+                                    ? isCorrect
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
+                                      : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+                                    : isReadonly
+                                      ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
+                                    : "border-slate-200 bg-white text-slate-900 focus:border-violet-300 focus:ring-2 focus:ring-violet-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-500/60 dark:focus:ring-violet-500/20"
                                 }`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
@@ -528,7 +575,7 @@ export function ExamPaperSheet({
                         </div>
 
                         {isReviewStage && showInlineReviewDetails && (
-                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 md:col-start-2">
+                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300 md:col-start-2">
                             <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
                               <ExamMarkdown content={item.user_answer || "未作答"} />
@@ -541,9 +588,9 @@ export function ExamPaperSheet({
                               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
                               <ExamMarkdown content={item.explanation || "暂无解析"} />
                             </div>
-                            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4">
+                            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
                               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">结果</span>
-                              <span className={item.is_correct ? "font-medium text-emerald-700" : "font-medium text-rose-700"}>
+                              <span className={item.is_correct ? "font-medium text-emerald-700 dark:text-emerald-300" : "font-medium text-rose-700 dark:text-rose-300"}>
                                 {item.is_correct ? "正确" : "需要继续巩固"}
                               </span>
                             </div>
@@ -554,7 +601,7 @@ export function ExamPaperSheet({
                     );
                       })}
                     </div>
-                    <div className="border-t border-slate-200 px-6 py-5 text-center font-serif text-base font-semibold text-slate-500">
+                    <div className="border-t border-slate-200 px-6 py-5 text-center font-serif text-base font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
                       第 1 / 1 页 · 已作答 {getAnsweredCount(paper, answers)} / {paper.total_items} 题
                     </div>
                   </article>

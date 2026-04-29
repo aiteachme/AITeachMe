@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 
 import { Button } from "../ui/Button";
@@ -119,19 +119,19 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
   return (
     <Modal open={open} onClose={onClose} title="新考卷配置" className="max-w-2xl rounded-[28px]">
       <div className="space-y-6">
-        <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5">
-          <p className="text-sm font-medium text-sky-600">面向当前学科</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{subjectId}</h3>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
+        <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5 dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(30,41,59,0.76)_100%)]">
+          <p className="text-sm font-medium text-sky-600 dark:text-sky-300">面向当前学科</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">{subjectId}</h3>
+          <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
             保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-slate-600 dark:text-slate-300">
             出题模式
             <select
-              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               value={config.examMode}
               onChange={(event) =>
                 setConfig((current) => ({
@@ -146,15 +146,15 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
                 </option>
               ))}
             </select>
-            <span className="mt-2 block text-xs leading-6 text-slate-400">
+            <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
               {EXAM_MODES.find((item) => item.value === config.examMode)?.description}
             </span>
           </label>
 
-          <label className="text-sm text-slate-600">
+          <label className="text-sm text-slate-600 dark:text-slate-300">
             题目数量
             <input
-              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               type="number"
               min={1}
               max={40}
@@ -168,18 +168,18 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
             />
           </label>
 
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm font-medium text-slate-700">智能策略</p>
-            <p className="mt-2 text-sm leading-7 text-slate-500">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">智能策略</p>
+            <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
               系统会结合知识点覆盖、练习状态和我的要求自动规划题型与难度。
             </p>
           </div>
         </div>
 
-        <label className="block text-sm text-slate-600">
+        <label className="block text-sm text-slate-600 dark:text-slate-300">
           我的要求
           <textarea
-            className="mt-2 min-h-32 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-900 outline-none transition focus:border-slate-400"
+            className="mt-2 min-h-32 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500"
             placeholder="例如：重点考递归和动态规划，题目接近期末考试，难度偏高，选项要有迷惑性"
             value={config.userPrompt}
             onChange={(event) =>
@@ -191,8 +191,8 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
           />
         </label>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">配置保存在当前浏览器中，不会影响其他设备。</p>
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-500 dark:text-slate-400">配置保存在当前浏览器中，不会影响其他设备。</p>
           <div className="flex gap-3">
             <Button variant="outline" className="rounded-full px-5" onClick={handleReset}>
               <RotateCcw className="h-4 w-4" />

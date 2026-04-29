@@ -24,10 +24,6 @@ from app.shared.infra.llm_support.litellm_loader import load_litellm
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 
 logger = structlog.get_logger()
-litellm = load_litellm()
-
-# 全局：让 litellm 尽可能丢弃不支持的参数
-litellm.drop_params = True
 
 
 async def _call_embedding(
@@ -42,6 +38,9 @@ async def _call_embedding(
     1. 先用 encoding_format="float" 调用（大多数 API 都支持）
     2. 如果报 400（参数不支持），降级不带 encoding_format 重试
     """
+    litellm = load_litellm()
+    # 全局：让 litellm 尽可能丢弃不支持的参数
+    litellm.drop_params = True
     try:
         request_kwargs = {
             "model": model,

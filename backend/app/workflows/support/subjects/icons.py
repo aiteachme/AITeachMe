@@ -10,11 +10,13 @@ import json
 import re
 import secrets
 from collections.abc import Mapping
+from typing import Any
 
 import structlog
 
 from app.models import Subject
 from app.schemas.llm import ChatMessage
+from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 
@@ -290,6 +292,48 @@ async def choose_subject_icon_key(
     return select_subject_icon_candidate(result, fallback=fallback)
 
 
+def schedule_subject_icon_refinement(
+    background_task_registry: Any | None,
+    *,
+    subject_id: str,
+    owner_user_id: str,
+    subject_name: str,
+) -> None:
+    """Refine one subject icon in the background without blocking API responses."""
+
+    name = " ".join(str(subject_name or "").split()).strip()
+    if background_task_registry is None or not name:
+        return
+
+    background_task_registry.spawn(
+        _refine_subject_icon_key_background(
+            subject_id=subject_id,
+            owner_user_id=owner_user_id,
+            subject_name=name,
+        ),
+        kind="subjects.icon_refine",
+        subject_id=subject_id,
+        name=f"subjects.icon_refine:{subject_id}",
+    )
+
+
+async def _refine_subject_icon_key_background(
+    *,
+    subject_id: str,
+    owner_user_id: str,
+    subject_name: str,
+) -> None:
+    icon_key = await choose_subject_icon_key(subject_name)
+    with managed_session() as session:
+        subject = session.get(Subject, subject_id)
+        if subject is None or subject.user_id != owner_user_id:
+            return
+        if " ".join(str(subject.name or "").split()).strip() != subject_name:
+            return
+        set_subject_icon_key(subject, icon_key)
+        session.add(subject)
+
+
 def _read_settings(subject: Subject) -> dict[str, object]:
     raw_value = (subject.settings_json or "").strip()
     if not raw_value:
@@ -309,6 +353,7 @@ __all__ = [
     "infer_subject_icon_key",
     "normalize_subject_icon_candidates",
     "normalize_subject_icon_key",
+    "schedule_subject_icon_refinement",
     "select_subject_icon_candidate",
     "set_subject_icon_key",
 ]

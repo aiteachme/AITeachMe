@@ -12,7 +12,7 @@ export function ExamHeroOrb() {
       <div className="absolute h-16 w-2 rotate-45 rounded-full bg-slate-900" />
       <div className="absolute h-0 w-0 translate-x-[47px] -translate-y-[45px] border-b-[17px] border-l-[38px] border-t-[17px] border-b-transparent border-l-emerald-400 border-t-transparent" />
       <div className="absolute h-0 w-0 translate-x-[68px] -translate-y-[25px] rotate-12 border-b-[10px] border-l-[20px] border-t-[10px] border-b-transparent border-l-emerald-300 border-t-transparent" />
-      <div className="absolute right-0 top-[60%] grid h-10 w-10 place-items-center rounded-full bg-white/75 backdrop-blur">
+        <div className="absolute right-0 top-[60%] grid h-10 w-10 place-items-center rounded-full bg-white/75 backdrop-blur dark:bg-slate-950/70">
         <Plus className="h-5 w-5 text-sky-500" />
       </div>
     </div>

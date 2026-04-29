@@ -217,13 +217,13 @@ POST /api/v1/courses/{filename}/import
 | 包格式错误、manifest/table 不合法、缺少 subject | 422 | `INVALID_IMPORT_PACKAGE` |
 | 上传包或解压包超过限制 | 413 | `IMPORT_PACKAGE_TOO_LARGE` |
 | 演示课程目录不可用 | 502 | `DEMO_COURSE_CATALOG_UNAVAILABLE` |
-| 本地模式调用演示课程下载 | 503 | `DEMO_COURSE_CATALOG_NOT_CONFIGURED` |
+| 未配置演示课程目录时调用演示课程下载 | 503 | `DEMO_COURSE_CATALOG_NOT_CONFIGURED` |
 
 ---
 
 ## 9. 演示课程分发建议
 
-首页“演示课程”只作为云端体验能力。前端不要直接硬编码 OSS 路径，而是统一请求后端课程目录接口；后端仅在云端模式读取公开课程索引，本地模式不读取 OSS，也不展示远程演示课程。
+首页“演示课程”由 `S3_PUBLIC_BASE_URL` 控制。前端不要直接硬编码 OSS 路径，而是统一请求后端课程目录接口；后端仅在配置该变量后读取公开课程索引，未配置时返回空列表，也不展示远程演示课程。
 
 推荐在 OSS 中固定一套公开前缀：
 
@@ -242,8 +242,8 @@ demo-courses/
 
 运行时职责：
 
-- 云端模式读取 `demo-courses/catalog/v1/index.json`；本地模式返回空列表。
-- 前端只消费统一后的课程目录 API，并按运行模式决定是否展示演示课程区。
+- 配置 `S3_PUBLIC_BASE_URL` 后读取 `demo-courses/catalog/v1/index.json`；未配置时返回空列表。
+- 前端只消费统一后的课程目录 API，并在返回课程后展示演示课程区。
 - 真正导入时，由后端下载到临时目录后复用同一套 `import_subject()` 逻辑。
 - 后端只允许课程包 URL 位于配置出的 `<S3_PUBLIC_BASE_URL>/demo-courses/` 前缀下。
 - 下载时同时检查 catalog 声明大小、HTTP `Content-Length` 和实际流式写入字节数。
@@ -253,7 +253,7 @@ demo-courses/
 
 一句话原则：
 
-> 云端演示课程主源统一为 OSS；本地模式不依赖 OSS，手动 `.atmx` 导入仍复用同一套导入执行器。
+> 演示课程主源统一为 OSS；未配置 `S3_PUBLIC_BASE_URL` 的环境不依赖 OSS，手动 `.atmx` 导入仍复用同一套导入执行器。
 
 ---
 

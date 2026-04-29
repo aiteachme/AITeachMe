@@ -19,7 +19,7 @@ export function ExamStageHeader({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex min-h-11 items-center gap-2 justify-self-start text-sm font-medium text-slate-900 transition hover:text-slate-600 sm:gap-3 sm:text-base"
+          className="inline-flex min-h-11 items-center gap-2 justify-self-start text-sm font-medium text-slate-900 transition hover:text-slate-600 dark:text-slate-100 dark:hover:text-slate-300 sm:gap-3 sm:text-base"
         >
           <ArrowLeft className="h-5 w-5" />
           返回考卷列表
@@ -41,8 +41,8 @@ export function ExamStageHeader({
                     isActive
                       ? "bg-violet-500 text-white shadow-[0_10px_24px_rgba(139,92,246,0.28)]"
                       : isCompleted
-                        ? "bg-slate-900 text-white"
-                        : "bg-slate-200 text-slate-700"
+                        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                        : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                   } ${isEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-45"}`}
                 >
                   {step}

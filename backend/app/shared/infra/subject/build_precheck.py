@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Final, cast
+
 import structlog
 from sqlmodel import Session
 
@@ -49,6 +51,9 @@ _RUNTIME_UNAVAILABLE_REASONS = {
     "vector_extension_unavailable",
     "llamaindex_postgres_unavailable",
 }
+_PRECHECK_NOT_PROVIDED: Final = object()
+
+
 def _build_precheck_conflict(
     *,
     reason: str,
@@ -177,11 +182,17 @@ def resolve_subject_build_vector_status(
     *,
     subject: Subject,
     embedding_resolution: str | None,
+    prechecked_conflict: KnowledgeBuildPrecheckConflictData | None | object = (
+        _PRECHECK_NOT_PROVIDED
+    ),
 ) -> SubjectVectorStatusResponse:
     """Apply one optional resolution and return the resulting vector status."""
 
     auto_rebuild_reason: str | None = None
-    conflict = inspect_subject_build_precheck(session, subject=subject)
+    if prechecked_conflict is _PRECHECK_NOT_PROVIDED:
+        conflict = inspect_subject_build_precheck(session, subject=subject)
+    else:
+        conflict = cast(KnowledgeBuildPrecheckConflictData | None, prechecked_conflict)
     if conflict is None:
         return get_subject_vector_status(session, subject)
 
