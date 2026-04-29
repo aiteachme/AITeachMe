@@ -50,28 +50,28 @@ function fallbackLane(
 }
 
 function toneClasses(state: DerivedBuildState): string {
-  if (state.isFailed) return "border-rose-200 bg-rose-50";
-  if (state.isCompleted) return "border-emerald-200 bg-emerald-50";
-  if (state.isActive) return "border-sky-200 bg-sky-50";
-  return "border-slate-200 bg-white";
+  if (state.isFailed) return "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10";
+  if (state.isCompleted) return "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10";
+  if (state.isActive) return "border-sky-200 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10";
+  return "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/80";
 }
 
 function laneBadgeTone(status?: string | null): string {
   switch ((status ?? "").trim()) {
     case "completed":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300";
     case "failed":
     case "cancelled":
     case "partial_failed":
-      return "bg-rose-100 text-rose-700";
+      return "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300";
     case "skipped":
-      return "bg-amber-100 text-amber-700";
+      return "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300";
     case "accepted":
     case "running":
     case "publishing":
-      return "bg-sky-100 text-sky-700";
+      return "bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300";
     default:
-      return "bg-slate-100 text-slate-600";
+      return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
   }
 }
 
@@ -207,7 +207,7 @@ export function DigestBuildProgress({
     <section className={`rounded-2xl border px-4 py-4 shadow-sm ${tone} ${className}`.trim()}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-slate-900">
+          <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             {state.isFailed ? (
               <AlertTriangle className="h-4 w-4 text-rose-600" />
             ) : state.isCompleted ? (
@@ -219,7 +219,7 @@ export function DigestBuildProgress({
             )}
             <p className="text-sm font-semibold">{state.statusText}</p>
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
             {state.focus === "graph"
               ? "从已发布知识文档抽取知识点与关系，可自动同步，也可手动重建。"
               : state.focus === "docgen"
@@ -235,7 +235,7 @@ export function DigestBuildProgress({
       </div>
 
       <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-slate-600">
+        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span>{animatedProgress}%</span>
             <span>{stageLabel(state.activeLane.stage)}</span>
@@ -247,7 +247,7 @@ export function DigestBuildProgress({
             </span>
           ) : null}
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/90">
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/90 dark:bg-slate-900/80">
           <div
             className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
             style={{ width: `${animatedProgress}%` }}
@@ -256,34 +256,34 @@ export function DigestBuildProgress({
       </div>
 
       {llmCallLabel || latencyLabel ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
-          {llmCallLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">{llmCallLabel}</span> : null}
-          {latencyLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">avg {latencyLabel}</span> : null}
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+          {llmCallLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1 dark:bg-slate-900/80">{llmCallLabel}</span> : null}
+          {latencyLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1 dark:bg-slate-900/80">avg {latencyLabel}</span> : null}
         </div>
       ) : null}
 
       {!compact && previewCards.length > 0 ? (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {previewCards.slice(0, 4).map((card) => (
-            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3">
+            <article key={`${card.card_type}-${card.title}`} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{card.title}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{card.title}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                   {card.card_type}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-600">{card.summary}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">{card.summary}</p>
             </article>
           ))}
         </div>
       ) : null}
 
       {!compact && previewCards.length === 0 && previewNodes.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Preview Nodes</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {previewNodes.slice(0, 6).map((node) => (
-              <span key={`${node.knowledge_unit_type}-${node.name}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+              <span key={`${node.knowledge_unit_type}-${node.name}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                 {node.knowledge_unit_type}: {node.name}
               </span>
             ))}
@@ -292,13 +292,13 @@ export function DigestBuildProgress({
       ) : null}
 
       {!compact && (latestTitles.length > 0 || draftExcerpt) ? (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70">
           {latestTitles.length > 0 ? (
             <>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Draft Outline</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {latestTitles.slice(0, 4).map((title) => (
-                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600">
+                  <span key={title} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     {title}
                   </span>
                 ))}
@@ -313,8 +313,8 @@ export function DigestBuildProgress({
         </div>
       ) : null}
 
-      {state.activeLane.error_message ? <p className="mt-3 text-xs text-rose-600">{state.activeLane.error_message}</p> : null}
-      {isFetching ? <p className="mt-2 text-[11px] text-slate-500">Syncing latest build state...</p> : null}
+      {state.activeLane.error_message ? <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">{state.activeLane.error_message}</p> : null}
+      {isFetching ? <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-500">Syncing latest build state...</p> : null}
     </section>
   );
 }
@@ -348,10 +348,10 @@ export function KnowledgeGraphBuildProgress({
   const deprecatedUnitCount = Number(graphMetrics?.deprecated_unit_count ?? metrics.deprecated_unit_count ?? 0);
   const deprecatedEdgeCount = Number(graphMetrics?.deprecated_edge_count ?? metrics.deprecated_edge_count ?? 0);
   const tone = state.isFailed
-    ? "border-rose-200 bg-rose-50"
+    ? "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10"
     : state.isCompleted
-      ? "border-emerald-200 bg-emerald-50"
-      : "border-sky-200 bg-sky-50";
+      ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+      : "border-sky-200 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10";
   const icon = state.isFailed ? (
     <AlertTriangle className="h-4 w-4 text-rose-600" />
   ) : state.isCompleted ? (
@@ -366,25 +366,25 @@ export function KnowledgeGraphBuildProgress({
     <section className={`rounded-lg border px-4 py-3 shadow-sm ${tone} ${className}`.trim()}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-slate-900">
+          <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             {icon}
             <p className="text-sm font-semibold">知识图谱构建</p>
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">{state.statusText}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{state.statusText}</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-600">
+        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
           <span>{stageLabel(state.activeLane.stage)}</span>
           <span className="font-medium tabular-nums">{state.progress}%</span>
         </div>
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/90">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/90 dark:bg-slate-900/80">
         <div
           className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
           style={{ width: `${state.progress}%` }}
         />
       </div>
       {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || sourceRefCount > 0 || revisionNo > 0 || state.activeLane.started_at) && (
-        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
           {processedChunks > 0 ? <span>已处理 {processedChunks} 个片段</span> : null}
           {docSyncSections > 0 ? <span>已同步 {docSyncSections} 个章节段落</span> : null}
           {unitChanges > 0 ? <span>知识点更新 {unitChanges} 个</span> : null}
@@ -410,7 +410,7 @@ export function DigestBuildStatusMeta({ subject }: { subject: string }) {
   const state = useMemo(() => deriveBuildState(data), [data]);
 
   return (
-    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
       <Clock3 className="h-3 w-3" />
       <span>{state.statusText}</span>
     </div>

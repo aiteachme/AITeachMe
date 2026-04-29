@@ -87,7 +87,7 @@ export function LearningSpacesPage() {
   const subjectCount = subjects.length;
   return (
     <>
-      <div className="min-h-full px-4 pb-12 pt-10 sm:px-6 md:px-10 lg:px-12 xl:px-16">
+      <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
         <div className="mx-auto w-full max-w-[1560px]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">

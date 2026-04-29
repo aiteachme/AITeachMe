@@ -266,7 +266,7 @@ export function SemanticUniverse({
 
   if (!overviewGraph) {
     return (
-      <div className="flex h-[520px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      <div className="flex h-[520px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         正在等待知识图谱数据...
       </div>
@@ -275,23 +275,23 @@ export function SemanticUniverse({
 
   if (nodes.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center dark:border-slate-800 dark:bg-slate-950">
         <Orbit className="mx-auto h-8 w-8 text-slate-400" />
-        <p className="mt-3 text-sm font-medium text-slate-700">还没有可展示的知识宇宙</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">开始一次 digest 构建后，这里会展示稳定的主题团簇和相邻知识关系。</p>
+        <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">还没有可展示的知识宇宙</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">开始一次 digest 构建后，这里会展示稳定的主题团簇和相邻知识关系。</p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top,#eff6ff_0%,#f8fafc_40%,#ffffff_100%)] shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top,#eff6ff_0%,#f8fafc_40%,#ffffff_100%)] shadow-sm dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.13)_0%,rgba(15,23,42,0.96)_42%,#020617_100%)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <div>
-          <div className="flex items-center gap-2 text-slate-900">
+          <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             <Orbit className="h-4 w-4 text-sky-600" />
             <p className="text-sm font-semibold">{subjectLabel} 的语义星图</p>
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
+          <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
             稳定聚类展示主题骨架、核心概念与相邻方法，点击节点可以锁定焦点。
           </p>
         </div>
@@ -299,7 +299,7 @@ export function SemanticUniverse({
           <button
             type="button"
             onClick={() => setFocusedNodeId(null)}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-300 dark:hover:text-slate-100"
           >
             <Focus className="h-3.5 w-3.5" />
             重置焦点
@@ -307,8 +307,8 @@ export function SemanticUniverse({
         </div>
       </div>
 
-      <div className="border-b border-slate-200 px-4 py-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-600">
+      <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
           <Filter className="h-3.5 w-3.5" />
           类型筛选
         </div>
@@ -332,8 +332,8 @@ export function SemanticUniverse({
                 }
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   selected
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                    ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                    : "border-slate-200 bg-white text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-300 dark:hover:text-slate-100"
                 }`}
               >
                 {type}
@@ -405,46 +405,46 @@ export function SemanticUniverse({
           </svg>
         </div>
 
-        <aside className="border-t border-slate-200 bg-white/90 px-4 py-4 xl:border-l xl:border-t-0">
-          <div className="flex items-center gap-2 text-slate-900">
+        <aside className="border-t border-slate-200 bg-white/90 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/88 xl:border-l xl:border-t-0">
+          <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             <Waypoints className="h-4 w-4 text-sky-600" />
             <p className="text-sm font-semibold">焦点详情</p>
           </div>
 
           {activeNode ? (
             <div className="mt-4 space-y-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                <p className="text-sm font-medium text-slate-900">{activeNode.canonical_name}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{activeNode.canonical_name}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">
                   {activeNode.clusterLabel} · {activeNode.knowledge_unit_type} · 连接 {activeNode.degree} 个邻居
                 </p>
               </div>
 
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/70">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Cluster</p>
-                  <p className="mt-1 text-sm text-slate-800">{activeNode.clusterLabel}</p>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-200">{activeNode.clusterLabel}</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/70">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Confidence</p>
-                  <p className="mt-1 text-sm text-slate-800">{Math.round(activeNode.confidence * 100)}%</p>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-200">{Math.round(activeNode.confidence * 100)}%</p>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="flex items-center gap-2 text-slate-900">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
                   <Sparkles className="h-3.5 w-3.5 text-sky-600" />
                   <p className="text-sm font-medium">邻域说明</p>
                 </div>
-                <p className="mt-2 text-xs leading-6 text-slate-600">
+                <p className="mt-2 text-xs leading-6 text-slate-600 dark:text-slate-400">
                   当前高亮了与这个节点直接相连的知识点，方便快速判断它是主题骨架、概念补充还是方法支点。
                 </p>
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm font-medium text-slate-700">点击任意节点开始聚焦</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">这里会显示节点所属团簇、连接度和学习提示。</p>
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-800 dark:bg-slate-900/70">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">点击任意节点开始聚焦</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">这里会显示节点所属团簇、连接度和学习提示。</p>
             </div>
           )}
         </aside>
