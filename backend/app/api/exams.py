@@ -2806,6 +2806,8 @@ async def exam_generation_stream(
             _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     async def event_generator():
+        heartbeat_interval_s = 8.0
+
         def snapshot_payload() -> dict[str, object]:
             with managed_session() as stream_session:
                 current = exams_repo.get_exam_paper_by_id(stream_session, exam_paper_id)
@@ -2828,7 +2830,10 @@ async def exam_generation_stream(
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await queue.get()
+                    event = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval_s)
+                except asyncio.TimeoutError:
+                    yield format_sse_event("ping", {})
+                    continue
                 except Exception:
                     break
                 yield format_sse_event(event.event, event.data)

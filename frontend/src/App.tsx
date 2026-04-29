@@ -77,7 +77,6 @@ function BackendConnectivityBridge() {
     return () => {
       window.removeEventListener(BACKEND_OFFLINE_EVENT, markOffline);
       window.removeEventListener(BACKEND_ONLINE_EVENT, markOnline);
-      onlineManager.setOnline(true);
     };
   }, []);
   return null;
