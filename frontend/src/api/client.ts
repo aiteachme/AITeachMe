@@ -12,6 +12,10 @@ const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 export const DEFAULT_API_TIMEOUT_MS = 10_000;
 export const LONG_RUNNING_API_TIMEOUT_MS = 120_000;
+const BACKEND_HEALTH_CHECK_TIMEOUT_MS = 1_200;
+const BACKEND_RECOVERY_POLL_INTERVAL_MS = 1_500;
+export const BACKEND_OFFLINE_EVENT = "aiteachme:backend-offline";
+export const BACKEND_ONLINE_EVENT = "aiteachme:backend-online";
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
@@ -35,6 +39,27 @@ type ApiErrorShape = {
     data?: ApiErrorPayload;
   };
 };
+
+type ApiRequestMetadata = {
+  startTime: number;
+  cleanupAbortSignal?: () => void;
+};
+
+type ApiRequestConfigWithMetadata = AxiosRequestConfig & {
+  metadata?: ApiRequestMetadata;
+};
+
+type AbortSignalLike = {
+  aborted: boolean;
+  addEventListener?: AbortSignal["addEventListener"];
+  removeEventListener?: AbortSignal["removeEventListener"];
+};
+
+const activeRequestControllers = new Set<AbortController>();
+const activeEventSources = new Set<EventSource>();
+let backendOffline = false;
+let recoveryProbeTimer: number | null = null;
+let connectionIssueProbeInFlight = false;
 
 function getAccessToken(): string | null {
   return localStorage.getItem("token");
@@ -76,8 +101,230 @@ export function buildApiUrl(url: string): string {
   return `${cleanBase}${path}`;
 }
 
+function createBackendOfflineError(): Error & { code: string } {
+  const error = new Error("后端服务已断开，正在尝试重连。") as Error & { code: string };
+  error.name = "BackendOfflineError";
+  error.code = "BACKEND_OFFLINE";
+  return error;
+}
+
+function dispatchBackendConnectionEvent(eventName: string, detail?: Record<string, unknown>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(eventName, { detail }));
+}
+
+function createTrackedAbortSignal(externalSignal?: AbortSignalLike | null): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  activeRequestControllers.add(controller);
+
+  const abortFromExternal = () => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  };
+
+  if (externalSignal?.aborted) {
+    abortFromExternal();
+  } else if (externalSignal?.addEventListener) {
+    externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      if (externalSignal?.removeEventListener) {
+        externalSignal.removeEventListener("abort", abortFromExternal);
+      }
+      activeRequestControllers.delete(controller);
+    },
+  };
+}
+
+function createApiFetchHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  nextHeaders.set("X-Device-Key", getDeviceKey());
+
+  const token = getAccessToken();
+  if (token) {
+    nextHeaders.set("Authorization", `Bearer ${token}`);
+  } else {
+    nextHeaders.delete("Authorization");
+  }
+
+  return nextHeaders;
+}
+
+export function abortActiveApiRequests(): void {
+  for (const controller of Array.from(activeRequestControllers)) {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  }
+}
+
+function closeActiveEventSources(): void {
+  for (const source of Array.from(activeEventSources)) {
+    source.close();
+  }
+  activeEventSources.clear();
+}
+
+async function checkBackendHealthOnce(): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), BACKEND_HEALTH_CHECK_TIMEOUT_MS);
+  try {
+    const response = await fetch(buildApiUrl("/api/health"), {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function stopBackendRecoveryProbe() {
+  if (typeof window === "undefined" || recoveryProbeTimer === null) {
+    return;
+  }
+  window.clearTimeout(recoveryProbeTimer);
+  recoveryProbeTimer = null;
+}
+
+function startBackendRecoveryProbe() {
+  if (typeof window === "undefined" || recoveryProbeTimer !== null) {
+    return;
+  }
+
+  const schedule = () => {
+    recoveryProbeTimer = window.setTimeout(async () => {
+      recoveryProbeTimer = null;
+      if (await checkBackendHealthOnce()) {
+        markBackendOnline();
+        return;
+      }
+      if (backendOffline) {
+        schedule();
+      }
+    }, BACKEND_RECOVERY_POLL_INTERVAL_MS);
+  };
+
+  schedule();
+}
+
+export function markBackendOnline(): void {
+  if (!backendOffline) {
+    return;
+  }
+  backendOffline = false;
+  stopBackendRecoveryProbe();
+  dispatchBackendConnectionEvent(BACKEND_ONLINE_EVENT);
+}
+
+export function markBackendOffline(reason = "network_error"): void {
+  if (backendOffline) {
+    abortActiveApiRequests();
+    closeActiveEventSources();
+    return;
+  }
+
+  backendOffline = true;
+  abortActiveApiRequests();
+  closeActiveEventSources();
+  startBackendRecoveryProbe();
+  dispatchBackendConnectionEvent(BACKEND_OFFLINE_EVENT, { reason });
+}
+
+export function isBackendOffline(): boolean {
+  return backendOffline;
+}
+
+export function reportBackendConnectionIssue(reason = "stream_error"): void {
+  if (backendOffline || connectionIssueProbeInFlight) {
+    return;
+  }
+  connectionIssueProbeInFlight = true;
+  void checkBackendHealthOnce()
+    .then((isHealthy) => {
+      if (isHealthy) {
+        markBackendOnline();
+        return;
+      }
+      markBackendOffline(reason);
+    })
+    .finally(() => {
+      connectionIssueProbeInFlight = false;
+    });
+}
+
+export function registerBackendEventSource(source: EventSource): () => void {
+  if (backendOffline) {
+    source.close();
+    return () => undefined;
+  }
+  activeEventSources.add(source);
+  return () => {
+    activeEventSources.delete(source);
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isBackendDisconnectError(error: unknown): boolean {
+  const apiError = error as ApiErrorShape & { response?: unknown; name?: string };
+  if (apiError.response || apiError.code === "ERR_CANCELED" || apiError.name === "AbortError") {
+    return false;
+  }
+  if (apiError.code === "ERR_NETWORK") {
+    return true;
+  }
+  if (typeof apiError.message === "string") {
+    return /network error|failed to fetch|load failed/i.test(apiError.message);
+  }
+  return error instanceof TypeError;
+}
+
+export async function runTrackedApiFetch<T>(
+  url: string,
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+  disconnectReason = "fetch_disconnect",
+): Promise<T> {
+  if (backendOffline) {
+    throw createBackendOfflineError();
+  }
+
+  const trackedSignal = createTrackedAbortSignal(init.signal ?? null);
+  try {
+    const response = await fetch(buildApiUrl(url), {
+      ...init,
+      credentials: init.credentials ?? "include",
+      headers: createApiFetchHeaders(init.headers),
+      signal: trackedSignal.signal,
+    });
+    return await consume(response);
+  } catch (error) {
+    if (isBackendDisconnectError(error)) {
+      markBackendOffline(disconnectReason);
+    }
+    throw error;
+  } finally {
+    trackedSignal.cleanup();
+  }
 }
 
 function extractErrorMessage(payload: unknown, fallback = "请求失败，请重试。"): string {
@@ -210,10 +457,6 @@ export async function postSseJson<TBody>(
     "Content-Type": "application/json",
     "X-Device-Key": getDeviceKey(),
   };
-  const token = getAccessToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
 
   let receivedToken = false;
   let sawDone = false;
@@ -221,107 +464,111 @@ export async function postSseJson<TBody>(
   let errorPayload: SseErrorPayload | unknown;
 
   try {
-    const response = await fetch(buildApiUrl(url), {
-      method: "POST",
-      credentials: "include",
-      headers,
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(await parseErrorResponse(response));
-    }
-    if (!response.body) {
-      throw new Error("响应流不可用，请重试。");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    const dispatchEventBlock = (block: string) => {
-      if (!block.trim()) {
-        return;
-      }
-
-      let eventName = "message";
-      const dataLines: string[] = [];
-      for (const line of block.split("\n")) {
-        if (!line || line.startsWith(":")) {
-          continue;
+    return await runTrackedApiFetch(
+      url,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: options.signal,
+      },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(await parseErrorResponse(response));
         }
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim() || "message";
-          continue;
+        if (!response.body) {
+          throw new Error("响应流不可用，请重试。");
         }
-        if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trimStart());
-        }
-      }
 
-      const rawData = dataLines.join("\n");
-      const payload = parseSseData(rawData);
-      if (payload === undefined) {
-        if (rawData === "[DONE]") {
-          sawDone = true;
-          options.onDone?.({});
-        }
-        return;
-      }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      switch (normalizeSseEvent(eventName, payload)) {
-        case "token":
-          if (isRecord(payload) && typeof payload.content === "string" && payload.content.length > 0) {
-            receivedToken = true;
-            options.onToken?.({ content: payload.content });
+        const dispatchEventBlock = (block: string) => {
+          if (!block.trim()) {
+            return;
           }
-          break;
-        case "done":
-          sawDone = true;
-          donePayload = payload;
-          options.onDone?.(payload);
-          break;
-        case "error":
-          errorPayload = payload;
-          options.onError?.(payload);
-          break;
-        case "status":
-          options.onStatus?.(payload);
-          break;
-        default:
-          break;
-      }
-    };
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
+          let eventName = "message";
+          const dataLines: string[] = [];
+          for (const line of block.split("\n")) {
+            if (!line || line.startsWith(":")) {
+              continue;
+            }
+            if (line.startsWith("event:")) {
+              eventName = line.slice(6).trim() || "message";
+              continue;
+            }
+            if (line.startsWith("data:")) {
+              dataLines.push(line.slice(5).trimStart());
+            }
+          }
 
-      let boundaryIndex = buffer.indexOf("\n\n");
-      while (boundaryIndex !== -1) {
-        const block = buffer.slice(0, boundaryIndex);
-        buffer = buffer.slice(boundaryIndex + 2);
-        dispatchEventBlock(block);
-        boundaryIndex = buffer.indexOf("\n\n");
-      }
-    }
+          const rawData = dataLines.join("\n");
+          const payload = parseSseData(rawData);
+          if (payload === undefined) {
+            if (rawData === "[DONE]") {
+              sawDone = true;
+              options.onDone?.({});
+            }
+            return;
+          }
 
-    buffer += decoder.decode().replace(/\r/g, "");
-    if (buffer.trim()) {
-      dispatchEventBlock(buffer);
-    }
+          switch (normalizeSseEvent(eventName, payload)) {
+            case "token":
+              if (isRecord(payload) && typeof payload.content === "string" && payload.content.length > 0) {
+                receivedToken = true;
+                options.onToken?.({ content: payload.content });
+              }
+              break;
+            case "done":
+              sawDone = true;
+              donePayload = payload;
+              options.onDone?.(payload);
+              break;
+            case "error":
+              errorPayload = payload;
+              options.onError?.(payload);
+              break;
+            case "status":
+              options.onStatus?.(payload);
+              break;
+            default:
+              break;
+          }
+        };
 
-    return {
-      aborted: false,
-      receivedToken,
-      sawDone,
-      donePayload,
-      errorPayload,
-    };
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
+
+          let boundaryIndex = buffer.indexOf("\n\n");
+          while (boundaryIndex !== -1) {
+            const block = buffer.slice(0, boundaryIndex);
+            buffer = buffer.slice(boundaryIndex + 2);
+            dispatchEventBlock(block);
+            boundaryIndex = buffer.indexOf("\n\n");
+          }
+        }
+
+        buffer += decoder.decode().replace(/\r/g, "");
+        if (buffer.trim()) {
+          dispatchEventBlock(buffer);
+        }
+
+        return {
+          aborted: false,
+          receivedToken,
+          sawDone,
+          donePayload,
+          errorPayload,
+        };
+      },
+      "sse_fetch_disconnect",
+    );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       options.onAbort?.();
@@ -338,6 +585,10 @@ export async function postSseJson<TBody>(
 }
 
 instance.interceptors.request.use((config) => {
+  if (backendOffline) {
+    return Promise.reject(createBackendOfflineError());
+  }
+
   const headers = AxiosHeaders.from(config.headers);
   headers.set("X-Device-Key", getDeviceKey());
 
@@ -355,15 +606,30 @@ instance.interceptors.request.use((config) => {
     config.baseURL = dynamicBaseUrl;
   }
 
-  (config as { metadata?: { startTime: number } }).metadata = { startTime: Date.now() };
+  const trackedSignal = createTrackedAbortSignal(config.signal ?? null);
+  config.signal = trackedSignal.signal;
+
+  (config as ApiRequestConfigWithMetadata).metadata = {
+    startTime: Date.now(),
+    cleanupAbortSignal: trackedSignal.cleanup,
+  };
   return config;
 });
 
+function cleanupTrackedRequest(config?: AxiosRequestConfig | null) {
+  (config as ApiRequestConfigWithMetadata | undefined)?.metadata?.cleanupAbortSignal?.();
+}
+
 instance.interceptors.response.use(
   (response: AxiosResponse) => {
+    cleanupTrackedRequest(response.config);
     return response;
   },
   (error) => {
+    cleanupTrackedRequest(error?.config);
+    if (isBackendDisconnectError(error)) {
+      markBackendOffline("axios_disconnect");
+    }
     return Promise.reject(error);
   },
 );
@@ -443,6 +709,18 @@ export function getApiErrorMessage(
   fallback = "请求失败，请稍后重试",
 ): string {
   const apiError = error as ApiErrorShape;
+  if (apiError.code === "BACKEND_OFFLINE") {
+    return "后端服务已断开，正在尝试重连。";
+  }
+  if (apiError.code === "ERR_CANCELED") {
+    return backendOffline ? "后端服务已断开，当前请求已自动停止。" : "请求已取消。";
+  }
+  if ((apiError as { name?: string }).name === "AbortError") {
+    return backendOffline ? "后端服务已断开，当前请求已自动停止。" : "请求已取消。";
+  }
+  if (apiError.code === "ERR_NETWORK") {
+    return "后端服务连接已断开，已停止当前请求并开始重连。";
+  }
   if (
     apiError.code === "ECONNABORTED" ||
     (typeof apiError.message === "string" && /timeout of \d+ms exceeded/i.test(apiError.message))

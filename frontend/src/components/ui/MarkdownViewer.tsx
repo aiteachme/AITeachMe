@@ -6,6 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { ChevronRight } from "lucide-react";
 
+import { runTrackedApiFetch } from "../../api/client";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -1499,23 +1500,31 @@ function MarkdownImage({
 
     const controller = new AbortController();
     let objectUrl = "";
-    fetch(src, {
-      credentials: "include",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    })
-      .then((response) => {
+    runTrackedApiFetch(
+      src,
+      {
+        method: "GET",
+        signal: controller.signal,
+      },
+      async (response) => {
         if (!response.ok) {
           throw new Error(`asset fetch failed: ${response.status}`);
         }
         return response.blob();
-      })
+      },
+      "markdown_asset_disconnect",
+    )
       .then((blob) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         objectUrl = URL.createObjectURL(blob);
         setBlobSrc(objectUrl);
       })
       .catch(() => {
-        setBlobSrc("");
+        if (!controller.signal.aborted) {
+          setBlobSrc("");
+        }
       });
 
     return () => {

@@ -9,7 +9,13 @@ import {
   useGenerateExamApiV1SubjectsSubjectIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
-import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
+import {
+  buildApiUrl,
+  getApiErrorMessage,
+  orvalApiClient,
+  registerBackendEventSource,
+  reportBackendConnectionIssue,
+} from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { useToast } from "../components/ui/Toast";
@@ -261,26 +267,30 @@ export function ExamsPage() {
         buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
         { withCredentials: true },
       );
+      const unregisterEventSource = registerBackendEventSource(stream);
       const handleSnapshot = (event: Event) => {
         applySnapshot(event);
       };
       const handleDone = (event: Event) => {
         applySnapshot(event);
         refreshHistory();
+        unregisterEventSource();
         stream.close();
       };
 
       stream.addEventListener("snapshot", handleSnapshot);
       stream.addEventListener("done", handleDone);
       stream.onerror = () => {
+        reportBackendConnectionIssue("exam_stream_error");
         refreshHistory();
       };
 
-      return { stream, handleSnapshot, handleDone };
+      return { stream, handleSnapshot, handleDone, unregisterEventSource };
     });
 
     return () => {
-      streams.forEach(({ stream, handleSnapshot, handleDone }) => {
+      streams.forEach(({ stream, handleSnapshot, handleDone, unregisterEventSource }) => {
+        unregisterEventSource();
         stream.removeEventListener("snapshot", handleSnapshot);
         stream.removeEventListener("done", handleDone);
         stream.close();
