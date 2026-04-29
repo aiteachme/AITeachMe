@@ -5,7 +5,9 @@
 *.yml   eol=lf
 *.yaml  eol=lf
 *.json  eol=lf
+*.ps1   eol=crlf
 Dockerfile eol=lf
 *.Dockerfile eol=lf
+*.dockerignore eol=lf
 .dockerignore eol=lf
 .gitattributes eol=lf

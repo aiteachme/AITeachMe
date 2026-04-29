@@ -101,7 +101,7 @@ cd backend && python scripts/bootstrap_cloud_db.py
 cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-Render Docker runtime 使用 `infra/deployment/docker/backend.Dockerfile` 时，镜像默认命令会在单副本场景下调用
+Render Docker runtime 使用 `infra/deployment/docker/backend.Dockerfile` 或 `infra/deployment/docker/backend-office.Dockerfile` 时，镜像默认命令会在单副本场景下调用
 `python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}`。多副本平台仍建议把迁移拆成独立 Job，只让 Web 容器启动 Uvicorn。
 
 推荐环境变量：
@@ -129,9 +129,12 @@ GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替�
 
 ### 4.1 Docker 部署
 
-当前云端 ingest 已收敛到 `.pdf` / `.docx` / Markdown / 文本上传：复杂 PDF/OCR 优先走 PaddleOCR 或 MinerU，本地兜底走 MarkItDown。因此 canonical 后端镜像不再安装 `soffice`/`libreoffice`。如果后续重新开放 `.doc`、PPT/PPTX 或本地 Office 转换链路，再单独恢复系统包依赖。
+当前云端 ingest 已收敛到 `.pdf` / `.docx` / Markdown / 文本上传：复杂 PDF/OCR 优先走 PaddleOCR 或 MinerU，本地兜底走 MarkItDown。仓库同时维护轻量后端镜像和 Office 后端镜像；Office 镜像预装 `soffice`/`libreoffice`，用于后续重新开放 `.doc`、PPT/PPTX 或本地 Office 转换链路。
 
-当前仓库的 canonical 后端镜像定义是 `infra/deployment/docker/backend.Dockerfile`，镜像只安装 Python 运行依赖与后端应用本身。
+当前仓库的后端镜像定义：
+
+- `infra/deployment/docker/backend.Dockerfile`：轻量镜像，只安装 Python 运行依赖与后端应用本身。
+- `infra/deployment/docker/backend-office.Dockerfile`：Office 镜像，额外安装 LibreOffice 与常用字体。
 
 Render Dashboard 建议配置：
 
@@ -143,7 +146,7 @@ Health Check Path: /api/health
 Render Docker runtime 建议保持仓库根目录作为 Root Directory：
 
 ```text
-Dockerfile Path: infra/deployment/docker/backend.Dockerfile
+Dockerfile Path: infra/deployment/docker/backend-office.Dockerfile
 Docker Build Context Directory: .
 ```
 
@@ -155,14 +158,14 @@ python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}
 
 如果 Render 已经把 Root Directory 设置为 `backend`，应改回仓库根目录；否则 Dockerfile 无法复用根目录 `.dockerignore`，也会重新出现多套部署入口问题。
 
-部署后可在 Render Shell 或日志中确认：
+如果使用 Office 镜像，部署后可在 Render Shell 或日志中确认：
 
 ```bash
 which soffice
 soffice --headless --version
 ```
 
-注意：LibreOffice 镜像体积和运行内存都会明显增加。PPT/PDF 转换高峰期如果出现 OOM 或冷启动过慢，优先升级 Render 实例规格，而不是回退到本地关键词/规则式解析。
+注意：LibreOffice 镜像体积会明显增加。PPT/PDF 转换高峰期如果出现 OOM 或冷启动过慢，优先限制转换并发或升级实例规格，而不是在容器启动后临时安装系统包。
 
 ## 5. 业务表与运行时对象
 
