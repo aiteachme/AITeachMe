@@ -696,8 +696,11 @@ export function HomePage() {
     queryKey: ["available-demo-courses"],
     queryFn: fetchDemoCourses,
     retry: false,
-    staleTime: 5 * 60_000,
-    gcTime: 15 * 60_000,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
 
   const courseImportMutation = useMutation({
