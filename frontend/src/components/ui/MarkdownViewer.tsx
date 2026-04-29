@@ -55,7 +55,7 @@ interface MarkdownViewerProps {
   headingNumbering?: boolean;
   collapsibleHeadings?: CollapsibleHeadings;
   collapsedHeadingIds?: ReadonlySet<string>;
-  onHeadingCollapseChange?: (id: string, collapsed: boolean) => void;
+  onHeadingCollapseChange?: (id: string, collapsed: boolean, source?: HTMLElement | null) => void;
 }
 
 interface ViewerStyles {
@@ -1856,7 +1856,7 @@ export function MarkdownViewer({
       : !collapsedHeadingIdsRef.current.has(id);
 
     if (onHeadingCollapseChange) {
-      onHeadingCollapseChange(id, nextCollapsed);
+      onHeadingCollapseChange(id, nextCollapsed, source ?? null);
     }
 
     if (applyHeadingCollapseDomState(id, nextCollapsed, source)) {
