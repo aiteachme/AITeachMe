@@ -6,7 +6,7 @@ export type KnowledgeOverviewSection = NonNullable<KnowledgeOverviewRequest["inc
 
 export const OVERVIEW_INCLUDE_PRESETS = {
   wordCloud: ["graph", "stats"],
-  knowledgeGraph: ["graph", "stats"],
+  knowledgeGraph: ["stats"],
   profileMappings: ["graph", "stats"],
 } as const satisfies Record<string, readonly KnowledgeOverviewSection[]>;
 

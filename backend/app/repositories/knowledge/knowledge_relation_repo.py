@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from sqlmodel import Session, or_, select
+from sqlmodel import Session, func, or_, select
 
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
@@ -112,6 +112,18 @@ def list_all_edges_by_subject(
     if status is not None:
         stmt = stmt.where(KnowledgeEdge.status == status)
     return list(session.exec(stmt).all())
+
+
+def count_edges_by_subject(
+    session: Session,
+    subject_id: str,
+    *,
+    status: str | None = "active",
+) -> int:
+    stmt = select(func.count(KnowledgeEdge.id)).where(KnowledgeEdge.subject_id == subject_id)
+    if status is not None:
+        stmt = stmt.where(KnowledgeEdge.status == status)
+    return int(session.exec(stmt).one() or 0)
 
 
 def create_edge_revision(

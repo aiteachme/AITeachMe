@@ -72,6 +72,8 @@ export function KnowledgeGraphSidePanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-node-list", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-subgraph", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", subjectId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
       setShowClearConfirm(false);
@@ -88,6 +90,8 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
       queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude) });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-node-list", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-subgraph", subjectId] });
     },
   });
 
@@ -217,7 +221,7 @@ export function KnowledgeGraphSidePanel({
 
         {!overviewLoading && !overviewIsError ? (
           <Suspense fallback={<TabFallback message="正在加载知识图谱..." />}>
-            <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+            <KnowledgeGraphView subject={subjectId} stats={overview?.stats ?? null} />
           </Suspense>
         ) : null}
       </div>

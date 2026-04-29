@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections import deque
+from collections import defaultdict, deque
 
 from sqlmodel import Session, select
 
@@ -384,6 +384,17 @@ def get_focus_subgraph(
     all_edges = knowledge_relation_repo.list_all_edges_by_subject(session, subject_id)
     if edge_type:
         all_edges = [edge for edge in all_edges if edge.edge_type == edge_type]
+    degree: dict[int, int] = defaultdict(int)
+    adjacency: dict[int, set[int]] = defaultdict(set)
+    for edge in all_edges:
+        source_id = int(edge.source_node_id or 0)
+        target_id = int(edge.target_node_id or 0)
+        if source_id <= 0 or target_id <= 0:
+            continue
+        degree[source_id] += 1
+        degree[target_id] += 1
+        adjacency[source_id].add(target_id)
+        adjacency[target_id].add(source_id)
 
     center_ids: set[int] = set()
     if center_knowledge_unit_id is not None:
@@ -413,11 +424,33 @@ def get_focus_subgraph(
             session,
             subject_id,
             status="active",
-            limit=limit,
+            limit=max(limit * 3, limit),
             offset=0,
         )
-        nodes = [_to_unit_response(unit) for unit in units]
-        node_ids = {unit.id for unit in units if unit.id is not None}
+        ordered_units = sorted(
+            units,
+            key=lambda unit: (-degree.get(int(unit.id or 0), 0), int(unit.id or 0)),
+        )
+        selected_ids: set[int] = set()
+        for unit in ordered_units:
+            unit_id = int(unit.id or 0)
+            if unit_id <= 0:
+                continue
+            selected_ids.add(unit_id)
+            for neighbor_id in sorted(adjacency.get(unit_id, set()), key=lambda item: (-degree.get(item, 0), item)):
+                selected_ids.add(neighbor_id)
+                if len(selected_ids) >= limit:
+                    break
+            if len(selected_ids) >= limit:
+                break
+        if not selected_ids:
+            selected_ids = {int(unit.id) for unit in units[:limit] if unit.id is not None}
+        node_ids = set(sorted(selected_ids)[:limit])
+        nodes = [
+            _to_unit_response(unit)
+            for unit_id in node_ids
+            if (unit := session.get(KnowledgeUnit, unit_id)) is not None
+        ]
         return KnowledgeSubgraphResponse(
             nodes=nodes,
             edges=[
@@ -432,17 +465,14 @@ def get_focus_subgraph(
     frontier = set(center_ids)
     for _ in range(max(0, hops)):
         next_frontier: set[int] = set()
-        for edge in all_edges:
-            if edge.source_node_id in frontier:
-                next_frontier.add(edge.target_node_id)
-            if edge.target_node_id in frontier:
-                next_frontier.add(edge.source_node_id)
+        for node_id in frontier:
+            next_frontier.update(adjacency.get(node_id, set()))
         next_frontier -= selected_ids
         selected_ids.update(next_frontier)
         frontier = next_frontier
         if len(selected_ids) >= limit or not frontier:
             break
-    selected_ids = set(list(selected_ids)[:limit])
+    selected_ids = set(sorted(selected_ids, key=lambda item: (-degree.get(item, 0), item))[:limit])
 
     nodes = [
         _to_unit_response(unit)

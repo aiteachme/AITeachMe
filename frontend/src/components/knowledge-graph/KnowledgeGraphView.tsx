@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -14,8 +14,9 @@ import {
 } from "lucide-react";
 import {
   graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost,
+  graphKnowledgeUnitsApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsPost,
 } from "../../api/generated/knowledge";
-import type { FullGraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
+import type { KnowledgeOverviewStats, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -223,10 +224,10 @@ type ViewMode = "list" | "graph";
 
 export function KnowledgeGraphView({
   subject,
-  overviewGraph,
+  stats,
 }: {
   subject: string;
-  overviewGraph: FullGraphResponse | null;
+  stats: KnowledgeOverviewStats | null;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
@@ -235,31 +236,27 @@ export function KnowledgeGraphView({
   const [evidenceModalState, setEvidenceModalState] = useState<{ chunkId: number; quoteText: string } | null>(null);
   const pageSize = 30;
 
-  const localListData = useMemo(() => {
-    if (!overviewGraph) return null;
+  const graphNodeCount = Number(stats?.node_count ?? 0);
+  const graphEdgeCount = Number(stats?.edge_count ?? 0);
 
-    const allNodes = overviewGraph?.nodes ?? [];
-    const filtered = nodeType
-      ? allNodes.filter((node) => node.knowledge_unit_type.toLowerCase() === nodeType.toLowerCase())
-      : allNodes;
+  const { data: listData, isLoading: listLoading } = useQuery({
+    queryKey: ["graph-node-list", subject, nodeType ?? "all", page, pageSize],
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphKnowledgeUnitsApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsPost(subject, {
+          page,
+          size: pageSize,
+          knowledge_unit_type: nodeType ?? null,
+        }),
+      ) ?? null,
+    enabled: viewMode === "list" && Boolean(subject),
+    retry: false,
+  });
 
-    const total = filtered.length;
-    const pages = Math.max(1, Math.ceil(total / pageSize));
-    const safePage = Math.min(page, pages);
-    const start = (safePage - 1) * pageSize;
-
-    return {
-      items: filtered.slice(start, start + pageSize),
-      total,
-      pages,
-      page: safePage,
-    };
-  }, [overviewGraph, nodeType, page]);
-
-  const nodes = localListData?.items ?? [];
-  const total = localListData?.total ?? 0;
-  const totalPages = localListData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
-  const displayPage = localListData?.page ?? page;
+  const nodes = listData?.items ?? [];
+  const total = listData?.total ?? (nodeType ? 0 : graphNodeCount);
+  const totalPages = listData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
+  const displayPage = listData?.page ?? page;
 
   const viewToggle = (
     <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
@@ -286,7 +283,7 @@ export function KnowledgeGraphView({
     </div>
   );
 
-  if (total === 0 && !nodeType) {
+  if (graphNodeCount === 0 && !nodeType) {
     return (
       <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white dark:bg-slate-950">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
@@ -320,7 +317,8 @@ export function KnowledgeGraphView({
           subject={subject}
           toolbar={viewToggle}
           onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
-          fullGraphData={overviewGraph}
+          totalNodeCount={graphNodeCount}
+          totalEdgeCount={graphEdgeCount}
         />
       )}
 
@@ -350,7 +348,12 @@ export function KnowledgeGraphView({
               </div>
             </div>
 
-            {nodes.length > 0 ? (
+            {listLoading ? (
+              <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                加载节点...
+              </div>
+            ) : nodes.length > 0 ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {nodes.map((node: KnowledgeUnitResponse) => {
                   const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
