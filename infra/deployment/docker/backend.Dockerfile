@@ -22,9 +22,9 @@ RUN uv sync --frozen --no-cache
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Render 默认通过 PORT 注入监听端口；Compose 会显式设置 PORT=9020。
-EXPOSE 10000
+# 默认部署端口统一为 9020；Render 等平台仍可通过 PORT 覆盖。
+EXPOSE 9020
 
 # start_cloud_app 会在 APP_MODE=cloud 时先做数据库 bootstrap，再启动 uvicorn。
 # 正式多副本平台如 Sealos 可改为单独 Job 跑迁移，Web 容器只跑 uvicorn。
-CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}"]

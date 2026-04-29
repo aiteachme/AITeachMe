@@ -145,7 +145,7 @@ which soffice
 soffice --headless --version
 ```
 
-注意：Render Web Service 必须监听 `0.0.0.0:$PORT`。当前 Dockerfile 默认兼容 Render 的 `PORT=10000`，Compose 会覆盖为 `9020`。
+注意：Render Web Service 必须监听 `0.0.0.0:$PORT`。当前后端 Dockerfile 默认端口统一为 `9020`，但仍会优先使用平台注入的 `PORT`。
 
 ### Render / OSS 上线检查
 
@@ -185,7 +185,29 @@ Storage: DogeCloud / Sealos Object Storage / 其他 S3-compatible OSS
 Migration: 单独 Job / 临时任务运行 bootstrap_cloud_db.py
 ```
 
-Sealos 更适合使用预构建镜像。先在本地或 CI 从仓库根目录构建并推送后端镜像：
+Sealos 更适合使用预构建镜像。推荐先用 GitHub Actions 在 GitHub runner 中构建并推送到 GHCR：
+
+1. 打开 GitHub 仓库的 `Actions`。
+2. 选择 `Build Backend Images`。
+3. 点击 `Run workflow`，`variant` 选择 `office`、`slim` 或 `both`。
+4. `tag` 可留空，默认生成 `YYYYMMDD-shortsha`；也可以填写 `20260429-rc1` 这类发布标记。
+5. 构建完成后，Sealos 镜像地址使用：
+
+```text
+ghcr.io/<github-owner>/aiteachme-backend:office-<tag>
+ghcr.io/<github-owner>/aiteachme-backend:slim-<tag>
+```
+
+`push_latest=true` 时还会推送：
+
+```text
+ghcr.io/<github-owner>/aiteachme-backend:office-latest
+ghcr.io/<github-owner>/aiteachme-backend:slim-latest
+```
+
+如果 GHCR package 是 private，Sealos 拉取镜像时需要配置 registry credential；内测阶段也可以把对应 package visibility 改成 public，部署会更简单。
+
+也可以在本地或其他 CI 从仓库根目录构建并推送后端镜像：
 
 ```bash
 docker build -f infra/deployment/docker/backend-office.Dockerfile -t <registry>/aiteachme-backend:office-<tag> .
