@@ -261,16 +261,6 @@ export function KnowledgeGraphView({
   const totalPages = localListData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
   const displayPage = localListData?.page ?? page;
 
-  if (total === 0 && !nodeType) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-        <Network className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">暂无知识节点</p>
-        <p className="text-xs mt-1">构建完成后将自动抽取知识节点</p>
-      </div>
-    );
-  }
-
   const viewToggle = (
     <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0">
       <button
@@ -295,6 +285,33 @@ export function KnowledgeGraphView({
       </button>
     </div>
   );
+
+  if (total === 0 && !nodeType) {
+    return (
+      <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
+          {viewToggle}
+          <span className="shrink-0 text-xs text-slate-400">0 节点 · 0 关系</span>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <div className="flex max-w-sm flex-col items-center text-center text-slate-500">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+              <Network className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-700">暂无知识节点</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">构建完成后会在这里展示知识点与关系。</p>
+          </div>
+        </div>
+        <EvidenceContextModal
+          open={!!evidenceModalState}
+          onClose={() => setEvidenceModalState(null)}
+          subject={subject}
+          chunkId={evidenceModalState?.chunkId ?? null}
+          quoteText={evidenceModalState?.quoteText}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white">
@@ -333,36 +350,42 @@ export function KnowledgeGraphView({
               </div>
             </div>
 
-            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-              {nodes.map((node: KnowledgeUnitResponse) => {
-                const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
-                  label: node.knowledge_unit_type,
-                  color: "bg-slate-100 text-slate-600",
-                };
-                const isSelected = selectedNodeId === node.id;
-                return (
-                  <button
-                    key={node.id}
-                    onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
-                    className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
-                      isSelected
-                        ? "border-slate-400 bg-slate-50 shadow-sm"
-                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-800 truncate flex-1 [&_p]:mb-0 [&_p]:inline">
-                        <MarkdownViewer content={node.canonical_name} />
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
-                        {typeStyle.label}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1">置信度：{Math.round(node.confidence * 100)}%</div>
-                  </button>
-                );
-              })}
-            </div>
+            {nodes.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {nodes.map((node: KnowledgeUnitResponse) => {
+                  const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
+                    label: node.knowledge_unit_type,
+                    color: "bg-slate-100 text-slate-600",
+                  };
+                  const isSelected = selectedNodeId === node.id;
+                  return (
+                    <button
+                      key={node.id}
+                      onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+                      className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
+                        isSelected
+                          ? "border-slate-400 bg-slate-50 shadow-sm"
+                          : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-800 truncate flex-1 [&_p]:mb-0 [&_p]:inline">
+                          <MarkdownViewer content={node.canonical_name} />
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
+                          {typeStyle.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-400">置信度：{Math.round(node.confidence * 100)}%</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                当前筛选下暂无节点
+              </div>
+            )}
 
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">

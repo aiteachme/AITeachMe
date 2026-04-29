@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -73,6 +73,71 @@ function laneBadgeTone(status?: string | null): string {
     default:
       return "bg-slate-100 text-slate-600";
   }
+}
+
+function laneDotTone(status?: string | null): string {
+  switch ((status ?? "").trim()) {
+    case "completed":
+      return "bg-emerald-500";
+    case "failed":
+    case "cancelled":
+    case "partial_failed":
+      return "bg-rose-500";
+    case "skipped":
+      return "bg-amber-500";
+    case "accepted":
+    case "running":
+    case "publishing":
+      return "bg-sky-500";
+    default:
+      return "bg-slate-300";
+  }
+}
+
+function laneStatusLabel(status?: string | null): string {
+  switch ((status ?? "").trim()) {
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已停止";
+    case "partial_failed":
+      return "部分失败";
+    case "skipped":
+      return "已跳过";
+    case "accepted":
+      return "已接收";
+    case "running":
+      return "构建中";
+    case "publishing":
+      return "发布中";
+    case "idle":
+    default:
+      return "等待";
+  }
+}
+
+function statusBadgeTone(state: DerivedBuildState): string {
+  if (state.isFailed) return "border-rose-200 bg-rose-50 text-rose-700";
+  if (state.isCompleted) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (state.isActive) return "border-sky-200 bg-sky-50 text-sky-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function statusBadgeLabel(state: DerivedBuildState): string {
+  const status = (state.activeLane.status ?? "").trim();
+  if (state.isFailed) return laneStatusLabel(status);
+  if (state.isCompleted) return "已完成";
+  if (state.isActive) return "进行中";
+  return laneStatusLabel(status);
+}
+
+function progressFillTone(state: DerivedBuildState): string {
+  if (state.isFailed) return "bg-rose-500";
+  if (state.isCompleted) return "bg-emerald-500";
+  if (state.isActive) return "bg-sky-500";
+  return "bg-slate-400";
 }
 
 function stageLabel(stage?: string | null): string {
@@ -170,6 +235,52 @@ function LaneBadge({
   );
 }
 
+function CompactLaneBadge({
+  label,
+  lane,
+}: {
+  label: string;
+  lane: KnowledgeBuildLaneRuntime | null;
+}) {
+  const status = (lane?.status ?? "idle").trim() || "idle";
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+      <span className={`h-1.5 w-1.5 rounded-full ${laneDotTone(status)}`} />
+      <span>{label}</span>
+      <span className="text-slate-400">{laneStatusLabel(status)}</span>
+    </span>
+  );
+}
+
+function BuildProgressBar({
+  state,
+  value,
+  className = "h-1.5",
+}: {
+  state: DerivedBuildState;
+  value: number;
+  className?: string;
+}) {
+  const safeValue = Math.max(0, Math.min(100, Math.round(value)));
+  const visualValue = state.isActive ? Math.max(safeValue, 8) : safeValue;
+
+  return (
+    <div
+      role="progressbar"
+      aria-label={state.statusText}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={safeValue}
+      className={`overflow-hidden rounded-full bg-slate-200/80 ${className}`}
+    >
+      <div
+        className={`h-full rounded-full ${progressFillTone(state)} transition-[width] duration-500`}
+        style={{ width: `${visualValue}%` }}
+      />
+    </div>
+  );
+}
+
 export function DigestBuildProgress({
   subject,
   compact = false,
@@ -186,13 +297,25 @@ export function DigestBuildProgress({
   const preview = data?.docgen_preview ?? null;
   const metrics = data?.docgen_metrics ?? null;
   const [animatedProgress, setAnimatedProgress] = useState(state.progress);
+  const progressRunKey = [
+    state.activeLane.lane,
+    state.activeLane.build_group_id ??
+      state.activeLane.requested_at ??
+      state.activeLane.started_at ??
+      `${state.activeLane.status ?? "idle"}:${state.activeLane.stage ?? "idle"}`,
+  ].join(":");
+  const progressRunKeyRef = useRef(progressRunKey);
 
   useEffect(() => {
     setAnimatedProgress((previous) => {
+      if (progressRunKeyRef.current !== progressRunKey) {
+        progressRunKeyRef.current = progressRunKey;
+        return state.progress;
+      }
       if (state.isActive) return Math.max(previous, state.progress);
       return state.progress;
     });
-  }, [state.isActive, state.progress]);
+  }, [progressRunKey, state.isActive, state.progress]);
 
   const tone = toneClasses(state);
   const llmCallLabel =
@@ -202,21 +325,91 @@ export function DigestBuildProgress({
   const previewNodes = preview?.sample_nodes ?? [];
   const latestTitles = preview?.latest_chapter_titles ?? [];
   const draftExcerpt = preview?.draft_excerpt?.trim() ?? "";
+  const icon = state.isFailed ? (
+    <AlertTriangle className="h-4 w-4 text-rose-600" />
+  ) : state.isCompleted ? (
+    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+  ) : state.isActive ? (
+    <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+  ) : (
+    <Sparkles className="h-4 w-4 text-slate-500" />
+  );
+
+  if (compact) {
+    const compactTone = state.isFailed
+      ? "border-rose-200 bg-rose-50/70"
+      : state.isCompleted
+        ? "border-emerald-200 bg-white"
+        : state.isActive
+          ? "border-sky-200 bg-white"
+          : "border-slate-200 bg-white";
+
+    return (
+      <section className={`rounded-lg border px-3 py-2.5 shadow-sm ${compactTone} ${className}`.trim()}>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-50 ring-1 ring-slate-200">
+              {icon}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-900">{state.statusText}</p>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeTone(state)}`}>
+                  {statusBadgeLabel(state)}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <CompactLaneBadge label="文档" lane={state.docgen} />
+                <CompactLaneBadge label="图谱" lane={state.graph} />
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 text-right tabular-nums">
+            <span className="text-sm font-semibold text-slate-900">{animatedProgress}</span>
+            <span className="ml-0.5 text-[11px] text-slate-400">%</span>
+          </div>
+        </div>
+
+        <div className="mt-2.5">
+          <BuildProgressBar state={state} value={animatedProgress} />
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {state.activeLane.started_at ? (
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5" />
+                {new Date(state.activeLane.started_at).toLocaleString("zh-CN")}
+              </span>
+            ) : (
+              <span>{state.isActive ? "任务已进入队列" : "最近构建状态"}</span>
+            )}
+            {isFetching ? (
+              <span className="inline-flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                同步中
+              </span>
+            ) : null}
+          </div>
+          {llmCallLabel || latencyLabel ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {llmCallLabel ? <span>{llmCallLabel}</span> : null}
+              {latencyLabel ? <span>avg {latencyLabel}</span> : null}
+            </div>
+          ) : null}
+        </div>
+
+        {state.activeLane.error_message ? <p className="mt-2 text-xs text-rose-600">{state.activeLane.error_message}</p> : null}
+      </section>
+    );
+  }
 
   return (
     <section className={`rounded-2xl border px-4 py-4 shadow-sm ${tone} ${className}`.trim()}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-slate-900">
-            {state.isFailed ? (
-              <AlertTriangle className="h-4 w-4 text-rose-600" />
-            ) : state.isCompleted ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            ) : state.isActive ? (
-              <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
-            ) : (
-              <Sparkles className="h-4 w-4 text-slate-500" />
-            )}
+            {icon}
             <p className="text-sm font-semibold">{state.statusText}</p>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
@@ -247,12 +440,7 @@ export function DigestBuildProgress({
             </span>
           ) : null}
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/90">
-          <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
-            style={{ width: `${animatedProgress}%` }}
-          />
-        </div>
+        <BuildProgressBar state={state} value={animatedProgress} className="h-2 bg-white/90" />
       </div>
 
       {llmCallLabel || latencyLabel ? (

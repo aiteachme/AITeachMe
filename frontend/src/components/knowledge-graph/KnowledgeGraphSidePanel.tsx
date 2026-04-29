@@ -98,6 +98,8 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
     },
   });
+  const showBuildMessages =
+    graphBuildMutation.isError || cancelBuildMutation.isError || Boolean(overview?.vector_status?.notice);
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -170,19 +172,23 @@ export function KnowledgeGraphSidePanel({
         </div>
       </div>
 
-      <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
+      <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-2">
         <DigestBuildProgress subject={subjectId} compact focus="graph" />
-        {graphBuildMutation.isError ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {getApiErrorMessage(graphBuildMutation.error, "图谱构建启动失败。")}
+        {showBuildMessages ? (
+          <div className="mt-2 grid gap-2">
+            {graphBuildMutation.isError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {getApiErrorMessage(graphBuildMutation.error, "图谱构建启动失败。")}
+              </div>
+            ) : null}
+            {cancelBuildMutation.isError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {getApiErrorMessage(cancelBuildMutation.error, "停止构建失败。")}
+              </div>
+            ) : null}
+            <SubjectVectorNotice status={overview?.vector_status} className="rounded-lg px-3 py-2" />
           </div>
         ) : null}
-        {cancelBuildMutation.isError ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {getApiErrorMessage(cancelBuildMutation.error, "停止构建失败。")}
-          </div>
-        ) : null}
-        <SubjectVectorNotice status={overview?.vector_status} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden bg-white">
@@ -215,37 +221,37 @@ export function KnowledgeGraphSidePanel({
       </div>
 
       <Modal open={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="确认清空知识数据">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
-              <div className="text-sm text-rose-700">
-                <p>这会删除当前学科已发布的知识文档和知识图谱相关结构。</p>
-                <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
-                取消
-              </Button>
-              <Button
-                onClick={() => clearMutation.mutate()}
-                disabled={clearMutation.isPending}
-                className="bg-rose-500 text-white hover:bg-rose-600"
-              >
-                {clearMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    清空中...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="mr-1 h-4 w-4" />
-                    确认清空
-                  </>
-                )}
-              </Button>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+            <div className="text-sm text-rose-700">
+              <p>这会删除当前学科已发布的知识文档和知识图谱相关结构。</p>
+              <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
             </div>
           </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+              className="bg-rose-500 text-white hover:bg-rose-600"
+            >
+              {clearMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  清空中...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-1 h-4 w-4" />
+                  确认清空
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
