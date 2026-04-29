@@ -28,7 +28,6 @@ import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../a
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
-import { useSystemSettingsOverview } from "../hooks/useSystemSettingsOverview";
 import {
   buildUnsupportedFilesMessage,
   FILE_ACCEPT,
@@ -114,6 +113,11 @@ async function fetchAvailableCourses(): Promise<CoursePackageItem[]> {
   const response = await apiClient<ApiResponse<CoursePackageItem[]>>({
     method: "GET",
     url: `/api/v1/courses`,
+    params: { _: Date.now() },
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
   });
   return response.data;
 }
@@ -637,7 +641,6 @@ export function HomePage() {
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const settingsOverview = useSystemSettingsOverview();
 
   const [prompt, setPrompt] = useState("");
   const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
@@ -688,11 +691,10 @@ export function HomePage() {
   });
 
   // ── Courses query ──
-  const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
-    enabled: shouldShowDemoCourses,
+    retry: false,
     staleTime: 5 * 60_000,
     gcTime: 15 * 60_000,
   });
@@ -924,8 +926,7 @@ export function HomePage() {
   }, [entryFileIds, syncEntryFilesCache, uploadedFiles]);
 
   const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
-  const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
-  const shouldShowDemoCourseSection = shouldShowDemoCourses && (coursesLoading || hasDemoCourses);
+  const shouldShowDemoCourseSection = courses.length > 0;
 
   return (
     <>
@@ -1188,11 +1189,6 @@ export function HomePage() {
                 </div>
 
                   <div className="pt-2 pb-12">
-                    {coursesLoading && (
-                      <div className="py-8 flex justify-center">
-                        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-                      </div>
-                    )}
                     {courses.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {courses.map((course, i) => (
