@@ -150,6 +150,8 @@ API-facing 的图谱查询、总览、来源解释和手动重建入口都通过
 
 自动同步支持 DocGen sidecar 预抽取：章节增强完成后可在后台生成 section 级候选缓存；发布成功后 `kg_doc_sync` 用最终 Markdown 的 hash 复用命中的缓存，对变更章节补抽，再统一写入正式图谱表。手动图谱重建仍只读取已发布 KnowledgeDoc，不依赖预抽取缓存。
 
+`kg_doc_sync` 在抽取和写库之间会执行低成本关系缝合：不额外调用 LLM，只基于同小节节点和正文显式引用补少量保守边，并输出孤立率、连通分量和平均度等健康指标。
+
 旧的 `kg_file_ingest` 文件级图谱入口已退出产品主线。后续新增图谱构建逻辑优先进入 `kg_doc_sync/` 或明确的 common 包；API-facing 查询、总览、来源解释和手动重建入口也收口在 `kg_doc_sync`。
 
 ## 8. common 使用规则

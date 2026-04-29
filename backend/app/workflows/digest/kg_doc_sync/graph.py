@@ -21,6 +21,7 @@ from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
 from app.workflows.digest.kg_doc_sync.nodes.init_run_node import init_run_node
 from app.workflows.digest.kg_doc_sync.nodes.persist_node import persist_node
 from app.workflows.digest.kg_doc_sync.nodes.prepare_node import prepare_node
+from app.workflows.digest.kg_doc_sync.nodes.stitch_node import stitch_node
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
 RUN_NAME_KG_DOC_SYNC = "知识图谱同步：根据知识文档更新图谱"
@@ -28,6 +29,7 @@ RUN_NAME_KG_DOC_SYNC = "知识图谱同步：根据知识文档更新图谱"
 NODE_PREPARE = "prepare"
 NODE_INIT_RUN = "init_run"
 NODE_EXTRACT = "extract"
+NODE_STITCH_RELATIONS = "stitch_relations"
 NODE_PERSIST = "persist"
 NODE_FINALIZE = "finalize"
 NODE_FAIL = "fail"
@@ -36,6 +38,7 @@ NODE_DISPLAY_NAMES = {
     NODE_PREPARE: "校验同步输入",
     NODE_INIT_RUN: "初始化同步批次",
     NODE_EXTRACT: "抽取图谱候选",
+    NODE_STITCH_RELATIONS: "缝合图谱关系",
     NODE_PERSIST: "写入图谱变更",
     NODE_FINALIZE: "收口同步结果",
     NODE_FAIL: "记录同步失败",
@@ -81,6 +84,18 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "input_keys": ["subject_id", "markdown", "subject_context", "sync_run_context"],
         "output_keys": ["extraction_payload", "subject_context", "node_metrics", "error"],
         "fanout": "节点内部按章节/子章节构造抽取任务，async gather + semaphore 并发执行，完成后 fan-in 为 extraction_payload。",
+    },
+    NODE_STITCH_RELATIONS: {
+        "description": (
+            "在不调用 LLM、不访问数据库的前提下，对抽取候选做低成本关系缝合："
+            "同一小节内把定义、公式、例题、方法和易错点连接到主概念，并为仍然孤立、"
+            "且正文中明确引用其它唯一知识点的节点补少量引用边。"
+            "本节点只更新 extraction_payload 和图谱健康度指标。"
+        ),
+        "reads": ["extraction_payload"],
+        "writes": ["extraction_payload", "node_metrics.stitch_relations", "error"],
+        "input_keys": ["extraction_payload"],
+        "output_keys": ["extraction_payload", "node_metrics", "error"],
     },
     NODE_PERSIST: {
         "description": (
@@ -134,7 +149,11 @@ def route_after_init_run(state: DocsSyncState) -> str:
 def route_after_extract(state: DocsSyncState) -> str:
     if state.get("error"):
         return "fail"
-    return "persist" if state.get("extraction_payload") is not None else "fail"
+    return "stitch_relations" if state.get("extraction_payload") is not None else "fail"
+
+
+def route_after_stitch(state: DocsSyncState) -> str:
+    return "persist" if not state.get("error") else "fail"
 
 
 def route_after_persist(state: DocsSyncState) -> str:
@@ -148,6 +167,7 @@ def route_after_finalize(state: DocsSyncState) -> str:
 route_after_prepare_for_trace = named_route(route_after_prepare, "检查输入后继续同步")
 route_after_init_run_for_trace = named_route(route_after_init_run, "检查同步批次是否初始化")
 route_after_extract_for_trace = named_route(route_after_extract, "检查图谱候选是否抽取成功")
+route_after_stitch_for_trace = named_route(route_after_stitch, "检查图谱关系缝合是否成功")
 route_after_persist_for_trace = named_route(route_after_persist, "检查图谱写入是否成功")
 route_after_finalize_for_trace = named_route(route_after_finalize, "检查是否完成")
 
@@ -190,6 +210,11 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_EXTRACT),
     )
     workflow.add_node(
+        NODE_STITCH_RELATIONS,
+        _trace_docs_sync_node(trace, NODE_STITCH_RELATIONS, stitch_node),
+        metadata=_langgraph_node_metadata(NODE_STITCH_RELATIONS),
+    )
+    workflow.add_node(
         NODE_PERSIST,
         _trace_docs_sync_node(trace, NODE_PERSIST, persist_node),
         metadata=_langgraph_node_metadata(NODE_PERSIST),
@@ -219,6 +244,11 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_EXTRACT,
         route_after_extract_for_trace,
+        {"stitch_relations": NODE_STITCH_RELATIONS, "fail": NODE_FAIL},
+    )
+    workflow.add_conditional_edges(
+        NODE_STITCH_RELATIONS,
+        route_after_stitch_for_trace,
         {"persist": NODE_PERSIST, "fail": NODE_FAIL},
     )
     workflow.add_conditional_edges(

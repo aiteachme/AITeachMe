@@ -69,6 +69,14 @@
 - `source_ref_count`
 - `backbone_unit_count`
 - `backbone_edge_count`
+- `stitched_edge_count`
+- `section_local_stitch_edge_count`
+- `mention_stitch_edge_count`
+- `graph_isolated_unit_count`
+- `graph_isolated_unit_pct`
+- `graph_component_count`
+- `graph_largest_component_unit_count`
+- `graph_avg_degree`
 - `stable_anchor_count`
 - `deprecated_unit_count`
 - `deprecated_edge_count`
