@@ -88,7 +88,6 @@ shared.infra -> shared.kernel
 - `workflows/digest/planner/`
 - `workflows/digest/docgen/`
 - `workflows/digest/kg_doc_sync/`
-- `workflows/support/knowledge_graph/`
 
 职责：
 

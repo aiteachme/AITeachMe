@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 
 import structlog
 from fastapi import APIRouter, Body, Depends, Path, Request, Response
@@ -40,10 +39,10 @@ from app.workflows.digest.planner import (
     confirm_build_planner_session,
     create_build_planner_session,
     get_latest_planner_session,
-    mark_confirmed_build_plan_status,
     record_build_planner_adjust_click,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
+from app.workflows.digest.common.build_lifecycle import cancel_knowledge_build
 from app.workflows.digest.docgen import (
     clear_subject_knowledge,
     get_docgen_result,
@@ -53,56 +52,20 @@ from app.workflows.digest.docgen import (
 )
 from app.workflows.digest.kg_doc_sync import (
     get_knowledge_overview,
-    load_knowledge_doc_sync_input,
-    run_graph_docs_sync_manual_build,
+    trigger_graph_docs_sync_manual_build,
 )
 from app.workflows.support.subjects import get_subject_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
-from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
     format_sse_event,
     subscribe_workflow_stream,
 )
-from app.shared.infra.knowledge.build_store import (
-    build_aggregate_knowledge_build_status,
-    read_knowledge_build_runtime,
-    read_knowledge_manifest,
-    release_knowledge_build_lock,
-    update_knowledge_build_lane_status,
-)
-from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
 from app.shared.infra.storage import SubjectStorageScope, build_subject_storage_scope
-from app.utils.time import utcnow
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
-
-_ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
-
-
-def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[str]:
-    """Resolve source file ids from persisted docs-sync context."""
-
-    collected: list[str] = []
-    seen: set[str] = set()
-    chapters = structured_context.get("chapters")
-    if not isinstance(chapters, list):
-        return collected
-    for chapter in chapters:
-        if not isinstance(chapter, dict):
-            continue
-        raw_ids = chapter.get("source_file_ids")
-        if not isinstance(raw_ids, list):
-            continue
-        for raw_id in raw_ids:
-            parsed = str(raw_id or "").strip()
-            if not parsed or parsed in seen:
-                continue
-            seen.add(parsed)
-            collected.append(parsed)
-    return collected
 
 
 def _storage_scope_for_subject_record(subject: Subject) -> SubjectStorageScope:
@@ -496,101 +459,12 @@ async def knowledge_graph_build(
 ) -> ApiResponse[KnowledgeGraphBuildData]:
     normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    subject_scope = _storage_scope_for_subject_record(subject_record)
-
-    runtime = read_knowledge_build_runtime(normalized, subject_scope=subject_scope)
-    docgen_status = runtime.docgen_runtime if runtime is not None else None
-    graph_status = runtime.graph_runtime if runtime is not None else None
-    if docgen_status is not None and str(docgen_status.status or "").strip() in _ACTIVE_BUILD_STATUSES:
-        raise AITeachMeError(
-            detail="知识文档仍在构建中，请等待文档发布后再重建图谱。",
-            error_code="DOCGEN_BUILD_IN_PROGRESS",
-            status_code=409,
-        )
-    if graph_status is not None and str(graph_status.status or "").strip() in _ACTIVE_BUILD_STATUSES:
-        raise AITeachMeError(
-            detail="知识图谱正在构建中。",
-            error_code="GRAPH_BUILD_IN_PROGRESS",
-            status_code=409,
-        )
-
-    sync_input = load_knowledge_doc_sync_input(
-        normalized,
-        session=session,
-        subject_scope=subject_scope,
+    data = trigger_graph_docs_sync_manual_build(
+        session,
+        subject=subject_record,
+        background_task_registry=getattr(request.app.state, "background_task_registry", None),
     )
-    if not sync_input.markdown.strip():
-        raise AITeachMeError(
-            detail="当前还没有已发布的知识文档，请先完成知识文档构建。",
-            error_code="KNOWLEDGE_DOC_REQUIRED_FOR_GRAPH_BUILD",
-            status_code=422,
-        )
-
-    manifest = read_knowledge_manifest(normalized, subject_scope=subject_scope)
-    manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
-    source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
-    prompt = manifest.prompt if manifest is not None else None
-    requested_at = utcnow()
-    build_group_id = uuid.uuid4().hex
-    build_session_id = uuid.uuid4().hex
-    doc_version_no = int(sync_input.structured_context.get("doc_version_no") or 0)
-    chapters = sync_input.structured_context.get("chapters")
-    chapter_count = len(chapters) if isinstance(chapters, list) else 0
-    update_knowledge_build_lane_status(
-        normalized,
-        lane="graph",
-        subject_scope=subject_scope,
-        requested_at=requested_at,
-        build_group_id=build_group_id,
-        status="accepted",
-        stage="manual_graph_requested",
-        build_session_id=build_session_id,
-        error_message=None,
-        source_file_ids=source_file_ids,
-        prompt=prompt,
-        metrics={
-            "knowledge_doc_source": sync_input.source,
-            "knowledge_doc_chapter_count": chapter_count,
-            "last_synced_doc_version_no": doc_version_no,
-            "graph_input_paths": ["knowledge_doc"] + (["source_files"] if source_file_ids else []),
-        },
-        current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
-    )
-    llm_snapshot = capture_llm_runtime_snapshot()
-    request.app.state.background_task_registry.spawn(
-        run_graph_docs_sync_manual_build(
-            subject_id=normalized,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            build_session_id=build_session_id,
-            file_ids=source_file_ids,
-            prompt=prompt,
-            llm_snapshot=llm_snapshot,
-            subject_scope=subject_scope,
-        ),
-        kind="knowledge.build.graph",
-        subject_id=normalized,
-        name=f"knowledge.build.graph:{normalized}",
-    )
-    logger.info(
-        "knowledge_graph_build_request_accepted",
-        subject_id=normalized,
-        user_id=user.user_id,
-        requested_at=requested_at.isoformat(),
-        build_group_id=build_group_id,
-        build_session_id=build_session_id,
-        source_file_count=len(source_file_ids),
-    )
-    return ok_response(
-        KnowledgeGraphBuildData(
-            subject_id=normalized,
-            status="accepted",
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            build_session_id=build_session_id,
-            source_file_ids=source_file_ids,
-        )
-    )
+    return ok_response(data)
 
 
 @router.post(
@@ -607,63 +481,13 @@ async def knowledge_build_cancel(
 ) -> ApiResponse[DocGenBuildCancelData]:
     normalized = normalize_subject_id(subject_id)
     subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    subject_scope = _storage_scope_for_subject_record(subject_record)
-    runtime = read_knowledge_build_runtime(normalized, subject_scope=subject_scope)
-    aggregate_status = build_aggregate_knowledge_build_status(runtime)
-    docgen_status = runtime.docgen_runtime if runtime is not None else None
-    graph_status = runtime.graph_runtime if runtime is not None else None
-    cancelled_task_count = 0
-    registry = getattr(request.app.state, "background_task_registry", None)
-    if registry is not None:
-        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.docs", subject_id=normalized)
-        cancelled_task_count += await registry.cancel_matching(kind="knowledge.build.graph", subject_id=normalized)
-
-    requested_at = aggregate_status.requested_at if aggregate_status is not None else utcnow()
-    confirmed_plan_id = docgen_status.confirmed_plan_id if docgen_status is not None else None
-    if confirmed_plan_id:
-        mark_confirmed_build_plan_status(
-            session,
-            subject_id=normalized,
-            user_id=user.user_id,
-            plan_id=confirmed_plan_id,
-            status="cancelled",
-        )
-    if docgen_status is not None and (docgen_status.status or "").strip() in {"accepted", "running", "publishing"}:
-        update_knowledge_build_lane_status(
-            normalized,
-            lane="docgen",
-            subject_scope=subject_scope,
-            requested_at=requested_at,
-            build_group_id=docgen_status.build_group_id,
-            status="cancelled",
-            stage="cancelled",
-            error_message="build_cancelled",
-            draft_available=False,
-            planner_session_id=docgen_status.planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            digest_mode=docgen_status.digest_mode,
-            current_stage_description="本轮知识构建已被用户终止。",
-        )
-    if graph_status is not None and (graph_status.status or "").strip() in {"accepted", "running", "publishing"}:
-        update_knowledge_build_lane_status(
-            normalized,
-            lane="graph",
-            subject_scope=subject_scope,
-            requested_at=requested_at,
-            build_group_id=graph_status.build_group_id,
-            status="cancelled",
-            stage="cancelled",
-            error_message="build_cancelled",
-            current_stage_description="本轮图谱构建已被用户终止。",
-        )
-    release_knowledge_build_lock(normalized)
-    return ok_response(
-        DocGenBuildCancelData(
-            subject_id=normalized,
-            cancelled_task_count=cancelled_task_count,
-            requested_at=requested_at,
-        )
+    data = await cancel_knowledge_build(
+        session,
+        subject=subject_record,
+        user_id=user.user_id,
+        background_task_registry=getattr(request.app.state, "background_task_registry", None),
     )
+    return ok_response(data)
 
 
 @router.post(
