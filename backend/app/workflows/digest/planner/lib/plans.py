@@ -94,6 +94,21 @@ def _normalize_digest_mode(value: Any) -> str:
     return "sprint" if mode == "sprint" else "systematic"
 
 
+def planner_mode_label(value: Any) -> str:
+    return "冲刺型" if _normalize_digest_mode(value) == "sprint" else "系统型"
+
+
+def _compact_supplement_title(value: Any, *, index: int, max_chars: int = 18) -> str:
+    text = _text(value)
+    for piece in re.split(r"[，,、/／：:；;。！？!?\n]+", text):
+        cleaned = _text(piece).strip(" -—_")
+        if 2 <= len(cleaned) <= max_chars:
+            return cleaned
+    if text:
+        return text[:max_chars].rstrip(" ：:，,。；;|-")
+    return f"补充章节 {index}"
+
+
 def _minimal_shared_inputs(course_id: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
@@ -145,25 +160,42 @@ def _build_supplement_chapter(
     digest_mode: str,
     user_prompt: str,
 ) -> PlannerChapterPlan:
-    title = _text(topic) or f"补充章节 {index}"
+    return PlannerChapterPlan.model_validate(
+        build_supplement_chapter_payload(
+            index=index,
+            topic=topic,
+            digest_mode=digest_mode,
+            user_prompt=user_prompt,
+        )
+    )
+
+
+def build_supplement_chapter_payload(
+    *,
+    index: int,
+    topic: str,
+    digest_mode: str,
+    user_prompt: str = "",
+) -> dict[str, Any]:
+    title = _compact_supplement_title(topic, index=index)
     normalized_mode = _normalize_digest_mode(digest_mode)
     if normalized_mode == "sprint":
-        required = _strings([f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"])
-        objective = f"把《{title}》整理成考前可快速复盘的考点、题型和易错清单。"
-        writing = "按速成课写法组织：先给抓手，再讲题型和易错点。"
+        required = _strings([f"{title} 的常见任务/题型", f"{title} 的快速抓手", f"{title} 的易错边界"])
+        objective = f"把《{title}》整理成能快速定位、练习和查漏的任务主线。"
+        writing = "按冲刺型写法组织：先给判断抓手，再讲典型任务/题型和易错边界。"
     else:
-        required = _strings([f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"])
+        required = _strings([f"{title} 的核心对象", f"{title} 的结构关系", f"{title} 的例子与迁移"])
         objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
-        writing = "按系统课写法组织：先讲定义和结构，再展开推理、例子与迁移。"
+        writing = "按系统型写法组织：先讲对象和结构，再展开推理、例子与迁移。"
     if user_prompt:
-        required = _strings([*required, user_prompt])
-    return PlannerChapterPlan(
-        chapter_index=index,
-        title=title,
-        objective=objective,
-        required_elements=required[:6],
-        writing_instructions=writing,
-    )
+        required = _strings([*required, f"{title} 与用户目标的连接"])
+    return {
+        "chapter_index": index,
+        "title": title,
+        "objective": objective,
+        "required_elements": required[:6],
+        "writing_instructions": writing,
+    }
 
 
 def _pad_chapters_to_minimum(
@@ -186,11 +218,11 @@ def _pad_chapters_to_minimum(
     ]
     if not topics:
         topics = [
-            "核心概念总览",
-            "关键结构与流程",
-            "典型例题与应用",
-            "易错点与复盘",
-            "综合练习",
+            "学习边界与主线",
+            "关键对象与关系",
+            "方法应用与例子",
+            "易错边界与复盘",
+            "综合迁移任务",
         ]
 
     padded = list(chapters)
@@ -303,6 +335,8 @@ __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
     "_resolve_course_name",
+    "build_supplement_chapter_payload",
     "normalize_planner_draft",
     "normalize_planner_payload",
+    "planner_mode_label",
 ]

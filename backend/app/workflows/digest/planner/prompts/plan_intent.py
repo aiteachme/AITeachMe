@@ -10,6 +10,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_message_history,
 )
 from app.workflows.digest.planner.prompts.examples import render_plan_intent_examples
+from app.workflows.digest.planner.lib.plans import planner_mode_label
 
 PLAN_QUERY_MIN = 3
 PLAN_QUERY_MAX = 8
@@ -23,20 +24,21 @@ def build_plan_intent_messages(
     material_context: DigestMaterialContext,
     message_history: list[str],
 ) -> list[dict[str, str]]:
-    # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助 composer
+    # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助计划合成器
     # 确定“用户想怎么学”和“该按什么问题去整理资料”。
+    mode_label = planner_mode_label(digest_mode)
     system_prompt = """
 你是 AITeachMe 的学习规划意图分析器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
-PlanIntent 只服务后续计划合成，不是对用户的最终展示，也不是外部检索承诺。
+规划意图合同只服务后续计划合成，不是对用户的最终展示，也不是外部检索承诺。
 """.strip()
     prompt = f"""
-请先识别用户学习意图，再把结果整理成内部 PlanIntent。
-PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
+请先识别用户学习意图，再把结果整理成内部规划意图合同。
+规划意图合同不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
 
 课程/主题：{course_name}
 用户提示：{user_prompt}
-请求模式：{digest_mode}
+请求模式：{mode_label}
 
 资料画像：
 {render_material_overview(material_context)}
@@ -63,9 +65,9 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
 6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
-7. 不要输出来源名单、网站名、论文名、长解释、course id 或重复内容。
+7. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
 
-few-shot 示例：
+示例：
 {render_plan_intent_examples()}
 """.strip()
     messages = [

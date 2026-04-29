@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -50,7 +51,11 @@ from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
-from app.workflows.digest.planner.lib.plans import normalize_planner_payload
+from app.workflows.digest.planner.lib.plans import (
+    build_supplement_chapter_payload,
+    normalize_planner_payload,
+    planner_mode_label,
+)
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 from app.workflows.support.courses.icons import normalize_course_icon_key, set_course_icon_key
 
@@ -522,7 +527,7 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     lines = [
         "# 计划大纲",
         "",
-        f"> 模式：{str(plan_payload.get('digest_mode') or 'systematic')}",
+        f"> 模式：{planner_mode_label(plan_payload.get('digest_mode'))}",
         f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
     ]
     if plan_steps:
@@ -863,6 +868,7 @@ def _normalized_plan_payload(
         min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
         digest_mode=str(plan.get("digest_mode") or ""),
         user_prompt=str(plan.get("user_prompt") or ""),
+        plan=plan,
     )
     payload = {
         "course": str(plan.get("course") or ""),
@@ -880,12 +886,52 @@ def _normalized_plan_payload(
     return payload
 
 
+def _clean_supplement_topic(value: object, *, max_chars: int = 18) -> str:
+    text = " ".join(str(value or "").strip().split())
+    text = re.sub(r"^[#\-\d.、\s]+", "", text)
+    text = re.sub(r"[：:；;。！？!?].*$", "", text)
+    text = text.strip(" ：:，,。；;|-")
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip(" ：:，,。；;|-")
+    return text
+
+
+def _base_supplement_topic(plan: Mapping[str, Any], chapters: list[dict[str, Any]], *, user_prompt: str) -> str:
+    seeds: list[object] = [
+        plan.get("course") or plan.get("course_name"),
+        user_prompt,
+        *(chapter.get("title") for chapter in chapters),
+    ]
+    for seed in seeds:
+        topic = _clean_supplement_topic(seed, max_chars=10)
+        if topic and topic not in {"核心概念", "关键结构", "综合练习", "复盘安排", "学习资料"}:
+            return topic
+    return "本主题"
+
+
+def _supplement_topics_from_plan(
+    plan: Mapping[str, Any],
+    chapters: list[dict[str, Any]],
+    *,
+    user_prompt: str,
+    digest_mode: str,
+) -> list[str]:
+    base = _base_supplement_topic(plan, chapters, user_prompt=user_prompt)
+    suffixes = (
+        ["高价值任务", "快速抓手", "易错边界", "变式练习", "综合回看"]
+        if str(digest_mode or "").strip().lower() == "sprint"
+        else ["学习边界", "关键对象", "结构关系", "方法应用", "迁移任务"]
+    )
+    return [f"{base}{suffix}" for suffix in suffixes]
+
+
 def _ensure_min_chapter_payload(
     chapters: list[Any],
     *,
     min_chapters: int,
     digest_mode: str,
     user_prompt: str,
+    plan: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     normalized = [dict(item) for item in chapters if isinstance(item, dict)]
     if min_chapters <= 0 or len(normalized) >= min_chapters:
@@ -895,28 +941,25 @@ def _ensure_min_chapter_payload(
         for item in normalized
         if str(item.get("title") or "").strip()
     }
-    supplements = ["核心概念总览", "关键结构与流程", "典型例题与应用", "易错点与复盘", "综合练习"]
-    mode = str(digest_mode or "").strip().lower()
+    supplement_topics = _supplement_topics_from_plan(
+        plan or {},
+        normalized,
+        user_prompt=user_prompt,
+        digest_mode=digest_mode,
+    )
     while len(normalized) < min_chapters:
         index = len(normalized) + 1
-        title = supplements[(index - 1) % len(supplements)]
+        title = supplement_topics[(index - 1) % len(supplement_topics)]
         if title.casefold() in existing_titles:
             title = f"{title} {index}"
         existing_titles.add(title.casefold())
-        if mode == "sprint":
-            required = [f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"]
-        else:
-            required = [f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"]
-        if user_prompt:
-            required.append(user_prompt)
         normalized.append(
-            {
-                "chapter_index": index,
-                "title": title,
-                "objective": "；".join(required[:3]),
-                "required_elements": required[:6],
-                "writing_instructions": "按用户确认的课程模式补齐本章讲解，保持和前文章节风格一致。",
-            }
+            build_supplement_chapter_payload(
+                index=index,
+                topic=title,
+                digest_mode=digest_mode,
+                user_prompt=user_prompt,
+            )
         )
     return normalized
 

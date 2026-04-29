@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.planner.lib.plans import planner_mode_label
 
 
 def build_course_name_prompt(
@@ -19,6 +20,7 @@ def build_course_name_prompt(
     normalized_topic_hints = [str(item).strip() for item in list(topic_hints or []) if str(item).strip()]
     brief = " ".join(str(planner_brief or "").split()).strip()
     intent = " ".join(str(plan_intent or "").split()).strip()
+    mode_label = planner_mode_label(digest_mode)
     prompt = f"""
 请根据用户学习目标、规划意图、资料线索和主题提示，生成一个中文学习空间标题。
 要求：
@@ -29,7 +31,7 @@ def build_course_name_prompt(
 - 优先概括“这门内容到底在学什么”，不要直接照抄用户原话。
 用户提示：{user_prompt or '未提供'}
 资料名：{'、'.join(filenames) or '暂无'}
-模式：{digest_mode}
+模式：{mode_label}
 规划意图：{intent or '暂无'}
 主题提示：{'、'.join(normalized_topic_hints) or '暂无'}
 思考线索：{brief or '暂无'}

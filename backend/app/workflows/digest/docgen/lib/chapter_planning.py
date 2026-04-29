@@ -426,7 +426,7 @@ def build_fallback_chapter_markdown(
             "",
             example_heading,
             "",
-            f"- 选择《{title}》中的“{example_focus}”，举一个新场景并说明适用条件。",
+            f"- 选择《{title}》中的“{example_focus}”，补一个贴近本课程的应用场景并说明适用条件。",
         ]
     lines.extend(["", f"> [!NOTE]", f"> 本章使用降级草稿生成：{reason}"])
     return "\n".join(lines).strip() + "\n"

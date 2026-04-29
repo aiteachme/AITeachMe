@@ -10,6 +10,7 @@ from app.workflows.digest.planner.lib.models import (
     PlanIntent,
     PlannerBrief,
 )
+from app.workflows.digest.planner.lib.plans import planner_mode_label
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config
 from app.workflows.digest.planner.prompts.context import (
     render_latest_plan,
@@ -60,6 +61,7 @@ def build_plan_composer_messages(
     sketch = planner_brief.markdown.strip() or "暂无可见规划判断"
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
+    mode_label = planner_mode_label(digest_mode)
     mode_config = get_planner_mode_runtime_config(digest_mode)
     chapter_count_hint = (
         f"章节数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。"
@@ -85,7 +87,7 @@ def build_plan_composer_messages(
 
 主题：{course_name}
 用户提示：{resolved_user_prompt}
-模式：{digest_mode}
+模式：{mode_label}
 
 资料画像：
 {render_material_overview(material_context)}
@@ -145,7 +147,7 @@ JSON 形状：
 - 没有上传资料时，基于用户提示生成通用初步计划，不要声称读过具体文件。
 - 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
 
-few-shot 规律：
+示例规律：
 {render_composer_examples()}
 """.strip()
     messages = [
@@ -193,6 +195,7 @@ def build_plan_outline_repair_messages(
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_config = get_planner_mode_runtime_config(digest_mode)
+    mode_label = planner_mode_label(digest_mode)
     system_prompt = """
 你是 AITeachMe 的计划大纲结构修复器。
 你只输出合法 JSON 对象，不输出 Markdown、解释、注释、代码块或额外文本。
@@ -207,7 +210,7 @@ def build_plan_outline_repair_messages(
 
 主题：{course_name}
 用户提示：{resolved_user_prompt}
-模式：{digest_mode}
+模式：{mode_label}
 
 资料画像：
 {render_material_overview(material_context)}

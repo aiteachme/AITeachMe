@@ -134,13 +134,13 @@ def build_examine_markdown(
             {
                 "question_index": index,
                 "type": "short_answer",
-                "question": f"请用自己的话解释《{title}》最重要的知识点，并补一个你能想到的例子。",
+                "question": f"请用自己的话解释《{title}》最重要的知识点，并补一个贴近本课程的例子或应用场景。",
             }
             for index, title in enumerate(prompts, start=1)
         ]
 
     if mode_profile.is_sprint:
-        lines = ["# 练习与巩固", "", "## 典型题型与例题", ""]
+        lines = ["# 练习与巩固", "", "## 典型任务/题型与例子", ""]
         for question in questions:
             lines.append(f"{int(question.get('question_index', 0) or 0) or 1}. {question.get('question', '')}")
         lines.extend(
@@ -150,7 +150,7 @@ def build_examine_markdown(
                 "",
                 *[f"- {item}" for item in (review_prompts or [
                     "哪一道题你是靠感觉做出来的？把它改成可复述的判断步骤。",
-                    "哪一个公式你会背但还不会判断使用条件？",
+                    "哪一个结论你会背但还不会判断使用条件？",
                     "如果考试时间很紧，这份文档里你应该优先复习哪两章？",
                 ])],
             ]
