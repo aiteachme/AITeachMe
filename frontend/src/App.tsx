@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT } from "./api/client";
+import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
@@ -74,6 +74,9 @@ function BackendConnectivityBridge() {
 
     window.addEventListener(BACKEND_OFFLINE_EVENT, markOffline);
     window.addEventListener(BACKEND_ONLINE_EVENT, markOnline);
+    if (isBackendOffline()) {
+      markOffline();
+    }
     return () => {
       window.removeEventListener(BACKEND_OFFLINE_EVENT, markOffline);
       window.removeEventListener(BACKEND_ONLINE_EVENT, markOnline);
@@ -88,8 +91,8 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey={THEME_STORAGE_KEY}>
       <QueryClientProvider client={queryClient}>
-        <RuntimeSettingsBootstrap />
         <BackendConnectivityBridge />
+        <RuntimeSettingsBootstrap />
         <ToastProvider>
           <Router unstable_useTransitions={false}>
             <ElectronWindowFrame>

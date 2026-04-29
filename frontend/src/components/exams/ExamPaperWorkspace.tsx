@@ -259,6 +259,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       const message = event as MessageEvent<string>;
       const payload = applySnapshotPayload(message);
       refreshPaper();
+      unregisterEventSource();
       stream.close();
       if (payload.status === "failed") {
         toast({

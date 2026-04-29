@@ -247,6 +247,10 @@ export function markBackendOffline(reason = "network_error"): void {
   dispatchBackendConnectionEvent(BACKEND_OFFLINE_EVENT, { reason });
 }
 
+export function isBackendOffline(): boolean {
+  return backendOffline;
+}
+
 export function reportBackendConnectionIssue(reason = "stream_error"): void {
   if (backendOffline || connectionIssueProbeInFlight) {
     return;
@@ -266,10 +270,11 @@ export function reportBackendConnectionIssue(reason = "stream_error"): void {
 }
 
 export function registerBackendEventSource(source: EventSource): () => void {
-  activeEventSources.add(source);
   if (backendOffline) {
     source.close();
+    return () => undefined;
   }
+  activeEventSources.add(source);
   return () => {
     activeEventSources.delete(source);
   };
