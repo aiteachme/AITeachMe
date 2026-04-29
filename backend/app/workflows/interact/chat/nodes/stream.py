@@ -66,8 +66,20 @@ def _build_stream_state(
     return next_state
 
 
+def _chat_model_trace_metadata(*, model_selector: str, model_override: str | None) -> dict[str, object]:
+    return {
+        "chat_model_slot": model_selector,
+        "chat_model_override": model_override or "settings",
+    }
+
+
 def _build_response_stream(state: InteractWorkflowState, *, course_id: str, model_selector: str):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
+    model_override = normalize_runtime_model_override(state.get("model_override"))
+    trace_metadata = _chat_model_trace_metadata(
+        model_selector=model_selector,
+        model_override=model_override,
+    )
     tool_plan = resolve_interact_tool_plan(
         execution_mode=execution_mode,
         course_id=course_id,
@@ -81,12 +93,14 @@ def _build_response_stream(state: InteractWorkflowState, *, course_id: str, mode
                 tool_plan=tool_plan,
                 course_id=course_id,
                 model_selector=model_selector,
+                extra_metadata=trace_metadata,
             ),
         )
     return acompletion_stream(
         state["messages"],
         call_purpose=LLMCallPurpose.CHAT,
         model=model_selector,
+        extra_metadata=trace_metadata,
     )
 
 

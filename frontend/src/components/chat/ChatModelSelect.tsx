@@ -3,20 +3,21 @@ import { ChevronDown, Cpu } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-export type ChatModelChoice = "settings" | "deepseek-v4-flash" | "qwen3.6-flash" | "qwen-flash";
+export const CHAT_MODEL_OPTIONS = ["settings", "deepseek-v4-flash", "qwen-flash"] as const;
+
+export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 
 export const DEFAULT_CHAT_MODEL_CHOICE: ChatModelChoice = "settings";
 
-const CHAT_MODEL_OPTIONS: Array<{ value: ChatModelChoice; label: string }> = [
-  { value: "settings", label: "使用设置" },
-  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
-  { value: "qwen3.6-flash", label: "Qwen 3.6 Flash" },
-  { value: "qwen-flash", label: "Qwen Flash" },
-];
+const CHAT_MODEL_VALUES = new Set<string>(CHAT_MODEL_OPTIONS);
+
+function getChatModelLabel(value: ChatModelChoice): string {
+  return value === DEFAULT_CHAT_MODEL_CHOICE ? "使用设置" : value;
+}
 
 export function toChatModelChoice(value: string | null | undefined): ChatModelChoice {
-  if (value === "deepseek-v4-flash" || value === "qwen3.6-flash" || value === "qwen-flash") {
-    return value;
+  if (value && CHAT_MODEL_VALUES.has(value)) {
+    return value as ChatModelChoice;
   }
   return DEFAULT_CHAT_MODEL_CHOICE;
 }
@@ -45,16 +46,25 @@ export function ChatModelSelect({
     <div
       title="选择本轮模型"
       className={cn(
-        "group relative inline-flex h-9 max-w-full shrink-0 items-center gap-2 rounded-full border px-3 text-[12px] font-medium shadow-sm transition-all",
-        "focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-100/5",
+        "group relative inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[12px] font-medium transition-all",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] focus-within:ring-2 focus-within:ring-zinc-900/5 dark:shadow-none dark:focus-within:ring-slate-100/5",
         isUsingOverride
-          ? "border-indigo-200/90 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-400/25 dark:bg-indigo-400/10 dark:text-indigo-200 dark:hover:border-indigo-300/30"
-          : "border-zinc-200/80 bg-zinc-50/90 text-zinc-500 hover:border-zinc-300 hover:bg-white hover:text-zinc-700 dark:border-slate-700/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+          ? "border-sky-200/90 bg-sky-50/80 text-sky-700 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:border-sky-300/30"
+          : "border-zinc-200/80 bg-white/55 text-zinc-500 hover:border-zinc-300 hover:bg-white hover:text-zinc-700 dark:border-slate-700/70 dark:bg-slate-900/45 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200",
         disabled && "opacity-55",
         className,
       )}
     >
-      <Cpu className="h-3.5 w-3.5 shrink-0 opacity-80" />
+      <span
+        className={cn(
+          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors",
+          isUsingOverride
+            ? "bg-sky-100 text-sky-700 dark:bg-sky-400/15 dark:text-sky-200"
+            : "bg-zinc-100 text-zinc-500 group-hover:bg-zinc-200/70 group-hover:text-zinc-700 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-200",
+        )}
+      >
+        <Cpu className="h-3.5 w-3.5" />
+      </span>
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
@@ -65,11 +75,11 @@ export function ChatModelSelect({
           onChange={(event) => onChange(toChatModelChoice(event.target.value))}
           disabled={disabled}
           aria-label="选择本轮模型"
-          className="h-8 max-w-[150px] cursor-pointer appearance-none truncate bg-transparent pr-5 text-[12px] font-semibold leading-none text-current outline-none disabled:cursor-not-allowed sm:max-w-[176px]"
+          className="h-7 max-w-[128px] cursor-pointer appearance-none truncate bg-transparent pr-4 text-[12px] font-medium leading-none text-current outline-none disabled:cursor-not-allowed sm:max-w-[150px]"
         >
           {CHAT_MODEL_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
+            <option key={option} value={option}>
+              {getChatModelLabel(option)}
             </option>
           ))}
         </select>

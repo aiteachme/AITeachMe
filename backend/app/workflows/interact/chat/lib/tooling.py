@@ -63,6 +63,7 @@ def build_agent_loop_config(
     tool_plan: InteractToolPlan,
     course_id: str,
     model_selector: str | None = None,
+    extra_metadata: dict[str, object] | None = None,
 ) -> AgentLoopConfig:
     """Build the shared AgentLoop configuration for Interact."""
 
@@ -73,6 +74,7 @@ def build_agent_loop_config(
         task_type=LLMCallPurpose.CHAT,
         model=model_selector or tool_plan.model_selector,
         tool_argument_overrides={"search_kb": {"course_id": course_id}},
+        extra_metadata=dict(extra_metadata or {}),
     )
 
 
