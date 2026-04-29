@@ -666,6 +666,94 @@ function isMarkdownBoundary(line: string): boolean {
   return /^(#{1,6}\s+\S|[-*+]\s+\S|\d+\.\s+\S|>\s*\S|\|.+\||---\s*$)/.test(line.trim());
 }
 
+function stripQuotePrefix(line: string): string {
+  return String(line || "").replace(/^\s*>\s?/, "").trimEnd();
+}
+
+function splitMarkdownTableCells(line: string): string[] {
+  let stripped = stripQuotePrefix(line).trim();
+  if (!stripped.includes("|")) return [];
+  if (stripped.startsWith("|")) stripped = stripped.slice(1);
+  if (stripped.endsWith("|")) stripped = stripped.slice(0, -1);
+
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  for (const char of stripped) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current);
+  return cells;
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  const cells = splitMarkdownTableCells(line);
+  return cells.length >= 2 && cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell));
+}
+
+function isProbableTableRow(line: string): boolean {
+  const stripped = stripQuotePrefix(line).trim();
+  if (!stripped) return false;
+  if (!stripped.startsWith("|") && !stripped.endsWith("|")) return false;
+  const cells = splitMarkdownTableCells(stripped);
+  return cells.length >= 2 && cells.some((cell) => cell.trim());
+}
+
+function isGfmTableBoundary(lines: string[], index: number): boolean {
+  if (index < 0 || index >= lines.length) return false;
+  const line = lines[index] ?? "";
+  const previous = index > 0 ? lines[index - 1] ?? "" : "";
+  const next = index + 1 < lines.length ? lines[index + 1] ?? "" : "";
+  if (isTableSeparatorLine(line)) {
+    return isProbableTableRow(previous) || isProbableTableRow(next);
+  }
+  if (!isProbableTableRow(line)) return false;
+  return isTableSeparatorLine(previous) || isTableSeparatorLine(next);
+}
+
+function isStructuralMarkdownBoundary(lines: string[], index: number): boolean {
+  if (index < 0 || index >= lines.length) return false;
+  const stripped = stripQuotePrefix(lines[index] ?? "").trim();
+  if (!stripped) return false;
+  if (
+    new RegExp(
+      `^(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\`\`\`|(?:---|\\*\\*\\*|___)\\s*$)`,
+      "i",
+    ).test(stripped)
+  ) {
+    return true;
+  }
+  return isGfmTableBoundary(lines, index);
+}
+
+function nextNonemptyLineIndex(lines: string[], startIndex: number): number | null {
+  for (let index = startIndex; index < lines.length; index += 1) {
+    if ((lines[index] ?? "").trim()) return index;
+  }
+  return null;
+}
+
+function isOrphanDisplayMathOpener(lines: string[], index: number): boolean {
+  const nextIndex = nextNonemptyLineIndex(lines, index + 1);
+  if (nextIndex === null) return true;
+  return isStructuralMarkdownBoundary(lines, nextIndex);
+}
+
 function isIndentedContextEcho(line: string): boolean {
   if (!/^( {4,}|\t)/.test(line)) return false;
   const trimmed = line.trim();
@@ -702,13 +790,18 @@ function isDisplayMathDelimiterLine(line: string): boolean {
   return /^\s*(?:>\s*)?\$\$\s*$/.test(line);
 }
 
-function isMarkdownBoundaryInsideMath(line: string): boolean {
-  const stripped = line.replace(/^\s*>\s?/, "").trim();
+function isMarkdownBoundaryInsideMath(lines: string[], index: number): boolean {
+  const stripped = stripQuotePrefix(lines[index] ?? "").trim();
   if (!stripped) return false;
-  return new RegExp(
-    `^(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\\|.+\\|.+\\||\`\`\`)`,
-    "i",
-  ).test(stripped);
+  if (
+    new RegExp(
+      `^(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\`\`\`)`,
+      "i",
+    ).test(stripped)
+  ) {
+    return true;
+  }
+  return isGfmTableBoundary(lines, index);
 }
 
 function repairDisplayMathBoundariesForRender(markdown: string): string {
@@ -717,9 +810,13 @@ function repairDisplayMathBoundariesForRender(markdown: string): string {
   let inDisplayMath = false;
   let displayMathPrefix = "";
 
-  for (const rawLine of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index] ?? "";
     const line = rawLine.trimEnd();
     if (isDisplayMathDelimiterLine(line)) {
+      if (!inDisplayMath && isOrphanDisplayMathOpener(lines, index)) {
+        continue;
+      }
       const delimiterPrefix = displayMathPrefixForRender(line);
       if (inDisplayMath) {
         output.push(`${delimiterPrefix || displayMathPrefix}$$`);
@@ -733,7 +830,7 @@ function repairDisplayMathBoundariesForRender(markdown: string): string {
       continue;
     }
 
-    if (inDisplayMath && isMarkdownBoundaryInsideMath(line)) {
+    if (inDisplayMath && isMarkdownBoundaryInsideMath(lines, index)) {
       const closingDelimiter = `${displayMathPrefix}$$`;
       if (output[output.length - 1] !== closingDelimiter) {
         output.push(closingDelimiter);
@@ -789,7 +886,7 @@ function inlineMathBodyLooksUnsafe(body: string): boolean {
   if (/[`]|<\/?[a-z][\s>]/i.test(body)) return true;
   if (body.includes("**") || body.includes("[!") || body.includes("```")) return true;
   return new RegExp(
-    `(^|\\n)\\s*(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\]|\\|.+\\|.+\\|)`,
+    `(^|\\n)\\s*(?:#{1,6}\\s+\\S|[-*+]\\s+(?:\\*\\*|\`|\\[|.{12,})|\\d+\\.\\s+\\S|>\\s*\\S|\\[!(?:${CALLOUT_PATTERN})\\])`,
     "i",
   ).test(body);
 }
@@ -863,6 +960,130 @@ function repairInlineMathForRender(markdown: string): string {
 
 function repairMathDelimitersForRender(markdown: string): string {
   return repairInlineMathForRender(repairDisplayMathBoundariesForRender(markdown));
+}
+
+function findNextUnescapedPipe(source: string, startIndex: number): number {
+  for (let index = startIndex; index < source.length; index += 1) {
+    if (source[index] === "|" && !isEscapedAt(source, index)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function normalizeVerticalBarsInMathBody(body: string): string {
+  let output = "";
+  let index = 0;
+  let changed = false;
+
+  while (index < body.length) {
+    if (body[index] !== "|" || isEscapedAt(body, index)) {
+      output += body[index] ?? "";
+      index += 1;
+      continue;
+    }
+
+    const closing = findNextUnescapedPipe(body, index + 1);
+    if (closing < 0) {
+      output += body[index] ?? "";
+      index += 1;
+      continue;
+    }
+
+    const inner = body.slice(index + 1, closing).trim();
+    if (!inner) {
+      output += body.slice(index, closing + 1);
+    } else {
+      output += `\\lvert ${inner}\\rvert`;
+      changed = true;
+    }
+    index = closing + 1;
+  }
+
+  return changed ? output : body;
+}
+
+function protectInlineMathPipesInTableRow(line: string): string {
+  const positions = unescapedSingleDollarPositions(line);
+  if (positions.length < 2 || positions.length % 2 !== 0) return line;
+
+  const output: string[] = [];
+  let cursor = 0;
+  let changed = false;
+  for (let index = 0; index + 1 < positions.length; index += 2) {
+    const left = positions[index];
+    const right = positions[index + 1];
+    const body = line.slice(left + 1, right);
+    const normalizedBody = normalizeVerticalBarsInMathBody(body.trim());
+    output.push(line.slice(cursor, left));
+    if (normalizedBody !== body) {
+      output.push("$", normalizedBody, "$");
+      changed = true;
+    } else {
+      output.push(line.slice(left, right + 1));
+    }
+    cursor = right + 1;
+  }
+  output.push(line.slice(cursor));
+  return changed ? output.join("") : line;
+}
+
+function protectTableInlineMathPipesForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let inDisplayMath = false;
+  let inTable = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = (lines[index] ?? "").trimEnd();
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      inTable = false;
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    if (isDisplayMathDelimiterLine(line)) {
+      inDisplayMath = !inDisplayMath;
+      inTable = false;
+      output.push(displayMathDelimiterForRender(line));
+      continue;
+    }
+
+    if (inDisplayMath) {
+      output.push(line);
+      continue;
+    }
+
+    const nextLine = index + 1 < lines.length ? lines[index + 1] ?? "" : "";
+    const startsTable = isProbableTableRow(line) && isTableSeparatorLine(nextLine);
+    if (startsTable) {
+      inTable = true;
+      output.push(protectInlineMathPipesInTableRow(line));
+      continue;
+    }
+
+    if (inTable && isProbableTableRow(line)) {
+      output.push(protectInlineMathPipesInTableRow(line));
+      continue;
+    }
+
+    inTable = false;
+    output.push(line);
+  }
+
+  return output.join("\n");
 }
 
 function normalizeListEmbeddedHeadingsForRender(markdown: string): string {
@@ -1011,7 +1232,9 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
 export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
-      repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+      protectTableInlineMathPipesForRender(
+        repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+      ),
     ),
   );
 }

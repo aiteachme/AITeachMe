@@ -37,7 +37,7 @@ export interface KnowledgeBuildRuntimeResponse {
 }
 
 export interface KnowledgeGraphBuildData {
-  course?: string;
+  course_id?: string;
   status?: string;
   requested_at?: string;
   build_group_id?: string | null;
@@ -47,7 +47,7 @@ export interface KnowledgeGraphBuildData {
 }
 
 export interface KnowledgeBuildCancelData {
-  course?: string;
+  course_id?: string;
   status?: string;
   cancelled_task_count?: number;
   requested_at?: string | null;

@@ -114,6 +114,21 @@ def list_knowledge_units_by_course(
     return rows, total
 
 
+def count_knowledge_units_by_course(
+    session: Session,
+    course_id: str,
+    *,
+    knowledge_unit_type: str | None = None,
+    status: str | None = "active",
+) -> int:
+    stmt = select(func.count(KnowledgeUnit.id)).where(KnowledgeUnit.course_id == course_id)
+    if status is not None:
+        stmt = stmt.where(KnowledgeUnit.status == status)
+    if knowledge_unit_type is not None:
+        stmt = stmt.where(KnowledgeUnit.knowledge_unit_type == normalize_knowledge_unit_type(knowledge_unit_type))
+    return int(session.exec(stmt).one() or 0)
+
+
 def get_knowledge_unit_with_current_revision(
     session: Session,
     knowledge_unit_id: int,

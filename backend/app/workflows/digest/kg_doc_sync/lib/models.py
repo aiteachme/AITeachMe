@@ -42,6 +42,16 @@ class KnowledgeSyncReport:
     source_ref_count: int = 0
     backbone_unit_count: int = 0
     backbone_edge_count: int = 0
+    stitched_edge_count: int = 0
+    section_local_stitch_edge_count: int = 0
+    mention_stitch_edge_count: int = 0
+    graph_isolated_unit_count: int = 0
+    graph_component_count: int = 0
+    graph_largest_component_unit_count: int = 0
+    graph_active_unit_count: int = 0
+    graph_active_edge_count: int = 0
+    graph_avg_degree: float = 0.0
+    graph_isolated_unit_pct: float = 0.0
     stable_anchor_count: int = 0
     prefetch_section_count: int = 0
     prefetch_reused_section_count: int = 0

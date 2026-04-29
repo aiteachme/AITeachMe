@@ -34,6 +34,112 @@ def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
 
 
+def test_display_math_absolute_value_pipes_do_not_trigger_table_boundary() -> None:
+    raw = "\n".join(
+        [
+            "$$",
+            r"|PA| = \sqrt{|PC|^2 - r^2} = \sqrt{25 - 9} = 4",
+            "$$",
+            "",
+            "## 下一节",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert r"|PA| = \sqrt{|PC|^2 - r^2}" in fixed
+    assert "$$\n## 下一节" not in fixed
+    issues = find_markdown_rendering_issues(fixed)
+    assert "display math 分隔符数量不成对。" not in issues
+    assert "display math 疑似吞入 Markdown 正文。" not in issues
+
+
+def test_blockquote_after_closed_display_math_is_valid() -> None:
+    raw = "\n".join(
+        [
+            "$$",
+            r"P(\text{红桃}) = \frac{13}{52} = \frac{1}{4}",
+            "$$",
+            "> 答案：$\\frac{1}{4}$。",
+        ]
+    )
+
+    assert "display math 内混入 blockquote 前缀。" not in find_markdown_rendering_issues(raw)
+
+
+def test_normalize_drops_orphan_display_math_before_markdown_blocks() -> None:
+    raw = "\n".join(
+        [
+            "正文",
+            "",
+            "$$",
+            "## 高频考点总结与易错边界",
+            "| 考点类别 | 推荐策略 |",
+            "| --- | --- |",
+            r"| 弦长计算 | 几何法优先：$ |AB|=2\sqrt{r^2-d^2} $ |",
+            "",
+            "> $$",
+            "```mermaid",
+            "flowchart LR",
+            "A --> B",
+            "```",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "$$\n## 高频考点总结与易错边界" not in fixed
+    assert "> $$\n```mermaid" not in fixed
+    assert "## 高频考点总结与易错边界" in fixed
+    assert r"$\lvert AB\rvert=2\sqrt{r^2-d^2}$" in fixed
+    issues = find_markdown_rendering_issues(fixed)
+    assert "display math 分隔符数量不成对。" not in issues
+    assert "display math 疑似吞入 Markdown 正文。" not in issues
+
+
+def test_generated_chapter_math_and_table_snippets_normalize_cleanly() -> None:
+    chapter_02_snippet = "\n".join(
+        [
+            "### 综合应用：构造直角三角形求解",
+            "",
+            "$$",
+            r"|PA| = \sqrt{|PC|^2 - r^2} = \sqrt{25 - 9} = \sqrt{16} = 4",
+            "$$",
+            "",
+            "---",
+            "",
+            "$$",
+            "## 高频考点总结与易错边界",
+            "| 考点类别 | 高频题型 | 易错边界 | 推荐策略 |",
+            "| --- | --- | --- | --- |",
+            r"| 弦长计算 | 已知直线与圆，求弦长 | 忘记 $d \leq r$ | 几何法优先：$ |AB|=2\sqrt{r^2-d^2} $ |",
+            "```mermaid",
+            "flowchart LR",
+            "A[图形与几何] --> B[圆]",
+            "```",
+        ]
+    )
+    chapter_04_snippet = "\n".join(
+        [
+            "$$",
+            r"|A \cup B| = |A| + |B| - |A \cap B|",
+            "$$",
+            "",
+            "$$",
+            "## 常见应用问题类型",
+            "| 类型 | 策略 |",
+            "| --- | --- |",
+            "| 集合计数 | 先画图再代数化 |",
+        ]
+    )
+
+    for raw in (chapter_02_snippet, chapter_04_snippet):
+        fixed = normalize_markdown_rendering(raw)
+        issues = find_markdown_rendering_issues(fixed)
+        assert "display math 分隔符数量不成对。" not in issues
+        assert "display math 疑似吞入 Markdown 正文。" not in issues
+
+
 def test_normalize_escapes_inline_math_that_swallows_markdown() -> None:
     raw = "$- **十进制 -> 二进制**：`1110111` ### 高级题型$"
 

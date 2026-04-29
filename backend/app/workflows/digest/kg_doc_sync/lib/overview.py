@@ -9,6 +9,7 @@ from app.schemas.knowledge import (
     KnowledgeOverviewResponse,
     KnowledgeOverviewStats,
 )
+from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.course import get_course_vector_status_by_id
 from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.query import get_full_graph
@@ -39,17 +40,22 @@ def get_knowledge_overview(
     need_graph = "graph" in sections
     need_stats = "stats" in sections
 
-    if need_stats:
-        need_graph = True
-
     graph: FullGraphResponse | None = None
 
     if need_graph:
         graph = get_full_graph(session, course_id=course_id)
 
     stats = KnowledgeOverviewStats(
-        node_count=len(graph.nodes) if graph is not None else 0,
-        edge_count=len(graph.edges) if graph is not None else 0,
+        node_count=(
+            len(graph.nodes)
+            if graph is not None
+            else knowledge_unit_repo.count_knowledge_units_by_course(session, course_id)
+        ),
+        edge_count=(
+            len(graph.edges)
+            if graph is not None
+            else knowledge_relation_repo.count_edges_by_course(session, course_id)
+        ),
     )
 
     return KnowledgeOverviewResponse(

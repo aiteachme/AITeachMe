@@ -3,19 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime
+from typing import Any
 
 import structlog
+from sqlmodel import Session
 
-from app.shared.infra.llm_support.common import (
-    LLMRuntimeSnapshot,
-    use_llm_runtime_snapshot,
-)
-from app.shared.infra.storage import CourseStorageScope
+from app.models.course import Course
+from app.schemas.knowledge import KnowledgeGraphBuildData
+from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.knowledge.build_store import (
+    read_knowledge_build_runtime,
     read_knowledge_manifest,
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
+)
+from app.shared.infra.llm_support.common import (
+    LLMRuntimeSnapshot,
+    capture_llm_runtime_snapshot,
+    use_llm_runtime_snapshot,
+)
+from app.shared.infra.storage import CourseStorageScope, build_course_storage_scope
+from app.utils.time import utcnow
+from app.workflows.digest.common.build_lifecycle import (
+    ACTIVE_KNOWLEDGE_BUILD_STATUSES,
 )
 from app.workflows.digest.kg_doc_sync.inputs import (
     build_knowledge_doc_sync_input_from_docgen_state,
@@ -26,6 +38,68 @@ from app.workflows.digest.kg_doc_sync.inputs import (
 from app.workflows.digest.kg_doc_sync.lib.prefetch import consume_docgen_kg_prefetch
 
 logger = structlog.get_logger(__name__)
+
+
+def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[str]:
+    """Resolve source file ids from persisted docs-sync context."""
+
+    collected: list[str] = []
+    seen: set[str] = set()
+    chapters = structured_context.get("chapters")
+    if not isinstance(chapters, list):
+        return collected
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+        raw_ids = chapter.get("source_file_ids")
+        if not isinstance(raw_ids, list):
+            continue
+        for raw_id in raw_ids:
+            parsed = str(raw_id or "").strip()
+            if not parsed or parsed in seen:
+                continue
+            seen.add(parsed)
+            collected.append(parsed)
+    return collected
+
+
+def _is_active_build_status(status: str | None) -> bool:
+    return str(status or "").strip() in ACTIVE_KNOWLEDGE_BUILD_STATUSES
+
+
+def _spawn_graph_build_task(
+    background_task_registry: Any | None,
+    coro,
+    *,
+    course_id: str,
+    name: str,
+) -> None:
+    if background_task_registry is not None:
+        background_task_registry.spawn(
+            coro,
+            kind="knowledge.build.graph",
+            course_id=course_id,
+            name=name,
+        )
+        return
+
+    task = asyncio.create_task(coro, name=name)
+
+    def _log_graph_task_result(finished_task: asyncio.Task[Any]) -> None:
+        if finished_task.cancelled():
+            return
+        try:
+            exc = finished_task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.warning(
+                "knowledge_graph_manual_task_failed",
+                course_id=course_id,
+                error=str(exc),
+            )
+
+    task.add_done_callback(_log_graph_task_result)
 
 
 def _write_graph_status(
@@ -86,6 +160,16 @@ def _base_doc_sync_metrics(
         "source_ref_count": 0,
         "backbone_unit_count": 0,
         "backbone_edge_count": 0,
+        "stitched_edge_count": 0,
+        "section_local_stitch_edge_count": 0,
+        "mention_stitch_edge_count": 0,
+        "graph_isolated_unit_count": 0,
+        "graph_component_count": 0,
+        "graph_largest_component_unit_count": 0,
+        "graph_active_unit_count": 0,
+        "graph_active_edge_count": 0,
+        "graph_avg_degree": 0.0,
+        "graph_isolated_unit_pct": 0.0,
         "stable_anchor_count": 0,
         "deprecated_unit_count": 0,
         "deprecated_edge_count": 0,
@@ -130,6 +214,16 @@ def _completed_doc_sync_metrics(
             "source_ref_count": sync_report.source_ref_count,
             "backbone_unit_count": sync_report.backbone_unit_count,
             "backbone_edge_count": sync_report.backbone_edge_count,
+            "stitched_edge_count": sync_report.stitched_edge_count,
+            "section_local_stitch_edge_count": sync_report.section_local_stitch_edge_count,
+            "mention_stitch_edge_count": sync_report.mention_stitch_edge_count,
+            "graph_isolated_unit_count": sync_report.graph_isolated_unit_count,
+            "graph_component_count": sync_report.graph_component_count,
+            "graph_largest_component_unit_count": sync_report.graph_largest_component_unit_count,
+            "graph_active_unit_count": sync_report.graph_active_unit_count,
+            "graph_active_edge_count": sync_report.graph_active_edge_count,
+            "graph_avg_degree": sync_report.graph_avg_degree,
+            "graph_isolated_unit_pct": sync_report.graph_isolated_unit_pct,
             "stable_anchor_count": sync_report.stable_anchor_count,
             "deprecated_unit_count": sync_report.deprecated_unit_count,
             "deprecated_edge_count": sync_report.deprecated_edge_count,
@@ -141,6 +235,114 @@ def _completed_doc_sync_metrics(
         }
     )
     return metrics
+
+
+def trigger_graph_docs_sync_manual_build(
+    session: Session,
+    *,
+    course: Course,
+    background_task_registry: Any | None = None,
+) -> KnowledgeGraphBuildData:
+    """Accept and schedule a manual graph rebuild from published knowledge docs.
+
+    This is the API-facing synchronous phase for `/knowledge/build/graph`.
+    It validates runtime state, writes the graph lane accepted status and
+    registers the cancellable background task. HTTP response wrapping stays in
+    the API layer.
+    """
+
+    course_scope = build_course_storage_scope(user_id=course.user_id, course_id=course.id)
+    runtime = read_knowledge_build_runtime(course.id, course_scope=course_scope)
+    docgen_status = runtime.docgen_runtime if runtime is not None else None
+    graph_status = runtime.graph_runtime if runtime is not None else None
+    if docgen_status is not None and _is_active_build_status(docgen_status.status):
+        raise AITeachMeError(
+            detail="知识文档仍在构建中，请等待文档发布后再重建图谱。",
+            error_code="DOCGEN_BUILD_IN_PROGRESS",
+            status_code=409,
+        )
+    if graph_status is not None and _is_active_build_status(graph_status.status):
+        raise AITeachMeError(
+            detail="知识图谱正在构建中。",
+            error_code="GRAPH_BUILD_IN_PROGRESS",
+            status_code=409,
+        )
+
+    sync_input = load_knowledge_doc_sync_input(
+        course.id,
+        session=session,
+        course_scope=course_scope,
+    )
+    if not sync_input.markdown.strip():
+        raise AITeachMeError(
+            detail="当前还没有已发布的知识文档，请先完成知识文档构建。",
+            error_code="KNOWLEDGE_DOC_REQUIRED_FOR_GRAPH_BUILD",
+            status_code=422,
+        )
+
+    manifest = read_knowledge_manifest(course.id, course_scope=course_scope)
+    manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
+    source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
+    prompt = manifest.prompt if manifest is not None else None
+    requested_at = utcnow()
+    build_group_id = uuid.uuid4().hex
+    build_session_id = uuid.uuid4().hex
+    doc_version_no = int(sync_input.structured_context.get("doc_version_no") or 0)
+    chapters = sync_input.structured_context.get("chapters")
+    chapter_count = len(chapters) if isinstance(chapters, list) else 0
+    _write_graph_status(
+        course.id,
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        course_scope=course_scope,
+        status="accepted",
+        stage="manual_graph_requested",
+        build_session_id=build_session_id,
+        error_message=None,
+        source_file_ids=source_file_ids,
+        prompt=prompt,
+        metrics={
+            "knowledge_doc_source": sync_input.source,
+            "knowledge_doc_chapter_count": chapter_count,
+            "last_synced_doc_version_no": doc_version_no,
+            "graph_input_paths": ["knowledge_doc"] + (["source_files"] if source_file_ids else []),
+        },
+        current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
+    )
+    llm_snapshot = capture_llm_runtime_snapshot()
+    _spawn_graph_build_task(
+        background_task_registry,
+        run_graph_docs_sync_manual_build(
+            course_id=course.id,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            file_ids=source_file_ids,
+            prompt=prompt,
+            llm_snapshot=llm_snapshot,
+            course_scope=course_scope,
+        ),
+        course_id=course.id,
+        name=f"knowledge.build.graph:{course.id}",
+    )
+    logger.info(
+        "knowledge_graph_build_request_accepted",
+        course_id=course.id,
+        user_id=course.user_id,
+        requested_at=requested_at.isoformat(),
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        source_file_count=len(source_file_ids),
+        registered=background_task_registry is not None,
+    )
+    return KnowledgeGraphBuildData(
+        course_id=course.id,
+        status="accepted",
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        source_file_ids=source_file_ids,
+    )
 
 
 async def run_graph_docs_sync_after_doc_build(
@@ -389,4 +591,5 @@ __all__ = [
     "run_graph_docs_sync_auto_build",
     "run_graph_docs_sync_after_doc_build",
     "run_graph_docs_sync_manual_build",
+    "trigger_graph_docs_sync_manual_build",
 ]

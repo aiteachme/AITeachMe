@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
   Loader2,
   Network as NetworkIcon,
+  RefreshCw,
   X,
   Tag,
   Link2,
@@ -12,12 +13,13 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-import { graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
-import type { FullGraphResponse } from "../../api/generated/model";
+import {
+  graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost,
+  graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost,
+} from "../../api/generated/knowledge";
+import type { KnowledgeRelationResponse, KnowledgeSubgraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
-
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ MiroFish Color Palette 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }> = {
   concept:    { fill: "#5dade2", dark: "#2e86c1", label: "概念" },
@@ -33,8 +35,6 @@ const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }>
 
 const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Interfaces 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-
 interface GraphNode extends d3.SimulationNodeDatum {
   id: number;
   canonical_name: string;
@@ -43,12 +43,48 @@ interface GraphNode extends d3.SimulationNodeDatum {
 }
 
 interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
+  id: number;
   edge_type: string;
   source_node_id: number;
   target_node_id: number;
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Node Detail Sidebar (unchanged) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+type LoadedGraphData = {
+  nodes: KnowledgeUnitResponse[];
+  edges: KnowledgeRelationResponse[];
+};
+
+function compactSubgraph(payload: KnowledgeSubgraphResponse | null | undefined): LoadedGraphData {
+  return {
+    nodes: payload?.nodes ?? [],
+    edges: payload?.edges ?? [],
+  };
+}
+
+function mergeGraphData(current: LoadedGraphData | null, incoming: KnowledgeSubgraphResponse | null | undefined): LoadedGraphData {
+  const next = compactSubgraph(incoming);
+  const nodeById = new Map<number, KnowledgeUnitResponse>();
+  const edgeByKey = new Map<string, KnowledgeRelationResponse>();
+
+  for (const node of current?.nodes ?? []) {
+    nodeById.set(node.id, node);
+  }
+  for (const node of next.nodes) {
+    nodeById.set(node.id, node);
+  }
+
+  const appendEdge = (edge: KnowledgeRelationResponse) => {
+    const key = edge.id ? `id:${edge.id}` : `${edge.source_node_id}:${edge.target_node_id}:${edge.edge_type}`;
+    edgeByKey.set(key, edge);
+  };
+  for (const edge of current?.edges ?? []) appendEdge(edge);
+  for (const edge of next.edges) appendEdge(edge);
+
+  return {
+    nodes: Array.from(nodeById.values()),
+    edges: Array.from(edgeByKey.values()),
+  };
+}
 
 function NodeDetailSidebar({
   course,
@@ -209,27 +245,91 @@ function NodeDetailSidebar({
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ D3 SVG Force Graph (MiroFish approach) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 export function ForceGraphView({
   course,
   toolbar,
   onEvidenceClick,
-  fullGraphData,
+  totalNodeCount,
+  totalEdgeCount,
 }: {
   course: string;
   toolbar?: React.ReactNode;
   onEvidenceClick?: (chunkId: number, quoteText: string) => void;
-  fullGraphData: FullGraphResponse | null;
+  totalNodeCount?: number;
+  totalEdgeCount?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [showEdgeLabels, setShowEdgeLabels] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
+  const [expandingNodeId, setExpandingNodeId] = useState<number | null>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
 
-  const rawData = fullGraphData;
+  const {
+    data: initialSubgraph,
+    isLoading: initialLoading,
+    isFetching: initialFetching,
+    refetch: refetchInitialSubgraph,
+  } = useQuery({
+    queryKey: ["graph-subgraph", course, "initial", totalNodeCount ?? 0, totalEdgeCount ?? 0],
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost(course, {
+          hops: 1,
+          limit: 80,
+        }),
+      ) ?? null,
+    enabled: Boolean(course),
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!initialSubgraph) return;
+    setGraphData(compactSubgraph(initialSubgraph));
+    setExpandedNodeIds(new Set());
+    setSelectedNodeId(null);
+  }, [initialSubgraph, course]);
+
+  const expandNode = useCallback(
+    async (nodeId: number) => {
+      if (!course || expandedNodeIds.has(nodeId)) return;
+      setExpandingNodeId(nodeId);
+      try {
+        const payload =
+          unwrapOrvalResponse(
+            await graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost(course, {
+              center_knowledge_unit_id: nodeId,
+              hops: 1,
+              limit: 80,
+            }),
+          ) ?? null;
+        setGraphData((current) => mergeGraphData(current, payload));
+        setExpandedNodeIds((current) => {
+          const next = new Set(current);
+          next.add(nodeId);
+          return next;
+        });
+      } catch {
+        // Keep the currently loaded graph visible if expansion fails.
+      } finally {
+        setExpandingNodeId(null);
+      }
+    },
+    [expandedNodeIds, course],
+  );
+
+  const resetGraph = useCallback(() => {
+    setGraphData(null);
+    setExpandedNodeIds(new Set());
+    setSelectedNodeId(null);
+    void refetchInitialSubgraph();
+  }, [refetchInitialSubgraph]);
+
+  const rawData = graphData;
 
   // Parse graph data
   const { nodes, links, presentTypes, nodeCount, edgeCount } = useMemo(() => {
@@ -246,6 +346,7 @@ export function ForceGraphView({
     const links: GraphLink[] = (rawData.edges ?? [])
       .filter((e: any) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
       .map((e: any) => ({
+        id: e.id,
         source: e.source_node_id,
         target: e.target_node_id,
         edge_type: e.edge_type,
@@ -278,7 +379,6 @@ export function ForceGraphView({
     return () => obs.disconnect();
   }, []);
 
-  // 鈹€鈹€ D3 Force Simulation + SVG Rendering 鈹€鈹€
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || nodes.length === 0) return;
@@ -315,7 +415,6 @@ export function ForceGraphView({
       });
     svgSel.call(zoom);
 
-    // 鈹€鈹€ SVG Defs: simple marker 鈹€鈹€
     const defs = svgSel.append("defs");
 
     // Glow filter for hover (simplified)
@@ -402,16 +501,15 @@ export function ForceGraphView({
     // Node click handler
     nodeG.on("click", (_event, d) => {
       setSelectedNodeId((prev) => (prev === d.id ? null : d.id));
+      void expandNode(d.id);
     });
 
-    // Node circles 鈥?clean, flat design
     nodeG.append("circle")
       .attr("r", 10)
       .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
       .attr("stroke", "#fff")
       .attr("stroke-width", 2.5);
 
-    // Node labels 鈥?clean, no shadows for extreme minimalist clarity
     nodeG.append("text")
       .attr("dx", 14)
       .attr("dy", 4)
@@ -436,7 +534,6 @@ export function ForceGraphView({
         }
       });
 
-    // Force simulation 鈥?simple and robust
     const simulation = d3.forceSimulation<GraphNode>(simNodes)
       .force("link", d3.forceLink<GraphNode, GraphLink>(simLinks).id((d) => d.id).distance(150))
       .force("charge", d3.forceManyBody().strength(-400))
@@ -477,12 +574,24 @@ export function ForceGraphView({
     return () => {
       simulation.stop();
     };
-  }, [nodes, links, dimensions, showEdgeLabels]);
+  }, [nodes, links, dimensions, showEdgeLabels, selectedNodeId, expandNode]);
 
-  // 鈹€鈹€ Empty state 鈹€鈹€
+  const graphIsLoading = initialLoading || (initialFetching && !rawData);
+
+  if (graphIsLoading) {
+    return (
+      <div className="relative flex h-full flex-col items-center justify-center text-slate-400">
+        <div className="absolute left-3 top-3 z-10">{toolbar}</div>
+        <Loader2 className="mb-2 h-6 w-6 animate-spin text-slate-300" />
+        <p className="text-sm">加载图谱...</p>
+      </div>
+    );
+  }
+
   if (!rawData || (rawData.nodes ?? []).length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-slate-400">
+      <div className="relative flex h-full flex-col items-center justify-center text-slate-400">
+        <div className="absolute left-3 top-3 z-10">{toolbar}</div>
         <NetworkIcon className="mb-2 h-8 w-8 text-slate-300" />
         <p className="text-sm">暂无可展示的图谱数据</p>
       </div>
@@ -490,9 +599,9 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="flex h-full min-h-[520px] flex-col gap-0 lg:min-h-[640px] lg:flex-row">
+    <div className="flex h-full min-h-0 flex-col gap-0 lg:flex-row">
       {/* Graph panel */}
-      <div className="relative min-h-[420px] min-w-0 flex-1 lg:min-h-[640px]">
+      <div className="relative min-h-0 min-w-0 flex-1">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
@@ -501,8 +610,23 @@ export function ForceGraphView({
         <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2">
           {toolbar}
           <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
-            {nodeCount} 节点 · {edgeCount} 边
+            {nodeCount}{totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {edgeCount}{totalEdgeCount ? `/${totalEdgeCount}` : ""} 边
           </span>
+          <button
+            onClick={resetGraph}
+            disabled={initialFetching}
+            className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
+            title="重新加载初始子图"
+          >
+            {initialFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            刷新
+          </button>
+          {expandingNodeId ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              展开中
+            </span>
+          ) : null}
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
             className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
@@ -527,7 +651,6 @@ export function ForceGraphView({
         </div>
       </div>
 
-      {/* 鈹€鈹€ Detail Sidebar 鈹€鈹€ */}
       {selectedNodeId && (
         <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
           <div className="p-4">

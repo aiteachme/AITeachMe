@@ -43,6 +43,16 @@ def _report_metrics(report: KnowledgeSyncReport, *, elapsed_ms: int) -> dict[str
         "source_ref_count": report.source_ref_count,
         "backbone_unit_count": report.backbone_unit_count,
         "backbone_edge_count": report.backbone_edge_count,
+        "stitched_edge_count": report.stitched_edge_count,
+        "section_local_stitch_edge_count": report.section_local_stitch_edge_count,
+        "mention_stitch_edge_count": report.mention_stitch_edge_count,
+        "graph_isolated_unit_count": report.graph_isolated_unit_count,
+        "graph_component_count": report.graph_component_count,
+        "graph_largest_component_unit_count": report.graph_largest_component_unit_count,
+        "graph_active_unit_count": report.graph_active_unit_count,
+        "graph_active_edge_count": report.graph_active_edge_count,
+        "graph_avg_degree": report.graph_avg_degree,
+        "graph_isolated_unit_pct": report.graph_isolated_unit_pct,
         "stable_anchor_count": report.stable_anchor_count,
     }
 

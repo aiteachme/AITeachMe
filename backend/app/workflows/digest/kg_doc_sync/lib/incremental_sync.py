@@ -56,6 +56,7 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
     SectionExtractionPayload,
 )
 from app.workflows.digest.kg_doc_sync.lib.ontology import default_relation_for_unit_type
+from app.workflows.digest.kg_doc_sync.lib.relation_stitching import stitch_knowledge_graph_relations
 from app.workflows.digest.kg_doc_sync.lib.sync_runs import (
     create_sync_run,
     finish_sync_run,
@@ -349,6 +350,7 @@ def sync_markdown_knowledge_graph(
             course_context=course_context,
             run_context=run_context,
         )
+        payload = stitch_knowledge_graph_relations(payload)
     except Exception as exc:
         mark_knowledge_graph_sync_run_failed(
             session,
@@ -489,6 +491,16 @@ def persist_knowledge_graph_items(
         total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
         backbone_unit_count=int(diagnostics_totals.get("backbone_unit_count", 0) or 0),
         backbone_edge_count=int(diagnostics_totals.get("backbone_edge_count", 0) or 0),
+        stitched_edge_count=int(diagnostics_totals.get("stitched_edge_count", 0) or 0),
+        section_local_stitch_edge_count=int(diagnostics_totals.get("section_local_stitch_edge_count", 0) or 0),
+        mention_stitch_edge_count=int(diagnostics_totals.get("mention_stitch_edge_count", 0) or 0),
+        graph_isolated_unit_count=int(diagnostics_totals.get("graph_isolated_unit_count", 0) or 0),
+        graph_component_count=int(diagnostics_totals.get("graph_component_count", 0) or 0),
+        graph_largest_component_unit_count=int(diagnostics_totals.get("graph_largest_component_unit_count", 0) or 0),
+        graph_active_unit_count=int(diagnostics_totals.get("graph_active_unit_count", 0) or 0),
+        graph_active_edge_count=int(diagnostics_totals.get("graph_active_edge_count", 0) or 0),
+        graph_avg_degree=float(diagnostics_totals.get("graph_avg_degree", 0.0) or 0.0),
+        graph_isolated_unit_pct=float(diagnostics_totals.get("graph_isolated_unit_pct", 0.0) or 0.0),
         prefetch_section_count=int(diagnostics_totals.get("prefetch_section_count", 0) or 0),
         prefetch_reused_section_count=int(diagnostics_totals.get("prefetch_reused_section_count", 0) or 0),
         prefetch_catchup_section_count=int(diagnostics_totals.get("prefetch_catchup_section_count", 0) or 0),
@@ -730,6 +742,16 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "total_extracted_edge_count": 0,
         "backbone_unit_count": 0,
         "backbone_edge_count": 0,
+        "stitched_edge_count": 0,
+        "section_local_stitch_edge_count": 0,
+        "mention_stitch_edge_count": 0,
+        "graph_isolated_unit_count": 0,
+        "graph_component_count": 0,
+        "graph_largest_component_unit_count": 0,
+        "graph_active_unit_count": 0,
+        "graph_active_edge_count": 0,
+        "graph_avg_degree": 0,
+        "graph_isolated_unit_pct": 0,
         "prefetch_section_count": 0,
         "prefetch_reused_section_count": 0,
         "prefetch_catchup_section_count": 0,

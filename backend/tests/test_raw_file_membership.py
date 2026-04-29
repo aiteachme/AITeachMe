@@ -6,10 +6,10 @@ from collections.abc import Iterator
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.api.knowledge_docs import _collect_graph_source_file_ids
 from app.models import RawFile, RetrievalChunk, Course, CourseFileLink, User
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.repositories.knowledge import knowledge_repo
+from app.workflows.digest.kg_doc_sync.builds import _collect_graph_source_file_ids
 from app.workflows.digest.planner.nodes import load_planner_materials
 
 

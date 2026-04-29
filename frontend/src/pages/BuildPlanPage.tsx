@@ -876,6 +876,20 @@ export function BuildPlanPage() {
       return;
     }
     let cancelled = false;
+    const autoStartPrompt = navState?.autoStart ? navState.initialPrompt?.trim() : "";
+
+    if (autoStartPrompt) {
+      logPlannerDebug("skip_restore_for_autostart", { courseId });
+      setMessages(createInitialMessages());
+      setPlannerSessionId(null);
+      setCurrentPlan(null);
+      setInputValue(autoStartPrompt);
+      setPlannerNeedsRefresh(false);
+      setHasAutoUploaded(false);
+      setIsRevisingPlan(false);
+      hydratedCourseRef.current = null;
+      return;
+    }
 
     // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
     // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，

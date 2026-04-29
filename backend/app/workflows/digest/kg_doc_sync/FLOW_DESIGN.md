@@ -1,4 +1,4 @@
-﻿# kg_doc_sync Flow Design
+# kg_doc_sync Flow Design
 
 最后更新：2026-04-28
 
@@ -68,7 +68,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `knowledge_graph_build` | `api/knowledge_docs.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
+| `trigger_graph_docs_sync_manual_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；由 API 完成鉴权后调用，校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
 | `docgen kg_prefetch sidecar` | `kg_doc_sync/lib/prefetch.py` | 间接 LLM | `EXTRACT` | `light` | `qwen-flash` | DocGen 增强章节完成后后台预抽取 section payload，只进内存缓存，不落库 |
 | `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，消费并停止同 build 的预抽取 sidecar |
 | `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并把可复用预抽取 payload 传入 `digest.kg_doc_sync` |
@@ -76,6 +76,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `course` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
 | `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载课程上下文，按章节并发抽取图谱候选并合并 backbone/结构边 |
+| `stitch_relations` | `kg_doc_sync/nodes/stitch_node.py` | 无 LLM | 无 | 无 | 无 | 在写库前用同小节关系和显式正文引用补少量保守边，并计算孤立率、连通分量等健康指标 |
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
@@ -156,6 +157,13 @@ fan-in extraction payloads
   补结构边和跨章节语义边。
   |
   v
+stitch_relations
+  不调用 LLM、不访问数据库。
+  同一小节内把定义、公式、例题、方法、易错点连接到主概念。
+  对仍然孤立且正文明确引用其它唯一知识点的节点补少量引用边。
+  计算孤立节点数、连通分量、最大连通分量和平均度。
+  |
+  v
 upsert graph
 persist
   按 course + type + normalized_name 复用稳定 KnowledgeUnit。
@@ -175,11 +183,12 @@ run_graph_docs_sync_after_doc_build
 手动重建主线：
 
 ```text
-knowledge_graph_build
+trigger_graph_docs_sync_manual_build
   用户在知识图谱面板点击“构建图谱”。
+  API 路由只负责 course 鉴权和响应包装。
   从当前已发布 KnowledgeDoc 和 manifest 读取输入。
   不读取、不等待、不复用 DocGen 预抽取缓存。
-  后续仍走 prepare -> init_run -> extract -> persist -> finalize。
+  后续仍走 prepare -> init_run -> extract -> stitch_relations -> persist -> finalize。
 ```
 
 失败路径：
@@ -188,6 +197,7 @@ knowledge_graph_build
 prepare --error--> fail --> END
 init_run--error--> fail --> END
 extract --error--> fail --> END
+stitch_relations --error--> fail --> END
 persist --error--> fail --> END
 finalize--error--> fail --> END
 ```
@@ -196,7 +206,7 @@ finalize--error--> fail --> END
 
 ```text
 LangGraph 层
-  prepare -> init_run -> extract -> persist -> finalize
+  prepare -> init_run -> extract -> stitch_relations -> persist -> finalize
   当前没有 LangGraph Send fan-out。
   每个节点负责本阶段输入合同、数据库会话边界、错误归一化和 `node_metrics`。
 
@@ -211,6 +221,7 @@ payload fan-in 后
   + DocGen backbone units
   + structural edges
   + cross-section semantic edges
+  + relation stitching edges
   -> DB upsert / source refs / deprecate
 ```
 
@@ -219,7 +230,7 @@ payload fan-in 后
 这一节是 KG docs-sync 的详细执行合同。字段以当前 state/model 为准，重点写清每一步输入、输出和失败边界。
 
 ```text
-knowledge_graph_build
+trigger_graph_docs_sync_manual_build
   输入：
     - course_id：课程主键，形如 course_xxx。
   前置校验：
@@ -367,6 +378,22 @@ extract
   当前模型方案：
     - 节点本身无直接 LLM；内部 extractor 可能调用 LLM。
 
+stitch_relations
+  输入：
+    - extraction_payload
+  输出：
+    - extraction_payload
+    - error
+  作用：
+    - 用纯本地规则补充 conservative edges，减少“有节点但无关系”的散点。
+    - 同一小节中存在主概念时，把 definition / formula / theorem / example / exercise / method / remark 连接到主概念。
+    - 对仍然孤立的节点，如果其正文明确提到其它唯一节点名，补少量 mention_stitch 边。
+    - 计算 graph_isolated_unit_count / graph_component_count / graph_largest_component_unit_count / graph_avg_degree / graph_isolated_unit_pct。
+  失败：
+    - 缝合异常写入 error，fail 节点会标记 sync run failed。
+  当前模型方案：
+    - 无 LLM。
+
 persist
   输入：
     - sync_run_context
@@ -397,7 +424,7 @@ sync_markdown_knowledge_graph
   输出：
     - KnowledgeSyncReport
   作用：
-    - 兼容旧调用方的一口气 façade，内部顺序调用 init_run / extract / persist 阶段 API。
+    - 单函数同步入口，内部顺序调用 init_run / extract / stitch / persist 阶段 API。
   当前模型方案：
     - 函数本身无 LLM；extract 阶段可能调用 extractor。
 
@@ -587,6 +614,11 @@ fail
 | `total_extracted_node_count / total_extracted_edge_count` | 原始抽取候选计数 |
 | `source_ref_count` | source ref 写入数 |
 | `backbone_unit_count / backbone_edge_count` | DocGen backbone 补入数量；unit 当前应为 0，edge 只连接已抽取节点 |
+| `stitched_edge_count` | 本地关系缝合补入的边数，不包含 LLM 直接抽取边 |
+| `section_local_stitch_edge_count / mention_stitch_edge_count` | 同小节缝合边数 / 正文显式引用缝合边数 |
+| `graph_isolated_unit_count / graph_isolated_unit_pct` | 缝合后仍为 0 度的抽取节点数量 / 占比 |
+| `graph_component_count / graph_largest_component_unit_count` | 缝合后的无向连通分量数量 / 最大连通分量规模 |
+| `graph_avg_degree` | 缝合后的平均无向度 |
 | `stable_anchor_count` | 本轮稳定 anchor 数 |
 | `elapsed_ms` | 同步耗时 |
 
@@ -610,6 +642,10 @@ fail
 | `doc_sync_empty_repair_attempt_count / doc_sync_empty_repair_success_count` | `report.empty_repair_attempt_count / empty_repair_success_count` |
 | `source_ref_count` | `report.source_ref_count` |
 | `backbone_unit_count / backbone_edge_count` | `report.backbone_*`；unit 兼容保留，edge 表示 backbone 给已抽取节点补的关系 |
+| `stitched_edge_count` | `report.stitched_edge_count` |
+| `section_local_stitch_edge_count / mention_stitch_edge_count` | `report.section_local_stitch_edge_count / mention_stitch_edge_count` |
+| `graph_isolated_unit_count / graph_isolated_unit_pct` | `report.graph_isolated_unit_count / graph_isolated_unit_pct` |
+| `graph_component_count / graph_largest_component_unit_count / graph_avg_degree` | `report.graph_component_count / graph_largest_component_unit_count / graph_avg_degree` |
 | `stable_anchor_count` | `report.stable_anchor_count` |
 | `deprecated_unit_count / deprecated_edge_count` | `report.deprecated_*` |
 

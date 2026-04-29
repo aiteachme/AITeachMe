@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -14,8 +14,9 @@ import {
 } from "lucide-react";
 import {
   graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost,
+  graphKnowledgeUnitsApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsPost,
 } from "../../api/generated/knowledge";
-import type { FullGraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
+import type { KnowledgeOverviewStats, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Card, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -223,10 +224,10 @@ type ViewMode = "list" | "graph";
 
 export function KnowledgeGraphView({
   course,
-  overviewGraph,
+  stats,
 }: {
   course: string;
-  overviewGraph: FullGraphResponse | null;
+  stats: KnowledgeOverviewStats | null;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
@@ -235,54 +236,30 @@ export function KnowledgeGraphView({
   const [evidenceModalState, setEvidenceModalState] = useState<{ chunkId: number; quoteText: string } | null>(null);
   const pageSize = 30;
 
-  const localListData = useMemo(() => {
-    if (!overviewGraph) return null;
+  const graphNodeCount = Number(stats?.node_count ?? 0);
+  const graphEdgeCount = Number(stats?.edge_count ?? 0);
 
-    const allNodes = overviewGraph?.nodes ?? [];
-    const filtered = nodeType
-      ? allNodes.filter((node) => node.knowledge_unit_type.toLowerCase() === nodeType.toLowerCase())
-      : allNodes;
+  const { data: listData, isLoading: listLoading } = useQuery({
+    queryKey: ["graph-node-list", course, nodeType ?? "all", page, pageSize],
+    queryFn: async () =>
+      unwrapOrvalResponse(
+        await graphKnowledgeUnitsApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsPost(course, {
+          page,
+          size: pageSize,
+          knowledge_unit_type: nodeType ?? null,
+        }),
+      ) ?? null,
+    enabled: viewMode === "list" && Boolean(course),
+    retry: false,
+  });
 
-    const total = filtered.length;
-    const pages = Math.max(1, Math.ceil(total / pageSize));
-    const safePage = Math.min(page, pages);
-    const start = (safePage - 1) * pageSize;
-
-    return {
-      items: filtered.slice(start, start + pageSize),
-      total,
-      pages,
-      page: safePage,
-    };
-  }, [overviewGraph, nodeType, page]);
-
-  const nodes = localListData?.items ?? [];
-  const total = localListData?.total ?? 0;
-  const totalPages = localListData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
-  const displayPage = localListData?.page ?? page;
-
-  if (total === 0 && !nodeType) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-        <Network className="w-8 h-8 mb-2 text-slate-300" />
-        <p className="text-sm">暂无知识节点</p>
-        <p className="text-xs mt-1">构建完成后将自动抽取知识节点</p>
-      </div>
-    );
-  }
+  const nodes = listData?.items ?? [];
+  const total = listData?.total ?? (nodeType ? 0 : graphNodeCount);
+  const totalPages = listData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
+  const displayPage = listData?.page ?? page;
 
   const viewToggle = (
     <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
-      <button
-        onClick={() => setViewMode("list")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
-          viewMode === "list"
-            ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
-            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        }`}
-      >
-        <List className="w-3.5 h-3.5" />列表视图
-      </button>
       <button
         onClick={() => setViewMode("graph")}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
@@ -291,24 +268,62 @@ export function KnowledgeGraphView({
             : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
         }`}
       >
-        <Share2 className="w-3.5 h-3.5" />力导向图
+        <Share2 className="w-3.5 h-3.5" />图谱
+      </button>
+      <button
+        onClick={() => setViewMode("list")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+          viewMode === "list"
+            ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
+            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+        }`}
+      >
+        <List className="w-3.5 h-3.5" />节点列表
       </button>
     </div>
   );
 
+  if (graphNodeCount === 0 && !nodeType) {
+    return (
+      <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white dark:bg-slate-950">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+          {viewToggle}
+          <span className="shrink-0 text-xs text-slate-400">0 节点 · 0 关系</span>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <div className="flex max-w-sm flex-col items-center text-center text-slate-500">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
+              <Network className="h-5 w-5" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">暂无知识节点</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">构建完成后会在这里展示知识点与关系。</p>
+          </div>
+        </div>
+        <EvidenceContextModal
+          open={!!evidenceModalState}
+          onClose={() => setEvidenceModalState(null)}
+          course={course}
+          chunkId={evidenceModalState?.chunkId ?? null}
+          quoteText={evidenceModalState?.quoteText}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="knowledge-graph-view flex flex-col h-full min-h-0 gap-4">
+    <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white dark:bg-slate-950">
       {viewMode === "graph" && (
         <ForceGraphView
           course={course}
           toolbar={viewToggle}
           onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
-          fullGraphData={overviewGraph}
+          totalNodeCount={graphNodeCount}
+          totalEdgeCount={graphEdgeCount}
         />
       )}
 
       {viewMode === "list" && (
-        <div className="flex gap-4">
+        <div className="flex h-full gap-4 overflow-auto p-3">
           <div className={`${selectedNodeId ? "w-1/2" : "w-full"} space-y-4 transition-all`}>
             <div className="flex items-center gap-3 flex-wrap">
               {viewToggle}
@@ -333,36 +348,47 @@ export function KnowledgeGraphView({
               </div>
             </div>
 
-            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
-              {nodes.map((node: KnowledgeUnitResponse) => {
-                const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
-                  label: node.knowledge_unit_type,
-                  color: "bg-slate-100 text-slate-600",
-                };
-                const isSelected = selectedNodeId === node.id;
-                return (
-                  <button
-                    key={node.id}
-                    onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
-                    className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
-                      isSelected
-                        ? "border-slate-400 bg-slate-50 shadow-sm dark:border-slate-600 dark:bg-slate-900"
-                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="flex-1 truncate text-sm text-slate-800 dark:text-slate-200 [&_p]:mb-0 [&_p]:inline">
-                        <MarkdownViewer content={node.canonical_name} />
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
-                        {typeStyle.label}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1">置信度：{Math.round(node.confidence * 100)}%</div>
-                  </button>
-                );
-              })}
-            </div>
+            {listLoading ? (
+              <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                加载节点...
+              </div>
+            ) : nodes.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {nodes.map((node: KnowledgeUnitResponse) => {
+                  const typeStyle = NODE_TYPE_STYLE[node.knowledge_unit_type] ?? {
+                    label: node.knowledge_unit_type,
+                    color: "bg-slate-100 text-slate-600",
+                  };
+                  const isSelected = selectedNodeId === node.id;
+                  return (
+                    <button
+                      key={node.id}
+                      onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+                      className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
+                        isSelected
+                          ? "border-slate-400 bg-slate-50 shadow-sm dark:border-slate-600 dark:bg-slate-900"
+                          : "border-slate-200 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-sm text-slate-800 dark:text-slate-200 [&_p]:mb-0 [&_p]:inline">
+                          <MarkdownViewer content={node.canonical_name} />
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
+                          {typeStyle.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-400">置信度：{Math.round(node.confidence * 100)}%</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+                当前筛选下暂无节点
+              </div>
+            )}
 
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 pt-2">
