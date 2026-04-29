@@ -102,7 +102,8 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=40,
-        note="短标题生成属于轻量生成，使用 GENERATE 的默认采样配置。",
+        temperature_override=0.65,
+        note="短标题生成需要一定发散度，单独提高采样温度以减少同质化。",
     ),
     PlannerModelStep.COURSE_ICON: PlannerModelPolicy(
         step=PlannerModelStep.COURSE_ICON,
