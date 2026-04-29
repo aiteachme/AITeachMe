@@ -26,6 +26,8 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -38,7 +40,7 @@ from app.shared.infra.database.core import (  # noqa: E402
     _get_postgres_alembic_revision,
     _postgres_table_exists,
 )
-from app.shared.infra.env_support import get_env_bool  # noqa: E402
+from app.shared.infra.env_support import get_env, get_env_bool  # noqa: E402
 from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
 
 ALLOW_RESET_ENV = "ALLOW_CLOUD_DB_RESET"
@@ -83,6 +85,68 @@ def _inspect_database_state() -> tuple[str | None, list[str]]:
     return current_revision, existing_tables
 
 
+def _database_target_summary() -> str:
+    raw_url = (get_env("DATABASE_URL") or "").strip()
+    if not raw_url:
+        return "DATABASE_URL=missing"
+    try:
+        url = make_url(raw_url)
+    except Exception:  # noqa: BLE001
+        return "DATABASE_URL=unparseable"
+
+    return (
+        f"driver={url.drivername}, "
+        f"host={url.host or 'unknown'}, "
+        f"port={url.port or 'default'}, "
+        f"database={url.database or 'unknown'}"
+    )
+
+
+def _looks_like_database_connectivity_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return isinstance(exc, OperationalError) or any(
+        marker in text
+        for marker in (
+            "could not translate host name",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "connection refused",
+            "connection timed out",
+            "timeout expired",
+            "no route to host",
+            "network is unreachable",
+            "password authentication failed",
+        )
+    )
+
+
+def _format_database_connectivity_error(exc: Exception) -> str:
+    text = str(exc).lower()
+    lines = [
+        "cloud database bootstrap failed before migrations: cannot connect to PostgreSQL.",
+        f"Target: {_database_target_summary()}",
+    ]
+    if "could not translate host name" in text or "name or service not known" in text:
+        lines.extend(
+            [
+                "Reason: DATABASE_URL host cannot be resolved by DNS from this runtime.",
+                "If the host ends with `.svc` or `.svc.cluster.local`, it is Kubernetes-internal "
+                "and only works from a workload inside the same cluster network.",
+                "Fix: use the database public/pooled connection string, or run the backend/bootstrap "
+                "Job in the same Sealos/Kubernetes cluster and verify the service name plus namespace.",
+            ]
+        )
+    elif "password authentication failed" in text:
+        lines.append("Reason: PostgreSQL rejected the configured username/password.")
+    else:
+        lines.append(
+            "Reason: PostgreSQL is unreachable or rejected the connection. "
+            "Check network, port, firewall, and DATABASE_URL."
+        )
+    lines.append(f"Original error: {exc}")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     if not is_cloud_mode():
         print("bootstrap_cloud_db requires APP_MODE=cloud.", file=sys.stderr)
@@ -90,7 +154,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _build_arg_parser().parse_args(argv)
     allow_reset = bool(args.reset_db) or get_env_bool(ALLOW_RESET_ENV, False)
-    current_revision, existing_tables = _inspect_database_state()
+    try:
+        current_revision, existing_tables = _inspect_database_state()
+    except Exception as exc:  # noqa: BLE001
+        if _looks_like_database_connectivity_error(exc):
+            print(_format_database_connectivity_error(exc), file=sys.stderr)
+        else:
+            print(f"cloud database bootstrap failed while inspecting database: {exc}", file=sys.stderr)
+        return 1
+
     expected_revision = _get_alembic_head_revision()
     print(
         "cloud database bootstrap starting "
@@ -132,7 +204,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return exc.returncode or 1
     except Exception as exc:  # noqa: BLE001
-        print(f"cloud database bootstrap failed: {exc}", file=sys.stderr)
+        if _looks_like_database_connectivity_error(exc):
+            print(_format_database_connectivity_error(exc), file=sys.stderr)
+        else:
+            print(f"cloud database bootstrap failed: {exc}", file=sys.stderr)
         return 1
 
     print(
