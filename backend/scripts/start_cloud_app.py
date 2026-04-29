@@ -48,9 +48,17 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
     if is_cloud_mode():
-        _run_bootstrap(
-            reset_db=bool(args.reset_db),
-        )
+        try:
+            _run_bootstrap(
+                reset_db=bool(args.reset_db),
+            )
+        except subprocess.CalledProcessError as exc:
+            print(
+                "cloud database bootstrap command failed; app startup aborted "
+                f"(exit={exc.returncode})",
+                file=sys.stderr,
+            )
+            return exc.returncode or 1
 
     uvicorn_cmd = [
         sys.executable,
