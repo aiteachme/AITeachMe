@@ -904,6 +904,18 @@
   contain-intrinsic-size: 76px;
 }
 
+@supports (content-visibility: auto) {
+  .atm-deferred-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 220px;
+  }
+
+  .atm-deferred-row {
+    content-visibility: auto;
+    contain-intrinsic-size: 72px;
+  }
+}
+
 .modal-backdrop {
   background: rgba(15, 23, 42, 0.18);
 }

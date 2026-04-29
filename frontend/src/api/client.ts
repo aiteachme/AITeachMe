@@ -14,6 +14,7 @@ export const DEFAULT_API_TIMEOUT_MS = 10_000;
 export const LONG_RUNNING_API_TIMEOUT_MS = 120_000;
 const BACKEND_HEALTH_CHECK_TIMEOUT_MS = 1_200;
 const BACKEND_RECOVERY_POLL_INTERVAL_MS = 1_500;
+const BACKEND_RECOVERY_POLL_MAX_INTERVAL_MS = 10_000;
 export const BACKEND_OFFLINE_EVENT = "aiteachme:backend-offline";
 export const BACKEND_ONLINE_EVENT = "aiteachme:backend-online";
 
@@ -59,6 +60,7 @@ const activeRequestControllers = new Set<AbortController>();
 const activeEventSources = new Set<EventSource>();
 let backendOffline = false;
 let recoveryProbeTimer: number | null = null;
+let recoveryProbeAttempt = 0;
 let connectionIssueProbeInFlight = false;
 
 function getAccessToken(): string | null {
@@ -106,6 +108,11 @@ function createBackendOfflineError(): Error & { code: string } {
   error.name = "BackendOfflineError";
   error.code = "BACKEND_OFFLINE";
   return error;
+}
+
+export function isBackendOfflineError(error: unknown): boolean {
+  const apiError = error as ApiErrorShape & { name?: string };
+  return apiError?.code === "BACKEND_OFFLINE" || apiError?.name === "BackendOfflineError";
 }
 
 function dispatchBackendConnectionEvent(eventName: string, detail?: Record<string, unknown>) {
@@ -201,6 +208,7 @@ function stopBackendRecoveryProbe() {
   }
   window.clearTimeout(recoveryProbeTimer);
   recoveryProbeTimer = null;
+  recoveryProbeAttempt = 0;
 }
 
 function startBackendRecoveryProbe() {
@@ -209,16 +217,22 @@ function startBackendRecoveryProbe() {
   }
 
   const schedule = () => {
+    const delay = Math.min(
+      BACKEND_RECOVERY_POLL_MAX_INTERVAL_MS,
+      BACKEND_RECOVERY_POLL_INTERVAL_MS * 2 ** Math.min(recoveryProbeAttempt, 3),
+    );
     recoveryProbeTimer = window.setTimeout(async () => {
       recoveryProbeTimer = null;
       if (await checkBackendHealthOnce()) {
+        recoveryProbeAttempt = 0;
         markBackendOnline();
         return;
       }
+      recoveryProbeAttempt += 1;
       if (backendOffline) {
         schedule();
       }
-    }, BACKEND_RECOVERY_POLL_INTERVAL_MS);
+    }, delay);
   };
 
   schedule();
@@ -229,6 +243,7 @@ export function markBackendOnline(): void {
     return;
   }
   backendOffline = false;
+  recoveryProbeAttempt = 0;
   stopBackendRecoveryProbe();
   dispatchBackendConnectionEvent(BACKEND_ONLINE_EVENT);
 }
@@ -241,6 +256,7 @@ export function markBackendOffline(reason = "network_error"): void {
   }
 
   backendOffline = true;
+  recoveryProbeAttempt = 0;
   abortActiveApiRequests();
   closeActiveEventSources();
   startBackendRecoveryProbe();

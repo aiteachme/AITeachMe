@@ -222,7 +222,8 @@ export function ExamsPage() {
       const response = await getExamPrewarmStatus(subjectId, currentCreateConfig, signal);
       return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
     },
-    refetchInterval: 8000,
+    staleTime: 30_000,
+    refetchInterval: (query) => (query.state.data?.status === "preparing" ? 8000 : false),
   });
 
   const historyQuery = useExamHistoryApiV1SubjectsSubjectIdExamsHistoryGet(subjectId ?? "", { page: 1, size: 24 });

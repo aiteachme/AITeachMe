@@ -346,6 +346,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
+  const shouldAnimateSubjectItems = groupedSubjects.length <= 24;
   const shouldShowSubjectList = effectiveCollapsed || isSubjectSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
     setIsCollapsed(false);
@@ -676,9 +677,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <motion.div
                   className="space-y-0.5"
-                  variants={sidebarListContainerMotion}
-                  initial="hidden"
-                  animate="visible"
+                  variants={shouldAnimateSubjectItems ? sidebarListContainerMotion : undefined}
+                  initial={shouldAnimateSubjectItems ? "hidden" : false}
+                  animate={shouldAnimateSubjectItems ? "visible" : undefined}
                 >
                   <AnimatePresence initial={false}>
               {groupedSubjects.map((subject) => {
@@ -690,10 +691,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 return (
                   <motion.div
                     key={subject.subject_id}
-                    variants={sidebarItemMotion}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
+                    variants={shouldAnimateSubjectItems ? sidebarItemMotion : undefined}
+                    initial={shouldAnimateSubjectItems ? "hidden" : false}
+                    animate={shouldAnimateSubjectItems ? "visible" : undefined}
+                    exit={shouldAnimateSubjectItems ? "exit" : undefined}
                     className="relative"
                   >
                 <div

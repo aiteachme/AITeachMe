@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline } from "./api/client";
+import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
@@ -16,6 +16,7 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
+      retry: (failureCount, error) => !isBackendOfflineError(error) && failureCount < 1,
     },
   },
 });

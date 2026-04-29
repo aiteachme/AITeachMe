@@ -114,11 +114,6 @@ async function fetchAvailableCourses(): Promise<CoursePackageItem[]> {
   const response = await apiClient<ApiResponse<CoursePackageItem[]>>({
     method: "GET",
     url: `/api/v1/courses`,
-    params: { _: Date.now() },
-    headers: {
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache",
-    },
   });
   return response.data;
 }
@@ -698,6 +693,8 @@ export function HomePage() {
     queryKey: ["available-courses"],
     queryFn: fetchAvailableCourses,
     enabled: shouldShowDemoCourses,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
   });
 
   const courseImportMutation = useMutation({
@@ -740,7 +737,7 @@ export function HomePage() {
         throw new Error("创建学科失败");
       }
       setDraftSubjectId(created.subject_id);
-      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
       return created.subject_id;
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
@@ -802,8 +799,8 @@ export function HomePage() {
       const nextFileIds = uniqueStrings([...entryFileIds, ...uploadedIds]);
       setEntryFileIds(nextFileIds);
       syncEntryFilesCache(nextFileIds, uploaded);
-      await queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
-      await queryClient.invalidateQueries({ queryKey: ["files-library"] });
+      void queryClient.invalidateQueries({ queryKey: HOME_ENTRY_FILES_QUERY_KEY(nextFileIds) });
+      void queryClient.invalidateQueries({ queryKey: ["files-library"] });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "文件上传失败"));
     } finally {
@@ -872,8 +869,8 @@ export function HomePage() {
       const subjectId = await ensureDraftSubjectId();
       if (entryFileIds.length > 0) {
         await linkFilesToSubject(subjectId, entryFileIds);
-        await queryClient.invalidateQueries({ queryKey: ["subjects"] });
-        await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+        void queryClient.invalidateQueries({ queryKey: ["subjects"] });
+        void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
       }
       const userGoal = prompt.trim();
       const selectedModel = toChatRequestModel(chatModel);
@@ -1205,13 +1202,13 @@ export function HomePage() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                           >
-                            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col hover:-translate-y-1">
+                            <div className="atm-deferred-card flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
-                                  <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
-                                  <p className="mt-1 text-xs font-medium text-emerald-600">演示课程</p>
+                                  <h3 className="line-clamp-1 text-lg font-bold text-slate-900 dark:text-slate-100">{course.subject_name}</h3>
+                                  <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-300">演示课程</p>
                                 </div>
-                                <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
+                                <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-2 dark:border-emerald-500/20 dark:bg-emerald-500/10">
                                   <Package className="w-5 h-5 text-emerald-500" />
                                 </div>
                               </div>
@@ -1219,32 +1216,32 @@ export function HomePage() {
                               {/* Stats chips */}
                               <div className="flex flex-wrap gap-1.5 mb-4">
                                 {course.stats.knowledge_unit_count > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {course.stats.knowledge_unit_count} 知识点
                                   </span>
                                 )}
                                 {course.stats.raw_file_count > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {course.stats.raw_file_count} 文件
                                   </span>
                                 )}
                                 {course.file_size_bytes > 0 && (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                                     {formatFileSize(course.file_size_bytes)}
                                   </span>
                                 )}
                               </div>
 
                               {/* Footer */}
-                              <div className="mt-auto border-t border-slate-100 pt-3">
+                              <div className="mt-auto border-t border-slate-100 pt-3 dark:border-slate-800">
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-all",
+                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all",
                                     !courseImportMutation.isPending
-                                      ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
-                                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                      ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                      : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
                                   )}
                                   title={`导入 ${course.subject_name} 到左侧学科列表`}
                                 >

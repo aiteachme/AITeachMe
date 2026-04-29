@@ -61,14 +61,6 @@ export function Layout() {
             isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
-          {!isSettingsOpen ? (
-            <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden mix-blend-multiply dark:mix-blend-screen">
-              <div className="absolute -left-[4%] -top-[8%] h-[440px] w-[440px] rounded-full bg-indigo-100/30 dark:bg-indigo-900/20 blur-[72px] opacity-75 dark:opacity-40" />
-              <div className="absolute bottom-[-8%] right-[-4%] h-[420px] w-[420px] rounded-full bg-zinc-200/40 dark:bg-slate-800/30 blur-[72px] opacity-55 dark:opacity-40" />
-              <div className="absolute left-[32%] top-[22%] h-[520px] w-[520px] rounded-full bg-sky-100/24 dark:bg-sky-900/10 blur-[88px] opacity-60 dark:opacity-30" />
-            </div>
-          ) : null}
-
           {!isExamFocusPage && <Sidebar onOpenSettings={openSettings} />}
           <div className="relative z-10 flex min-w-0 flex-1 flex-col">
             {shouldShowTopBar && (

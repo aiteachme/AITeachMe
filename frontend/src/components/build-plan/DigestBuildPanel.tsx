@@ -150,7 +150,7 @@ export function useKnowledgeDocsBuildState(subject: string) {
         query.state.data?.docgen?.status,
         query.state.data?.graph?.status,
       ].map((status) => (status ?? "").trim());
-      return statuses.some((status) => ACTIVE_BUILD_STATUSES.has(status)) ? 2500 : 10000;
+      return statuses.some((status) => ACTIVE_BUILD_STATUSES.has(status)) ? 2500 : false;
     },
   });
 }

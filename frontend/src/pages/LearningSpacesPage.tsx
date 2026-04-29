@@ -174,7 +174,7 @@ export function LearningSpacesPage() {
                 return (
                   <motion.div
                     key={subject.subject_id}
-                    className="group flex min-h-[232px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    className="atm-deferred-card group flex min-h-[232px] flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{
