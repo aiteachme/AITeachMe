@@ -6,7 +6,10 @@ import asyncio
 import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
+from app.shared.infra.tools.builtin.markdown_processing import (
+    find_markdown_rendering_issues,
+    normalize_markdown_rendering,
+)
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
@@ -47,8 +50,11 @@ async def _apply_patch_action(
     """
 
     if action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason:
+        before_issues = find_markdown_rendering_issues(chapter.markdown)
         patched = normalize_markdown_rendering(chapter.markdown)
-        if patched and patched != chapter.markdown:
+        after_issues = find_markdown_rendering_issues(patched)
+        improved = patched and patched != chapter.markdown and len(after_issues) < len(before_issues)
+        if improved:
             updated = chapter.model_copy(
                 update={
                     "markdown": patched,
@@ -76,6 +82,24 @@ async def _apply_patch_action(
                 updated_action,
                 None,
             )
+        updated_action = action.model_copy(update={"status": "skipped"})
+        remaining = "；".join(after_issues or before_issues or ["确定性修补未减少渲染问题。"])
+        return (
+            chapter,
+            RepairTraceItem(
+                trace_id=f"repair_trace_{action.action_id or action.action_type}",
+                action_id=action.action_id,
+                action_type=action.action_type,
+                chapter_index=action.chapter_index,
+                status="skipped",
+                reason=action.reason,
+                target_anchor=action.target_anchor,
+                changed=False,
+                detail=f"Deterministic markdown normalization did not reduce rendering issues: {remaining}",
+            ),
+            updated_action,
+            _unresolved_message(updated_action, status="skipped"),
+        )
 
     try:
         patched_markdown = await acompletion_with_fallback(
