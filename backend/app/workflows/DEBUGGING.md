@@ -68,6 +68,26 @@ LANGSMITH_API_KEY=...
 LANGSMITH_PROJECT=AITeachMe
 ```
 
+云端配置 LangSmith 上报后，会默认捕获 LLM 的 prompt 和输出，方便直接排查
+prompt / output 内容：
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=...
+LANGSMITH_PROJECT=AITeachMe
+LANGSMITH_MAX_TEXT_CHARS=50000
+```
+
+如果需要只看链路耗时、不保存明文内容，可以分别关闭输入或输出捕获：
+
+```env
+LANGSMITH_CAPTURE_INPUTS=false
+LANGSMITH_CAPTURE_OUTPUTS=false
+```
+
+如果长期保存线上 trace，建议在产品隐私说明里明确告知用户学习资料、答题和对话内容
+可能用于服务诊断与质量改进。
+
 ## 4. Studio 适合看什么
 
 Studio 适合：
