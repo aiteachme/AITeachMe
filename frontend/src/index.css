@@ -309,7 +309,7 @@
     margin-left: -6px;
   }
 
-  .markdown-collapsible-section[data-collapsed="true"] > :not(:first-child) {
+  .markdown-collapsible-section[data-collapsed="true"] > [data-heading-section-body="true"] {
     display: none !important;
   }
 
