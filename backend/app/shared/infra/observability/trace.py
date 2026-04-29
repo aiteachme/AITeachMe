@@ -20,7 +20,7 @@ from langsmith import tracing_context
 
 from app.shared.infra.observability.defaults import DEFAULT_LANGSMITH_MAX_TEXT_CHARS
 from app.shared.infra.settings import get_settings
-from app.shared.infra.env_support import get_env, get_env_bool
+from app.shared.infra.env_support import get_env, get_env_bool, get_env_optional_bool
 from app.shared.infra.runtime import get_app_version, is_local_mode
 
 LangSmithRunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
@@ -122,12 +122,20 @@ def langsmith_require_endpoint_probe() -> bool:
     return get_env_bool("LANGSMITH_REQUIRE_ENDPOINT_PROBE", False)
 
 
+def _langsmith_capture_text_enabled(specific_env_name: str) -> bool:
+    specific_value = get_env_optional_bool(specific_env_name)
+    if specific_value is not None:
+        return specific_value
+
+    return is_local_mode() or (langsmith_tracing_requested() and _langsmith_api_key_present())
+
+
 def langsmith_capture_inputs_enabled() -> bool:
-    return is_local_mode()
+    return _langsmith_capture_text_enabled("LANGSMITH_CAPTURE_INPUTS")
 
 
 def langsmith_capture_outputs_enabled() -> bool:
-    return is_local_mode()
+    return _langsmith_capture_text_enabled("LANGSMITH_CAPTURE_OUTPUTS")
 
 
 def _langsmith_api_key_present() -> bool:
