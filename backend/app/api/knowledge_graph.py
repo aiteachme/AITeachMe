@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from fastapi import APIRouter, Body, Depends, Path
 from sqlmodel import Session
 
@@ -29,7 +31,11 @@ from app.schemas.knowledge import (
     KnowledgeUnitsQueryRequest,
     KnowledgeUnitRelationsRequest,
     KnowledgeUnitResponse,
+    RetrievalDebugItem,
+    RetrievalDebugRequest,
+    RetrievalDebugResponse,
 )
+from app.shared.infra.search import get_knowledge_search_notice, search_knowledge
 from app.workflows.digest.kg_doc_sync import (
     explain_relation_path,
     find_knowledge_path,
@@ -228,3 +234,59 @@ async def chunk_context(
     normalized = normalize_course_id(course_id)
     get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(get_chunk_context(session, course_id=normalized, chunk_id=body.chunk_id))
+
+
+@router.post(
+    "/retrieval/debug",
+    response_model=ApiResponse[RetrievalDebugResponse],
+    summary="Debug course knowledge retrieval",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def debug_retrieval(
+    course_id: str = Path(...),
+    body: RetrievalDebugRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[RetrievalDebugResponse]:
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
+
+    started_at = perf_counter()
+    notice = await get_knowledge_search_notice(normalized)
+    chunks = (
+        []
+        if notice is not None
+        else await search_knowledge(
+            body.query,
+            normalized,
+            top_k=body.top_k,
+            enable_rerank=body.enable_rerank,
+        )
+    )
+    elapsed_ms = int((perf_counter() - started_at) * 1000)
+
+    items = [
+        RetrievalDebugItem(
+            chunk_id=chunk.chunk_id,
+            file_id=chunk.file_id,
+            title=chunk.title,
+            header_path=chunk.header_path,
+            score=chunk.score,
+            source=chunk.source,
+            content_chars=len(chunk.content),
+            content_preview=chunk.content[: body.preview_chars],
+        )
+        for chunk in chunks
+    ]
+    return ok_response(
+        RetrievalDebugResponse(
+            course_id=normalized,
+            query=body.query,
+            top_k=body.top_k,
+            enable_rerank=body.enable_rerank,
+            elapsed_ms=elapsed_ms,
+            result_count=len(items),
+            notice=notice,
+            items=items,
+        )
+    )

@@ -19,7 +19,7 @@ type CourseWithIcon = {
 };
 
 function displayCourseName(course: { name?: string | null }) {
-  return course.name?.trim() || "未命名课程";
+  return course.name?.trim() || "未命名学科";
 }
 
 function courseTone(name: string) {
@@ -87,7 +87,7 @@ export function LearningSpacesPage() {
   const courseCount = courses.length;
   return (
     <>
-      <div className="min-h-full px-4 pb-12 pt-10 sm:px-6 md:px-10 lg:px-12 xl:px-16">
+      <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
         <div className="mx-auto w-full max-w-[1560px]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
@@ -98,7 +98,7 @@ export function LearningSpacesPage() {
               <div>
                 <h1 className="text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">学习空间</h1>
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  管理课程、资料和课程包迁移。每个课程都可以继续构建、查看知识库、导出备份。
+                  管理学科、资料和课程包迁移。每个学科都可以继续构建、查看知识库、导出备份。
                 </p>
               </div>
             </div>
@@ -109,7 +109,7 @@ export function LearningSpacesPage() {
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
               >
-                新建课程
+                新建学科
               </WorkspaceActionButton>
               <WorkspaceActionButton
                 icon={<Upload className="h-4 w-4" />}
@@ -128,9 +128,9 @@ export function LearningSpacesPage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">课程列表</h2>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">学科列表</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {isLoading ? "正在加载课程..." : courseCount > 0 ? `${courseCount} 个课程可继续学习` : "还没有创建课程"}
+                {isLoading ? "正在加载学科..." : courseCount > 0 ? `${courseCount} 个学科可继续学习` : "还没有创建学科"}
               </p>
             </div>
           </div>
@@ -151,7 +151,7 @@ export function LearningSpacesPage() {
               </div>
               <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                可以新建一个空课程，也可以直接导入别人分享的 .atmx 课程包。
+                可以新建一个空学科，也可以直接导入别人分享的 .atmx 课程包。
               </p>
               <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                 <WorkspaceActionButton
@@ -159,7 +159,7 @@ export function LearningSpacesPage() {
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
                 >
-                  新建课程
+                  新建学科
                 </WorkspaceActionButton>
               </div>
             </div>
@@ -174,7 +174,7 @@ export function LearningSpacesPage() {
                 return (
                   <motion.div
                     key={course.course_id}
-                    className="group flex min-h-[232px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    className="atm-deferred-card group flex min-h-[232px] flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{
@@ -195,7 +195,7 @@ export function LearningSpacesPage() {
                             {displayName}
                           </h3>
                           <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            课程
+                            学科
                           </span>
                         </div>
                         <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">

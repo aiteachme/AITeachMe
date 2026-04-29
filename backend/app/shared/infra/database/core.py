@@ -153,6 +153,9 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("settings_hash", "TEXT NOT NULL DEFAULT ''"),
         ("effective_settings_json", "JSON NOT NULL DEFAULT '{}'"),
     ),
+    "question_template": (
+        ("is_marked", "BOOLEAN NOT NULL DEFAULT 0"),
+    ),
     "exam_paper": (
         ("visibility", "TEXT NOT NULL DEFAULT 'visible'"),
         ("generation_origin", "TEXT NOT NULL DEFAULT 'user'"),

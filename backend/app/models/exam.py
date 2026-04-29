@@ -34,6 +34,7 @@ class QuestionTemplate(SQLModel, table=True):
     selection_hints_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
+    is_marked: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

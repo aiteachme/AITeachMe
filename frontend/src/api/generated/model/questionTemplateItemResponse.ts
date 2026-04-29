@@ -21,6 +21,7 @@ export interface QuestionTemplateItemResponse {
   selection_hints?: QuestionTemplateItemResponseSelectionHints;
   template_version: number;
   status: string;
+  is_marked?: boolean;
   created_at: string;
   updated_at: string;
 }

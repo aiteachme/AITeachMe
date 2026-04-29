@@ -263,7 +263,7 @@ load_context
 常用能力：
 
 - 文本快速通道。
-- MarkItDown / PyMuPDF / PyMuPDF4LLM 等本地 parser。
+- MarkItDown（按需启用 docx/pdf extra）等轻量本地 parser。
 - MinerU 外部解析。
 - Vision OCR。
 - assets 规范化。

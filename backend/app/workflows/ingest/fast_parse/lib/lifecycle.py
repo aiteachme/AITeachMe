@@ -16,7 +16,6 @@ import structlog
 from app.shared.infra.database import managed_session
 from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
 from app.workflows.ingest.fast_parse.state import IngestParseState
 
@@ -65,6 +64,8 @@ def dispatch_enhancement_if_needed(
     file_id = str(state.get("file_id") or "").strip()
     if not user_id or not file_id:
         return False
+
+    from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
 
     enhance_coro = _run_deep_enhance_background(
         user_id=user_id,

@@ -22,6 +22,7 @@ from app.models import (
     ChatSession,
     ExamPaper,
     ExamPaperItem,
+    ExamStudyGuideCache,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeGraphSourceRef,
@@ -47,6 +48,7 @@ _EXAM_KEYS = [
     "question_type_registry",
     "exam_paper",
     "exam_paper_item",
+    "exam_study_guide_cache",
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
 _KNOWLEDGE_KEYS = [
@@ -101,6 +103,11 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.course_id == course_id),
         "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.course_id == course_id),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.course_id == course_id),
+        "exam_study_guide_cache": _count_rows(
+            session,
+            ExamStudyGuideCache,
+            ExamStudyGuideCache.course_id == course_id,
+        ),
         "exam_paper_item": _count_query(
             session,
             select(func.count())
@@ -283,6 +290,7 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
         .execution_options(synchronize_session=False)
     )
 
+    _bulk_delete_by_course(session, ExamStudyGuideCache, course_id=course_id)
     _bulk_delete_by_course(session, ExamPaper, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTemplate, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTypeRegistry, course_id=course_id)

@@ -179,7 +179,8 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Background
-    ctx.fillStyle = "#ffffff";
+    const isDarkTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+    ctx.fillStyle = isDarkTheme ? "#020617" : "#ffffff";
     ctx.fillRect(0, 0, cw, ch);
 
     // Subtle center glow
@@ -187,7 +188,7 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
       cw * 0.5, ch * 0.45, 0,
       cw * 0.5, ch * 0.45, Math.min(cw, ch) * 0.45,
     );
-    glow.addColorStop(0, "rgba(99, 102, 241, 0.03)");
+    glow.addColorStop(0, isDarkTheme ? "rgba(59, 130, 246, 0.12)" : "rgba(99, 102, 241, 0.03)");
     glow.addColorStop(1, "rgba(255, 255, 255, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, cw, ch);
@@ -323,18 +324,18 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
     return (
       <div
         ref={containerRef}
-        className="flex items-center justify-center rounded-xl bg-white"
+        className="flex items-center justify-center rounded-xl bg-white dark:bg-slate-950"
         style={{ height: containerHeight, minHeight: 300 }}
       >
         <div className="text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
             <svg className="h-6 w-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="12" cy="12" r="10" />
               <path d="M8 12h8M12 8v8" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-slate-500">暂无图谱数据</p>
-          <p className="mt-1 text-xs text-slate-400">构建知识资产后自动生成词云</p>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-300">暂无图谱数据</p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">构建知识资产后自动生成词云</p>
         </div>
       </div>
     );
@@ -343,7 +344,7 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
   return (
     <div
       ref={containerRef}
-      className="relative overflow-hidden rounded-xl bg-white"
+      className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-950"
       style={{
         height: containerHeight,
         minHeight: 400,
@@ -378,8 +379,8 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
             ),
           }}
         >
-          <div className="rounded-lg border border-slate-200/60 bg-white px-3 py-2 shadow-lg">
-            <p className="max-w-[200px] text-xs font-bold leading-tight text-slate-800">
+          <div className="rounded-lg border border-slate-200/60 bg-white px-3 py-2 shadow-lg dark:border-slate-700 dark:bg-slate-950 dark:shadow-[0_18px_36px_-20px_rgba(0,0,0,0.88)]">
+            <p className="max-w-[200px] text-xs font-bold leading-tight text-slate-800 dark:text-slate-100">
               {hoveredWord.fullName}
             </p>
             <div className="mt-1 flex items-center gap-1.5">
@@ -398,15 +399,10 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
       )}
 
       {/* Bottom info strip */}
-      <div
-        className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 px-3 pb-3 pt-8"
-        style={{
-          background: "linear-gradient(to top, rgba(255,255,255,0.95) 0%, transparent 100%)",
-        }}
-      >
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-white/95 to-transparent px-3 pb-3 pt-8 dark:from-slate-950/95">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-sm font-bold text-slate-800">{courseLabel}</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{courseLabel}</p>
             <p className="mt-0.5 text-[9px] text-slate-400">
               {nodes.length} 个知识节点 · 点击查看详情 · 滚轮缩放 · 拖拽平移
             </p>

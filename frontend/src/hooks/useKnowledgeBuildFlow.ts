@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
+  LONG_RUNNING_API_TIMEOUT_MS,
   apiClient,
   getApiErrorCode,
   getApiErrorData,
@@ -128,6 +129,7 @@ async function triggerKnowledgeBuild(
     method: "POST",
     url: `/api/v1/courses/${courseId}/knowledge/build`,
     data: payload,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
 
   return response.data ?? { requested_at: new Date().toISOString() };

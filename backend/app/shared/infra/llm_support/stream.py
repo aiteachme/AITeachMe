@@ -12,9 +12,9 @@ from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
-from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -27,13 +27,12 @@ from .common import (
     context_request_timeout_s,
     track_call,
 )
+from .litellm_loader import load_litellm
 from .observability import (
     _end_langsmith_trace,
     _langsmith_trace_kwargs,
     _record_new_token_event,
 )
-
-litellm = load_litellm()
 
 
 def _is_stream_usage_calculation_error(exc: Exception) -> bool:
@@ -80,6 +79,7 @@ async def acompletion_stream(
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
 
+    litellm = load_litellm()
     context = build_completion_context(
         task_type=task_type,
         call_purpose=call_purpose,
@@ -122,13 +122,13 @@ async def acompletion_stream(
             ) as trace_run:
                 response = await asyncio.wait_for(
                     litellm.acompletion(**prepared.call_kwargs),
-                    timeout=context_request_timeout_s(context),
+                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
                 )
                 usage = merge_usage(usage, extract_usage(response))
                 try:
                     async for chunk in _stream_chunks_with_timeout(
                         response,
-                        timeout_s=context_request_timeout_s(context),
+                        timeout_s=context_request_timeout_s(context, prepared.call_kwargs),
                     ):
                         usage = merge_usage(usage, extract_usage(chunk))
                         choices = getattr(chunk, "choices", None) or []
@@ -189,7 +189,9 @@ async def acompletion_stream(
                 success=False,
                 error="timeout",
             )
-            raise LLMTimeoutError(timeout_s=context.profile.timeout_s)
+            raise LLMTimeoutError(
+                timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+            )
         except asyncio.CancelledError:
             log_attempt_cancelled(
                 "llm_stream_cancelled",

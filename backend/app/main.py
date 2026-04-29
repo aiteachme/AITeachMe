@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import json
+import os
+import re
 import sys
 from time import perf_counter
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 import uuid
 
 import structlog
@@ -14,7 +18,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.shared.infra.settings import get_settings
+from app.shared.infra.settings import (
+    PROJECT_SETTINGS_ENV_NAME,
+    get_settings,
+    get_system_settings_override_payload,
+)
 from app.shared.infra.database import init_db
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_list
 from app.shared.infra.logger import (
@@ -49,11 +57,91 @@ from app.shared.infra.settings.support import (
 
 logger = structlog.get_logger()
 
+_SENSITIVE_SETTING_KEY_RE = re.compile(
+    r"(api[_-]?key|secret|token|password|access[_-]?key|private[_-]?key|credential)",
+    re.IGNORECASE,
+)
+
+
+def _redact_for_logs(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            redacted[key_text] = (
+                "<redacted>"
+                if _SENSITIVE_SETTING_KEY_RE.search(key_text)
+                else _redact_for_logs(item)
+            )
+        return redacted
+    if isinstance(value, list):
+        return [_redact_for_logs(item) for item in value]
+    return value
+
+
+def _format_utc_timestamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+
+def _inspect_project_settings_file() -> dict[str, Any]:
+    from app.shared.infra.env_support import resolve_project_settings_path
+    from app.shared.infra.settings.support import parse_yaml_mapping
+
+    configured_value = (get_env(PROJECT_SETTINGS_ENV_NAME) or "").strip()
+    resolved_path = resolve_project_settings_path()
+    info: dict[str, Any] = {
+        "env_name": PROJECT_SETTINGS_ENV_NAME,
+        "configured_value": configured_value or None,
+        "resolved_path": str(resolved_path) if resolved_path is not None else None,
+        "status": "not_configured",
+        "exists": False,
+        "is_file": False,
+        "readable": False,
+        "size_bytes": None,
+        "modified_at": None,
+        "loaded_keys": [],
+        "override_payload": {},
+    }
+    if resolved_path is None:
+        return info
+
+    try:
+        exists = resolved_path.exists()
+        is_file = resolved_path.is_file() if exists else False
+        info.update(
+            {
+                "exists": exists,
+                "is_file": is_file,
+                "status": "missing" if not exists else "not_file",
+            }
+        )
+        if not exists or not is_file:
+            return info
+
+        stat = resolved_path.stat()
+        info["size_bytes"] = stat.st_size
+        info["modified_at"] = _format_utc_timestamp(stat.st_mtime)
+
+        text = resolved_path.read_text(encoding="utf-8")
+        info["readable"] = True
+        payload = parse_yaml_mapping(text)
+        info["status"] = (
+            "loaded"
+            if payload
+            else ("empty" if not text.strip() else "loaded_empty_mapping")
+        )
+        info["loaded_keys"] = sorted(str(key) for key in payload.keys())
+        info["override_payload"] = _redact_for_logs(payload)
+        return info
+    except Exception as exc:  # noqa: BLE001
+        info["status"] = "read_or_parse_failed"
+        info["error"] = str(exc)
+        return info
+
 
 def _log_infra_diagnostics(settings) -> None:
     """启动时输出基础设施诊断信息，方便在 Render Logs 里排查。"""
 
-    import os
     from app.shared.infra.database import get_engine, is_postgres, is_sqlite
     from app.workflows.digest.common.runtime_config import (
         get_teaching_runtime_settings_source,
@@ -67,11 +155,29 @@ def _log_infra_diagnostics(settings) -> None:
     runtime_provider = resolve_runtime_llm_provider(base_url=llm_base_url)
     runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
     openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
+    settings_file_info = _inspect_project_settings_file()
+    system_override_payload = get_system_settings_override_payload()
+    effective_settings_payload = _redact_for_logs(settings.model_dump(mode="json"))
 
     app_mode = resolve_app_mode()
     storage_backend = get_storage_backend()
     uses_s3 = storage_is_s3()
     uses_dogecloud_tmp_token = s3_uses_dogecloud_tmp_token()
+
+    logger.info(
+        "runtime_settings_loaded",
+        project_settings_file=settings_file_info,
+        settings_source=project_settings_source,
+        project_settings_file_loaded=settings_file_info["status"] == "loaded",
+        system_override_present=bool(system_override_payload),
+        system_override_keys=sorted(str(key) for key in system_override_payload.keys()),
+        effective_settings=effective_settings_payload,
+    )
+    if settings_file_info["configured_value"] and settings_file_info["status"] != "loaded":
+        logger.warning(
+            "project_settings_file_not_loaded",
+            project_settings_file=settings_file_info,
+        )
 
     lines = [
         "",
@@ -84,14 +190,48 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    Settings Source        : {project_settings_source}",
         f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
         f"    LLM_API_KEY            : {'SET' if llm_api_keys else '!! NOT_SET !!'}",
         "",
-        "  [DATABASE]",
-        f"    Dialect                : {dialect}",
+        "  [SETTINGS]",
+        f"    {PROJECT_SETTINGS_ENV_NAME:<23}: {settings_file_info['configured_value'] or '!! NOT_SET !!'}",
+        f"    Resolved Path          : {settings_file_info['resolved_path'] or 'none'}",
+        f"    Source Label           : {project_settings_source}",
+        f"    File Status            : {settings_file_info['status']}",
+        f"    Exists / Is File       : {settings_file_info['exists']} / {settings_file_info['is_file']}",
+        f"    Readable               : {settings_file_info['readable']}",
+        f"    Size Bytes             : {settings_file_info['size_bytes'] if settings_file_info['size_bytes'] is not None else 'n/a'}",
+        f"    Modified At            : {settings_file_info['modified_at'] or 'n/a'}",
+        f"    Loaded Top-Level Keys  : {', '.join(settings_file_info['loaded_keys']) or 'none'}",
+        f"    DB Runtime Override    : {'enabled' if system_override_payload else 'none'}",
+        f"    DB Override Keys       : {', '.join(sorted(str(key) for key in system_override_payload.keys())) or 'none'}",
+        "",
+        "    Project Override Payload:",
     ]
+    for raw_line in json.dumps(
+        settings_file_info["override_payload"],
+        ensure_ascii=False,
+        indent=6,
+        sort_keys=True,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
+    lines.append("")
+    lines.append("    Effective Runtime Settings:")
+    for raw_line in json.dumps(
+        effective_settings_payload,
+        ensure_ascii=False,
+        indent=6,
+        sort_keys=True,
+    ).splitlines():
+        lines.append(f"      {raw_line}")
+    lines.extend(
+        [
+            "",
+            "  [DATABASE]",
+            f"    Dialect                : {dialect}",
+        ]
+    )
 
     if is_postgres():
         lines.append(f"    Host                   : {engine.url.host or 'unknown'}")

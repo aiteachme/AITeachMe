@@ -34,25 +34,30 @@ def delete_course_record(
     owner_user_id: str,
     course_id: str,
     force: bool = False,
+    known_detail_counts: dict[str, int] | None = None,
     background_task_registry: Any | None = None,
 ) -> CourseDeleteData:
     course = get_course_record(session, course_id, owner_user_id=owner_user_id)
-    preview = build_course_delete_preview(session, course=course)
-    if preview.has_content and not force:
-        raise CourseInUseError(course.id)
+    if force and known_detail_counts is not None:
+        detail_counts = _normalize_known_detail_counts(known_detail_counts)
+    else:
+        preview = build_course_delete_preview(session, course=course)
+        if preview.has_content and not force:
+            raise CourseInUseError(course.id)
+        detail_counts = preview.detail_counts
     deleted_counts = (
         delete_course_with_all_content(
             session,
             course=course,
             background_task_registry=background_task_registry,
-            counts=preview.detail_counts,
+            counts=detail_counts,
         )
         if force
         else _delete_empty_course(
             session,
             course,
             background_task_registry=background_task_registry,
-            counts=preview.detail_counts,
+            counts=detail_counts,
         )
     )
     return CourseDeleteData(
@@ -60,6 +65,16 @@ def delete_course_record(
         course_id=course.id,
         deleted_counts=deleted_counts,
     )
+
+
+def _normalize_known_detail_counts(counts: dict[str, int]) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    for key, value in counts.items():
+        try:
+            normalized[str(key)] = max(0, int(value))
+        except (TypeError, ValueError):
+            normalized[str(key)] = 0
+    return normalized
 
 
 def _delete_empty_course(

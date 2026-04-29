@@ -17,7 +17,7 @@ interface Props {
 export function BuildProcessTimeline({ steps, className }: Props) {
   return (
     <div className={cn("relative", className)}>
-      <div className="absolute bottom-3 left-[11px] top-3 w-px bg-zinc-200" />
+      <div className="absolute bottom-3 left-[11px] top-3 w-px bg-zinc-200 dark:bg-slate-800" />
 
         <div className="space-y-1.5">
           {steps.map((step, index) => {
@@ -32,36 +32,36 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                 transition={{ delay: index * 0.05, duration: 0.26, ease: "easeOut" }}
                 className={cn(
                   "relative flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors leading-[1.2]",
-                  isActive ? "bg-sky-50/50" : "hover:bg-zinc-50/80",
+                  isActive ? "bg-sky-50/50 dark:bg-sky-500/10" : "hover:bg-zinc-50/80 dark:hover:bg-slate-800/50",
                 )}
               >
                 <div className="relative z-10 mt-0.5 shrink-0">
                   {isDone ? (
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-500 border border-emerald-200">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-200 bg-emerald-100 text-emerald-500 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                       <Check className="h-3 w-3" strokeWidth={3} />
                     </div>
                   ) : isActive ? (
                     <div className="relative">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-sky-500 border border-sky-200">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-sky-200 bg-sky-100 text-sky-500 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
                         <Loader2 className="h-3 w-3 animate-spin" strokeWidth={3} />
                       </div>
                     </div>
                   ) : (
-                    <div className="h-5 w-5 rounded-full border border-zinc-200 bg-white" />
+                    <div className="h-5 w-5 rounded-full border border-zinc-200 bg-white dark:border-slate-700 dark:bg-slate-900" />
                   )}
                 </div>
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-zinc-300">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="text-[10px] font-medium text-zinc-300 dark:text-slate-600">{String(index + 1).padStart(2, "0")}</span>
                     <p
                       className={cn(
                         "text-[13px] leading-5 transition-colors",
                         isDone
-                          ? "font-medium text-zinc-700"
+                          ? "font-medium text-zinc-700 dark:text-slate-300"
                           : isActive
-                            ? "font-semibold text-sky-600"
-                            : "text-zinc-400",
+                            ? "font-semibold text-sky-600 dark:text-sky-300"
+                            : "text-zinc-400 dark:text-slate-500",
                       )}
                     >
                       {step.title}
@@ -70,7 +70,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                   <p
                     className={cn(
                       "mt-1 text-[11px] leading-5",
-                      isActive ? "text-sky-600" : isDone ? "text-zinc-400" : "text-zinc-300",
+                      isActive ? "text-sky-600 dark:text-sky-300" : isDone ? "text-zinc-400 dark:text-slate-500" : "text-zinc-300 dark:text-slate-600",
                     )}
                   >
                     {step.description}

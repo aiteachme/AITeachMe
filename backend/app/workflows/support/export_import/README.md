@@ -1,31 +1,31 @@
 # Export Import Support
 
-`workflows/support/export_import/` is the canonical home for course-level course package export and import use cases.
+`workflows/support/export_import/` is the canonical home for course-level package export and import use cases.
 
 ## Responsibilities
 
 - Preview course export size and table counts.
 - Export a course into an `.atmx` package. Download filenames use `course-name-course-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
 - Import an `.atmx` package as a new course.
-- List remote demo-course packages from the configured OSS catalog in cloud mode.
+- List remote demo-course packages from the configured OSS catalog when `S3_PUBLIC_BASE_URL` is configured.
 
 ## Module Split
 
-- `exports.py`: 导出预览、打包、manifest 与导出侧共享规则
-- `imports.py`: 导入事务、ID 重映射、文件落盘与失败清理
-- `courses.py`: 云端演示课程目录读取与远程 `.atmx` 下载；本地模式不读取 OSS
+- `exports.py`: export preview, package building, manifest generation, and shared export rules.
+- `imports.py`: import transaction, id remapping, file restore, and failed-import cleanup.
+- `courses.py`: demo-course catalog loading and remote `.atmx` download; it does not read OSS when `S3_PUBLIC_BASE_URL` is missing.
 
 ## Runtime Paths
 
-- 演示课程主源：仅云端模式使用现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
-- 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
-- 课程索引由本机私有脚本 `scripts/private/demo_course_package.py` 自动维护；不要手写 OSS 上的 `index.json`
-- 本地模式：不请求 OSS，`GET /api/v1/demo-courses` 返回空列表，手动 `.atmx` 上传导入仍可用
+- Demo-course root: `<S3_PUBLIC_BASE_URL>/demo-courses/`
+- Default catalog index: `<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
+- The catalog index is maintained by `scripts/private/demo_course_package.py`; avoid hand-editing `index.json` on OSS.
+- When `S3_PUBLIC_BASE_URL` is not configured, `GET /api/v1/demo-courses` returns an empty list and manual `.atmx` upload import remains available.
 
 ## Demo Course Paths
 
-- `GET /api/v1/demo-courses`: 云端前端展示演示课程卡片。
-- `POST /api/v1/demo-courses/{identifier}/import`: 云端后端从 OSS 拉取 `.atmx` 后导入当前账号；导入成功后出现在左侧课程列表。
+- `GET /api/v1/demo-courses`: list demo-course cards for the frontend.
+- `POST /api/v1/demo-courses/{identifier}/import`: download one `.atmx` package from OSS and import it into the current account; after a successful import it appears in the sidebar course list.
 
 ## Export Data Boundary
 

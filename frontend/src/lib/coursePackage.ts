@@ -1,5 +1,4 @@
-import { buildApiUrl, getDeviceKey } from "../api/client";
-import { apiClient } from "../api/client";
+import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, runTrackedApiFetch } from "../api/client";
 import type { ExportOptions } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 
@@ -42,40 +41,41 @@ function parseContentDispositionFilename(disposition: string | null): string | n
 }
 
 export async function downloadCoursePackage(course: string, options: ExportOptions = {}): Promise<void> {
-  const token = localStorage.getItem("token");
-  const url = buildApiUrl(`/api/v1/courses/${encodeURIComponent(course)}/export`);
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Device-Key": getDeviceKey(),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  await runTrackedApiFetch(
+    `/api/v1/courses/${encodeURIComponent(course)}/export`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
     },
-    body: JSON.stringify(options),
-  });
-  if (!response.ok) {
-    const rawText = await response.text();
-    try {
-      const payload = JSON.parse(rawText) as { detail?: string; message?: string };
-      throw new Error(payload.detail || payload.message || `导出失败 (${response.status})`);
-    } catch {
-      throw new Error(rawText.trim() || `导出失败 (${response.status})`);
-    }
-  }
+    async (response) => {
+      if (!response.ok) {
+        const rawText = await response.text();
+        let message = rawText.trim() || `导出失败 (${response.status})`;
+        try {
+          const payload = JSON.parse(rawText) as { detail?: string; message?: string };
+          message = payload.detail || payload.message || message;
+        } catch {
+          // Keep the plain-text backend error as-is.
+        }
+        throw new Error(message);
+      }
 
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition");
-  const filename = parseContentDispositionFilename(disposition) ?? `${course}.atmx`;
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition");
+      const filename = parseContentDispositionFilename(disposition) ?? `${course}.atmx`;
 
-  const link = document.createElement("a");
-  const blobUrl = URL.createObjectURL(blob);
-  link.href = blobUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(blobUrl);
+      const link = document.createElement("a");
+      const blobUrl = URL.createObjectURL(blob);
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    },
+    "course_export_disconnect",
+  );
 }
 
 export async function importCoursePackage(file: File, newName?: string): Promise<ImportResultData> {
@@ -90,7 +90,7 @@ export async function importCoursePackage(file: File, newName?: string): Promise
     url: "/api/v1/courses/import",
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120000,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   if (!response.data) {
     throw new Error("导入结果为空");

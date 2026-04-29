@@ -19,11 +19,12 @@ from app.schemas.course import (
     CourseUpdateRequest,
 )
 from app.workflows.support.courses import (
-    choose_course_icon_key,
     create_course_record,
     delete_course_record,
+    infer_course_icon_key,
     list_course_records,
     preview_course_delete,
+    schedule_course_icon_refinement,
     update_course_record,
 )
 
@@ -37,21 +38,27 @@ router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
     responses=build_error_responses([400, 409, 500]),
 )
 async def create_course_api(
+    request: Request,
     body: CourseCreateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseItem]:
-    icon_key = await choose_course_icon_key(body.name)
-    return ok_response(
-        create_course_record(
-            session,
-            owner_user_id=user.user_id,
-            name=body.name,
-            description=body.description,
-            user_intent=body.user_intent,
-            icon_key=icon_key,
-        )
+    icon_key = infer_course_icon_key(body.name)
+    item = create_course_record(
+        session,
+        owner_user_id=user.user_id,
+        name=body.name,
+        description=body.description,
+        user_intent=body.user_intent,
+        icon_key=icon_key,
     )
+    schedule_course_icon_refinement(
+        _get_background_task_registry(request),
+        course_id=item.course_id,
+        owner_user_id=user.user_id,
+        course_name=item.name,
+    )
+    return ok_response(item)
 
 
 @router.post(
@@ -113,6 +120,7 @@ async def delete_course_api(
             owner_user_id=user.user_id,
             course_id=body.course_id,
             force=body.force,
+            known_detail_counts=body.known_detail_counts,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         )
     )
@@ -125,22 +133,33 @@ async def delete_course_api(
     responses=build_error_responses([400, 404, 500]),
 )
 async def update_course_api(
+    request: Request,
     body: CourseUpdateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseItem]:
-    icon_key = await choose_course_icon_key(body.name) if body.name is not None else None
-    return ok_response(
-        update_course_record(
-            session,
-            owner_user_id=user.user_id,
-            course_id=body.course_id,
-            name=body.name,
-            description=body.description,
-            user_intent=body.user_intent,
-            icon_key=icon_key,
-        )
+    icon_key = infer_course_icon_key(body.name) if body.name is not None else None
+    item = update_course_record(
+        session,
+        owner_user_id=user.user_id,
+        course_id=body.course_id,
+        name=body.name,
+        description=body.description,
+        user_intent=body.user_intent,
+        icon_key=icon_key,
     )
+    if body.name is not None:
+        schedule_course_icon_refinement(
+            _get_background_task_registry(request),
+            course_id=item.course_id,
+            owner_user_id=user.user_id,
+            course_name=item.name,
+        )
+    return ok_response(item)
+
+
+def _get_background_task_registry(request: Request):
+    return getattr(request.app.state, "background_task_registry", None)
 
 
 @router.post(

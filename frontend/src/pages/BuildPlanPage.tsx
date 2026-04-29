@@ -18,7 +18,12 @@ import {
   X,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage, postSseJson } from "../api/client";
+import {
+  LONG_RUNNING_API_TIMEOUT_MS,
+  apiClient,
+  getApiErrorMessage,
+  postSseJson,
+} from "../api/client";
 import type {
   BuildPlannerConfirmResponse,
   BuildPlannerPlanResponse,
@@ -380,9 +385,9 @@ function PlannerOutlineCard({
   const outlineItems = buildPlannerOutlineItems(plan);
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm">
+    <div className="rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
       <div>
-        <p className="text-base font-semibold leading-7 text-zinc-950">
+        <p className="text-base font-semibold leading-7 text-zinc-950 dark:text-slate-100">
           {plan.plan_summary?.trim() || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
         </p>
       </div>
@@ -390,11 +395,11 @@ function PlannerOutlineCard({
       <div className="mt-5 space-y-4">
         {outlineItems.map((item, index) => (
           <div key={`${index}-${item.title}`} className="flex items-start gap-4">
-            <span className="mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-300 bg-white" />
+            <span className="mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-300 bg-white dark:border-slate-600 dark:bg-slate-900" />
             <div className="min-w-0">
-              <div className="text-sm font-semibold leading-6 text-zinc-900">{item.title}</div>
+              <div className="text-sm font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
               {item.description ? (
-                <div className="mt-0.5 text-sm leading-6 text-zinc-600">{item.description}</div>
+                <div className="mt-0.5 text-sm leading-6 text-zinc-600 dark:text-slate-400">{item.description}</div>
               ) : null}
             </div>
           </div>
@@ -402,7 +407,7 @@ function PlannerOutlineCard({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 dark:border-slate-700 dark:text-slate-400">
           {formatDigestModeLabel(plan.digest_mode)}
         </span>
         {needsRefresh ? (
@@ -415,7 +420,7 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <BookOpen className="h-4 w-4" />
             进入文档
@@ -425,7 +430,7 @@ function PlannerOutlineCard({
           type="button"
           onClick={onAdjust}
           disabled={isDisabled}
-          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50"
+          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           调整
         </button>
@@ -433,7 +438,7 @@ function PlannerOutlineCard({
           type="button"
           onClick={onConfirm}
           disabled={isDisabled}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
         >
           {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           开始构建
@@ -457,36 +462,36 @@ function BuildInProgressBubble({
   onOpen: () => void;
 }) {
   return (
-    <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm">
+    <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
           {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-slate-100">
                 {isActive ? <span className="build-live-dot h-2 w-2 text-blue-500" aria-hidden="true" /> : null}
                 {isActive ? "知识库正在构建" : "知识库构建状态"}
               </p>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">
+              <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
                 可进入知识文档页面查看完整实时进度。
               </p>
             </div>
-            <span className="shrink-0 text-xs font-semibold text-zinc-700">{Math.round(progress)}%</span>
+            <span className="shrink-0 text-xs font-semibold text-zinc-700 dark:text-slate-300">{Math.round(progress)}%</span>
           </div>
-          <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-600">
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-300">
             {statusText || "正在启动知识文档构建..."}
           </p>
           <div
-            className={`mt-4 h-2 overflow-hidden rounded-full bg-zinc-100 ${
+            className={`mt-4 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-slate-800 ${
               isActive ? "build-loading-progress-track" : ""
             }`}
           >
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isActive ? "build-loading-progress-fill" : ""
-              } ${isActive ? "bg-blue-500" : "bg-zinc-950"}`}
+              } ${isActive ? "bg-blue-500" : "bg-zinc-950 dark:bg-slate-100"}`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -495,7 +500,7 @@ function BuildInProgressBubble({
               <button
                 type="button"
                 onClick={onOpen}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 进入知识文档
@@ -594,6 +599,7 @@ async function cancelKnowledgeBuild(course: string): Promise<DocGenBuildCancelDa
   const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
     method: "POST",
     url: `/api/v1/courses/${course}/knowledge/build/cancel`,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   return response.data ?? {
     course_id: course,
@@ -1596,7 +1602,7 @@ export function BuildPlanPage() {
                 }
               >
                 {message.role === "assistant" ? (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
                     <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                 ) : null}
@@ -1653,7 +1659,7 @@ export function BuildPlanPage() {
 
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200/50 p-1 shadow-sm">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
                   <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="w-full max-w-[85%]">
@@ -1761,8 +1767,8 @@ export function BuildPlanPage() {
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-end justify-between gap-2 px-1">
-                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                <div className="flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
                     <input
                       type="file"
                       multiple
@@ -1779,7 +1785,7 @@ export function BuildPlanPage() {
                     />
                     <label
                       htmlFor="files-page-upload"
-                      className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                    className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1796,7 +1802,7 @@ export function BuildPlanPage() {
                     )}
                   </div>
 
-                  <div className="ml-2 flex shrink-0 items-center gap-2">
+                  <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:ml-2 sm:w-auto">
                     <ChatModelSelect
                       value={chatModel}
                       onChange={setChatModel}

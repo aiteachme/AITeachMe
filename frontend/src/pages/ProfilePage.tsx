@@ -89,7 +89,7 @@ export function ProfilePage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
+      <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 pb-6 pt-20 dark:bg-slate-950 sm:px-6 sm:pb-8 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           缺少课程标识，暂时无法加载学习画像。
         </div>
@@ -98,7 +98,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
+    <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 pb-6 pt-20 dark:bg-slate-950 sm:px-6 sm:pb-8 lg:pt-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -150,7 +150,7 @@ export function ProfilePage() {
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">重点知识点</h2>
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">重点知识点</h2>
                 <p className="mt-1 text-sm text-slate-500">按掌握度从低到高排序</p>
               </div>
               <div className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-300">
@@ -209,7 +209,7 @@ export function ProfilePage() {
 
           <div className="flex flex-col gap-6">
             <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
-              <h2 className="text-lg font-semibold text-slate-950">个性化建议</h2>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">个性化建议</h2>
               <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
                 <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   常用题型 {userProfile?.preferred_question_types?.join(", ") || "暂无历史数据"}
@@ -229,7 +229,7 @@ export function ProfilePage() {
             <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">待复习任务</h2>
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">待复习任务</h2>
                   <p className="mt-1 text-sm text-slate-500">完成后会立即刷新画像</p>
                 </div>
                 <Clock3 className="h-5 w-5 text-slate-400 dark:text-slate-500" />

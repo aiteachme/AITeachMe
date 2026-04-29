@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from app.workflows.ingest.parsing.formats import (
-    IMAGE_EXTENSIONS,
-    MARKITDOWN_GENERIC_EXTENSIONS,
     normalize_extension,
 )
 from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
@@ -16,64 +14,70 @@ from app.workflows.ingest.parsing.provider_contracts import ParseDecision, Provi
 DEFAULT_MINERU_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".doc",
-        ".docx",
-        ".ppt",
-        ".pptx",
-        ".xls",
-        ".xlsx",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".html",
-        ".htm",
+        # 当前链路调整：.docx 改为仅走本地解析，不再自动或显式走 MinerU。
+        # ".docx",
+        # 旧链路：.doc 已停用，不再支持上传和解析。
+        # ".doc",
+        # demo / 未扩展链路：当前上传白名单不会走到这些扩展。
+        # AI 提示：如果任务不是扩大上传入口，可以先不看这些 capability 设计。
+        # ".xls",
+        # ".xlsx",
+        # ".png",
+        # ".jpg",
+        # ".jpeg",
+        # ".html",
+        # ".htm",
     }
 )
 
 DEFAULT_PADDLE_OCR_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".doc",
-        ".docx",
-        ".ppt",
-        ".pptx",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".webp",
-        ".bmp",
-        ".tif",
-        ".tiff",
+        # 当前链路调整：.docx 改为仅走本地解析，不再自动或显式走 PaddleOCR。
+        # ".docx",
+        # 旧链路：.doc 已停用，不再支持上传和解析。
+        # ".doc",
+        # 未扩展链路：当前上传白名单不允许图片直传，所以这些扩展当前不会命中。
+        # ".png",
+        # ".jpg",
+        # ".jpeg",
+        # ".webp",
+        # ".bmp",
+        # ".tif",
+        # ".tiff",
     }
 )
 
 DEFAULT_MARKITDOWN_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".doc",
         ".docx",
-        ".ppt",
-        ".pptx",
-        *MARKITDOWN_GENERIC_EXTENSIONS,
+        # 当前上传入口只开放 PDF / DOCX / Markdown / 文本；
+        # PPT/PPTX 和通用 Office 表格类不再声明为本地 MarkItDown capability。
+        # 如后续恢复上传入口，再同步恢复这里和 parsers.py 的 registry。
+        # ".ppt",
+        # ".pptx",
+        # 旧链路：.doc 已停用，不再支持上传和解析。
+        # ".doc",
+        # *MARKITDOWN_GENERIC_EXTENSIONS,
     }
 )
 
 DEFAULT_OCR_EXTENSIONS = frozenset(
     {
         ".pdf",
-        ".ppt",
-        ".pptx",
-        *IMAGE_EXTENSIONS,
+        # 未扩展链路：原始图片直传目前未开放，因此这里不再展开 IMAGE_EXTENSIONS。
+        # *IMAGE_EXTENSIONS,
     }
 )
 
 AUTO_EXTERNAL_DOCUMENT_EXTENSIONS = frozenset(
     {
-        ".doc",
-        ".docx",
         ".pdf",
-        ".ppt",
-        ".pptx",
+        # 当前链路调整：.docx 改为本地解析优先，不再加入自动外部链路。
+        # ".docx",
+        # 旧链路：.doc 已停用。
+        # ".doc",
     }
 )
 
@@ -104,7 +108,7 @@ def build_paddle_ocr_capability(*, available: bool) -> ProviderCapability:
 
 def build_markitdown_capability(*, available: bool) -> ProviderCapability:
     supported_extensions = set(DEFAULT_MARKITDOWN_EXTENSIONS)
-    features = {"markdown", "office", "pdf", "html", "spreadsheet"}
+    features = {"markdown", "office", "pdf"}
     if not builtin_pdf_parsing_enabled():
         supported_extensions.discard(".pdf")
         features.discard("pdf")
@@ -146,7 +150,9 @@ def build_parse_decision(
 
     Current default behavior:
     - text / markdown stay local;
-    - supported document types auto-route as MinerU -> PaddleOCR -> local;
+    - supported document types auto-route as PaddleOCR -> MinerU -> local;
+    - docx stays local-only even when external providers are available;
+    - doc is treated as unsupported;
     - explicit provider requests are still honored for backward compatibility.
     """
 
@@ -156,6 +162,19 @@ def build_parse_decision(
     paddle_ocr = build_paddle_ocr_capability(available=paddle_ocr_available)
     ocr = build_ocr_capability(available=ocr_available)
     markitdown = build_markitdown_capability(available=markitdown_available)
+
+    if normalized_extension == ".doc":
+        return ParseDecision(
+            requested_provider=normalized_request,
+            primary_provider="local",
+            primary_reason=".doc 链路已停用，当前版本不再支持上传或解析该格式。",
+            fallback_chain=[],
+            metadata={
+                "extension": normalized_extension,
+                "route_mode": "unsupported_doc",
+                "doc_supported": False,
+            },
+        )
 
     if normalized_request == "markitdown":
         markitdown_supports_extension = markitdown.supports(normalized_extension)
@@ -403,46 +422,46 @@ def build_parse_decision(
         mineru_supports_extension = mineru.supports(normalized_extension)
         paddle_ocr_supports_extension = paddle_ocr.supports(normalized_extension)
 
-        if mineru.available and mineru_supports_extension:
+        if paddle_ocr.available and paddle_ocr_supports_extension:
             fallback_chain = ["local"]
-            if paddle_ocr.available and paddle_ocr_supports_extension:
-                fallback_chain = ["paddle_ocr", "local"]
+            if mineru.available and mineru_supports_extension:
+                fallback_chain = ["mineru", "local"]
             return ParseDecision(
                 requested_provider=None,
-                primary_provider="mineru",
+                primary_provider="paddle_ocr",
                 primary_reason=(
-                    "当前文件类型支持文档解析增强，且已检测到 MinerU Token；"
-                    "优先使用 MinerU，失败后自动回退到 PaddleOCR 或本地解析。"
+                    "当前文件类型支持文档解析增强，且已检测到 PaddleOCR Token；"
+                    "优先使用 PaddleOCR，失败后自动回退到 MinerU 或本地解析。"
                 ),
                 fallback_chain=fallback_chain,
                 can_preview_before_primary=False,
                 metadata={
                     "extension": normalized_extension,
                     "route_mode": "auto_external_then_local",
-                    "mineru_supported": True,
-                    "mineru_available": True,
-                    "paddle_ocr_supported": paddle_ocr_supports_extension,
-                    "paddle_ocr_available": paddle_ocr.available,
+                    "paddle_ocr_supported": True,
+                    "paddle_ocr_available": True,
+                    "mineru_supported": mineru_supports_extension,
+                    "mineru_available": mineru.available,
                 },
             )
 
-        if paddle_ocr.available and paddle_ocr_supports_extension:
+        if mineru.available and mineru_supports_extension:
             return ParseDecision(
                 requested_provider=None,
-                primary_provider="paddle_ocr",
+                primary_provider="mineru",
                 primary_reason=(
-                    "当前文件类型支持文档解析增强，MinerU 不可用；"
-                    "自动改用 PaddleOCR，失败后回退到本地解析。"
+                    "当前文件类型支持文档解析增强，但 PaddleOCR 不可用；"
+                    "自动改用 MinerU，失败后回退到本地解析。"
                 ),
                 fallback_chain=["local"],
                 can_preview_before_primary=False,
                 metadata={
                     "extension": normalized_extension,
                     "route_mode": "auto_external_then_local",
-                    "mineru_supported": mineru_supports_extension,
-                    "mineru_available": mineru.available,
-                    "paddle_ocr_supported": True,
-                    "paddle_ocr_available": True,
+                    "paddle_ocr_supported": paddle_ocr_supports_extension,
+                    "paddle_ocr_available": paddle_ocr.available,
+                    "mineru_supported": True,
+                    "mineru_available": True,
                 },
             )
 

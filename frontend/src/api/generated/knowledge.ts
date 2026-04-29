@@ -43,6 +43,7 @@ import type {
   ApiResponseKnowledgeUnitDetailResponse,
   ApiResponseListKnowledgeRelationResponse,
   ApiResponsePaginatedDataKnowledgeUnitResponse,
+  ApiResponseRetrievalDebugResponse,
   ApiResponseUnionBuildPlannerSessionResponseNoneType,
   BuildPlannerCreateRequest,
   BuildPlannerMessageRequest,
@@ -56,7 +57,8 @@ import type {
   KnowledgeUnitDetailRequest,
   KnowledgeUnitPathRequest,
   KnowledgeUnitRelationsRequest,
-  KnowledgeUnitsQueryRequest
+  KnowledgeUnitsQueryRequest,
+  RetrievalDebugRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -2514,4 +2516,109 @@ export const useChunkContextApiV1CoursesCourseIdKnowledgeChunksContextPost = <TE
         TContext
       > => {
       return useMutation(getChunkContextApiV1CoursesCourseIdKnowledgeChunksContextPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Debug course knowledge retrieval
+ */
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse200 = {
+  data: ApiResponseRetrievalDebugResponse
+  status: 200
+}
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponseSuccess = (debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse200) & {
+  headers: Headers;
+};
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponseError = (debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse400 | debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse404 | debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse422 | debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse500) & {
+  headers: Headers;
+};
+
+export type debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse = (debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponseSuccess | debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponseError)
+
+export const getDebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/retrieval/debug`
+}
+
+export const debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost = async (courseId: string,
+    retrievalDebugRequest: RetrievalDebugRequest, options?: RequestInit): Promise<debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse> => {
+
+  return orvalApiClient<debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostResponse>(getDebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostUrl(courseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      retrievalDebugRequest,)
+  }
+);}
+
+
+
+
+export const getDebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>, TError,{courseId: string;data: RetrievalDebugRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>, TError,{courseId: string;data: RetrievalDebugRequest}, TContext> => {
+
+const mutationKey = ['debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>, {courseId: string;data: RetrievalDebugRequest}> = (props) => {
+          const {courseId,data} = props ?? {};
+
+          return  debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost(courseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostMutationResult = NonNullable<Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>>
+    export type DebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostMutationBody = RetrievalDebugRequest
+    export type DebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Debug course knowledge retrieval
+ */
+export const useDebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>, TError,{courseId: string;data: RetrievalDebugRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof debugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPost>>,
+        TError,
+        {courseId: string;data: RetrievalDebugRequest},
+        TContext
+      > => {
+      return useMutation(getDebugRetrievalApiV1CoursesCourseIdKnowledgeRetrievalDebugPostMutationOptions(options), queryClient);
     }

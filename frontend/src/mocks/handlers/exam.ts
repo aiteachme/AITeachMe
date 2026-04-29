@@ -146,6 +146,7 @@ const papers = new Map<number, InternalPaper>();
 const generateJobs = new Map<number, GenerateJob>();
 const gradeJobs = new Map<number, GradeJob>();
 const activeGenerateCourse = new Set<string>();
+const markedQuestionTemplateIds = new Set<number>();
 const PAPER_PREVIEW_ROW_LIMIT = 7;
 
 let nextPaperId = 10;
@@ -335,6 +336,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       score_obtained: item.score_obtained,
       score_max: item.score_max,
       error_cause_label: item.error_cause_label,
+      is_marked: markedQuestionTemplateIds.has(item.question_template_id),
     })),
   };
 }
@@ -523,6 +525,65 @@ export const examHandlers = [
   http.post("/api/v1/courses/:course/exams/question-bank", ({ params }) => {
     const course = String(params.course);
     return HttpResponse.json({ code: 0, data: buildQuestionBank(course) });
+  }),
+
+  http.get("/api/v1/courses/:course/exams/question-templates/:questionTemplateId/answer-history", ({ params, request }) => {
+    const course = String(params.course);
+    const questionTemplateId = Number(params.questionTemplateId);
+    const url = new URL(request.url);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") ?? 20)));
+    if (!Number.isFinite(questionTemplateId) || questionTemplateId <= 0) {
+      return HttpResponse.json({ code: 404, message: "template not found", data: null }, { status: 404 });
+    }
+
+    const history = [...papers.values()]
+      .filter((paper) => paper.course === course && paper.submitted_at)
+      .flatMap((paper) =>
+        paper.items
+          .filter((item) => item.question_template_id === questionTemplateId && item.user_answer !== null)
+          .map((item) => ({
+            exam_paper_id: paper.id,
+            exam_paper_item_id: item.id,
+            item_order: item.item_order,
+            exam_mode: paper.exam_mode,
+            exam_status: paper.status,
+            submitted_at: paper.submitted_at,
+            graded_at: paper.graded_at,
+            answered_at: paper.submitted_at,
+            user_answer: item.user_answer ?? "",
+            correct_answer: item.correct_answer,
+            is_correct: item.is_correct,
+            score_obtained: item.score_obtained,
+            score_max: item.score_max,
+            error_cause_label: item.error_cause_label,
+            feedback_text: item.explanation,
+            created_at: paper.created_at,
+          })),
+      )
+      .sort((a, b) => String(b.answered_at ?? "").localeCompare(String(a.answered_at ?? "")))
+      .slice(0, limit);
+
+    return HttpResponse.json({ code: 0, data: history });
+  }),
+
+  http.patch("/api/v1/courses/:course/exams/question-templates/:questionTemplateId/mark", async ({ params, request }) => {
+    const questionTemplateId = Number(params.questionTemplateId);
+    const body = (await request.json()) as { is_marked?: boolean };
+    if (!Number.isFinite(questionTemplateId) || questionTemplateId <= 0) {
+      return HttpResponse.json({ code: 404, message: "template not found", data: null }, { status: 404 });
+    }
+    if (body.is_marked) {
+      markedQuestionTemplateIds.add(questionTemplateId);
+    } else {
+      markedQuestionTemplateIds.delete(questionTemplateId);
+    }
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        question_template_id: questionTemplateId,
+        is_marked: markedQuestionTemplateIds.has(questionTemplateId),
+      },
+    });
   }),
 
   http.post("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {

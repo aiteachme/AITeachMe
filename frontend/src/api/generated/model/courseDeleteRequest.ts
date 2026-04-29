@@ -5,10 +5,13 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.0.1
  */
+import type { CourseDeleteRequestKnownDetailCounts } from './courseDeleteRequestKnownDetailCounts';
 
 export interface CourseDeleteRequest {
   /** Course id. */
   course_id: string;
   /** Whether to confirm cascading deletion of course content. */
   force?: boolean;
+  /** Optional delete-preview counts already shown to the user; used only for response metadata. */
+  known_detail_counts?: CourseDeleteRequestKnownDetailCounts;
 }

@@ -36,6 +36,10 @@ class CourseUpdateRequest(BaseModel):
 
 class CourseDeleteRequest(CourseDetailRequest):
     force: bool = Field(default=False, description="Whether to confirm cascading deletion of course content.")
+    known_detail_counts: dict[str, int] | None = Field(
+        default=None,
+        description="Optional delete-preview counts already shown to the user; used only for response metadata.",
+    )
 
 
 class CourseDeletePreviewRequest(CourseDetailRequest):

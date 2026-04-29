@@ -1,4 +1,4 @@
-import { apiClient } from "../api/client";
+import { LONG_RUNNING_API_TIMEOUT_MS, apiClient } from "../api/client";
 import type {
   BuildPreviewChapterPreviewResponse,
   BuildPreviewNodeResponse,
@@ -89,6 +89,7 @@ export async function triggerKnowledgeGraphBuild(courseId: string): Promise<Know
   const response = await apiClient<ApiResponse<KnowledgeGraphBuildData>>({
     method: "POST",
     url: `/api/v1/courses/${courseId}/knowledge/build/graph`,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
 
   return response.data ?? {};
@@ -98,6 +99,7 @@ export async function cancelKnowledgeBuild(courseId: string): Promise<KnowledgeB
   const response = await apiClient<ApiResponse<KnowledgeBuildCancelData>>({
     method: "POST",
     url: `/api/v1/courses/${courseId}/knowledge/build/cancel`,
+    timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
 
   return response.data ?? {};

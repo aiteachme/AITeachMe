@@ -3584,6 +3584,89 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/knowledge/retrieval/debug": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Debug course knowledge retrieval",
+        "operationId": "debug_retrieval_api_v1_courses__course_id__knowledge_retrieval_debug_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalDebugRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RetrievalDebugResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chats/send": {
       "post": {
         "tags": [
@@ -4983,6 +5066,192 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_list_QuestionTemplateItemResponse__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/answer-history": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "List answer history for a question template",
+        "operationId": "question_template_answer_history_api_v1_courses__course_id__exams_question_templates__question_template_id__answer_history_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "question_template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Question Template Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTemplateAnswerHistoryItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/mark": {
+      "patch": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Mark or unmark a question template",
+        "operationId": "mark_question_template_api_v1_courses__course_id__exams_question_templates__question_template_id__mark_patch",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "question_template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Question Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTemplateMarkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTemplateMarkResponse_"
                 }
               }
             }
@@ -7680,6 +7949,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_QuestionTemplateMarkResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTemplateMarkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTemplateMarkResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_RetrievalDebugResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetrievalDebugResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[RetrievalDebugResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ReviewTaskResponse_": {
         "properties": {
           "code": {
@@ -7921,6 +8258,44 @@
         },
         "type": "object",
         "title": "ApiResponse[list[KnowledgeRelationResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_QuestionTemplateAnswerHistoryItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTemplateAnswerHistoryItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTemplateAnswerHistoryItem]]",
         "example": {
           "code": 0,
           "data": {},
@@ -10172,6 +10547,21 @@
             "title": "Force",
             "description": "Whether to confirm cascading deletion of course content.",
             "default": false
+          },
+          "known_detail_counts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Known Detail Counts",
+            "description": "Optional delete-preview counts already shown to the user; used only for response metadata."
           }
         },
         "type": "object",
@@ -11580,6 +11970,11 @@
               }
             ],
             "title": "Error Cause Label"
+          },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "default": false
           }
         },
         "type": "object",
@@ -14779,6 +15174,146 @@
         ],
         "title": "PaperPreviewRow"
       },
+      "QuestionTemplateAnswerHistoryItem": {
+        "properties": {
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "exam_paper_item_id": {
+            "type": "integer",
+            "title": "Exam Paper Item Id"
+          },
+          "item_order": {
+            "type": "integer",
+            "title": "Item Order"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "exam_status": {
+            "type": "string",
+            "title": "Exam Status"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "user_answer": {
+            "type": "string",
+            "title": "User Answer"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          },
+          "feedback_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Text"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_id",
+          "exam_paper_item_id",
+          "item_order",
+          "exam_mode",
+          "exam_status",
+          "user_answer",
+          "correct_answer",
+          "created_at"
+        ],
+        "title": "QuestionTemplateAnswerHistoryItem"
+      },
       "QuestionTemplateItemResponse": {
         "properties": {
           "id": {
@@ -14844,6 +15379,11 @@
             "type": "string",
             "title": "Status"
           },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -14870,6 +15410,39 @@
           "updated_at"
         ],
         "title": "QuestionTemplateItemResponse"
+      },
+      "QuestionTemplateMarkRequest": {
+        "properties": {
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked",
+            "description": "Whether the question template is marked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_marked"
+        ],
+        "title": "QuestionTemplateMarkRequest",
+        "description": "Update whether a question template is marked as a favorite."
+      },
+      "QuestionTemplateMarkResponse": {
+        "properties": {
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "is_marked": {
+            "type": "boolean",
+            "title": "Is Marked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_template_id",
+          "is_marked"
+        ],
+        "title": "QuestionTemplateMarkResponse"
       },
       "QuestionTypeRegistryItemResponse": {
         "properties": {
@@ -14995,6 +15568,151 @@
           "password": "change-me",
           "verification_code": "123456"
         }
+      },
+      "RetrievalDebugItem": {
+        "properties": {
+          "chunk_id": {
+            "type": "integer",
+            "title": "Chunk Id"
+          },
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "header_path": {
+            "type": "string",
+            "title": "Header Path"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "content_chars": {
+            "type": "integer",
+            "title": "Content Chars"
+          },
+          "content_preview": {
+            "type": "string",
+            "title": "Content Preview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "file_id",
+          "title",
+          "header_path",
+          "score",
+          "source",
+          "content_chars",
+          "content_preview"
+        ],
+        "title": "RetrievalDebugItem",
+        "description": "One retrieved chunk surfaced by the retrieval debug endpoint."
+      },
+      "RetrievalDebugRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Query",
+            "description": "Query text used for local course retrieval."
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "description": "Maximum chunks to return.",
+            "default": 5
+          },
+          "enable_rerank": {
+            "type": "boolean",
+            "title": "Enable Rerank",
+            "description": "Whether to use the configured rerank model.",
+            "default": true
+          },
+          "preview_chars": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 120.0,
+            "title": "Preview Chars",
+            "description": "Maximum content preview characters per chunk.",
+            "default": 600
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "RetrievalDebugRequest",
+        "description": "Debug query for course knowledge retrieval."
+      },
+      "RetrievalDebugResponse": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K"
+          },
+          "enable_rerank": {
+            "type": "boolean",
+            "title": "Enable Rerank"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms"
+          },
+          "result_count": {
+            "type": "integer",
+            "title": "Result Count"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "Reason retrieval was skipped, when applicable."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalDebugItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id",
+          "query",
+          "top_k",
+          "enable_rerank",
+          "elapsed_ms",
+          "result_count"
+        ],
+        "title": "RetrievalDebugResponse",
+        "description": "Debug payload for one course knowledge retrieval call."
       },
       "ReviewTaskResponse": {
         "properties": {

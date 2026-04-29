@@ -128,6 +128,53 @@ class ChunkContextRequest(BaseModel):
     chunk_id: int = Field(description="Document chunk ID.")
 
 
+class RetrievalDebugRequest(BaseModel):
+    """Debug query for course knowledge retrieval."""
+
+    query: str = Field(min_length=1, description="Query text used for local course retrieval.")
+    top_k: int = Field(default=5, ge=1, le=20, description="Maximum chunks to return.")
+    enable_rerank: bool = Field(default=True, description="Whether to use the configured rerank model.")
+    preview_chars: int = Field(
+        default=600,
+        ge=120,
+        le=2000,
+        description="Maximum content preview characters per chunk.",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_query(self) -> "RetrievalDebugRequest":
+        self.query = self.query.strip()
+        if not self.query:
+            raise ValueError("query must not be empty")
+        return self
+
+
+class RetrievalDebugItem(BaseModel):
+    """One retrieved chunk surfaced by the retrieval debug endpoint."""
+
+    chunk_id: int
+    file_id: str
+    title: str
+    header_path: str
+    score: float
+    source: str
+    content_chars: int
+    content_preview: str
+
+
+class RetrievalDebugResponse(BaseModel):
+    """Debug payload for one course knowledge retrieval call."""
+
+    course_id: str
+    query: str
+    top_k: int
+    enable_rerank: bool
+    elapsed_ms: int
+    result_count: int
+    notice: str | None = Field(default=None, description="Reason retrieval was skipped, when applicable.")
+    items: list[RetrievalDebugItem] = Field(default_factory=list)
+
+
 class KnowledgeBuildPrecheckConflictData(BaseModel):
     """Structured payload for one build-precheck conflict."""
 

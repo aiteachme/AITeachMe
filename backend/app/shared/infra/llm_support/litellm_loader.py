@@ -13,8 +13,10 @@ auto-discovery before importing LiteLLM.
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1)
 def load_litellm():
     """Import LiteLLM after disabling python-dotenv auto-discovery."""
 

@@ -15,7 +15,11 @@ from app.workflows.support.courses.deletion import (
     delete_course_with_all_content,
     preview_course_delete,
 )
-from app.workflows.support.courses.icons import choose_course_icon_key
+from app.workflows.support.courses.icons import (
+    choose_course_icon_key,
+    infer_course_icon_key,
+    schedule_course_icon_refinement,
+)
 from app.workflows.support.courses.learning_context import (
     build_course_learning_context_payload,
     clear_course_learning_context,
@@ -36,10 +40,12 @@ __all__ = [
     "delete_course_with_all_content",
     "get_course_detail",
     "get_course_record",
+    "infer_course_icon_key",
     "load_course_llm_context",
     "list_course_records",
     "preview_course_delete",
     "render_course_llm_context",
+    "schedule_course_icon_refinement",
     "update_course_learning_context_from_docgen",
     "update_course_record",
 ]

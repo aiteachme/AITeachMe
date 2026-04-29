@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, CheckCircle2, ChevronDown, CloudOff, FileText, Layers3, Loader2, MoreVertical, Plus, Search, Sparkles, Tags, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -9,7 +9,13 @@ import {
   useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
-import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
+import {
+  buildApiUrl,
+  getApiErrorMessage,
+  orvalApiClient,
+  registerBackendEventSource,
+  reportBackendConnectionIssue,
+} from "../api/client";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { useToast } from "../components/ui/Toast";
@@ -48,8 +54,28 @@ interface QuestionTemplateItem {
   selection_hints: Record<string, unknown>;
   template_version: number;
   status: string;
+  is_marked?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface QuestionTemplateAnswerHistoryItem {
+  exam_paper_id: number;
+  exam_paper_item_id: number;
+  item_order: number;
+  exam_mode: string;
+  exam_status: string;
+  submitted_at?: string | null;
+  graded_at?: string | null;
+  answered_at?: string | null;
+  user_answer: string;
+  correct_answer: string;
+  is_correct?: boolean | null;
+  score_obtained?: number | null;
+  score_max?: number | null;
+  error_cause_label?: string | null;
+  feedback_text?: string | null;
+  created_at: string;
 }
 
 interface QuestionTypeRegistryItem {
@@ -97,6 +123,16 @@ async function deleteExamPaper(courseId: string, paperId: number) {
 async function getQuestionTemplates(courseId: string, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateItem[] } }>(
     `/api/v1/courses/${courseId}/exams/question-templates`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
+
+async function getQuestionTemplateAnswerHistory(courseId: string, templateId: number, signal?: AbortSignal) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateAnswerHistoryItem[] } }>(
+    `/api/v1/courses/${courseId}/exams/question-templates/${templateId}/answer-history`,
     {
       method: "GET",
       signal,
@@ -216,7 +252,8 @@ export function ExamsPage() {
       const response = await getExamPrewarmStatus(courseId, currentCreateConfig, signal);
       return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
     },
-    refetchInterval: 8000,
+    staleTime: 30_000,
+    refetchInterval: (query) => (query.state.data?.status === "preparing" ? 8000 : false),
   });
 
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(courseId ?? "", { page: 1, size: 24 });
@@ -261,26 +298,30 @@ export function ExamsPage() {
         buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
         { withCredentials: true },
       );
+      const unregisterEventSource = registerBackendEventSource(stream);
       const handleSnapshot = (event: Event) => {
         applySnapshot(event);
       };
       const handleDone = (event: Event) => {
         applySnapshot(event);
         refreshHistory();
+        unregisterEventSource();
         stream.close();
       };
 
       stream.addEventListener("snapshot", handleSnapshot);
       stream.addEventListener("done", handleDone);
       stream.onerror = () => {
+        reportBackendConnectionIssue("exam_stream_error");
         refreshHistory();
       };
 
-      return { stream, handleSnapshot, handleDone };
+      return { stream, handleSnapshot, handleDone, unregisterEventSource };
     });
 
     return () => {
-      streams.forEach(({ stream, handleSnapshot, handleDone }) => {
+      streams.forEach(({ stream, handleSnapshot, handleDone, unregisterEventSource }) => {
+        unregisterEventSource();
         stream.removeEventListener("snapshot", handleSnapshot);
         stream.removeEventListener("done", handleDone);
         stream.close();
@@ -300,7 +341,7 @@ export function ExamsPage() {
   const deleteExamMutation = useMutation({
     mutationFn: async (paperId: number) => {
       if (!courseId) {
-        throw new Error("缺少课程标识，无法删除考卷。");
+        throw new Error("缺少学科标识，无法删除考卷。");
       }
       return deleteExamPaper(courseId, paperId);
     },
@@ -360,9 +401,9 @@ export function ExamsPage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少课程标识，暂时无法加载考试中心。
+          缺少学科标识，暂时无法加载考试中心。
         </div>
       </div>
     );
@@ -370,7 +411,7 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -446,13 +487,13 @@ export function ExamsPage() {
           <section>
             <div className="space-y-6">
               {historyQuery.isLoading && (
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
                   正在加载试卷列表...
                 </div>
               )}
 
               {historyQuery.error && (
-                <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+                <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                   {getApiErrorMessage(historyQuery.error, "加载试卷列表失败")}
                 </div>
               )}
@@ -489,7 +530,7 @@ export function ExamsPage() {
                   {expandedGroups[group.key] && (
                     <div>
                       {group.items.length === 0 ? (
-                        <div className="px-1 py-1 text-sm text-slate-500">这个分组下暂时没有考卷。</div>
+                        <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
                       ) : (
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,250px))] justify-start gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
@@ -545,7 +586,7 @@ function JsonBadge({ value }: { value: unknown }) {
     return <span className="text-slate-400">无</span>;
   }
   return (
-    <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600">
+    <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:text-slate-300">
       {text}
     </pre>
   );
@@ -567,12 +608,12 @@ function KnowledgeRefTags({ refs }: { refs: Array<Record<string, unknown>> }) {
         return (
           <span
             key={`${String(unitId)}-${role}-${index}`}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           >
-            <span className="text-slate-950">知识点 #{String(unitId)}</span>
+            <span className="text-slate-950 dark:text-slate-100">知识点 #{String(unitId)}</span>
             <span className="text-slate-400">|</span>
             <span>{role}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               {weightLabel}
             </span>
           </span>
@@ -604,6 +645,43 @@ function getPrimaryKnowledgeUnitLabel(item: QuestionTemplateItem) {
   return unitId == null ? "未绑定" : String(unitId);
 }
 
+function formatQuestionTemplateHistoryTime(value?: string | null) {
+  if (!value) return "暂无时间";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getQuestionTemplateHistoryModeLabel(mode: string) {
+  const labels: Record<string, string> = {
+    web_practice: "专项练习",
+    paper_exam: "整卷测试",
+    practice: "练习",
+    diagnostic: "诊断测验",
+    weakpoint_boost: "弱点强化",
+    review: "复习",
+    mock_final: "模拟考试",
+  };
+  return labels[mode] ?? mode;
+}
+
+function getQuestionTemplateHistoryResultLabel(item: QuestionTemplateAnswerHistoryItem) {
+  if (item.is_correct === true) return "正确";
+  if (item.is_correct === false) return "需巩固";
+  return "待批改";
+}
+
+function getQuestionTemplateHistoryResultClass(item: QuestionTemplateAnswerHistoryItem) {
+  if (item.is_correct === true) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (item.is_correct === false) return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 function QuestionTemplateCard({
   item,
   questionTypeLabel,
@@ -619,43 +697,49 @@ function QuestionTemplateCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200"
+      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
       aria-label={`查看题目模板 ${item.id}`}
     >
       <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)]">
-        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)]" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
         <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
+        {item.is_marked ? (
+          <span className="pointer-events-none absolute left-4 top-0 z-20 h-[72px] w-5 drop-shadow-[0_8px_10px_rgba(127,29,29,0.28)]">
+            <span
+              className="absolute inset-0 bg-gradient-to-b from-red-500 via-red-600 to-red-700 shadow-[inset_1px_0_0_rgba(255,255,255,0.32),inset_-1px_0_0_rgba(127,29,29,0.36)]"
+              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%)" }}
+            />
+            <span className="absolute inset-x-0 top-0 h-1 bg-white/35" />
+            <span className="absolute left-[4px] top-2 h-12 w-px rounded-full bg-white/30" />
+          </span>
+        ) : null}
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
-          <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600 dark:text-slate-300">
             <FileText className="h-4 w-4 shrink-0 text-sky-600" />
             <span className="truncate">{questionTypeLabel}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
               #{item.id}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {item.difficulty}
             </span>
           </span>
         </span>
 
         <span className="relative mt-4 flex min-h-0 flex-1 flex-col pl-8">
-          <span className="relative block min-h-0 flex-1 overflow-hidden text-[15px] leading-7 text-slate-900">
+          <span className="relative block min-h-0 flex-1 overflow-hidden text-[15px] leading-7 text-slate-900 dark:text-slate-200">
             <ExamMarkdown content={previewContent} />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent dark:from-slate-950 dark:via-slate-950/95" />
           </span>
         </span>
 
-        <span className="relative mt-5 flex items-center justify-between gap-3 border-t border-slate-200 pl-8 pt-4">
-          <span className="truncate text-xs font-medium text-slate-500">
+        <span className="relative mt-5 flex items-center gap-3 border-t border-slate-200 pl-8 pt-4 dark:border-slate-800">
+          <span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
             知识单元 #{getPrimaryKnowledgeUnitLabel(item)}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-sky-700">
-            <Eye className="h-3.5 w-3.5" />
-            查看
           </span>
         </span>
       </span>
@@ -665,14 +749,25 @@ function QuestionTemplateCard({
 
 function QuestionTemplateDetailCard({
   item,
+  courseId,
   questionTypeLabel,
   onClose,
 }: {
   item: QuestionTemplateItem | null;
+  courseId: string;
   questionTypeLabel: string;
   onClose: () => void;
 }) {
   const questionContent = item ? buildQuestionTemplateContent(item, "暂无题干") : "";
+  const historyQuery = useQuery({
+    queryKey: ["question-template-answer-history", courseId, item?.id],
+    enabled: Boolean(courseId && item?.id),
+    queryFn: async ({ signal }) => {
+      const response = await getQuestionTemplateAnswerHistory(courseId, item?.id ?? 0, signal);
+      return unwrapOrvalResponse<QuestionTemplateAnswerHistoryItem[]>(response) ?? [];
+    },
+  });
+  const historyItems = historyQuery.data ?? [];
 
   return (
     <Modal
@@ -684,41 +779,116 @@ function QuestionTemplateDetailCard({
       {item ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
               {questionTypeLabel}
             </span>
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               {item.difficulty}
             </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {item.status}
             </span>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            {item.is_marked ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                <Bookmark className="h-3.5 w-3.5 fill-current" />
+                已标记
+              </span>
+            ) : null}
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
               v{item.template_version}
             </span>
           </div>
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">题目</p>
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base leading-8 text-slate-900 shadow-sm">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base leading-8 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200">
               <ExamMarkdown content={questionContent} />
             </div>
           </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">标准答案</p>
-              <div className="mt-3 text-sm leading-7 text-emerald-950">
+              <div className="mt-3 text-sm leading-7 text-emerald-950 dark:text-emerald-100">
                 <ExamMarkdown content={item.answer || "暂无答案"} />
               </div>
             </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">解析</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">
                 <ExamMarkdown content={item.explanation || "暂无解析"} />
               </div>
             </section>
           </div>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">历史答题记录</p>
+              {historyItems.length > 0 ? (
+                <span className="text-xs font-semibold text-slate-400">最近 {historyItems.length} 次</span>
+              ) : null}
+            </div>
+            {historyQuery.isLoading ? (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在加载历史记录...
+              </div>
+            ) : historyQuery.error ? (
+              <div className="mt-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
+                {getApiErrorMessage(historyQuery.error, "历史记录加载失败")}
+              </div>
+            ) : historyItems.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {historyItems.map((record) => (
+                  <article
+                    key={`${record.exam_paper_id}-${record.exam_paper_item_id}`}
+                    className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getQuestionTemplateHistoryResultClass(record)}`}>
+                        {getQuestionTemplateHistoryResultLabel(record)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        试卷 #{record.exam_paper_id} · 第 {record.item_order} 题
+                      </span>
+                      <span className="text-xs font-medium text-slate-400">
+                        {formatQuestionTemplateHistoryTime(record.answered_at ?? record.submitted_at ?? record.created_at)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-xl bg-slate-50 px-4 py-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">我的答案</p>
+                        <div className="text-sm leading-7 text-slate-800">
+                          <ExamMarkdown content={record.user_answer || "未作答"} />
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-emerald-50/70 px-4 py-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">参考答案</p>
+                        <div className="text-sm leading-7 text-emerald-950">
+                          <ExamMarkdown content={record.correct_answer || "暂无答案"} />
+                        </div>
+                      </div>
+                    </div>
+                    {record.feedback_text || record.error_cause_label ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-600">
+                        {record.error_cause_label ? (
+                          <p className="font-semibold text-slate-700">原因：{record.error_cause_label}</p>
+                        ) : null}
+                        {record.feedback_text ? <ExamMarkdown content={record.feedback_text} /> : null}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500">
+                这道题还没有历史答题记录。
+              </div>
+            )}
+          </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
             <section>
@@ -738,7 +908,7 @@ function QuestionTemplateDetailCard({
 
 function getQuestionTypeScopeLabel(scope: string) {
   if (scope === "global") return "基础题型";
-  if (scope === "course") return "课程题型";
+  if (scope === "course") return "学科题型";
   return scope || "未分组";
 }
 
@@ -768,24 +938,24 @@ function QuestionTypeCard({ item, onOpen }: { item: QuestionTypeRegistryItem; on
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200"
+      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
       aria-label={`查看题型 ${item.display_name || item.type_key}`}
     >
       <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)]">
-        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)]" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
         <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
-          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-slate-700">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-slate-700 dark:text-slate-300">
             <Tags className="h-4 w-4 shrink-0 text-sky-600" />
             <span className="truncate">{item.display_name || item.type_key}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
               #{item.id}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {getQuestionTypeScopeLabel(item.scope)}
             </span>
           </span>
@@ -793,27 +963,27 @@ function QuestionTypeCard({ item, onOpen }: { item: QuestionTypeRegistryItem; on
 
         <span className="relative mt-4 flex min-h-0 flex-1 flex-col pl-8">
           <span className="font-mono text-[11px] font-semibold text-slate-400">{item.type_key}</span>
-          <span className="relative mt-3 block min-h-0 flex-1 overflow-hidden text-sm leading-7 text-slate-700">
+          <span className="relative mt-3 block min-h-0 flex-1 overflow-hidden text-sm leading-7 text-slate-700 dark:text-slate-300">
             <span className="block">{description}</span>
-            <span className="mt-4 block rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-slate-600">
+            <span className="mt-4 block rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">答案格式</span>
               <span className="line-clamp-2">{answerFormat}</span>
             </span>
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent dark:from-slate-950 dark:via-slate-950/95" />
           </span>
         </span>
 
-        <span className="relative mt-5 grid grid-cols-2 gap-2 border-t border-slate-200 pl-8 pt-4 text-[11px] font-semibold text-slate-500">
-          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1">
+        <span className="relative mt-5 grid grid-cols-2 gap-2 border-t border-slate-200 pl-8 pt-4 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {item.grading_method || "未配置评分"}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {getQuestionTypeSourceLabel(item.source)}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             选项{hasUsefulRecord(item.option_schema) ? "已配置" : "无"}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {getQuestionTypeConfidenceLabel(item.confidence)}
           </span>
         </span>
@@ -833,42 +1003,42 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
       {item ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
               {getQuestionTypeScopeLabel(item.scope)}
             </span>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
               {getQuestionTypeSourceLabel(item.source)}
             </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {item.is_active ? "启用中" : "已停用"}
             </span>
             {item.is_system && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 系统内置
               </span>
             )}
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {getQuestionTypeConfidenceLabel(item.confidence)}
             </span>
           </div>
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">题型标识</p>
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <h3 className="text-xl font-semibold text-slate-950">{item.display_name || item.type_key}</h3>
-              <p className="mt-2 font-mono text-xs text-slate-500">{item.type_key}</p>
-              <p className="mt-4 text-sm leading-7 text-slate-600">{item.description || "暂无描述"}</p>
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
+              <h3 className="text-xl font-semibold text-slate-950 dark:text-slate-100">{item.display_name || item.type_key}</h3>
+              <p className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">{item.type_key}</p>
+              <p className="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">{item.description || "暂无描述"}</p>
             </div>
           </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">答案格式</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">{item.answer_format || "未配置"}</div>
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">{item.answer_format || "未配置"}</div>
             </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">评分方式</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">{item.grading_method || "未配置"}</div>
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">{item.grading_method || "未配置"}</div>
             </section>
           </div>
 
@@ -903,32 +1073,29 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
             type="button"
             onClick={() => navigate(`/course/${courseId}/exams`)}
-            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
           >
             <ArrowLeft className="h-4 w-4" />
             返回考试中心
           </button>
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
                 <Sparkles className="h-4 w-4 text-sky-500" />
                 {eyebrow}
               </div>
-              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
+              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-4xl">
                 {title}
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400 sm:text-base">
                 {description}
               </p>
-            </div>
-            <div className="text-sm font-semibold text-slate-500">
-              当前课程：{courseId}
             </div>
           </div>
         </header>
@@ -941,6 +1108,8 @@ function ExamCatalogShell({
 export function QuestionTemplatesPage() {
   const { courseId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
+  const [showMarkedOnly, setShowMarkedOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const templatesQuery = useQuery({
     queryKey: ["exam-question-templates", courseId],
@@ -951,6 +1120,10 @@ export function QuestionTemplatesPage() {
     },
   });
   const templates = templatesQuery.data ?? [];
+  const markedTemplates = useMemo(
+    () => templates.filter((item) => item.is_marked === true),
+    [templates],
+  );
 
   const typesQuery = useQuery({
     queryKey: ["exam-question-types", courseId],
@@ -972,12 +1145,36 @@ export function QuestionTemplatesPage() {
     return labels;
   }, [typesQuery.data]);
   const getQuestionTypeLabel = (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? typeKey;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const visibleTemplates = useMemo(() => {
+    const baseTemplates = showMarkedOnly ? markedTemplates : templates;
+    if (!normalizedSearchQuery) {
+      return baseTemplates;
+    }
+    return baseTemplates.filter((item) => {
+      const searchableText = [
+        String(item.id),
+        item.question_type,
+        getQuestionTypeLabel(item.question_type),
+        item.difficulty,
+        item.status,
+        getPrimaryKnowledgeUnitLabel(item),
+        buildQuestionTemplateContent(item, ""),
+        item.answer,
+        item.explanation,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return searchableText.includes(normalizedSearchQuery);
+    });
+  }, [markedTemplates, normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, templates]);
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少课程标识，暂时无法加载题库。
+          缺少学科标识，暂时无法加载题库。
         </div>
       </div>
     );
@@ -988,10 +1185,10 @@ export function QuestionTemplatesPage() {
       courseId={courseId}
       eyebrow="Question Bank"
       title="题库模板"
-      description="这里展示当前课程已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
+      description="这里展示当前学科已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
     >
       {templatesQuery.isLoading && (
-        <div className="px-6 py-12 text-center text-sm text-slate-500">
+        <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           正在加载题库模板...
         </div>
       )}
@@ -1005,26 +1202,92 @@ export function QuestionTemplatesPage() {
       {!templatesQuery.isLoading && !templatesQuery.error && templates.length === 0 && (
         <div className="px-6 py-12 text-center">
           <BookOpen className="mx-auto h-10 w-10 text-slate-300" />
-          <h3 className="mt-4 text-lg font-semibold text-slate-900">还没有题库模板</h3>
-          <p className="mt-2 text-sm text-slate-500">创建考试后，系统生成的题目会沉淀到这里。</p>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有题库模板</h3>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">创建考试后，系统生成的题目会沉淀到这里。</p>
         </div>
       )}
 
       {templates.length > 0 ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 px-1 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
-          {templates.map((item) => (
-            <QuestionTemplateCard
-              key={item.id}
-              item={item}
-              questionTypeLabel={getQuestionTypeLabel(item.question_type)}
-              onOpen={() => setSelectedTemplate(item)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mb-4 px-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <label className="relative block min-w-0 flex-1 sm:max-w-[360px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索题干、题型、难度、ID"
+                  className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-10 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                    aria-label="清空搜索"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowMarkedOnly((current) => !current)}
+                className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
+                  showMarkedOnly
+                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+                aria-pressed={showMarkedOnly}
+              >
+                <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
+                只看已标记
+              </button>
+            </div>
+          </div>
+
+          <section className="space-y-2 px-1">
+            <div className="text-sm text-slate-500">
+              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
+            </div>
+
+            {visibleTemplates.length > 0 ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+                {visibleTemplates.map((item) => (
+                  <QuestionTemplateCard
+                    key={item.id}
+                    item={item}
+                    questionTypeLabel={getQuestionTypeLabel(item.question_type)}
+                    onOpen={() => setSelectedTemplate(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+                {normalizedSearchQuery ? (
+                  <Search className="mx-auto h-10 w-10 text-slate-300" />
+                ) : (
+                  <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
+                )}
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                  {normalizedSearchQuery ? "没有匹配的题目" : "还没有已标记题目"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  {normalizedSearchQuery
+                    ? showMarkedOnly
+                      ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
+                      : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
+                    : "在做题页面点“标记”后，收藏的题目会出现在这里。"}
+                </p>
+              </div>
+            )}
+          </section>
+        </>
       ) : null}
 
       <QuestionTemplateDetailCard
         item={selectedTemplate}
+        courseId={courseId}
         questionTypeLabel={selectedTemplate ? getQuestionTypeLabel(selectedTemplate.question_type) : ""}
         onClose={() => setSelectedTemplate(null)}
       />
@@ -1047,9 +1310,9 @@ export function QuestionTypesPage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少课程标识，暂时无法加载题型。
+          缺少学科标识，暂时无法加载题型。
         </div>
       </div>
     );
@@ -1064,10 +1327,10 @@ export function QuestionTypesPage() {
       courseId={courseId}
       eyebrow="Question Types"
       title="题型注册表"
-      description="这里展示系统基础题型和当前课程题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
+      description="这里展示系统基础题型和当前学科题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
     >
       {typesQuery.isLoading && (
-        <div className="px-6 py-12 text-center text-sm text-slate-500">
+        <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           正在加载题型...
         </div>
       )}
@@ -1082,21 +1345,21 @@ export function QuestionTypesPage() {
         <div className="grid gap-6">
           {[
             { title: "基础题型", rows: globalRows, icon: <Tags className="h-5 w-5" /> },
-            { title: "当前课程题型", rows: courseRows, icon: <Layers3 className="h-5 w-5" /> },
+            { title: "当前学科题型", rows: courseRows, icon: <Layers3 className="h-5 w-5" /> },
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950">
+                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
                   {group.icon}
                   {group.title}
                 </h2>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   {group.rows.length} 类
                 </span>
               </div>
 
               {group.rows.length === 0 ? (
-                <div className="px-5 py-8 text-center text-sm text-slate-500">
+                <div className="px-5 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                   暂无{group.title}
                 </div>
               ) : (
@@ -1120,7 +1383,7 @@ export function ExamPaperPage() {
 
   if (!courseId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少考卷信息，暂时无法进入考试页面。
         </div>

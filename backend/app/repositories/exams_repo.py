@@ -25,6 +25,63 @@ def create_question_template(session: Session, template: QuestionTemplate) -> Qu
     return template
 
 
+def set_question_template_mark(
+    session: Session,
+    *,
+    course_id: str,
+    template_id: int,
+    is_marked: bool,
+) -> QuestionTemplate | None:
+    template = session.get(QuestionTemplate, template_id)
+    if template is None or template.course_id != course_id:
+        return None
+    template.is_marked = is_marked
+    template.updated_at = utcnow()
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return template
+
+
+def list_marked_question_template_ids(session: Session, template_ids: list[int]) -> set[int]:
+    ids = [int(item) for item in template_ids if int(item or 0) > 0]
+    if not ids:
+        return set()
+    rows = session.exec(
+        select(QuestionTemplate.id).where(
+            QuestionTemplate.id.in_(ids),
+            QuestionTemplate.is_marked == True,  # noqa: E712
+        )
+    ).all()
+    return {int(item) for item in rows if item is not None}
+
+
+def list_question_template_answer_history(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    template_id: int,
+    limit: int = 20,
+) -> list[tuple[ExamPaperItem, ExamPaper]]:
+    if template_id <= 0 or limit <= 0:
+        return []
+    stmt = (
+        select(ExamPaperItem, ExamPaper)
+        .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
+        .where(
+            ExamPaperItem.question_template_id == template_id,
+            ExamPaperItem.answered_at.is_not(None),
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility != "hidden",
+        )
+        .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
+        .limit(limit)
+    )
+    return [(item, paper) for item, paper in session.exec(stmt).all()]
+
+
 def _normalize_link_refs(refs: list[dict[str, object]]) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     seen: set[int] = set()

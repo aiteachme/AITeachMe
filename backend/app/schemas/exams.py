@@ -31,6 +31,17 @@ class ExamSubmitRequest(BaseModel):
     answers: list[ExamSubmitAnswerItem] = Field(default_factory=list, description="Submitted answers.")
 
 
+class QuestionTemplateMarkRequest(BaseModel):
+    """Update whether a question template is marked as a favorite."""
+
+    is_marked: bool = Field(description="Whether the question template is marked.")
+
+
+class QuestionTemplateMarkResponse(BaseModel):
+    question_template_id: int
+    is_marked: bool
+
+
 class RuntimeStatusResponse(BaseModel):
     """Generic runtime status response."""
 
@@ -156,8 +167,28 @@ class QuestionTemplateItemResponse(BaseModel):
     selection_hints: dict[str, Any] = Field(default_factory=dict)
     template_version: int
     status: str
+    is_marked: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class QuestionTemplateAnswerHistoryItem(BaseModel):
+    exam_paper_id: int
+    exam_paper_item_id: int
+    item_order: int
+    exam_mode: str
+    exam_status: str
+    submitted_at: datetime | None = None
+    graded_at: datetime | None = None
+    answered_at: datetime | None = None
+    user_answer: str
+    correct_answer: str
+    is_correct: bool | None = None
+    score_obtained: float | None = None
+    score_max: float | None = None
+    error_cause_label: str | None = None
+    feedback_text: str | None = None
+    created_at: datetime
 
 
 class QuestionTypeRegistryItemResponse(BaseModel):
@@ -203,6 +234,7 @@ class ExamPaperItemResponse(BaseModel):
     score_obtained: float | None = None
     score_max: float | None = None
     error_cause_label: str | None = None
+    is_marked: bool = False
 
 
 class ExamPaperDetailResponse(BaseModel):

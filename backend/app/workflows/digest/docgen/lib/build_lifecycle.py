@@ -587,6 +587,7 @@ def trigger_docgen_build(
         session,
         course=course,
         embedding_resolution=embedding_resolution,
+        prechecked_conflict=conflict,
     )
     force_full_rebuild = bool(
         conflict is not None

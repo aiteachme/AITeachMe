@@ -25,7 +25,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  deleteCourseApiApiV1CoursesDeletePost,
   listCoursesApiApiV1CoursesListPost,
   previewDeleteCourseApiApiV1CoursesDeletePreviewPost,
 } from "../../api/generated/courses";
@@ -148,7 +147,7 @@ function RenameCourseModal({
       />
       <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-28px_rgba(0,0,0,0.72)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h3 className="text-sm font-bold text-slate-900">重命名课程</h3>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200">
             <X className="h-4 w-4" />
           </button>
@@ -164,11 +163,11 @@ function RenameCourseModal({
               }
             }}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-700"
-            placeholder="输入课程名称"
+            placeholder="输入学科名称"
             autoFocus
           />
           {renameMutation.isError ? (
-            <p className="text-xs text-red-600">{getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}</p>
+            <p className="text-xs text-red-600 dark:text-red-400">{getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}</p>
           ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/80">
@@ -309,10 +308,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (courseId: string) => {
-      await deleteCourseApiApiV1CoursesDeletePost({ course_id: courseId, force: true });
+    mutationFn: async ({
+      courseId,
+      knownDetailCounts,
+    }: {
+      courseId: string;
+      knownDetailCounts?: Record<string, number> | null;
+    }) => {
+      await apiClient({
+        method: "POST",
+        url: "/api/v1/courses/delete",
+        data: {
+          course_id: courseId,
+          force: true,
+          known_detail_counts: knownDetailCounts ?? undefined,
+        },
+      });
     },
-    onSuccess: (_, courseId) => {
+    onSuccess: (_, variables) => {
+      const courseId = variables.courseId;
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       notifyConversationSessionsChanged();
       if (activeScope?.type === "course" && activeScope.courseId === courseId) {
@@ -332,6 +346,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const groupedCourses = useMemo(() => courses as CourseItem[], [courses]);
+  const shouldAnimateCourseItems = groupedCourses.length <= 24;
   const shouldShowCourseList = effectiveCollapsed || isCourseSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
     setIsCollapsed(false);
@@ -442,7 +457,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     state: { newEntryAt: Date.now() },
                   });
                 }}
-                title="新建课程"
+                title="新建学科"
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                   isCreateCourseActive
@@ -529,7 +544,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
                   )}
                 >
-                  新建课程
+                  新建学科
                 </span>
               </button>
 
@@ -621,7 +636,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
                 aria-expanded={isCourseSectionExpanded}
               >
-                <span className="truncate">课程</span>
+                <span className="truncate">学科</span>
                 <ChevronRight
                   className={cn(
                     "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
@@ -647,7 +662,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           )}
 
           {!isLoading && groupedCourses.length === 0 && !effectiveCollapsed && isCourseSectionExpanded ? (
-            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无课程</p>
+            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
           ) : null}
 
           <AnimatePresence initial={false}>
@@ -662,9 +677,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <motion.div
                   className="space-y-0.5"
-                  variants={sidebarListContainerMotion}
-                  initial="hidden"
-                  animate="visible"
+                  variants={shouldAnimateCourseItems ? sidebarListContainerMotion : undefined}
+                  initial={shouldAnimateCourseItems ? "hidden" : false}
+                  animate={shouldAnimateCourseItems ? "visible" : undefined}
                 >
                   <AnimatePresence initial={false}>
               {groupedCourses.map((course) => {
@@ -676,10 +691,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 return (
                   <motion.div
                     key={course.course_id}
-                    variants={sidebarItemMotion}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
+                    variants={shouldAnimateCourseItems ? sidebarItemMotion : undefined}
+                    initial={shouldAnimateCourseItems ? "hidden" : false}
+                    animate={shouldAnimateCourseItems ? "visible" : undefined}
+                    exit={shouldAnimateCourseItems ? "exit" : undefined}
                     className="relative"
                   >
                 <div
@@ -884,7 +899,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.course_id);
+            deleteMutation.mutate({
+              courseId: deleteTarget.course_id,
+              knownDetailCounts: deletePreview?.detail_counts,
+            });
           }
         }}
       />

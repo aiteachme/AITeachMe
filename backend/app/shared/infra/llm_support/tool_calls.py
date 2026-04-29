@@ -11,9 +11,9 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
-from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -27,13 +27,12 @@ from .common import (
     sleep_before_retry,
     track_call,
 )
+from .litellm_loader import load_litellm
 from .observability import (
     _end_langsmith_trace,
     _langsmith_tool_calls,
     _langsmith_trace_kwargs,
 )
-
-litellm = load_litellm()
 
 
 async def acompletion_with_tools(
@@ -47,6 +46,7 @@ async def acompletion_with_tools(
 ) -> Any:
     """Async completion with tool-call support."""
 
+    litellm = load_litellm()
     context = build_completion_context(
         task_type=task_type,
         call_purpose=call_purpose,
@@ -90,7 +90,7 @@ async def acompletion_with_tools(
                 ) as trace_run:
                     response = await asyncio.wait_for(
                         litellm.acompletion(**prepared.call_kwargs),
-                        timeout=context_request_timeout_s(context),
+                        timeout=context_request_timeout_s(context, prepared.call_kwargs),
                     )
                     prompt_t, completion_t, total_t = extract_usage(response)
                     message = response.choices[0].message
@@ -121,7 +121,9 @@ async def acompletion_with_tools(
                 )
                 return response
             except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
+                last_error = LLMTimeoutError(
+                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                )
                 log_attempt_timeout(
                     "llm_tools_timeout",
                     attempt=prepared,

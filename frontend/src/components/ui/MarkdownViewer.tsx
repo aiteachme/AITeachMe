@@ -6,6 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { ChevronRight } from "lucide-react";
 
+import { runTrackedApiFetch } from "../../api/client";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -220,9 +221,9 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     listItem: "leading-[1.75] [&>p]:mb-0 [&>p]:inline",
     blockquote: "my-2.5 rounded-r-md border-l-[3px] border-[#DEE0E3] bg-[#FAFBFC]/88 pl-3 pr-2.5 py-1.25 text-[14px] leading-[1.68] text-[#646A73] dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400",
     codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-[#E5E7EB] dark:bg-white",
-    codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-[#ECECF1] dark:bg-[#F7F7F8] dark:text-[#6B7280]",
-    codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-white dark:text-[#111827]",
+    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.8)]",
+    codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
+    codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-slate-950 dark:text-slate-100",
     tableShell: "my-5 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full text-[14px]",
     thead: "border-b border-[#DEE0E3] bg-[#F5F6F7] dark:border-slate-800 dark:bg-slate-900/80",
@@ -1499,23 +1500,31 @@ function MarkdownImage({
 
     const controller = new AbortController();
     let objectUrl = "";
-    fetch(src, {
-      credentials: "include",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    })
-      .then((response) => {
+    runTrackedApiFetch(
+      src,
+      {
+        method: "GET",
+        signal: controller.signal,
+      },
+      async (response) => {
         if (!response.ok) {
           throw new Error(`asset fetch failed: ${response.status}`);
         }
         return response.blob();
-      })
+      },
+      "markdown_asset_disconnect",
+    )
       .then((blob) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         objectUrl = URL.createObjectURL(blob);
         setBlobSrc(objectUrl);
       })
       .catch(() => {
-        setBlobSrc("");
+        if (!controller.signal.aborted) {
+          setBlobSrc("");
+        }
       });
 
     return () => {

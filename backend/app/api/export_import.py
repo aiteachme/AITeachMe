@@ -5,9 +5,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, Path, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
@@ -24,6 +25,7 @@ from app.workflows.support.export_import import (
     build_course_export_filename,
     download_course_package,
     export_course,
+    get_demo_courses_index_url,
     import_course,
     list_available_courses,
     preview_export,
@@ -138,10 +140,16 @@ async def import_uploaded_course_api(
     summary="列出演示课程",
     responses=build_error_responses([500, 502]),
 )
-async def list_demo_courses_api() -> ApiResponse[list[CoursePackageItem]]:
+async def list_demo_courses_api(response: Response) -> ApiResponse[list[CoursePackageItem]]:
     """列出线上演示课程目录中的课程包。"""
 
-    return ok_response(list_available_courses())
+    courses = await run_in_threadpool(list_available_courses)
+    _set_no_store_headers(response)
+    response.headers["X-Demo-Courses-Count"] = str(len(courses))
+    catalog_url = get_demo_courses_index_url()
+    if catalog_url:
+        response.headers["X-Demo-Courses-Catalog"] = catalog_url
+    return ok_response(courses)
 
 
 @router.post(
@@ -182,6 +190,12 @@ def _cleanup_task(path: Path):
     from starlette.background import BackgroundTask
 
     return BackgroundTask(lambda: path.unlink(missing_ok=True))
+
+
+def _set_no_store_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 
 def _validate_import_package_filename(filename: str) -> None:

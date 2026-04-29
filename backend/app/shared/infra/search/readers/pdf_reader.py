@@ -1,6 +1,8 @@
-"""PDF reader using PyMuPDF when available."""
+"""PDF reader using pdfplumber when available."""
 
 from __future__ import annotations
+
+from io import BytesIO
 
 import structlog
 
@@ -34,12 +36,13 @@ class PDFReader(BaseReader):
             return build_error_page(url, error=exc, content_type="application/pdf", reader_name=self.name)
 
         try:
-            import fitz
+            import pdfplumber
 
-            document = fitz.open(stream=payload, filetype="pdf")
-            pages = [page.get_text("text") for page in document]
-            content = "\n\n".join(text.strip() for text in pages if text.strip())
-            title = document.metadata.get("title") or ""
+            with pdfplumber.open(BytesIO(payload)) as document:
+                pages = [page.extract_text() or "" for page in document.pages]
+                content = "\n\n".join(text.strip() for text in pages if text.strip())
+                metadata = document.metadata or {}
+                title = metadata.get("Title") or metadata.get("title") or ""
         except Exception as exc:  # pragma: no cover - optional dependency
             logger.warning("pdf_parse_failed", url=url, error=str(exc))
             return build_error_page(url, error=exc, content_type="application/pdf", reader_name=self.name)

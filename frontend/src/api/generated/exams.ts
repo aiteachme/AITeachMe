@@ -31,15 +31,19 @@ import type {
   ApiResponseExamPaperDetailResponse,
   ApiResponseExamPrewarmStatusResponse,
   ApiResponseExamStudyGuideResponse,
+  ApiResponseListQuestionTemplateAnswerHistoryItem,
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
   ApiResponsePaginatedDataExamHistoryItem,
+  ApiResponseQuestionTemplateMarkResponse,
   ErrorResponse,
   ExamGenerateRequest,
   ExamHistoryApiV1CoursesCourseIdExamsHistoryGetParams,
   ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetParams,
   ExamSubmitRequest,
-  HTTPValidationError
+  HTTPValidationError,
+  QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,
+  QuestionTemplateMarkRequest
 } from './model';
 
 import { orvalApiClient } from '../client';
@@ -587,6 +591,268 @@ export function useQuestionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGe
 
 
 /**
+ * @summary List answer history for a question template
+ */
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse200 = {
+  data: ApiResponseListQuestionTemplateAnswerHistoryItem
+  status: 200
+}
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponseSuccess = (questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse200) & {
+  headers: Headers;
+};
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponseError = (questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse400 | questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse404 | questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse422 | questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse500) & {
+  headers: Headers;
+};
+
+export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse = (questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponseSuccess | questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponseError)
+
+export const getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetUrl = (courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/answer-history?${stringifiedParams}` : `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/answer-history`
+}
+
+export const questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet = async (courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: RequestInit): Promise<questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse> => {
+
+  return orvalApiClient<questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse>(getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetUrl(courseId,questionTemplateId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryKey = (courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,) => {
+    return [
+    `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/answer-history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryOptions = <TData = Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryKey(courseId,questionTemplateId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>> = ({ signal }) => questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet(courseId,questionTemplateId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(courseId && questionTemplateId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>>
+export type QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet<TData = Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    questionTemplateId: number,
+    params: undefined |  QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet<TData = Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>,
+          TError,
+          Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet<TData = Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List answer history for a question template
+ */
+
+export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet<TData = Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    questionTemplateId: number,
+    params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryOptions(courseId,questionTemplateId,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+/**
+ * @summary Mark or unmark a question template
+ */
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
+  data: ApiResponseQuestionTemplateMarkResponse
+  status: 200
+}
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseSuccess = (markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200) & {
+  headers: Headers;
+};
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseError = (markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse400 | markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse404 | markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse422 | markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse500) & {
+  headers: Headers;
+};
+
+export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse = (markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseSuccess | markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponseError)
+
+export const getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchUrl = (courseId: string,
+    questionTemplateId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/mark`
+}
+
+export const markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch = async (courseId: string,
+    questionTemplateId: number,
+    questionTemplateMarkRequest: QuestionTemplateMarkRequest, options?: RequestInit): Promise<markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse> => {
+
+  return orvalApiClient<markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse>(getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchUrl(courseId,questionTemplateId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      questionTemplateMarkRequest,)
+  }
+);}
+
+
+
+
+export const getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext> => {
+
+const mutationKey = ['markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, {courseId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}> = (props) => {
+          const {courseId,questionTemplateId,data} = props ?? {};
+
+          return  markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch(courseId,questionTemplateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationResult = NonNullable<Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>>
+    export type MarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationBody = QuestionTemplateMarkRequest
+    export type MarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Mark or unmark a question template
+ */
+export const useMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch>>,
+        TError,
+        {courseId: string;questionTemplateId: number;data: QuestionTemplateMarkRequest},
+        TContext
+      > => {
+      return useMutation(getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationOptions(options), queryClient);
+    }
+    /**
  * @summary List global and course question types
  */
 export type questionTypesApiV1CoursesCourseIdExamsQuestionTypesGetResponse200 = {

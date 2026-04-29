@@ -10,17 +10,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# LibreOffice/soffice 用于 .doc -> .docx、PPT/PPTX -> PDF 等本地文件转换。
-# Noto 字体用于减少中文文档和符号转换时的乱码/缺字。
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        fontconfig \
-        fonts-noto-cjk \
-        fonts-noto-color-emoji \
-        libreoffice \
-    && rm -rf /var/lib/apt/lists/* \
-    && fc-cache -f
-
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-cache --no-install-project

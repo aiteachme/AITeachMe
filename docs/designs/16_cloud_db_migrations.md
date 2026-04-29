@@ -127,15 +127,11 @@ ALLOW_CLOUD_VECTOR_REBUILD=false
 
 GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替代 Render Dashboard 上的 pre-deploy command。
 
-### 4.1 LibreOffice / Docker 部署
+### 4.1 Docker 部署
 
-如果云端需要支持 `.doc` 转 `.docx`，或者 PPT/PPTX 走 OCR 解析链路，后端运行环境必须能找到 `soffice`/`libreoffice`。Render Native Python runtime 更适合纯 Python 依赖；这类系统包建议使用 Docker runtime 固定下来。
+当前云端 ingest 已收敛到 `.pdf` / `.docx` / Markdown / 文本上传：复杂 PDF/OCR 优先走 PaddleOCR 或 MinerU，本地兜底走 MarkItDown。因此 canonical 后端镜像不再安装 `soffice`/`libreoffice`。如果后续重新开放 `.doc`、PPT/PPTX 或本地 Office 转换链路，再单独恢复系统包依赖。
 
-当前仓库的 canonical 后端镜像定义是 `infra/deployment/docker/backend.Dockerfile`，它会安装：
-
-- `libreoffice`：提供 `soffice` 命令，服务于 DOC/PPT 转换。
-- `fonts-noto-cjk`：保证中文文档转 PDF/图片时尽量不乱码。
-- `fonts-noto-color-emoji`：减少 emoji 或符号字体缺失。
+当前仓库的 canonical 后端镜像定义是 `infra/deployment/docker/backend.Dockerfile`，镜像只安装 Python 运行依赖与后端应用本身。
 
 Render Dashboard 建议配置：
 

@@ -141,5 +141,5 @@
 - Digest 主线是 Planner 生成 confirmed plan，DocGen 生成知识文档。
 - Search 层只负责找来源、读来源、压缩上下文，不直接产最终教学答案。
 - Settings 分项目默认、用户级非敏感覆盖、环境变量和敏感项三类。
-- 本地模式不依赖 OSS 演示课程；云端模式通过后端统一读取演示课程目录。
+- 未配置 `S3_PUBLIC_BASE_URL` 时不依赖 OSS 演示课程；配置后通过后端统一读取演示课程目录。
 - 前端生成代码目录 `frontend/src/api/generated/` 不手改。

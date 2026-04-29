@@ -32,6 +32,9 @@ from app.schemas.exams import (
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
     ExamPrewarmStatusResponse,
+    QuestionTemplateAnswerHistoryItem,
+    QuestionTemplateMarkRequest,
+    QuestionTemplateMarkResponse,
     QuestionTemplateItemResponse,
     QuestionTypeRegistryItemResponse,
     PaperPreview,
@@ -1916,6 +1919,7 @@ def _paper_item_response(
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
     mastery_by_unit_id: dict[int, float],
     knowledge_unit_refs: list[dict[str, object]],
+    marked_template_ids: set[int],
 ) -> ExamPaperItemResponse:
     return ExamPaperItemResponse(
         id=item.id,
@@ -1948,6 +1952,7 @@ def _paper_item_response(
         score_obtained=item.score_obtained,
         score_max=item.score_max,
         error_cause_label=item.error_cause_label,
+        is_marked=int(item.question_template_id or 0) in marked_template_ids,
     )
 
 
@@ -2011,6 +2016,7 @@ def _generated_question_item_responses(
                 score_obtained=None,
                 score_max=1.0,
                 error_cause_label=None,
+                is_marked=False,
             )
         )
     return sorted(responses, key=lambda item: item.item_order)
@@ -2043,8 +2049,33 @@ def _question_template_response(
         selection_hints=_json_dict(template.selection_hints_json),
         template_version=template.template_version,
         status=template.status,
+        is_marked=template.is_marked,
         created_at=template.created_at,
         updated_at=template.updated_at,
+    )
+
+
+def _question_template_answer_history_response(
+    item: ExamPaperItem,
+    paper: ExamPaper,
+) -> QuestionTemplateAnswerHistoryItem:
+    return QuestionTemplateAnswerHistoryItem(
+        exam_paper_id=paper.id or 0,
+        exam_paper_item_id=item.id or 0,
+        item_order=item.item_order,
+        exam_mode=paper.exam_mode,
+        exam_status=_effective_exam_paper_status(paper),
+        submitted_at=paper.submitted_at,
+        graded_at=paper.graded_at,
+        answered_at=item.answered_at,
+        user_answer=item.answer_content,
+        correct_answer=item.answer_snapshot,
+        is_correct=item.is_correct,
+        score_obtained=item.score_obtained,
+        score_max=item.score_max,
+        error_cause_label=item.error_cause_label,
+        feedback_text=item.feedback_text,
+        created_at=item.created_at,
     )
 
 
@@ -2104,12 +2135,17 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         )
         if state.knowledge_unit_id is not None
     }
+    marked_template_ids = exams_repo.list_marked_question_template_ids(
+        session,
+        [int(item.question_template_id or 0) for item in items],
+    )
     item_responses = [
         _paper_item_response(
             item,
             knowledge_unit_by_id=knowledge_unit_by_id,
             mastery_by_unit_id=mastery_by_unit_id,
             knowledge_unit_refs=links_by_item_id.get(int(item.id or 0), []),
+            marked_template_ids=marked_template_ids,
         )
         for item in items
     ]
@@ -2754,6 +2790,75 @@ async def question_templates(
 
 
 @router.get(
+    "/question-templates/{question_template_id}/answer-history",
+    response_model=ApiResponse[list[QuestionTemplateAnswerHistoryItem]],
+    summary="List answer history for a question template",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_template_answer_history(
+    course_id: str = Path(...),
+    question_template_id: int = Path(..., ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTemplateAnswerHistoryItem]]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    template = session.get(QuestionTemplate, question_template_id)
+    if template is None or template.course_id != normalized:
+        _raise_not_found(
+            f"Question template `{question_template_id}` not found.",
+            error_code="QUESTION_TEMPLATE_NOT_FOUND",
+        )
+    rows = exams_repo.list_question_template_answer_history(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+        template_id=question_template_id,
+        limit=limit,
+    )
+    return ok_response([
+        _question_template_answer_history_response(item, paper)
+        for item, paper in rows
+    ])
+
+
+@router.patch(
+    "/question-templates/{question_template_id}/mark",
+    response_model=ApiResponse[QuestionTemplateMarkResponse],
+    summary="Mark or unmark a question template",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def mark_question_template(
+    course_id: str = Path(...),
+    question_template_id: int = Path(..., ge=1),
+    body: QuestionTemplateMarkRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[QuestionTemplateMarkResponse]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    template = exams_repo.set_question_template_mark(
+        session,
+        course_id=normalized,
+        template_id=question_template_id,
+        is_marked=body.is_marked,
+    )
+    if template is None:
+        _raise_not_found(
+            f"Question template `{question_template_id}` not found.",
+            error_code="QUESTION_TEMPLATE_NOT_FOUND",
+        )
+    assert template is not None
+    return ok_response(
+        QuestionTemplateMarkResponse(
+            question_template_id=question_template_id,
+            is_marked=bool(template.is_marked),
+        )
+    )
+
+
+@router.get(
     "/question-types",
     response_model=ApiResponse[list[QuestionTypeRegistryItemResponse]],
     summary="List global and course question types",
@@ -2806,6 +2911,8 @@ async def exam_generation_stream(
             _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     async def event_generator():
+        heartbeat_interval_s = 8.0
+
         def snapshot_payload() -> dict[str, object]:
             with managed_session() as stream_session:
                 current = exams_repo.get_exam_paper_by_id(stream_session, exam_paper_id)
@@ -2828,7 +2935,10 @@ async def exam_generation_stream(
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await queue.get()
+                    event = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval_s)
+                except asyncio.TimeoutError:
+                    yield format_sse_event("ping", {})
+                    continue
                 except Exception:
                     break
                 yield format_sse_event(event.event, event.data)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ListChecks, ZoomIn, ZoomOut } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bookmark, ListChecks, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -11,7 +11,14 @@ import {
 } from "../../api/generated/exams";
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
 import { getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
-import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../../api/client";
+import {
+  buildApiUrl,
+  getApiErrorMessage,
+  LONG_RUNNING_API_TIMEOUT_MS,
+  orvalApiClient,
+  registerBackendEventSource,
+  reportBackendConnectionIssue,
+} from "../../api/client";
 import {
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
@@ -45,8 +52,69 @@ async function getExamStudyGuide(courseId: string, paperId: number, signal?: Abo
     {
       method: "GET",
       signal,
+      timeout: LONG_RUNNING_API_TIMEOUT_MS,
     },
   );
+}
+
+type QuestionTemplateMarkResponse = {
+  question_template_id: number;
+  is_marked: boolean;
+};
+
+type QuestionTemplateMarkVariables = {
+  questionTemplateId: number;
+  isMarked: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function updateQuestionTemplateMark(
+  courseId: string,
+  questionTemplateId: number,
+  isMarked: boolean,
+) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateMarkResponse } }>(
+    `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/mark`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_marked: isMarked }),
+    },
+  );
+}
+
+function patchQuestionTemplateMarkInDetail(
+  current: unknown,
+  questionTemplateId: number,
+  isMarked: boolean,
+): unknown {
+  if (!isRecord(current) || !isRecord(current.data)) return current;
+  const apiPayload = current.data;
+  if (!isRecord(apiPayload.data)) return current;
+  const paper = apiPayload.data;
+  if (!Array.isArray(paper.items)) return current;
+
+  return {
+    ...current,
+    data: {
+      ...apiPayload,
+      data: {
+        ...paper,
+        items: paper.items.map((item) => (
+          isRecord(item) && item.question_template_id === questionTemplateId
+            ? { ...item, is_marked: isMarked }
+            : item
+        )),
+      },
+    },
+  };
+}
+
+function isQuestionTemplateMarked(item: ExamPaperItemResponse) {
+  return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
 }
 
 interface ExamPaperWorkspaceProps {
@@ -88,6 +156,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const paper = useMemo<ExamPaperDetailResponse | null>(
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
+  );
+  const examDetailQueryKey = useMemo(
+    () => getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId),
+    [paperId, courseId],
   );
   const generationErrorMessage = useMemo(() => {
     const raw = paper?.selection_context?.error_message;
@@ -223,6 +295,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
+    const unregisterEventSource = registerBackendEventSource(stream);
     const historyQueryKey = getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 });
     const detailQueryKey = getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId);
 
@@ -252,6 +325,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       const message = event as MessageEvent<string>;
       const payload = applySnapshotPayload(message);
       refreshPaper();
+      unregisterEventSource();
       stream.close();
       if (payload.status === "failed") {
         toast({
@@ -275,10 +349,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     stream.addEventListener("done", handleDone);
     stream.addEventListener("snapshot", handleSnapshot);
     stream.onerror = () => {
+      reportBackendConnectionIssue("exam_stream_error");
       refreshPaper();
     };
 
     return () => {
+      unregisterEventSource();
       stream.removeEventListener("done", handleDone);
       stream.removeEventListener("snapshot", handleSnapshot);
       stream.close();
@@ -416,7 +492,52 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     });
   }, [keepQuestionHighlight, openAiInteraction, paper, courseId]);
 
+  const questionTemplateMarkMutation = useMutation({
+    mutationFn: ({ questionTemplateId, isMarked }: QuestionTemplateMarkVariables) =>
+      updateQuestionTemplateMark(courseId, questionTemplateId, isMarked),
+    onMutate: async ({ questionTemplateId, isMarked }) => {
+      await queryClient.cancelQueries({ queryKey: examDetailQueryKey });
+      const previousDetail = queryClient.getQueryData(examDetailQueryKey);
+      queryClient.setQueryData(examDetailQueryKey, (current: unknown) =>
+        patchQuestionTemplateMarkInDetail(current, questionTemplateId, isMarked),
+      );
+      return { previousDetail };
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: examDetailQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId] }),
+      ]);
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousDetail) {
+        queryClient.setQueryData(examDetailQueryKey, context.previousDetail);
+      }
+      toast({
+        title: "标记失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
+
+  const toggleQuestionMark = useCallback((item: ExamPaperItemResponse, isMarked: boolean) => {
+    if (!item.question_template_id) {
+      return;
+    }
+    questionTemplateMarkMutation.mutate({
+      questionTemplateId: item.question_template_id,
+      isMarked,
+    });
+  }, [questionTemplateMarkMutation]);
+  const markingQuestionTemplateId = questionTemplateMarkMutation.isPending
+    ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
+    : null;
+
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
+    request: {
+      timeout: LONG_RUNNING_API_TIMEOUT_MS,
+    },
     mutation: {
       onSuccess: async (response) => {
         const graded = unwrapOrvalResponse(response);
@@ -455,8 +576,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   });
 
   return (
-    <div className="relative min-h-full">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)]" />
+    <div className="relative min-h-full text-slate-900 dark:text-slate-100">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)] dark:bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.55)_0%,rgba(15,23,42,0.94)_44%,#020617_100%)]" />
       <ExamStageHeader
         currentStep={paper?.status === "graded" ? activeStage : 1}
         onBack={() => navigate(backHref)}
@@ -484,19 +605,19 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
           }`}
         >
           {examDetailQuery.isLoading && (
-            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
+            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
               正在加载考卷内容...
             </div>
           )}
 
           {examDetailQuery.error && (
-            <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+            <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
               {getApiErrorMessage(examDetailQuery.error, "加载考卷失败")}
             </div>
           )}
 
           {!examDetailQuery.isLoading && !paper && !examDetailQuery.error && (
-            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
+            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
               这份考卷不存在，或者已经无法访问。
             </div>
           )}
@@ -522,8 +643,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               )}
 
               {paper.status === "failed" && (
-                <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700">
-                  <h2 className="text-lg font-semibold text-rose-950">试卷生成失败</h2>
+                <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+                  <h2 className="text-lg font-semibold text-rose-950 dark:text-rose-100">试卷生成失败</h2>
                   <p className="mt-2">
                     {generationErrorMessage || "后台生成题目时出错，请返回列表后重新生成。"}
                   </p>
@@ -537,7 +658,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                   {isQuestionNavOpen && (
                     <div
                       id="exam-question-nav-panel"
-                      className="max-h-[calc(100vh-9rem)] w-52 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur 2xl:w-60"
+                      className="max-h-[calc(100vh-9rem)] w-52 overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/92 dark:shadow-[0_24px_52px_-28px_rgba(0,0,0,0.86)] 2xl:w-60"
                     >
                       <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                         题目导航
@@ -549,11 +670,11 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                           const navTone =
                             paper.status === "graded"
                               ? item.is_correct
-                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
-                                : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100"
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20 dark:hover:bg-emerald-500/15"
+                                : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20 dark:hover:bg-rose-500/15"
                               : isAnswered
-                                ? "bg-slate-900 text-white hover:bg-slate-800"
-                                : "bg-slate-100 text-slate-600 hover:bg-slate-200";
+                                ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700";
 
                           return (
                             <button
@@ -565,12 +686,15 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                                 }
                                 revealQuestion(item.item_order);
                               }}
-                              className={`grid aspect-square w-full place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
-                                isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white" : ""
+                              className={`relative grid aspect-square w-full place-items-center rounded-lg text-xs font-semibold transition ${navTone} ${
+                                isSelectedReviewItem ? "ring-2 ring-slate-900 ring-offset-2 ring-offset-white dark:ring-slate-100 dark:ring-offset-slate-950" : ""
                               }`}
                               aria-label={`跳转到第 ${item.item_order} 题`}
                             >
-                              {item.item_order}
+                              <span>{item.item_order}</span>
+                              {isQuestionTemplateMarked(item) ? (
+                                <Bookmark className="absolute right-1 top-1 h-2.5 w-2.5 fill-current opacity-80" />
+                              ) : null}
                             </button>
                           );
                         })}
@@ -593,10 +717,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     <button
                       type="button"
                       onClick={() => setIsQuestionNavOpen((current) => !current)}
-                      className={`grid h-10 w-10 place-items-center rounded-xl border shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition ${
+                      className={`grid h-10 w-10 place-items-center rounded-xl border shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] ${
                         isQuestionNavOpen
-                          ? "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
-                          : "border-slate-200/80 bg-white/92 text-slate-700 hover:bg-slate-100"
+                          ? "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/20"
+                          : "border-slate-200/80 bg-white/92 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:hover:bg-slate-900"
                       }`}
                       aria-label={isQuestionNavOpen ? "收起题目导航" : "展开题目导航"}
                       aria-expanded={isQuestionNavOpen}
@@ -609,7 +733,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     <button
                       type="button"
                       onClick={() => setPageScale((current) => Math.min(1.4, Number((current + 0.05).toFixed(2))))}
-                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
                       aria-label="放大页面"
                       title="放大页面"
                     >
@@ -619,7 +743,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     <button
                       type="button"
                       onClick={() => setPageScale((current) => Math.max(0.7, Number((current - 0.05).toFixed(2))))}
-                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100"
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
                       aria-label="缩小页面"
                       title="缩小页面"
                     >
@@ -652,6 +776,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                         keepQuestionHighlight(item.item_order);
                       }}
                       onQuestionAi={openQuestionAi}
+                      onQuestionMarkToggle={toggleQuestionMark}
+                      markingQuestionTemplateId={markingQuestionTemplateId}
                     />
                     <ExamQuestionAnalysisSheet item={selectedReviewItem} />
                     </div>
@@ -665,12 +791,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     highlightedQuestionOrder={highlightedQuestionOrder}
                     setAnswers={setAnswers}
                     onQuestionAi={openQuestionAi}
+                    onQuestionMarkToggle={toggleQuestionMark}
+                    markingQuestionTemplateId={markingQuestionTemplateId}
                   />
                 )}
 
-                <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pt-4 pb-12 text-center sm:pb-16">
+                <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pb-12 pt-4 text-center dark:border-slate-800 sm:pb-16">
                   <Button
-                    className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] ${paper.status === "graded" ? "hidden" : ""}`}
+                    className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white ${paper.status === "graded" ? "hidden" : ""}`}
                     onClick={() =>
                       submitExam.mutate({
                         courseId,
@@ -695,7 +823,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                   {paper.status === "graded" && (
                     <>
                       <Button
-                        className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)]"
+                        className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         onClick={() => {
                           setActiveStage(3);
                           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -703,7 +831,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                       >
                         查看学习指南
                       </Button>
-                      <p className="text-sm text-slate-500">进入第 3 步，根据本次结果继续查漏补缺。</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">进入第 3 步，根据本次结果继续查漏补缺。</p>
                     </>
                   )}
                   </section>
@@ -714,13 +842,13 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               {paper.status !== "generating" && paper.status !== "failed" && activeStage === 3 && (
                 <div className="mx-auto max-w-6xl">
                   {studyGuideQuery.isLoading && (
-                    <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
+                    <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
                       正在生成学习指南...
                     </div>
                   )}
 
                   {studyGuideQuery.error && (
-                    <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+                    <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                       {getApiErrorMessage(studyGuideQuery.error, "学习指南生成失败")}
                     </div>
                   )}

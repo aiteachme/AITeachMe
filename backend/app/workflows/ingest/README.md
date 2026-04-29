@@ -6,7 +6,7 @@
 
 ## 一句话总览
 
-Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快速转成可预览 Markdown，再在后台尽量补强 OCR、图片和复杂版式质量。
+Ingest 做的事就是：把当前开放上传的 PDF、DOCX、Markdown、文本先转成可预览 Markdown；复杂 PDF/OCR 资料优先交给 PaddleOCR 或 MinerU，本地兜底收敛到 MarkItDown。
 
 ## 步骤总览
 
@@ -19,7 +19,7 @@ Ingest 做的事就是：把上传的 PDF、Word、PPT、图片或文本先快�
 | 4 | 制定解析计划 | 根据分类结果生成 `ParsePlan`，包括解析模式、parser chain、OCR 和资产参数 | 明确本次应该用哪些解析器、按什么顺序尝试、失败怎么 fallback | `build_parse_plan`、`ParsePlan`、`ParserRunOptions` |
 | 5 | Phase 1 fast parse | 按 parser chain 快速解析，规范 Markdown 图片引用，抽取资产；MinerU 分支会走外部解析再 canonicalize | 尽快产出一版可预览、可被 Digest 消费的基础 Markdown | `fast_parse_file`、`parse_file_to_dir`、`canonicalize_markdown` |
 | 6 | Phase 1 持久化 | 写 raw markdown、资产目录、`raw_file_asset` 和解析元数据 | 让前端能预览，让 Digest 能读取，让失败恢复有依据 | `cs.write_text`、`cs.upload_dir`、`replace_raw_file_assets`、`update_raw_file` |
-| 7 | 后台增强 | 后台尝试 PDF 质量重解析和 Vision OCR，成功后覆盖 Markdown 与资产，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file`、`parse_pdf_with_pymupdf4llm` |
+| 7 | 后台增强 | 后台按需执行 Vision OCR 资产增强，成功后覆盖 Markdown 与资产，失败则保留 Phase 1 结果 | 在不阻塞用户预览的前提下，提高复杂资料的可读性和可检索性 | `_run_deep_enhance_background`、`deep_enhance_file` |
 | 8 | 增强恢复 | 服务启动后扫描 `fast_parsed` / `enhancing` 文件并重新派发增强任务 | 减少服务重启导致的后台增强任务丢失 | `recover_stalled_enhancements`、`background_task_registry` |
 
 ## 当前 canonical 结构
@@ -151,11 +151,8 @@ from app.workflows.ingest import run_parse_file_workflow
 
 分类器是轻量、无 LLM 的特征判断：
 
-- PDF：采样页文本密度、图像占比、公式密度、语言、表格特征。
+- PDF：不再加载本地 PDF 引擎做页级采样，默认推荐 MarkItDown 本地兜底；复杂 OCR/Layout 场景交给 PaddleOCR 或 MinerU。
 - DOCX：扫描段落、标题、结构。
-- PPTX：扫描 slide 文本量。
-- 图片：直接标记为 image。
-- xlsx/csv 等：走通用 MarkItDown 类策略。
 
 分类结果会写回：
 
@@ -169,7 +166,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 `parsing/strategy.py::build_parse_plan()` 根据分类结果生成 `ParsePlan`：
 
-- `mode`：解析模式，例如 `quality_pdf`、`fast_scanned_pdf`、`balanced_docx`。
+- `mode`：解析模式，例如 `local_markitdown`、`balanced_docx`。
 - `parser_chain`：解析器尝试顺序。
 - `decision_reason`：人类可读的决策原因。
 - `options`：超时、图片提取上限、OCR 并发、语言模式等运行参数。
@@ -199,7 +196,7 @@ Markdown 规范化会做：
 - 追加未被正文引用但已提取的资产图片
 - 统计 `rewritten_image_refs / extracted_data_images / appended_asset_images`
 
-MinerU 分支会先把 MinerU 输出的 Markdown 和图片复制到当前规范资产目录，再走同一套 canonicalize 逻辑。当前 MinerU 默认不再触发 Phase 2。
+PaddleOCR / MinerU 分支会先把外部解析输出的 Markdown 和图片复制到当前规范资产目录，再走同一套 canonicalize 逻辑。外部解析默认不再触发 Phase 2。
 
 ### 7. Phase 1 持久化
 
@@ -242,24 +239,17 @@ Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 sta
 6. 重建 `ParsePlan`。
 7. 设置 `ingest_status = enhancing`。
 
-### 2. PDF 质量重解析
-
-如果文件是 PDF 且不是 MinerU 产物，会尝试 `pymupdf4llm` 重解析。
-
-采用条件是：新 Markdown 非空，并且长度至少达到旧 Markdown 的 50%。这样避免质量重解析失败时用短空文本覆盖 Phase 1 可用产物。
-
-### 3. Vision OCR 增强
+### 2. Vision OCR 增强
 
 如果配置了“文档 OCR 模型”（`settings.models.ocr`）：
 
 1. 扫描 Markdown 图片引用。
 2. 对图片资产调用 LLM Vision OCR。
 3. 用 OCR 结果替换或补充图片占位内容。
-4. 对低文本密度 PDF 页做整页 fallback OCR。
 
-如果没有配置文档 OCR 模型，则跳过 OCR，只保留质量重解析结果。
+如果没有配置文档 OCR 模型，则跳过 OCR，只保留 Phase 1 Markdown。
 
-### 4. Phase 2 持久化
+### 3. Phase 2 持久化
 
 成功后：
 
