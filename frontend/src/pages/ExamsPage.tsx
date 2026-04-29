@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -371,7 +371,7 @@ export function ExamsPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载考试中心。
         </div>
@@ -381,7 +381,7 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+      <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
         <div className="mx-auto flex max-w-7xl flex-col gap-6">
           <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
@@ -457,13 +457,13 @@ export function ExamsPage() {
           <section>
             <div className="space-y-6">
               {historyQuery.isLoading && (
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
                   正在加载试卷列表...
                 </div>
               )}
 
               {historyQuery.error && (
-                <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+                <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                   {getApiErrorMessage(historyQuery.error, "加载试卷列表失败")}
                 </div>
               )}
@@ -500,7 +500,7 @@ export function ExamsPage() {
                   {expandedGroups[group.key] && (
                     <div>
                       {group.items.length === 0 ? (
-                        <div className="px-1 py-1 text-sm text-slate-500">这个分组下暂时没有考卷。</div>
+                        <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
                       ) : (
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,250px))] justify-start gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
@@ -556,7 +556,7 @@ function JsonBadge({ value }: { value: unknown }) {
     return <span className="text-slate-400">无</span>;
   }
   return (
-    <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600">
+    <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:text-slate-300">
       {text}
     </pre>
   );
@@ -578,12 +578,12 @@ function KnowledgeRefTags({ refs }: { refs: Array<Record<string, unknown>> }) {
         return (
           <span
             key={`${String(unitId)}-${role}-${index}`}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           >
-            <span className="text-slate-950">知识点 #{String(unitId)}</span>
+            <span className="text-slate-950 dark:text-slate-100">知识点 #{String(unitId)}</span>
             <span className="text-slate-400">|</span>
             <span>{role}</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               {weightLabel}
             </span>
           </span>
@@ -630,41 +630,41 @@ function QuestionTemplateCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200"
+      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
       aria-label={`查看题目模板 ${item.id}`}
     >
       <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)]">
-        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)]" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
         <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
-          <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600 dark:text-slate-300">
             <FileText className="h-4 w-4 shrink-0 text-sky-600" />
             <span className="truncate">{questionTypeLabel}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
               #{item.id}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {item.difficulty}
             </span>
           </span>
         </span>
 
         <span className="relative mt-4 flex min-h-0 flex-1 flex-col pl-8">
-          <span className="relative block min-h-0 flex-1 overflow-hidden text-[15px] leading-7 text-slate-900">
+          <span className="relative block min-h-0 flex-1 overflow-hidden text-[15px] leading-7 text-slate-900 dark:text-slate-200">
             <ExamMarkdown content={previewContent} />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent dark:from-slate-950 dark:via-slate-950/95" />
           </span>
         </span>
 
-        <span className="relative mt-5 flex items-center justify-between gap-3 border-t border-slate-200 pl-8 pt-4">
+        <span className="relative mt-5 flex items-center justify-between gap-3 border-t border-slate-200 pl-8 pt-4 dark:border-slate-800">
           <span className="truncate text-xs font-medium text-slate-500">
             知识单元 #{getPrimaryKnowledgeUnitLabel(item)}
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-sky-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-sky-700 dark:bg-slate-100 dark:text-slate-900 dark:group-hover:bg-white">
             <Eye className="h-3.5 w-3.5" />
             查看
           </span>
@@ -695,37 +695,37 @@ function QuestionTemplateDetailCard({
       {item ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
               {questionTypeLabel}
             </span>
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               {item.difficulty}
             </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {item.status}
             </span>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
               v{item.template_version}
             </span>
           </div>
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">题目</p>
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base leading-8 text-slate-900 shadow-sm">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base leading-8 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200">
               <ExamMarkdown content={questionContent} />
             </div>
           </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">标准答案</p>
-              <div className="mt-3 text-sm leading-7 text-emerald-950">
+              <div className="mt-3 text-sm leading-7 text-emerald-950 dark:text-emerald-100">
                 <ExamMarkdown content={item.answer || "暂无答案"} />
               </div>
             </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">解析</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">
                 <ExamMarkdown content={item.explanation || "暂无解析"} />
               </div>
             </section>
@@ -779,24 +779,24 @@ function QuestionTypeCard({ item, onOpen }: { item: QuestionTypeRegistryItem; on
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200"
+      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
       aria-label={`查看题型 ${item.display_name || item.type_key}`}
     >
       <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)]">
-        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)]" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+        <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
         <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
-          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-slate-700">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-slate-700 dark:text-slate-300">
             <Tags className="h-4 w-4 shrink-0 text-sky-600" />
             <span className="truncate">{item.display_name || item.type_key}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
-            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
               #{item.id}
             </span>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {getQuestionTypeScopeLabel(item.scope)}
             </span>
           </span>
@@ -804,27 +804,27 @@ function QuestionTypeCard({ item, onOpen }: { item: QuestionTypeRegistryItem; on
 
         <span className="relative mt-4 flex min-h-0 flex-1 flex-col pl-8">
           <span className="font-mono text-[11px] font-semibold text-slate-400">{item.type_key}</span>
-          <span className="relative mt-3 block min-h-0 flex-1 overflow-hidden text-sm leading-7 text-slate-700">
+          <span className="relative mt-3 block min-h-0 flex-1 overflow-hidden text-sm leading-7 text-slate-700 dark:text-slate-300">
             <span className="block">{description}</span>
-            <span className="mt-4 block rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-slate-600">
+            <span className="mt-4 block rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
               <span className="mb-1 block text-[11px] font-semibold text-slate-400">答案格式</span>
               <span className="line-clamp-2">{answerFormat}</span>
             </span>
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/95 to-transparent dark:from-slate-950 dark:via-slate-950/95" />
           </span>
         </span>
 
-        <span className="relative mt-5 grid grid-cols-2 gap-2 border-t border-slate-200 pl-8 pt-4 text-[11px] font-semibold text-slate-500">
-          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1">
+        <span className="relative mt-5 grid grid-cols-2 gap-2 border-t border-slate-200 pl-8 pt-4 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {item.grading_method || "未配置评分"}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {getQuestionTypeSourceLabel(item.source)}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             选项{hasUsefulRecord(item.option_schema) ? "已配置" : "无"}
           </span>
-          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+          <span className="truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
             {getQuestionTypeConfidenceLabel(item.confidence)}
           </span>
         </span>
@@ -844,42 +844,42 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
       {item ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
               {getQuestionTypeScopeLabel(item.scope)}
             </span>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
               {getQuestionTypeSourceLabel(item.source)}
             </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {item.is_active ? "启用中" : "已停用"}
             </span>
             {item.is_system && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 系统内置
               </span>
             )}
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {getQuestionTypeConfidenceLabel(item.confidence)}
             </span>
           </div>
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">题型标识</p>
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <h3 className="text-xl font-semibold text-slate-950">{item.display_name || item.type_key}</h3>
-              <p className="mt-2 font-mono text-xs text-slate-500">{item.type_key}</p>
-              <p className="mt-4 text-sm leading-7 text-slate-600">{item.description || "暂无描述"}</p>
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_36px_-28px_rgba(0,0,0,0.72)]">
+              <h3 className="text-xl font-semibold text-slate-950 dark:text-slate-100">{item.display_name || item.type_key}</h3>
+              <p className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">{item.type_key}</p>
+              <p className="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">{item.description || "暂无描述"}</p>
             </div>
           </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">答案格式</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">{item.answer_format || "未配置"}</div>
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">{item.answer_format || "未配置"}</div>
             </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4">
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">评分方式</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700">{item.grading_method || "未配置"}</div>
+              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">{item.grading_method || "未配置"}</div>
             </section>
           </div>
 
@@ -914,31 +914,31 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
             type="button"
             onClick={() => navigate(`/subject/${subjectId}/exams`)}
-            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
           >
             <ArrowLeft className="h-4 w-4" />
             返回考试中心
           </button>
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
                 <Sparkles className="h-4 w-4 text-sky-500" />
                 {eyebrow}
               </div>
-              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
+              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-4xl">
                 {title}
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400 sm:text-base">
                 {description}
               </p>
             </div>
-            <div className="text-sm font-semibold text-slate-500">
+            <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
               当前学科：{subjectId}
             </div>
           </div>
@@ -986,7 +986,7 @@ export function QuestionTemplatesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题库。
         </div>
@@ -1002,7 +1002,7 @@ export function QuestionTemplatesPage() {
       description="这里展示当前学科已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
     >
       {templatesQuery.isLoading && (
-        <div className="px-6 py-12 text-center text-sm text-slate-500">
+        <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           正在加载题库模板...
         </div>
       )}
@@ -1016,8 +1016,8 @@ export function QuestionTemplatesPage() {
       {!templatesQuery.isLoading && !templatesQuery.error && templates.length === 0 && (
         <div className="px-6 py-12 text-center">
           <BookOpen className="mx-auto h-10 w-10 text-slate-300" />
-          <h3 className="mt-4 text-lg font-semibold text-slate-900">还没有题库模板</h3>
-          <p className="mt-2 text-sm text-slate-500">创建考试后，系统生成的题目会沉淀到这里。</p>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有题库模板</h3>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">创建考试后，系统生成的题目会沉淀到这里。</p>
         </div>
       )}
 
@@ -1058,7 +1058,7 @@ export function QuestionTypesPage() {
 
   if (!subjectId) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少学科标识，暂时无法加载题型。
         </div>
@@ -1078,7 +1078,7 @@ export function QuestionTypesPage() {
       description="这里展示系统基础题型和当前学科题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
     >
       {typesQuery.isLoading && (
-        <div className="px-6 py-12 text-center text-sm text-slate-500">
+        <div className="px-6 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
           正在加载题型...
         </div>
       )}
@@ -1097,17 +1097,17 @@ export function QuestionTypesPage() {
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950">
+                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
                   {group.icon}
                   {group.title}
                 </h2>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   {group.rows.length} 类
                 </span>
               </div>
 
               {group.rows.length === 0 ? (
-                <div className="px-5 py-8 text-center text-sm text-slate-500">
+                <div className="px-5 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                   暂无{group.title}
                 </div>
               ) : (
@@ -1131,7 +1131,7 @@ export function ExamPaperPage() {
 
   if (!subjectId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-full px-6 py-8">
+      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
           缺少考卷信息，暂时无法进入考试页面。
         </div>

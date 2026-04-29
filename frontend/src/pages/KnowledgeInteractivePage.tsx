@@ -99,12 +99,12 @@ export function KnowledgeInteractivePage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden rounded-2xl border border-slate-800 bg-white">
+        <main className="flex-1 overflow-hidden rounded-2xl border border-slate-800 bg-white dark:bg-slate-950">
           {loading ? (
             <div className="flex h-[78vh] items-center justify-center text-sm text-slate-500">正在加载交互页…</div>
           ) : error ? (
             <div className="flex h-[78vh] flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="text-base font-medium text-slate-900">交互页加载失败</p>
+              <p className="text-base font-medium text-slate-900 dark:text-slate-100">交互页加载失败</p>
               <p className="text-sm text-slate-500">{error}</p>
             </div>
           ) : (

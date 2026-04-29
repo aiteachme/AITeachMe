@@ -1265,7 +1265,7 @@ const DocMarkdown = memo(function DocMarkdown({
 
 const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: string }) {
   return (
-    <div className="text-xs text-slate-700 leading-relaxed break-words [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_ul]:mb-1.5 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:space-y-1 [&_ol]:mb-1.5 [&_li]:leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-blue-200 [&_blockquote]:bg-blue-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_code]:font-mono [&_code]:text-[11px] [&_code]:bg-slate-100 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-md [&_pre]:p-2.5 [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:text-[11px] [&_table]:border [&_table]:border-slate-200 [&_table]:rounded-md [&_thead]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:px-2 [&_td]:py-1 [&_td]:border-t [&_td]:border-slate-100 [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2">
+    <div className="break-words text-xs leading-relaxed text-slate-700 dark:text-slate-300 [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2 dark:[&_a]:text-blue-300 [&_blockquote]:my-2 [&_blockquote]:rounded-r-md [&_blockquote]:border-l-2 [&_blockquote]:border-blue-200 [&_blockquote]:bg-blue-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 dark:[&_blockquote]:border-blue-500/30 dark:[&_blockquote]:bg-blue-500/10 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[11px] dark:[&_code]:bg-slate-800 dark:[&_code]:text-slate-200 [&_h1]:mb-1.5 [&_h1]:mt-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 dark:[&_h1]:text-slate-100 [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h3]:mb-1 [&_h3]:mt-2.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 dark:[&_h3]:text-slate-200 [&_li]:leading-relaxed [&_ol]:mb-1.5 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_p:last-child]:mb-0 [&_p]:mb-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-slate-900 [&_pre]:p-2.5 [&_pre]:text-slate-100 dark:[&_pre]:bg-slate-950 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:rounded-md [&_table]:border [&_table]:border-slate-200 [&_table]:text-[11px] dark:[&_table]:border-slate-700 [&_td]:border-t [&_td]:border-slate-100 [&_td]:px-2 [&_td]:py-1 dark:[&_td]:border-slate-800 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_thead]:bg-slate-50 dark:[&_thead]:bg-slate-900 [&_ul]:mb-1.5 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
@@ -1346,14 +1346,14 @@ function DocUpdatingBanner({
   const draftLabel = formatDocTimestamp(draftUpdatedAt);
 
   return (
-    <section className="mb-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 shadow-sm">
+    <section className="mb-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">{title}</p>
-          <p className="mt-1 text-[13px] leading-5 text-slate-600">{description}</p>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
+          <p className="mt-1 text-[13px] leading-5 text-slate-600 dark:text-slate-400">{description}</p>
         </div>
         {(hasLiveVersion || hasDraftVersion) && (
-          <div className="inline-flex rounded-full border border-stone-200 bg-white/80 p-1 shadow-sm">
+          <div className="inline-flex rounded-full border border-stone-200 bg-white/80 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-950/80">
             <button
               type="button"
               disabled={!hasLiveVersion}
@@ -1361,10 +1361,10 @@ function DocUpdatingBanner({
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 viewMode === "live"
-                  ? "bg-stone-800 text-white shadow-sm"
+                  ? "bg-stone-800 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
                   : hasLiveVersion
-                    ? "text-slate-600 hover:text-slate-900"
-                    : "cursor-not-allowed text-slate-300",
+                    ? "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                    : "cursor-not-allowed text-slate-300 dark:text-slate-600",
               )}
             >
               正式版
@@ -1376,10 +1376,10 @@ function DocUpdatingBanner({
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 viewMode === "draft"
-                    ? "bg-slate-900 text-white shadow-sm"
+                    ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900"
                   : hasDraftVersion
-                    ? "text-slate-600 hover:text-slate-900"
-                    : "cursor-not-allowed text-slate-300",
+                    ? "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                    : "cursor-not-allowed text-slate-300 dark:text-slate-600",
               )}
             >
               本轮草稿
@@ -1388,9 +1388,9 @@ function DocUpdatingBanner({
         )}
       </div>
       {(liveLabel || draftLabel) && (
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-          {liveLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">正式版更新于 {liveLabel}</span> : null}
-          {draftLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1">草稿更新于 {draftLabel}</span> : null}
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+          {liveLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1 dark:bg-slate-950/80">正式版更新于 {liveLabel}</span> : null}
+          {draftLabel ? <span className="rounded-full bg-white/80 px-2.5 py-1 dark:bg-slate-950/80">草稿更新于 {draftLabel}</span> : null}
         </div>
       )}
       <div className="mt-3">
@@ -1426,11 +1426,11 @@ function DocLoadErrorState({
   onRetry: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-rose-200 bg-rose-50/60 px-5 py-5">
-      <p className="text-sm text-rose-700">{message}</p>
+    <section className="rounded-2xl border border-rose-200 bg-rose-50/60 px-5 py-5 dark:border-rose-500/30 dark:bg-rose-500/10">
+      <p className="text-sm text-rose-700 dark:text-rose-300">{message}</p>
       <button
         onClick={onRetry}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
       >
         <RefreshCw className="h-3.5 w-3.5" />
         重试加载
@@ -1503,8 +1503,8 @@ function CommentCard({
       className={cn(
         "w-full rounded-lg border transition-colors",
         isAssistant
-          ? "border-sky-100 bg-sky-50/60"
-          : "border-slate-200 bg-white"
+          ? "border-sky-100 bg-sky-50/60 dark:border-sky-500/30 dark:bg-sky-500/10"
+          : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/80"
       )}
     >
       <div className="px-3 py-2">
@@ -1518,10 +1518,10 @@ function CommentCard({
             >
               {isAssistant ? "AI" : "我"}
             </div>
-            <span className="text-xs font-medium text-slate-700">
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
               {isAssistant ? "AI 助手" : "我"}
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
               {formatTime(comment.createdAt)}
             </span>
           </div>
@@ -1538,9 +1538,9 @@ function CommentCard({
                   "inline-flex h-6 items-center justify-center rounded-md transition",
                   isCollapsed
                     ? isAssistant
-                      ? "gap-1 bg-sky-100 px-2 text-[10px] font-medium text-sky-700 hover:bg-sky-200"
-                      : "gap-1 bg-slate-100 px-2 text-[10px] font-medium text-slate-700 hover:bg-slate-200"
-                    : "w-6 text-slate-400 hover:bg-white/80 hover:text-slate-700"
+                      ? "gap-1 bg-sky-100 px-2 text-[10px] font-medium text-sky-700 hover:bg-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15"
+                      : "gap-1 bg-slate-100 px-2 text-[10px] font-medium text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    : "w-6 text-slate-400 hover:bg-white/80 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 )}
                 aria-label={isCollapsed ? "展开消息" : "收起消息"}
                 title={isCollapsed ? "展开消息" : "收起消息"}
@@ -1560,7 +1560,7 @@ function CommentCard({
         <div
           ref={contentRef}
           className={cn(
-            "relative text-xs leading-relaxed text-slate-700",
+            "relative text-xs leading-relaxed text-slate-700 dark:text-slate-300",
             isCollapsed && "max-h-[5.1rem] overflow-hidden rounded-md"
           )}
         >
@@ -1576,7 +1576,7 @@ function CommentCard({
               <div
                 className={cn(
                   "pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t via-70% to-transparent",
-                  isAssistant ? "from-sky-50 via-sky-50/95" : "from-white via-white/95"
+                  isAssistant ? "from-sky-50 via-sky-50/95 dark:from-slate-950 dark:via-slate-950/95" : "from-white via-white/95 dark:from-slate-950 dark:via-slate-950/95"
                 )}
               />
               <button
@@ -1588,8 +1588,8 @@ function CommentCard({
                 className={cn(
                   "absolute bottom-1 right-1 inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[10px] font-medium shadow-sm transition",
                   isAssistant
-                    ? "border-sky-200 bg-white/95 text-sky-700 hover:border-sky-300 hover:bg-sky-50"
-                    : "border-slate-200 bg-white/95 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    ? "border-sky-200 bg-white/95 text-sky-700 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-500/30 dark:bg-slate-950/95 dark:text-sky-300 dark:hover:bg-sky-500/10"
+                    : "border-slate-200 bg-white/95 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300 dark:hover:bg-slate-800"
                 )}
                 aria-label="展开完整内容"
                 title="展开完整内容"
@@ -1635,21 +1635,21 @@ function CommentThread({
     <section
       onClick={onFocus}
       className={cn(
-        "rounded-lg border bg-white overflow-hidden transition-colors",
+        "rounded-lg border bg-white overflow-hidden transition-colors dark:bg-slate-950/80",
         isActive
-          ? "border-sky-300 bg-sky-50/25"
-          : "border-slate-200",
+          ? "border-sky-300 bg-sky-50/25 dark:border-sky-500/40 dark:bg-sky-500/10"
+          : "border-slate-200 dark:border-slate-800",
         isAligned && !isActive && "border-slate-300/80"
       )}
     >
-      <div className="px-3 py-2 border-b border-slate-200/80 bg-white flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
         <button
           type="button"
           onClick={() => onJumpToAnchor(anchorId)}
           title={selectedText ? `定位划词：${selectedText}` : "定位划词位置"}
           className={cn(
-            "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-50",
-            isActive && "bg-sky-50/70"
+            "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70",
+            isActive && "bg-sky-50/70 dark:bg-sky-500/10"
           )}
         >
           <span
@@ -1661,7 +1661,7 @@ function CommentThread({
           <span
             className={cn(
               "min-w-0 truncate text-[11px] font-medium",
-              isActive ? "text-sky-700" : "text-slate-600 group-hover:text-slate-800"
+              isActive ? "text-sky-700 dark:text-sky-300" : "text-slate-600 group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200"
             )}
           >
             {selectedPreview}
@@ -1674,13 +1674,13 @@ function CommentThread({
               e.stopPropagation();
               onOpenAiInteraction();
             }}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
             aria-label="在 AI 面板继续对话"
             title="在 AI 面板继续对话"
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <span className="shrink-0 rounded-full bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 font-medium">
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             {comments.length}
           </span>
           <button
@@ -1689,7 +1689,7 @@ function CommentThread({
               e.stopPropagation();
               setIsThreadCollapsed((prev) => !prev);
             }}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             aria-label={isThreadCollapsed ? "展开问答" : "收起问答"}
             title={isThreadCollapsed ? "展开问答" : "收起问答"}
           >
@@ -1709,14 +1709,14 @@ function CommentThread({
               />
             ))}
           </div>
-          <div className="border-t border-slate-200 bg-white p-2">
+          <div className="border-t border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenAiInteraction();
               }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               在右侧 AI 面板继续对话
@@ -4534,8 +4534,8 @@ export function KnowledgeDocsPage() {
             className={cn(
               "group flex items-center rounded-md transition-all duration-150 relative",
               isActive
-                ? "bg-blue-50/80 text-blue-700"
-                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900"
+                ? "bg-blue-50/80 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
             )}
             style={{ paddingLeft: indent + 4 }}
           >
@@ -4554,7 +4554,7 @@ export function KnowledgeDocsPage() {
                 }}
                 className={cn(
                   "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
-                  isActive ? "text-blue-500 hover:bg-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+                  isActive ? "text-blue-500 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-500/10" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 )}
               >
                 <ChevronRight
@@ -4654,17 +4654,17 @@ export function KnowledgeDocsPage() {
       className={cn(
         "relative flex h-full w-full min-h-0 flex-col",
         isCompactComment
-          ? "h-full rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden"
-          : "bg-white/86 overflow-hidden"
+          ? "flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-24px_rgba(0,0,0,0.85)]"
+          : "overflow-hidden bg-white/86 dark:bg-slate-950/88"
       )}
     >
-      <div className="px-1 h-11 border-b border-slate-200/80 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-slate-900">
+      <div className="flex h-11 items-center justify-between border-b border-slate-200/80 px-1 dark:border-slate-800">
+        <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
           <Bot className="w-4 h-4" />
           <span className="text-sm font-semibold">问问 AI</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
             {commentThreads.length} 个片段
             {activeStreamingCount > 0 ? `（${activeStreamingCount} 条回复中）` : ""}
           </span>
@@ -4674,8 +4674,8 @@ export function KnowledgeDocsPage() {
             className={cn(
               "w-7 h-7 rounded-lg transition-colors flex items-center justify-center",
               activeCommentIndex <= 0
-                ? "text-slate-300 cursor-not-allowed"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             )}
             aria-label="定位上一段对话"
             title="定位上一段对话"
@@ -4688,8 +4688,8 @@ export function KnowledgeDocsPage() {
             className={cn(
               "w-7 h-7 rounded-lg transition-colors flex items-center justify-center",
               activeCommentIndex < 0 || activeCommentIndex >= commentThreadIds.length - 1
-                ? "text-slate-300 cursor-not-allowed"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             )}
             aria-label="定位下一段对话"
             title="定位下一段对话"
@@ -4698,7 +4698,7 @@ export function KnowledgeDocsPage() {
           </button>
           <button
             onClick={closeCommentPanel}
-            className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             aria-label="收起问答栏"
           >
             <ChevronRight className={cn("w-4 h-4", isCompactComment && "rotate-180")} />
@@ -4708,17 +4708,17 @@ export function KnowledgeDocsPage() {
 
       {isCompactComment && floatingComment && (
         <div
-          className="absolute left-3 right-3 z-30 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_28px_56px_-30px_rgba(15,23,42,0.68)] backdrop-blur"
+          className="absolute left-3 right-3 z-30 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_28px_56px_-30px_rgba(15,23,42,0.68)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:shadow-[0_28px_56px_-24px_rgba(0,0,0,0.86)]"
           style={{ top: floatingComment.top }}
         >
-          <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.85),rgba(248,250,252,0.95),rgba(239,246,255,0.85))] px-3 py-2.5">
+          <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.85),rgba(248,250,252,0.95),rgba(239,246,255,0.85))] px-3 py-2.5 dark:border-slate-800 dark:bg-[linear-gradient(130deg,rgba(14,165,233,0.12),rgba(15,23,42,0.96),rgba(37,99,235,0.10))]">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900 text-white shadow-sm">
                 <Sparkles className="h-3.5 w-3.5" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">AI Assistant</p>
-                <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 60)}&rdquo;</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">AI Assistant</p>
+                <p className="truncate text-xs text-slate-700 dark:text-slate-300">&ldquo;{floatingComment.selectedText.slice(0, 60)}&rdquo;</p>
               </div>
             </div>
           </div>
@@ -4738,12 +4738,12 @@ export function KnowledgeDocsPage() {
               }}
               placeholder="基于这段内容向 AI 提问..."
               rows={3}
-              className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
+              className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:shadow-none dark:placeholder:text-slate-500 dark:focus:border-sky-500/50 dark:focus:ring-sky-500/20"
             />
             <div className="flex items-center justify-between">
               <button
                 onClick={dismissCommentComposer}
-                className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               >
                 取消
               </button>
@@ -4753,8 +4753,8 @@ export function KnowledgeDocsPage() {
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
                   floatingInput.trim()
-                    ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
-                    : "bg-slate-100 text-slate-300"
+                    ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                    : "bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600"
                 )}
               >
                 <Send className="h-3.5 w-3.5" />
@@ -4769,19 +4769,19 @@ export function KnowledgeDocsPage() {
         ref={commentViewportRef}
         className={cn(
           "relative min-h-0 flex-1",
-          isCompactComment ? "overflow-y-auto bg-slate-50/80" : "overflow-hidden pr-1"
+          isCompactComment ? "overflow-y-auto bg-slate-50/80 dark:bg-slate-900/70" : "overflow-hidden pr-1"
         )}
       >
         {isCompactComment && (
           <>
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-12 z-20 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-20 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-12 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-12 bg-gradient-to-t from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80" />
           </>
         )}
         {!threadHistoryLoaded ? (
           <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className={cn(
-              "flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400",
+              "flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500",
               isCompactComment ? "h-full" : "h-24"
             )}>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -4789,14 +4789,14 @@ export function KnowledgeDocsPage() {
           </div>
         ) : threadHistoryError ? (
           <div className={cn("p-3", isCompactComment && "h-full")}>
-            <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-4 text-xs leading-5 text-rose-600">
+            <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-4 text-xs leading-5 text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
               {threadHistoryError}
             </div>
           </div>
         ) : commentThreads.length === 0 && !floatingComment ? (
           <div className={cn("p-3", isCompactComment && "h-full")}>
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-slate-500">选中文本后点击“问问 AI”即可开始对话</p>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+              <p className="text-sm text-slate-500 dark:text-slate-400">选中文本后点击“问问 AI”即可开始对话</p>
             </div>
           </div>
         ) : isCompactComment ? (
@@ -4849,15 +4849,15 @@ export function KnowledgeDocsPage() {
                       className="absolute left-0 right-0"
                       style={{ top }}
                     >
-                      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)]">
-                        <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5">
+                      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_22px_48px_-32px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_22px_48px_-24px_rgba(0,0,0,0.86)]">
+                        <div className="border-b border-slate-200/80 bg-[linear-gradient(130deg,rgba(236,253,255,0.82),rgba(248,250,252,0.96),rgba(239,246,255,0.88))] px-3 py-2.5 dark:border-slate-800 dark:bg-[linear-gradient(130deg,rgba(14,165,233,0.12),rgba(15,23,42,0.96),rgba(37,99,235,0.10))]">
                           <div className="flex items-center gap-2">
                             <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
                               <Sparkles className="h-3.5 w-3.5" />
                             </span>
                             <div className="min-w-0">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">问问 AI</p>
-                              <p className="truncate text-xs text-slate-700">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">问问 AI</p>
+                              <p className="truncate text-xs text-slate-700 dark:text-slate-300">&ldquo;{floatingComment.selectedText.slice(0, 72)}&rdquo;</p>
                             </div>
                           </div>
                         </div>
@@ -4877,12 +4877,12 @@ export function KnowledgeDocsPage() {
                             }}
                             placeholder="基于这段内容向 AI 提问..."
                             rows={3}
-                            className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80"
+                            className="w-full resize-none rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 shadow-inner shadow-slate-100/70 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-sky-100/80 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:shadow-none dark:placeholder:text-slate-500 dark:focus:border-sky-500/50 dark:focus:ring-sky-500/20"
                           />
                           <div className="flex items-center justify-between">
                             <button
                               onClick={dismissCommentComposer}
-                              className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                              className="rounded-lg px-2.5 py-1 text-xs text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                             >
                               取消
                             </button>
@@ -4892,8 +4892,8 @@ export function KnowledgeDocsPage() {
                               className={cn(
                                 "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition",
                                 floatingInput.trim()
-                                  ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800"
-                                  : "bg-slate-100 text-slate-300"
+                                  ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                                  : "bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600"
                               )}
                             >
                               <Send className="h-3.5 w-3.5" />
@@ -4955,7 +4955,7 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-white">
+      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-white dark:bg-slate-950">
         <BuildView
           isFetching={docMarkdownQuery.isFetching}
           progress={buildProgress}
@@ -4980,8 +4980,8 @@ export function KnowledgeDocsPage() {
             <button
               onClick={openTocDrawer}
               className={cn(
-                "h-10 w-10 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm transition-colors flex items-center justify-center",
-                isTocVisible ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:text-slate-900 hover:bg-white"
+                "flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
+                isTocVisible ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               )}
               aria-label="切换目录抽屉"
               title={activeTocItem?.text ? `目录（当前：${activeTocItem.text}）` : "目录"}
@@ -4996,8 +4996,8 @@ export function KnowledgeDocsPage() {
             <button
               onClick={openCommentDrawer}
               className={cn(
-                "h-10 w-10 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm shadow-sm transition-colors flex items-center justify-center relative",
-                isCommentVisible ? "text-blue-600 bg-blue-50" : "text-slate-600 hover:text-slate-900 hover:bg-white"
+                "relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
+                isCommentVisible ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               )}
               aria-label="切换问答抽屉"
               title="问问 AI"
@@ -5023,24 +5023,24 @@ export function KnowledgeDocsPage() {
       {hasCompactTocControl && (
           <aside
             className={cn(
-              "fixed left-3 top-14 bottom-4 z-[78] w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white/98 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200",
+              "fixed bottom-4 left-3 top-14 z-[78] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/98 shadow-2xl transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950/98",
               isTocVisible ? "translate-x-0" : "-translate-x-[110%] pointer-events-none"
             )}
           >
-            <div className="px-3 h-11 border-b border-slate-200/80 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-slate-900">
+            <div className="flex h-11 items-center justify-between border-b border-slate-200/80 px-3 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <FileText className="w-4 h-4" />
                 <span className="text-sm font-semibold">目录</span>
               </div>
               <button
                 onClick={closeDrawer}
-                className="w-7 h-7 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center text-slate-500 hover:text-slate-700"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label="收起目录"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-            <div className="px-1 pb-2 flex-1 overflow-hidden">{tocNav}</div>
+            <div className="flex-1 overflow-hidden px-1 pb-2">{tocNav}</div>
           </aside>
       )}
 
@@ -5058,7 +5058,7 @@ export function KnowledgeDocsPage() {
       {!isCompactToc && viewPrefs.showToc && (
         <aside
           className={cn(
-            "h-full min-h-0 shrink-0 overflow-hidden bg-white/88 backdrop-blur-md transition-[width] duration-300 ease-out",
+            "h-full min-h-0 shrink-0 overflow-hidden bg-white/88 backdrop-blur-md transition-[width] duration-300 ease-out dark:bg-slate-950/88",
             isTocCollapsed ? "w-[56px]" : desktopTocWidthClass
           )}
         >
@@ -5067,7 +5067,7 @@ export function KnowledgeDocsPage() {
               <div className="flex flex-1 items-start justify-start px-2 py-3">
                 <button
                   onClick={() => setIsTocCollapsed(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB] dark:text-blue-300 dark:hover:bg-blue-500/10 dark:hover:text-blue-200"
                   aria-label="展开目录"
                   title={activeTocItem?.text ? `展开目录（当前：${activeTocItem.text}）` : "展开目录"}
                 >
@@ -5076,10 +5076,10 @@ export function KnowledgeDocsPage() {
               </div>
             ) : (
               <>
-                <div className="sticky top-0 z-10 bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md">
+                <div className="sticky top-0 z-10 bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md dark:bg-slate-950/92">
                   <button
                     onClick={() => setIsTocCollapsed(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB]"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#3370FF] transition-colors hover:bg-[#EDF3FF] hover:text-[#245BDB] dark:text-blue-300 dark:hover:bg-blue-500/10 dark:hover:text-blue-200"
                     aria-label="收起目录"
                     title="收起目录"
                   >
@@ -5100,7 +5100,7 @@ export function KnowledgeDocsPage() {
           <aside className="absolute right-4 top-4 z-20 hidden lg:flex">
             <button
               onClick={() => setIsCommentCollapsed(false)}
-              className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900"
+              className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               aria-label="展开问答栏"
             >
               <Bot className="w-4 h-4" />
@@ -5140,7 +5140,7 @@ export function KnowledgeDocsPage() {
                     />
                   ) : showDocGeneratingState ? (
                     <BuildView
-                      className="min-h-[600px] h-[70vh] rounded-xl border border-zinc-100 overflow-hidden"
+                      className="h-[70vh] min-h-[600px] overflow-hidden rounded-xl border border-zinc-100 dark:border-slate-800"
                       isFetching={docMarkdownQuery.isFetching}
                       progress={buildProgress}
                       statusText={buildStatusText}
@@ -5189,7 +5189,7 @@ export function KnowledgeDocsPage() {
               {showDesktopCommentPanel && (
                 <aside
                   className={cn(
-                    "sticky top-4 h-[calc(100dvh-2rem)] min-h-0 shrink-0 border-l border-slate-200/80 bg-white/92 px-3 py-4 backdrop-blur-md",
+                    "sticky top-4 h-[calc(100dvh-2rem)] min-h-0 shrink-0 border-l border-slate-200/80 bg-white/92 px-3 py-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/92",
                     desktopCommentWidthClass,
                   )}
                 >
@@ -5267,7 +5267,7 @@ export function KnowledgeDocsPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={openCommentComposer}
-                className="group inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white/96 px-2.5 pr-3 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                className="group inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white/96 px-2.5 pr-3 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)] dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
                 title="基于选中内容问问 AI"
                 aria-label="基于选中内容问问 AI"
               >
@@ -5287,11 +5287,11 @@ export function KnowledgeDocsPage() {
       {showFloatingActions && isSettingsPanelOpen && (
         <div
           ref={settingsPanelRef}
-          className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl"
+          className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]"
         >
-          <div className="border-b border-slate-200/80 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">学科设置</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">仅作用于当前学科的知识文档阅读体验。</p>
+          <div className="border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">学科设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">仅作用于当前学科的知识文档阅读体验。</p>
           </div>
           <div className="p-3">
             <button
@@ -5302,63 +5302,63 @@ export function KnowledgeDocsPage() {
                   setIsCommentCollapsed(false);
                 }
               }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
               aria-pressed={viewPrefs.showCommentPanel}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300">
                   <Bot className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">显示问问 AI 列</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">打开后只展示划词问答记录；新的划词对话仍从右侧 AI 面板开始。</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示问问 AI 列</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">打开后只展示划词问答记录；新的划词对话仍从右侧 AI 面板开始。</p>
                 </div>
               </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900" : "bg-slate-200")}>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
-            <div className="my-2 h-px bg-slate-100" />
+            <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
             <button
               type="button"
               onClick={() => {
                 updateViewPrefs((prev) => ({ ...prev, autoHeadingNumbering: !prev.autoHeadingNumbering }));
               }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
               aria-pressed={viewPrefs.autoHeadingNumbering}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                   <ListOrdered className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">标题自动编号</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">为一二三级标题显示飞书风格序号；序号不会进入划词内容。</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">标题自动编号</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">为一二三级标题显示飞书风格序号；序号不会进入划词内容。</p>
                 </div>
               </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.autoHeadingNumbering ? "bg-slate-900" : "bg-slate-200")}>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.autoHeadingNumbering ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.autoHeadingNumbering ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
-            <div className="my-2 h-px bg-slate-100" />
+            <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
             <button
               type="button"
               onClick={() => {
                 updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
               }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
               aria-pressed={pageWideMode}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   <ExternalLink className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">宽页模式</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">正文根据剩余空间自适应铺开。</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">宽页模式</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">正文根据剩余空间自适应铺开。</p>
                 </div>
               </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900" : "bg-slate-200")}>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", pageWideMode ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
@@ -5370,19 +5370,19 @@ export function KnowledgeDocsPage() {
                   setIsTocCollapsed(false);
                 }
               }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
               aria-pressed={viewPrefs.showToc}
             >
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   <FileText className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">显示目录</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">保留左侧目录轨道，跟随正文标题高亮。</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示目录</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">保留左侧目录轨道，跟随正文标题高亮。</p>
                 </div>
               </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showToc ? "bg-slate-900" : "bg-slate-200")}>
+              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showToc ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showToc ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
@@ -5395,7 +5395,7 @@ export function KnowledgeDocsPage() {
           ref={settingsButtonRef}
           type="button"
           onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
-          className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
+          className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100"
           aria-label="打开学科设置"
           aria-expanded={isSettingsPanelOpen}
         >
@@ -5410,12 +5410,12 @@ export function KnowledgeDocsPage() {
           type="button"
           onClick={openGraphPanel}
           className={cn(
-            "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]",
+            "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
             isGraphDrawerOpen || isSettingsPanelOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开知识图谱"
         >
-          <Network className="h-4 w-4 text-zinc-500" />
+          <Network className="h-4 w-4 text-zinc-500 dark:text-slate-400" />
           <span className="hidden sm:inline">知识图谱</span>
         </button>
       )}
@@ -5424,7 +5424,7 @@ export function KnowledgeDocsPage() {
       <div
         ref={graphDrawerRef}
         className={cn(
-          "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
+          "fixed bottom-0 right-0 top-0 z-[84] flex border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)]",
           isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
@@ -5440,7 +5440,7 @@ export function KnowledgeDocsPage() {
           )}
           onMouseDown={handleGraphMouseDown}
         />
-        <div className="flex-1 w-full h-full relative bg-slate-50 overflow-hidden shadow-inner flex flex-col">
+        <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden bg-slate-50 shadow-inner dark:bg-slate-950">
           {subjectId && isGraphDrawerOpen && (
             <Suspense fallback={<GraphPanelFallback />}>
               <KnowledgeGraphSidePanel subjectId={subjectId} onClose={closeGraphPanel} />

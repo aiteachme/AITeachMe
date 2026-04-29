@@ -19,6 +19,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -254,7 +255,7 @@ async def acompletion_structured(
                                     max_retries=0,
                                     **prepared.call_kwargs,
                                 ),
-                                timeout=context_request_timeout_s(context),
+                                timeout=context_request_timeout_s(context, prepared.call_kwargs),
                             )
                             prompt_t, completion_t, total_t = extract_usage(result)
                         except asyncio.TimeoutError:
@@ -280,7 +281,7 @@ async def acompletion_structured(
                             )
                             raw_response = await asyncio.wait_for(
                                 litellm.acompletion(**repair_call_kwargs),
-                                timeout=context_request_timeout_s(context),
+                                timeout=context_request_timeout_s(context, repair_call_kwargs),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
                             raw_text = ""
@@ -294,7 +295,7 @@ async def acompletion_structured(
                     else:
                         response = await asyncio.wait_for(
                             litellm.acompletion(**prepared.call_kwargs),
-                            timeout=context_request_timeout_s(context),
+                            timeout=context_request_timeout_s(context, prepared.call_kwargs),
                         )
                         prompt_t, completion_t, total_t = extract_usage(response)
                         raw_content = response.choices[0].message.content or ""
@@ -328,7 +329,9 @@ async def acompletion_structured(
                 )
                 return result
             except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
+                last_error = LLMTimeoutError(
+                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                )
                 log_attempt_timeout(
                     "llm_structured_timeout",
                     attempt=prepared,

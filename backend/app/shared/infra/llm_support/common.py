@@ -270,9 +270,23 @@ def should_enforce_request_timeout(context: CompletionContext) -> bool:
     return bool(context.settings.llm.enforce_request_timeout)
 
 
-def context_request_timeout_s(context: CompletionContext) -> int | None:
+def effective_call_timeout_s(context: CompletionContext, call_kwargs: Mapping[str, Any] | None = None) -> int:
+    raw_timeout = (call_kwargs or {}).get("timeout")
+    if raw_timeout in (None, ""):
+        return context.profile.timeout_s
+    try:
+        timeout_s = int(float(raw_timeout))
+    except (TypeError, ValueError):
+        return context.profile.timeout_s
+    return timeout_s if timeout_s > 0 else context.profile.timeout_s
+
+
+def context_request_timeout_s(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any] | None = None,
+) -> int | None:
     return request_timeout_s(
-        context.profile.timeout_s,
+        effective_call_timeout_s(context, call_kwargs),
         enabled=should_enforce_request_timeout(context),
     )
 
@@ -437,7 +451,7 @@ def log_attempt_started(
         attempt=attempt.attempt,
         model=attempt.tracked_model,
         task_type=context.task_type.value,
-        timeout_s=context.profile.timeout_s,
+        timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
     )
 
@@ -457,7 +471,7 @@ def log_attempt_timeout(
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
         task_type=context.task_type.value,
-        timeout_s=context.profile.timeout_s,
+        timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
         **trace_log_fields(),
     )

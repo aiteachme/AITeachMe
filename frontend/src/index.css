@@ -27,6 +27,15 @@
   }
 
   .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --feishu-text: #E5E7EB;
+    --feishu-text-secondary: #CBD5E1;
+    --feishu-text-placeholder: #64748B;
+    --feishu-border: #1E293B;
+    --feishu-bg-secondary: #0F172A;
+    --feishu-hover: #1E293B;
     --atm-scrollbar-track: rgba(15, 23, 42, 0.24);
     --atm-scrollbar-thumb: rgba(148, 163, 184, 0.32);
     --atm-scrollbar-thumb-hover: rgba(148, 163, 184, 0.52);

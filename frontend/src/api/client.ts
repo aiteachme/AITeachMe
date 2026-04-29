@@ -10,8 +10,8 @@ function resolveDesktopApiBaseUrl(): string {
 const API_BASE_URL = resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
 const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
-export const DEFAULT_API_TIMEOUT_MS = 10_000;
-export const LONG_RUNNING_API_TIMEOUT_MS = 120_000;
+export const DEFAULT_API_TIMEOUT_MS = 60_000;
+export const LONG_RUNNING_API_TIMEOUT_MS = 300_000;
 const BACKEND_HEALTH_CHECK_TIMEOUT_MS = 1_200;
 const BACKEND_RECOVERY_POLL_INTERVAL_MS = 1_500;
 const BACKEND_RECOVERY_POLL_MAX_INTERVAL_MS = 10_000;
@@ -664,6 +664,7 @@ export const apiClient = async <T>(
 
 export interface OrvalRequestInit extends RequestInit {
   params?: AxiosRequestConfig["params"];
+  timeout?: AxiosRequestConfig["timeout"];
 }
 
 export interface OrvalResponse<T> {
@@ -702,13 +703,14 @@ export async function orvalApiClient<T>(
   url: string,
   options: OrvalRequestInit = {},
 ): Promise<T> {
-  const { body, headers, params, method, signal } = options;
+  const { body, headers, params, method, signal, timeout } = options;
 
   const response = await instance({
     url,
     params,
     method,
     signal: signal ?? undefined,
+    timeout,
     headers: toAxiosHeaders(headers),
     data: body,
   });

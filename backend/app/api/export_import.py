@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_id
 from app.api.openapi import build_error_responses
@@ -142,7 +143,7 @@ async def import_subject_api(
 async def list_courses_api(response: Response) -> ApiResponse[list[CoursePackageItem]]:
     """列出线上演示课程目录中的课程包。"""
 
-    courses = list_available_courses()
+    courses = await run_in_threadpool(list_available_courses)
     _set_no_store_headers(response)
     response.headers["X-Demo-Courses-Count"] = str(len(courses))
     catalog_url = get_demo_courses_index_url()

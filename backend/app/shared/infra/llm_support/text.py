@@ -14,6 +14,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
     build_completion_context,
+    effective_call_timeout_s,
     extract_usage,
     get_semaphore,
     logger,
@@ -84,7 +85,7 @@ async def acompletion(
                 ) as trace_run:
                     response = await asyncio.wait_for(
                         litellm.acompletion(**prepared.call_kwargs),
-                        timeout=context_request_timeout_s(context),
+                        timeout=context_request_timeout_s(context, prepared.call_kwargs),
                     )
                     prompt_t, completion_t, total_t = extract_usage(response)
                     content = response.choices[0].message.content or ""
@@ -113,7 +114,9 @@ async def acompletion(
                 )
                 return content
             except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(timeout_s=context.profile.timeout_s)
+                last_error = LLMTimeoutError(
+                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                )
                 log_attempt_timeout(
                     "llm_completion_timeout",
                     attempt=prepared,

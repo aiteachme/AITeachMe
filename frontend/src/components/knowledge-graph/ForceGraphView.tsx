@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
@@ -101,7 +101,7 @@ function NodeDetailSidebar({
           </div>
           <p className="text-xs text-slate-400">置信度：{Math.round(data.confidence * 100)}%</p>
         </div>
-        <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+        <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -109,12 +109,12 @@ function NodeDetailSidebar({
       {data.current_revision && (
         <div className="space-y-2">
           {data.current_revision.summary && (
-            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               <MarkdownViewer content={data.current_revision.summary} />
             </div>
           )}
           {data.current_revision.body && (
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-100 p-3 text-sm">
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-100 p-3 text-sm dark:border-slate-800 dark:text-slate-300">
               <MarkdownViewer content={data.current_revision.body} />
             </div>
           )}
@@ -128,7 +128,7 @@ function NodeDetailSidebar({
           </div>
           <div className="flex flex-wrap gap-1.5">
             {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
-              <span key={a.id} className={`rounded-full px-2 py-0.5 text-xs ${a.is_primary ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}>
+              <span key={a.id} className={`rounded-full px-2 py-0.5 text-xs ${a.is_primary ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                 {a.alias}
               </span>
             ))}
@@ -144,9 +144,9 @@ function NodeDetailSidebar({
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
               <button key={edge.id} onClick={() => onNavigate(edge.other_node_id)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-slate-50">
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
                 <span className="text-slate-400">{edge.direction === "outgoing" ? "->" : "<-"}</span>
-                <span className="flex-1 truncate text-slate-700">{edge.other_node_name}</span>
+                <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{edge.other_node_name}</span>
                 <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
                 <ChevronRight className="h-3 w-3 text-slate-300" />
               </button>
@@ -162,9 +162,9 @@ function NodeDetailSidebar({
           </div>
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: string[]; quote_text?: string }) => (
-              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600">
+              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium text-slate-700">
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">
                     {ref.chapter_title || (ref.chapter_index ? `第 ${ref.chapter_index} 章` : "知识文档")}
                   </span>
                   {ref.doc_version_no ? <span className="shrink-0 text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
@@ -173,7 +173,7 @@ function NodeDetailSidebar({
                   {ref.source_kind ? <span>{ref.source_kind}</span> : null}
                   {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
                 </div>
-                {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500">{ref.quote_text}</p> : null}
+                {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{ref.quote_text}</p> : null}
               </div>
             ))}
           </div>
@@ -188,7 +188,7 @@ function NodeDetailSidebar({
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
               <button key={ev.id} onClick={() => onEvidenceClick?.(ev.chunk_id, ev.quote_text)}
-                className="group w-full cursor-pointer rounded border-l-2 border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50">
+                className="group w-full cursor-pointer rounded border-l-2 border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-amber-400/70 dark:hover:bg-amber-500/10">
                 <p className="line-clamp-3">{ev.quote_text}</p>
                 <div className="mt-1 flex items-center justify-between">
                   <p className="text-[10px] text-slate-400">{ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%</p>
@@ -487,12 +487,12 @@ export function ForceGraphView({
         {/* Top-left: toolbar + stats + edge label toggle */}
         <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2">
           {toolbar}
-          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60">
+          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
             {nodeCount} 节点 · {edgeCount} 边
           </span>
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
-            className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white"
+            className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
           >
             <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#8b5cf6" : "#d1d5db" }}>
               <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
@@ -503,11 +503,11 @@ export function ForceGraphView({
 
         {/* Bottom-left: Legend */}
         <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-10">
-          <div className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/80 px-3 py-1.5 ring-1 ring-slate-200/40">
+          <div className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/80 px-3 py-1.5 ring-1 ring-slate-200/40 dark:bg-slate-950/82 dark:ring-slate-700/70">
             {presentTypes.map(({ type, fill, label }) => (
               <div key={type} className="flex items-center gap-1">
                 <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: fill }} />
-                <span className="text-[10px] font-medium text-slate-500">{label}</span>
+                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-300">{label}</span>
               </div>
             ))}
           </div>
@@ -515,7 +515,7 @@ export function ForceGraphView({
       </div>
 
       {selectedNodeId && (
-        <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
+        <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
           <div className="p-4">
             <NodeDetailSidebar
               subject={subject}
