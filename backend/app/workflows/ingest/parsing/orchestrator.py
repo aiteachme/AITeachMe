@@ -18,7 +18,6 @@ from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.asset_ocr import enhance_markdown_with_asset_ocr
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.parsing.parsers import PARSER_REGISTRY, resolve_parser_extension
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 
@@ -123,13 +122,7 @@ async def fast_parse_file(
 
             # Determine if Phase 2 is needed
             from app.workflows.ingest.parsing.formats import is_text_extension
-            needs_quality_reparse = (
-                extension == ".pdf"
-                and parser_name != "pymupdf4llm"
-                and plan.mode != "local_markitdown"
-                and parser_name != "ocr_vision"
-                and plan.mode != "external_ocr"
-            )
+            needs_quality_reparse = False
             needs_asset_ocr = (
                 plan.options.enable_asset_vision_ocr
                 and not is_text_extension(extension)
@@ -206,7 +199,6 @@ async def deep_enhance_file(
 
     path = Path(file_path)
     assets = Path(asset_dir)
-    extension = path.suffix.lower()
 
     logger.info(
         "deep_enhance_file_start",
@@ -233,27 +225,6 @@ async def deep_enhance_file(
     final_markdown = enhanced_result.markdown
     total_ocr_images = enhanced_result.ocr_image_count
     total_replacements = enhanced_result.placeholder_replacements
-
-    # Step 2: PDF page-level OCR fallback
-    if extension == ".pdf" and builtin_pdf_parsing_enabled():
-        from app.workflows.ingest.parsing.pdf_page_fallback import (
-            enhance_pdf_markdown_with_page_fallback,
-        )
-
-        page_fallback_result = await enhance_pdf_markdown_with_page_fallback(
-            final_markdown,
-            pdf_path=path,
-            asset_dir=assets,
-            asset_link_prefix=asset_link_prefix,
-            asset_name_prefix=asset_name_prefix,
-            enabled=parse_plan.options.enable_asset_vision_ocr,
-            language_mode=parse_plan.options.ocr_language_mode,
-            concurrency=parse_plan.options.llm_ocr_page_concurrency,
-            max_pages=parse_plan.options.ocr_page_limit,
-        )
-        final_markdown = page_fallback_result.markdown
-        total_ocr_images += page_fallback_result.page_image_count
-        total_replacements += page_fallback_result.placeholder_replacements
 
     elapsed = round(time.monotonic() - started_at, 2)
     logger.info(

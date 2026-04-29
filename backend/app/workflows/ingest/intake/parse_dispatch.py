@@ -11,11 +11,6 @@ from app.shared.infra.exceptions import InvalidRawFileStateError
 from app.models import IngestStatus, RawFile, TaskStatus
 from app.repositories.files_repo import update_raw_file
 from app.utils.presenters import require_id
-from app.workflows.ingest import run_parse_file_workflow
-from app.workflows.ingest.fast_parse.lib.lifecycle import (
-    dispatch_enhancement_if_needed,
-    mark_parse_workflow_failed,
-)
 from app.workflows.ingest.intake.catalog import get_subject_files_or_raise, get_user_files_or_raise
 from app.workflows.ingest.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 
@@ -99,6 +94,8 @@ async def run_parse_files_background(
         async with semaphore:
             batch_logger.info("file_parse_background_dispatch", file_id=file_id)
             try:
+                from app.workflows.ingest import run_parse_file_workflow
+
                 result = await run_parse_file_workflow(
                     user_id=user_id,
                     file_id=file_id,
@@ -108,6 +105,8 @@ async def run_parse_files_background(
                 batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
                 raise
             except Exception as exc:
+                from app.workflows.ingest.fast_parse.lib.lifecycle import mark_parse_workflow_failed
+
                 mark_parse_workflow_failed(
                     user_id=user_id,
                     file_id=file_id,
@@ -124,6 +123,8 @@ async def run_parse_files_background(
 
             if result.failed:
                 if result.error and result.error.code == "workflow_execution_failed":
+                    from app.workflows.ingest.fast_parse.lib.lifecycle import mark_parse_workflow_failed
+
                     mark_parse_workflow_failed(
                         user_id=user_id,
                         file_id=file_id,
@@ -144,6 +145,8 @@ async def run_parse_files_background(
                 return
 
             final_state = result.require_value()
+            from app.workflows.ingest.fast_parse.lib.lifecycle import dispatch_enhancement_if_needed
+
             dispatched_enhance = dispatch_enhancement_if_needed(
                 final_state,
                 background_task_registry=background_task_registry,

@@ -19,10 +19,8 @@ from app.models import IngestStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
 from app.workflows.ingest.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.parsing.strategy import build_parse_plan
-from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_rows
 
 logger = structlog.get_logger()
@@ -84,7 +82,6 @@ async def _run_deep_enhance_background(
                     return
 
                 original_storage_backend = raw_file.storage_backend or "local"
-                original_parser_used = raw_file.parser_used
 
                 file_path = await cs.materialize(raw_file.file_path or raw_file.storage_key, _temp_dir)
                 # Materialize markdown to temp for Phase 2 parsing
@@ -164,52 +161,7 @@ async def _run_deep_enhance_background(
 
             markdown = markdown_path.read_text(encoding="utf-8")
 
-            # ── Step 1: Quality re-parse with pymupdf4llm (no LLM needed) ──
-            # Phase 1 used pymupdf_native for speed. Now re-parse with pymupdf4llm
-            # for better markdown formatting (tables, headings, formula rendering).
-            extension = Path(str(file_path)).suffix.lower()
-            # Explicit external/local document providers already returned their chosen markdown;
-            # avoid overriding them with the fallback quality parser here.
-            if (
-                extension == ".pdf"
-                and builtin_pdf_parsing_enabled()
-                and original_parser_used not in {"mineru", "markitdown"}
-            ):
-                try:
-                    from app.workflows.ingest.parsing.pdf import parse_pdf_with_pymupdf4llm, PDF_PYMUPDF4LLM_AVAILABLE
-                    from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
-
-                    if PDF_PYMUPDF4LLM_AVAILABLE:
-                        quality_options = ParserRunOptions(
-                            ocr_language_mode=parse_plan.options.ocr_language_mode,
-                            asset_name_prefix=asset_name_prefix,
-                        )
-                        raw_quality = await parse_pdf_with_pymupdf4llm(
-                            file_path, asset_dir, quality_options,
-                        )
-                        quality_result = canonicalize_markdown(
-                            raw_quality,
-                            asset_dir=asset_dir,
-                            asset_link_prefix=asset_link_prefix,
-                            asset_name_prefix=asset_name_prefix,
-                        )
-                        quality_md = quality_result.markdown
-                        # Only use quality version if it has reasonable content.
-                        if quality_md and len(quality_md.strip()) > len(markdown.strip()) * 0.5:
-                            old_chars = len(markdown)
-                            markdown = quality_md
-                            markdown_path.write_text(markdown, encoding="utf-8")
-                            enhance_logger.info(
-                                "quality_reparse_completed",
-                                parser="pymupdf4llm",
-                                chars_before=old_chars,
-                                chars_after=len(quality_md),
-                            )
-                except Exception as exc:
-                    enhance_logger.warning("quality_reparse_failed", error=str(exc))
-                    # Continue with Phase 1 markdown; quality re-parse is best-effort.
-
-            # ── Step 2: 文档 OCR 增强（仅在配置文档 OCR 模型后启用） ──
+            # ── 文档 OCR 增强（仅在配置文档 OCR 模型后启用） ──
             has_document_ocr = get_settings().has_document_ocr_model
 
             if has_document_ocr:

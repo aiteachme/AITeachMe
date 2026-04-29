@@ -62,8 +62,9 @@ def main(argv: list[str] | None = None) -> int:
         "--port",
         str(args.port),
     ]
-    completed = subprocess.run(uvicorn_cmd, cwd=BACKEND_ROOT)
-    return int(completed.returncode or 0)
+    os.chdir(BACKEND_ROOT)
+    os.execvpe(uvicorn_cmd[0], uvicorn_cmd, os.environ)
+    return 0
 
 
 if __name__ == "__main__":

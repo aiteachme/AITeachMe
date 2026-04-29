@@ -7,13 +7,9 @@ import time
 from collections.abc import Mapping
 from copy import deepcopy
 from functools import lru_cache
+from importlib import import_module
 from typing import Any
 from typing import TypeVar
-
-try:
-    import instructor
-except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
-    instructor = None
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
@@ -46,7 +42,14 @@ from .structured import (
 )
 
 T = TypeVar("T")
-litellm = load_litellm()
+
+
+@lru_cache(maxsize=1)
+def _load_instructor():
+    try:
+        return import_module("instructor")
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency in local dev
+        return None
 
 
 @lru_cache(maxsize=512)
@@ -55,6 +58,7 @@ def _supports_json_object_response_format(model: str, provider: str | None) -> b
 
     if not model:
         return False
+    litellm = load_litellm()
     try:
         supported_params = litellm.get_supported_openai_params(
             model=model,
@@ -153,6 +157,8 @@ async def acompletion_structured(
 ) -> T:
     """Async structured completion."""
 
+    litellm = load_litellm()
+    instructor = _load_instructor()
     context = build_completion_context(
         task_type=task_type,
         call_purpose=call_purpose,
