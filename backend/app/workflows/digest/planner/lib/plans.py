@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
 
@@ -124,6 +125,7 @@ def render_planner_chapter_contract(value: Any) -> str:
             "- 不要按文件名、页码、资料来源、PPT 顺序机械切章；要按学习者真正需要建立的理解路径切章。",
             "- 不要把同一个知识对象拆成多个空心章节，也不要把多个独立主题硬塞进一个大杂烩章节。",
             "- 章节标题要能回答“这一章到底帮我学会什么/解决什么问题”。",
+            "- 章节标题要像真实讲义目录，优先使用知识对象、方法或任务名词短语；不要写“动词+得+形容词：知识对象”这类口号前缀。",
         ]
     )
 
@@ -168,7 +170,7 @@ def _resolve_course_name(
 
 
 def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
-    title = _text(raw.get("title"))
+    title = clean_generated_chapter_title(_text(raw.get("title")))
     key_points = _strings(raw.get("required_elements") or raw.get("key_points"))
     if not title:
         raise ValueError(f"planner chapter #{index} is missing title")

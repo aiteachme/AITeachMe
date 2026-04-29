@@ -24,6 +24,7 @@ def build_title_lock_messages(
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
 你只能在已确认标题的基础上做轻微收束和具体化，不能引入新主题。
 标题要像真实课程目录，避免空泛比喻、拟人或文学化表达。
+不要使用“动词+得+形容词：知识对象”这类口号前缀；如果原标题已经这样写，只保留冒号后的知识对象。
 标题本身不要包含编号或样式说明。
 """.strip()
     prompt = f"""
@@ -55,7 +56,8 @@ def build_title_lock_messages(
 3. 如果不确定，enhanced_title 必须直接沿用 confirmed_title。
 4. confirmed_title 和 enhanced_title 都只保留语义标题；如果原标题带编号，只保留后面的语义部分。
 5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的课程对象，例如“跨模块联系：代数、几何与统计的综合应用”。
-6. 不要输出任何教学大纲、检索词、媒体请求或其他字段。
+6. 不要为了押韵、对仗或统一句式批量改写标题；相邻章节标题必须各自自然。
+7. 不要输出任何教学大纲、检索词、媒体请求或其他字段。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
