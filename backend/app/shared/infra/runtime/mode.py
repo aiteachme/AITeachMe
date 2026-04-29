@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import os
-
 from app.shared.infra.env_support import get_env, get_env_optional_bool
 
 APP_VERSION = "0.0.1"
 
 
 def resolve_app_mode() -> str:
-    raw_value = (get_env("APP_MODE", "auto") or "auto").strip().lower()
+    raw_value = (get_env("APP_MODE", "local") or "local").strip().lower()
     if raw_value in {"local", "cloud"}:
         return raw_value
-    if os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_URL"):
-        return "cloud"
     return "local"
 
 

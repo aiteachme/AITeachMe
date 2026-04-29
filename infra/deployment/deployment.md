@@ -28,6 +28,7 @@ infra/deployment/
 
 - 后端部署优先使用 Docker 镜像；当前推荐生产直接使用 `backend-office.Dockerfile` 构建的 Office 镜像，减少后续支持 PPT/PPTX 时的部署切换。
 - 轻量镜像仍保留，适合不需要本地 Office 转换、希望镜像更小的环境。当前产品入口仍只开放 `.pdf` / `.docx` / Markdown / 文本上传。
+- 运行模式只由 `APP_MODE` 显式控制；未配置或配置非法时默认 `local`。Render / Sealos 不会被自动识别成云端模式，线上必须配置 `APP_MODE=cloud`。
 - 云端正式环境使用 PostgreSQL + pgvector，不使用本地 SQLite。
 - 文件与生成产物通过 `STORAGE_BACKEND=s3` 接入 S3-compatible OSS，Render 和 Sealos 都按同一组 `S3_*` 变量配置。
 - Render 可以用 Pre-deploy command 跑 `bootstrap_cloud_db.py`；Sealos 多副本时建议用独立 Job 跑迁移和准备脚本，后端容器只启动 Web 服务。

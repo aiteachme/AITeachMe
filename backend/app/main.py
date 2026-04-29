@@ -190,7 +190,6 @@ def _log_infra_diagnostics(settings) -> None:
         f"    APP_MODE (resolved)    : {app_mode}",
         f"    DATABASE_URL           : {'SET' if os.environ.get('DATABASE_URL') else '!! NOT_SET !!'}",
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
-        f"    RENDER                 : {os.environ.get('RENDER', 'NOT_SET')}",
         f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
         f"    LLM_API_KEY            : {'SET' if llm_api_keys else '!! NOT_SET !!'}",
         "",
