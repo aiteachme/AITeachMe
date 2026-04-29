@@ -2,10 +2,10 @@ import { fileHandlers } from "./handlers/files";
 import { chatHandlers } from "./handlers/chat";
 import { examHandlers } from "./handlers/exam";
 import { profileHandlers } from "./handlers/profile";
-import { subjectHandlers } from "./handlers/subjects";
+import { courseHandlers } from "./handlers/courses";
 
 export const handlers = [
-  ...subjectHandlers,
+  ...courseHandlers,
   ...fileHandlers,
   ...chatHandlers,
   ...examHandlers,

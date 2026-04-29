@@ -1,4 +1,4 @@
-﻿"""Central model exports."""
+"""Central model exports."""
 
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession
@@ -42,8 +42,8 @@ from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGr
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile, RawFileAsset, SubjectFileLink
-from app.models.subject import Subject
+from app.models.raw_file import RawFile, RawFileAsset, CourseFileLink
+from app.models.course import Course
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -87,8 +87,8 @@ __all__ = [
     "RetrievalChunk",
     "ReviewTaskStatus",
     "ReviewTaskType",
-    "Subject",
-    "SubjectFileLink",
+    "Course",
+    "CourseFileLink",
     "SystemRuntimeSettings",
     "TaskStatus",
     "TemplateNodeRole",

@@ -14,7 +14,7 @@ from app.workflows.interact.chat.lib.intent import (
     has_entry_context,
     has_explicit_learning_intent,
     resolve_prompt_scene,
-    should_use_subject_grounding,
+    should_use_course_grounding,
 )
 from app.workflows.interact.chat.lib.retrieval import retrieve_context
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter, format_sse_event
@@ -54,5 +54,5 @@ __all__ = [
     "resolve_interact_tool_plan",
     "select_execution_mode",
     "select_teaching_strategy",
-    "should_use_subject_grounding",
+    "should_use_course_grounding",
 ]

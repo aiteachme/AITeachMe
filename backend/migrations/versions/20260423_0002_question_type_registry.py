@@ -1,7 +1,7 @@
 """Add question type registry.
 
 This revision stores the built-in exam question types as system-owned seed
-data so future subject-specific question types can use the same registry.
+data so future course-specific question types can use the same registry.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("type_key", sa.String(), nullable=False),
         sa.Column("display_name", sa.String(), nullable=False),
         sa.Column("scope", sa.String(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("description", sa.String(), nullable=False),
         sa.Column("answer_format", sa.String(), nullable=False),
         sa.Column("grading_method", sa.String(), nullable=False),
@@ -39,11 +39,11 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.UniqueConstraint("scope", "subject", "type_key", name="uq_question_type_scope_subject_key"),
+        sa.UniqueConstraint("scope", "course", "type_key", name="uq_question_type_scope_course_key"),
     )
     op.create_index("ix_question_type_registry_type_key", "question_type_registry", ["type_key"])
     op.create_index("ix_question_type_registry_scope", "question_type_registry", ["scope"])
-    op.create_index("ix_question_type_registry_subject", "question_type_registry", ["subject"])
+    op.create_index("ix_question_type_registry_course", "question_type_registry", ["course"])
     op.create_index("ix_question_type_registry_is_system", "question_type_registry", ["is_system"])
     op.create_index("ix_question_type_registry_is_active", "question_type_registry", ["is_active"])
 
@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.column("type_key", sa.String()),
         sa.column("display_name", sa.String()),
         sa.column("scope", sa.String()),
-        sa.column("subject", sa.String()),
+        sa.column("course", sa.String()),
         sa.column("description", sa.String()),
         sa.column("answer_format", sa.String()),
         sa.column("grading_method", sa.String()),
@@ -72,7 +72,7 @@ def upgrade() -> None:
             {
                 **row,
                 "scope": "global",
-                "subject": "",
+                "course": "",
                 "source": "system",
                 "confidence": 1.0,
                 "is_system": True,
@@ -88,7 +88,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_question_type_registry_is_active", table_name="question_type_registry")
     op.drop_index("ix_question_type_registry_is_system", table_name="question_type_registry")
-    op.drop_index("ix_question_type_registry_subject", table_name="question_type_registry")
+    op.drop_index("ix_question_type_registry_course", table_name="question_type_registry")
     op.drop_index("ix_question_type_registry_scope", table_name="question_type_registry")
     op.drop_index("ix_question_type_registry_type_key", table_name="question_type_registry")
     op.drop_table("question_type_registry")

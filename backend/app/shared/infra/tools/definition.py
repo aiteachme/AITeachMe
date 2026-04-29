@@ -21,7 +21,7 @@ class ToolDefinition:
     risk_level: str = "low"
     scopes: list[str] = field(default_factory=list)
     timeout_s: float | None = None
-    requires_subject: bool = False
+    requires_course: bool = False
     requires_approval: bool = False
     cache_policy: str = "none"
 

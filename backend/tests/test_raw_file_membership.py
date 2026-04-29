@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.api.knowledge_docs import _collect_graph_source_file_ids
-from app.models import RawFile, RetrievalChunk, Subject, SubjectFileLink, User
+from app.models import RawFile, RetrievalChunk, Course, CourseFileLink, User
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.repositories.knowledge import knowledge_repo
 from app.workflows.digest.planner.nodes import load_planner_materials
@@ -23,20 +23,20 @@ def _session() -> Session:
         engine,
         tables=[
             User.__table__,
-            Subject.__table__,
+            Course.__table__,
             RawFile.__table__,
-            SubjectFileLink.__table__,
+            CourseFileLink.__table__,
             RetrievalChunk.__table__,
         ],
     )
     return Session(engine, expire_on_commit=False)
 
 
-def _add_user_subjects(session: Session) -> None:
+def _add_user_courses(session: Session) -> None:
     session.add(User(id="user_a", username="user_a"))
     session.add(User(id="user_b", username="user_b"))
-    session.add(Subject(id="subj_a", user_id="user_a", name="Subject A"))
-    session.add(Subject(id="subj_b", user_id="user_b", name="Subject B"))
+    session.add(Course(id="course_a", user_id="user_a", name="Course A"))
+    session.add(Course(id="course_b", user_id="user_b", name="Course B"))
     session.commit()
 
 
@@ -44,29 +44,29 @@ def _raw_file(
     file_id: str,
     *,
     user_id: str,
-    origin_subject_id: str | None = None,
+    origin_course_id: str | None = None,
     filename: str | None = None,
 ) -> RawFile:
     return RawFile(
         id=file_id,
         user_id=user_id,
-        origin_subject_id=origin_subject_id,
+        origin_course_id=origin_course_id,
         filename=filename or f"{file_id}.pdf",
         filetype="pdf",
         file_path=f"files/{file_id}.pdf",
     )
 
 
-def test_list_raw_files_by_ids_stays_inside_subject_membership() -> None:
+def test_list_raw_files_by_ids_stays_inside_course_membership() -> None:
     with _session() as session:
-        _add_user_subjects(session)
+        _add_user_courses(session)
         session.add(_raw_file("file_linked", user_id="user_a"))
-        session.add(_raw_file("file_other_subject", user_id="user_b", origin_subject_id="subj_b"))
+        session.add(_raw_file("file_other_course", user_id="user_b", origin_course_id="course_b"))
         session.add(_raw_file("file_unlinked", user_id="user_a"))
         session.add(
-            SubjectFileLink(
+            CourseFileLink(
                 user_id="user_a",
-                subject_id="subj_a",
+                course_id="course_a",
                 file_id="file_linked",
             )
         )
@@ -74,8 +74,8 @@ def test_list_raw_files_by_ids_stays_inside_subject_membership() -> None:
 
         rows = list_raw_files_by_ids(
             session,
-            "subj_a",
-            ["file_linked", "file_legacy", "file_other_subject", "file_unlinked"],
+            "course_a",
+            ["file_linked", "file_legacy", "file_other_course", "file_unlinked"],
         )
 
     assert {row.id for row in rows} == {"file_linked"}
@@ -83,9 +83,9 @@ def test_list_raw_files_by_ids_stays_inside_subject_membership() -> None:
 
 def test_seed_material_context_keeps_string_file_ids(monkeypatch) -> None:
     with _session() as session:
-        _add_user_subjects(session)
-        session.add(_raw_file("file_seed", user_id="user_a", origin_subject_id="subj_a", filename="seed.pdf"))
-        session.add(SubjectFileLink(user_id="user_a", subject_id="subj_a", file_id="file_seed"))
+        _add_user_courses(session)
+        session.add(_raw_file("file_seed", user_id="user_a", origin_course_id="course_a", filename="seed.pdf"))
+        session.add(CourseFileLink(user_id="user_a", course_id="course_a", file_id="file_seed"))
         session.commit()
 
         @contextmanager
@@ -95,7 +95,7 @@ def test_seed_material_context_keeps_string_file_ids(monkeypatch) -> None:
         monkeypatch.setattr(load_planner_materials, "managed_session", fake_managed_session)
 
         context = load_planner_materials._build_seed_material_context(
-            subject_id="subj_a",
+            course_id="course_a",
             file_ids=["file_seed"],
             user_prompt=None,
         )
@@ -103,39 +103,39 @@ def test_seed_material_context_keeps_string_file_ids(monkeypatch) -> None:
     assert [item.file_id for item in context.source_documents] == ["file_seed"]
 
 
-def test_delete_chunks_by_file_ids_keeps_other_subject_chunks(monkeypatch) -> None:
+def test_delete_chunks_by_file_ids_keeps_other_course_chunks(monkeypatch) -> None:
     deleted_embedding_calls: list[tuple[str, list[int]]] = []
 
-    def fake_delete_embeddings_by_chunk_ids(session: Session, *, subject_id: str, chunk_ids: list[int]) -> None:
+    def fake_delete_embeddings_by_chunk_ids(session: Session, *, course_id: str, chunk_ids: list[int]) -> None:
         del session
-        deleted_embedding_calls.append((subject_id, chunk_ids))
+        deleted_embedding_calls.append((course_id, chunk_ids))
 
     monkeypatch.setattr(knowledge_repo, "delete_embeddings_by_chunk_ids", fake_delete_embeddings_by_chunk_ids)
 
     with _session() as session:
-        _add_user_subjects(session)
-        session.add(_raw_file("file_shared", user_id="user_a", origin_subject_id="subj_a"))
+        _add_user_courses(session)
+        session.add(_raw_file("file_shared", user_id="user_a", origin_course_id="course_a"))
         session.add(
             RetrievalChunk(
-                subject_id="subj_a",
+                course_id="course_a",
                 file_id="file_shared",
                 title="A",
                 level=1,
                 header_path="A",
                 chunk_index=0,
-                digest_chunk_uid="subj_a:file_shared:0",
+                digest_chunk_uid="course_a:file_shared:0",
                 content="A content",
             )
         )
         session.add(
             RetrievalChunk(
-                subject_id="subj_b",
+                course_id="course_b",
                 file_id="file_shared",
                 title="B",
                 level=1,
                 header_path="B",
                 chunk_index=0,
-                digest_chunk_uid="subj_b:file_shared:0",
+                digest_chunk_uid="course_b:file_shared:0",
                 content="B content",
             )
         )
@@ -143,14 +143,14 @@ def test_delete_chunks_by_file_ids_keeps_other_subject_chunks(monkeypatch) -> No
 
         deleted_count = knowledge_repo.delete_chunks_by_file_ids(
             session,
-            subject_id="subj_a",
+            course_id="course_a",
             file_ids=["file_shared"],
         )
         remaining = list(session.exec(select(RetrievalChunk)).all())
 
     assert deleted_count == 1
-    assert [(chunk.subject_id, chunk.file_id) for chunk in remaining] == [("subj_b", "file_shared")]
-    assert deleted_embedding_calls == [("subj_a", [1])]
+    assert [(chunk.course_id, chunk.file_id) for chunk in remaining] == [("course_b", "file_shared")]
+    assert deleted_embedding_calls == [("course_a", [1])]
 
 
 def test_graph_source_file_id_fallback_keeps_string_ids() -> None:
@@ -164,11 +164,11 @@ def test_graph_source_file_id_fallback_keeps_string_ids() -> None:
     ) == ["file_alpha", "file_beta", "42"]
 
 
-def test_raw_file_origin_subject_is_audit_data_not_membership_fk() -> None:
-    subject_foreign_key_columns = {
+def test_raw_file_origin_course_is_audit_data_not_membership_fk() -> None:
+    course_foreign_key_columns = {
         fk.parent.name
         for fk in RawFile.__table__.foreign_keys
-        if fk.column.table.name == "subject"
+        if fk.column.table.name == "course"
     }
 
-    assert "origin_subject_id" not in subject_foreign_key_columns
+    assert "origin_course_id" not in course_foreign_key_columns

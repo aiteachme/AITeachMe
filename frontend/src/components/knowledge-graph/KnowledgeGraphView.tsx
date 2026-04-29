@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -13,7 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
-  graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost,
+  graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost,
 } from "../../api/generated/knowledge";
 import type { FullGraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
@@ -36,23 +36,23 @@ const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
 };
 
 function NodeDetailPanel({
-  subject,
+  course,
   nodeId,
   onClose,
   onNavigate,
   onEvidenceClick,
 }: {
-  subject: string;
+  course: string;
   nodeId: number;
   onClose: () => void;
   onNavigate: (id: number) => void;
   onEvidenceClick: (chunkId: number, quoteText: string) => void;
 }) {
   const { data, isLoading } = useQuery({
-    queryKey: ["graph-node-detail", subject, nodeId],
+    queryKey: ["graph-node-detail", course, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+        await graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost(course, {
           knowledge_unit_id: nodeId,
         }),
       ) ?? null,
@@ -222,10 +222,10 @@ const NODE_TYPES = [
 type ViewMode = "list" | "graph";
 
 export function KnowledgeGraphView({
-  subject,
+  course,
   overviewGraph,
 }: {
-  subject: string;
+  course: string;
   overviewGraph: FullGraphResponse | null;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
@@ -300,7 +300,7 @@ export function KnowledgeGraphView({
     <div className="knowledge-graph-view flex flex-col h-full min-h-0 gap-4">
       {viewMode === "graph" && (
         <ForceGraphView
-          subject={subject}
+          course={course}
           toolbar={viewToggle}
           onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
           fullGraphData={overviewGraph}
@@ -384,7 +384,7 @@ export function KnowledgeGraphView({
               <Card>
                 <CardContent className="pt-6">
                   <NodeDetailPanel
-                    subject={subject}
+                    course={course}
                     nodeId={selectedNodeId}
                     onClose={() => setSelectedNodeId(null)}
                     onNavigate={(id) => setSelectedNodeId(id)}
@@ -400,7 +400,7 @@ export function KnowledgeGraphView({
       <EvidenceContextModal
         open={!!evidenceModalState}
         onClose={() => setEvidenceModalState(null)}
-        subject={subject}
+        course={course}
         chunkId={evidenceModalState?.chunkId ?? null}
         quoteText={evidenceModalState?.quoteText}
       />

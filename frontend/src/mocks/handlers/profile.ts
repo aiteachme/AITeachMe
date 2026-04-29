@@ -37,20 +37,20 @@ const mockMistakes = [
 ];
 
 const mockKnowledgeUnits = [
-  { id: 101, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 102, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 103, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 104, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 105, subject: "mock", knowledge_unit_type: "concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 101, course: "mock", knowledge_unit_type: "concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, course: "mock", knowledge_unit_type: "concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 103, course: "mock", knowledge_unit_type: "concept", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 104, course: "mock", knowledge_unit_type: "concept", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 105, course: "mock", knowledge_unit_type: "concept", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockUnitItems = [
-  { id: 201, subject: "mock", canonical_name: "Limits Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 202, subject: "mock", canonical_name: "Derivative Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 201, course: "mock", canonical_name: "Limits Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 202, course: "mock", canonical_name: "Derivative Unit", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockMasteryOverview = {
-  subject: "mock",
+  course: "mock",
   user_id: "local",
   weak_knowledge_unit_count: 2,
   knowledge_unit_states: [
@@ -131,7 +131,7 @@ const mockReviewTasks = [
   {
     id: 11,
     user_id: "local",
-    subject: "mock",
+    course: "mock",
     knowledge_unit_id: 104,
     priority: 0.95,
     scheduled_at: nowIso,
@@ -145,7 +145,7 @@ const mockReviewTasks = [
   {
     id: 12,
     user_id: "local",
-    subject: "mock",
+    course: "mock",
     knowledge_unit_id: 103,
     priority: 0.82,
     scheduled_at: nowIso,
@@ -159,37 +159,37 @@ const mockReviewTasks = [
 ];
 
 export const profileHandlers = [
-  http.post("/api/v1/subjects/:subject/profile/list", () => {
+  http.post("/api/v1/courses/:course/profile/list", () => {
     return HttpResponse.json({
       code: 0,
       data: { items: mockProfiles, total: mockProfiles.length },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/profile/report", () => {
+  http.post("/api/v1/courses/:course/profile/report", () => {
     return HttpResponse.json({ code: 0, data: mockReport });
   }),
 
-  http.post("/api/v1/subjects/:subject/profile/mistakes", () => {
+  http.post("/api/v1/courses/:course/profile/mistakes", () => {
     return HttpResponse.json({
       code: 0,
       data: { items: mockMistakes, total: mockMistakes.length },
     });
   }),
 
-  http.get("/api/v1/subjects/:subject/profile/mastery", () => {
+  http.get("/api/v1/courses/:course/profile/mastery", () => {
     return HttpResponse.json({ code: 0, data: mockMasteryOverview });
   }),
 
-  http.get("/api/v1/subjects/:subject/profile/review/tasks", () => {
+  http.get("/api/v1/courses/:course/profile/review/tasks", () => {
     return HttpResponse.json({ code: 0, data: mockReviewTasks });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/overview", ({ params }) => {
+  http.post("/api/v1/courses/:course/knowledge/overview", ({ params }) => {
     return HttpResponse.json({
       code: 0,
       data: {
-        subject: String(params.subject ?? "mock-subject"),
+        course: String(params.course ?? "mock-course"),
         generated_at: new Date().toISOString(),
         snapshot: null,
         theme_tree: null,

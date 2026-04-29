@@ -37,48 +37,48 @@ class KnowledgeChunkNotFoundError(AITeachMeError):
         super().__init__(detail=f"知识切块 `{chunk_id}` 不存在。")
 
 
-class InvalidSubjectError(AITeachMeError):
-    error_code = "INVALID_SUBJECT"
+class InvalidCourseError(AITeachMeError):
+    error_code = "INVALID_COURSE"
     status_code = HTTPStatus.BAD_REQUEST
 
-    def __init__(self, subject_id: str) -> None:
+    def __init__(self, course_id: str) -> None:
         super().__init__(
-            detail=f"学科标识 `{subject_id}` 不合法，只允许字母、数字、下划线和中划线。"
+            detail=f"课程标识 `{course_id}` 不合法，只允许字母、数字、下划线和中划线。"
         )
 
 
-class SubjectAlreadyExistsError(AITeachMeError):
-    error_code = "SUBJECT_ALREADY_EXISTS"
+class CourseAlreadyExistsError(AITeachMeError):
+    error_code = "COURSE_ALREADY_EXISTS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 已存在。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 已存在。")
 
 
-class SubjectRegistryNotFoundError(AITeachMeError):
-    error_code = "SUBJECT_NOT_FOUND"
+class CourseRegistryNotFoundError(AITeachMeError):
+    error_code = "COURSE_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 不存在。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 不存在。")
 
 
-class SubjectInUseError(AITeachMeError):
-    error_code = "SUBJECT_IN_USE"
+class CourseInUseError(AITeachMeError):
+    error_code = "COURSE_IN_USE"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 下仍有内容，不能删除。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 下仍有内容，不能删除。")
 
 
 class KnowledgeClearConflictError(AITeachMeError):
     error_code = "KNOWLEDGE_CLEAR_CONFLICT"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str, blocking_details: str) -> None:
+    def __init__(self, course_id: str, blocking_details: str) -> None:
         super().__init__(
             detail=(
-                f"学科 `{subject_id}` 仍有关联的考试、画像或对话数据，"
+                f"课程 `{course_id}` 仍有关联的考试、画像或对话数据，"
                 f"暂不能直接清空知识。阻塞项：{blocking_details}。"
             )
         )
@@ -150,10 +150,10 @@ class RawFileInUseError(AITeachMeError):
     error_code = "RAW_FILE_IN_USE"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, file_id: str, linked_subjects: list[dict[str, str]]) -> None:
+    def __init__(self, file_id: str, linked_courses: list[dict[str, str]]) -> None:
         super().__init__(
-            detail=f"文件 `{file_id}` 仍被学科引用，不能从资料库删除。",
-            data={"file_id": file_id, "linked_subjects": linked_subjects},
+            detail=f"文件 `{file_id}` 仍被课程引用，不能从资料库删除。",
+            data={"file_id": file_id, "linked_courses": linked_courses},
         )
 
 
@@ -292,8 +292,8 @@ class NoReadyFilesForDocGenError(AITeachMeError):
     error_code = "NO_READY_FILES_FOR_DOCGEN"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 暂无可用的已解析文件，无法开始知识构建。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 暂无可用的已解析文件，无法开始知识构建。")
 
 
 class ConfirmedBuildPlanRequiredError(AITeachMeError):
@@ -307,12 +307,12 @@ class ConfirmedBuildPlanRequiredError(AITeachMeError):
         super().__init__(detail=f"{build_label}必须基于已确认的构建方案执行，请先完成 planner 确认。")
 
 
-class SubjectBuildLockConflictError(AITeachMeError):
+class CourseBuildLockConflictError(AITeachMeError):
     error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 正在构建中，请稍后重试。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 正在构建中，请稍后重试。")
 
 
 class KnowledgeBuildPrecheckConflictError(AITeachMeError):
@@ -370,5 +370,5 @@ class PlannerMaterialsNotReadyError(AITeachMeError):
     error_code = "PLANNER_MATERIALS_NOT_READY"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"学科 `{subject_id}` 的资料正文仍在解析中，请等待至少一份资料完成解析后再生成构建方案。")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"课程 `{course_id}` 的资料正文仍在解析中，请等待至少一份资料完成解析后再生成构建方案。")

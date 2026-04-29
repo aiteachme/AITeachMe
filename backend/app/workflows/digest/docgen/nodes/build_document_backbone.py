@@ -48,7 +48,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
             for item in list(state.get("file_summaries") or [])
         ]
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="building_document_backbone",
@@ -70,7 +70,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
 
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="preparing_chapter_execution_briefs",
@@ -81,7 +81,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
             current_stage_description=f"文档知识骨架已生成，开始并行准备 {len(task_seeds)} 个章节的执行 brief。",
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "document_backbone_ready",

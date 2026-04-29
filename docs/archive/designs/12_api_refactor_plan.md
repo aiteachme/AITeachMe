@@ -19,7 +19,7 @@
 
 主分组不改，继续保留：
 
-- `/subjects`
+- `/courses`
 - `/files`
 - `/knowledge`
 - `/chats`
@@ -38,12 +38,12 @@
 
 | API 分组 | 核心能力 | 正式主表 |
 | --- | --- | --- |
-| `/subjects` | 学科创建、删除、清空、状态查询 | `user`, `subject` |
+| `/courses` | 课程创建、删除、清空、状态查询 | `user`, `course` |
 | `/files` | 上传、列文件、删文件、重新解析 | `raw_file` |
 | `/knowledge` | 构建、文档、总览、图谱详情、chunk 上下文 | `knowledge_document`, `retrieval_chunk`, `knowledge_unit`, `knowledge_edge` |
-| `/chats` | 会话、消息、流式问答、引用上下文 | `chat_session`, `chat_message`, `retrieval_chunk`, `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
-| `/exams` | 出题、组卷、历史、详情、交卷、判卷、题库视图 | `question_template`, `exam_paper`, `exam_paper_item`, `subject.profile_json`, `user_knowledge_state` |
-| `/profile` | 掌握度、复习任务、学习报告、错题视图 | `user.profile_json`, `subject.profile_json`, `user_knowledge_state`, `exam_paper_item` |
+| `/chats` | 会话、消息、流式问答、引用上下文 | `chat_session`, `chat_message`, `retrieval_chunk`, `user.profile_json`, `course.profile_json`, `user_knowledge_state`, `exam_paper_item` |
+| `/exams` | 出题、组卷、历史、详情、交卷、判卷、题库视图 | `question_template`, `exam_paper`, `exam_paper_item`, `course.profile_json`, `user_knowledge_state` |
+| `/profile` | 掌握度、复习任务、学习报告、错题视图 | `user.profile_json`, `course.profile_json`, `user_knowledge_state`, `exam_paper_item` |
 
 ---
 
@@ -82,7 +82,7 @@
 
 - 会话和消息 -> `chat_session`, `chat_message`
 - 检索引用 -> `retrieval_chunk`
-- 教学上下文 -> `user.profile_json + subject.profile_json + user_knowledge_state + exam_paper_item`
+- 教学上下文 -> `user.profile_json + course.profile_json + user_knowledge_state + exam_paper_item`
 
 明确要求：
 
@@ -107,7 +107,7 @@
 - 试卷详情 -> `exam_paper_item`
 - 作答 -> `exam_paper_item`
 - 试卷选题上下文 -> `exam_paper.selection_context_json`
-- 组卷偏好与学科级学习画像 -> `subject.profile_json`
+- 组卷偏好与课程级学习画像 -> `course.profile_json`
 
 明确要求：
 
@@ -124,7 +124,7 @@
 其中 profile 读模型应明确来自三层：
 
 - `user.profile_json`
-- `subject.profile_json`
+- `course.profile_json`
 - `user_knowledge_state`
 
 旧的 `/list`、`/report`、`/mistakes` 不再进入目标态 contract。  
@@ -154,7 +154,7 @@
 
 知识总结页继续由一个聚合接口供数：
 
-- `POST /api/v1/subjects/{subject}/knowledge/overview`
+- `POST /api/v1/courses/{course}/knowledge/overview`
 
 返回主块：
 
@@ -209,7 +209,7 @@
 也就是说：
 
 - `generate` 最终产物是 `exam_paper`
-- `grade` 最终结果回写 `exam_paper + exam_paper_item + user_knowledge_state + subject.profile_json`
+- `grade` 最终结果回写 `exam_paper + exam_paper_item + user_knowledge_state + course.profile_json`
 - `build` 最终产物是 `knowledge_document + knowledge_unit + knowledge_edge`
 
 ---
@@ -250,4 +250,4 @@
 
 ## 10. 一句话结论
 
-目标态 API 不是推倒重写路径，而是在保留 `subjects/files/knowledge/chats/exams/profile` 六大资源组的前提下，把所有读写真相源收口到新主表，并彻底切断对旧 exam、旧 profile、旧 job 表的依赖。
+目标态 API 不是推倒重写路径，而是在保留 `courses/files/knowledge/chats/exams/profile` 六大资源组的前提下，把所有读写真相源收口到新主表，并彻底切断对旧 exam、旧 profile、旧 job 表的依赖。

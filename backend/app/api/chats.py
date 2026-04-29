@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
-from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_id
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
 from app.schemas.chats import (
     ChatClearData,
@@ -35,49 +35,49 @@ from app.workflows.interact.chat import (
     list_chat_sessions,
 )
 from app.workflows.support.auth import set_guest_cookie_for_user
-from app.workflows.support.subjects import get_subject_record
+from app.workflows.support.courses import get_course_record
 from app.shared.infra.database import managed_session
-from app.utils.subject import GLOBAL_SUBJECT
+from app.utils.course import GLOBAL_COURSE
 
-router = APIRouter(prefix="/api/v1/subjects/{subject_id}/chats", tags=["chats"])
+router = APIRouter(prefix="/api/v1/courses/{course_id}/chats", tags=["chats"])
 global_router = APIRouter(prefix="/api/v1/chats", tags=["chats"])
 
 
-def _normalize_chat_subject_id(subject_id: str | None) -> str:
-    return normalize_subject_id(subject_id, allow_global=True)
+def _normalize_chat_course_id(course_id: str | None) -> str:
+    return normalize_course_id(course_id, allow_global=True)
 
 
-def _prepare_chat_subject_id(
+def _prepare_chat_course_id(
     session: Session,
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     user_id: str,
 ) -> str:
-    normalized_subject_id = _normalize_chat_subject_id(raw_subject_id)
-    if normalized_subject_id != GLOBAL_SUBJECT:
-        get_subject_record(session, normalized_subject_id, owner_user_id=user_id)
-    return normalized_subject_id
+    normalized_course_id = _normalize_chat_course_id(raw_course_id)
+    if normalized_course_id != GLOBAL_COURSE:
+        get_course_record(session, normalized_course_id, owner_user_id=user_id)
+    return normalized_course_id
 
 
 async def _send_chat_response(
     request: Request,
     response: Response,
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatSendRequest,
 ) -> StreamingResponse:
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
-        normalized_subject_id = _prepare_chat_subject_id(
+        normalized_course_id = _prepare_chat_course_id(
             session,
-            raw_subject_id=raw_subject_id,
+            raw_course_id=raw_course_id,
             user_id=user.user_id,
         )
     stream_response = StreamingResponse(
         chat_stream(
             request,
             None,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             session_id=body.session_id,
             question=body.question,
@@ -102,20 +102,20 @@ async def _send_chat_response(
 
 def _list_chat_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatListRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[PaginatedData[ChatMessageItem]]:
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     return ok_response(
         list_chat_history(
             session,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             page=body.page,
             size=body.size,
@@ -126,20 +126,20 @@ def _list_chat_response(
 
 def _clear_chat_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatClearRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[ChatClearData]:
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     return ok_response(
         clear_chat_history(
             session,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             session_id=body.session_id,
         )
@@ -148,12 +148,12 @@ def _clear_chat_response(
 
 def _list_chat_sessions_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatSessionListRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[PaginatedData[ChatSessionItem]]:
-    if body.include_all_subjects:
+    if body.include_all_courses:
         return ok_response(
             list_recent_chat_sessions(
                 session,
@@ -163,15 +163,15 @@ def _list_chat_sessions_response(
             )
         )
 
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     return ok_response(
         list_chat_sessions(
             session,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             page=body.page,
             size=body.size,
@@ -181,20 +181,20 @@ def _list_chat_sessions_response(
 
 def _list_chat_threads_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatThreadListRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[PaginatedData[ChatThreadTurnItem]]:
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     return ok_response(
         list_chat_threads(
             session,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             page=body.page,
             size=body.size,
@@ -205,19 +205,19 @@ def _list_chat_threads_response(
 
 def _create_chat_session_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatSessionCreateRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[ChatSessionCreateData]:
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     created = create_session(
         session,
-        subject_id=normalized_subject_id,
+        course_id=normalized_course_id,
         user_id=user.user_id,
         title=body.title,
         source=body.source,
@@ -227,20 +227,20 @@ def _create_chat_session_response(
 
 def _delete_chat_session_response(
     *,
-    raw_subject_id: str | None,
+    raw_course_id: str | None,
     body: ChatSessionDeleteRequest,
     user: CurrentUserContext,
     session: Session,
 ) -> ApiResponse[ChatSessionDeleteData]:
-    normalized_subject_id = _prepare_chat_subject_id(
+    normalized_course_id = _prepare_chat_course_id(
         session,
-        raw_subject_id=raw_subject_id,
+        raw_course_id=raw_course_id,
         user_id=user.user_id,
     )
     return ok_response(
         delete_session(
             session,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             user_id=user.user_id,
             session_id=body.session_id,
         )
@@ -249,20 +249,20 @@ def _delete_chat_session_response(
 
 @router.post(
     "/send",
-    summary="Send subject chat message",
+    summary="Send course chat message",
     description="Returns native SSE.",
     responses={200: {"description": "SSE event stream."}, **build_error_responses([400, 404, 500, 502, 503])},
 )
 async def send_chat(
     request: Request,
     response: Response,
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatSendRequest = Body(...),
 ) -> StreamingResponse:
     return await _send_chat_response(
         request,
         response,
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
     )
 
@@ -270,17 +270,17 @@ async def send_chat(
 @router.post(
     "/list",
     response_model=ApiResponse[PaginatedData[ChatMessageItem]],
-    summary="鑱婂ぉ璁板綍鍒楄〃",
+    summary="聊天记录列表",
     responses=build_error_responses([400, 404, 500]),
 )
 async def list_chat_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatListRequest = Body(default=ChatListRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatMessageItem]]:
     return _list_chat_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -290,17 +290,17 @@ async def list_chat_api(
 @router.post(
     "/clear",
     response_model=ApiResponse[ChatClearData],
-    summary="娓呯┖鑱婂ぉ璁板綍",
+    summary="清空聊天记录",
     responses=build_error_responses([400, 404, 500]),
 )
 async def clear_chat_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatClearRequest = Body(default=ChatClearRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatClearData]:
     return _clear_chat_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -310,17 +310,17 @@ async def clear_chat_api(
 @router.post(
     "/sessions/list",
     response_model=ApiResponse[PaginatedData[ChatSessionItem]],
-    summary="浼氳瘽鍒楄〃",
+    summary="会话列表",
     responses=build_error_responses([400, 404, 500]),
 )
 async def list_chat_sessions_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatSessionListRequest = Body(default=ChatSessionListRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatSessionItem]]:
     return _list_chat_sessions_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -330,17 +330,17 @@ async def list_chat_sessions_api(
 @router.post(
     "/threads/list",
     response_model=ApiResponse[PaginatedData[ChatThreadTurnItem]],
-    summary="鍒掕瘝闂瓟杞鍒楄〃",
+    summary="划词问答轮次列表",
     responses=build_error_responses([400, 404, 500]),
 )
 async def list_chat_threads_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatThreadListRequest = Body(default=ChatThreadListRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatThreadTurnItem]]:
     return _list_chat_threads_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -350,17 +350,17 @@ async def list_chat_threads_api(
 @router.post(
     "/sessions/create",
     response_model=ApiResponse[ChatSessionCreateData],
-    summary="鍒涘缓浼氳瘽",
+    summary="创建会话",
     responses=build_error_responses([400, 404, 500]),
 )
 async def create_chat_session_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatSessionCreateRequest = Body(default=ChatSessionCreateRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionCreateData]:
     return _create_chat_session_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -370,17 +370,17 @@ async def create_chat_session_api(
 @router.post(
     "/sessions/delete",
     response_model=ApiResponse[ChatSessionDeleteData],
-    summary="鍒犻櫎浼氳瘽",
+    summary="删除会话",
     responses=build_error_responses([400, 404, 500]),
 )
 async def delete_chat_session_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChatSessionDeleteRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionDeleteData]:
     return _delete_chat_session_response(
-        raw_subject_id=subject_id,
+        raw_course_id=course_id,
         body=body,
         user=user,
         session=session,
@@ -401,7 +401,7 @@ async def send_global_chat(
     return await _send_chat_response(
         request,
         response,
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
     )
 
@@ -418,7 +418,7 @@ async def list_global_chat_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatMessageItem]]:
     return _list_chat_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,
@@ -437,7 +437,7 @@ async def clear_global_chat_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatClearData]:
     return _clear_chat_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,
@@ -456,7 +456,7 @@ async def list_global_chat_sessions_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatSessionItem]]:
     return _list_chat_sessions_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,
@@ -475,7 +475,7 @@ async def list_global_chat_threads_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[ChatThreadTurnItem]]:
     return _list_chat_threads_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,
@@ -494,7 +494,7 @@ async def create_global_chat_session_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionCreateData]:
     return _create_chat_session_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,
@@ -513,7 +513,7 @@ async def delete_global_chat_session_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChatSessionDeleteData]:
     return _delete_chat_session_response(
-        raw_subject_id=GLOBAL_SUBJECT,
+        raw_course_id=GLOBAL_COURSE,
         body=body,
         user=user,
         session=session,

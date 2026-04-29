@@ -33,10 +33,10 @@ import {
   parseIsoTimestamp,
 } from "../utils";
 
-async function fetchSourceFiles(subjectId: string): Promise<FileRecord[]> {
+async function fetchSourceFiles(courseId: string): Promise<FileRecord[]> {
   const response = await apiClient<ApiResponse<FilesListResponse>>({
     method: "GET",
-    url: `/api/v1/subjects/${subjectId}/files`,
+    url: `/api/v1/courses/${courseId}/files`,
   });
   return response.data?.items ?? [];
 }
@@ -67,7 +67,7 @@ function hasRequestedLiveMarkdown(
 }
 
 export interface DocMarkdownState {
-  subjectId: string | undefined;
+  courseId: string | undefined;
   requestedAt: string | null;
   docMarkdownQuery: ReturnType<typeof useQuery<DocGenGetResponse>>;
   liveMarkdown: string;
@@ -92,7 +92,7 @@ export interface DocMarkdownState {
   renderedDocUpdatedLabel: string | null;
   renderedDigestModeLabel: string;
   renderedChapterHighlights: string[];
-  renderedSubjectLabel: string;
+  renderedCourseLabel: string;
   renderedDocTitle: string;
   renderedDocSummary: string;
   sourceFiles: FileRecord[];
@@ -104,7 +104,7 @@ export interface DocMarkdownState {
 }
 
 export function useDocMarkdown(): DocMarkdownState {
-  const { subjectId } = useParams<{ subjectId: string }>();
+  const { courseId } = useParams<{ courseId: string }>();
   const location = useLocation();
   const requestedAt = useMemo(
     () => new URLSearchParams(location.search).get("requested_at"),
@@ -116,18 +116,18 @@ export function useDocMarkdown(): DocMarkdownState {
   const lastTerminalDocRefreshKeyRef = useRef<string | null>(null);
 
   const docMarkdownQuery = useQuery<DocGenGetResponse>({
-    queryKey: ["docgen-content", subjectId, requestedAt],
+    queryKey: ["docgen-content", courseId, requestedAt],
     queryFn: async () => {
-      if (!subjectId) {
-        throw new Error("缺少学科 ID，无法加载知识文档。");
+      if (!courseId) {
+        throw new Error("缺少课程 ID，无法加载知识文档。");
       }
       const response = await apiClient<ApiResponse<DocGenGetResponse>>({
         method: "POST",
-        url: `/api/v1/subjects/${subjectId}/knowledge/docs`,
+        url: `/api/v1/courses/${courseId}/knowledge/docs`,
       });
       return response.data;
     },
-    enabled: Boolean(subjectId),
+    enabled: Boolean(courseId),
     refetchInterval: (query) => {
       const data = query.state.data;
       const build = data?.build;
@@ -147,11 +147,11 @@ export function useDocMarkdown(): DocMarkdownState {
   });
 
   const runtimeQuery = useQuery({
-    queryKey: subjectId
-      ? [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt]
+    queryKey: courseId
+      ? [...buildKnowledgeBuildRuntimeQueryKey(courseId), requestedAt]
       : ["knowledge-build-runtime-empty"],
-    queryFn: () => fetchKnowledgeBuildRuntime(subjectId as string),
-    enabled: Boolean(subjectId),
+    queryFn: () => fetchKnowledgeBuildRuntime(courseId as string),
+    enabled: Boolean(courseId),
     refetchInterval: (query) => {
       const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
       if (failureBackoff !== null) return failureBackoff;
@@ -219,11 +219,11 @@ export function useDocMarkdown(): DocMarkdownState {
     );
 
   useEffect(() => {
-    if (!subjectId || isRequestedBuildReady || docMarkdownQuery.isFetching) return;
+    if (!courseId || isRequestedBuildReady || docMarkdownQuery.isFetching) return;
     const shouldRefreshDoc = isBuildReadyStatus;
     if (!shouldRefreshDoc) return;
     const refreshKey = [
-      subjectId,
+      courseId,
       requestedAt ?? "",
       buildStatus ?? "",
       buildMeta?.requested_at ?? "",
@@ -239,7 +239,7 @@ export function useDocMarkdown(): DocMarkdownState {
     isBuildReadyStatus,
     isRequestedBuildReady,
     requestedAt,
-    subjectId,
+    courseId,
   ]);
 
   const effectiveDocViewMode: DocViewMode =
@@ -260,10 +260,10 @@ export function useDocMarkdown(): DocMarkdownState {
     () => (buildPreview?.latest_chapter_titles ?? []).slice(0, 4),
     [buildPreview?.latest_chapter_titles],
   );
-  const renderedSubjectLabel = (subjectId ?? "知识文档").replace(/[-_]+/g, " ");
+  const renderedCourseLabel = (courseId ?? "知识文档").replace(/[-_]+/g, " ");
   const renderedDocTitle = useMemo(
-    () => extractFirstMarkdownHeading(renderedMarkdown) ?? renderedChapterHighlights[0] ?? renderedSubjectLabel,
-    [renderedChapterHighlights, renderedMarkdown, renderedSubjectLabel],
+    () => extractFirstMarkdownHeading(renderedMarkdown) ?? renderedChapterHighlights[0] ?? renderedCourseLabel,
+    [renderedChapterHighlights, renderedMarkdown, renderedCourseLabel],
   );
   const renderedDocSummary = useMemo(
     () => extractFirstMarkdownParagraph(renderedMarkdown) ?? buildPreview?.plan_summary?.trim() ?? "正在整理知识文档...",
@@ -271,11 +271,11 @@ export function useDocMarkdown(): DocMarkdownState {
   );
 
   const sourceFilesQuery = useQuery({
-    queryKey: ["knowledge-build-source-files", subjectId],
-    enabled: Boolean(subjectId) && (isBuildActive || isWaitingForRequestedBuild),
-    queryFn: () => fetchSourceFiles(subjectId as string),
+    queryKey: ["knowledge-build-source-files", courseId],
+    enabled: Boolean(courseId) && (isBuildActive || isWaitingForRequestedBuild),
+    queryFn: () => fetchSourceFiles(courseId as string),
     refetchInterval: ({ state }) => {
-      if (!subjectId || (!isBuildActive && !isWaitingForRequestedBuild)) return false;
+      if (!courseId || (!isBuildActive && !isWaitingForRequestedBuild)) return false;
       return state.dataUpdatedAt ? 2500 : 1200;
     },
   });
@@ -341,7 +341,7 @@ export function useDocMarkdown(): DocMarkdownState {
     (effectiveDocViewMode === "draft" || isWaitingForRequestedBuild);
 
   return {
-    subjectId,
+    courseId,
     requestedAt,
     docMarkdownQuery,
     liveMarkdown,
@@ -366,7 +366,7 @@ export function useDocMarkdown(): DocMarkdownState {
     renderedDocUpdatedLabel,
     renderedDigestModeLabel,
     renderedChapterHighlights,
-    renderedSubjectLabel,
+    renderedCourseLabel,
     renderedDocTitle,
     renderedDocSummary,
     sourceFiles,

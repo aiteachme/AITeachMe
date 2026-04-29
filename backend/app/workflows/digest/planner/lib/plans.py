@@ -1,14 +1,15 @@
-﻿"""Normalize the planner's outline sketch into the stable plan payload."""
+"""Normalize the planner's outline sketch into the stable plan payload."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
-from app.workflows.digest.common.models import FastTopicHints, SharedInputs, SubjectProfile
+from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
 
 
 class PlannerChapterPlan(BaseModel):
@@ -24,7 +25,7 @@ class BuildPlannerDraft(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
     user_prompt: str
     digest_mode: str = "systematic"
     chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
@@ -52,16 +53,16 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
-def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, subject_name: str) -> list[str]:
-    subject_hint = _text(subject_name)
+def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, course_name: str) -> list[str]:
+    course_hint = _text(course_name)
     values: list[Any] = [
         *shared_inputs.fast_hints.chapter_candidates,
         *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
-        *shared_inputs.subject_profile.key_topics,
-        shared_inputs.subject_profile.sub_discipline,
-        shared_inputs.subject_profile.discipline,
+        *shared_inputs.course_profile.key_topics,
+        shared_inputs.course_profile.sub_discipline,
+        shared_inputs.course_profile.discipline,
         user_prompt,
-        subject_hint,
+        course_hint,
     ]
     return _strings(values)
 
@@ -93,27 +94,27 @@ def _normalize_digest_mode(value: Any) -> str:
     return "sprint" if mode == "sprint" else "systematic"
 
 
-def _minimal_shared_inputs(subject_id: str) -> SharedInputs:
+def _minimal_shared_inputs(course_id: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
-        subject_profile=SubjectProfile(subject_id=subject_id, subject_name=""),
+        course_profile=CourseProfile(course_id=course_id, course_name=""),
     )
 
 
-def _resolve_subject_name(
-    subject_id: str,
+def _resolve_course_name(
+    course_id: str,
     *,
     shared_inputs: SharedInputs | None,
     user_prompt: str = "",
 ) -> str:
-    shared = shared_inputs or _minimal_shared_inputs(subject_id)
+    shared = shared_inputs or _minimal_shared_inputs(course_id)
     for candidate in [
-        shared.subject_profile.sub_discipline,
-        shared.subject_profile.discipline,
+        shared.course_profile.sub_discipline,
+        shared.course_profile.discipline,
         *shared.fast_hints.chapter_candidates[:3],
-        *shared.subject_profile.key_topics[:3],
+        *shared.course_profile.key_topics[:3],
         user_prompt,
-        subject_id if not _text(subject_id).lower().startswith("subj_") else "",
+        course_id if not re.match(r"^(?:course|subj)_[a-z0-9]+$", _text(course_id), re.IGNORECASE) else "",
     ]:
         text = _text(candidate)
         if text:
@@ -171,7 +172,7 @@ def _pad_chapters_to_minimum(
     digest_mode: str,
     shared_inputs: SharedInputs,
     user_prompt: str,
-    subject_name: str,
+    course_name: str,
 ) -> list[PlannerChapterPlan]:
     config = get_planner_mode_runtime_config(digest_mode)
     if len(chapters) >= config.min_chapters:
@@ -180,7 +181,7 @@ def _pad_chapters_to_minimum(
     existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
     topics = [
         topic
-        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, subject_name=subject_name)
+        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, course_name=course_name)
         if topic.casefold() not in existing_titles
     ]
     if not topics:
@@ -223,14 +224,14 @@ def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: S
         "target_length": config.target_length,
         "include_exercises": True,
         "include_sources": False,
-        "math_mode": shared_inputs.subject_profile.has_heavy_formulas,
+        "math_mode": shared_inputs.course_profile.has_heavy_formulas,
     }
 
 
 def normalize_planner_draft(
     draft: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
-    subject_id: str,
+    course_id: str,
     user_prompt: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
@@ -238,16 +239,16 @@ def normalize_planner_draft(
 ) -> BuildPlannerDraft:
     """把模型草稿规范化成稳定 Planner 合同。
 
-    这里会校验章节、补齐最少章节数、统一 subject 展示名、生成 media plan
+    这里会校验章节、补齐最少章节数、统一 course 展示名、生成 media plan
     和 build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
     """
 
-    shared = shared_inputs or _minimal_shared_inputs(subject_id)
+    shared = shared_inputs or _minimal_shared_inputs(course_id)
     resolved_user_prompt = _text(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    display_subject = _resolve_subject_name(subject_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
+    display_course = _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
     previous_chapters = _chapter_items(previous.get("chapter_plan"))
@@ -261,7 +262,7 @@ def normalize_planner_draft(
         digest_mode=mode,
         shared_inputs=shared,
         user_prompt=resolved_user_prompt,
-        subject_name=display_subject,
+        course_name=display_course,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
@@ -269,7 +270,7 @@ def normalize_planner_draft(
     plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
 
     return BuildPlannerDraft(
-        subject_name=display_subject,
+        course_name=display_course,
         user_prompt=resolved_user_prompt,
         digest_mode=mode,
         chapter_plan=chapters,
@@ -282,7 +283,7 @@ def normalize_planner_draft(
 def normalize_planner_payload(
     payload: BuildPlannerDraft | Mapping[str, Any] | None,
     *,
-    subject_id: str,
+    course_id: str,
     user_prompt: str | None = None,
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
@@ -290,7 +291,7 @@ def normalize_planner_payload(
 ) -> dict[str, Any]:
     return normalize_planner_draft(
         payload,
-        subject_id=subject_id,
+        course_id=course_id,
         user_prompt=user_prompt,
         requested_digest_mode=requested_digest_mode,
         shared_inputs=shared_inputs,
@@ -301,7 +302,7 @@ def normalize_planner_payload(
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
-    "_resolve_subject_name",
+    "_resolve_course_name",
     "normalize_planner_draft",
     "normalize_planner_payload",
 ]

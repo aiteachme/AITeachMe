@@ -6,7 +6,7 @@ from time import perf_counter
 
 import structlog
 
-from app.shared.infra.storage import build_subject_storage_scope
+from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -38,9 +38,9 @@ def build_publish_document_node(*, context: WorkflowContext):
 
         started_at = perf_counter()
         node_logger = context.get_logger().bind(node="publish_document")
-        subject_id = state["subject_id"]
+        course_id = state["course_id"]
         user_id = str(state.get("user_id") or "").strip()
-        subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=subject_id) if user_id else None
+        course_scope = build_course_storage_scope(user_id=user_id, course_id=course_id) if user_id else None
         chapter_metadatas = sorted(
             list(state.get("chapter_metadatas", [])),
             key=lambda item: item.get("chapter_index", 0),
@@ -112,8 +112,8 @@ def build_publish_document_node(*, context: WorkflowContext):
             return {"error": "当前没有可用于最终发布的章节内容。"}
 
         update_knowledge_build_status(
-            subject_id,
-            subject_scope=subject_scope,
+            course_id,
+            course_scope=course_scope,
             requested_at=requested_at,
             status="publishing",
             stage="publishing",
@@ -129,18 +129,18 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
 
         staged_docs = await stage_knowledge_docs(
-            subject_id=subject_id,
+            course_id=course_id,
             chapter_metadatas=chapter_metadatas,
             document_context=document_context,
             cover_markdown=cover_markdown,
             docgen_artifacts=docgen_artifacts,
-            subject_scope=subject_scope,
+            course_scope=course_scope,
         )
 
         doc_ids: list[int] = []
         if standalone:
             doc_ids = publish_staged_knowledge_docs(
-                subject_id=subject_id,
+                course_id=course_id,
                 chapter_metadatas=chapter_metadatas,
                 chapter_assignments=chapter_assignments,
                 document_context=document_context,
@@ -150,13 +150,13 @@ def build_publish_document_node(*, context: WorkflowContext):
                 version_no=1,
                 build_session_id=state.get("build_session_id"),
                 docgen_artifacts=docgen_artifacts,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
             )
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 
         update_knowledge_build_merge_preview(
-            subject_id,
-            subject_scope=subject_scope,
+            course_id,
+            course_scope=course_scope,
             requested_at=requested_at,
             merge_preview={
                 "latest_chapter_titles": [str(chapter.get("title") or "").strip() for chapter in chapter_metadatas],
@@ -172,8 +172,8 @@ def build_publish_document_node(*, context: WorkflowContext):
             if title == "练习与自检":
                 continue
             upsert_knowledge_build_chapter_progress(
-                subject_id,
-                subject_scope=subject_scope,
+                course_id,
+                course_scope=course_scope,
                 requested_at=requested_at,
                 chapter_progress={
                     "chapter_index": int(chapter.get("chapter_index", 0) or 0),
@@ -197,8 +197,8 @@ def build_publish_document_node(*, context: WorkflowContext):
             published=standalone,
         )
         append_knowledge_build_recent_event(
-            subject_id,
-            subject_scope=subject_scope,
+            course_id,
+            course_scope=course_scope,
             requested_at=requested_at,
             event={
                 "stage": "docgen_finalized",

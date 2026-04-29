@@ -5,25 +5,25 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Path
 from sqlmodel import Session, select
 
-from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_id
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
 from app.models.knowledge_unit import KnowledgeUnit
-from app.models.subject import Subject
+from app.models.course import Course
 from app.repositories import profile_repo
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.profile import MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse
 from app.shared.infra.exceptions import AITeachMeError
-from app.workflows.profile import build_subject_profile_summary, build_user_profile_summary
+from app.workflows.profile import build_course_profile_summary, build_user_profile_summary
 
-router = APIRouter(prefix="/api/v1/subjects/{subject_id}/profile", tags=["profile"])
+router = APIRouter(prefix="/api/v1/courses/{course_id}/profile", tags=["profile"])
 
 
-def _ensure_subject(session: Session, subject_id: str, user_id: str) -> Subject:
-    record = session.exec(select(Subject).where(Subject.id == subject_id, Subject.user_id == user_id)).first()
+def _ensure_course(session: Session, course_id: str, user_id: str) -> Course:
+    record = session.exec(select(Course).where(Course.id == course_id, Course.user_id == user_id)).first()
     if record is None:
         raise AITeachMeError(
-            detail=f"Subject `{subject_id}` not found.",
-            error_code="SUBJECT_NOT_FOUND",
+            detail=f"Course `{course_id}` not found.",
+            error_code="COURSE_NOT_FOUND",
             status_code=404,
         )
     return record
@@ -32,7 +32,7 @@ def _ensure_subject(session: Session, subject_id: str, user_id: str) -> Subject:
 def _knowledge_unit_map(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     knowledge_unit_ids: list[int],
 ) -> dict[int, KnowledgeUnit]:
     ids = sorted({knowledge_unit_id for knowledge_unit_id in knowledge_unit_ids if knowledge_unit_id > 0})
@@ -40,7 +40,7 @@ def _knowledge_unit_map(
         return {}
     units = session.exec(
         select(KnowledgeUnit).where(
-            KnowledgeUnit.subject_id == subject_id,
+            KnowledgeUnit.course_id == course_id,
             KnowledgeUnit.id.in_(ids),
         )
     ).all()
@@ -82,7 +82,7 @@ def _review_response(state, knowledge_unit: KnowledgeUnit | None = None) -> Revi
     return ReviewTaskResponse(
         id=state.id,
         user_id=state.user_id,
-        subject_id=state.subject_id,
+        course_id=state.course_id,
         knowledge_unit_id=state.knowledge_unit_id,
         knowledge_unit_name=knowledge_unit.canonical_name if knowledge_unit is not None else None,
         knowledge_unit_type=knowledge_unit.knowledge_unit_type if knowledge_unit is not None else None,
@@ -105,21 +105,21 @@ def _review_response(state, knowledge_unit: KnowledgeUnit | None = None) -> Revi
     responses=build_error_responses([400, 404, 500]),
 )
 async def mastery_overview(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryOverviewResponse]:
-    normalized = normalize_subject_id(subject_id)
-    _ensure_subject(session, normalized, user.user_id)
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
     knowledge_unit_states = profile_repo.list_knowledge_states(
         session,
         user_id=user.user_id,
-        subject_id=normalized,
+        course_id=normalized,
         target_kind="knowledge_unit",
     )
     knowledge_unit_by_id = _knowledge_unit_map(
         session,
-        subject_id=normalized,
+        course_id=normalized,
         knowledge_unit_ids=[
             int(item.knowledge_unit_id)
             for item in knowledge_unit_states
@@ -128,16 +128,16 @@ async def mastery_overview(
     )
     return ok_response(
         MasteryOverviewResponse(
-            subject_id=normalized,
+            course_id=normalized,
             user_id=user.user_id,
             weak_knowledge_unit_count=sum(1 for item in knowledge_unit_states if item.mastery_score < 0.8),
             knowledge_unit_states=[
                 _state_response(item, knowledge_unit_by_id.get(int(item.knowledge_unit_id)))
                 for item in knowledge_unit_states
             ],
-            subject_profile=build_subject_profile_summary(
+            course_profile=build_course_profile_summary(
                 session,
-                subject_id=normalized,
+                course_id=normalized,
                 user_id=user.user_id,
             ),
             user_profile=build_user_profile_summary(
@@ -155,16 +155,16 @@ async def mastery_overview(
     responses=build_error_responses([400, 404, 500]),
 )
 async def review_tasks(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[ReviewTaskResponse]]:
-    normalized = normalize_subject_id(subject_id)
-    _ensure_subject(session, normalized, user.user_id)
-    tasks = profile_repo.list_pending_reviews(session, user_id=user.user_id, subject_id=normalized)
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    tasks = profile_repo.list_pending_reviews(session, user_id=user.user_id, course_id=normalized)
     knowledge_unit_by_id = _knowledge_unit_map(
         session,
-        subject_id=normalized,
+        course_id=normalized,
         knowledge_unit_ids=[
             int(item.knowledge_unit_id)
             for item in tasks
@@ -186,18 +186,18 @@ async def review_tasks(
     responses=build_error_responses([400, 404, 500]),
 )
 async def complete_review(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     task_id: int = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ReviewTaskResponse]:
-    normalized = normalize_subject_id(subject_id)
-    _ensure_subject(session, normalized, user.user_id)
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
     task = profile_repo.complete_review_task(
         session,
         task_id=task_id,
         user_id=user.user_id,
-        subject_id=normalized,
+        course_id=normalized,
     )
     if task is None:
         raise AITeachMeError(

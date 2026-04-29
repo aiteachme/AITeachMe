@@ -24,8 +24,8 @@ interface Props {
   buildStage: string | null | undefined;
   isDocumentReady?: boolean;
   className?: string;
-  /** Subject ID for SSE streaming — enables live build updates */
-  subjectId?: string;
+  /** Course ID for SSE streaming — enables live build updates */
+  courseId?: string;
 }
 
 const EVENT_STAGE_LABELS: Record<string, string> = {
@@ -217,7 +217,7 @@ export function BuildView({
   buildStage,
   isDocumentReady = false,
   className,
-  subjectId,
+  courseId,
 }: Props) {
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(shouldOpenDetailsByDefault);
@@ -226,8 +226,8 @@ export function BuildView({
     buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
   );
   const { snapshot: sseSnapshot, connected: sseConnected, previewStreams, buildEvents } = useBuildEventStream({
-    subjectId: subjectId ?? "",
-    enabled: Boolean(subjectId) && isBuildActive,
+    courseId: courseId ?? "",
+    enabled: Boolean(courseId) && isBuildActive,
   });
 
   const mergedChapters = useMemo(() => {

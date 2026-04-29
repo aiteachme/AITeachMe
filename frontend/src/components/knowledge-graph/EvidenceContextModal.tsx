@@ -1,7 +1,7 @@
-﻿import { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, FileText, MapPin } from "lucide-react";
-import { chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost } from "../../api/generated/knowledge";
+import { chunkContextApiV1CoursesCourseIdKnowledgeChunksContextPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -12,23 +12,23 @@ import { MarkdownViewer } from "../ui/MarkdownViewer";
 export function EvidenceContextModal({
   open,
   onClose,
-  subject,
+  course,
   chunkId,
   quoteText,
 }: {
   open: boolean;
   onClose: () => void;
-  subject: string;
+  course: string;
   chunkId: number | null;
   quoteText?: string;
 }) {
   const highlightRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["chunk-context", subject, chunkId],
+    queryKey: ["chunk-context", course, chunkId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost(subject, {
+        await chunkContextApiV1CoursesCourseIdKnowledgeChunksContextPost(course, {
           chunk_id: chunkId!,
         }),
       ) ?? null,

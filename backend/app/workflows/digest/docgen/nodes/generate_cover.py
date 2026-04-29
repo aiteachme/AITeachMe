@@ -20,8 +20,8 @@ def build_generate_cover_node(*, context: WorkflowContext):
         started_at = perf_counter()
         document_context = dict(state.get("document_context") or {})
         artifact = await generate_docgen_cover_artifact(
-            subject_id=state["subject_id"],
-            subject_name=str(document_context.get("subject_name") or "未命名学科"),
+            course_id=state["course_id"],
+            course_name=str(document_context.get("course_name") or "未命名课程"),
             build_session_id=state.get("build_session_id") or "",
             user_prompt=state.get("user_prompt"),
             plan_summary=str(document_context.get("plan_summary") or ""),

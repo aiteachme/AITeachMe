@@ -353,7 +353,7 @@ def _send_email_verification_message(*, to_email: str, code: str, ttl_seconds: i
     ttl_min = max(1, int(round(ttl_seconds / 60)))
 
     msg = EmailMessage()
-    msg["Subject"] = "AITeachMe 邮箱验证码"
+    msg["Course"] = "AITeachMe 邮箱验证码"
     msg["From"] = formataddr((from_name, from_email))
     msg["To"] = to_email
     msg.set_content(

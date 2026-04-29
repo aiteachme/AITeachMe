@@ -3,4 +3,4 @@ export { FloatingGraphWidget } from "./FloatingGraphWidget";
 export { ForceGraphView } from "./ForceGraphView";
 export { KnowledgeGraphSidePanel } from "./KnowledgeGraphSidePanel";
 export { KnowledgeGraphView } from "./KnowledgeGraphView";
-export { SubjectVectorNotice } from "./SubjectVectorNotice";
+export { CourseVectorNotice } from "./CourseVectorNotice";

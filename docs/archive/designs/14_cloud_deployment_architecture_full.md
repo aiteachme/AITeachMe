@@ -1,4 +1,4 @@
-# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
+﻿# 14. Render 上中心化 PostgreSQL + DogeCloud OSS 实施方案
 
 **状态**: 阶段 1 + 阶段 3 已完成（ContentStore 统一抽象 + OSS 接入）  
 **最后更新**: 2026-04-04  
@@ -93,7 +93,7 @@
 必须保证：
 
 - `storage_key` 规则一致
-- subject 下目录语义一致
+- course 下目录语义一致
 - 文档工件命名一致
 - 业务层以 `storage_key` 为核心寻址语义
 
@@ -121,7 +121,7 @@
 
 - 当前代码库整体按硬删除设计，删除逻辑已经大量使用 `session.delete(...)` 与批量 `DELETE`
 - 如果现在全局引入软删除，几乎所有查询都要补过滤条件
-- 唯一约束、索引、列表页、统计口径、subject 级联删除、OSS 清理语义都会一起变复杂
+- 唯一约束、索引、列表页、统计口径、course 级联删除、OSS 清理语义都会一起变复杂
 - 当前中心化数据库先用于内测，这个复杂度不值得现在就背
 
 因此本方案的固定建议是：
@@ -132,7 +132,7 @@
 
 聚合根优先顺序建议为：
 
-1. `subject`
+1. `course`
 2. `raw_file`
 
 而以下派生或级联表，首版不建议做软删除：
@@ -233,7 +233,7 @@ ContentStore 提供所有 key 构建方法，业务代码不再手动拼路径�
 
 对象前缀口径：
 
-- 用户私有学科产物统一落在 `users/{user_id}/subjects/{subject}/...`
+- 用户私有课程产物统一落在 `users/{user_id}/courses/{course}/...`
 - 共享演示课程或公共样例不要混入用户前缀，应使用独立公共前缀（例如 `demo-courses/...`）
 
 不进入 OSS：
@@ -526,7 +526,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 主要涉及：
 
 - [`workflows/ingest/intake/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/intake/uploads.py)
-- [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
+- [`workflows/support/courses/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/courses/lib/deletion.py)
 - ingest workflow 相关文件
 - digest docs publish 相关文件
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
@@ -536,7 +536,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 - 正式文件写 OSS
 - 临时文件仍落本地临时目录
 - 需要 `Path` 的地方通过 `materialize_to_temp()`
-- 删除 subject 时同时清 PostgreSQL 数据与 OSS prefix
+- 删除 course 时同时清 PostgreSQL 数据与 OSS prefix
 
 ### 9.4 阶段 3 验收 ✅
 
@@ -552,7 +552,7 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 高优先级文件通常包括：
 
 - [`workflows/ingest/intake/uploads.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/intake/uploads.py)
-- [`workflows/support/subjects/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/subjects/lib/deletion.py)
+- [`workflows/support/courses/lib/deletion.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/support/courses/lib/deletion.py)
 - [`docgen_store.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/utils/docgen_store.py)
 - [`graph.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/graph.py)
 - [`file.py`](/c:/Project/Project1GIT/AITeachMe1/backend/app/workflows/ingest/fast_parse/lib/file.py)
@@ -591,13 +591,13 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 在 cloud 模式下，从空环境开始验证以下能力：
 
-1. 创建学科
+1. 创建课程
 2. 上传新文件
 3. 完成 ingest
 4. 完成 digest
 5. 完成 interact
 6. 完成 exams / profile 基本链路
-7. 删除学科并清理 OSS 工件
+7. 删除课程并清理 OSS 工件
 
 ### 10.3 需要确认的兼容点
 
@@ -629,13 +629,13 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 联调时至少要覆盖：
 
-- 学科创建是否成功写入 PostgreSQL
+- 课程创建是否成功写入 PostgreSQL
 - 上传文件后，DB 记录与 OSS 对象是否都存在
 - ingest 是否能正确读取原始文件、生成 markdown、登记资产
 - digest 是否能写出知识文档与运行时工件
 - interact 是否能在 PostgreSQL 检索链路下拿到合理上下文
 - exams / profile 是否没有被数据库方言切换误伤
-- 删除学科后，数据库记录与 OSS prefix 是否同步清理
+- 删除课程后，数据库记录与 OSS prefix 是否同步清理
 
 如果这一阶段出现问题，优先排查顺序建议为：
 
@@ -752,7 +752,7 @@ VITE_API_URL=https://<backend-domain>
 
 - 这里的“大部分改动”发生在 backend
 - frontend 不会成为这次中心化改造的主战场
-- 真正最重的链路是 ingest / digest / subject 删除，不是普通接口层
+- 真正最重的链路是 ingest / digest / course 删除，不是普通接口层
 
 ---
 
@@ -765,7 +765,7 @@ VITE_API_URL=https://<backend-domain>
 - PostgreSQL 成为云端正式数据库
 - DogeCloud OSS 成为云端正式文件真相
 - `storage_key` 成为统一文件定位语义
-- 上传、ingest、digest、interact、exams、profile、subject 删除全链路通过
+- 上传、ingest、digest、interact、exams、profile、course 删除全链路通过
 - Render 上 env 已稳定托管
 
 ---

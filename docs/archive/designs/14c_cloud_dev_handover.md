@@ -1,4 +1,4 @@
-# 云端部署改造 — 开发交接文档
+﻿# 云端部署改造 — 开发交接文档
 
 > 本文档供后续开发者（或 AI agent）接手继续改造使用。
 > 最后更新：2026-04-04
@@ -45,7 +45,7 @@
 | 文件 | 改动内容 |
 |------|----------|
 | `backend/app/workflows/ingest/intake/uploads.py` | `save_uploaded_file()` 已添加 cloud 分支（上传到 OSS，file_path 存 storage_key）；`delete_files()` 已改为 async 并添加 cloud 分支（从 OSS 删除）；`_read_markdown()` cloud 模式返回空串；已导入 `get_artifact_store` |
-| `backend/app/workflows/support/subjects/lib/deletion.py` | `delete_subject_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_subject_artifacts_async()` 异步删除 OSS prefix |
+| `backend/app/workflows/support/courses/lib/deletion.py` | `delete_course_with_all_content()` cloud 模式跳过本地目录删除；新增 `delete_course_artifacts_async()` 异步删除 OSS prefix |
 | `backend/app/main.py` | `_register_static_mounts()` 仅在 local 模式挂载 `/_assets` 静态文件 |
 
 **未完成的文件（阶段3剩余工作）：**
@@ -65,7 +65,7 @@
 
 `delete_files()` 已改为 `async def`，但它的调用方（API 层）可能还是同步调用。需要检查 `backend/app/api/files.py` 中调用 `delete_files` 的地方，确保用 `await` 调用。
 
-同样，`delete_subject_artifacts_async()` 是新增的 async 函数，需要在 subject 删除的 API 端点中调用。检查 `backend/app/api/subjects.py`。
+同样，`delete_course_artifacts_async()` 是新增的 async 函数，需要在 course 删除的 API 端点中调用。检查 `backend/app/api/courses.py`。
 
 ### 3.2 改造 Ingest 工作流（未开始）
 
@@ -143,7 +143,7 @@ async def serve_asset(storage_key: str):
 
 Cloud 模式下 `.build.lock` 文件锁不可用（OSS 不支持原子锁）。
 
-建议在 `backend/app/models/subject.py` 的 `Subject` 模型中新增：
+建议在 `backend/app/models/course.py` 的 `Course` 模型中新增：
 ```python
 build_lock_holder: str | None = None
 build_lock_at: datetime | None = None
@@ -189,15 +189,15 @@ from app.shared.infra.storage import get_artifact_store
 
 store = get_artifact_store()
 
-await store.read_bytes("subject/raw_files/1.pdf")       # 读取文件
-await store.write_bytes("subject/raw_markdowns/1.md", data)  # 写入文件
-await store.write_file("subject/raw_files/1.pdf", local_path)  # 上传本地文件
-await store.delete("subject/raw_files/1.pdf")            # 删除文件
-await store.exists("subject/raw_files/1.pdf")            # 检查存在
-await store.list_prefix("subject/")                      # 列出前缀下所有文件
-await store.delete_prefix("subject/")                    # 删除前缀下所有文件
-await store.materialize_to_temp("subject/raw_files/1.pdf", temp_dir)  # 下载到临时目录
-store.public_url("subject/raw_files/1.pdf")              # CDN URL（可能为 None）
+await store.read_bytes("course/raw_files/1.pdf")       # 读取文件
+await store.write_bytes("course/raw_markdowns/1.md", data)  # 写入文件
+await store.write_file("course/raw_files/1.pdf", local_path)  # 上传本地文件
+await store.delete("course/raw_files/1.pdf")            # 删除文件
+await store.exists("course/raw_files/1.pdf")            # 检查存在
+await store.list_prefix("course/")                      # 列出前缀下所有文件
+await store.delete_prefix("course/")                    # 删除前缀下所有文件
+await store.materialize_to_temp("course/raw_files/1.pdf", temp_dir)  # 下载到临时目录
+store.public_url("course/raw_files/1.pdf")              # CDN URL（可能为 None）
 ```
 
 ---

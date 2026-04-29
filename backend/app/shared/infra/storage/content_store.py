@@ -19,10 +19,10 @@ from typing import Generator, TypeVar
 from pydantic import BaseModel
 
 from app.shared.infra.storage.base import ArtifactStore, validate_delete_prefix
-from app.shared.infra.storage.subject_scope import (
-    SubjectStorageScope,
+from app.shared.infra.storage.course_scope import (
+    CourseStorageScope,
     UserFileStorageScope,
-    build_subject_storage_scope,
+    build_course_storage_scope,
     build_user_file_storage_scope,
 )
 
@@ -49,10 +49,10 @@ class ContentStore:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @staticmethod
-    def subject_scope(*, user_id: str, subject_id: str) -> SubjectStorageScope:
-        """Return the canonical persisted storage scope for one subject."""
+    def course_scope(*, user_id: str, course_id: str) -> CourseStorageScope:
+        """Return the canonical persisted storage scope for one course."""
 
-        return build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
+        return build_course_storage_scope(user_id=user_id, course_id=course_id)
 
     @staticmethod
     def user_file_scope(*, user_id: str) -> UserFileStorageScope:

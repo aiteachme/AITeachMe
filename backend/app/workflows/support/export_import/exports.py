@@ -1,4 +1,4 @@
-"""Subject-level export/import support commands.
+"""Course-level export/import support commands.
 
 The table registry drives export/import order and foreign-key remapping.
 """
@@ -21,7 +21,7 @@ from sqlmodel import Session, SQLModel, func, select
 
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
-    build_subject_storage_scope,
+    build_course_storage_scope,
     get_content_store,
     run_store_sync,
 )
@@ -40,40 +40,40 @@ from app.models import (
     QuestionTemplate,
     RawFile,
     RetrievalChunk,
-    SubjectFileLink,
-    Subject,
+    CourseFileLink,
+    Course,
     UserKnowledgeState,
 )
-from app.repositories.files_repo import list_all_raw_files_by_subject
+from app.repositories.files_repo import list_all_raw_files_by_course
 from app.schemas.export_import import (
     ExportOptions,
     ExportPreviewData,
     ExportPreviewStats,
 )
 from app.utils.path_helpers import sanitize_doc_title
-from app.utils.subject import generate_subject_id
+from app.utils.course import generate_course_id
 from app.utils.time import utcnow
-from app.workflows.support.subjects.icons import (
-    SUBJECT_ICON_SETTINGS_KEY,
-    infer_subject_icon_key,
-    normalize_subject_icon_key,
+from app.workflows.support.courses.icons import (
+    COURSE_ICON_SETTINGS_KEY,
+    infer_course_icon_key,
+    normalize_course_icon_key,
 )
 
 logger = structlog.get_logger()
 
 SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 MANIFEST_SCHEMA = "aiteachme.atmx.manifest"
-PACKAGE_KIND = "subject_export"
+PACKAGE_KIND = "course_export"
 
 
 # ---------------------------------------------------------------------------
 # Manifest 内部模型（仅用于 .atmx 文件，不走 API）
 
 
-class _ManifestSubject(BaseModel):
+class _ManifestCourse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    subject_id: str
+    course_id: str
     name: str
     description: str = ""
     user_intent: str = ""
@@ -118,7 +118,7 @@ class _ManifestTable(BaseModel):
     count: int = 0
     optional_group: str | None = None
     id_type: str = "auto"
-    subject_field: str | None = None
+    course_field: str | None = None
 
 
 class _ExportManifest(BaseModel):
@@ -129,7 +129,7 @@ class _ExportManifest(BaseModel):
     exported_at: datetime | None = None
     exporter: str = "AITeachMe"
     package: _ManifestPackage = Field(default_factory=lambda: _ManifestPackage(package_id="legacy"))
-    subject: _ManifestSubject
+    course: _ManifestCourse
     stats: _ManifestStats = Field(default_factory=_ManifestStats)
     options: ExportOptions = Field(default_factory=ExportOptions)
     tables: list[_ManifestTable] = Field(default_factory=list)
@@ -146,14 +146,14 @@ class _TableSpec:
 
     name: str
     model: type[SQLModel]
-    # How to filter by subject: field name | "id" (Subject itself) | None (filter via parent table)
-    subject_field: str | None = "subject_id"
+    # How to filter by course: field name | "id" (Course itself) | None (filter via parent table)
+    course_field: str | None = "course_id"
     id_field: str = "id"
     # id 类型："auto" (自增) | "uuid" (字符串 UUID)
     id_type: str = "auto"
     # Foreign-key remapping: {field_name: referenced_table_name}
     fk_remap: dict[str, str] = dc_field(default_factory=dict)
-    # Filter via parent table (for tables without a subject field)
+    # Filter via parent table (for tables without a course field)
     parent_fk: str | None = None
     parent_table: str | None = None
     # Optional export group: "raw_file_metadata" | "raw_markdowns" |
@@ -163,11 +163,11 @@ class _TableSpec:
 
 # Tables must be ordered by dependency: referenced tables come first.
 TABLE_REGISTRY: list[_TableSpec] = [
-    _TableSpec("subject", Subject, subject_field="id"),
-    _TableSpec("raw_file", RawFile, subject_field=None, optional_group="raw_file_metadata"),
+    _TableSpec("course", Course, course_field="id"),
+    _TableSpec("raw_file", RawFile, course_field=None, optional_group="raw_file_metadata"),
     _TableSpec(
-        "subject_file",
-        SubjectFileLink,
+        "course_file",
+        CourseFileLink,
         fk_remap={"file_id": "raw_file"},
         optional_group="raw_file_metadata",
     ),
@@ -226,7 +226,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "exam_paper_item",
         ExamPaperItem,
-        subject_field=None,
+        course_field=None,
         parent_fk="exam_paper_id",
         parent_table="exam_paper",
         fk_remap={
@@ -238,7 +238,7 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "question_knowledge_unit_link",
         QuestionKnowledgeUnitLink,
-        subject_field=None,
+        course_field=None,
         fk_remap={
             "question_template_id": "question_template",
             "exam_paper_item_id": "exam_paper_item",
@@ -281,78 +281,78 @@ TABLE_REGISTRY: list[_TableSpec] = [
 def preview_export(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     options: ExportOptions | None = None,
 ) -> ExportPreviewData:
-    """Build an export preview for one subject."""
+    """Build an export preview for one course."""
 
     options = options or ExportOptions()
-    subject = _require_subject(session, subject_id)
-    raw_files = list_all_raw_files_by_subject(session, subject_id)
+    course = _require_course(session, course_id)
+    raw_files = list_all_raw_files_by_course(session, course_id)
 
     stats = ExportPreviewStats(
         raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
         total_raw_file_size_bytes=0,
-        knowledge_document_count=_count(session, KnowledgeDocument, subject_id)
+        knowledge_document_count=_count(session, KnowledgeDocument, course_id)
         if options.include_knowledge_docs
         else 0,
-        knowledge_unit_count=_count(session, KnowledgeUnit, subject_id),
-        knowledge_edge_count=_count(session, KnowledgeEdge, subject_id),
-        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, subject_id),
-        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, subject_id),
-        confirmed_build_plan_count=_count_embedded_confirmed_plans(session, subject_id)
+        knowledge_unit_count=_count(session, KnowledgeUnit, course_id),
+        knowledge_edge_count=_count(session, KnowledgeEdge, course_id),
+        knowledge_graph_sync_run_count=_count(session, KnowledgeGraphSyncRun, course_id),
+        knowledge_graph_source_ref_count=_count(session, KnowledgeGraphSourceRef, course_id),
+        confirmed_build_plan_count=_count_embedded_confirmed_plans(session, course_id)
         if options.include_knowledge_docs
         else 0,
-        question_type_registry_count=_count(session, QuestionTypeRegistry, subject_id)
+        question_type_registry_count=_count(session, QuestionTypeRegistry, course_id)
         if options.include_exam_history
         else 0,
-        question_template_count=_count(session, QuestionTemplate, subject_id)
+        question_template_count=_count(session, QuestionTemplate, course_id)
         if options.include_exam_history
         else 0,
-        exam_paper_count=_count(session, ExamPaper, subject_id) if options.include_exam_history else 0,
-        chat_session_count=_count(session, ChatSession, subject_id)
+        exam_paper_count=_count(session, ExamPaper, course_id) if options.include_exam_history else 0,
+        chat_session_count=_count(session, ChatSession, course_id)
         if options.include_chat_history
         else (
-            _count_planner_sessions_with_embedded_plans(session, subject_id)
+            _count_planner_sessions_with_embedded_plans(session, course_id)
             if options.include_knowledge_docs
             else 0
         ),
-        user_knowledge_state_count=_count(session, UserKnowledgeState, subject_id)
+        user_knowledge_state_count=_count(session, UserKnowledgeState, course_id)
         if options.include_profile
         else 0,
     )
     return ExportPreviewData(
-        subject_id=subject.id,
-        subject_name=subject.name,
+        course_id=course.id,
+        course_name=course.name,
         stats=stats,
         estimated_size_bytes=0,
     )
 
 
-def export_subject(
+def export_course(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     options: ExportOptions | None = None,
 ) -> Path:
-    """Package one subject into a temporary .atmx archive."""
+    """Package one course into a temporary .atmx archive."""
 
     options = options or ExportOptions()
-    subject = _require_subject(session, subject_id)
+    course = _require_course(session, course_id)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".atmx")
     tmp.close()
     tmp_path = Path(tmp.name)
 
     try:
-        subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject_id=subject.id)
+        course_scope = build_course_storage_scope(user_id=course.user_id, course_id=course.id)
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             exported: dict[str, list[dict]] = {}
 
             for spec in TABLE_REGISTRY:
                 if not _should_export(spec, options):
                     continue
-                records = _query_table(session, spec, subject_id, exported, options)
+                records = _query_table(session, spec, course_id, exported, options)
                 exported[spec.name] = records
                 zf.writestr(
                     f"db/{spec.name}.json",
@@ -362,13 +362,13 @@ def export_subject(
                     ),
                 )
 
-            raw_files = list_all_raw_files_by_subject(session, subject_id)
-            _pack_files(zf, subject_scope.namespace, options, raw_files=raw_files)
+            raw_files = list_all_raw_files_by_course(session, course_id)
+            _pack_files(zf, course_scope.namespace, options, raw_files=raw_files)
 
-            manifest = _build_manifest(subject, exported, options)
+            manifest = _build_manifest(course, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
 
-        logger.info("subject_exported", subject_id=subject_id, subject_name=subject.name, path=str(tmp_path))
+        logger.info("course_exported", course_id=course_id, course_name=course.name, path=str(tmp_path))
         return tmp_path
 
     except Exception:
@@ -376,30 +376,30 @@ def export_subject(
         raise
 
 
-def build_subject_export_filename(subject: Subject) -> str:
-    """Build a readable download filename anchored by subject name and id."""
+def build_course_export_filename(course: Course) -> str:
+    """Build a readable download filename anchored by course name and id."""
 
-    name = sanitize_doc_title(subject.name or "未命名学科")
-    subject_id_stem = sanitize_doc_title(subject.id or str(subject.id or "subject"))
-    return f"{name}-{subject_id_stem}.atmx"
+    name = sanitize_doc_title(course.name or "未命名课程")
+    course_id_stem = sanitize_doc_title(course.id or str(course.id or "course"))
+    return f"{name}-{course_id_stem}.atmx"
 # ===================================================================
 # Internal: DB helpers
 # ===================================================================
 
 
-def _require_subject(session: Session, subject_id: str) -> Subject:
-    from app.shared.infra.exceptions import SubjectRegistryNotFoundError
+def _require_course(session: Session, course_id: str) -> Course:
+    from app.shared.infra.exceptions import CourseRegistryNotFoundError
 
-    subject = session.exec(select(Subject).where(Subject.id == subject_id)).first()
-    if subject is None:
-        raise SubjectRegistryNotFoundError(subject_id)
-    return subject
+    course = session.exec(select(Course).where(Course.id == course_id)).first()
+    if course is None:
+        raise CourseRegistryNotFoundError(course_id)
+    return course
 
 
-def _count(session: Session, model: type, subject_id: str) -> int:
+def _count(session: Session, model: type, course_id: str) -> int:
     return int(
         session.exec(
-            select(func.count()).select_from(model).where(model.subject_id == subject_id)
+            select(func.count()).select_from(model).where(model.course_id == course_id)
         ).one()
     )
 
@@ -414,18 +414,18 @@ def _has_embedded_confirmed_plan(record: ChatSession | dict[str, Any]) -> bool:
     return isinstance((meta or {}).get("confirmed_plan"), dict)
 
 
-def _count_planner_sessions_with_embedded_plans(session: Session, subject_id: str) -> int:
+def _count_planner_sessions_with_embedded_plans(session: Session, course_id: str) -> int:
     rows = session.exec(
         select(ChatSession).where(
-            ChatSession.subject_id == subject_id,
+            ChatSession.course_id == course_id,
             ChatSession.source == "build_planner",
         )
     ).all()
     return sum(1 for row in rows if _has_embedded_confirmed_plan(row))
 
 
-def _count_embedded_confirmed_plans(session: Session, subject_id: str) -> int:
-    return _count_planner_sessions_with_embedded_plans(session, subject_id)
+def _count_embedded_confirmed_plans(session: Session, course_id: str) -> int:
+    return _count_planner_sessions_with_embedded_plans(session, course_id)
 
 
 def _should_export(spec: _TableSpec, options: ExportOptions) -> bool:
@@ -450,7 +450,7 @@ def _exports_raw_file_metadata(options: ExportOptions) -> bool:
 def _query_table(
     session: Session,
     spec: _TableSpec,
-    subject_id: str,
+    course_id: str,
     exported: dict[str, list[dict]],
     options: ExportOptions,
 ) -> list[dict]:
@@ -461,22 +461,22 @@ def _query_table(
         return stmt.order_by(order_col)
 
     if spec.name == "raw_file":
-        rows = list_all_raw_files_by_subject(session, subject_id)
+        rows = list_all_raw_files_by_course(session, course_id)
     elif spec.name == "chat_session" and not options.include_chat_history:
         rows = session.exec(
             _ordered(
                 select(ChatSession).where(
-                    ChatSession.subject_id == subject_id,
+                    ChatSession.course_id == course_id,
                     ChatSession.source == "build_planner",
                 )
             )
         ).all()
         rows = [row for row in rows if _has_embedded_confirmed_plan(row)]
-    elif spec.subject_field == "id":
-        rows = session.exec(_ordered(select(spec.model).where(spec.model.id == subject_id))).all()
-    elif spec.subject_field:
-        col = getattr(spec.model, spec.subject_field)
-        rows = session.exec(_ordered(select(spec.model).where(col == subject_id))).all()
+    elif spec.course_field == "id":
+        rows = session.exec(_ordered(select(spec.model).where(spec.model.id == course_id))).all()
+    elif spec.course_field:
+        col = getattr(spec.model, spec.course_field)
+        rows = session.exec(_ordered(select(spec.model).where(col == course_id))).all()
     elif spec.name == "question_knowledge_unit_link":
         template_ids = {r["id"] for r in exported.get("question_template", [])}
         item_ids = {r["id"] for r in exported.get("exam_paper_item", [])}
@@ -517,10 +517,10 @@ def _record_to_dict(record: SQLModel) -> dict:
     return data
 
 
-def _ensure_subject_icon(record_data: dict[str, Any], subject_name: str) -> None:
+def _ensure_course_icon(record_data: dict[str, Any], course_name: str) -> None:
     settings = _decode_settings_json(record_data.get("settings_json"))
-    if normalize_subject_icon_key(settings.get(SUBJECT_ICON_SETTINGS_KEY)) is None:
-        settings[SUBJECT_ICON_SETTINGS_KEY] = infer_subject_icon_key(subject_name)
+    if normalize_course_icon_key(settings.get(COURSE_ICON_SETTINGS_KEY)) is None:
+        settings[COURSE_ICON_SETTINGS_KEY] = infer_course_icon_key(course_name)
     record_data["settings_json"] = json.dumps(settings, ensure_ascii=False)
 
 
@@ -539,12 +539,12 @@ def _decode_settings_json(raw_value: Any) -> dict[str, Any]:
 # ===================================================================
 
 
-def _create_unique_subject_id(session: Session) -> str:
+def _create_unique_course_id(session: Session) -> str:
     for _ in range(100):
-        subject_id = generate_subject_id()
-        if session.exec(select(Subject).where(Subject.id == subject_id)).first() is None:
-            return subject_id
-    raise RuntimeError("Cannot generate unique subject id after 100 attempts")
+        course_id = generate_course_id()
+        if session.exec(select(Course).where(Course.id == course_id)).first() is None:
+            return course_id
+    raise RuntimeError("Cannot generate unique course id after 100 attempts")
 
 
 def _import_table(
@@ -553,7 +553,7 @@ def _import_table(
     records: list[dict],
     *,
     id_map: dict[str, dict[Any, Any]],
-    new_subject_id: str,
+    new_course_id: str,
     new_name: str,
     user_id: str,
     warnings: list[str],
@@ -575,22 +575,22 @@ def _import_table(
         elif spec.id_type == "uuid":
             record_data[spec.id_field] = str(uuid.uuid4())
 
-        # 更新 subject
-        if spec.name == "subject":
-            record_data["id"] = new_subject_id
+        # 更新 course
+        if spec.name == "course":
+            record_data["id"] = new_course_id
             record_data["name"] = new_name
             record_data["normalized_name"] = None
             record_data["created_at"] = imported_at
             record_data["updated_at"] = imported_at
-            _ensure_subject_icon(record_data, new_name)
-        elif spec.subject_field and spec.subject_field != "id":
-            record_data[spec.subject_field] = new_subject_id
+            _ensure_course_icon(record_data, new_name)
+        elif spec.course_field and spec.course_field != "id":
+            record_data[spec.course_field] = new_course_id
 
         # 更新 user_id
         if "user_id" in record_data:
             record_data["user_id"] = user_id
 
-        if spec.name == "subject_file":
+        if spec.name == "course_file":
             legacy_raw_file_id = record_data.pop("raw_file_id", None)
             if "file_id" not in record_data and legacy_raw_file_id is not None:
                 record_data["file_id"] = legacy_raw_file_id
@@ -607,7 +607,7 @@ def _import_table(
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
         if spec.name == "chat_session":
-            _remap_planner_meta(record_data, new_subject_id=new_subject_id, user_id=user_id, id_map=id_map, warnings=warnings)
+            _remap_planner_meta(record_data, new_course_id=new_course_id, user_id=user_id, id_map=id_map, warnings=warnings)
         elif spec.name == "knowledge_graph_source_ref":
             _remap_graph_source_ref_entity(record_data, id_map, warnings)
             _remap_json_int_list_text_field(
@@ -623,8 +623,8 @@ def _import_table(
         legacy_uid = record_data.pop("uid", None) if spec.name == "raw_file" else None
         if spec.name == "raw_file":
             record_data["id"] = f"file_{uuid.uuid4().hex}"  # Prevent identity conflicts
-            record_data["origin_subject_id"] = new_subject_id
-            record_data["origin_subject_name"] = new_name
+            record_data["origin_course_id"] = new_course_id
+            record_data["origin_course_name"] = new_name
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
@@ -647,7 +647,7 @@ def _import_table(
 
         new_id = getattr(instance, spec.id_field)
 
-        # Rebuild storage keys under the new subject namespace.
+        # Rebuild storage keys under the new course namespace.
         cs = get_content_store()
         if spec.name == "raw_file" and isinstance(new_id, str):
             file_scope = cs.user_file_scope(user_id=user_id)
@@ -779,7 +779,7 @@ def _remap_json_int_list_text_field(
 def _remap_planner_meta(
     record: dict,
     *,
-    new_subject_id: str,
+    new_course_id: str,
     user_id: str,
     id_map: dict[str, dict[Any, Any]],
     warnings: list[str],
@@ -804,7 +804,7 @@ def _remap_planner_meta(
 
     confirmed_plan = dict(confirmed_plan)
     confirmed_plan["id"] = str(uuid.uuid4().hex)
-    confirmed_plan["subject"] = new_subject_id
+    confirmed_plan["course"] = new_course_id
     confirmed_plan["user_id"] = user_id
     confirmed_plan["planner_session_id"] = str(record.get("id") or "")
     _remap_id_list_field(
@@ -818,7 +818,7 @@ def _remap_planner_meta(
     plan_json = confirmed_plan.get("plan_json")
     if isinstance(plan_json, dict):
         plan_json = dict(plan_json)
-        plan_json["subject"] = new_subject_id
+        plan_json["course"] = new_course_id
         plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
         plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
         plan_json["confirmed_plan_id"] = confirmed_plan["id"]
@@ -894,7 +894,7 @@ def _pack_files(
 
 
 def _build_manifest(
-    subject: Subject,
+    course: Course,
     exported: dict[str, list[dict]],
     options: ExportOptions,
 ) -> _ExportManifest:
@@ -905,16 +905,16 @@ def _build_manifest(
             package_id=f"atmx_{uuid.uuid4().hex}",
             capabilities=_manifest_capabilities(options),
         ),
-        subject=_ManifestSubject(
-            subject_id=subject.id,
-            name=subject.name,
-            description=subject.description,
-            user_intent=subject.user_intent,
-            icon_key=normalize_subject_icon_key(
-                _decode_settings_json(subject.settings_json).get(SUBJECT_ICON_SETTINGS_KEY)
+        course=_ManifestCourse(
+            course_id=course.id,
+            name=course.name,
+            description=course.description,
+            user_intent=course.user_intent,
+            icon_key=normalize_course_icon_key(
+                _decode_settings_json(course.settings_json).get(COURSE_ICON_SETTINGS_KEY)
             ),
-            created_at=subject.created_at,
-            updated_at=subject.updated_at,
+            created_at=course.created_at,
+            updated_at=course.updated_at,
         ),
         stats=_ManifestStats(
             raw_file_count=len(exported.get("raw_file", [])),
@@ -941,7 +941,7 @@ def _build_manifest(
 
 
 def _manifest_capabilities(options: ExportOptions) -> list[str]:
-    capabilities = ["subject_metadata", "knowledge_graph"]
+    capabilities = ["course_metadata", "knowledge_graph"]
     if _exports_raw_file_metadata(options):
         capabilities.append("raw_file_metadata")
     if options.include_raw_markdowns:
@@ -968,7 +968,7 @@ def _build_manifest_tables(exported: dict[str, list[dict]]) -> list[_ManifestTab
                 count=len(records),
                 optional_group=spec.optional_group if spec else None,
                 id_type=spec.id_type if spec else "auto",
-                subject_field=spec.subject_field if spec else None,
+                course_field=spec.course_field if spec else None,
             )
         )
     return tables

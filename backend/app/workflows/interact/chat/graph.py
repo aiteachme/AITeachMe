@@ -73,23 +73,23 @@ NODE_TRACE_DETAILS = {
         "reads": ["chat_session"],
         "writes": ["chat_session(create when missing)"],
         "emits": ["status:session_resolved"],
-        "input_keys": ["subject_id", "user_id", "session_id", "question", "source", "model_override"],
+        "input_keys": ["course_id", "user_id", "session_id", "question", "source", "model_override"],
         "output_keys": ["session_id", "session_title", "session_created"],
     },
     NODE_LOAD_HISTORY: {
-        "description": "读取本会话近期消息、学科展示信息、学生整体画像、薄弱知识点和近期错题，作为个性化教学背景；这些信息只能辅助当前问题，不能抢占划选入口主题。",
-        "reads": ["chat_message", "subject", "user_knowledge_state", "exam_question_result"],
+        "description": "读取本会话近期消息、课程展示信息、学生整体画像、薄弱知识点和近期错题，作为个性化教学背景；这些信息只能辅助当前问题，不能抢占划选入口主题。",
+        "reads": ["chat_message", "course", "user_knowledge_state", "exam_question_result"],
         "writes": [],
         "emits": [],
-        "input_keys": ["subject_id", "user_id", "session_id"],
-        "output_keys": ["recent_messages", "subject_context", "weak_points", "recent_mistakes"],
+        "input_keys": ["course_id", "user_id", "session_id"],
+        "output_keys": ["recent_messages", "course_context", "weak_points", "recent_mistakes"],
     },
     NODE_RETRIEVE_CONTEXT: {
         "description": "把用户问题和划选内容合成检索 query，优先按 KnowledgeUnit/知识图谱找证据；只有图谱没有命中时才走向量检索兜底。LangSmith 内部子步骤会显示 knowledge_unit_search 和 vector_fallback_search。",
         "reads": ["knowledge_unit", "knowledge_relation", "retrieval_chunk", "vector_index"],
         "writes": [],
         "emits": [],
-        "input_keys": ["subject_id", "user_id", "question", "selected_context", "selection_context"],
+        "input_keys": ["course_id", "user_id", "question", "selected_context", "selection_context"],
         "output_keys": ["retrieval_results", "contexts"],
     },
     NODE_SELECT_STRATEGY: {
@@ -114,8 +114,8 @@ NODE_TRACE_DETAILS = {
         "writes": [],
         "emits": [],
         "input_keys": [
-            "subject_id",
-            "subject_context",
+            "course_id",
+            "course_context",
             "question",
             "selection_context",
             "retrieval_results",
@@ -141,7 +141,7 @@ NODE_TRACE_DETAILS = {
         "writes": ["chat_message(user)", "chat_message(assistant)"],
         "emits": [],
         "input_keys": [
-            "subject_id",
+            "course_id",
             "user_id",
             "session_id",
             "question",
@@ -159,7 +159,7 @@ NODE_TRACE_DETAILS = {
         "reads": ["chat_session", "LLM provider(optional title)"],
         "writes": ["chat_session(title)", "chat_session(last_message_at)"],
         "emits": [],
-        "input_keys": ["subject_id", "user_id", "session_id", "question", "assistant_response", "turn_id"],
+        "input_keys": ["course_id", "user_id", "session_id", "question", "assistant_response", "turn_id"],
         "output_keys": ["session_title"],
     },
 }
@@ -477,7 +477,7 @@ def get_langgraph_dev_interact_graph() -> StateGraph:
 
 def create_interact_initial_state(
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -492,7 +492,7 @@ def create_interact_initial_state(
     """Create the initial state for one interact workflow run."""
 
     return {
-        "subject_id": subject_id,
+        "course_id": course_id,
         "user_id": user_id,
         "session_id": session_id,
         "question": question,
@@ -510,7 +510,7 @@ def create_interact_initial_state(
 
 async def run_interact_workflow(
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -529,11 +529,11 @@ async def run_interact_workflow(
     """Run the interact workflow once."""
 
     bus = event_bus or InProcessEventBus()
-    await bus.publish(InteractRequestedEvent(subject_id=subject_id))
+    await bus.publish(InteractRequestedEvent(course_id=course_id))
     model_override = normalize_runtime_model_override(model)
     context = WorkflowContext(
         workflow_name="interact.chat",
-        subject_id=subject_id,
+        course_id=course_id,
         event_bus=bus,
         metadata={
             "model_override": model_override,
@@ -549,7 +549,7 @@ async def run_interact_workflow(
                 emitter=emitter,
             ),
             initial_state=create_interact_initial_state(
-                subject_id=subject_id,
+                course_id=course_id,
                 user_id=user_id,
                 session_id=session_id,
                 question=question,
@@ -566,7 +566,7 @@ async def run_interact_workflow(
     if result.failed:
         await bus.publish(
             InteractFailedEvent(
-                subject_id=subject_id,
+                course_id=course_id,
                 error_message=result.error.detail,
             )
         )
@@ -577,18 +577,18 @@ async def run_interact_workflow(
     if error_message:
         await bus.publish(
             InteractFailedEvent(
-                subject_id=subject_id,
+                course_id=course_id,
                 error_message=error_message,
             )
         )
         return err_result(
             "interact_workflow_failed",
             error_message,
-            metadata={"subject_id": subject_id},
+            metadata={"course_id": course_id},
         )
 
     if not final_state.get("stream_interrupted"):
-        await bus.publish(InteractCompletedEvent(subject_id=subject_id))
+        await bus.publish(InteractCompletedEvent(course_id=course_id))
     return result
 
 
@@ -596,7 +596,7 @@ async def stream_chat_workflow(
     *,
     request: Request,
     session: Session | None,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     session_id: str | None,
     question: str,
@@ -627,7 +627,7 @@ async def stream_chat_workflow(
             selection_context=selection_context,
             session=session,
             source_chunk_id=source_chunk_id,
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
         )
     )
@@ -650,12 +650,12 @@ async def _execute_interact_workflow(
     selection_context: ChatSelectionContext | None,
     session: Session | None,
     source_chunk_id: int | None,
-    subject_id: str,
+    course_id: str,
     user_id: str,
 ) -> None:
     try:
         result = await run_interact_workflow(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             session_id=session_id,
             question=question,

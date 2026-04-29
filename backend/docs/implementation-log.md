@@ -7,7 +7,7 @@
 - Long-running build flows report `pending`, `processing`, `completed`, or `failed`.
 - File upload starts ingest automatically.
 - The files module now reads through one query endpoint:
-  - `GET /api/v1/subjects/{subject}/files`
+  - `GET /api/v1/courses/{course}/files`
 - File assets are exposed through runtime static URLs and are not part of the documented files API surface.
 - Delete operations remain available for files, knowledge docs, chat history, and exams.
 

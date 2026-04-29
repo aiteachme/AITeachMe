@@ -18,8 +18,8 @@ from sqlmodel import Session
 
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
-from app.models.subject import Subject
-from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
+from app.models.course import Course
+from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
 from app.schemas.knowledge import (
@@ -36,13 +36,13 @@ from app.schemas.knowledge import (
     KnowledgeBuildPreviewResponse,
     KnowledgeBuildRuntimeResponse,
     KnowledgeBuildStatusResponse,
-    SubjectVectorStatusResponse,
+    CourseVectorStatusResponse,
 )
 from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import (
     ConfirmedBuildPlanRequiredError,
     NoReadyFilesForDocGenError,
-    SubjectBuildLockConflictError,
+    CourseBuildLockConflictError,
 )
 from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
@@ -58,16 +58,16 @@ from app.shared.infra.knowledge.build_store import (
 from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import (
-    SubjectStorageScope,
-    build_subject_storage_scope,
+    CourseStorageScope,
+    build_course_storage_scope,
     get_content_store,
-    resolve_subject_storage_scope,
+    resolve_course_storage_scope,
     run_store_sync,
 )
-from app.shared.infra.subject import (
-    get_subject_vector_status_by_id,
-    inspect_subject_build_precheck,
-    resolve_subject_build_vector_status,
+from app.shared.infra.course import (
+    get_course_vector_status_by_id,
+    inspect_course_build_precheck,
+    resolve_course_build_vector_status,
 )
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering, normalize_mermaid_blocks
 from app.utils.presenters import require_id
@@ -92,21 +92,21 @@ def _clean_prompt(prompt: str | None) -> str | None:
 def _select_ready_docgen_files_by_ids(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
     allow_empty: bool = False,
 ) -> tuple[list[RawFile], int]:
-    all_files = list_all_raw_files_by_subject(session, subject_id)
+    all_files = list_all_raw_files_by_course(session, course_id)
     ready_files = [item for item in all_files if item.id and is_markdown_ready_for_digest(item)]
     ready_ids = {require_id(item.id, "RawFile.id") for item in ready_files}
     requested = {
         require_id(item.id, "RawFile.id"): item
-        for item in list_raw_files_by_ids(session, subject_id, file_ids)
+        for item in list_raw_files_by_ids(session, course_id, file_ids)
         if item.id
     }
     accepted = [requested[file_id] for file_id in file_ids if file_id in requested and file_id in ready_ids]
     if not accepted and not allow_empty:
-        raise NoReadyFilesForDocGenError(subject_id)
+        raise NoReadyFilesForDocGenError(course_id)
     return accepted, len(ready_files)
 
 
@@ -123,29 +123,29 @@ def _session_context(session: Session | None):
 
 
 def _clear_docgen_staging_safely(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
     try:
-        clear_docgen_staging(subject_id, subject_scope=subject_scope)
+        clear_docgen_staging(course_id, course_scope=course_scope)
     except Exception:
-        logger.exception("knowledge_build_cleanup_failed", subject_id=subject_id)
+        logger.exception("knowledge_build_cleanup_failed", course_id=course_id)
 
 
 def _write_docgen_status(
-    subject_id: str,
+    course_id: str,
     *,
     requested_at: datetime,
     status: str,
     stage: str,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
     **extra: object,
 ) -> None:
     update_knowledge_build_lane_status(
-        subject_id,
+        course_id,
         lane="docgen",
-        subject_scope=subject_scope,
+        course_scope=course_scope,
         requested_at=requested_at,
         status=status,
         stage=stage,
@@ -154,18 +154,18 @@ def _write_docgen_status(
 
 
 def _write_graph_status(
-    subject_id: str,
+    course_id: str,
     *,
     requested_at: datetime,
     status: str,
     stage: str,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
     **extra: object,
 ) -> None:
     update_knowledge_build_lane_status(
-        subject_id,
+        course_id,
         lane="graph",
-        subject_scope=subject_scope,
+        course_scope=course_scope,
         requested_at=requested_at,
         status=status,
         stage=stage,
@@ -175,7 +175,7 @@ def _write_graph_status(
 
 def _mark_confirmed_plan_status(
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     confirmed_plan_id: str,
     status: str,
@@ -183,7 +183,7 @@ def _mark_confirmed_plan_status(
     with managed_session() as session:
         mark_confirmed_build_plan_status(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             plan_id=confirmed_plan_id,
             status=status,
@@ -208,8 +208,8 @@ def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: i
 def _load_current_published_markdown(
     session: Session | None,
     *,
-    subject_id: str,
-    subject_scope: SubjectStorageScope,
+    course_id: str,
+    course_scope: CourseStorageScope,
     manifest,
 ) -> tuple[str, datetime | None]:
     cs = get_content_store()
@@ -218,7 +218,7 @@ def _load_current_published_markdown(
             normalize_markdown_rendering(
                 run_store_sync(
                     cs.read_text,
-                    subject_scope.knowledge_doc_key("merged_knowledge_base.md"),
+                    course_scope.knowledge_doc_key("merged_knowledge_base.md"),
                     default="",
                 )
                 or ""
@@ -229,7 +229,7 @@ def _load_current_published_markdown(
         return stored_markdown, manifest.updated_at if manifest is not None else None
 
     with _session_context(session) as db_session:
-        docs = get_current_published_docs(db_session, subject_id)
+        docs = get_current_published_docs(db_session, course_id)
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
@@ -418,21 +418,21 @@ def _build_graph_metrics(*, build_status) -> KnowledgeGraphBuildMetricsResponse:
 
 def _resolve_runtime_build_status(
     *,
-    subject_id: str,
+    course_id: str,
     session: Session | None = None,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildStatusResponse | None:
-    runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+    runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     effective = runtime.docgen_runtime if runtime is not None else None
     if effective is None:
-        build_lock = read_knowledge_build_lock(subject_id, session=session)
+        build_lock = read_knowledge_build_lock(course_id, session=session)
     else:
         build_lock = None
     if effective is None and build_lock is not None:
         effective = update_knowledge_build_lane_status(
-            subject_id,
+            course_id,
             lane="docgen",
-            subject_scope=subject_scope,
+            course_scope=course_scope,
             requested_at=build_lock.requested_at,
             build_group_id=build_lock.build_group_id,
             status="running",
@@ -440,7 +440,7 @@ def _resolve_runtime_build_status(
             source_file_ids=build_lock.source_file_ids,
             prompt=build_lock.prompt,
         )
-        runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
         effective = runtime.docgen_runtime if runtime is not None else None
     if effective is None:
         return None
@@ -489,19 +489,19 @@ def _build_lane_runtime_response(
 def get_knowledge_build_runtime_result(
     session: Session | None = None,
     *,
-    subject_id: str,
-    subject_scope: SubjectStorageScope | None = None,
+    course_id: str,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeResponse:
-    subject_scope = subject_scope or resolve_subject_storage_scope(subject_id, session=session)
+    course_scope = course_scope or resolve_course_storage_scope(course_id, session=session)
     draft_markdown = normalize_mermaid_blocks(
         run_store_sync(
             get_content_store().read_text,
-            subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md",
+            course_scope.knowledge_build_prefix() + "merged_knowledge_base.md",
             default="",
         ) or ""
     )
-    manifest = read_knowledge_manifest(subject_id, subject_scope=subject_scope)
-    runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
+    runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     aggregate_runtime = build_aggregate_knowledge_build_status(runtime)
     docgen_runtime = runtime.docgen_runtime if runtime is not None else None
     graph_runtime = runtime.graph_runtime if runtime is not None else None
@@ -527,16 +527,16 @@ def get_knowledge_build_runtime_result(
 def _build_confirmed_plan_payload(
     plan: ConfirmedBuildPlan,
     *,
-    fallback_subject_name: str | None = None,
+    fallback_course_name: str | None = None,
 ) -> dict[str, Any]:
     payload = dict(plan.plan_json or {})
-    subject_name = str(
-        payload.get("subject_name")
-        or fallback_subject_name
-        or getattr(plan, "subject_name", "")
+    course_name = str(
+        payload.get("course_name")
+        or fallback_course_name
+        or getattr(plan, "course_name", "")
         or ""
     ).strip()
-    payload["subject_name"] = subject_name
+    payload["course_name"] = course_name
     payload.setdefault("user_prompt", plan.user_prompt)
     payload.setdefault("digest_mode", plan.digest_mode)
     payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
@@ -550,25 +550,25 @@ def _build_confirmed_plan_payload(
 
 def _load_confirmed_plan_payload(
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     confirmed_plan_id: str,
-    fallback_subject_name: str | None = None,
+    fallback_course_name: str | None = None,
 ) -> tuple[ConfirmedBuildPlan, dict[str, Any]]:
     with managed_session() as session:
         plan = get_confirmed_build_plan(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             plan_id=confirmed_plan_id,
         )
-    return plan, _build_confirmed_plan_payload(plan, fallback_subject_name=fallback_subject_name)
+    return plan, _build_confirmed_plan_payload(plan, fallback_course_name=fallback_course_name)
 
 
 def trigger_docgen_build(
     session: Session,
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     file_ids: list[str] | None,
     prompt: str | None,
@@ -582,10 +582,10 @@ def trigger_docgen_build(
     数据交给 API 层。
     """
 
-    conflict = inspect_subject_build_precheck(session, subject=subject)
-    vector_status = resolve_subject_build_vector_status(
+    conflict = inspect_course_build_precheck(session, course=course)
+    vector_status = resolve_course_build_vector_status(
         session,
-        subject=subject,
+        course=course,
         embedding_resolution=embedding_resolution,
     )
     force_full_rebuild = bool(
@@ -594,7 +594,7 @@ def trigger_docgen_build(
         and vector_status.mode != "disabled"
     )
     if force_full_rebuild:
-        clear_chunk_vector_metadata(session, subject_id=subject.id)
+        clear_chunk_vector_metadata(session, course_id=course.id)
     planner_session_id = None
     digest_mode = None
     plan_summary = None
@@ -606,12 +606,12 @@ def trigger_docgen_build(
 
     plan = get_confirmed_build_plan(
         session,
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         plan_id=confirmed_plan_id,
     )
     if plan.status == "building":
-        raise SubjectBuildLockConflictError(subject.id)
+        raise CourseBuildLockConflictError(course.id)
     planner_session_id = plan.planner_session_id
     digest_mode = plan.digest_mode
     plan_summary = plan.plan_summary
@@ -627,7 +627,7 @@ def trigger_docgen_build(
     ]
     accepted_files, ready_file_count = _select_ready_docgen_files_by_ids(
         session,
-        subject_id=subject.id,
+        course_id=course.id,
         file_ids=list(plan.selected_file_ids_json),
         allow_empty=True,
     )
@@ -635,14 +635,14 @@ def trigger_docgen_build(
     if file_ids:
         logger.warning(
             "knowledge_build_file_selection_ignored_for_confirmed_plan",
-            subject_id=subject.id,
+            course_id=course.id,
             confirmed_plan_id=confirmed_plan_id,
             requested_file_id_count=len(file_ids),
         )
     if cleaned_prompt and plan_prompt and cleaned_prompt != plan_prompt:
         logger.warning(
             "knowledge_build_prompt_ignored_for_confirmed_plan",
-            subject_id=subject.id,
+            course_id=course.id,
             confirmed_plan_id=confirmed_plan_id,
         )
     cleaned_prompt = plan_prompt or cleaned_prompt
@@ -666,14 +666,14 @@ def trigger_docgen_build(
         source_file_ids=accepted_file_ids,
         prompt=cleaned_prompt,
     )
-    if not acquire_knowledge_build_lock(subject.id, build_lock):
-        raise SubjectBuildLockConflictError(subject.id)
-    subject_scope = build_subject_storage_scope(user_id=subject.user_id, subject_id=subject.id)
-    _clear_docgen_staging_safely(subject.id, subject_scope=subject_scope)
+    if not acquire_knowledge_build_lock(course.id, build_lock):
+        raise CourseBuildLockConflictError(course.id)
+    course_scope = build_course_storage_scope(user_id=course.user_id, course_id=course.id)
+    _clear_docgen_staging_safely(course.id, course_scope=course_scope)
     update_knowledge_build_lane_status(
-        subject.id,
+        course.id,
         lane="docgen",
-        subject_scope=subject_scope,
+        course_scope=course_scope,
         requested_at=requested_at,
         build_group_id=build_group_id,
         status="accepted",
@@ -698,7 +698,7 @@ def trigger_docgen_build(
     )
     logger.info(
         "knowledge_build_requested",
-        subject_id=subject.id,
+        course_id=course.id,
         requested_at=requested_at.isoformat(),
         file_count=len(accepted_file_ids),
         force_full_rebuild=force_full_rebuild,
@@ -723,8 +723,8 @@ def trigger_docgen_build(
 
 async def run_docgen_background(
     *,
-    subject_id: str,
-    subject_name: str | None = None,
+    course_id: str,
+    course_name: str | None = None,
     file_ids: list[str],
     prompt: str | None,
     requested_at: datetime,
@@ -754,7 +754,7 @@ async def run_docgen_background(
     docgen_published = False
     logger.info(
         "knowledge_build_background_started",
-        subject_id=subject_id,
+        course_id=course_id,
         requested_at=requested_at.isoformat(),
         file_count=len(file_ids),
         planner_session_id=planner_session_id,
@@ -764,7 +764,7 @@ async def run_docgen_background(
     )
     if not confirmed_plan_id or not user_id:
         _write_docgen_status(
-            subject_id,
+            course_id,
             requested_at=requested_at,
             build_group_id=build_group_id,
             status="failed",
@@ -776,32 +776,32 @@ async def run_docgen_background(
             error_message="confirmed_plan_required",
             draft_available=False,
         )
-        logger.error("knowledge_build_failed_missing_confirmed_plan", subject_id=subject_id)
-        release_knowledge_build_lock(subject_id)
+        logger.error("knowledge_build_failed_missing_confirmed_plan", course_id=course_id)
+        release_knowledge_build_lock(course_id)
         return
 
-    subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=subject_id)
+    course_scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
     try:
         plan, confirmed_plan_payload = _load_confirmed_plan_payload(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             confirmed_plan_id=confirmed_plan_id,
-            fallback_subject_name=subject_name,
+            fallback_course_name=course_name,
         )
         planner_session_id = planner_session_id or plan.planner_session_id
         resolved_digest_mode = plan.digest_mode
         _mark_confirmed_plan_status(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             confirmed_plan_id=confirmed_plan_id,
             status="building",
         )
-        _clear_docgen_staging_safely(subject_id, subject_scope=subject_scope)
+        _clear_docgen_staging_safely(course_id, course_scope=course_scope)
         _write_docgen_status(
-            subject_id,
+            course_id,
             requested_at=requested_at,
             build_group_id=build_group_id,
-            subject_scope=subject_scope,
+            course_scope=course_scope,
             status="running",
             stage="prepare_shared",
             build_session_id=build_session_id,
@@ -815,10 +815,10 @@ async def run_docgen_background(
         )
         if sync_graph_after_docgen:
             _write_graph_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="accepted",
                 stage="queued_after_docgen",
                 source_file_ids=file_ids,
@@ -827,10 +827,10 @@ async def run_docgen_background(
             )
         else:
             _write_graph_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="skipped",
                 stage="disabled",
                 source_file_ids=file_ids,
@@ -838,8 +838,8 @@ async def run_docgen_background(
                 current_stage_description="已关闭文档构建后自动图谱同步。",
             )
         result = await run_docgen_workflow(
-            subject_id=subject_id,
-            subject_name=subject_name,
+            course_id=course_id,
+            course_name=course_name,
             user_id=user_id,
             file_ids=file_ids,
             user_prompt=prompt,
@@ -851,23 +851,23 @@ async def run_docgen_background(
             digest_mode=resolved_digest_mode,
         )
         if result.failed:
-            cancel_docgen_kg_prefetch(subject_id=subject_id, build_session_id=build_session_id)
+            cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
             if sync_graph_after_docgen:
                 _write_graph_status(
-                    subject_id,
+                    course_id,
                     requested_at=requested_at,
                     build_group_id=build_group_id,
-                    subject_scope=subject_scope,
+                    course_scope=course_scope,
                     status="skipped",
                     stage="blocked_by_docgen_failure",
                     current_stage_description="知识文档构建失败，未继续图谱同步。",
             )
-            _clear_docgen_staging_safely(subject_id, subject_scope=subject_scope)
+            _clear_docgen_staging_safely(course_id, course_scope=course_scope)
             _write_docgen_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -878,19 +878,19 @@ async def run_docgen_background(
                 draft_available=False,
             )
             _mark_confirmed_plan_status(
-                subject_id=subject_id,
+                course_id=course_id,
                 user_id=user_id,
                 confirmed_plan_id=confirmed_plan_id,
                 status="failed",
             )
-            logger.error("knowledge_build_failed", subject_id=subject_id, error=result.error.detail)
+            logger.error("knowledge_build_failed", course_id=course_id, error=result.error.detail)
             return
         final_docgen_state = result.require_value()
         _write_docgen_status(
-            subject_id,
+            course_id,
             requested_at=requested_at,
             build_group_id=build_group_id,
-            subject_scope=subject_scope,
+            course_scope=course_scope,
             status="completed",
             stage="completed",
             build_session_id=build_session_id,
@@ -904,7 +904,7 @@ async def run_docgen_background(
         docgen_published = True
         if sync_graph_after_docgen:
             graph_coro = run_graph_docs_sync_auto_build(
-                subject_id=subject_id,
+                course_id=course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
                 build_session_id=build_session_id,
@@ -912,17 +912,17 @@ async def run_docgen_background(
                 prompt=prompt,
                 llm_snapshot=graph_llm_snapshot,
                 docgen_state=final_docgen_state,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
             )
             if background_task_registry is not None:
                 background_task_registry.spawn(
                     graph_coro,
                     kind="knowledge.build.graph",
-                    subject_id=subject_id,
-                    name=f"knowledge.build.graph:auto:{subject_id}",
+                    course_id=course_id,
+                    name=f"knowledge.build.graph:auto:{course_id}",
                 )
             else:
-                graph_task = asyncio.create_task(graph_coro, name=f"knowledge.build.graph:auto:{subject_id}")
+                graph_task = asyncio.create_task(graph_coro, name=f"knowledge.build.graph:auto:{course_id}")
 
                 def _log_graph_task_result(task: asyncio.Task[Any]) -> None:
                     if task.cancelled():
@@ -934,23 +934,23 @@ async def run_docgen_background(
                     if exc is not None:
                         logger.warning(
                             "knowledge_graph_auto_task_failed",
-                            subject_id=subject_id,
+                            course_id=course_id,
                             error=str(exc),
                         )
 
                 graph_task.add_done_callback(_log_graph_task_result)
             logger.info(
                 "knowledge_graph_auto_build_spawned_after_docgen",
-                subject_id=subject_id,
+                course_id=course_id,
                 build_group_id=build_group_id,
                 registered=background_task_registry is not None,
             )
         else:
             _write_graph_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="skipped",
                 stage="disabled",
                 source_file_ids=file_ids,
@@ -958,31 +958,31 @@ async def run_docgen_background(
                 current_stage_description="已关闭文档构建后自动图谱同步，可在知识图谱面板手动构建。",
             )
         _mark_confirmed_plan_status(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             confirmed_plan_id=confirmed_plan_id,
             status="completed",
         )
     except asyncio.CancelledError:
-        cancel_docgen_kg_prefetch(subject_id=subject_id, build_session_id=build_session_id)
+        cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="cancelled",
                 stage="cancelled",
                 error_message="build_cancelled",
                 current_stage_description="图谱构建已取消。",
         )
         if not docgen_published:
-            _clear_docgen_staging_safely(subject_id, subject_scope=subject_scope)
+            _clear_docgen_staging_safely(course_id, course_scope=course_scope)
             _write_docgen_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="cancelled",
                 stage="cancelled",
                 build_session_id=build_session_id,
@@ -993,31 +993,31 @@ async def run_docgen_background(
                 draft_available=False,
             )
         _mark_confirmed_plan_status(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             confirmed_plan_id=confirmed_plan_id,
             status="completed" if docgen_published else "cancelled",
         )
         raise
     except Exception:
-        cancel_docgen_kg_prefetch(subject_id=subject_id, build_session_id=build_session_id)
+        cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="skipped",
                 stage="blocked_by_docgen_failure",
                 current_stage_description="知识文档构建异常失败，未完成图谱同步。",
         )
         if not docgen_published:
-            _clear_docgen_staging_safely(subject_id, subject_scope=subject_scope)
+            _clear_docgen_staging_safely(course_id, course_scope=course_scope)
             _write_docgen_status(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
-                subject_scope=subject_scope,
+                course_scope=course_scope,
                 status="failed",
                 stage="failed",
                 build_session_id=build_session_id,
@@ -1028,22 +1028,22 @@ async def run_docgen_background(
                 draft_available=False,
             )
         _mark_confirmed_plan_status(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             confirmed_plan_id=confirmed_plan_id,
             status="completed" if docgen_published else "failed",
         )
-        logger.exception("knowledge_build_failed", subject_id=subject_id)
+        logger.exception("knowledge_build_failed", course_id=course_id)
         return
     finally:
-        release_knowledge_build_lock(subject_id)
+        release_knowledge_build_lock(course_id)
 
 
 def get_docgen_result(
     session: Session | None = None,
     *,
-    subject_id: str,
-    subject_scope: SubjectStorageScope | None = None,
+    course_id: str,
+    course_scope: CourseStorageScope | None = None,
 ) -> DocGenGetResponse:
     """组装知识文档页面轮询所需的当前状态。
 
@@ -1052,22 +1052,22 @@ def get_docgen_result(
     """
 
     cs = get_content_store()
-    subject_scope = subject_scope or resolve_subject_storage_scope(subject_id, session=session)
-    draft_key = subject_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
-    manifest = read_knowledge_manifest(subject_id, subject_scope=subject_scope)
-    runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+    course_scope = course_scope or resolve_course_storage_scope(course_id, session=session)
+    draft_key = course_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
+    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
+    runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
     try:
         markdown, published_updated_at = _load_current_published_markdown(
             session,
-            subject_id=subject_id,
-            subject_scope=subject_scope,
+            course_id=course_id,
+            course_scope=course_scope,
             manifest=manifest,
         )
     except Exception as exc:
         logger.warning(
             "docgen_result_published_markdown_degraded",
-            subject_id=subject_id,
+            course_id=course_id,
             error_type=type(exc).__name__,
             error=str(exc),
         )
@@ -1086,14 +1086,14 @@ def get_docgen_result(
     source_file_ids: list[str] = list(manifest.source_file_ids) if manifest is not None else []
     try:
         build_response = _resolve_runtime_build_status(
-            subject_id=subject_id,
+            course_id=course_id,
             session=session,
-            subject_scope=subject_scope,
+            course_scope=course_scope,
         )
     except Exception as exc:
         logger.warning(
             "docgen_result_build_status_degraded",
-            subject_id=subject_id,
+            course_id=course_id,
             error_type=type(exc).__name__,
             error=str(exc),
         )
@@ -1108,15 +1108,15 @@ def get_docgen_result(
     build_metrics = _build_runtime_metrics(build_status=docgen_build_status)
     try:
         with _session_context(session) as db_session:
-            vector_status = get_subject_vector_status_by_id(db_session, subject_id)
+            vector_status = get_course_vector_status_by_id(db_session, course_id)
     except Exception as exc:
         logger.warning(
             "docgen_result_vector_status_degraded",
-            subject_id=subject_id,
+            course_id=course_id,
             error_type=type(exc).__name__,
             error=str(exc),
         )
-        vector_status = SubjectVectorStatusResponse()
+        vector_status = CourseVectorStatusResponse()
 
     return DocGenGetResponse(
         exists=bool(markdown.strip()),

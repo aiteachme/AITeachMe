@@ -20,7 +20,7 @@
 
 ## 主要资源
 
-- `subjects`
+- `courses`
 - `files`
 - `knowledge`
 - `chat`

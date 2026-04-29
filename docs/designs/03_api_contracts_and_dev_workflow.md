@@ -6,12 +6,12 @@
 
 基础前缀：
 
-`/api/v1/subjects/{subject}/knowledge`
+`/api/v1/courses/{course}/knowledge`
 
 ### 构建方案
 
 - `POST /build/plans`：创建 planner 会话。
-- `POST /build/plans/latest`：读取当前学科最近的 planner 会话。
+- `POST /build/plans/latest`：读取当前课程最近的 planner 会话。
 - `POST /build/plans/stream`：创建 planner 会话并通过 SSE 返回进度。
 - `POST /build/plans/{session_id}/messages`：追加反馈并重新生成方案。
 - `POST /build/plans/{session_id}/messages/stream`：追加反馈并通过 SSE 返回进度。
@@ -31,7 +31,7 @@
 
 - `POST /docs`：读取已发布知识文档、草稿和构建状态。
 - `POST /overview`：读取知识概览，可包含完整图谱。
-- `POST /clear`：清空当前学科的知识文档、图谱和相关派生状态。
+- `POST /clear`：清空当前课程的知识文档、图谱和相关派生状态。
 
 ### 知识图谱查询
 

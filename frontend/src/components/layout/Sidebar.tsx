@@ -25,20 +25,20 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  deleteSubjectApiApiV1SubjectsDeletePost,
-  listSubjectsApiApiV1SubjectsListPost,
-  previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
-} from "../../api/generated/subjects";
-import type { SubjectDeletePreviewData, SubjectItem } from "../../api/generated/model";
+  deleteCourseApiApiV1CoursesDeletePost,
+  listCoursesApiApiV1CoursesListPost,
+  previewDeleteCourseApiApiV1CoursesDeletePreviewPost,
+} from "../../api/generated/courses";
+import type { CourseDeletePreviewData, CourseItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { resolveSubjectIcon } from "../../lib/subjectIcons";
-import { SUBJECTS_IMPORTED_EVENT, type SubjectsImportedDetail } from "../../lib/subjectEvents";
+import { resolveCourseIcon } from "../../lib/courseIcons";
+import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
-import { SubjectExportModal } from "../subject/SubjectExportModal";
-import { SubjectImportModal } from "../subject/SubjectImportModal";
-import { SubjectDeleteConfirmModal } from "./SubjectDeleteConfirmModal";
+import { CourseExportModal } from "../course/CourseExportModal";
+import { CourseImportModal } from "../course/CourseImportModal";
+import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 import { useAiInteraction } from "../interaction";
@@ -62,7 +62,7 @@ const COLOR_CLASSES = [
 ];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
-const SUBJECT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.subjectsExpanded";
+const COURSE_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.coursesExpanded";
 
 const sidebarListContainerMotion: Variants = {
   visible: {
@@ -103,9 +103,9 @@ const sidebarChildItemMotion: Variants = {
   },
 };
 
-type SubjectWithIcon = SubjectItem & { icon_key?: string | null };
+type CourseWithIcon = CourseItem & { icon_key?: string | null };
 
-function colorClassForSubject(name: string) {
+function colorClassForCourse(name: string) {
   let hash = 0;
   for (let index = 0; index < name.length; index += 1) {
     hash = name.charCodeAt(index) + ((hash << 5) - hash);
@@ -113,13 +113,13 @@ function colorClassForSubject(name: string) {
   return COLOR_CLASSES[Math.abs(hash) % COLOR_CLASSES.length];
 }
 
-function RenameSubjectModal({
-  subjectId,
+function RenameCourseModal({
+  courseId,
   initialName,
   onClose,
   onSuccess,
 }: {
-  subjectId: string;
+  courseId: string;
   initialName: string;
   onClose: () => void;
   onSuccess: () => void;
@@ -130,8 +130,8 @@ function RenameSubjectModal({
     mutationFn: async () => {
       await apiClient({
         method: "POST",
-        url: "/api/v1/subjects/update",
-        data: { subject_id: subjectId, name: name.trim() },
+        url: "/api/v1/courses/update",
+        data: { course_id: courseId, name: name.trim() },
       });
     },
     onSuccess: () => {
@@ -148,7 +148,7 @@ function RenameSubjectModal({
       />
       <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-28px_rgba(0,0,0,0.72)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h3 className="text-sm font-bold text-slate-900">重命名学科</h3>
+          <h3 className="text-sm font-bold text-slate-900">重命名课程</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200">
             <X className="h-4 w-4" />
           </button>
@@ -164,7 +164,7 @@ function RenameSubjectModal({
               }
             }}
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-700"
-            placeholder="输入学科名称"
+            placeholder="输入课程名称"
             autoFocus
           />
           {renameMutation.isError ? (
@@ -183,45 +183,45 @@ function RenameSubjectModal({
   );
 }
 
-function displaySubjectName(subject: SubjectItem): string {
-  return subject.name?.trim() || "无标题";
+function displayCourseName(course: CourseItem): string {
+  return course.name?.trim() || "无标题";
 }
 
-function readSubjectSectionExpanded(): boolean {
+function readCourseSectionExpanded(): boolean {
   if (typeof window === "undefined") {
     return true;
   }
   try {
-    return window.localStorage.getItem(SUBJECT_SECTION_EXPANDED_STORAGE_KEY) !== "false";
+    return window.localStorage.getItem(COURSE_SECTION_EXPANDED_STORAGE_KEY) !== "false";
   } catch {
     return true;
   }
 }
 
-function writeSubjectSectionExpanded(value: boolean) {
+function writeCourseSectionExpanded(value: boolean) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(SUBJECT_SECTION_EXPANDED_STORAGE_KEY, value ? "true" : "false");
+    window.localStorage.setItem(COURSE_SECTION_EXPANDED_STORAGE_KEY, value ? "true" : "false");
   } catch {
     // Keep the in-memory state when storage is unavailable in restricted webviews.
   }
 }
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
-  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
-  const [isSubjectSectionExpanded, setIsSubjectSectionExpanded] = useState(readSubjectSectionExpanded);
+  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
+  const [isCourseSectionExpanded, setIsCourseSectionExpanded] = useState(readCourseSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [subjectActionError, setSubjectActionError] = useState<string>();
-  const [deleteTarget, setDeleteTarget] = useState<SubjectItem | null>(null);
-  const [deletePreview, setDeletePreview] = useState<SubjectDeletePreviewData | null>(null);
+  const [courseActionError, setCourseActionError] = useState<string>();
+  const [deleteTarget, setDeleteTarget] = useState<CourseItem | null>(null);
+  const [deletePreview, setDeletePreview] = useState<CourseDeletePreviewData | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
-  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
+  const [exportCourseId, setExportCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -234,25 +234,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
-  const isCreateSubjectActive = location.pathname === "/";
+  const isCreateCourseActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
 
-  const { data: subjects = [], isLoading } = useQuery({
-    queryKey: ["subjects"],
+  const { data: courses = [], isLoading } = useQuery({
+    queryKey: ["courses"],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await listSubjectsApiApiV1SubjectsListPost({
+        await listCoursesApiApiV1CoursesListPost({
           page: 1,
           size: 100,
         }),
       )?.items ?? [],
   });
 
-  const updateSubjectSectionExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
-    setIsSubjectSectionExpanded((current) => {
+  const updateCourseSectionExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
+    setIsCourseSectionExpanded((current) => {
       const value = typeof next === "function" ? next(current) : next;
-      writeSubjectSectionExpanded(value);
+      writeCourseSectionExpanded(value);
       return value;
     });
   }, []);
@@ -271,68 +271,68 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }, [openMenuId]);
 
   useEffect(() => {
-    const handleSubjectsImported = (event: Event) => {
-      const detail = (event as CustomEvent<SubjectsImportedDetail>).detail;
-      updateSubjectSectionExpanded(true);
+    const handleCoursesImported = (event: Event) => {
+      const detail = (event as CustomEvent<CoursesImportedDetail>).detail;
+      updateCourseSectionExpanded(true);
       setIsCollapsed(false);
-      if (detail?.subjectId) {
-        setExpandedSubjects((prev) => new Set([...prev, detail.subjectId as string]));
+      if (detail?.courseId) {
+        setExpandedCourses((prev) => new Set([...prev, detail.courseId as string]));
       }
     };
-    window.addEventListener(SUBJECTS_IMPORTED_EVENT, handleSubjectsImported);
-    return () => window.removeEventListener(SUBJECTS_IMPORTED_EVENT, handleSubjectsImported);
-  }, [updateSubjectSectionExpanded]);
+    window.addEventListener(COURSES_IMPORTED_EVENT, handleCoursesImported);
+    return () => window.removeEventListener(COURSES_IMPORTED_EVENT, handleCoursesImported);
+  }, [updateCourseSectionExpanded]);
 
   useEffect(() => {
-    const match = location.pathname.match(/^\/subject\/([^/]+)/);
+    const match = location.pathname.match(/^\/course\/([^/]+)/);
     if (!match?.[1]) {
       return;
     }
-    setExpandedSubjects((prev) => new Set([...prev, match[1]]));
-    updateSubjectSectionExpanded(true);
+    setExpandedCourses((prev) => new Set([...prev, match[1]]));
+    updateCourseSectionExpanded(true);
     setIsCollapsed(false);
-  }, [location.pathname, updateSubjectSectionExpanded]);
+  }, [location.pathname, updateCourseSectionExpanded]);
 
   const deletePreviewMutation = useMutation({
-    mutationFn: async (subjectId: string) =>
+    mutationFn: async (courseId: string) =>
       unwrapOrvalResponse(
-        await previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost({ subject_id: subjectId }),
+        await previewDeleteCourseApiApiV1CoursesDeletePreviewPost({ course_id: courseId }),
       ) ?? null,
     onSuccess: (preview) => {
       setDeletePreview(preview);
-      setSubjectActionError(undefined);
+      setCourseActionError(undefined);
     },
     onError: (error) => {
       setDeletePreview(null);
-      setSubjectActionError(getApiErrorMessage(error, "删除预览加载失败，请重试"));
+      setCourseActionError(getApiErrorMessage(error, "删除预览加载失败，请重试"));
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (subjectId: string) => {
-      await deleteSubjectApiApiV1SubjectsDeletePost({ subject_id: subjectId, force: true });
+    mutationFn: async (courseId: string) => {
+      await deleteCourseApiApiV1CoursesDeletePost({ course_id: courseId, force: true });
     },
-    onSuccess: (_, subjectId) => {
-      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
+    onSuccess: (_, courseId) => {
+      void queryClient.invalidateQueries({ queryKey: ["courses"] });
       notifyConversationSessionsChanged();
-      if (activeScope?.type === "subject" && activeScope.subjectId === subjectId) {
+      if (activeScope?.type === "course" && activeScope.courseId === courseId) {
         closeAiInteraction();
       }
-      setSubjectActionError(undefined);
+      setCourseActionError(undefined);
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       setDeletePreview(null);
-      if (location.pathname.startsWith(`/subject/${subjectId}/`)) {
+      if (location.pathname.startsWith(`/course/${courseId}/`)) {
         navigate("/");
       }
     },
     onError: (error) => {
-      setSubjectActionError(getApiErrorMessage(error, "删除失败，请重试"));
+      setCourseActionError(getApiErrorMessage(error, "删除失败，请重试"));
     },
   });
 
-  const groupedSubjects = useMemo(() => subjects as SubjectItem[], [subjects]);
-  const shouldShowSubjectList = effectiveCollapsed || isSubjectSectionExpanded;
+  const groupedCourses = useMemo(() => courses as CourseItem[], [courses]);
+  const shouldShowCourseList = effectiveCollapsed || isCourseSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
     setIsCollapsed(false);
   }, []);
@@ -340,30 +340,30 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     setIsMobileOpen(false);
   }, []);
 
-  const toggleSubject = (subjectId: string) => {
+  const toggleCourse = (courseId: string) => {
     if (effectiveCollapsed) {
       setIsCollapsed(false);
       return;
     }
-    setExpandedSubjects((prev) => {
+    setExpandedCourses((prev) => {
       const next = new Set(prev);
-      if (next.has(subjectId)) {
-        next.delete(subjectId);
+      if (next.has(courseId)) {
+        next.delete(courseId);
       } else {
-        next.add(subjectId);
+        next.add(courseId);
       }
       return next;
     });
   };
 
-  const openDeleteModal = (subject: SubjectItem) => {
-    setDeleteTarget(subject);
+  const openDeleteModal = (course: CourseItem) => {
+    setDeleteTarget(course);
     setDeletePreview(null);
-    setSubjectActionError(undefined);
+    setCourseActionError(undefined);
     setIsDeleteModalOpen(true);
     deletePreviewMutation.reset();
     deleteMutation.reset();
-    deletePreviewMutation.mutate(subject.subject_id);
+    deletePreviewMutation.mutate(course.course_id);
   };
 
   return (
@@ -434,7 +434,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   setIsCollapsed(false);
@@ -442,10 +442,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     state: { newEntryAt: Date.now() },
                   });
                 }}
-                title="新建学科"
+                title="新建课程"
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-                  isCreateSubjectActive
+                  isCreateCourseActive
                     ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
                     : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                 )}
@@ -456,7 +456,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   setIsCollapsed(false);
@@ -476,7 +476,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   setIsCollapsed(false);
@@ -499,12 +499,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 type="button"
                 className={cn(
                   "group flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
-                  isCreateSubjectActive
+                  isCreateCourseActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   navigate("/", {
@@ -515,7 +515,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 <Edit3
                   className={cn(
                     "h-3.5 w-3.5 shrink-0 transition-colors",
-                    isCreateSubjectActive
+                    isCreateCourseActive
                       ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
                       : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
                   )}
@@ -524,12 +524,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 <span
                   className={cn(
                     "whitespace-nowrap text-xs tracking-[0.01em]",
-                    isCreateSubjectActive
+                    isCreateCourseActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
                   )}
                 >
-                  新建学科
+                  新建课程
                 </span>
               </button>
 
@@ -542,7 +542,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   navigate("/spaces");
@@ -578,7 +578,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
                 onClick={() => {
-                  setSubjectActionError(undefined);
+                  setCourseActionError(undefined);
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   navigate("/library");
@@ -607,8 +607,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </>
           )}
 
-          {!effectiveCollapsed && subjectActionError ? (
-            <p className="px-1 text-xs text-red-500">{subjectActionError}</p>
+          {!effectiveCollapsed && courseActionError ? (
+            <p className="px-1 text-xs text-red-500">{courseActionError}</p>
           ) : null}
         </div>
 
@@ -617,15 +617,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             <div className="flex h-7 items-center gap-1">
               <button
                 type="button"
-                onClick={() => updateSubjectSectionExpanded((value) => !value)}
+                onClick={() => updateCourseSectionExpanded((value) => !value)}
                 className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
-                aria-expanded={isSubjectSectionExpanded}
+                aria-expanded={isCourseSectionExpanded}
               >
-                <span className="truncate">学科</span>
+                <span className="truncate">课程</span>
                 <ChevronRight
                   className={cn(
                     "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
-                    isSubjectSectionExpanded && "rotate-90",
+                    isCourseSectionExpanded && "rotate-90",
                   )}
                 />
                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
@@ -646,14 +646,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           )}
 
-          {!isLoading && groupedSubjects.length === 0 && !effectiveCollapsed && isSubjectSectionExpanded ? (
-            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无学科</p>
+          {!isLoading && groupedCourses.length === 0 && !effectiveCollapsed && isCourseSectionExpanded ? (
+            <p className="-mt-1 overflow-hidden whitespace-nowrap px-4 py-0 text-[11px] text-slate-300 dark:text-slate-600">暂无课程</p>
           ) : null}
 
           <AnimatePresence initial={false}>
-            {shouldShowSubjectList ? (
+            {shouldShowCourseList ? (
               <motion.div
-                key="subjects-list"
+                key="courses-list"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
@@ -667,15 +667,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   animate="visible"
                 >
                   <AnimatePresence initial={false}>
-              {groupedSubjects.map((subject) => {
-                const expanded = expandedSubjects.has(subject.subject_id);
-                const displayName = displaySubjectName(subject);
-                const badgeClass = colorClassForSubject(subject.name || subject.subject_id);
-                const SubjectIcon = resolveSubjectIcon((subject as SubjectWithIcon).icon_key);
+              {groupedCourses.map((course) => {
+                const expanded = expandedCourses.has(course.course_id);
+                const displayName = displayCourseName(course);
+                const badgeClass = colorClassForCourse(course.name || course.course_id);
+                const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
 
                 return (
                   <motion.div
-                    key={subject.subject_id}
+                    key={course.course_id}
                     variants={sidebarItemMotion}
                     initial="hidden"
                     animate="visible"
@@ -694,10 +694,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       if (effectiveCollapsed) {
                         setIsCollapsed(false);
                         if (!expanded) {
-                          toggleSubject(subject.subject_id);
+                          toggleCourse(course.course_id);
                         }
                       } else {
-                        toggleSubject(subject.subject_id);
+                        toggleCourse(course.course_id);
                       }
                     }}
                     className={cn(
@@ -712,30 +712,30 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
                       badgeClass
                     )}>
-                      <SubjectIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      <CourseIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
                     {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
-                    <div className="relative" ref={openMenuId === subject.subject_id ? menuRef : undefined}>
+                    <div className="relative" ref={openMenuId === course.course_id ? menuRef : undefined}>
                       <button
                         type="button"
-                        onClick={() => setOpenMenuId((prev) => (prev === subject.subject_id ? null : subject.subject_id))}
+                        onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
                         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
                         title="更多操作"
                       >
                         <MoreVertical className="h-3.5 w-3.5" />
                       </button>
 
-                      {openMenuId === subject.subject_id ? (
+                      {openMenuId === course.course_id ? (
                         <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
                           <button
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              setSubjectActionError(undefined);
-                              setExportSubjectId(subject.subject_id);
+                              setCourseActionError(undefined);
+                              setExportCourseId(course.course_id);
                             }}
                             className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
@@ -746,7 +746,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              setRenameTarget({ id: subject.subject_id, name: displayName === "无标题" ? "" : subject.name });
+                              setRenameTarget({ id: course.course_id, name: displayName === "无标题" ? "" : course.name });
                             }}
                             className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
                           >
@@ -757,7 +757,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                             type="button"
                             onClick={() => {
                               setOpenMenuId(null);
-                              openDeleteModal(subject);
+                              openDeleteModal(course);
                             }}
                             className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
@@ -784,7 +784,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                         <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                           <AnimatePresence initial={false}>
                             {MODULES.map((moduleItem) => {
-                              const path = `/subject/${subject.subject_id}/${moduleItem.id}`;
+                              const path = `/course/${course.course_id}/${moduleItem.id}`;
                               const isActive = location.pathname === path;
                               const Icon = moduleItem.icon;
                               return (
@@ -869,9 +869,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         </div>
       </aside>
 
-      <SubjectDeleteConfirmModal
+      <CourseDeleteConfirmModal
         open={isDeleteModalOpen}
-        subject={deleteTarget}
+        course={deleteTarget}
         preview={deletePreview}
         isPreviewLoading={deletePreviewMutation.isPending}
         previewError={deletePreviewMutation.isError ? getApiErrorMessage(deletePreviewMutation.error, "删除预览失败") : undefined}
@@ -884,26 +884,26 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.subject_id);
+            deleteMutation.mutate(deleteTarget.course_id);
           }
         }}
       />
 
       {renameTarget ? (
-        <RenameSubjectModal
-          subjectId={renameTarget.id}
+        <RenameCourseModal
+          courseId={renameTarget.id}
           initialName={renameTarget.name}
           onClose={() => setRenameTarget(null)}
-          onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["subjects"] })}
+          onSuccess={() => void queryClient.invalidateQueries({ queryKey: ["courses"] })}
         />
       ) : null}
 
-      {exportSubjectId ? (
-        <SubjectExportModal subjectId={exportSubjectId} onClose={() => setExportSubjectId(null)} />
+      {exportCourseId ? (
+        <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
       ) : null}
 
       {isImportModalOpen ? (
-        <SubjectImportModal onClose={() => setIsImportModalOpen(false)} />
+        <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />

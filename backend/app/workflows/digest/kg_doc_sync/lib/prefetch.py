@@ -20,7 +20,7 @@ from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     extract_knowledge_graph_section_records_async,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
-from app.workflows.support.subjects.learning_context import load_subject_llm_context
+from app.workflows.support.courses.learning_context import load_course_llm_context
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +29,7 @@ _PREFETCH_START_DELAY_S = 0.5
 
 @dataclass(slots=True)
 class _PrefetchCache:
-    subject_id: str
+    course_id: str
     build_session_id: str
     task: asyncio.Task[None] | None = None
     records: list[SectionExtractionRecord] = field(default_factory=list)
@@ -42,8 +42,8 @@ _LOCK = RLock()
 _CACHES: dict[tuple[str, str], _PrefetchCache] = {}
 
 
-def _key(subject_id: str, build_session_id: str) -> tuple[str, str]:
-    return str(subject_id or "").strip(), str(build_session_id or "").strip()
+def _key(course_id: str, build_session_id: str) -> tuple[str, str]:
+    return str(course_id or "").strip(), str(build_session_id or "").strip()
 
 
 def _clean_string_list(value: object) -> list[str]:
@@ -115,7 +115,7 @@ def _structured_context(
 
 def start_docgen_kg_prefetch(
     *,
-    subject_id: str,
+    course_id: str,
     build_session_id: str,
     chapters: list[dict[str, Any]],
     document_backbone: dict[str, Any] | None = None,
@@ -129,19 +129,19 @@ def start_docgen_kg_prefetch(
         return False
     if not settings.knowledge_graph.prefetch_during_docgen:
         return False
-    subject_id = str(subject_id or "").strip()
+    course_id = str(course_id or "").strip()
     build_session_id = str(build_session_id or "").strip()
-    if not subject_id or not build_session_id:
+    if not course_id or not build_session_id:
         return False
     markdown = _prefetch_markdown(chapters)
     if not markdown:
         return False
-    key = _key(subject_id, build_session_id)
+    key = _key(course_id, build_session_id)
     with _LOCK:
         existing = _CACHES.pop(key, None)
         if existing is not None and existing.task is not None and not existing.task.done():
             existing.task.cancel()
-        cache = _PrefetchCache(subject_id=subject_id, build_session_id=build_session_id)
+        cache = _PrefetchCache(course_id=course_id, build_session_id=build_session_id)
         _CACHES[key] = cache
 
     snapshot = llm_snapshot or capture_llm_runtime_snapshot()
@@ -163,11 +163,11 @@ def start_docgen_kg_prefetch(
             # Let the next DocGen node schedule first, so prefetch does not jump ahead of review work.
             await asyncio.sleep(_PREFETCH_START_DELAY_S)
             with managed_session() as session:
-                subject_context = load_subject_llm_context(session, subject_id=subject_id)
+                course_context = load_course_llm_context(session, course_id=course_id)
             with use_llm_runtime_snapshot(snapshot):
                 _records, metrics = await extract_knowledge_graph_section_records_async(
                     markdown=markdown,
-                    subject_context=subject_context,
+                    course_context=course_context,
                     structured_context=structured_context,
                     concurrency_limit=concurrency,
                     on_record=_on_record,
@@ -179,7 +179,7 @@ def start_docgen_kg_prefetch(
                     active.status = "completed"
             logger.info(
                 "docgen_kg_prefetch_completed",
-                subject_id=subject_id,
+                course_id=course_id,
                 build_session_id=build_session_id,
                 record_count=len(_records),
                 concurrency=concurrency,
@@ -198,18 +198,18 @@ def start_docgen_kg_prefetch(
                     active.error = str(exc)
             logger.warning(
                 "docgen_kg_prefetch_failed",
-                subject_id=subject_id,
+                course_id=course_id,
                 build_session_id=build_session_id,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
 
-    task = asyncio.create_task(_run(), name=f"docgen.kg_prefetch:{subject_id}:{build_session_id}")
+    task = asyncio.create_task(_run(), name=f"docgen.kg_prefetch:{course_id}:{build_session_id}")
     with _LOCK:
         cache.task = task
     logger.info(
         "docgen_kg_prefetch_started",
-        subject_id=subject_id,
+        course_id=course_id,
         build_session_id=build_session_id,
         chapter_count=len(chapters),
         concurrency=concurrency,
@@ -219,12 +219,12 @@ def start_docgen_kg_prefetch(
 
 async def consume_docgen_kg_prefetch(
     *,
-    subject_id: str,
+    course_id: str,
     build_session_id: str,
 ) -> tuple[list[SectionExtractionRecord], dict[str, int | str]]:
     """Return current prefetch records and stop any unfinished sidecar task."""
 
-    key = _key(subject_id, build_session_id)
+    key = _key(course_id, build_session_id)
     with _LOCK:
         cache = _CACHES.pop(key, None)
     if cache is None:
@@ -247,8 +247,8 @@ async def consume_docgen_kg_prefetch(
     return records, metrics
 
 
-def cancel_docgen_kg_prefetch(*, subject_id: str, build_session_id: str) -> None:
-    key = _key(subject_id, build_session_id)
+def cancel_docgen_kg_prefetch(*, course_id: str, build_session_id: str) -> None:
+    key = _key(course_id, build_session_id)
     with _LOCK:
         cache = _CACHES.pop(key, None)
     if cache is not None and cache.task is not None and not cache.task.done():

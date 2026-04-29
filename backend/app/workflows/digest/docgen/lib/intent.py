@@ -1,4 +1,4 @@
-﻿"""DocGen writing intent inference."""
+"""DocGen writing intent inference."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def fallback_intent_profile(*, digest_mode: str, chapter_count: int = 0) -> DocG
 
 async def infer_intent_core(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -59,7 +59,7 @@ async def infer_intent_core(
     try:
         response = await acompletion_with_fallback(
             build_intent_core_messages(
-                subject_name=subject_name,
+                course_name=course_name,
                 digest_mode=digest_mode,
                 user_prompt=user_prompt,
                 plan_summary=plan_summary,
@@ -93,7 +93,7 @@ async def infer_intent_core(
 
 async def infer_docgen_intent(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -103,7 +103,7 @@ async def infer_docgen_intent(
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> DocGenIntentProfile:
     return await infer_intent_core(
-        subject_name=subject_name,
+        course_name=course_name,
         digest_mode=digest_mode,
         user_prompt=user_prompt,
         plan_summary=plan_summary,

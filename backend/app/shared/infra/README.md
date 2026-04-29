@@ -39,7 +39,7 @@ api/knowledge_docs.py
 | 能力 | 当前稳定入口 | 对 planner / docgen 的作用 |
 | --- | --- | --- |
 | 搜索 | `app.shared.infra.search` | 本地 RAG、外部 retriever、reader、source curation |
-| 向量状态 | `app.shared.infra.subject` | 判断学科向量是否可检索，并处理构建前向量配置确认 |
+| 向量状态 | `app.shared.infra.course` | 判断课程向量是否可检索，并处理构建前向量配置确认 |
 | 工具 | `app.shared.infra.tools` | 统一工具注册表、内置工具与 toolpack 执行入口 |
 | workflow 支撑 | `app.shared.infra.workflow` | workflow root / node / progress |
 | 执行契约 | `app.shared.infra.execution` | 长执行单元共享边界 |
@@ -161,7 +161,7 @@ workflow 作者通常不需要从这里直接导入。
 | `llm_support/` | 文本、结构化、流式、tool call 等 LLM 主入口 |
 | `embedding/` | canonical embedding 调用入口与框架适配 |
 | `search/` | 本地检索、retriever、reader、source curation |
-| `subject/` | 学科向量配置、查询能力与构建前 precheck |
+| `course/` | 课程向量配置、查询能力与构建前 precheck |
 | `mcp/` | MCP 协议接入与外部工具服务管理 |
 | `tools/` | 运行时工具注册、执行、内置工具、toolpack 加载 |
 | `memory/` | 共享记忆与学习档案 |
@@ -220,7 +220,7 @@ await acompletion_with_fallback(messages, model="light")
 5. `llm_support/__init__.py`
 6. `embedding/__init__.py`
 7. `storage/content_store.py`
-8. `subject/`
+8. `course/`
 9. `search/__init__.py`
 10. `tools/__init__.py`
 11. `workflow/__init__.py`

@@ -604,18 +604,18 @@
         }
       }
     },
-    "/api/v1/subjects/add": {
+    "/api/v1/courses/add": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "创建学科",
-        "operationId": "create_subject_api_api_v1_subjects_add_post",
+        "summary": "创建课程",
+        "operationId": "create_course_api_api_v1_courses_add_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectCreateRequest"
+                "$ref": "#/components/schemas/CourseCreateRequest"
               }
             }
           },
@@ -627,7 +627,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectItem_"
+                  "$ref": "#/components/schemas/ApiResponse_CourseItem_"
                 }
               }
             }
@@ -675,18 +675,18 @@
         }
       }
     },
-    "/api/v1/subjects/list": {
+    "/api/v1/courses/list": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "学科列表",
-        "operationId": "list_subjects_api_api_v1_subjects_list_post",
+        "summary": "课程列表",
+        "operationId": "list_courses_api_api_v1_courses_list_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectListRequest",
+                "$ref": "#/components/schemas/CourseListRequest",
                 "default": {
                   "page": 1,
                   "size": 20
@@ -701,7 +701,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_SubjectItem__"
+                  "$ref": "#/components/schemas/ApiResponse_PaginatedData_CourseItem__"
                 }
               }
             }
@@ -729,18 +729,18 @@
         }
       }
     },
-    "/api/v1/subjects/delete/preview": {
+    "/api/v1/courses/delete/preview": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "删除学科预览",
-        "operationId": "preview_delete_subject_api_api_v1_subjects_delete_preview_post",
+        "summary": "删除课程预览",
+        "operationId": "preview_delete_course_api_api_v1_courses_delete_preview_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectDeletePreviewRequest"
+                "$ref": "#/components/schemas/CourseDeletePreviewRequest"
               }
             }
           },
@@ -752,7 +752,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectDeletePreviewData_"
+                  "$ref": "#/components/schemas/ApiResponse_CourseDeletePreviewData_"
                 }
               }
             }
@@ -800,18 +800,18 @@
         }
       }
     },
-    "/api/v1/subjects/delete": {
+    "/api/v1/courses/delete": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "删除学科",
-        "operationId": "delete_subject_api_api_v1_subjects_delete_post",
+        "summary": "删除课程",
+        "operationId": "delete_course_api_api_v1_courses_delete_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectDeleteRequest"
+                "$ref": "#/components/schemas/CourseDeleteRequest"
               }
             }
           },
@@ -823,7 +823,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectDeleteData_"
+                  "$ref": "#/components/schemas/ApiResponse_CourseDeleteData_"
                 }
               }
             }
@@ -881,18 +881,18 @@
         }
       }
     },
-    "/api/v1/subjects/update": {
+    "/api/v1/courses/update": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "更新学科",
-        "operationId": "update_subject_api_api_v1_subjects_update_post",
+        "summary": "更新课程",
+        "operationId": "update_course_api_api_v1_courses_update_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectUpdateRequest"
+                "$ref": "#/components/schemas/CourseUpdateRequest"
               }
             }
           },
@@ -904,7 +904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectItem_"
+                  "$ref": "#/components/schemas/ApiResponse_CourseItem_"
                 }
               }
             }
@@ -952,18 +952,18 @@
         }
       }
     },
-    "/api/v1/subjects/suggest-name": {
+    "/api/v1/courses/suggest-name": {
       "post": {
         "tags": [
-          "subjects"
+          "courses"
         ],
-        "summary": "根据用户输入快速生成学科名称",
-        "operationId": "suggest_subject_name_api_v1_subjects_suggest_name_post",
+        "summary": "根据用户输入快速生成课程名称",
+        "operationId": "suggest_course_name_api_v1_courses_suggest_name_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubjectNameSuggestionRequest"
+                "$ref": "#/components/schemas/CourseNameSuggestionRequest"
               }
             }
           },
@@ -975,7 +975,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_SubjectNameSuggestionResponse_"
+                  "$ref": "#/components/schemas/ApiResponse_CourseNameSuggestionResponse_"
                 }
               }
             }
@@ -1306,21 +1306,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/files/upload": {
+    "/api/v1/courses/{course_id}/files/upload": {
       "post": {
         "tags": [
           "files"
         ],
         "summary": "Upload files and start parsing immediately",
-        "operationId": "upload_files_api_v1_subjects__subject_id__files_upload_post",
+        "operationId": "upload_files_api_v1_courses__course_id__files_upload_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1329,7 +1329,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_files_api_v1_subjects__subject_id__files_upload_post"
+                "$ref": "#/components/schemas/Body_upload_files_api_v1_courses__course_id__files_upload_post"
               }
             }
           }
@@ -1398,21 +1398,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/files": {
+    "/api/v1/courses/{course_id}/files": {
       "get": {
         "tags": [
           "files"
         ],
-        "summary": "Get all subject files with full data",
-        "operationId": "list_files_api_api_v1_subjects__subject_id__files_get",
+        "summary": "Get all course files with full data",
+        "operationId": "list_files_api_api_v1_courses__course_id__files_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1470,21 +1470,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/files/link": {
+    "/api/v1/courses/{course_id}/files/link": {
       "post": {
         "tags": [
           "files"
         ],
-        "summary": "Link existing user files to a subject",
-        "operationId": "link_files_api_api_v1_subjects__subject_id__files_link_post",
+        "summary": "Link existing user files to a course",
+        "operationId": "link_files_api_api_v1_courses__course_id__files_link_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1552,21 +1552,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/files/delete": {
+    "/api/v1/courses/{course_id}/files/delete": {
       "post": {
         "tags": [
           "files"
         ],
         "summary": "Delete files",
-        "operationId": "delete_files_api_api_v1_subjects__subject_id__files_delete_post",
+        "operationId": "delete_files_api_api_v1_courses__course_id__files_delete_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1644,22 +1644,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/files/assets/{asset_path}": {
+    "/api/v1/courses/{course_id}/files/assets/{asset_path}": {
       "get": {
         "tags": [
           "files"
         ],
         "summary": "Serve file asset (images, etc.)",
         "description": "代理访问文件资产。\n\ncloud 模式：优先 302 到 CDN，无 CDN 时流式返回。\nlocal 模式：从本地文件系统返回。",
-        "operationId": "serve_file_asset_api_v1_subjects__subject_id__files_assets__asset_path__get",
+        "operationId": "serve_file_asset_api_v1_courses__course_id__files_assets__asset_path__get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -1714,22 +1714,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session",
-        "operationId": "knowledge_build_plan_create_api_v1_subjects__subject_id__knowledge_build_plans_post",
+        "operationId": "knowledge_build_plan_create_api_v1_courses__course_id__knowledge_build_plans_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1797,22 +1797,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/latest": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/latest": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
-        "summary": "Get the latest build planner session for this subject",
-        "operationId": "knowledge_build_plan_latest_api_v1_subjects__subject_id__knowledge_build_plans_latest_post",
+        "summary": "Get the latest build planner session for this course",
+        "operationId": "knowledge_build_plan_latest_api_v1_courses__course_id__knowledge_build_plans_latest_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1870,22 +1870,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/stream": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/stream": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Create a build planner session with SSE progress",
-        "operationId": "knowledge_build_plan_create_stream_api_v1_subjects__subject_id__knowledge_build_plans_stream_post",
+        "operationId": "knowledge_build_plan_create_stream_api_v1_courses__course_id__knowledge_build_plans_stream_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -1951,22 +1951,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/messages": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/messages": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback and regenerate the plan",
-        "operationId": "knowledge_build_plan_message_api_v1_subjects__subject_id__knowledge_build_plans__session_id__messages_post",
+        "operationId": "knowledge_build_plan_message_api_v1_courses__course_id__knowledge_build_plans__session_id__messages_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -2043,22 +2043,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/messages/stream": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/messages/stream": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Append planner feedback with SSE progress",
-        "operationId": "knowledge_build_plan_message_stream_api_v1_subjects__subject_id__knowledge_build_plans__session_id__messages_stream_post",
+        "operationId": "knowledge_build_plan_message_stream_api_v1_courses__course_id__knowledge_build_plans__session_id__messages_stream_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -2133,22 +2133,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/adjust-click": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/adjust-click": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Record that the user opened planner adjustment mode",
-        "operationId": "knowledge_build_plan_adjust_click_api_v1_subjects__subject_id__knowledge_build_plans__session_id__adjust_click_post",
+        "operationId": "knowledge_build_plan_adjust_click_api_v1_courses__course_id__knowledge_build_plans__session_id__adjust_click_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -2215,22 +2215,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/plans/{session_id}/confirm": {
+    "/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/confirm": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Confirm the current planner draft and freeze a build plan",
-        "operationId": "knowledge_build_plan_confirm_api_v1_subjects__subject_id__knowledge_build_plans__session_id__confirm_post",
+        "operationId": "knowledge_build_plan_confirm_api_v1_courses__course_id__knowledge_build_plans__session_id__confirm_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -2297,22 +2297,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build": {
+    "/api/v1/courses/{course_id}/knowledge/build": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Trigger a knowledge-doc build with optional graph sync",
-        "operationId": "knowledge_build_api_v1_subjects__subject_id__knowledge_build_post",
+        "operationId": "knowledge_build_api_v1_courses__course_id__knowledge_build_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2390,22 +2390,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/graph": {
+    "/api/v1/courses/{course_id}/knowledge/build/graph": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Rebuild the knowledge graph from the latest published knowledge docs",
-        "operationId": "knowledge_graph_build_api_v1_subjects__subject_id__knowledge_build_graph_post",
+        "operationId": "knowledge_graph_build_api_v1_courses__course_id__knowledge_build_graph_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2473,22 +2473,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/cancel": {
+    "/api/v1/courses/{course_id}/knowledge/build/cancel": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
-        "summary": "Cancel the active digest build for this subject",
-        "operationId": "knowledge_build_cancel_api_v1_subjects__subject_id__knowledge_build_cancel_post",
+        "summary": "Cancel the active digest build for this course",
+        "operationId": "knowledge_build_cancel_api_v1_courses__course_id__knowledge_build_cancel_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2546,22 +2546,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/runtime": {
+    "/api/v1/courses/{course_id}/knowledge/build/runtime": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch aggregate/docgen/graph runtime state",
-        "operationId": "knowledge_build_runtime_api_v1_subjects__subject_id__knowledge_build_runtime_post",
+        "operationId": "knowledge_build_runtime_api_v1_courses__course_id__knowledge_build_runtime_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2619,7 +2619,7 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/build/stream": {
+    "/api/v1/courses/{course_id}/knowledge/build/stream": {
       "get": {
         "tags": [
           "knowledge",
@@ -2627,15 +2627,15 @@
         ],
         "summary": "SSE stream for live build progress snapshots",
         "description": "SSE endpoint for live build runtime, direct deltas and fallback snapshots.",
-        "operationId": "knowledge_build_stream_api_v1_subjects__subject_id__knowledge_build_stream_get",
+        "operationId": "knowledge_build_stream_api_v1_courses__course_id__knowledge_build_stream_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2691,22 +2691,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/docs": {
+    "/api/v1/courses/{course_id}/knowledge/docs": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch knowledge docs and minimal build state",
-        "operationId": "knowledge_docs_api_v1_subjects__subject_id__knowledge_docs_post",
+        "operationId": "knowledge_docs_api_v1_courses__course_id__knowledge_docs_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2764,22 +2764,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/overview": {
+    "/api/v1/courses/{course_id}/knowledge/overview": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch aggregated knowledge overview",
-        "operationId": "knowledge_overview_api_v1_subjects__subject_id__knowledge_overview_post",
+        "operationId": "knowledge_overview_api_v1_courses__course_id__knowledge_overview_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2849,22 +2849,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/clear": {
+    "/api/v1/courses/{course_id}/knowledge/clear": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
-        "summary": "Clear knowledge artifacts for one subject",
-        "operationId": "knowledge_clear_api_v1_subjects__subject_id__knowledge_clear_post",
+        "summary": "Clear knowledge artifacts for one course",
+        "operationId": "knowledge_clear_api_v1_courses__course_id__knowledge_clear_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -2932,22 +2932,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units": {
+    "/api/v1/courses/{course_id}/knowledge/graph/knowledge-units": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "List KnowledgeUnits",
-        "operationId": "graph_knowledge_units_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_post",
+        "operationId": "graph_knowledge_units_api_v1_courses__course_id__knowledge_graph_knowledge_units_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3014,22 +3014,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/detail": {
+    "/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/detail": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch KnowledgeUnit detail",
-        "operationId": "graph_knowledge_unit_detail_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_detail_post",
+        "operationId": "graph_knowledge_unit_detail_api_v1_courses__course_id__knowledge_graph_knowledge_units_detail_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3097,22 +3097,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/relations": {
+    "/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/relations": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "List KnowledgeUnit relations",
-        "operationId": "graph_knowledge_unit_relations_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_relations_post",
+        "operationId": "graph_knowledge_unit_relations_api_v1_courses__course_id__knowledge_graph_knowledge_units_relations_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3180,22 +3180,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/knowledge-units/path": {
+    "/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/path": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Find a KnowledgeUnit path",
-        "operationId": "graph_knowledge_unit_path_api_v1_subjects__subject_id__knowledge_graph_knowledge_units_path_post",
+        "operationId": "graph_knowledge_unit_path_api_v1_courses__course_id__knowledge_graph_knowledge_units_path_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3263,22 +3263,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/subgraph": {
+    "/api/v1/courses/{course_id}/knowledge/graph/subgraph": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch a focused knowledge subgraph",
-        "operationId": "graph_focus_subgraph_api_v1_subjects__subject_id__knowledge_graph_subgraph_post",
+        "operationId": "graph_focus_subgraph_api_v1_courses__course_id__knowledge_graph_subgraph_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3345,22 +3345,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/relations/explain": {
+    "/api/v1/courses/{course_id}/knowledge/graph/relations/explain": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Explain a relation path with evidence",
-        "operationId": "graph_relation_explanation_api_v1_subjects__subject_id__knowledge_graph_relations_explain_post",
+        "operationId": "graph_relation_explanation_api_v1_courses__course_id__knowledge_graph_relations_explain_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3428,22 +3428,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/graph/full": {
+    "/api/v1/courses/{course_id}/knowledge/graph/full": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch full knowledge graph",
-        "operationId": "graph_full_api_v1_subjects__subject_id__knowledge_graph_full_post",
+        "operationId": "graph_full_api_v1_courses__course_id__knowledge_graph_full_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3501,22 +3501,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/knowledge/chunks/context": {
+    "/api/v1/courses/{course_id}/knowledge/chunks/context": {
       "post": {
         "tags": [
           "knowledge",
           "knowledge"
         ],
         "summary": "Fetch source chunk context",
-        "operationId": "chunk_context_api_v1_subjects__subject_id__knowledge_chunks_context_post",
+        "operationId": "chunk_context_api_v1_courses__course_id__knowledge_chunks_context_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -3804,7 +3804,7 @@
                 "default": {
                   "page": 1,
                   "size": 20,
-                  "include_all_subjects": false
+                  "include_all_courses": false
                 }
               }
             }
@@ -4041,22 +4041,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/send": {
+    "/api/v1/courses/{course_id}/chats/send": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "Send subject chat message",
+        "summary": "Send course chat message",
         "description": "Returns native SSE.",
-        "operationId": "send_chat_api_v1_subjects__subject_id__chats_send_post",
+        "operationId": "send_chat_api_v1_courses__course_id__chats_send_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4142,21 +4142,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/list": {
+    "/api/v1/courses/{course_id}/chats/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "鑱婂ぉ璁板綍鍒楄〃",
-        "operationId": "list_chat_api_api_v1_subjects__subject_id__chats_list_post",
+        "summary": "聊天记录列表",
+        "operationId": "list_chat_api_api_v1_courses__course_id__chats_list_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4227,21 +4227,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/clear": {
+    "/api/v1/courses/{course_id}/chats/clear": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "娓呯┖鑱婂ぉ璁板綍",
-        "operationId": "clear_chat_api_api_v1_subjects__subject_id__chats_clear_post",
+        "summary": "清空聊天记录",
+        "operationId": "clear_chat_api_api_v1_courses__course_id__chats_clear_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4309,21 +4309,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/sessions/list": {
+    "/api/v1/courses/{course_id}/chats/sessions/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "浼氳瘽鍒楄〃",
-        "operationId": "list_chat_sessions_api_api_v1_subjects__subject_id__chats_sessions_list_post",
+        "summary": "会话列表",
+        "operationId": "list_chat_sessions_api_api_v1_courses__course_id__chats_sessions_list_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4335,7 +4335,7 @@
                 "default": {
                   "page": 1,
                   "size": 20,
-                  "include_all_subjects": false
+                  "include_all_courses": false
                 }
               }
             }
@@ -4395,21 +4395,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/threads/list": {
+    "/api/v1/courses/{course_id}/chats/threads/list": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "鍒掕瘝闂瓟杞鍒楄〃",
-        "operationId": "list_chat_threads_api_api_v1_subjects__subject_id__chats_threads_list_post",
+        "summary": "划词问答轮次列表",
+        "operationId": "list_chat_threads_api_api_v1_courses__course_id__chats_threads_list_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4481,21 +4481,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/sessions/create": {
+    "/api/v1/courses/{course_id}/chats/sessions/create": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "鍒涘缓浼氳瘽",
-        "operationId": "create_chat_session_api_api_v1_subjects__subject_id__chats_sessions_create_post",
+        "summary": "创建会话",
+        "operationId": "create_chat_session_api_api_v1_courses__course_id__chats_sessions_create_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4563,21 +4563,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/chats/sessions/delete": {
+    "/api/v1/courses/{course_id}/chats/sessions/delete": {
       "post": {
         "tags": [
           "chats"
         ],
-        "summary": "鍒犻櫎浼氳瘽",
-        "operationId": "delete_chat_session_api_api_v1_subjects__subject_id__chats_sessions_delete_post",
+        "summary": "删除会话",
+        "operationId": "delete_chat_session_api_api_v1_courses__course_id__chats_sessions_delete_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4645,21 +4645,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/generate": {
+    "/api/v1/courses/{course_id}/exams/generate": {
       "post": {
         "tags": [
           "exams"
         ],
         "summary": "Generate an exam from KnowledgeUnits",
-        "operationId": "generate_exam_api_v1_subjects__subject_id__exams_generate_post",
+        "operationId": "generate_exam_api_v1_courses__course_id__exams_generate_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -4737,21 +4737,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/prewarm-status": {
+    "/api/v1/courses/{course_id}/exams/prewarm-status": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Get background-prepared exam status for the current generation options",
-        "operationId": "exam_prewarm_status_api_v1_subjects__subject_id__exams_prewarm_status_get",
+        "operationId": "exam_prewarm_status_api_v1_courses__course_id__exams_prewarm_status_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -4866,21 +4866,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/history": {
+    "/api/v1/courses/{course_id}/exams/history": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "List exam history",
-        "operationId": "exam_history_api_v1_subjects__subject_id__exams_history_get",
+        "operationId": "exam_history_api_v1_courses__course_id__exams_history_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -4958,21 +4958,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/question-templates": {
+    "/api/v1/courses/{course_id}/exams/question-templates": {
       "get": {
         "tags": [
           "exams"
         ],
-        "summary": "List question templates for the subject",
-        "operationId": "question_templates_api_v1_subjects__subject_id__exams_question_templates_get",
+        "summary": "List question templates for the course",
+        "operationId": "question_templates_api_v1_courses__course_id__exams_question_templates_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5030,21 +5030,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/question-types": {
+    "/api/v1/courses/{course_id}/exams/question-types": {
       "get": {
         "tags": [
           "exams"
         ],
-        "summary": "List global and subject question types",
-        "operationId": "question_types_api_v1_subjects__subject_id__exams_question_types_get",
+        "summary": "List global and course question types",
+        "operationId": "question_types_api_v1_courses__course_id__exams_question_types_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5102,21 +5102,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/stream": {
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/stream": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "SSE stream for exam generation status",
-        "operationId": "exam_generation_stream_api_v1_subjects__subject_id__exams__exam_paper_id__stream_get",
+        "operationId": "exam_generation_stream_api_v1_courses__course_id__exams__exam_paper_id__stream_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5181,21 +5181,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}": {
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Fetch exam detail",
-        "operationId": "exam_detail_api_v1_subjects__subject_id__exams__exam_paper_id__get",
+        "operationId": "exam_detail_api_v1_courses__course_id__exams__exam_paper_id__get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5266,15 +5266,15 @@
           "exams"
         ],
         "summary": "Delete exam paper",
-        "operationId": "delete_exam_paper_api_v1_subjects__subject_id__exams__exam_paper_id__delete",
+        "operationId": "delete_exam_paper_api_v1_courses__course_id__exams__exam_paper_id__delete",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5341,21 +5341,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/study-guide": {
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/study-guide": {
       "get": {
         "tags": [
           "exams"
         ],
         "summary": "Generate study guide from a graded exam",
-        "operationId": "exam_study_guide_api_v1_subjects__subject_id__exams__exam_paper_id__study_guide_get",
+        "operationId": "exam_study_guide_api_v1_courses__course_id__exams__exam_paper_id__study_guide_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5432,21 +5432,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/exams/{exam_paper_id}/submit": {
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
           "exams"
         ],
         "summary": "Submit answers and update KnowledgeUnit mastery",
-        "operationId": "submit_exam_api_v1_subjects__subject_id__exams__exam_paper_id__submit_post",
+        "operationId": "submit_exam_api_v1_courses__course_id__exams__exam_paper_id__submit_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5533,21 +5533,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/profile/mastery": {
+    "/api/v1/courses/{course_id}/profile/mastery": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Fetch mastery overview",
-        "operationId": "mastery_overview_api_v1_subjects__subject_id__profile_mastery_get",
+        "operationId": "mastery_overview_api_v1_courses__course_id__profile_mastery_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5605,21 +5605,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/profile/reviews": {
+    "/api/v1/courses/{course_id}/profile/reviews": {
       "get": {
         "tags": [
           "profile"
         ],
         "summary": "Fetch pending review tasks",
-        "operationId": "review_tasks_api_v1_subjects__subject_id__profile_reviews_get",
+        "operationId": "review_tasks_api_v1_courses__course_id__profile_reviews_get",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5677,21 +5677,21 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/profile/reviews/{task_id}/complete": {
+    "/api/v1/courses/{course_id}/profile/reviews/{task_id}/complete": {
       "post": {
         "tags": [
           "profile"
         ],
         "summary": "Mark one review task as completed",
-        "operationId": "complete_review_api_v1_subjects__subject_id__profile_reviews__task_id__complete_post",
+        "operationId": "complete_review_api_v1_courses__course_id__profile_reviews__task_id__complete_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           },
           {
@@ -5758,22 +5758,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/export/preview": {
+    "/api/v1/courses/{course_id}/export/preview": {
       "post": {
         "tags": [
           "export-import"
         ],
         "summary": "导出预览",
-        "description": "获取学科导出内容摘要。",
-        "operationId": "export_preview_api_api_v1_subjects__subject_id__export_preview_post",
+        "description": "获取课程导出内容摘要。",
+        "operationId": "export_preview_api_api_v1_courses__course_id__export_preview_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5838,22 +5838,22 @@
         }
       }
     },
-    "/api/v1/subjects/{subject_id}/export": {
+    "/api/v1/courses/{course_id}/export": {
       "post": {
         "tags": [
           "export-import"
         ],
-        "summary": "导出学科",
-        "description": "将学科全部产物打包为 .atmx 文件下载。",
-        "operationId": "export_subject_api_api_v1_subjects__subject_id__export_post",
+        "summary": "导出课程",
+        "description": "将课程全部产物打包为 .atmx 文件下载。",
+        "operationId": "export_course_api_api_v1_courses__course_id__export_post",
         "parameters": [
           {
-            "name": "subject_id",
+            "name": "course_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Subject Id"
+              "title": "Course Id"
             }
           }
         ],
@@ -5916,19 +5916,19 @@
         }
       }
     },
-    "/api/v1/subjects/import": {
+    "/api/v1/courses/import": {
       "post": {
         "tags": [
           "export-import"
         ],
-        "summary": "导入学科（上传）",
-        "description": "从上传的 .atmx 文件导入学科。",
-        "operationId": "import_subject_api_api_v1_subjects_import_post",
+        "summary": "导入课程（上传）",
+        "description": "从上传的 .atmx 文件导入课程。",
+        "operationId": "import_uploaded_course_api_api_v1_courses_import_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_import_subject_api_api_v1_subjects_import_post"
+                "$ref": "#/components/schemas/Body_import_uploaded_course_api_api_v1_courses_import_post"
               }
             }
           },
@@ -5998,14 +5998,14 @@
         }
       }
     },
-    "/api/v1/courses": {
+    "/api/v1/demo-courses": {
       "get": {
         "tags": [
           "export-import"
         ],
-        "summary": "列出可导入课程",
+        "summary": "列出演示课程",
         "description": "列出线上演示课程目录中的课程包。",
-        "operationId": "list_courses_api_api_v1_courses_get",
+        "operationId": "list_demo_courses_api_api_v1_demo_courses_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -6040,22 +6040,22 @@
         }
       }
     },
-    "/api/v1/courses/{filename}/import": {
+    "/api/v1/demo-courses/{identifier}/import": {
       "post": {
         "tags": [
           "export-import"
         ],
         "summary": "从演示课程导入",
         "description": "从线上演示课程目录下载 `.atmx` 后导入。",
-        "operationId": "import_course_api_api_v1_courses__filename__import_post",
+        "operationId": "import_demo_course_api_api_v1_demo_courses__identifier__import_post",
         "parameters": [
           {
-            "name": "filename",
+            "name": "identifier",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Filename"
+              "title": "Identifier"
             }
           }
         ],
@@ -6063,7 +6063,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_import_course_api_api_v1_courses__filename__import_post"
+                "$ref": "#/components/schemas/Body_import_demo_course_api_api_v1_demo_courses__identifier__import_post"
               }
             }
           }
@@ -6484,6 +6484,142 @@
         },
         "type": "object",
         "title": "ApiResponse[ClearKnowledgeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseDeleteData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseDeleteData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseDeleteData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseDeletePreviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseDeletePreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseDeletePreviewData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseItem_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseItem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseItem]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseNameSuggestionResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseNameSuggestionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseNameSuggestionResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -7442,6 +7578,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_PaginatedData_CourseItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaginatedData_CourseItem_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[PaginatedData[CourseItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_PaginatedData_ExamHistoryItem__": {
         "properties": {
           "code": {
@@ -7504,40 +7674,6 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[KnowledgeUnitResponse]]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_PaginatedData_SubjectItem__": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PaginatedData_SubjectItem_"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[PaginatedData[SubjectItem]]",
         "example": {
           "code": 0,
           "data": {},
@@ -7640,142 +7776,6 @@
         },
         "type": "object",
         "title": "ApiResponse[SettingsOverviewData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_SubjectDeleteData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubjectDeleteData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[SubjectDeleteData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_SubjectDeletePreviewData_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubjectDeletePreviewData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[SubjectDeletePreviewData]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_SubjectItem_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubjectItem"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[SubjectItem]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_SubjectNameSuggestionResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SubjectNameSuggestionResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[SubjectNameSuggestionResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -8091,9 +8091,9 @@
         "title": "AuthSessionData",
         "description": "鉴权会话数据。"
       },
-      "Body_import_course_api_api_v1_courses__filename__import_post": {
+      "Body_import_demo_course_api_api_v1_demo_courses__identifier__import_post": {
         "properties": {
-          "new_subject_name": {
+          "new_course_name": {
             "anyOf": [
               {
                 "type": "string"
@@ -8102,13 +8102,13 @@
                 "type": "null"
               }
             ],
-            "title": "New Subject Name"
+            "title": "New Course Name"
           }
         },
         "type": "object",
-        "title": "Body_import_course_api_api_v1_courses__filename__import_post"
+        "title": "Body_import_demo_course_api_api_v1_demo_courses__identifier__import_post"
       },
-      "Body_import_subject_api_api_v1_subjects_import_post": {
+      "Body_import_uploaded_course_api_api_v1_courses_import_post": {
         "properties": {
           "file": {
             "type": "string",
@@ -8116,7 +8116,7 @@
             "title": "File",
             "description": "上传 .atmx 导出包。"
           },
-          "new_subject_name": {
+          "new_course_name": {
             "anyOf": [
               {
                 "type": "string"
@@ -8125,17 +8125,17 @@
                 "type": "null"
               }
             ],
-            "title": "New Subject Name",
-            "description": "自定义导入学科名。"
+            "title": "New Course Name",
+            "description": "自定义导入课程名。"
           }
         },
         "type": "object",
         "required": [
           "file"
         ],
-        "title": "Body_import_subject_api_api_v1_subjects_import_post"
+        "title": "Body_import_uploaded_course_api_api_v1_courses_import_post"
       },
-      "Body_upload_files_api_v1_subjects__subject_id__files_upload_post": {
+      "Body_upload_files_api_v1_courses__course_id__files_upload_post": {
         "properties": {
           "files": {
             "items": {
@@ -8227,7 +8227,7 @@
         "required": [
           "files"
         ],
-        "title": "Body_upload_files_api_v1_subjects__subject_id__files_upload_post"
+        "title": "Body_upload_files_api_v1_courses__course_id__files_upload_post"
       },
       "Body_upload_user_files_api_v1_files_upload_post": {
         "properties": {
@@ -8334,9 +8334,9 @@
             "type": "string",
             "title": "Planner Session Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "status": {
             "type": "string",
@@ -8357,7 +8357,7 @@
         "type": "object",
         "required": [
           "planner_session_id",
-          "subject_id"
+          "course_id"
         ],
         "title": "BuildPlannerAdjustClickResponse",
         "description": "Acknowledgement for entering planner adjustment mode."
@@ -8407,9 +8407,9 @@
             "type": "string",
             "title": "Confirmed Plan Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "status": {
             "type": "string",
@@ -8473,7 +8473,7 @@
         "required": [
           "planner_session_id",
           "confirmed_plan_id",
-          "subject_id",
+          "course_id",
           "status",
           "digest_mode",
           "user_prompt",
@@ -8582,9 +8582,9 @@
       },
       "BuildPlannerPlanResponse": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "selected_file_ids": {
             "items": {
@@ -8648,7 +8648,7 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
+          "course_id",
           "user_prompt",
           "digest_mode"
         ],
@@ -8678,9 +8678,9 @@
             "type": "string",
             "title": "Session Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "title": {
             "type": "string",
@@ -8728,7 +8728,7 @@
         "type": "object",
         "required": [
           "session_id",
-          "subject_id",
+          "course_id",
           "title",
           "status",
           "revision",
@@ -9668,7 +9668,7 @@
             "title": "Title",
             "description": "Session title."
           },
-          "subject_id": {
+          "course_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -9677,10 +9677,10 @@
                 "type": "null"
               }
             ],
-            "title": "Subject Id",
-            "description": "Subject ID this session belongs to."
+            "title": "Course Id",
+            "description": "Course ID this session belongs to."
           },
-          "subject_name": {
+          "course_name": {
             "anyOf": [
               {
                 "type": "string"
@@ -9689,8 +9689,8 @@
                 "type": "null"
               }
             ],
-            "title": "Subject Name",
-            "description": "Display name of the subject this session belongs to."
+            "title": "Course Name",
+            "description": "Display name of the course this session belongs to."
           },
           "source": {
             "anyOf": [
@@ -9794,10 +9794,10 @@
             "description": "每页数量。",
             "default": 20
           },
-          "include_all_subjects": {
+          "include_all_courses": {
             "type": "boolean",
-            "title": "Include All Subjects",
-            "description": "When true, list recent sessions across all subjects owned by the user.",
+            "title": "Include All Courses",
+            "description": "When true, list recent sessions across all courses owned by the user.",
             "default": false
           }
         },
@@ -9988,9 +9988,9 @@
       },
       "ClearKnowledgeResponse": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "deleted_counts": {
             "additionalProperties": {
@@ -10002,10 +10002,313 @@
         },
         "type": "object",
         "required": [
-          "subject_id"
+          "course_id"
         ],
         "title": "ClearKnowledgeResponse",
         "description": "Knowledge clear response."
+      },
+      "CourseCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Display name. Planner may fill it after the first conversation.",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Short course description.",
+            "default": ""
+          },
+          "user_intent": {
+            "type": "string",
+            "title": "User Intent",
+            "description": "User learning goal or intent.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "CourseCreateRequest",
+        "example": {
+          "description": "",
+          "name": "",
+          "user_intent": ""
+        }
+      },
+      "CourseDeleteData": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "Whether deletion succeeded."
+          },
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          },
+          "deleted_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Deleted Counts",
+            "description": "Deleted record counts."
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "course_id"
+        ],
+        "title": "CourseDeleteData"
+      },
+      "CourseDeleteImpactItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Impact item key."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Impact item label."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Count",
+            "description": "Impact count."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Impact description."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "count",
+          "description"
+        ],
+        "title": "CourseDeleteImpactItem"
+      },
+      "CourseDeletePreviewData": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          },
+          "course_name": {
+            "type": "string",
+            "title": "Course Name",
+            "description": "Course name."
+          },
+          "has_content": {
+            "type": "boolean",
+            "title": "Has Content",
+            "description": "Whether the course has related content."
+          },
+          "total_related_records": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Related Records",
+            "description": "Total related record count."
+          },
+          "impact_items": {
+            "items": {
+              "$ref": "#/components/schemas/CourseDeleteImpactItem"
+            },
+            "type": "array",
+            "title": "Impact Items",
+            "description": "Human-readable deletion impact items."
+          },
+          "detail_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Detail Counts",
+            "description": "Internal detail counts."
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id",
+          "course_name",
+          "has_content",
+          "total_related_records"
+        ],
+        "title": "CourseDeletePreviewData"
+      },
+      "CourseDeletePreviewRequest": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "CourseDeletePreviewRequest"
+      },
+      "CourseDeleteRequest": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Whether to confirm cascading deletion of course content.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "CourseDeleteRequest"
+      },
+      "CourseItem": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Display name."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Short course description."
+          },
+          "user_intent": {
+            "type": "string",
+            "title": "User Intent",
+            "description": "User learning goal or intent."
+          },
+          "icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Key",
+            "description": "Course icon key."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Created time."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Updated time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id",
+          "name",
+          "description",
+          "user_intent",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CourseItem"
+      },
+      "CourseListRequest": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "页码，从 1 开始。",
+            "default": 1
+          },
+          "size": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。",
+            "default": 20
+          }
+        },
+        "type": "object",
+        "title": "CourseListRequest",
+        "example": {
+          "page": 1,
+          "size": 20
+        }
+      },
+      "CourseNameSuggestionRequest": {
+        "properties": {
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt",
+            "description": "User input learning goal."
+          },
+          "filenames": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filenames",
+            "description": "Uploaded filenames."
+          }
+        },
+        "type": "object",
+        "title": "CourseNameSuggestionRequest"
+      },
+      "CourseNameSuggestionResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "AI-generated course name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CourseNameSuggestionResponse"
       },
       "CoursePackageItem": {
         "properties": {
@@ -10014,10 +10317,10 @@
             "title": "Filename",
             "description": "Stable course identifier used for remote import."
           },
-          "subject_name": {
+          "course_name": {
             "type": "string",
-            "title": "Subject Name",
-            "description": "Subject name from manifest."
+            "title": "Course Name",
+            "description": "Course name from manifest."
           },
           "file_size_bytes": {
             "type": "integer",
@@ -10047,16 +10350,224 @@
         "type": "object",
         "required": [
           "filename",
-          "subject_name"
+          "course_name"
         ],
         "title": "CoursePackageItem",
         "description": "One remote demo-course package listed from the configured catalog."
       },
+      "CourseProfileSummary": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "avg_mastery": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Mastery"
+          },
+          "weak_knowledge_unit_count": {
+            "type": "integer",
+            "title": "Weak Knowledge Unit Count",
+            "default": 0
+          },
+          "pending_review_count": {
+            "type": "integer",
+            "title": "Pending Review Count",
+            "default": 0
+          },
+          "due_review_count": {
+            "type": "integer",
+            "title": "Due Review Count",
+            "default": 0
+          },
+          "preferred_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferred Question Types"
+          },
+          "recommended_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Question Types"
+          },
+          "recommended_exam_mode": {
+            "type": "string",
+            "title": "Recommended Exam Mode",
+            "default": "web_practice"
+          },
+          "recommended_question_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Question Count"
+          },
+          "difficulty_focus": {
+            "type": "string",
+            "title": "Difficulty Focus",
+            "default": "medium"
+          },
+          "focus_knowledge_unit_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Focus Knowledge Unit Ids"
+          },
+          "question_type_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Question Type Accuracy"
+          },
+          "difficulty_accuracy": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Difficulty Accuracy"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id",
+          "generated_at"
+        ],
+        "title": "CourseProfileSummary"
+      },
+      "CourseUpdateRequest": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Short course description."
+          },
+          "user_intent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Intent",
+            "description": "User learning goal or intent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "CourseUpdateRequest"
+      },
+      "CourseVectorStatusResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "enabled / disabled",
+            "default": "enabled"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "User-facing vector capability notice."
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model",
+            "description": "Current course-bound embedding model, if any."
+          },
+          "vector_table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Table",
+            "description": "Current course-scoped vector index reference, if any."
+          }
+        },
+        "type": "object",
+        "title": "CourseVectorStatusResponse",
+        "description": "Course-level vector capability status shown to the UI."
+      },
       "DocGenBuildCancelData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "status": {
             "type": "string",
@@ -10088,7 +10599,7 @@
         },
         "type": "object",
         "required": [
-          "subject_id"
+          "course_id"
         ],
         "title": "DocGenBuildCancelData",
         "description": "Result of cancelling the active knowledge build."
@@ -10118,7 +10629,7 @@
           "ready_file_count": {
             "type": "integer",
             "title": "Ready File Count",
-            "description": "Current ready file count for this subject.",
+            "description": "Current ready file count for this course.",
             "default": 0
           },
           "requested_at": {
@@ -10128,8 +10639,8 @@
             "description": "Build request timestamp."
           },
           "vector_status": {
-            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
-            "description": "Current subject-level vector capability status."
+            "$ref": "#/components/schemas/CourseVectorStatusResponse",
+            "description": "Current course-level vector capability status."
           },
           "planner_session_id": {
             "anyOf": [
@@ -10190,7 +10701,7 @@
               }
             ],
             "title": "File Ids",
-            "description": "Optional parsed raw file IDs; omitted means auto-pick all available ready files for the subject. Ignored when `confirmed_plan_id` is provided."
+            "description": "Optional parsed raw file IDs; omitted means auto-pick all available ready files for the course. Ignored when `confirmed_plan_id` is provided."
           },
           "prompt": {
             "anyOf": [
@@ -10218,7 +10729,7 @@
               }
             ],
             "title": "Embedding Resolution",
-            "description": "Optional subject-level embedding resolution chosen after a precheck conflict."
+            "description": "Optional course-level embedding resolution chosen after a precheck conflict."
           },
           "build_type": {
             "type": "string",
@@ -10352,8 +10863,8 @@
             "description": "Compact live build diagnostics surfaced through the docs polling endpoint."
           },
           "vector_status": {
-            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
-            "description": "Current subject-level vector capability status."
+            "$ref": "#/components/schemas/CourseVectorStatusResponse",
+            "description": "Current course-level vector capability status."
           },
           "planner_session_id": {
             "anyOf": [
@@ -10578,9 +11089,9 @@
             "format": "date-time",
             "title": "Updated At"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "user_id": {
             "type": "string",
@@ -10619,7 +11130,7 @@
           "status",
           "created_at",
           "updated_at",
-          "subject_id",
+          "course_id",
           "user_id",
           "exam_mode",
           "num_questions"
@@ -10704,9 +11215,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "user_id": {
             "type": "string",
@@ -10782,7 +11293,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "user_id",
           "exam_mode",
           "status",
@@ -10849,9 +11360,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "user_id": {
             "type": "string",
@@ -10939,7 +11450,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "user_id",
           "exam_mode",
           "status",
@@ -11211,9 +11722,9 @@
             "type": "integer",
             "title": "Exam Paper Id"
           },
-          "subject_name": {
+          "course_name": {
             "type": "string",
-            "title": "Subject Name"
+            "title": "Course Name"
           },
           "generated_at": {
             "type": "string",
@@ -11263,7 +11774,7 @@
         "type": "object",
         "required": [
           "exam_paper_id",
-          "subject_name",
+          "course_name",
           "generated_at",
           "overall_summary"
         ],
@@ -11369,13 +11880,13 @@
       },
       "ExportPreviewData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
-          "subject_name": {
+          "course_name": {
             "type": "string",
-            "title": "Subject Name"
+            "title": "Course Name"
           },
           "stats": {
             "$ref": "#/components/schemas/ExportPreviewStats"
@@ -11388,8 +11899,8 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
-          "subject_name",
+          "course_id",
+          "course_name",
           "stats"
         ],
         "title": "ExportPreviewData",
@@ -11648,7 +12159,7 @@
         },
         "type": "object",
         "title": "FileLinkRequest",
-        "description": "Link existing user-library files to a subject."
+        "description": "Link existing user-library files to a course."
       },
       "FileRecord": {
         "properties": {
@@ -11862,7 +12373,7 @@
       },
       "FilesData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -11871,8 +12382,8 @@
                 "type": "null"
               }
             ],
-            "title": "Subject Id",
-            "description": "Subject ID, or null for the user library."
+            "title": "Course Id",
+            "description": "Course ID, or null for the user library."
           },
           "total": {
             "type": "integer",
@@ -11915,7 +12426,7 @@
       },
       "FilesUploadData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -11924,8 +12435,8 @@
                 "type": "null"
               }
             ],
-            "title": "Subject Id",
-            "description": "Subject ID, or null for the user library."
+            "title": "Course Id",
+            "description": "Course ID, or null for the user library."
           },
           "filenames": {
             "items": {
@@ -12045,15 +12556,15 @@
       },
       "ImportResultData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id",
-            "description": "Imported subject external id."
+            "title": "Course Id",
+            "description": "Imported course external id."
           },
-          "subject_name": {
+          "course_name": {
             "type": "string",
-            "title": "Subject Name",
-            "description": "Imported subject name."
+            "title": "Course Name",
+            "description": "Imported course name."
           },
           "imported_counts": {
             "additionalProperties": {
@@ -12072,8 +12583,8 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
-          "subject_name"
+          "course_id",
+          "course_name"
         ],
         "title": "ImportResultData",
         "description": "Import result payload."
@@ -12684,10 +13195,10 @@
       },
       "KnowledgeGraphBuildData": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id",
-            "description": "Subject ID."
+            "title": "Course Id",
+            "description": "Course ID."
           },
           "status": {
             "type": "string",
@@ -12742,7 +13253,7 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
+          "course_id",
           "requested_at"
         ],
         "title": "KnowledgeGraphBuildData",
@@ -13028,9 +13539,9 @@
       },
       "KnowledgeOverviewResponse": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "generated_at": {
             "type": "string",
@@ -13051,8 +13562,8 @@
             "$ref": "#/components/schemas/KnowledgeOverviewStats"
           },
           "vector_status": {
-            "$ref": "#/components/schemas/SubjectVectorStatusResponse",
-            "description": "Current subject-level vector capability status."
+            "$ref": "#/components/schemas/CourseVectorStatusResponse",
+            "description": "Current course-level vector capability status."
           },
           "planner_session_id": {
             "anyOf": [
@@ -13093,7 +13604,7 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
+          "course_id",
           "generated_at"
         ],
         "title": "KnowledgeOverviewResponse",
@@ -13246,9 +13757,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "source_node_id": {
             "type": "integer",
@@ -13295,7 +13806,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "source_node_id",
           "source_node_name",
           "source_node_type",
@@ -13419,9 +13930,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "knowledge_unit_type": {
             "type": "string",
@@ -13505,7 +14016,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "knowledge_unit_type",
           "canonical_name",
           "normalized_name",
@@ -13600,9 +14111,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "knowledge_unit_type": {
             "type": "string",
@@ -13644,7 +14155,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "knowledge_unit_type",
           "canonical_name",
           "status",
@@ -13728,9 +14239,9 @@
       },
       "MasteryOverviewResponse": {
         "properties": {
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "user_id": {
             "type": "string",
@@ -13747,10 +14258,10 @@
             "type": "array",
             "title": "Knowledge Unit States"
           },
-          "subject_profile": {
+          "course_profile": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SubjectProfileSummary"
+                "$ref": "#/components/schemas/CourseProfileSummary"
               },
               {
                 "type": "null"
@@ -13770,7 +14281,7 @@
         },
         "type": "object",
         "required": [
-          "subject_id",
+          "course_id",
           "user_id",
           "weak_knowledge_unit_count"
         ],
@@ -14037,6 +14548,50 @@
         ],
         "title": "PaginatedData[ChatThreadTurnItem]"
       },
+      "PaginatedData_CourseItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CourseItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "当前页数据。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "description": "当前页码。"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "每页数量。"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "总条数。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pages",
+            "description": "总页数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "size",
+          "total",
+          "pages"
+        ],
+        "title": "PaginatedData[CourseItem]"
+      },
       "PaginatedData_ExamHistoryItem_": {
         "properties": {
           "items": {
@@ -14124,50 +14679,6 @@
           "pages"
         ],
         "title": "PaginatedData[KnowledgeUnitResponse]"
-      },
-      "PaginatedData_SubjectItem_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/SubjectItem"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "当前页数据。"
-          },
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "当前页码。"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total",
-            "description": "总条数。"
-          },
-          "pages": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Pages",
-            "description": "总页数。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "page",
-          "size",
-          "total",
-          "pages"
-        ],
-        "title": "PaginatedData[SubjectItem]"
       },
       "PaperPreview": {
         "properties": {
@@ -14274,9 +14785,9 @@
             "type": "integer",
             "title": "Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "question_type": {
             "type": "string",
@@ -14347,7 +14858,7 @@
         "type": "object",
         "required": [
           "id",
-          "subject_id",
+          "course_id",
           "question_type",
           "difficulty",
           "stem",
@@ -14378,9 +14889,9 @@
             "type": "string",
             "title": "Scope"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "description": {
             "type": "string",
@@ -14437,7 +14948,7 @@
           "type_key",
           "display_name",
           "scope",
-          "subject_id",
+          "course_id",
           "description",
           "answer_format",
           "grading_method",
@@ -14495,9 +15006,9 @@
             "type": "string",
             "title": "User Id"
           },
-          "subject_id": {
+          "course_id": {
             "type": "string",
-            "title": "Subject Id"
+            "title": "Course Id"
           },
           "knowledge_unit_id": {
             "type": "integer",
@@ -14589,7 +15100,7 @@
         "required": [
           "id",
           "user_id",
-          "subject_id",
+          "course_id",
           "knowledge_unit_id",
           "priority",
           "status",
@@ -14908,517 +15419,6 @@
         "title": "SettingsOverviewData",
         "description": "后端设置总览。"
       },
-      "SubjectCreateRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Display name. Planner may fill it after the first conversation.",
-            "default": ""
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "Short subject description.",
-            "default": ""
-          },
-          "user_intent": {
-            "type": "string",
-            "title": "User Intent",
-            "description": "User learning goal or intent.",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "title": "SubjectCreateRequest",
-        "example": {
-          "description": "",
-          "name": "",
-          "user_intent": ""
-        }
-      },
-      "SubjectDeleteData": {
-        "properties": {
-          "deleted": {
-            "type": "boolean",
-            "title": "Deleted",
-            "description": "Whether deletion succeeded."
-          },
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          },
-          "deleted_counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Deleted Counts",
-            "description": "Deleted record counts."
-          }
-        },
-        "type": "object",
-        "required": [
-          "deleted",
-          "subject_id"
-        ],
-        "title": "SubjectDeleteData"
-      },
-      "SubjectDeleteImpactItem": {
-        "properties": {
-          "key": {
-            "type": "string",
-            "title": "Key",
-            "description": "Impact item key."
-          },
-          "label": {
-            "type": "string",
-            "title": "Label",
-            "description": "Impact item label."
-          },
-          "count": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Count",
-            "description": "Impact count."
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "Impact description."
-          }
-        },
-        "type": "object",
-        "required": [
-          "key",
-          "label",
-          "count",
-          "description"
-        ],
-        "title": "SubjectDeleteImpactItem"
-      },
-      "SubjectDeletePreviewData": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          },
-          "subject_name": {
-            "type": "string",
-            "title": "Subject Name",
-            "description": "Subject name."
-          },
-          "has_content": {
-            "type": "boolean",
-            "title": "Has Content",
-            "description": "Whether the subject has related content."
-          },
-          "total_related_records": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Total Related Records",
-            "description": "Total related record count."
-          },
-          "impact_items": {
-            "items": {
-              "$ref": "#/components/schemas/SubjectDeleteImpactItem"
-            },
-            "type": "array",
-            "title": "Impact Items",
-            "description": "Human-readable deletion impact items."
-          },
-          "detail_counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object",
-            "title": "Detail Counts",
-            "description": "Internal detail counts."
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id",
-          "subject_name",
-          "has_content",
-          "total_related_records"
-        ],
-        "title": "SubjectDeletePreviewData"
-      },
-      "SubjectDeletePreviewRequest": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id"
-        ],
-        "title": "SubjectDeletePreviewRequest"
-      },
-      "SubjectDeleteRequest": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          },
-          "force": {
-            "type": "boolean",
-            "title": "Force",
-            "description": "Whether to confirm cascading deletion of subject content.",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id"
-        ],
-        "title": "SubjectDeleteRequest"
-      },
-      "SubjectItem": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Display name."
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "Short subject description."
-          },
-          "user_intent": {
-            "type": "string",
-            "title": "User Intent",
-            "description": "User learning goal or intent."
-          },
-          "icon_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon Key",
-            "description": "Subject icon key."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Created time."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Updated time."
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id",
-          "name",
-          "description",
-          "user_intent",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SubjectItem"
-      },
-      "SubjectListRequest": {
-        "properties": {
-          "page": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Page",
-            "description": "页码，从 1 开始。",
-            "default": 1
-          },
-          "size": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Size",
-            "description": "每页数量。",
-            "default": 20
-          }
-        },
-        "type": "object",
-        "title": "SubjectListRequest",
-        "example": {
-          "page": 1,
-          "size": 20
-        }
-      },
-      "SubjectNameSuggestionRequest": {
-        "properties": {
-          "prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt",
-            "description": "User input learning goal."
-          },
-          "filenames": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filenames",
-            "description": "Uploaded filenames."
-          }
-        },
-        "type": "object",
-        "title": "SubjectNameSuggestionRequest"
-      },
-      "SubjectNameSuggestionResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "AI-generated subject name."
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "SubjectNameSuggestionResponse"
-      },
-      "SubjectProfileSummary": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Generated At"
-          },
-          "avg_mastery": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg Mastery"
-          },
-          "weak_knowledge_unit_count": {
-            "type": "integer",
-            "title": "Weak Knowledge Unit Count",
-            "default": 0
-          },
-          "pending_review_count": {
-            "type": "integer",
-            "title": "Pending Review Count",
-            "default": 0
-          },
-          "due_review_count": {
-            "type": "integer",
-            "title": "Due Review Count",
-            "default": 0
-          },
-          "preferred_question_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Preferred Question Types"
-          },
-          "recommended_question_types": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recommended Question Types"
-          },
-          "recommended_exam_mode": {
-            "type": "string",
-            "title": "Recommended Exam Mode",
-            "default": "web_practice"
-          },
-          "recommended_question_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recommended Question Count"
-          },
-          "difficulty_focus": {
-            "type": "string",
-            "title": "Difficulty Focus",
-            "default": "medium"
-          },
-          "focus_knowledge_unit_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Focus Knowledge Unit Ids"
-          },
-          "question_type_accuracy": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Question Type Accuracy"
-          },
-          "difficulty_accuracy": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Difficulty Accuracy"
-          },
-          "notes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Notes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id",
-          "generated_at"
-        ],
-        "title": "SubjectProfileSummary"
-      },
-      "SubjectUpdateRequest": {
-        "properties": {
-          "subject_id": {
-            "type": "string",
-            "title": "Subject Id",
-            "description": "Subject id."
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name",
-            "description": "Display name."
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "Short subject description."
-          },
-          "user_intent": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Intent",
-            "description": "User learning goal or intent."
-          }
-        },
-        "type": "object",
-        "required": [
-          "subject_id"
-        ],
-        "title": "SubjectUpdateRequest"
-      },
-      "SubjectVectorStatusResponse": {
-        "properties": {
-          "mode": {
-            "type": "string",
-            "title": "Mode",
-            "description": "enabled / disabled",
-            "default": "enabled"
-          },
-          "notice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notice",
-            "description": "User-facing vector capability notice."
-          },
-          "embedding_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Embedding Model",
-            "description": "Current subject-bound embedding model, if any."
-          },
-          "vector_table": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vector Table",
-            "description": "Current subject-scoped vector index reference, if any."
-          }
-        },
-        "type": "object",
-        "title": "SubjectVectorStatusResponse",
-        "description": "Subject-level vector capability status shown to the UI."
-      },
       "TaskStatusValue": {
         "type": "string",
         "enum": [
@@ -15475,24 +15475,24 @@
             "format": "date-time",
             "title": "Generated At"
           },
-          "active_subject_count": {
+          "active_course_count": {
             "type": "integer",
-            "title": "Active Subject Count",
+            "title": "Active Course Count",
             "default": 0
           },
-          "active_subject_ids": {
+          "active_course_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Active Subject Ids"
+            "title": "Active Course Ids"
           },
-          "recent_subject_ids": {
+          "recent_course_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Recent Subject Ids"
+            "title": "Recent Course Ids"
           },
           "preferred_question_types": {
             "items": {

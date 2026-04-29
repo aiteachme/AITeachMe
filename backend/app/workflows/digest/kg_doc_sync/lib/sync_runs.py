@@ -21,14 +21,14 @@ def _json_dumps(value: object) -> str:
 def create_sync_run(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     build_session_id: str | None,
     doc_version_no: int,
     graph_revision_no: int,
 ) -> KnowledgeGraphSyncRun:
     now = utcnow()
     sync_run = KnowledgeGraphSyncRun(
-        subject_id=subject_id,
+        course_id=course_id,
         build_session_id=(build_session_id or None),
         doc_version_no=doc_version_no,
         graph_revision_no=graph_revision_no,

@@ -1,4 +1,4 @@
-﻿"""Chapter task planning and fallback drafting."""
+"""Chapter task planning and fallback drafting."""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ def compose_seed_plan_and_backbone_agenda(
         warnings.extend(locked.plan_mismatch_warnings)
 
     plan_seed = ChapterGenerationPlanSeed(
-        subject_name=docgen_context.subject_name,
+        course_name=docgen_context.course_name,
         digest_mode=docgen_context.digest_mode,
         source_policy=docgen_context.source_strategy,
         writing_rules=list(global_rules),
@@ -298,7 +298,7 @@ def assemble_chapter_generation_plan(
         warnings.extend(locked.plan_mismatch_warnings)
         warnings.extend(brief.plan_mismatch_warnings)
     return ChapterGenerationPlan(
-        subject_name=docgen_context.subject_name,
+        course_name=docgen_context.course_name,
         digest_mode=docgen_context.digest_mode,
         source_policy=docgen_context.source_strategy,
         writing_rules=list(global_rules),

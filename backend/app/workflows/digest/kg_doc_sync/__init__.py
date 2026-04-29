@@ -1,11 +1,11 @@
-﻿"""Knowledge-doc sync workflow entrypoints with lazy exports."""
+"""Knowledge-doc sync workflow entrypoints with lazy exports."""
 
 from __future__ import annotations
 
 from importlib import import_module
 
 __all__ = [
-    "clear_subject_graph_entities",
+    "clear_course_graph_entities",
     "explain_relation_path",
     "extract_doc_chapter_metadatas",
     "find_knowledge_path",
@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "clear_subject_graph_entities": "app.workflows.digest.kg_doc_sync.lib.cleanup",
+    "clear_course_graph_entities": "app.workflows.digest.kg_doc_sync.lib.cleanup",
     "explain_relation_path": "app.workflows.digest.kg_doc_sync.lib.query",
     "extract_doc_chapter_metadatas": "app.workflows.digest.kg_doc_sync.inputs",
     "find_knowledge_path": "app.workflows.digest.kg_doc_sync.lib.query",

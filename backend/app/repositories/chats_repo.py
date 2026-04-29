@@ -9,15 +9,15 @@ from typing import Any
 import sqlalchemy as sa
 from sqlmodel import Session, func, select
 
-from app.models import ChatMessage, ChatSession, Subject
+from app.models import ChatMessage, ChatSession, Course
 from app.utils.time import utcnow
-from app.utils.subject import GLOBAL_SUBJECT
+from app.utils.course import GLOBAL_COURSE
 
 
 def create_chat_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     title: str,
     source: str | None = None,
     session_id: str | None = None,
@@ -29,7 +29,7 @@ def create_chat_session(
     now = utcnow()
     item = ChatSession(
         id=session_id or str(uuid.uuid4()),
-        subject_id=subject_id,
+        course_id=course_id,
         user_id=user_id,
         title=title,
         source=source,
@@ -47,7 +47,7 @@ def create_chat_session(
 def create_chat_message(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     role: str,
     content: str,
@@ -63,7 +63,7 @@ def create_chat_message(
     """Create one chat message when a workflow writes turns one side at a time."""
 
     item = ChatMessage(
-        subject_id=subject_id,
+        course_id=course_id,
         user_id=user_id,
         session_id=session_id,
         turn_id=turn_id or str(uuid.uuid4()),
@@ -85,21 +85,21 @@ def create_chat_message(
 def get_chat_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     user_id: str = "local",
 ) -> ChatSession | None:
     stmt = select(ChatSession).where(
         ChatSession.id == session_id,
-        ChatSession.subject_id == subject_id,
+        ChatSession.course_id == course_id,
         ChatSession.user_id == user_id,
     )
     return session.exec(stmt).first()
 
 
-def list_sessions_by_subject(
+def list_sessions_by_course(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     limit: int,
     offset: int,
@@ -108,11 +108,11 @@ def list_sessions_by_subject(
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.subject_id == subject_id, ChatSession.user_id == user_id)
+        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.subject_id == subject_id, ChatSession.user_id == user_id)
+        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -127,15 +127,15 @@ def list_sessions_by_user(
     offset: int,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
-    subject_exists = (
-        select(Subject.id)
+    course_exists = (
+        select(Course.id)
         .where(
-            Subject.user_id == user_id,
-            Subject.id == ChatSession.subject_id,
+            Course.user_id == user_id,
+            Course.id == ChatSession.course_id,
         )
         .exists()
     )
-    visible_session = sa.or_(ChatSession.subject_id == GLOBAL_SUBJECT, subject_exists)
+    visible_session = sa.or_(ChatSession.course_id == GLOBAL_COURSE, course_exists)
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
@@ -154,7 +154,7 @@ def list_sessions_by_user(
 def list_session_selection_heads_by_session_ids(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_ids: list[str],
     source: str | None = None,
     user_id: str = "local",
@@ -165,7 +165,7 @@ def list_session_selection_heads_by_session_ids(
         return {}
 
     conditions = [
-        ChatMessage.subject_id == subject_id,
+        ChatMessage.course_id == course_id,
         ChatMessage.user_id == user_id,
         ChatMessage.session_id.in_(session_ids),
         ChatMessage.role == "assistant",
@@ -195,7 +195,7 @@ def list_session_selection_heads_by_session_ids_for_user(
     source: str | None = None,
     user_id: str = "local",
 ) -> dict[str, ChatMessage]:
-    """Return the latest anchored turn head for each requested session across subjects."""
+    """Return the latest anchored turn head for each requested session across courses."""
 
     if not session_ids:
         return {}
@@ -223,9 +223,9 @@ def list_session_selection_heads_by_session_ids_for_user(
     return result
 
 
-def list_thread_turn_heads_by_subject(
+def list_thread_turn_heads_by_course(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     limit: int,
     offset: int,
@@ -234,7 +234,7 @@ def list_thread_turn_heads_by_subject(
     user_id: str = "local",
 ) -> tuple[list[ChatMessage], int]:
     conditions = [
-        ChatMessage.subject_id == subject_id,
+        ChatMessage.course_id == course_id,
         ChatMessage.user_id == user_id,
         ChatMessage.role == "assistant",
     ]
@@ -263,7 +263,7 @@ def list_thread_turn_heads_by_subject(
 def touch_chat_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     user_id: str = "local",
     title: str | None = None,
@@ -271,7 +271,7 @@ def touch_chat_session(
 ) -> ChatSession | None:
     item = get_chat_session(
         session,
-        subject_id=subject_id,
+        course_id=course_id,
         session_id=session_id,
         user_id=user_id,
     )
@@ -292,7 +292,7 @@ def touch_chat_session(
 def count_messages_by_session_ids(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_ids: list[str],
     user_id: str = "local",
 ) -> dict[str, int]:
@@ -302,7 +302,7 @@ def count_messages_by_session_ids(
     stmt = (
         select(ChatMessage.session_id, func.count(ChatMessage.id))
         .where(
-            ChatMessage.subject_id == subject_id,
+            ChatMessage.course_id == course_id,
             ChatMessage.user_id == user_id,
             ChatMessage.session_id.in_(session_ids),
         )
@@ -336,14 +336,14 @@ def count_messages_by_session_ids_for_user(
 def delete_chat_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     user_id: str = "local",
 ) -> int:
     message_items = list(
         session.exec(
             select(ChatMessage).where(
-                ChatMessage.subject_id == subject_id,
+                ChatMessage.course_id == course_id,
                 ChatMessage.user_id == user_id,
                 ChatMessage.session_id == session_id,
             )
@@ -355,7 +355,7 @@ def delete_chat_session(
 
     session_item = get_chat_session(
         session,
-        subject_id=subject_id,
+        course_id=course_id,
         session_id=session_id,
         user_id=user_id,
     )
@@ -368,7 +368,7 @@ def delete_chat_session(
 def create_message_pair(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     user_content: str,
     assistant_content: str,
@@ -382,7 +382,7 @@ def create_message_pair(
 ) -> tuple[ChatMessage, ChatMessage]:
     resolved_turn_id = turn_id or str(uuid.uuid4())
     user_message = ChatMessage(
-        subject_id=subject_id,
+        course_id=course_id,
         user_id=user_id,
         session_id=session_id,
         turn_id=resolved_turn_id,
@@ -396,7 +396,7 @@ def create_message_pair(
         contexts_json=None,
     )
     assistant_message = ChatMessage(
-        subject_id=subject_id,
+        course_id=course_id,
         user_id=user_id,
         session_id=session_id,
         turn_id=resolved_turn_id,
@@ -420,7 +420,7 @@ def create_message_pair(
 def list_messages_by_turn_ids(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     turn_ids: list[str],
     user_id: str = "local",
 ) -> list[ChatMessage]:
@@ -430,7 +430,7 @@ def list_messages_by_turn_ids(
     stmt = (
         select(ChatMessage)
         .where(
-            ChatMessage.subject_id == subject_id,
+            ChatMessage.course_id == course_id,
             ChatMessage.user_id == user_id,
             ChatMessage.turn_id.in_(turn_ids),
         )
@@ -441,14 +441,14 @@ def list_messages_by_turn_ids(
 
 def get_recent_turns(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     n_turns: int,
     session_id: str | None = None,
     user_id: str = "local",
 ) -> list[ChatMessage]:
     turn_stmt = select(ChatMessage.turn_id).where(
-        ChatMessage.subject_id == subject_id,
+        ChatMessage.course_id == course_id,
         ChatMessage.user_id == user_id,
         ChatMessage.role == "user",
     )
@@ -459,7 +459,7 @@ def get_recent_turns(
     stmt = (
         select(ChatMessage)
         .where(
-            ChatMessage.subject_id == subject_id,
+            ChatMessage.course_id == course_id,
             ChatMessage.user_id == user_id,
             ChatMessage.turn_id.in_(select(turn_subquery.c.turn_id)),
         )
@@ -470,9 +470,9 @@ def get_recent_turns(
     return list(session.exec(stmt).all())
 
 
-def list_messages_by_subject(
+def list_messages_by_course(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     limit: int,
     offset: int,
@@ -480,7 +480,7 @@ def list_messages_by_subject(
     user_id: str = "local",
 ) -> tuple[list[ChatMessage], int]:
     conditions = [
-        ChatMessage.subject_id == subject_id,
+        ChatMessage.course_id == course_id,
         ChatMessage.user_id == user_id,
     ]
     if session_id:
@@ -499,15 +499,15 @@ def list_messages_by_subject(
     return list(session.exec(stmt).all()), total
 
 
-def clear_messages_by_subject(
+def clear_messages_by_course(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     session_id: str | None = None,
     user_id: str = "local",
 ) -> int:
     conditions = [
-        ChatMessage.subject_id == subject_id,
+        ChatMessage.course_id == course_id,
         ChatMessage.user_id == user_id,
     ]
     if session_id:
@@ -522,7 +522,7 @@ def clear_messages_by_subject(
         sessions = list(
             session.exec(
                 select(ChatSession).where(
-                    ChatSession.subject_id == subject_id,
+                    ChatSession.course_id == course_id,
                     ChatSession.user_id == user_id,
                 )
             ).all()

@@ -22,7 +22,7 @@ interface ChatHistoryItem {
 interface ChatTurnItem {
   turn_id: string;
   session_id: string;
-  subject_id?: string | null;
+  course_id?: string | null;
   source?: string | null;
   anchor_id?: string | null;
   selected_text?: string | null;
@@ -32,8 +32,8 @@ interface ChatTurnItem {
 interface ChatSessionItem {
   id: string;
   title: string;
-  subject_id?: string | null;
-  subject_name?: string | null;
+  course_id?: string | null;
+  course_name?: string | null;
   source?: string | null;
   anchor_id?: string | null;
   selected_text?: string | null;
@@ -129,7 +129,7 @@ const mockTurns: ChatTurnItem[] = [
   {
     turn_id: "turn-1",
     session_id: "session-1",
-    subject_id: "math",
+    course_id: "math",
     source: "quick_chat",
     anchor_id: "2-矩阵乘法-空间的变换",
     selected_text: "矩阵乘法可能是机器学习中最频繁进行的操作",
@@ -141,8 +141,8 @@ const mockSessions: ChatSessionItem[] = [
   {
     id: "session-1",
     title: "矩阵乘法为什么常见？",
-    subject_id: "math",
-    subject_name: "数学",
+    course_id: "math",
+    course_name: "数学",
     source: "quick_chat",
     anchor_id: "2-矩阵乘法-空间的变换",
     selected_text: "矩阵乘法可能是机器学习中最频繁进行的操作",
@@ -205,22 +205,22 @@ function buildSessionTitle(question: string): string {
   return text.length > 24 ? `${text.slice(0, 24)}...` : text;
 }
 
-function getMockSubjectName(subjectId: string | null): string {
-  if (!subjectId || subjectId === "global") {
+function getMockCourseName(courseId: string | null): string {
+  if (!courseId || courseId === "global") {
     return "通用";
   }
   const names: Record<string, string> = {
     math: "数学",
     physics: "物理",
   };
-  return names[subjectId] ?? subjectId;
+  return names[courseId] ?? courseId;
 }
 
 function resolveSession(
   sessionId: string | null,
   question: string,
   source: string | null,
-  subjectId: string | null,
+  courseId: string | null,
 ): ChatSessionItem {
   if (sessionId) {
     const existing = mockSessions.find((item) => item.id === sessionId);
@@ -232,8 +232,8 @@ function resolveSession(
   const created: ChatSessionItem = {
     id: `session-${sessionSeq++}`,
     title: buildSessionTitle(question),
-    subject_id: subjectId ?? "global",
-    subject_name: getMockSubjectName(subjectId),
+    course_id: courseId ?? "global",
+    course_name: getMockCourseName(courseId),
     source,
     created_at: now,
     updated_at: now,
@@ -263,7 +263,7 @@ function pushHistory(
   source: string | null,
   anchorId: string | null,
   selectedText: string | null,
-  subjectId: string | null,
+  courseId: string | null,
 ) {
   const now = new Date();
   turnSessionMap.set(turnId, sessionId);
@@ -272,13 +272,13 @@ function pushHistory(
     sessionItem.source = source;
     sessionItem.anchor_id = anchorId;
     sessionItem.selected_text = selectedText;
-    sessionItem.subject_id = subjectId ?? sessionItem.subject_id ?? "global";
-    sessionItem.subject_name = getMockSubjectName(sessionItem.subject_id ?? null);
+    sessionItem.course_id = courseId ?? sessionItem.course_id ?? "global";
+    sessionItem.course_name = getMockCourseName(sessionItem.course_id ?? null);
   }
   mockTurns.unshift({
     turn_id: turnId,
     session_id: sessionId,
-    subject_id: subjectId ?? "global",
+    course_id: courseId ?? "global",
     source,
     anchor_id: anchorId,
     selected_text: selectedText,
@@ -306,10 +306,10 @@ function pushHistory(
   touchSession(sessionId, question);
 }
 
-function listSessionItems(subjectId: string | null = null, includeAllSubjects = false) {
-  const normalizedSubjectId = subjectId ?? "global";
+function listSessionItems(courseId: string | null = null, includeAllCourses = false) {
+  const normalizedCourseId = courseId ?? "global";
   return [...mockSessions]
-    .filter((item) => includeAllSubjects || (item.subject_id ?? "global") === normalizedSubjectId)
+    .filter((item) => includeAllCourses || (item.course_id ?? "global") === normalizedCourseId)
     .map((item) => {
       const messageCount = mockHistory.filter((entry) => turnSessionMap.get(entry.turn_id) === item.id).length;
       const selectionTurn = mockTurns.find((turn) =>
@@ -322,15 +322,15 @@ function listSessionItems(subjectId: string | null = null, includeAllSubjects = 
         source: item.source ?? selectionTurn?.source ?? null,
         anchor_id: item.anchor_id ?? selectionTurn?.anchor_id ?? null,
         selected_text: item.selected_text ?? selectionTurn?.selected_text ?? null,
-        subject_id: item.subject_id ?? "global",
-        subject_name: item.subject_name ?? getMockSubjectName(item.subject_id ?? null),
+        course_id: item.course_id ?? "global",
+        course_name: item.course_name ?? getMockCourseName(item.course_id ?? null),
         message_count: messageCount,
       };
     })
     .sort((a, b) => b.last_message_at.localeCompare(a.last_message_at));
 }
 
-async function streamChatResponse(request: Request, subjectId: string | null = "global") {
+async function streamChatResponse(request: Request, courseId: string | null = "global") {
   let body: ChatSendBody = {};
   try {
     body = (await request.json()) as ChatSendBody;
@@ -354,13 +354,13 @@ async function streamChatResponse(request: Request, subjectId: string | null = "
   const askedSessionId = typeof body.session_id === "string" && body.session_id.trim()
     ? body.session_id.trim()
     : null;
-  const sessionItem = resolveSession(askedSessionId, question, source, subjectId);
+  const sessionItem = resolveSession(askedSessionId, question, source, courseId);
   const turnId = `turn-${turnSeq++}`;
   const answer = buildMockAnswer(question, selectedContext);
   const chunks = chunkText(answer);
   const contexts = mockContexts;
 
-  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedText || null, subjectId);
+  pushHistory(sessionItem.id, turnId, question, answer, contexts, source, anchorId, selectedText || null, courseId);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -468,28 +468,28 @@ async function clearHistoryPayload(request: Request) {
 }
 
 export const chatHandlers = [
-  http.post("/api/v1/subjects/:subject/chat/send", async ({ request, params }) =>
-    streamChatResponse(request, getParamText(params.subject))),
-  http.post("/api/v1/subjects/:subject/chats/send", async ({ request, params }) =>
-    streamChatResponse(request, getParamText(params.subject))),
+  http.post("/api/v1/courses/:course/chat/send", async ({ request, params }) =>
+    streamChatResponse(request, getParamText(params.course))),
+  http.post("/api/v1/courses/:course/chats/send", async ({ request, params }) =>
+    streamChatResponse(request, getParamText(params.course))),
 
-  http.post("/api/v1/subjects/:subject/chat/list", async ({ request }) => {
+  http.post("/api/v1/courses/:course/chat/list", async ({ request }) => {
     const body = (await request.json()) as { session_id?: unknown };
     const sessionId = typeof body.session_id === "string" ? body.session_id : null;
     return HttpResponse.json(buildHistoryPayload(sessionId));
   }),
-  http.post("/api/v1/subjects/:subject/chats/list", async ({ request }) => {
+  http.post("/api/v1/courses/:course/chats/list", async ({ request }) => {
     const body = (await request.json()) as { session_id?: unknown };
     const sessionId = typeof body.session_id === "string" ? body.session_id : null;
     return HttpResponse.json(buildHistoryPayload(sessionId));
   }),
 
-  http.post("/api/v1/subjects/:subject/chat/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
-  http.post("/api/v1/subjects/:subject/chats/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
+  http.post("/api/v1/courses/:course/chat/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
+  http.post("/api/v1/courses/:course/chats/clear", async ({ request }) => HttpResponse.json(await clearHistoryPayload(request))),
 
   http.post("/api/v1/chats/sessions/list", async ({ request }) => {
-    const body = (await request.json().catch(() => ({}))) as { include_all_subjects?: unknown };
-    const items = listSessionItems(null, body.include_all_subjects === true);
+    const body = (await request.json().catch(() => ({}))) as { include_all_courses?: unknown };
+    const items = listSessionItems(null, body.include_all_courses === true);
     return HttpResponse.json({
       code: 0,
       message: "ok",
@@ -503,9 +503,9 @@ export const chatHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/chats/sessions/list", ({ params }) => {
-    const subjectId = getParamText(params.subject) || "global";
-    const items = listSessionItems(subjectId, false);
+  http.post("/api/v1/courses/:course/chats/sessions/list", ({ params }) => {
+    const courseId = getParamText(params.course) || "global";
+    const items = listSessionItems(courseId, false);
     return HttpResponse.json({
       code: 0,
       message: "ok",
@@ -519,17 +519,17 @@ export const chatHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/chats/sessions/create", async ({ request, params }) => {
+  http.post("/api/v1/courses/:course/chats/sessions/create", async ({ request, params }) => {
     const body = (await request.json()) as { title?: unknown; source?: unknown };
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "新会话";
     const source = typeof body.source === "string" ? body.source : null;
     const now = new Date().toISOString();
-    const subjectId = getParamText(params.subject) || "global";
+    const courseId = getParamText(params.course) || "global";
     const created: ChatSessionItem = {
       id: `session-${sessionSeq++}`,
       title,
-      subject_id: subjectId,
-      subject_name: getMockSubjectName(subjectId),
+      course_id: courseId,
+      course_name: getMockCourseName(courseId),
       source,
       created_at: now,
       updated_at: now,
@@ -584,7 +584,7 @@ export const chatHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/chats/sessions/delete", async ({ request }) => {
+  http.post("/api/v1/courses/:course/chats/sessions/delete", async ({ request }) => {
     const body = (await request.json()) as { session_id?: unknown };
     const sessionId = typeof body.session_id === "string" ? body.session_id : "";
     if (!sessionId) {
@@ -620,7 +620,7 @@ export const chatHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/chats/threads/list", async ({ request }) => {
+  http.post("/api/v1/courses/:course/chats/threads/list", async ({ request }) => {
     const body = (await request.json()) as { source?: unknown };
     const source = typeof body.source === "string" ? body.source : null;
 
@@ -648,7 +648,7 @@ export const chatHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/chunks/context", async ({ request }) => {
+  http.post("/api/v1/courses/:course/knowledge/chunks/context", async ({ request }) => {
     const body = (await request.json()) as { chunk_id?: number };
     const chunkId = body.chunk_id ?? 0;
     const context = mockChunkContext[chunkId];

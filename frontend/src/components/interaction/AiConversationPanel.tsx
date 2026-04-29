@@ -34,7 +34,7 @@ import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
-  getAiConversationBackendSubjectId,
+  getAiConversationBackendCourseId,
   parseExamQuestionAnchorId,
 } from "./types";
 
@@ -258,9 +258,9 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     cacheQuickChatMessages,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
-  const subjectId = getAiConversationBackendSubjectId(scope);
-  const docsSubjectId = scope?.type === "subject" ? scope.subjectId : null;
-  const isKnowledgeDocsPage = Boolean(docsSubjectId && /^\/subject\/[^/]+\/knowledge-docs$/.test(pathname));
+  const courseId = getAiConversationBackendCourseId(scope);
+  const docsCourseId = scope?.type === "course" ? scope.courseId : null;
+  const isKnowledgeDocsPage = Boolean(docsCourseId && /^\/course\/[^/]+\/knowledge-docs$/.test(pathname));
 
   const [draft, setDraft] = useState("");
   const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
@@ -304,7 +304,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       turnId?: string;
     },
   ) => {
-    if (!docsSubjectId) {
+    if (!docsCourseId) {
       return;
     }
     const quickChatContext = getQuickChatInputContext(payload.input);
@@ -314,7 +314,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     window.dispatchEvent(new CustomEvent(QUICK_CHAT_UPDATED_EVENT, {
       detail: {
         phase,
-        subjectId: docsSubjectId,
+        courseId: docsCourseId,
         source: quickChatContext.source,
         anchorId: quickChatContext.anchorId,
         selectedText: quickChatContext.selectedText,
@@ -329,7 +329,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         turnId: payload.turnId,
       },
     }));
-  }, [docsSubjectId]);
+  }, [docsCourseId]);
 
   const applyResolvedSessionTitle = useCallback((sessionId: string | null, title: string | null) => {
     const nextTitle = title?.trim();
@@ -390,9 +390,9 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     abortStream,
     clearHistory,
     replaceMessages,
-  } = useChatSession(subjectId ?? "", {
+  } = useChatSession(courseId ?? "", {
     sessionId: selectedSessionId,
-    enabled: active && Boolean(subjectId),
+    enabled: active && Boolean(courseId),
     loadWithoutSession: false,
     preserveMessagesWithoutSession: true,
     onSessionResolved: (nextSessionId) => {
@@ -563,7 +563,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   }, []);
 
   const jumpToSelectionTarget = useCallback((target: ChatSessionSelectionTarget | null) => {
-    if (!docsSubjectId || !target) {
+    if (!docsCourseId || !target) {
       return;
     }
     if (target.kind === "exam_question") {
@@ -571,14 +571,14 @@ export const AiConversationPanel = memo(function AiConversationPanel({
         return;
       }
       const detail: ExamQuestionJumpDetail = {
-        subjectId: docsSubjectId,
+        courseId: docsCourseId,
         paperId: target.paperId,
         questionOrder: target.questionOrder,
         anchorId: target.anchorId,
         selectedText: target.selectedText,
         sessionId: target.sessionId,
       };
-      const targetPath = `/subject/${docsSubjectId}/exams/${target.paperId}`;
+      const targetPath = `/course/${docsCourseId}/exams/${target.paperId}`;
       if (pathname !== targetPath) {
         navigate(targetPath, {
           state: {
@@ -592,13 +592,13 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       return;
     }
     const detail = {
-      subjectId: docsSubjectId,
+      courseId: docsCourseId,
       sessionId: target.sessionId,
       anchorId: target.anchorId,
       selectedText: target.selectedText,
     };
     if (!isKnowledgeDocsPage) {
-      navigate(`/subject/${docsSubjectId}/knowledge-docs`, {
+      navigate(`/course/${docsCourseId}/knowledge-docs`, {
         state: {
           selectionJump: detail,
           selectionJumpAt: Date.now(),
@@ -607,10 +607,10 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       return;
     }
     window.dispatchEvent(new CustomEvent(SELECTION_JUMP_EVENT, { detail }));
-  }, [docsSubjectId, isKnowledgeDocsPage, navigate, pathname]);
+  }, [docsCourseId, isKnowledgeDocsPage, navigate, pathname]);
 
   const reloadSessions = useCallback(async (preferredSessionId?: string | null) => {
-    if (!subjectId) {
+    if (!courseId) {
       setSessions([]);
       setSelectedSessionId(null);
       return;
@@ -620,7 +620,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     try {
       const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
         method: "POST",
-        url: `/api/v1/subjects/${subjectId}/chats/sessions/list`,
+        url: `/api/v1/courses/${courseId}/chats/sessions/list`,
         data: {
           page: 1,
           size: 100,
@@ -652,7 +652,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     } catch (error: unknown) {
       setSessionsError(getApiErrorMessage(error, "加载会话历史失败"));
     }
-  }, [isStreaming, request?.sessionId, subjectId]);
+  }, [isStreaming, request?.sessionId, courseId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -747,7 +747,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
     pendingSelectionContextRef.current = null;
     pendingSelectionSubmittedRef.current = false;
     preferEmptySessionRef.current = false;
-  }, [subjectId]);
+  }, [courseId]);
 
   useEffect(() => {
     if (!request) {
@@ -906,11 +906,11 @@ export const AiConversationPanel = memo(function AiConversationPanel({
   }, [isStreaming, pendingSelectionContext]);
 
   useEffect(() => {
-    if (!active || !subjectId || isStreaming) {
+    if (!active || !courseId || isStreaming) {
       return;
     }
     void reloadSessions();
-  }, [active, isStreaming, reloadSessions, sessionListVersion, subjectId]);
+  }, [active, isStreaming, reloadSessions, sessionListVersion, courseId]);
 
   const handleStartNewSession = useCallback(() => {
     preferEmptySessionRef.current = true;
@@ -927,7 +927,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
 
   async function handleSend() {
     const question = draft.trim();
-    if (!question || !subjectId || isStreaming || isPlannerConversation) {
+    if (!question || !courseId || isStreaming || isPlannerConversation) {
       return;
     }
 
@@ -1168,7 +1168,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
           onSend={() => void handleSend()}
           onAbort={abortStream}
           isStreaming={isStreaming}
-          disabled={!subjectId || isPlannerConversation}
+          disabled={!courseId || isPlannerConversation}
           autoFocusKey={composerFocusKey}
           modelValue={chatModel}
           onModelChange={setChatModel}
@@ -1181,7 +1181,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
       <ChatCitationModal
         open={selectedChunkId !== null}
         onClose={() => setSelectedChunkId(null)}
-        subject={subjectId ?? ""}
+        course={courseId ?? ""}
         chunkId={selectedChunkId}
       />
     </div>

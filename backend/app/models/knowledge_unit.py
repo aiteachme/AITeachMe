@@ -17,16 +17,16 @@ class KnowledgeUnit(SQLModel, table=True):
     __tablename__ = "knowledge_unit"
     __table_args__ = (
         UniqueConstraint(
-            "subject_id",
+            "course_id",
             "knowledge_unit_type",
             "normalized_name",
-            name="uq_unit_subject_type_name",
+            name="uq_unit_course_type_name",
         ),
-        Index("ix_unit_subject_status", "subject_id", "status"),
+        Index("ix_unit_course_status", "course_id", "status"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject_id: str = Field(foreign_key="subject.id", index=True)
+    course_id: str = Field(foreign_key="course.id", index=True)
     knowledge_unit_type: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)

@@ -1,4 +1,4 @@
-﻿"""Workflow-local writer runtime for digest DocGen."""
+"""Workflow-local writer runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -445,7 +445,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
     ) -> str:
         cleaned = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
         cleaned = re.sub(r"```markdown\s*.*?```", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
-        cleaned = re.sub(rf"(?im)^\s*学科：\s*subj_[\w-]+\s*$", "", cleaned)
+        cleaned = re.sub(rf"(?im)^\s*课程：\s*(?:course|subj)_[\w-]+\s*$", "", cleaned)
         cleaned = cleaned.replace("```markdown", "")
 
         forbidden_section_patterns = [

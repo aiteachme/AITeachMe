@@ -48,7 +48,7 @@ type MarkdownAstNode = {
 interface MarkdownViewerProps {
   content: string;
   assetBaseUrl?: string;
-  assetSubject?: string;
+  assetCourse?: string;
   variant?: MarkdownViewerVariant;
   headingAnchors?: boolean;
   headingNumbering?: boolean;
@@ -1397,7 +1397,7 @@ function encodePathSegments(path: string): string {
     .join("/");
 }
 
-function extractSubjectAssetPath(src: string): string | null {
+function extractCourseAssetPath(src: string): string | null {
   const normalized = src.split("#")[0]?.split("?")[0]?.replace(/\\/g, "/").trim() ?? "";
   if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith("data:")) {
     return null;
@@ -1415,19 +1415,19 @@ function resolveMarkdownImageSrc(
   src: string | undefined,
   {
     assetBaseUrl,
-    assetSubject,
+    assetCourse,
   }: {
   assetBaseUrl?: string;
-  assetSubject?: string;
+  assetCourse?: string;
 }): string | undefined {
   if (!src) {
     return src;
   }
 
-  if (assetSubject) {
-    const assetPath = extractSubjectAssetPath(src);
+  if (assetCourse) {
+    const assetPath = extractCourseAssetPath(src);
     if (assetPath) {
-      return `/api/v1/subjects/${encodeURIComponent(assetSubject)}/files/assets/${encodePathSegments(assetPath)}`;
+      return `/api/v1/courses/${encodeURIComponent(assetCourse)}/files/assets/${encodePathSegments(assetPath)}`;
     }
   }
 
@@ -1459,7 +1459,7 @@ function resolveMarkdownImageSrc(
 }
 
 function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
-  return typeof src === "string" && src.startsWith("/api/v1/subjects/") && src.includes("/files/assets/");
+  return typeof src === "string" && src.startsWith("/api/v1/courses/") && src.includes("/files/assets/");
 }
 
 function isDocgenCoverAsset(src: string | undefined): boolean {
@@ -1568,7 +1568,7 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
 export function MarkdownViewer({
   content,
   assetBaseUrl,
-  assetSubject,
+  assetCourse,
   variant = "default",
   headingAnchors = false,
   headingNumbering = false,
@@ -1816,7 +1816,7 @@ export function MarkdownViewer({
         img: ({ src, alt }) => {
           const resolvedSrc = resolveMarkdownImageSrc(src, {
             assetBaseUrl,
-            assetSubject,
+            assetCourse,
           });
 
           return (

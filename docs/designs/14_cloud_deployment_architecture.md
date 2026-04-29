@@ -41,7 +41,7 @@ AITeachMe 同时支持：
 - 云端启动不能自动 `create_all`、删表或删列。
 - 云端 schema 变化必须走 Alembic。
 - 业务代码统一通过 ContentStore 访问文件，不手拼本地路径或 S3 URL。
-- 对象存储 key 必须以用户和 subject 作用域组织。
+- 对象存储 key 必须以用户和 course 作用域组织。
 - 本地与云端不做强制历史数据迁移；跨环境课程迁移走 `.atmx`。
 - 演示课程只在云端模式展示，本地只保留上传导入 `.atmx`。
 

@@ -11,7 +11,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowl
 class KnowledgeSyncReport:
     """Summary of one incremental sync pass."""
 
-    subject_id: str
+    course_id: str
     build_revision_no: int
     synced_unit_keys: list[str] = field(default_factory=list)
     knowledge_image_count: int = 0
@@ -158,7 +158,7 @@ class SectionExtractionRecord:
 class KnowledgeSyncRunContext:
     """Persistent run context shared by kg_doc_sync graph nodes."""
 
-    subject_id: str
+    course_id: str
     build_revision_no: int
     sync_run_id: int
     doc_version_no: int

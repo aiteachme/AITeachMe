@@ -1,4 +1,4 @@
-﻿# Digest 模块说明
+# Digest 模块说明
 
 最后更新：2026-04-28
 
@@ -26,7 +26,7 @@ digest/
   负责知识文档和知识图谱的正式同步链路
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
-  以及 subject 级知识产物清理 `cleanup.py`
+  以及 course 级知识产物清理 `cleanup.py`
 
 ## 当前公开入口
 

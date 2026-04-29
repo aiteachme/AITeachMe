@@ -17,8 +17,8 @@ class PlannerModelStep(str, Enum):
     STREAM_BRIEF = "stream_brief_and_extract_intent.stream_planner_brief"
     EXTRACT_INTENT = "stream_brief_and_extract_intent.extract_plan_intent"
     COMPOSE_PLAN = "stream_and_parse_plan_draft.compose_plan"
-    SUBJECT_NAME = "generate_subject_name"
-    SUBJECT_ICON = "generate_subject_name.select_subject_icon"
+    COURSE_NAME = "generate_course_name"
+    COURSE_ICON = "generate_course_name.select_course_icon"
 
 
 @dataclass(frozen=True)
@@ -96,16 +96,16 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         max_tokens=2600,
         note="生成可确认课程方案和机器 JSON 合同，是 Planner 最核心的规划调用。",
     ),
-    PlannerModelStep.SUBJECT_NAME: PlannerModelPolicy(
-        step=PlannerModelStep.SUBJECT_NAME,
+    PlannerModelStep.COURSE_NAME: PlannerModelPolicy(
+        step=PlannerModelStep.COURSE_NAME,
         call_type="text",
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=40,
         note="短标题生成属于轻量生成，使用 GENERATE 的默认采样配置。",
     ),
-    PlannerModelStep.SUBJECT_ICON: PlannerModelPolicy(
-        step=PlannerModelStep.SUBJECT_ICON,
+    PlannerModelStep.COURSE_ICON: PlannerModelPolicy(
+        step=PlannerModelStep.COURSE_ICON,
         call_type="text",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",

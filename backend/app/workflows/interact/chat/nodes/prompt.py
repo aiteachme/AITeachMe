@@ -1,4 +1,4 @@
-﻿"""Prompt-building node builders for the interact workflow."""
+"""Prompt-building node builders for the interact workflow."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ def build_prompt_node(*, context: WorkflowContext):
 
     def build_prompt(state: InteractWorkflowState) -> InteractWorkflowState:
         messages = build_chat_messages(
-            subject_id=state["subject_id"] or "global",
+            course_id=state["course_id"] or "global",
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
             recent_messages=state.get("recent_messages", []),
-            subject_context=state.get("subject_context"),
+            course_context=state.get("course_context"),
             weak_points=state.get("weak_points", []),
             recent_mistakes=state.get("recent_mistakes", []),
             question=state["question"],

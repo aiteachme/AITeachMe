@@ -1,4 +1,4 @@
-﻿"""Workflow-local chapter context runtime for digest DocGen."""
+"""Workflow-local chapter context runtime for digest DocGen."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.shared.infra.search.defaults import (
     DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
 )
 from app.shared.infra.search import ContextCompressor, SourceCurator
-from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_subject
+from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_course
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
@@ -63,7 +63,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         self,
         *,
         queries: list[str],
-        local_rag_subject_id: str | None = None,
+        local_rag_course_id: str | None = None,
         local_sections: list[Any] | None = None,
         chapter_title: str = "",
         objective: str = "",
@@ -138,11 +138,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
         allow_oi_wiki_sources = self._allows_oi_wiki_sources(resolved_retrieval_profile)
         external_search_enabled = bool(settings.docgen.allow_external_search)
-        local_retriever = LocalRAGRetriever(subject_id=local_rag_subject_id, local_sections=local_sections)
+        local_retriever = LocalRAGRetriever(course_id=local_rag_course_id, local_sections=local_sections)
         other_retrievers = [
             retriever
-            for retriever in get_retrievers_for_subject(
-                subject_id=local_rag_subject_id,
+            for retriever in get_retrievers_for_course(
+                course_id=local_rag_course_id,
                 local_sections=local_sections,
                 profile=resolved_retrieval_profile or None,
                 include_external=external_search_enabled,
@@ -152,7 +152,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         ]
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
-            include_local_rag=bool(local_rag_subject_id or local_sections),
+            include_local_rag=bool(local_rag_course_id or local_sections),
             include_external=external_search_enabled,
             include_fallback=True,
         )

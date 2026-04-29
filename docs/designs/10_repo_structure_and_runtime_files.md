@@ -109,10 +109,10 @@ backend/data/
 backend/data/aiteachme.db
 ```
 
-Subject 级目录：
+Course 级目录：
 
 ```text
-backend/data/users/<user_id>/subjects/<subject>/
+backend/data/users/<user_id>/courses/<course>/
   raw_files/
   raw_markdowns/
   assets/
@@ -122,10 +122,10 @@ backend/data/users/<user_id>/subjects/<subject>/
   cache/
 ```
 
-本地运行时临时目录仍可能位于 subject 根目录：
+本地运行时临时目录仍可能位于 course 根目录：
 
 ```text
-backend/data/<subject>/
+backend/data/<course>/
   debug/
   temp/
   exam/
@@ -155,7 +155,7 @@ S3_PUBLIC_BASE_URL -> https://<your-cdn-domain>
 演示课程页面有两条运行时路径：
 
 - 展示课程：仅云端模式读取 OSS index；本地模式不请求 OSS，返回空列表。
-- 导入当前环境：`/api/v1/courses/{filename}/import` 仅云端模式可用，由当前连接的后端临时下载 `.atmx` 并导入；成功后出现在左侧学科列表。
+- 导入当前环境：`/api/v1/courses/{filename}/import` 仅云端模式可用，由当前连接的后端临时下载 `.atmx` 并导入；成功后出现在左侧课程列表。
 - 离线分发：运维侧用私有脚本下载 `.atmx`，用户侧再通过“上传导入”入口导入。
 
 前端构建产物：
@@ -188,9 +188,9 @@ frontend/dist/
 - `frontend/src/api/generated/`
 - `__pycache__/`
 - `*.pyc`
-- `backend/data/<subject>/knowledge_markdowns/_build/`
-- `backend/data/<subject>/temp/`
-- `backend/data/<subject>/debug/`
+- `backend/data/<course>/knowledge_markdowns/_build/`
+- `backend/data/<course>/temp/`
+- `backend/data/<course>/debug/`
 
 ## 9. 本地开发约束
 

@@ -1,7 +1,7 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Loader2 } from "lucide-react";
 
-import { chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost } from "../../api/generated/knowledge";
+import { chunkContextApiV1CoursesCourseIdKnowledgeChunksContextPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -9,25 +9,25 @@ import { MarkdownViewer } from "../ui/MarkdownViewer";
 interface ChatCitationModalProps {
   open: boolean;
   onClose: () => void;
-  subject: string;
+  course: string;
   chunkId: number | null;
 }
 
 export function ChatCitationModal({
   open,
   onClose,
-  subject,
+  course,
   chunkId,
 }: ChatCitationModalProps) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["chat-chunk-context", subject, chunkId],
+    queryKey: ["chat-chunk-context", course, chunkId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await chunkContextApiV1SubjectsSubjectIdKnowledgeChunksContextPost(subject, {
+        await chunkContextApiV1CoursesCourseIdKnowledgeChunksContextPost(course, {
           chunk_id: chunkId!,
         }),
       ),
-    enabled: open && !!subject && chunkId !== null,
+    enabled: open && !!course && chunkId !== null,
   });
 
   const title = data

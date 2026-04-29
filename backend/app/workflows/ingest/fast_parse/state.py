@@ -17,7 +17,7 @@ class IngestParseGraphInput(TypedDict):
     """Graph input for one file parse run."""
 
     user_id: str
-    subject_id: str
+    course_id: str
     file_id: str
 
 
@@ -25,7 +25,7 @@ class IngestParseGraphOutput(TypedDict, total=False):
     """Graph output surfaced to API-facing callers."""
 
     user_id: str
-    subject_id: str
+    course_id: str
     file_id: str
     filename: str
     filetype: str
@@ -39,7 +39,7 @@ class IngestParseState(TypedDict, total=False):
     """Phase 1 (Fast Parse) workflow state."""
 
     user_id: str
-    subject_id: str
+    course_id: str
     file_id: str
     filename: str
     filetype: str

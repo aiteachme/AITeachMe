@@ -43,7 +43,7 @@ def upgrade() -> None:
         "exam_study_guide_cache",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("exam_paper_id", sa.Integer(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False, server_default="local"),
         sa.Column("status", sa.String(), nullable=False, server_default="completed"),
         sa.Column("guide_json", sa.Text(), nullable=False, server_default="{}"),
@@ -56,7 +56,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("exam_paper_id", name="uq_exam_study_guide_paper"),
     )
     op.create_index("ix_exam_study_guide_cache_exam_paper_id", "exam_study_guide_cache", ["exam_paper_id"])
-    op.create_index("ix_exam_study_guide_cache_subject", "exam_study_guide_cache", ["subject"])
+    op.create_index("ix_exam_study_guide_cache_course", "exam_study_guide_cache", ["course"])
     op.create_index("ix_exam_study_guide_cache_user_id", "exam_study_guide_cache", ["user_id"])
     op.create_index("ix_exam_study_guide_cache_status", "exam_study_guide_cache", ["status"])
     op.create_index("ix_exam_study_guide_cache_generated_at", "exam_study_guide_cache", ["generated_at"])
@@ -66,7 +66,7 @@ def downgrade() -> None:
     op.drop_index("ix_exam_study_guide_cache_generated_at", table_name="exam_study_guide_cache")
     op.drop_index("ix_exam_study_guide_cache_status", table_name="exam_study_guide_cache")
     op.drop_index("ix_exam_study_guide_cache_user_id", table_name="exam_study_guide_cache")
-    op.drop_index("ix_exam_study_guide_cache_subject", table_name="exam_study_guide_cache")
+    op.drop_index("ix_exam_study_guide_cache_course", table_name="exam_study_guide_cache")
     op.drop_index("ix_exam_study_guide_cache_exam_paper_id", table_name="exam_study_guide_cache")
     op.drop_table("exam_study_guide_cache")
 

@@ -1,11 +1,11 @@
-﻿"""Execution mode node builders for the interact workflow."""
+"""Execution mode node builders for the interact workflow."""
 
 from __future__ import annotations
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import select_execution_mode
-from app.workflows.interact.chat.lib.intent import has_entry_context, should_use_subject_grounding
+from app.workflows.interact.chat.lib.intent import has_entry_context, should_use_course_grounding
 
 
 def build_select_execution_mode_node(*, context: WorkflowContext):
@@ -26,7 +26,7 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
             ),
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
-            allow_subject_tools=should_use_subject_grounding(
+            allow_course_tools=should_use_course_grounding(
                 question=state["question"],
                 source=state.get("source"),
                 has_primary_context=has_primary_context,

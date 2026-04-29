@@ -1,6 +1,6 @@
 """Compatibility LlamaIndex retriever components for the ATM search stack.
 
-The canonical subject index lifecycle now lives in
+The canonical course index lifecycle now lives in
 ``app.shared.infra.search.llamaindex_index``.  This package keeps older
 LlamaIndex retriever-style imports working on top of that managed index.
 

@@ -70,7 +70,7 @@ class WorkflowTraceContext(Protocol):
 
 @dataclass(slots=True)
 class TracedExecutionContext:
-    subject_id: str
+    course_id: str
     build_session_id: str = ""
     workflow_context: WorkflowTraceContext | None = None
     planner_session_id: str = ""
@@ -120,7 +120,7 @@ class BaseTracedExecution(ABC):
         self.context = context
         self.logger = structlog.get_logger(__name__).bind(
             traced_unit=self.trace_node,
-            subject_id=context.subject_id,
+            course_id=context.course_id,
             build_session_id=context.build_session_id,
         )
 
@@ -149,7 +149,7 @@ class BaseTracedExecution(ABC):
         lane = str(metadata.get("lane", "")) if isinstance(metadata, Mapping) else ""
         node = self.trace_node
         with llm_trace_scope(
-            subject_id=self.context.subject_id,
+            course_id=self.context.course_id,
             build_session_id=self.context.build_session_id,
             workflow=workflow_name,
             lane=lane,

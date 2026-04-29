@@ -175,7 +175,7 @@ def _register_toolpack_result(
             risk_level=str(result.get("risk_level") or "low"),
             scopes=list(result.get("scopes") or []),
             timeout_s=result.get("timeout_s"),
-            requires_subject=bool(result.get("requires_subject", False)),
+            requires_course=bool(result.get("requires_course", False)),
             requires_approval=bool(result.get("requires_approval", False)),
             cache_policy=str(result.get("cache_policy") or "none"),
         )

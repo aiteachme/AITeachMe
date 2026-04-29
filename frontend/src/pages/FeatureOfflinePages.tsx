@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { Ban, FileText, UserX } from "lucide-react";
 import { useParams } from "react-router-dom";
 
@@ -26,14 +26,14 @@ function OfflineCard({
 }
 
 export function ExamsPage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
 
   const description = useMemo(() => {
-    if (!subjectId) {
+    if (!courseId) {
       return "考试功能已下线，后续将基于 node 语义重新设计。";
     }
-    return `学科 ${subjectId} 的考试功能已下线，后续将基于 node 语义重新设计。`;
-  }, [subjectId]);
+    return `课程 ${courseId} 的考试功能已下线，后续将基于 node 语义重新设计。`;
+  }, [courseId]);
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8">
@@ -47,14 +47,14 @@ export function ExamsPage() {
 }
 
 export function ProfilePage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
 
   const description = useMemo(() => {
-    if (!subjectId) {
+    if (!courseId) {
       return "学习画像功能已下线，后续将基于 node 语义重新设计。";
     }
-    return `学科 ${subjectId} 的学习画像功能已下线，后续将基于 node 语义重新设计。`;
-  }, [subjectId]);
+    return `课程 ${courseId} 的学习画像功能已下线，后续将基于 node 语义重新设计。`;
+  }, [courseId]);
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-6 py-8">

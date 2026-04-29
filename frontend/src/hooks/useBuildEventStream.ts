@@ -14,7 +14,7 @@ import type { KnowledgeBuildRuntimeResponse } from "../lib/knowledgeBuildRuntime
 import { buildApiUrl } from "../api/client";
 
 interface UseBuildEventStreamOptions {
-  subjectId: string;
+  courseId: string;
   enabled: boolean;
   /** Called when the stream signals build completed/failed/cancelled */
   onDone?: (status: string) => void;
@@ -54,7 +54,7 @@ interface BuildPreviewDeltaEvent {
 const PREVIEW_FLUSH_INTERVAL_MS = 180;
 
 export function useBuildEventStream({
-  subjectId,
+  courseId,
   enabled,
   onDone,
 }: UseBuildEventStreamOptions) {
@@ -92,7 +92,7 @@ export function useBuildEventStream({
   }, [flushPreviewStreams]);
 
   useEffect(() => {
-    if (!enabled || !subjectId) {
+    if (!enabled || !courseId) {
       setSnapshot(null);
       setConnected(false);
       previewStreamsRef.current = {};
@@ -102,7 +102,7 @@ export function useBuildEventStream({
       return;
     }
 
-    const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/knowledge/build/stream`);
+    const url = buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/knowledge/build/stream`);
     previewStreamsRef.current = {};
     clearPreviewFlushTimer();
     setPreviewStreams({});
@@ -198,7 +198,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setConnected(false);
     };
-  }, [subjectId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush]);
+  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush]);
 
   return { snapshot, connected, previewStreams, buildEvents };
 }

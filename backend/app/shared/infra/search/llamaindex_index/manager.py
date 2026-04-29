@@ -1,4 +1,4 @@
-"""Unified LlamaIndex vector-index manager for subject knowledge chunks.
+"""Unified LlamaIndex vector-index manager for course knowledge chunks.
 
 The canonical business source of truth remains ``retrieval_chunk``. This
 module owns only the vector index lifecycle: upsert, query, delete, clear and
@@ -26,19 +26,19 @@ from sqlalchemy.engine.url import make_url
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
 from app.shared.infra.runtime import is_cloud_mode
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope, run_store_sync
+from app.shared.infra.storage import get_content_store, resolve_course_storage_scope, run_store_sync
 from app.shared.infra.search.llamaindex_index.sqlite_vec_store import SQLiteVecVectorStore
-from app.shared.infra.subject.settings import (
-    build_postgres_subject_index_name,
-    build_subject_index_ref_for_subject,
-    extract_postgres_subject_index_data_table_name,
-    get_subject_embedding_binding,
+from app.shared.infra.course.settings import (
+    build_postgres_course_index_name,
+    build_course_index_ref_for_course,
+    extract_postgres_course_index_data_table_name,
+    get_course_embedding_binding,
 )
 
 logger = structlog.get_logger(__name__)
 
-_SUBJECT_LOCKS: dict[str, RLock] = {}
-_SUBJECT_LOCKS_GUARD = RLock()
+_COURSE_LOCKS: dict[str, RLock] = {}
+_COURSE_LOCKS_GUARD = RLock()
 
 
 @dataclass(slots=True)
@@ -47,7 +47,7 @@ class IndexedChunk:
 
     chunk_id: int
     file_id: str
-    subject_id: str
+    course_id: str
     title: str
     header_path: str
     content: str
@@ -56,7 +56,7 @@ class IndexedChunk:
 
 
 @dataclass(slots=True)
-class SubjectIndexHit:
+class CourseIndexHit:
     """One vector-index hit returned by the LlamaIndex store."""
 
     chunk_id: int
@@ -64,19 +64,19 @@ class SubjectIndexHit:
     source: str = "llamaindex"
 
 
-def _subject_lock(subject_id: str) -> RLock:
-    normalized = subject_id.strip()
-    with _SUBJECT_LOCKS_GUARD:
-        lock = _SUBJECT_LOCKS.get(normalized)
+def _course_lock(course_id: str) -> RLock:
+    normalized = course_id.strip()
+    with _COURSE_LOCKS_GUARD:
+        lock = _COURSE_LOCKS.get(normalized)
         if lock is None:
             lock = RLock()
-            _SUBJECT_LOCKS[normalized] = lock
+            _COURSE_LOCKS[normalized] = lock
         return lock
 
 
-def _local_index_prefix(subject_id: str) -> str:
-    normalized_subject_id = subject_id.strip()
-    scope = resolve_subject_storage_scope(normalized_subject_id)
+def _local_index_prefix(course_id: str) -> str:
+    normalized_course_id = course_id.strip()
+    scope = resolve_course_storage_scope(normalized_course_id)
     return f"{scope.namespace}/rag_index/"
 
 
@@ -93,7 +93,7 @@ def _chunk_id_from_node_id(node_id: str) -> int | None:
 
 def _node_metadata(chunk: IndexedChunk) -> dict[str, Any]:
     return {
-        "subject_id": chunk.subject_id,
+        "course_id": chunk.course_id,
         "chunk_id": int(chunk.chunk_id),
         "file_id": chunk.file_id,
         "title": chunk.title,
@@ -109,24 +109,24 @@ def _to_text_node(chunk: IndexedChunk, embedding: list[float]) -> TextNode:
         text=chunk.content,
         embedding=embedding,
         metadata=_node_metadata(chunk),
-        excluded_embed_metadata_keys=["subject_id", "chunk_id", "file_id", "source"],
-        excluded_llm_metadata_keys=["subject_id", "chunk_id", "file_id", "source"],
+        excluded_embed_metadata_keys=["course_id", "chunk_id", "file_id", "source"],
+        excluded_llm_metadata_keys=["course_id", "chunk_id", "file_id", "source"],
     )
 
 
 def _load_local_store(
-    subject_id: str,
+    course_id: str,
     *,
     embedding_dim: int | None = None,
 ) -> SQLiteVecVectorStore:
     return SQLiteVecVectorStore(
-        subject_id=subject_id.strip(),
+        course_id=course_id.strip(),
         embedding_dim=embedding_dim,
     )
 
 
-def _subject_filter(subject_id: str) -> MetadataFilters:
-    return MetadataFilters(filters=[MetadataFilter(key="subject_id", value=subject_id.strip())])
+def _course_filter(course_id: str) -> MetadataFilters:
+    return MetadataFilters(filters=[MetadataFilter(key="course_id", value=course_id.strip())])
 
 
 def _sync_database_url() -> str:
@@ -140,41 +140,41 @@ def _postgres_identifier_is_safe(identifier: str | None) -> bool:
     return bool(identifier and re.fullmatch(r"[a-z_][a-z0-9_]*", identifier))
 
 
-def _subject_record_snapshot(subject_id: str):
+def _course_record_snapshot(course_id: str):
     from sqlmodel import Session, select
 
-    from app.models.subject import Subject
+    from app.models.course import Course
     from app.shared.infra.database import get_engine
 
-    normalized_subject_id = subject_id.strip()
-    if not normalized_subject_id:
+    normalized_course_id = course_id.strip()
+    if not normalized_course_id:
         return None
 
     with Session(get_engine()) as session:
         return session.exec(
-            select(Subject).where(Subject.id == normalized_subject_id)
+            select(Course).where(Course.id == normalized_course_id)
         ).first()
 
 
-def _subject_binding_snapshot(subject_id: str):
-    subject_row = _subject_record_snapshot(subject_id)
-    if subject_row is None:
+def _course_binding_snapshot(course_id: str):
+    course_row = _course_record_snapshot(course_id)
+    if course_row is None:
         return None
-    return get_subject_embedding_binding(subject_row)
+    return get_course_embedding_binding(course_row)
 
 
-def _subject_store_spec(
-    subject_id: str,
+def _course_store_spec(
+    course_id: str,
     *,
     embedding_dim: int | None = None,
 ) -> tuple[str, int]:
-    subject_row = _subject_record_snapshot(subject_id)
-    if subject_row is None:
-        raise RuntimeError(f"Subject '{subject_id.strip()}' not found for vector-store resolution.")
-    binding = get_subject_embedding_binding(subject_row)
-    index_name = build_postgres_subject_index_name(
-        subject_row.id,
-        owner_user_id=subject_row.user_id,
+    course_row = _course_record_snapshot(course_id)
+    if course_row is None:
+        raise RuntimeError(f"Course '{course_id.strip()}' not found for vector-store resolution.")
+    binding = get_course_embedding_binding(course_row)
+    index_name = build_postgres_course_index_name(
+        course_row.id,
+        owner_user_id=course_row.user_id,
     )
     resolved_dim = (
         embedding_dim
@@ -183,14 +183,14 @@ def _subject_store_spec(
     )
     if resolved_dim is None or int(resolved_dim) <= 0:
         raise RuntimeError(
-            f"Cannot resolve embedding dimension for subject '{subject_id.strip()}'."
+            f"Cannot resolve embedding dimension for course '{course_id.strip()}'."
         )
     return index_name, int(resolved_dim)
 
 
 def _load_postgres_store(
     *,
-    subject_id: str,
+    course_id: str,
     embedding_dim: int | None = None,
 ):
     try:
@@ -200,8 +200,8 @@ def _load_postgres_store(
             "Cloud LlamaIndex indexing requires `llama-index-vector-stores-postgres`."
         ) from exc
 
-    index_name, resolved_dim = _subject_store_spec(
-        subject_id,
+    index_name, resolved_dim = _course_store_spec(
+        course_id,
         embedding_dim=embedding_dim,
     )
     sync_url = make_url(_sync_database_url()).set(drivername="postgresql+psycopg2")
@@ -223,19 +223,19 @@ def _load_postgres_store(
 
 def prepare_postgres_store(
     *,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     embedding_dim: int | None = None,
 ) -> None:
     """Initialize or verify cloud PGVectorStore support.
 
-    When ``subject_id`` is omitted, this only verifies that the PostgreSQL
-    vector-store dependency and connection string are usable. When a subject is
-    supplied, its subject-scoped PGVectorStore table is initialized on demand.
+    When ``course_id`` is omitted, this only verifies that the PostgreSQL
+    vector-store dependency and connection string are usable. When a course is
+    supplied, its course-scoped PGVectorStore table is initialized on demand.
     """
 
     if not is_cloud_mode():
         return
-    if not subject_id:
+    if not course_id:
         try:
             from llama_index.vector_stores.postgres import PGVectorStore
         except ImportError as exc:  # pragma: no cover - depends on cloud extras
@@ -247,40 +247,40 @@ def prepare_postgres_store(
         logger.info("llamaindex_postgres_store_support_ready")
         return
 
-    index_name, resolved_dim = _subject_store_spec(subject_id, embedding_dim=embedding_dim)
+    index_name, resolved_dim = _course_store_spec(course_id, embedding_dim=embedding_dim)
     _load_postgres_store(
-        subject_id=subject_id,
+        course_id=course_id,
         embedding_dim=resolved_dim,
     )
     logger.info(
         "llamaindex_postgres_store_prepared",
-        subject_id=subject_id.strip(),
+        course_id=course_id.strip(),
         table_name=index_name,
         embedding_dim=resolved_dim,
     )
 
 
 def _load_store(
-    subject_id: str,
+    course_id: str,
     *,
     embedding_dim: int | None = None,
 ):
     if is_cloud_mode():
         return _load_postgres_store(
-            subject_id=subject_id,
+            course_id=course_id,
             embedding_dim=embedding_dim,
         )
-    return _load_local_store(subject_id, embedding_dim=embedding_dim)
+    return _load_local_store(course_id, embedding_dim=embedding_dim)
 
 
-def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject_id: str) -> None:
+def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, course_id: str) -> None:
     node_ids = [_node_id(chunk_id) for chunk_id in chunk_ids]
     if not node_ids:
         return
 
     delete_nodes = getattr(vector_store, "delete_nodes", None)
     if callable(delete_nodes):
-        delete_nodes(node_ids=node_ids, filters=_subject_filter(subject_id))
+        delete_nodes(node_ids=node_ids, filters=_course_filter(course_id))
         return
 
     for node_id in node_ids:
@@ -289,11 +289,11 @@ def _delete_node_ids(vector_store: Any, chunk_ids: list[int], *, subject_id: str
             delete(ref_doc_id=node_id)
 
 
-def upsert_chunks(subject_id: str, chunks: list[IndexedChunk]) -> None:
+def upsert_chunks(course_id: str, chunks: list[IndexedChunk]) -> None:
     """Upsert pre-embedded chunks into the active LlamaIndex vector store."""
 
-    normalized_subject_id = subject_id.strip()
-    if not normalized_subject_id or not chunks:
+    normalized_course_id = course_id.strip()
+    if not normalized_course_id or not chunks:
         return
 
     nodes: list[TextNode] = []
@@ -313,125 +313,125 @@ def upsert_chunks(subject_id: str, chunks: list[IndexedChunk]) -> None:
             )
         nodes.append(_to_text_node(chunk, chunk.embedding))
 
-    with _subject_lock(normalized_subject_id):
+    with _course_lock(normalized_course_id):
         vector_store = _load_store(
-            normalized_subject_id,
+            normalized_course_id,
             embedding_dim=embedding_dim,
         )
         _delete_node_ids(
             vector_store,
             [chunk.chunk_id for chunk in chunks],
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
         )
         vector_store.add(nodes)
 
     logger.info(
         "llamaindex_chunks_upserted",
-        subject_id=normalized_subject_id,
+        course_id=normalized_course_id,
         chunk_count=len(chunks),
         backend="postgres" if is_cloud_mode() else "sqlite-vec",
     )
 
 
-def rebuild_subject_index(subject_id: str, chunks: list[IndexedChunk]) -> None:
-    """Replace one subject index with the supplied pre-embedded chunks."""
+def rebuild_course_index(course_id: str, chunks: list[IndexedChunk]) -> None:
+    """Replace one course index with the supplied pre-embedded chunks."""
 
-    clear_subject_index(subject_id)
-    upsert_chunks(subject_id, chunks)
+    clear_course_index(course_id)
+    upsert_chunks(course_id, chunks)
 
 
-def delete_chunks(subject_id: str, chunk_ids: list[int]) -> None:
+def delete_chunks(course_id: str, chunk_ids: list[int]) -> None:
     """Delete selected chunks from the active LlamaIndex vector store."""
 
-    normalized_subject_id = subject_id.strip()
+    normalized_course_id = course_id.strip()
     normalized_ids = [int(chunk_id) for chunk_id in chunk_ids if chunk_id is not None]
-    if not normalized_subject_id or not normalized_ids:
+    if not normalized_course_id or not normalized_ids:
         return
-    if not subject_index_exists(normalized_subject_id):
+    if not course_index_exists(normalized_course_id):
         return
 
-    with _subject_lock(normalized_subject_id):
-        vector_store = _load_store(normalized_subject_id)
-        _delete_node_ids(vector_store, normalized_ids, subject_id=normalized_subject_id)
+    with _course_lock(normalized_course_id):
+        vector_store = _load_store(normalized_course_id)
+        _delete_node_ids(vector_store, normalized_ids, course_id=normalized_course_id)
 
     logger.info(
         "llamaindex_chunks_deleted",
-        subject_id=normalized_subject_id,
+        course_id=normalized_course_id,
         chunk_count=len(normalized_ids),
     )
 
 
-def clear_subject_index(subject_id: str) -> None:
-    """Remove all vector-index entries for one subject."""
+def clear_course_index(course_id: str) -> None:
+    """Remove all vector-index entries for one course."""
 
-    normalized_subject_id = subject_id.strip()
-    if not normalized_subject_id:
+    normalized_course_id = course_id.strip()
+    if not normalized_course_id:
         return
-    with _subject_lock(normalized_subject_id):
+    with _course_lock(normalized_course_id):
         if is_cloud_mode():
-            if not subject_index_exists(normalized_subject_id):
+            if not course_index_exists(normalized_course_id):
                 return
             from app.shared.infra.database import get_engine
 
-            subject_row = _subject_record_snapshot(normalized_subject_id)
-            if subject_row is None:
+            course_row = _course_record_snapshot(normalized_course_id)
+            if course_row is None:
                 return
-            vector_ref = build_subject_index_ref_for_subject(subject_row)
-            data_table = extract_postgres_subject_index_data_table_name(vector_ref)
+            vector_ref = build_course_index_ref_for_course(course_row)
+            data_table = extract_postgres_course_index_data_table_name(vector_ref)
             if not _postgres_identifier_is_safe(data_table):
                 return
             with get_engine().begin() as connection:
                 connection.execute(sa.text(f"DROP TABLE IF EXISTS public.{data_table}"))
         else:
-            vector_store = _load_local_store(normalized_subject_id)
+            vector_store = _load_local_store(normalized_course_id)
             vector_store.clear()
             # Remove legacy SimpleVectorStore JSON payloads from older builds.
             try:
                 cs = get_content_store()
-                run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_subject_id), default=0)
+                run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_course_id), default=0)
             except Exception as exc:  # pragma: no cover - legacy cleanup only
                 logger.warning(
                     "llamaindex_legacy_local_store_cleanup_failed",
-                    subject_id=normalized_subject_id,
+                    course_id=normalized_course_id,
                     error=str(exc),
                 )
 
-    logger.info("llamaindex_subject_index_cleared", subject_id=normalized_subject_id)
+    logger.info("llamaindex_course_index_cleared", course_id=normalized_course_id)
 
 
-def subject_index_exists(subject_id: str) -> bool:
-    """Return whether a subject has any persisted LlamaIndex index payload."""
+def course_index_exists(course_id: str) -> bool:
+    """Return whether a course has any persisted LlamaIndex index payload."""
 
-    normalized_subject_id = subject_id.strip()
-    if not normalized_subject_id:
+    normalized_course_id = course_id.strip()
+    if not normalized_course_id:
         return False
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        subject_row = _subject_record_snapshot(normalized_subject_id)
-        if subject_row is None:
+        course_row = _course_record_snapshot(normalized_course_id)
+        if course_row is None:
             return False
-        expected_ref = build_subject_index_ref_for_subject(subject_row)
+        expected_ref = build_course_index_ref_for_course(course_row)
         with get_engine().connect() as connection:
             return vector_table_exists(connection, expected_ref)
-    return _load_local_store(normalized_subject_id).subject_has_rows()
+    return _load_local_store(normalized_course_id).course_has_rows()
 
 
-def count_indexed_chunks(subject_id: str, chunk_ids: list[int]) -> int:
+def count_indexed_chunks(course_id: str, chunk_ids: list[int]) -> int:
     """Count indexed chunk IDs for local consistency checks."""
 
-    normalized_subject_id = subject_id.strip()
+    normalized_course_id = course_id.strip()
     normalized_ids = {_node_id(chunk_id) for chunk_id in chunk_ids if chunk_id is not None}
-    if not normalized_subject_id or not normalized_ids:
+    if not normalized_course_id or not normalized_ids:
         return 0
     if is_cloud_mode():
         from app.shared.infra.database import get_engine, vector_table_exists
 
-        subject_row = _subject_record_snapshot(normalized_subject_id)
-        if subject_row is None:
+        course_row = _course_record_snapshot(normalized_course_id)
+        if course_row is None:
             return 0
-        vector_ref = build_subject_index_ref_for_subject(subject_row)
-        data_table = extract_postgres_subject_index_data_table_name(vector_ref)
+        vector_ref = build_course_index_ref_for_course(course_row)
+        data_table = extract_postgres_course_index_data_table_name(vector_ref)
         if not _postgres_identifier_is_safe(data_table):
             return 0
         with get_engine().connect() as connection:
@@ -448,26 +448,26 @@ def count_indexed_chunks(subject_id: str, chunk_ids: list[int]) -> int:
             ).scalar_one()
         return int(result or 0)
 
-    vector_store = _load_local_store(normalized_subject_id)
+    vector_store = _load_local_store(normalized_course_id)
     return vector_store.count_node_ids(normalized_ids)
 
 
-def query_subject_index(
-    subject_id: str,
+def query_course_index(
+    course_id: str,
     query_embedding: list[float],
     *,
     top_k: int = 5,
-) -> list[SubjectIndexHit]:
+) -> list[CourseIndexHit]:
     """Query the active vector store with a precomputed embedding."""
 
-    normalized_subject_id = subject_id.strip()
-    if not normalized_subject_id or not query_embedding or top_k <= 0:
+    normalized_course_id = course_id.strip()
+    if not normalized_course_id or not query_embedding or top_k <= 0:
         return []
-    if not subject_index_exists(normalized_subject_id):
+    if not course_index_exists(normalized_course_id):
         return []
 
     if is_cloud_mode():
-        binding = _subject_binding_snapshot(normalized_subject_id)
+        binding = _course_binding_snapshot(normalized_course_id)
         if (
             binding is not None
             and binding.embedding_dim is not None
@@ -475,24 +475,24 @@ def query_subject_index(
         ):
             logger.warning(
                 "llamaindex_query_embedding_dimension_mismatch",
-                subject_id=normalized_subject_id,
+                course_id=normalized_course_id,
                 expected_dim=int(binding.embedding_dim),
                 actual_dim=len(query_embedding),
             )
             return []
 
     vector_store = _load_store(
-        normalized_subject_id,
+        normalized_course_id,
         embedding_dim=len(query_embedding),
     )
     query = VectorStoreQuery(
         query_embedding=query_embedding,
         similarity_top_k=top_k,
-        filters=_subject_filter(normalized_subject_id),
+        filters=_course_filter(normalized_course_id),
     )
     result = vector_store.query(query)
 
-    hits: list[SubjectIndexHit] = []
+    hits: list[CourseIndexHit] = []
     ids = list(result.ids or [])
     scores = list(result.similarities or [])
     for index, node_id in enumerate(ids):
@@ -500,17 +500,17 @@ def query_subject_index(
         if chunk_id is None:
             continue
         score = float(scores[index]) if index < len(scores) and scores[index] is not None else 0.0
-        hits.append(SubjectIndexHit(chunk_id=chunk_id, score=score))
+        hits.append(CourseIndexHit(chunk_id=chunk_id, score=score))
     return hits
 
 
-async def retrieve_subject_chunks(
-    subject_id: str,
+async def retrieve_course_chunks(
+    course_id: str,
     query: str,
     *,
     top_k: int = 5,
     query_embedding: list[float] | None = None,
-) -> list[SubjectIndexHit]:
+) -> list[CourseIndexHit]:
     """Embed a query and retrieve matching chunk IDs from LlamaIndex."""
 
     normalized_query = query.strip()
@@ -521,7 +521,7 @@ async def retrieve_subject_chunks(
     if embedding is None:
         from app.shared.infra.embedding import aembed_texts
 
-        binding = _subject_binding_snapshot(subject_id)
+        binding = _course_binding_snapshot(course_id)
         model_name = binding.embedding_model if binding is not None else None
         vectors = await aembed_texts(
             [normalized_query],
@@ -532,23 +532,23 @@ async def retrieve_subject_chunks(
 
     if is_cloud_mode():
         return await asyncio.to_thread(
-            query_subject_index,
-            subject_id,
+            query_course_index,
+            course_id,
             embedding,
             top_k=top_k,
         )
-    return query_subject_index(subject_id, embedding, top_k=top_k)
+    return query_course_index(course_id, embedding, top_k=top_k)
 
 
 __all__ = [
     "IndexedChunk",
-    "SubjectIndexHit",
-    "clear_subject_index",
+    "CourseIndexHit",
+    "clear_course_index",
     "count_indexed_chunks",
     "delete_chunks",
-    "query_subject_index",
-    "rebuild_subject_index",
-    "retrieve_subject_chunks",
-    "subject_index_exists",
+    "query_course_index",
+    "rebuild_course_index",
+    "retrieve_course_chunks",
+    "course_index_exists",
     "upsert_chunks",
 ]

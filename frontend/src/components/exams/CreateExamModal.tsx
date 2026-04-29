@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 
 import { Button } from "../ui/Button";
@@ -20,8 +20,8 @@ export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
 
 const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
 
-function getCreateExamConfigStorageKey(subjectId: string) {
-  return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${subjectId}`;
+function getCreateExamConfigStorageKey(courseId: string) {
+  return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${courseId}`;
 }
 
 function normalizeCreateExamConfig(
@@ -47,26 +47,26 @@ function normalizeCreateExamConfig(
   };
 }
 
-export function loadCreateExamConfig(subjectId: string): CreateExamConfig {
+export function loadCreateExamConfig(courseId: string): CreateExamConfig {
   if (typeof window === "undefined") {
     return DEFAULT_CREATE_EXAM_CONFIG;
   }
 
   try {
-    const raw = window.localStorage.getItem(getCreateExamConfigStorageKey(subjectId));
+    const raw = window.localStorage.getItem(getCreateExamConfigStorageKey(courseId));
     return normalizeCreateExamConfig(raw ? JSON.parse(raw) : null);
   } catch {
     return DEFAULT_CREATE_EXAM_CONFIG;
   }
 }
 
-export function saveCreateExamConfig(subjectId: string, config: CreateExamConfig) {
+export function saveCreateExamConfig(courseId: string, config: CreateExamConfig) {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(
-    getCreateExamConfigStorageKey(subjectId),
+    getCreateExamConfigStorageKey(courseId),
     JSON.stringify(normalizeCreateExamConfig(config)),
   );
 }
@@ -83,22 +83,22 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
 
 interface CreateExamModalProps {
   open: boolean;
-  subjectId: string;
+  courseId: string;
   onClose: () => void;
 }
 
-export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalProps) {
+export function CreateExamModal({ open, courseId, onClose }: CreateExamModalProps) {
   const { toast } = useToast();
-  const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(subjectId));
+  const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId));
 
   useEffect(() => {
     if (!open) return;
-    setConfig(loadCreateExamConfig(subjectId));
-  }, [open, subjectId]);
+    setConfig(loadCreateExamConfig(courseId));
+  }, [open, courseId]);
 
   const handleReset = () => {
     setConfig(DEFAULT_CREATE_EXAM_CONFIG);
-    saveCreateExamConfig(subjectId, DEFAULT_CREATE_EXAM_CONFIG);
+    saveCreateExamConfig(courseId, DEFAULT_CREATE_EXAM_CONFIG);
     toast({
       title: "配置已重置",
       description: "之后会使用默认配置创建新考卷。",
@@ -107,7 +107,7 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
   };
 
   const handleSave = () => {
-    saveCreateExamConfig(subjectId, config);
+    saveCreateExamConfig(courseId, config);
     toast({
       title: "配置已保存",
       description: "下次点击创建新考卷会直接使用这套配置。",
@@ -120,8 +120,8 @@ export function CreateExamModal({ open, subjectId, onClose }: CreateExamModalPro
     <Modal open={open} onClose={onClose} title="新考卷配置" className="max-w-2xl rounded-[28px]">
       <div className="space-y-6">
         <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5">
-          <p className="text-sm font-medium text-sky-600">面向当前学科</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{subjectId}</h3>
+          <p className="text-sm font-medium text-sky-600">面向当前课程</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{courseId}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600">
             保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>

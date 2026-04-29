@@ -16,7 +16,7 @@ from app.workflows.ingest.fast_parse.lib.lifecycle import (
     dispatch_enhancement_if_needed,
     mark_parse_workflow_failed,
 )
-from app.workflows.ingest.intake.catalog import get_subject_files_or_raise, get_user_files_or_raise
+from app.workflows.ingest.intake.catalog import get_course_files_or_raise, get_user_files_or_raise
 from app.workflows.ingest.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 
 logger = structlog.get_logger()
@@ -26,17 +26,17 @@ def _start_parse_for_files(
     session: Session,
     *,
     owner_user_id: str,
-    subject_id: str | None,
+    course_id: str | None,
     file_ids: list[str],
 ) -> list[RawFile]:
     raw_files = (
-        get_subject_files_or_raise(session, subject_id=subject_id, file_ids=file_ids)
-        if subject_id
+        get_course_files_or_raise(session, course_id=course_id, file_ids=file_ids)
+        if course_id
         else get_user_files_or_raise(session, owner_user_id=owner_user_id, file_ids=file_ids)
     )
     logger.info(
         "file_parse_state_transition_requested",
-        subject_id=subject_id or "",
+        course_id=course_id or "",
         user_id=owner_user_id,
         requested_file_ids=file_ids,
         raw_file_states=[
@@ -66,14 +66,14 @@ def _start_parse_for_files(
 
     logger.info(
         "file_parse_state_transition_completed",
-        subject_id=subject_id or "",
+        course_id=course_id or "",
         user_id=owner_user_id,
         accepted_file_ids=file_ids,
         accepted_count=len(file_ids),
     )
     return (
-        get_subject_files_or_raise(session, subject_id=subject_id, file_ids=file_ids)
-        if subject_id
+        get_course_files_or_raise(session, course_id=course_id, file_ids=file_ids)
+        if course_id
         else get_user_files_or_raise(session, owner_user_id=owner_user_id, file_ids=file_ids)
     )
 
@@ -82,11 +82,11 @@ async def run_parse_files_background(
     *,
     user_id: str,
     file_ids: list[str],
-    subject_id: str | None = None,
+    course_id: str | None = None,
     background_task_registry=None,
 ) -> None:
     concurrency = max(DEFAULT_PARSE_CONCURRENCY, 1)
-    batch_logger = logger.bind(subject_id=subject_id or "", user_id=user_id, file_ids=file_ids)
+    batch_logger = logger.bind(course_id=course_id or "", user_id=user_id, file_ids=file_ids)
     batch_logger.info(
         "file_parse_background_started",
         file_count=len(file_ids),
@@ -102,7 +102,7 @@ async def run_parse_files_background(
                 result = await run_parse_file_workflow(
                     user_id=user_id,
                     file_id=file_id,
-                    subject_id=subject_id or "",
+                    course_id=course_id or "",
                 )
             except asyncio.CancelledError:
                 batch_logger.warning("file_parse_background_dispatch_cancelled", file_id=file_id)
@@ -113,7 +113,7 @@ async def run_parse_files_background(
                     file_id=file_id,
                     error=str(exc),
                     step="ingest.unhandled_error",
-                    subject_id=subject_id or "",
+                    course_id=course_id or "",
                 )
                 batch_logger.exception(
                     "file_parse_background_crashed",
@@ -129,7 +129,7 @@ async def run_parse_files_background(
                         file_id=file_id,
                         error=result.error.detail,
                         step="ingest.unhandled_error",
-                        subject_id=subject_id or "",
+                        course_id=course_id or "",
                     )
                 error_metadata = result.error.metadata if result.error else {}
                 batch_logger.warning(

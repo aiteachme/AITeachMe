@@ -1,4 +1,4 @@
-﻿"""Lightweight in-process workflow event bus."""
+"""Lightweight in-process workflow event bus."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class WorkflowEvent(Protocol):
     """Protocol implemented by workflow events."""
 
     event_name: ClassVar[str]
-    subject_id: str
+    course_id: str
 
 
 EventHandler = Callable[[WorkflowEvent], Awaitable[None] | None]
@@ -30,7 +30,7 @@ class LoggedWorkflowEvent:
 
     event_name: ClassVar[str] = "workflow.logged"
 
-    subject_id: str
+    course_id: str
     workflow_name: str
     payload: dict[str, Any]
 
@@ -52,7 +52,7 @@ class InProcessEventBus:
         logger.info(
             "workflow_event_published",
             event_name=event.event_name,
-            subject_id=event.subject_id,
+            course_id=event.course_id,
         )
         for handler in self._handlers.get(event.event_name, []):
             result = handler(event)

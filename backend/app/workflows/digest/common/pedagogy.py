@@ -1,4 +1,4 @@
-﻿"""Digest pedagogy helpers for learning-document assembly and scaffolding."""
+"""Digest pedagogy helpers for learning-document assembly and scaffolding."""
 
 from __future__ import annotations
 
@@ -130,7 +130,7 @@ _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _KU_ANCHOR_RE = re.compile(r"(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)")
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
-_SUBJECT_SLUG_RE = re.compile(r"^subj_[a-z0-9_-]+$", re.IGNORECASE)
+_COURSE_SLUG_RE = re.compile(r"^(?:course|subj)_[a-z0-9_-]+$", re.IGNORECASE)
 _GENERIC_FOCUS_TERMS = {
     "核心概念",
     "高频考点",
@@ -288,7 +288,7 @@ def coerce_resolved_chapter_title(
 @traceable(name="teaching.chapter_title_resolution_prompt", run_type="prompt")
 def build_chapter_title_resolution_messages(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     objective: str,
     required_elements: list[str],
@@ -312,7 +312,7 @@ def build_chapter_title_resolution_messages(
     user_prompt = f"""
 请为下面这一章生成一个新的中文章节标题。
 
-主题：{subject_name}
+主题：{course_name}
 课程模式：{mode_label}
 学习目标：{objective or "把本章最核心的知识主线讲清楚。"}
 必须覆盖：{required_text}
@@ -340,7 +340,7 @@ def build_chapter_title_resolution_messages(
 
 def build_document_overview(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -351,9 +351,9 @@ def build_document_overview(
 
     normalized_mode = _normalize_mode(digest_mode)
     mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
-    display_subject = _resolve_subject_name(subject_name)
+    display_course = _resolve_course_name(course_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
-    goal_line = user_prompt.strip() or f"围绕 {display_subject} 生成一份结构化学习文档。"
+    goal_line = user_prompt.strip() or f"围绕 {display_course} 生成一份结构化学习文档。"
     chapter_count = len(deduped_chapters)
     scope_line = _build_overview_scope(deduped_chapters)
 
@@ -361,10 +361,10 @@ def build_document_overview(
         "# 知识文档总览",
         "",
         (
-            f"这份讲义围绕《{display_subject}》展开，按 {mode_label} 方式组织内容，"
+            f"这份讲义围绕《{display_course}》展开，按 {mode_label} 方式组织内容，"
             f"共 {chapter_count} 章。"
             if chapter_count > 0
-            else f"这份讲义围绕《{display_subject}》展开，按 {mode_label} 方式组织内容。"
+            else f"这份讲义围绕《{display_course}》展开，按 {mode_label} 方式组织内容。"
         ),
         "",
         f"学习目标：{goal_line}",
@@ -391,9 +391,9 @@ def _build_overview_scope(chapters: list[Mapping[str, object]], *, max_items: in
     return "、".join(titles)
 
 
-def _resolve_subject_name(subject_name: str) -> str:
-    normalized = str(subject_name or "").strip()
-    if normalized and not _SUBJECT_SLUG_RE.fullmatch(normalized):
+def _resolve_course_name(course_name: str) -> str:
+    normalized = str(course_name or "").strip()
+    if normalized and not _COURSE_SLUG_RE.fullmatch(normalized):
         return normalized
     return "当前课程"
 
@@ -902,9 +902,9 @@ def _chapter_evidence(chapter: Mapping[str, object]) -> str:
     return "；".join(evidence_bits)
 
 
-def _default_plan_summary(*, subject_name: str, digest_mode: str, chapters: list[Mapping[str, object]]) -> str:
+def _default_plan_summary(*, course_name: str, digest_mode: str, chapters: list[Mapping[str, object]]) -> str:
     mode_label = "冲刺型" if digest_mode == "sprint" else "系统型"
-    return f"围绕 {subject_name} 设计的一条 {mode_label} 学习路径，共 {len(chapters)} 章。"
+    return f"围绕 {course_name} 设计的一条 {mode_label} 学习路径，共 {len(chapters)} 章。"
 
 
 def _source_strategy_label(source_strategy: str) -> str:

@@ -16,7 +16,7 @@ def upgrade() -> None:
     op.create_table(
         "knowledge_graph_sync_run",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("build_session_id", sa.String(), nullable=True),
         sa.Column("doc_version_no", sa.Integer(), nullable=False),
         sa.Column("graph_revision_no", sa.Integer(), nullable=False),
@@ -29,18 +29,18 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_knowledge_graph_sync_run_subject", "knowledge_graph_sync_run", ["subject"])
+    op.create_index("ix_knowledge_graph_sync_run_course", "knowledge_graph_sync_run", ["course"])
     op.create_index("ix_knowledge_graph_sync_run_build_session_id", "knowledge_graph_sync_run", ["build_session_id"])
     op.create_index("ix_knowledge_graph_sync_run_doc_version_no", "knowledge_graph_sync_run", ["doc_version_no"])
     op.create_index("ix_knowledge_graph_sync_run_graph_revision_no", "knowledge_graph_sync_run", ["graph_revision_no"])
     op.create_index("ix_knowledge_graph_sync_run_status", "knowledge_graph_sync_run", ["status"])
-    op.create_index("ix_kg_sync_run_subject_revision", "knowledge_graph_sync_run", ["subject", "graph_revision_no"])
-    op.create_index("ix_kg_sync_run_subject_doc_version", "knowledge_graph_sync_run", ["subject", "doc_version_no"])
+    op.create_index("ix_kg_sync_run_course_revision", "knowledge_graph_sync_run", ["course", "graph_revision_no"])
+    op.create_index("ix_kg_sync_run_course_doc_version", "knowledge_graph_sync_run", ["course", "doc_version_no"])
 
     op.create_table(
         "knowledge_graph_source_ref",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("entity_type", sa.String(), nullable=False),
         sa.Column("entity_id", sa.Integer(), nullable=False),
         sa.Column("sync_run_id", sa.Integer(), sa.ForeignKey("knowledge_graph_sync_run.id"), nullable=True),
@@ -54,7 +54,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_knowledge_graph_source_ref_subject", "knowledge_graph_source_ref", ["subject"])
+    op.create_index("ix_knowledge_graph_source_ref_course", "knowledge_graph_source_ref", ["course"])
     op.create_index("ix_knowledge_graph_source_ref_entity_type", "knowledge_graph_source_ref", ["entity_type"])
     op.create_index("ix_knowledge_graph_source_ref_entity_id", "knowledge_graph_source_ref", ["entity_id"])
     op.create_index("ix_knowledge_graph_source_ref_sync_run_id", "knowledge_graph_source_ref", ["sync_run_id"])
@@ -67,11 +67,11 @@ def upgrade() -> None:
     op.create_index("ix_knowledge_graph_source_ref_anchor", "knowledge_graph_source_ref", ["anchor"])
     op.create_index("ix_knowledge_graph_source_ref_source_kind", "knowledge_graph_source_ref", ["source_kind"])
     op.create_index("ix_kg_source_ref_entity", "knowledge_graph_source_ref", ["entity_type", "entity_id"])
-    op.create_index("ix_kg_source_ref_subject_chapter", "knowledge_graph_source_ref", ["subject", "chapter_index"])
+    op.create_index("ix_kg_source_ref_course_chapter", "knowledge_graph_source_ref", ["course", "chapter_index"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_kg_source_ref_subject_chapter", table_name="knowledge_graph_source_ref")
+    op.drop_index("ix_kg_source_ref_course_chapter", table_name="knowledge_graph_source_ref")
     op.drop_index("ix_kg_source_ref_entity", table_name="knowledge_graph_source_ref")
     op.drop_index("ix_knowledge_graph_source_ref_source_kind", table_name="knowledge_graph_source_ref")
     op.drop_index("ix_knowledge_graph_source_ref_anchor", table_name="knowledge_graph_source_ref")
@@ -80,14 +80,14 @@ def downgrade() -> None:
     op.drop_index("ix_knowledge_graph_source_ref_sync_run_id", table_name="knowledge_graph_source_ref")
     op.drop_index("ix_knowledge_graph_source_ref_entity_id", table_name="knowledge_graph_source_ref")
     op.drop_index("ix_knowledge_graph_source_ref_entity_type", table_name="knowledge_graph_source_ref")
-    op.drop_index("ix_knowledge_graph_source_ref_subject", table_name="knowledge_graph_source_ref")
+    op.drop_index("ix_knowledge_graph_source_ref_course", table_name="knowledge_graph_source_ref")
     op.drop_table("knowledge_graph_source_ref")
 
-    op.drop_index("ix_kg_sync_run_subject_doc_version", table_name="knowledge_graph_sync_run")
-    op.drop_index("ix_kg_sync_run_subject_revision", table_name="knowledge_graph_sync_run")
+    op.drop_index("ix_kg_sync_run_course_doc_version", table_name="knowledge_graph_sync_run")
+    op.drop_index("ix_kg_sync_run_course_revision", table_name="knowledge_graph_sync_run")
     op.drop_index("ix_knowledge_graph_sync_run_status", table_name="knowledge_graph_sync_run")
     op.drop_index("ix_knowledge_graph_sync_run_graph_revision_no", table_name="knowledge_graph_sync_run")
     op.drop_index("ix_knowledge_graph_sync_run_doc_version_no", table_name="knowledge_graph_sync_run")
     op.drop_index("ix_knowledge_graph_sync_run_build_session_id", table_name="knowledge_graph_sync_run")
-    op.drop_index("ix_knowledge_graph_sync_run_subject", table_name="knowledge_graph_sync_run")
+    op.drop_index("ix_knowledge_graph_sync_run_course", table_name="knowledge_graph_sync_run")
     op.drop_table("knowledge_graph_sync_run")

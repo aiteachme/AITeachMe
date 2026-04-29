@@ -1,8 +1,8 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  clearChatApiApiV1SubjectsSubjectIdChatsClearPost,
-  getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl,
-  listChatApiApiV1SubjectsSubjectIdChatsListPost,
+  clearChatApiApiV1CoursesCourseIdChatsClearPost,
+  getSendChatApiV1CoursesCourseIdChatsSendPostUrl,
+  listChatApiApiV1CoursesCourseIdChatsListPost,
 } from "../api/generated/chats";
 import type { ChatContextItem, ChatMessageItem, ChatSendRequest } from "../api/generated/model";
 import { getApiErrorMessage, postSseJson } from "../api/client";
@@ -93,7 +93,7 @@ interface UseChatSessionOptions {
   onMessageSettled?: (payload: ChatMessageSettledPayload) => void;
 }
 
-export function useChatSession(subjectId: string, options: UseChatSessionOptions = {}) {
+export function useChatSession(courseId: string, options: UseChatSessionOptions = {}) {
   const sessionId = options.sessionId ?? null;
   const enabled = options.enabled ?? true;
   const loadWithoutSession = options.loadWithoutSession ?? true;
@@ -137,7 +137,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
         return;
       }
 
-      if (!subjectId) {
+      if (!courseId) {
         setMessages([]);
         setMessagesSessionId(null);
         setHistoryError(null);
@@ -165,7 +165,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
       setHistoryLoaded(false);
       try {
-        const response = await listChatApiApiV1SubjectsSubjectIdChatsListPost(subjectId, {
+        const response = await listChatApiApiV1CoursesCourseIdChatsListPost(courseId, {
           page: 1,
           size: 100,
           session_id: sessionId ?? undefined,
@@ -203,7 +203,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     return () => {
       cancelled = true;
     };
-  }, [enabled, loadWithoutSession, preserveMessagesWithoutSession, sessionId, subjectId]);
+  }, [enabled, loadWithoutSession, preserveMessagesWithoutSession, sessionId, courseId]);
 
   useEffect(() => {
     return () => {
@@ -215,11 +215,11 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, [subjectId]);
+  }, [courseId]);
 
   async function sendMessage(input: ChatSendRequest, sendOptions: SendMessageOptions = {}): Promise<SendMessageResult> {
     const question = input.question.trim();
-    if (!subjectId || !question || isStreamingRef.current) {
+    if (!courseId || !question || isStreamingRef.current) {
       return { accepted: false, sessionId: null };
     }
 
@@ -274,7 +274,7 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
 
     try {
       const streamResult = await postSseJson(
-        getSendChatApiV1SubjectsSubjectIdChatsSendPostUrl(subjectId),
+        getSendChatApiV1CoursesCourseIdChatsSendPostUrl(courseId),
         {
           ...input,
           question,
@@ -452,16 +452,16 @@ export function useChatSession(subjectId: string, options: UseChatSessionOptions
   }
 
   async function clearHistory() {
-    if (!subjectId) {
+    if (!courseId) {
       return;
     }
 
     abortStream();
     try {
       if (sessionId) {
-        await clearChatApiApiV1SubjectsSubjectIdChatsClearPost(subjectId, { session_id: sessionId });
+        await clearChatApiApiV1CoursesCourseIdChatsClearPost(courseId, { session_id: sessionId });
       } else {
-        await clearChatApiApiV1SubjectsSubjectIdChatsClearPost(subjectId, {});
+        await clearChatApiApiV1CoursesCourseIdChatsClearPost(courseId, {});
       }
       setMessages([]);
       setMessagesSessionId(sessionId ?? null);

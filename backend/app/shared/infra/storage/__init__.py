@@ -9,13 +9,13 @@ from __future__ import annotations
 from app.shared.infra.storage.base import ArtifactStore
 from app.shared.infra.storage.config import storage_is_s3
 from app.shared.infra.storage.content_store import ContentStore
-from app.shared.infra.storage.subject_scope import (
-    SubjectStorageScope,
+from app.shared.infra.storage.course_scope import (
+    CourseStorageScope,
     UserFileStorageScope,
     build_file_storage_segment,
-    build_subject_storage_scope,
+    build_course_storage_scope,
     build_user_file_storage_scope,
-    resolve_subject_storage_scope,
+    resolve_course_storage_scope,
     sanitize_storage_file_stem,
 )
 from app.shared.infra.storage.sync_bridge import run_store_sync
@@ -69,14 +69,14 @@ def reset_artifact_store() -> None:
 __all__ = [
     "ArtifactStore",
     "ContentStore",
-    "SubjectStorageScope",
+    "CourseStorageScope",
     "UserFileStorageScope",
     "build_file_storage_segment",
-    "build_subject_storage_scope",
+    "build_course_storage_scope",
     "build_user_file_storage_scope",
     "get_artifact_store",
     "get_content_store",
-    "resolve_subject_storage_scope",
+    "resolve_course_storage_scope",
     "reset_artifact_store",
     "run_store_sync",
     "sanitize_storage_file_stem",

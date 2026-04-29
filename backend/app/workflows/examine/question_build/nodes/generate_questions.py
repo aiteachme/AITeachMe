@@ -1,4 +1,4 @@
-﻿"""Generate exam questions and emit compact progress events."""
+"""Generate exam questions and emit compact progress events."""
 
 from __future__ import annotations
 
@@ -76,10 +76,10 @@ def build_generate_questions_node(*, context: WorkflowContext):
             questions = await generate_exam_questions_for_units(
                 units=list(state.get("units") or []),
                 specs=specs,
-                subject_profile={
-                    "subject_name": str(state.get("subject_name") or ""),
-                    "subject_description": str(state.get("subject_description") or ""),
-                    "user_intent": str(state.get("subject_user_intent") or ""),
+                course_profile={
+                    "course_name": str(state.get("course_name") or ""),
+                    "course_description": str(state.get("course_description") or ""),
+                    "user_intent": str(state.get("course_user_intent") or ""),
                 },
                 system_constraints=str(state.get("system_constraints") or ""),
                 on_question_generated=handle_question_generated,

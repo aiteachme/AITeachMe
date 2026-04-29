@@ -59,7 +59,7 @@ class SQLiteMemoryStore:
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id     TEXT NOT NULL DEFAULT 'default',
                     event_type  TEXT NOT NULL,
-                    subject_id  TEXT DEFAULT '',
+                    course_id  TEXT DEFAULT '',
                     summary     TEXT NOT NULL,
                     metadata    TEXT DEFAULT '{}',
                     created_at  TEXT NOT NULL
@@ -69,7 +69,7 @@ class SQLiteMemoryStore:
                     ON learning_logs(user_id, created_at);
             """)
             try:
-                cursor.execute("ALTER TABLE learning_logs ADD COLUMN subject_id TEXT DEFAULT ''")
+                cursor.execute("ALTER TABLE learning_logs ADD COLUMN course_id TEXT DEFAULT ''")
             except Exception:
                 pass
             conn.commit()
@@ -208,10 +208,10 @@ class SQLiteMemoryStore:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO learning_logs (user_id, event_type, subject_id, summary, metadata, created_at)
+                INSERT INTO learning_logs (user_id, event_type, course_id, summary, metadata, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (entry.user_id, entry.event_type, entry.subject_id,
+                (entry.user_id, entry.event_type, entry.course_id,
                  entry.summary, json.dumps(entry.metadata, ensure_ascii=False),
                  entry.created_at.isoformat()),
             )
@@ -232,7 +232,7 @@ class SQLiteMemoryStore:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT user_id, event_type, subject_id, summary, metadata, created_at
+                SELECT user_id, event_type, course_id, summary, metadata, created_at
                 FROM learning_logs
                 WHERE user_id = ? AND created_at >= datetime('now', ?)
                 ORDER BY created_at DESC
@@ -241,7 +241,7 @@ class SQLiteMemoryStore:
             )
             return [
                 LearningLogEntry(
-                    user_id=row[0], event_type=row[1], subject_id=row[2],
+                    user_id=row[0], event_type=row[1], course_id=row[2],
                     summary=row[3],
                     metadata=json.loads(row[4]) if row[4] else {},
                     created_at=datetime.fromisoformat(row[5]),

@@ -10,11 +10,11 @@ from app.workflows.digest.common.models import AssetItem, AssetRegistry, SourceP
 logger = structlog.get_logger()
 
 
-def build_asset_registry(subject_id: str, source_packets: list[SourcePacket]) -> AssetRegistry:
+def build_asset_registry(course_id: str, source_packets: list[SourcePacket]) -> AssetRegistry:
     """Index markdown-referenced assets once for the selected source files."""
 
     if not source_packets:
-        return AssetRegistry(subject_id=subject_id, asset_dir="")
+        return AssetRegistry(course_id=course_id, asset_dir="")
 
     cs = get_content_store()
     asset_dir = source_packets[0].asset_dir
@@ -45,10 +45,10 @@ def build_asset_registry(subject_id: str, source_packets: list[SourcePacket]) ->
                 )
             )
 
-    registry = AssetRegistry(subject_id=subject_id, asset_dir=asset_dir, assets=assets)
+    registry = AssetRegistry(course_id=course_id, asset_dir=asset_dir, assets=assets)
     logger.info(
         "asset_registry_built",
-        subject_id=subject_id,
+        course_id=course_id,
         asset_count=len(assets),
         missing_asset_count=missing_assets,
     )

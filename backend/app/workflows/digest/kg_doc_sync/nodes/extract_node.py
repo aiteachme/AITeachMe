@@ -14,30 +14,30 @@ from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncExtractionPayload
 from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
-from app.workflows.support.subjects.learning_context import load_subject_llm_context
+from app.workflows.support.courses.learning_context import load_course_llm_context
 
 logger = structlog.get_logger()
 
 
-def _load_subject_context(state: DocsSyncState) -> tuple[str, str]:
-    subject_context = str(state.get("subject_context") or "").strip()
-    if subject_context:
-        return subject_context, "state"
+def _load_course_context(state: DocsSyncState) -> tuple[str, str]:
+    course_context = str(state.get("course_context") or "").strip()
+    if course_context:
+        return course_context, "state"
     with managed_session() as session:
-        return load_subject_llm_context(session, subject_id=state["subject_id"]), "database"
+        return load_course_llm_context(session, course_id=state["course_id"]), "database"
 
 
 def _payload_metrics(
     payload: KnowledgeSyncExtractionPayload,
     *,
     elapsed_ms: int,
-    subject_context_source: str,
+    course_context_source: str,
 ) -> dict[str, object]:
     diagnostics = dict(payload.diagnostics_totals or {})
     return {
         "ok": True,
         "elapsed_ms": elapsed_ms,
-        "subject_context_source": subject_context_source,
+        "course_context_source": course_context_source,
         "unit_count": len(payload.units),
         "edge_count": len(payload.extracted_edges),
         "chapter_count": int(diagnostics.get("chapter_count", 0) or 0),
@@ -80,10 +80,10 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
         )
 
     try:
-        subject_context, subject_context_source = _load_subject_context(state)
+        course_context, course_context_source = _load_course_context(state)
         payload = await extract_knowledge_graph_items_async(
             markdown=state["markdown"],
-            subject_context=subject_context,
+            course_context=course_context,
             run_context=run_context,
             prefetched_records=(
                 list(state.get("prefetched_sections") or [])
@@ -99,10 +99,10 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
                 "docs_sync_extraction_payload_missing",
                 metrics={
                     "elapsed_ms": elapsed_ms,
-                    "subject_context_source": subject_context_source,
+                    "course_context_source": course_context_source,
                     **graph_extraction_parallelism(),
                 },
-                subject_context=subject_context,
+                course_context=course_context,
                 extraction_payload=None,
             )
         return with_node_metrics(
@@ -111,9 +111,9 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
             _payload_metrics(
                 payload,
                 elapsed_ms=elapsed_ms,
-                subject_context_source=subject_context_source,
+                course_context_source=course_context_source,
             ),
-            subject_context=subject_context,
+            course_context=course_context,
             extraction_payload=payload,
             error=None,
         )
@@ -121,7 +121,7 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.warning(
             "kg_doc_sync_extract_failed",
-            subject_id=state.get("subject_id"),
+            course_id=state.get("course_id"),
             build_session_id=state.get("build_session_id"),
             sync_run_id=run_context.sync_run_id,
             error_type=type(exc).__name__,

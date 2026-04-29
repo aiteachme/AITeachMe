@@ -3,13 +3,13 @@
 `search` in this project is broader than classic RAG:
 - web retrievers discover candidate URLs and snippets
 - readers extract page content from URLs
-- knowledge retrieval searches the local subject corpus
+- knowledge retrieval searches the local course corpus
 
 This module groups the local knowledge retrieval contracts so we do not keep
 similarly named retrieval files split between `infra/` root and `infra/search/`.
 
 .. deprecated::
-    ``RetrievalPipeline`` is replaced by the LlamaIndex-managed subject index
+    ``RetrievalPipeline`` is replaced by the LlamaIndex-managed course index
     in ``llamaindex_index/manager.py``.
     ``RetrievedChunk``, ``RetrievalConfig`` and ``rerank_chunks()`` remain
     as shared data contracts.
@@ -58,7 +58,7 @@ class RetrievalPipeline:
     async def retrieve(
         self,
         query: str,
-        subject_id: str,
+        course_id: str,
         *,
         config: RetrievalConfig | None = None,
         query_embedding: list[float] | None = None,
@@ -67,14 +67,14 @@ class RetrievalPipeline:
         chunks: list[RetrievedChunk] = []
 
         if self._vector and query_embedding:
-            results = await self._vector(query_embedding, subject_id, cfg.top_k)
+            results = await self._vector(query_embedding, course_id, cfg.top_k)
             for chunk in results:
                 chunk.source = "vector"
             chunks.extend(results)
 
         if cfg.enable_keyword and self._keyword:
             seen = {chunk.chunk_id for chunk in chunks}
-            for chunk in await self._keyword(query, subject_id, cfg.top_k):
+            for chunk in await self._keyword(query, course_id, cfg.top_k):
                 if chunk.chunk_id not in seen:
                     chunk.source = "keyword"
                     chunks.append(chunk)
@@ -85,7 +85,7 @@ class RetrievalPipeline:
 
         chunks.sort(key=lambda chunk: chunk.score, reverse=True)
         result = chunks[: cfg.top_k]
-        logger.info("retrieval_done", subject_id=subject_id, returned=len(result))
+        logger.info("retrieval_done", course_id=course_id, returned=len(result))
         return result
 
 

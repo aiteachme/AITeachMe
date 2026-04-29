@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import timedelta
 
@@ -24,7 +24,7 @@ def test_hidden_prepared_exam_is_excluded_until_claimed() -> None:
     now = utcnow()
     with Session(engine) as session:
         visible = ExamPaper(
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             status="ready",
@@ -33,7 +33,7 @@ def test_hidden_prepared_exam_is_excluded_until_claimed() -> None:
             total_items=3,
         )
         hidden = ExamPaper(
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             status="ready",
@@ -50,7 +50,7 @@ def test_hidden_prepared_exam_is_excluded_until_claimed() -> None:
 
         rows, total = exams_repo.list_exam_papers(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             limit=20,
             offset=0,
@@ -60,7 +60,7 @@ def test_hidden_prepared_exam_is_excluded_until_claimed() -> None:
 
         claimed = exams_repo.claim_prepared_exam_paper(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
         )
@@ -73,7 +73,7 @@ def test_hidden_prepared_exam_is_excluded_until_claimed() -> None:
 
         rows, total = exams_repo.list_exam_papers(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             limit=20,
             offset=0,
@@ -88,7 +88,7 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
     with Session(engine) as session:
         session.add(
             ExamPaper(
-                subject_id="subj_math00000000",
+                course_id="course_math00000000",
                 user_id="user-a",
                 exam_mode="web_practice",
                 status="ready",
@@ -102,7 +102,7 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
         )
         session.add(
             ExamPaper(
-                subject_id="subj_math00000000",
+                course_id="course_math00000000",
                 user_id="user-a",
                 exam_mode="web_practice",
                 status="generating",
@@ -117,20 +117,20 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
 
         assert not exams_repo.has_active_prepared_exam(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
         )
         assert exams_repo.has_active_prepared_exam(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-b",
         )
 
         claimed = exams_repo.claim_prepared_exam_paper(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-b",
         )
@@ -142,10 +142,10 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
 def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
     engine = _engine()
     with Session(engine) as session:
-        config_snapshot = {"version": 1, "subject": "math", "num_questions": 8}
+        config_snapshot = {"version": 1, "course": "math", "num_questions": 8}
         reserved, created = _reserve_exam_prewarm_paper(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             question_count=8,
@@ -162,7 +162,7 @@ def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
 
         repeated, repeated_created = _reserve_exam_prewarm_paper(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             question_count=8,
@@ -177,7 +177,7 @@ def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
 
         claimed = exams_repo.claim_prepared_exam_paper(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
         )
@@ -193,7 +193,7 @@ def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
     now = utcnow()
     with Session(engine) as session:
         ready = ExamPaper(
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             status="ready",
@@ -208,7 +208,7 @@ def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
         session.add(ready)
         session.add(
             ExamPaper(
-                subject_id="subj_math00000000",
+                course_id="course_math00000000",
                 user_id="user-a",
                 exam_mode="web_practice",
                 status="failed",
@@ -223,7 +223,7 @@ def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
 
         candidate = exams_repo.get_prepared_exam_candidate(
             session,
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
         )
@@ -236,7 +236,7 @@ def test_study_guide_cache_upserts_by_exam_paper() -> None:
     engine = _engine()
     with Session(engine) as session:
         paper = ExamPaper(
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             exam_mode="web_practice",
             status="graded",
@@ -250,7 +250,7 @@ def test_study_guide_cache_upserts_by_exam_paper() -> None:
         first = exams_repo.upsert_study_guide_cache(
             session,
             exam_paper_id=int(paper.id or 0),
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             status="completed",
             guide_json='{"overall_summary":"old"}',
@@ -259,7 +259,7 @@ def test_study_guide_cache_upserts_by_exam_paper() -> None:
         second = exams_repo.upsert_study_guide_cache(
             session,
             exam_paper_id=int(paper.id or 0),
-            subject_id="subj_math00000000",
+            course_id="course_math00000000",
             user_id="user-a",
             status="completed",
             guide_json='{"overall_summary":"new"}',

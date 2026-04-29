@@ -6,27 +6,27 @@ import sqlalchemy as sa
 from sqlmodel import Session, func, select
 
 from app.models import ExamPaper, ExamPaperItem, KnowledgeEdge, KnowledgeUnit, QuestionKnowledgeUnitLink, QuestionTemplate, UserKnowledgeState
-from app.shared.infra.exceptions import SubjectBuildLockConflictError
+from app.shared.infra.exceptions import CourseBuildLockConflictError
 from app.shared.infra.knowledge.build_store import is_knowledge_build_locked
 
 
-def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[str, int]:
-    if is_knowledge_build_locked(subject_id):
-        raise SubjectBuildLockConflictError(subject_id)
+def clear_course_graph_entities(session: Session, *, course_id: str) -> dict[str, int]:
+    if is_knowledge_build_locked(course_id):
+        raise CourseBuildLockConflictError(course_id)
 
     unit_ids = list(
         session.exec(
-            select(KnowledgeUnit.id).where(KnowledgeUnit.subject_id == subject_id)
+            select(KnowledgeUnit.id).where(KnowledgeUnit.course_id == course_id)
         ).all()
     )
     edge_count = int(
         session.exec(
-        select(func.count()).select_from(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id)
+        select(func.count()).select_from(KnowledgeEdge).where(KnowledgeEdge.course_id == course_id)
         ).one()
     )
     node_count = int(
         session.exec(
-        select(func.count()).select_from(KnowledgeUnit).where(KnowledgeUnit.subject_id == subject_id)
+        select(func.count()).select_from(KnowledgeUnit).where(KnowledgeUnit.course_id == course_id)
         ).one()
     )
 
@@ -42,7 +42,7 @@ def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[s
                 .select_from(QuestionKnowledgeUnitLink)
                 .join(QuestionTemplate, QuestionKnowledgeUnitLink.question_template_id == QuestionTemplate.id)
                 .where(
-                    QuestionTemplate.subject_id == subject_id,
+                    QuestionTemplate.course_id == course_id,
                     QuestionKnowledgeUnitLink.knowledge_unit_id.in_(unit_ids),
                 )
             ).one()
@@ -54,7 +54,7 @@ def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[s
                 .join(ExamPaperItem, QuestionKnowledgeUnitLink.exam_paper_item_id == ExamPaperItem.id)
                 .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
                 .where(
-                    ExamPaper.subject_id == subject_id,
+                    ExamPaper.course_id == course_id,
                     QuestionKnowledgeUnitLink.knowledge_unit_id.in_(unit_ids),
                 )
             ).one()
@@ -68,7 +68,7 @@ def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[s
             session.exec(
                 sa.update(UserKnowledgeState)
                 .where(
-                    UserKnowledgeState.subject_id == subject_id,
+                    UserKnowledgeState.course_id == course_id,
                     UserKnowledgeState.knowledge_unit_id.in_(unit_ids),
                 )
                 .values(knowledge_unit_id=None)
@@ -84,8 +84,8 @@ def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[s
             or 0
         )
 
-    session.exec(sa.delete(KnowledgeEdge).where(KnowledgeEdge.subject_id == subject_id))
-    session.exec(sa.delete(KnowledgeUnit).where(KnowledgeUnit.subject_id == subject_id))
+    session.exec(sa.delete(KnowledgeEdge).where(KnowledgeEdge.course_id == course_id))
+    session.exec(sa.delete(KnowledgeUnit).where(KnowledgeUnit.course_id == course_id))
     session.commit()
 
     return {
@@ -98,4 +98,4 @@ def clear_subject_graph_entities(session: Session, *, subject_id: str) -> dict[s
     }
 
 
-__all__ = ["clear_subject_graph_entities"]
+__all__ = ["clear_course_graph_entities"]

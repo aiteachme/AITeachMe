@@ -1,4 +1,4 @@
-﻿"""Typed contracts for the rewritten DocGen lane."""
+"""Typed contracts for the rewritten DocGen lane."""
 
 from __future__ import annotations
 
@@ -60,8 +60,8 @@ class DocGenBaseModel(BaseModel):
 
 
 class DocGenContext(DocGenBaseModel):
-    subject_id: str = Field(default="", validation_alias=AliasChoices("subject_id", "subject"))
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject_display_name"))
+    course_id: str = Field(default="", validation_alias=AliasChoices("course_id", "course"))
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course_display_name"))
     digest_mode: str = "systematic"
     retrieval_profile: str = ""
     user_prompt: str = ""
@@ -75,8 +75,8 @@ class DocGenContext(DocGenBaseModel):
     section_count: int = 0
 
     @field_validator(
-        "subject_id",
-        "subject_name",
+        "course_id",
+        "course_name",
         "digest_mode",
         "retrieval_profile",
         "user_prompt",
@@ -416,7 +416,7 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 
 
 class ChapterGenerationPlanSeed(DocGenBaseModel):
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
     digest_mode: str = "systematic"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
@@ -425,7 +425,7 @@ class ChapterGenerationPlanSeed(DocGenBaseModel):
     chapters: list[ChapterGenerationTaskSeed] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject_name", "digest_mode", "source_policy", mode="before")
+    @field_validator("course_name", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)
@@ -578,7 +578,7 @@ class ChapterGenerationTask(DocGenBaseModel):
 
 
 class ChapterGenerationPlan(DocGenBaseModel):
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
     digest_mode: str = "systematic"
     source_policy: str = "local_first"
     writing_rules: list[str] = Field(default_factory=list)
@@ -587,7 +587,7 @@ class ChapterGenerationPlan(DocGenBaseModel):
     chapters: list[ChapterGenerationTask] = Field(default_factory=list)
     plan_mismatch_warnings: list[str] = Field(default_factory=list)
 
-    @field_validator("subject_name", "digest_mode", "source_policy", mode="before")
+    @field_validator("course_name", "digest_mode", "source_policy", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)

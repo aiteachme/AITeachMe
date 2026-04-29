@@ -29,7 +29,7 @@ def mark_parse_workflow_failed(
     file_id: str,
     error: str,
     step: str = "ingest.unhandled_error",
-    subject_id: str = "",
+    course_id: str = "",
 ) -> None:
     """Best-effort failure fallback for runtime-level parse crashes."""
 
@@ -47,7 +47,7 @@ def mark_parse_workflow_failed(
                 digest_current_step=step,
             )
     except Exception:
-        logger.exception("ingest_parse_failed_status_update_error", subject_id=subject_id, user_id=user_id, file_id=file_id)
+        logger.exception("ingest_parse_failed_status_update_error", course_id=course_id, user_id=user_id, file_id=file_id)
 
 
 def dispatch_enhancement_if_needed(
@@ -60,7 +60,7 @@ def dispatch_enhancement_if_needed(
     if not state.get("needs_enhance"):
         return False
 
-    subject_id = str(state.get("subject_id") or "").strip()
+    course_id = str(state.get("course_id") or "").strip()
     user_id = str(state.get("user_id") or "").strip()
     file_id = str(state.get("file_id") or "").strip()
     if not user_id or not file_id:
@@ -68,23 +68,23 @@ def dispatch_enhancement_if_needed(
 
     enhance_coro = _run_deep_enhance_background(
         user_id=user_id,
-        subject_id=subject_id,
+        course_id=course_id,
         file_id=file_id,
     )
-    registry_subject = subject_id or f"files:{user_id}"
+    registry_course = course_id or f"files:{user_id}"
     if background_task_registry is not None:
         try:
             background_task_registry.spawn(
                 enhance_coro,
                 kind="ingest.enhance",
-                subject_id=registry_subject,
-                name=f"ingest.enhance:{registry_subject}:{file_id}",
+                course_id=registry_course,
+                name=f"ingest.enhance:{registry_course}:{file_id}",
             )
             return True
         except Exception:
             logger.exception(
                 "ingest_enhance_background_registry_spawn_failed",
-                subject_id=subject_id,
+                course_id=course_id,
                 user_id=user_id,
                 file_id=file_id,
             )

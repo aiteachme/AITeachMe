@@ -40,12 +40,12 @@ function buildFileId(seed: number): string {
   return `file_mock_${seed.toString().padStart(4, "0")}`;
 }
 
-function buildAssetBaseUrl(subject: string, assetDirName: string | number): string {
-  return `/api/v1/subjects/${subject}/files/assets/${assetDirName}`;
+function buildAssetBaseUrl(course: string, assetDirName: string | number): string {
+  return `/api/v1/courses/${course}/files/assets/${assetDirName}`;
 }
 
-function buildFileAssets(subject: string, assetDirName: string | number): FileAssetItem[] {
-  const assetBaseUrl = buildAssetBaseUrl(subject, assetDirName);
+function buildFileAssets(course: string, assetDirName: string | number): FileAssetItem[] {
+  const assetBaseUrl = buildAssetBaseUrl(course, assetDirName);
   return [
     {
       name: SVG_ASSET_NAME,
@@ -70,8 +70,8 @@ function buildReadyMarkdown(filename: string): string {
   ].join("\n");
 }
 
-function serializeFile(subject: string, file: MockFile): FileRecord {
-  const assetBaseUrl = buildAssetBaseUrl(subject, file.internal_id);
+function serializeFile(course: string, file: MockFile): FileRecord {
+  const assetBaseUrl = buildAssetBaseUrl(course, file.internal_id);
   return {
     id: file.id,
     filename: file.filename,
@@ -94,14 +94,14 @@ function serializeFile(subject: string, file: MockFile): FileRecord {
   };
 }
 
-function buildFilesResponse(subject: string): FilesData {
+function buildFilesResponse(course: string): FilesData {
   const items = [...mockFiles]
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
-    .map((file) => serializeFile(subject, file));
+    .map((file) => serializeFile(course, file));
   const hasFileError = (item: FileRecord) => item.status === "failed" || Boolean(item.error_message?.trim());
 
   return {
-    subject_id: subject === "library" ? null : subject,
+    course_id: course === "library" ? null : course,
     total: items.length,
     ready_count: items.filter((item) => item.markdown_ready).length,
     processing_count: items.filter((item) => !item.markdown_ready && !hasFileError(item)).length,
@@ -129,7 +129,7 @@ const mockFiles: MockFile[] = [
     latest_updated_at: "2026-03-22T10:00:00Z",
     created_at: "2026-03-22T09:58:00Z",
     markdown_content: buildReadyMarkdown("calculus-final.pdf"),
-    assets: buildFileAssets("mock-subject", 1),
+    assets: buildFileAssets("mock-course", 1),
   },
   {
     internal_id: 2,
@@ -185,7 +185,7 @@ let publishedDoc = {
 
 let pendingKnowledgeBuild: PendingKnowledgeBuild | null = null;
 
-function advanceFileParsing(subject: string) {
+function advanceFileParsing(course: string) {
   for (const file of mockFiles) {
     if (file.markdown_ready || file.status === "failed") {
       continue;
@@ -208,7 +208,7 @@ function advanceFileParsing(subject: string) {
     file.image_count = 1;
     file.parser_used = file.parser_used ?? "markitdown";
     file.markdown_content = buildReadyMarkdown(file.filename);
-    file.assets = buildFileAssets(subject, file.internal_id);
+    file.assets = buildFileAssets(course, file.internal_id);
     file.latest_updated_at = now();
   }
 }
@@ -310,7 +310,7 @@ function buildMockSvg(label: string): string {
   ].join("");
 }
 
-function buildMockAssetResponse(subject: string, assetPath: string) {
+function buildMockAssetResponse(course: string, assetPath: string) {
   const normalized = assetPath.replace(/^\/+/, "");
   const parts = normalized.split("/").filter(Boolean);
   const assetDirName = parts.length >= 2 && parts[0] === "assets" ? parts[1] : "";
@@ -329,7 +329,7 @@ function buildMockAssetResponse(subject: string, assetPath: string) {
     );
   }
 
-  return new HttpResponse(buildMockSvg(`${subject} / ${file.filename} / ${assetName}`), {
+  return new HttpResponse(buildMockSvg(`${course} / ${file.filename} / ${assetName}`), {
     headers: {
       "Content-Type": asset.mime_type ?? "image/svg+xml",
     },
@@ -337,17 +337,17 @@ function buildMockAssetResponse(subject: string, assetPath: string) {
 }
 
 export const fileHandlers = [
-  http.get("/api/v1/subjects/:subject/files", ({ params }) => {
-    const subject = String(params.subject);
-    advanceFileParsing(subject);
+  http.get("/api/v1/courses/:course/files", ({ params }) => {
+    const course = String(params.course);
+    advanceFileParsing(course);
     return HttpResponse.json({
       code: 0,
-      data: buildFilesResponse(subject),
+      data: buildFilesResponse(course),
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/upload", async ({ params, request }) => {
-    const subject = String(params.subject);
+  http.post("/api/v1/courses/:course/files/upload", async ({ params, request }) => {
+    const course = String(params.course);
     const formData = await request.formData();
     const uploads = formData.getAll("files");
     const createdAt = now();
@@ -387,15 +387,15 @@ export const fileHandlers = [
     return HttpResponse.json({
       code: 0,
       data: {
-        subject,
+        course,
         filenames: newItems.map((item) => item.filename),
-        uploaded_items: newItems.map((item) => serializeFile(subject, item)),
+        uploaded_items: newItems.map((item) => serializeFile(course, item)),
         started_parse_count: newItems.length,
       },
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/files/delete", async ({ request }) => {
+  http.post("/api/v1/courses/:course/files/delete", async ({ request }) => {
     const body = (await request.json()) as { file_id?: string; file_ids?: string[] };
     const candidateIds = body.file_ids?.length ? body.file_ids : body.file_id ? [body.file_id] : [];
     const deletedIds: string[] = [];
@@ -415,14 +415,14 @@ export const fileHandlers = [
     });
   }),
 
-  http.get("/api/v1/subjects/:subject/files/assets/:assetPath*", ({ params }) => {
+  http.get("/api/v1/courses/:course/files/assets/:assetPath*", ({ params }) => {
     const assetPath = Array.isArray(params.assetPath)
       ? params.assetPath.join("/")
       : String(params.assetPath ?? "");
-    return buildMockAssetResponse(String(params.subject), assetPath);
+    return buildMockAssetResponse(String(params.course), assetPath);
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/build", async ({ request }) => {
+  http.post("/api/v1/courses/:course/knowledge/build", async ({ request }) => {
     const body = (await request.json()) as { file_ids?: string[]; prompt?: string | null };
     const requestedIds = body.file_ids?.length ? body.file_ids : null;
     const readyFileIds = mockFiles.filter((item) => item.markdown_ready).map((item) => item.id);
@@ -471,7 +471,7 @@ export const fileHandlers = [
     });
   }),
 
-  http.post("/api/v1/subjects/:subject/knowledge/docs", () => {
+  http.post("/api/v1/courses/:course/knowledge/docs", () => {
     advanceKnowledgeBuild();
     return HttpResponse.json({
       code: 0,

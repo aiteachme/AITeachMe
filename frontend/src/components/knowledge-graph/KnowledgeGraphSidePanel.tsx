@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -12,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { knowledgeClearApiV1SubjectsSubjectIdKnowledgeClearPost } from "../../api/generated/knowledge";
+import { knowledgeClearApiV1CoursesCourseIdKnowledgeClearPost } from "../../api/generated/knowledge";
 import { getApiErrorMessage } from "../../api/client";
 import {
   OVERVIEW_INCLUDE_PRESETS,
@@ -25,7 +25,7 @@ import {
   triggerKnowledgeGraphBuild,
 } from "../../lib/knowledgeBuildRuntime";
 import { DigestBuildProgress, useKnowledgeDocsBuildState } from "../build-plan/DigestBuildPanel";
-import { SubjectVectorNotice } from "./SubjectVectorNotice";
+import { CourseVectorNotice } from "./CourseVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -70,10 +70,10 @@ function TabFallback({ message }: { message: string }) {
 }
 
 export function KnowledgeGraphSidePanel({
-  subjectId,
+  courseId,
   onClose,
 }: {
-  subjectId: string;
+  courseId: string;
   onClose?: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -88,50 +88,50 @@ export function KnowledgeGraphSidePanel({
     isError: overviewIsError,
     error: overviewError,
   } = useQuery({
-    queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude),
-    queryFn: () => fetchKnowledgeOverview(subjectId, overviewInclude),
-    enabled: Boolean(subjectId),
+    queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude),
+    queryFn: () => fetchKnowledgeOverview(courseId, overviewInclude),
+    enabled: Boolean(courseId),
     retry: false,
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => knowledgeClearApiV1SubjectsSubjectIdKnowledgeClearPost(subjectId),
+    mutationFn: () => knowledgeClearApiV1CoursesCourseIdKnowledgeClearPost(courseId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["docgen-content", subjectId] });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-node-detail", courseId] });
+      queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", courseId] });
       setShowClearConfirm(false);
     },
   });
 
-  const { data: buildRuntime } = useKnowledgeDocsBuildState(subjectId);
+  const { data: buildRuntime } = useKnowledgeDocsBuildState(courseId);
   const graphStatus = String(buildRuntime?.graph?.status ?? "").trim();
   const graphIsActive = ACTIVE_BUILD_STATUSES.has(graphStatus);
 
   const graphBuildMutation = useMutation({
-    mutationFn: () => triggerKnowledgeGraphBuild(subjectId),
+    mutationFn: () => triggerKnowledgeGraphBuild(courseId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
-      queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(subjectId, overviewInclude) });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", subjectId] });
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude) });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
     },
   });
 
   const cancelBuildMutation = useMutation({
-    mutationFn: () => cancelKnowledgeBuild(subjectId),
+    mutationFn: () => cancelKnowledgeBuild(courseId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", subjectId] });
+      queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", courseId] });
     },
   });
 
-  const subjectLabel = useMemo(() => {
-    if (/^subj_[a-z0-9]+$/i.test(subjectId)) {
+  const courseLabel = useMemo(() => {
+    if (/^(?:course|subj)_[a-z0-9]+$/i.test(courseId)) {
       return "语义星图";
     }
-    return subjectId || "语义星图";
-  }, [subjectId]);
+    return courseId || "语义星图";
+  }, [courseId]);
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -206,7 +206,7 @@ export function KnowledgeGraphSidePanel({
               type="button"
               onClick={() => setShowClearConfirm(true)}
               className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500"
-              title="清空当前学科知识结构"
+              title="清空当前课程知识结构"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -214,7 +214,7 @@ export function KnowledgeGraphSidePanel({
         </div>
 
       <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-3">
-          <DigestBuildProgress subject={subjectId} compact focus="graph" />
+          <DigestBuildProgress course={courseId} compact focus="graph" />
           {graphBuildMutation.isError ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {getApiErrorMessage(graphBuildMutation.error, "图谱构建启动失败。")}
@@ -225,7 +225,7 @@ export function KnowledgeGraphSidePanel({
               {getApiErrorMessage(cancelBuildMutation.error, "停止构建失败。")}
             </div>
           ) : null}
-          <SubjectVectorNotice status={overview?.vector_status} />
+          <CourseVectorNotice status={overview?.vector_status} />
         </div>
 
       <div className="flex-1 overflow-auto bg-white p-3">
@@ -253,7 +253,7 @@ export function KnowledgeGraphSidePanel({
               {activeTab === "semantic-universe" ? (
                 <Suspense fallback={<TabFallback message="正在加载语义星图..." />}>
                   <SemanticUniverse
-                    subjectLabel={subjectLabel}
+                    courseLabel={courseLabel}
                     overviewGraph={overview?.graph ?? null}
                     height="calc(100dvh - 20rem)"
                   />
@@ -262,7 +262,7 @@ export function KnowledgeGraphSidePanel({
 
               {activeTab === "knowledge-graph" ? (
                 <Suspense fallback={<TabFallback message="正在加载知识图谱..." />}>
-                  <KnowledgeGraphView subject={subjectId} overviewGraph={overview?.graph ?? null} />
+                  <KnowledgeGraphView course={courseId} overviewGraph={overview?.graph ?? null} />
                 </Suspense>
               ) : null}
             </>
@@ -274,7 +274,7 @@ export function KnowledgeGraphSidePanel({
             <div className="flex items-start gap-3 rounded-lg bg-rose-50 p-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
               <div className="text-sm text-rose-700">
-                <p>这会删除当前学科已发布的知识文档和知识图谱相关结构。</p>
+                <p>这会删除当前课程已发布的知识文档和知识图谱相关结构。</p>
                 <p className="mt-2 font-medium">原始上传文件不会被删除。</p>
               </div>
             </div>

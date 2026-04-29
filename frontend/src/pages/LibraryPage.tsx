@@ -31,7 +31,7 @@ async function fetchLibraryFiles(): Promise<FilesData> {
     url: "/api/v1/files",
   });
   return response.data ?? {
-    subject_id: null,
+    course_id: null,
     total: 0,
     ready_count: 0,
     processing_count: 0,

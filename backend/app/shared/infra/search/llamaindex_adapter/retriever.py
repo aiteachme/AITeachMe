@@ -6,7 +6,7 @@ from workflow nodes.
 
 Usage::
 
-    retriever = build_knowledge_retriever(subject_id="subj_math101", top_k=5)
+    retriever = build_knowledge_retriever(course_id="course_math101", top_k=5)
     nodes = await retriever.aretrieve("什么是微积分？")
 """
 
@@ -19,13 +19,13 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 
-from app.models.subject import Subject
+from app.models.course import Course
 from app.shared.infra.database import managed_session
 from app.shared.infra.settings import get_settings
 from app.shared.infra.embedding import ATMEmbedding
 from app.shared.infra.search.llamaindex_adapter.reranker import ATMReranker
 from app.shared.infra.search.llamaindex_adapter.vector_store import ATMVectorStore
-from app.shared.infra.subject.settings import get_subject_embedding_binding
+from app.shared.infra.course.settings import get_course_embedding_binding
 from sqlmodel import select
 
 logger = structlog.get_logger(__name__)
@@ -42,11 +42,11 @@ class ATMKnowledgeRetriever:
     def __init__(
         self,
         *,
-        subject_id: str,
+        course_id: str,
         top_k: int = 5,
         enable_rerank: bool | None = None,
     ) -> None:
-        self.subject_id = subject_id
+        self.course_id = course_id
         self.top_k = top_k
 
         settings = get_settings()
@@ -59,15 +59,15 @@ class ATMKnowledgeRetriever:
         # Build LlamaIndex components
         binding_model: str | None = None
         with managed_session() as session:
-            subject_row = session.exec(
-                select(Subject).where(Subject.id == subject_id)
+            course_row = session.exec(
+                select(Course).where(Course.id == course_id)
             ).first()
-            if subject_row is not None:
-                binding = get_subject_embedding_binding(subject_row)
+            if course_row is not None:
+                binding = get_course_embedding_binding(course_row)
                 if binding is not None:
                     binding_model = binding.embedding_model
         self._embed_model = ATMEmbedding(model_name=binding_model)
-        self._vector_store = ATMVectorStore(subject_id=subject_id)
+        self._vector_store = ATMVectorStore(course_id=course_id)
         self._index = VectorStoreIndex.from_vector_store(
             vector_store=self._vector_store,
             embed_model=self._embed_model,
@@ -115,15 +115,15 @@ class ATMKnowledgeRetriever:
 
 
 def build_knowledge_retriever(
-    subject_id: str,
+    course_id: str,
     *,
     top_k: int = 5,
     enable_rerank: bool | None = None,
 ) -> ATMKnowledgeRetriever:
-    """Factory: create a ready-to-use knowledge retriever for one subject.
+    """Factory: create a ready-to-use knowledge retriever for one course.
 
     Args:
-        subject_id: The subject ID to search within.
+        course_id: The course ID to search within.
         top_k: Number of final results to return.
         enable_rerank: Override rerank behaviour. ``None`` means auto-detect
             from runtime settings (``models.rerank``).
@@ -132,7 +132,7 @@ def build_knowledge_retriever(
         An ``ATMKnowledgeRetriever`` instance.
     """
     return ATMKnowledgeRetriever(
-        subject_id=subject_id,
+        course_id=course_id,
         top_k=top_k,
         enable_rerank=enable_rerank,
     )

@@ -23,7 +23,7 @@ def upgrade() -> None:
                     'confirmed_plan_id', plan.id,
                     'confirmed_plan', jsonb_build_object(
                         'id', plan.id,
-                        'subject', plan.subject,
+                        'course', plan.course,
                         'planner_session_id', plan.planner_session_id,
                         'user_id', plan.user_id,
                         'status', plan.status,
@@ -43,7 +43,7 @@ def upgrade() -> None:
                 last_message_at = GREATEST(COALESCE(cs.last_message_at, plan.updated_at), plan.updated_at)
             FROM confirmed_build_plan AS plan
             WHERE cs.id = plan.planner_session_id
-              AND cs.subject = plan.subject
+              AND cs.course = plan.course
               AND cs.user_id = plan.user_id
               AND cs.source = 'build_planner'
             """
@@ -61,7 +61,7 @@ def downgrade() -> None:
     op.create_table(
         "confirmed_build_plan",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("planner_session_id", sa.String(), nullable=True),
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
@@ -75,7 +75,7 @@ def downgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_confirmed_build_plan_subject", "confirmed_build_plan", ["subject"])
+    op.create_index("ix_confirmed_build_plan_course", "confirmed_build_plan", ["course"])
     op.create_index("ix_confirmed_build_plan_planner_session_id", "confirmed_build_plan", ["planner_session_id"])
     op.create_index("ix_confirmed_build_plan_user_id", "confirmed_build_plan", ["user_id"])
     op.create_index("ix_confirmed_build_plan_status", "confirmed_build_plan", ["status"])
@@ -86,12 +86,12 @@ def downgrade() -> None:
         sa.text(
             """
             INSERT INTO confirmed_build_plan
-            (id, subject, planner_session_id, user_id, status, user_prompt, digest_mode,
+            (id, course, planner_session_id, user_id, status, user_prompt, digest_mode,
              selected_file_ids_json, chapter_plan_json, build_constraints_json,
              plan_summary, plan_json, created_at, updated_at)
             SELECT
                 plan_payload->>'id',
-                cs.subject,
+                cs.course,
                 cs.id,
                 cs.user_id,
                 COALESCE(plan_payload->>'status', 'confirmed'),
@@ -107,7 +107,7 @@ def downgrade() -> None:
             FROM (
                 SELECT
                     id,
-                    subject,
+                    course,
                     user_id,
                     created_at,
                     updated_at,

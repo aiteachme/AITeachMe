@@ -36,7 +36,7 @@ from app.workflows.examine import (
 
 ## 公开 API 形态
 
-当前 `/api/v1/subjects/{subject}/exams` 提供：
+当前 `/api/v1/courses/{course}/exams` 提供：
 
 - 生成试卷。
 - 查询试卷历史。

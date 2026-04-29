@@ -1,4 +1,4 @@
-﻿> 2026-04-16 当前仓库说明：本文为早期知识图谱设计草稿，且原文存在历史编码问题。当前真实代码边界以 `docs/designs/05_digest_engine.md`、`docs/designs/13_database_schema_inventory.md`、`backend/app/workflows/digest/README.md` 为准；旧 `services/`、`core/` 路径不再作为当前源码入口。
+> 2026-04-16 当前仓库说明：本文为早期知识图谱设计草稿，且原文存在历史编码问题。当前真实代码边界以 `docs/designs/05_digest_engine.md`、`docs/designs/13_database_schema_inventory.md`、`backend/app/workflows/digest/README.md` 为准；旧 `services/`、`core/` 路径不再作为当前源码入口。
 
 # 设计文档：知识图谱增量构建 + 多视图课程结构派生
 
@@ -50,8 +50,8 @@
 | 主题树挂载 | 挂 TeachingUnit（leaf-only）而非 KnowledgeNode | KnowledgeNode → TeachingUnit → ThemeTreeNode，上层 chapter/section 由 ThemeTreeNode 层级管理 |
 | 先修 DAG | 从图谱边聚合 + 传递约简 + 去环 | 不靠树，直接从知识依赖边提炼 |
 | 任务拆分 | GraphDigestJob + CurriculumDeriveJob | 图构建完成即可查询，课程结构异步刷新 |
-| 并发控制 | subject 级构建锁 + DB 唯一约束 + 乐观锁 | 防止重复触发、保证数据一致性 |
-| 数据库 | 同一学科 .db 文件新增表 | 与现有 All-in-SQLite 理念一致 |
+| 并发控制 | course 级构建锁 + DB 唯一约束 + 乐观锁 | 防止重复触发、保证数据一致性 |
+| 数据库 | 同一课程 .db 文件新增表 | 与现有 All-in-SQLite 理念一致 |
 
 ## 架构
 
@@ -99,7 +99,7 @@ graph TB
 ```mermaid
 stateDiagram-v2
     [*] --> acquire_lock: 触发增量构建
-    acquire_lock --> prepare: 获取 subject 构建锁
+    acquire_lock --> prepare: 获取 course 构建锁
     acquire_lock --> reject: 锁已被占用
     reject --> [*]: 返回 CONFLICT
 
@@ -150,27 +150,27 @@ api/knowledge.py
 
 ```python
 # === 构建锁 ===
-def acquire_subject_build_lock(session: Session, subject: str) -> bool
-def release_subject_build_lock(session: Session, subject: str) -> None
+def acquire_course_build_lock(session: Session, course: str) -> bool
+def release_course_build_lock(session: Session, course: str) -> None
 
 # === 节点 CRUD ===
 def create_knowledge_node(session: Session, node: KnowledgeNode) -> KnowledgeNode
 def get_knowledge_node_by_id(session: Session, node_id: int) -> KnowledgeNode | None
-def find_node_by_normalized_name(session: Session, subject: str, normalized_name: str, node_type: str) -> KnowledgeNode | None
-def find_nodes_by_alias(session: Session, subject: str, alias: str, node_type: str) -> list[KnowledgeNode]
-def list_nodes_by_subject(session: Session, subject: str, *, node_type: str | None, status: str | None, limit: int, offset: int) -> tuple[list[KnowledgeNode], int]
+def find_node_by_normalized_name(session: Session, course: str, normalized_name: str, node_type: str) -> KnowledgeNode | None
+def find_nodes_by_alias(session: Session, course: str, alias: str, node_type: str) -> list[KnowledgeNode]
+def list_nodes_by_course(session: Session, course: str, *, node_type: str | None, status: str | None, limit: int, offset: int) -> tuple[list[KnowledgeNode], int]
 def get_node_with_current_revision(session: Session, node_id: int) -> tuple[KnowledgeNode, KnowledgeRevision] | None
 
 # === 别名 CRUD ===
 def create_alias(session: Session, alias: KnowledgeAlias) -> KnowledgeAlias
-def find_alias(session: Session, subject: str, normalized_alias: str) -> list[KnowledgeAlias]
+def find_alias(session: Session, course: str, normalized_alias: str) -> list[KnowledgeAlias]
 def list_aliases_by_node(session: Session, node_id: int) -> list[KnowledgeAlias]
 
 # === 边 CRUD ===
 def create_knowledge_edge(session: Session, edge: KnowledgeEdge) -> KnowledgeEdge
 def find_edge(session: Session, source_node_id: int, target_node_id: int, edge_type: str) -> KnowledgeEdge | None
 def list_edges_by_node(session: Session, node_id: int) -> list[KnowledgeEdge]
-def list_edges_by_type(session: Session, subject: str, edge_type: str) -> list[KnowledgeEdge]
+def list_edges_by_type(session: Session, course: str, edge_type: str) -> list[KnowledgeEdge]
 
 # === 修订 ===
 def create_knowledge_revision(session: Session, revision: KnowledgeRevision) -> KnowledgeRevision
@@ -196,10 +196,10 @@ def update_digest_job(session: Session, job_id: int, **kwargs) -> GraphDigestJob
 # === 教学单元 ===
 def create_teaching_unit(session: Session, unit: TeachingUnit) -> TeachingUnit
 def get_teaching_unit_by_id(session: Session, unit_id: int) -> TeachingUnit | None
-def find_unit_by_signature(session: Session, subject: str, member_signature: str) -> TeachingUnit | None
-def find_units_overlapping_nodes(session: Session, subject: str, node_ids: list[int]) -> list[TeachingUnit]
-def find_unit_by_normalized_name(session: Session, subject: str, normalized_name: str) -> TeachingUnit | None  # 辅助搜索，非身份定位
-def list_units_by_subject(session: Session, subject: str, *, status: str | None, limit: int, offset: int) -> tuple[list[TeachingUnit], int]
+def find_unit_by_signature(session: Session, course: str, member_signature: str) -> TeachingUnit | None
+def find_units_overlapping_nodes(session: Session, course: str, node_ids: list[int]) -> list[TeachingUnit]
+def find_unit_by_normalized_name(session: Session, course: str, normalized_name: str) -> TeachingUnit | None  # 辅助搜索，非身份定位
+def list_units_by_course(session: Session, course: str, *, status: str | None, limit: int, offset: int) -> tuple[list[TeachingUnit], int]
 def create_unit_revision(session: Session, revision: TeachingUnitRevision) -> TeachingUnitRevision
 def deactivate_old_unit_revisions(session: Session, unit_id: int) -> None
 def create_unit_membership(session: Session, membership: TeachingUnitMembership) -> TeachingUnitMembership
@@ -208,19 +208,19 @@ def find_unit_by_node(session: Session, knowledge_node_id: int) -> TeachingUnit 
 
 # === 锚点 ===
 def create_taxonomy_anchor(session: Session, anchor: TaxonomyAnchor) -> TaxonomyAnchor
-def list_anchors_by_subject(session: Session, subject: str) -> list[TaxonomyAnchor]
-def get_uncategorized_anchor(session: Session, subject: str) -> TaxonomyAnchor
+def list_anchors_by_course(session: Session, course: str) -> list[TaxonomyAnchor]
+def get_uncategorized_anchor(session: Session, course: str) -> TaxonomyAnchor
 
 # === 主题树 ===
 def create_theme_tree_version(session: Session, version: ThemeTreeVersion) -> ThemeTreeVersion
-def get_current_theme_tree_version(session: Session, subject: str) -> ThemeTreeVersion | None
-def create_theme_tree_version_with_optimistic_lock(session: Session, subject: str, expected_prev_version_no: int) -> ThemeTreeVersion
+def get_current_theme_tree_version(session: Session, course: str) -> ThemeTreeVersion | None
+def create_theme_tree_version_with_optimistic_lock(session: Session, course: str, expected_prev_version_no: int) -> ThemeTreeVersion
 def create_theme_tree_node(session: Session, node: ThemeTreeNode) -> ThemeTreeNode
 def create_unit_tree_membership(session: Session, membership: UnitTreeMembership) -> UnitTreeMembership
 
 # === 先修 DAG ===
 def create_prereq_dag_version(session: Session, version: PrereqDagVersion) -> PrereqDagVersion
-def get_current_prereq_dag_version(session: Session, subject: str) -> PrereqDagVersion | None
+def get_current_prereq_dag_version(session: Session, course: str) -> PrereqDagVersion | None
 def create_unit_dependency(session: Session, dep: UnitDependency) -> UnitDependency
 def list_dependencies_by_version(session: Session, dag_version_id: int) -> list[UnitDependency]
 
@@ -230,8 +230,8 @@ def update_curriculum_job(session: Session, job_id: int, **kwargs) -> Curriculum
 
 # === 课程快照 ===
 def create_curriculum_snapshot(session: Session, snapshot: CurriculumSnapshot) -> CurriculumSnapshot
-def get_current_curriculum_snapshot(session: Session, subject: str) -> CurriculumSnapshot | None
-def archive_old_snapshots(session: Session, subject: str) -> None
+def get_current_curriculum_snapshot(session: Session, course: str) -> CurriculumSnapshot | None
+def archive_old_snapshots(session: Session, course: str) -> None
 ```
 
 ### 3. LLM 抽取层：`agents/digest/kg_extractor.py`
@@ -302,7 +302,7 @@ class ResolveResult:
 async def resolve_node(
     session: Session,
     candidate: ClusteredCandidate,
-    subject: str,
+    course: str,
     candidate_embedding: list[float],
     similarity_threshold: float,
 ) -> ResolveResult
@@ -310,7 +310,7 @@ async def resolve_node(
 def resolve_edge(
     session: Session,
     candidate: CandidateEdge,
-    subject: str,
+    course: str,
     node_name_to_id: dict[str, int],
     active_evidence_counts: dict[int, int],
 ) -> tuple[KnowledgeEdge | None, float]
@@ -342,7 +342,7 @@ class ImpactSet:
 
 def analyze_impact(
     session: Session,
-    subject: str,
+    course: str,
     new_node_ids: list[int],
     updated_node_ids: list[int],
     merged_node_ids: list[int],
@@ -366,7 +366,7 @@ class UnitCandidate:
 
 async def derive_teaching_units(
     session: Session,
-    subject: str,
+    course: str,
     impact_set: ImpactSet,
 ) -> list[TeachingUnit]
 
@@ -423,7 +423,7 @@ flowchart TD
 ```python
 async def derive_theme_tree(
     session: Session,
-    subject: str,
+    course: str,
     impact_set: ImpactSet,
     prev_tree_version: ThemeTreeVersion | None,
 ) -> ThemeTreeVersion
@@ -487,14 +487,14 @@ membership_score(unit, anchor) =
 ```python
 async def derive_prereq_dag(
     session: Session,
-    subject: str,
+    course: str,
     impact_set: ImpactSet,
     prev_dag_version: PrereqDagVersion | None,
 ) -> PrereqDagVersion
 
 def aggregate_unit_dependencies(
     session: Session,
-    subject: str,
+    course: str,
     unit_node_map: dict[int, list[int]],  # unit_id -> [node_ids]
 ) -> list[UnitDependencyCandidate]
 
@@ -543,7 +543,7 @@ def break_cycles(edges: list[UnitDependencyCandidate]) -> tuple[list[UnitDepende
 
 ```python
 class KGDigestState(TypedDict):
-    subject: str
+    course: str
     file_ids: list[int]
     job_id: int
     chunk_ids: list[int]
@@ -574,7 +574,7 @@ async def fail_node(state: KGDigestState) -> KGDigestState
 
 ```python
 class CurriculumDeriveState(TypedDict):
-    subject: str
+    course: str
     graph_job_id: int
     curriculum_job_id: int
     impact_set: ImpactSet
@@ -594,34 +594,34 @@ async def fail_curriculum_node(state: CurriculumDeriveState) -> CurriculumDerive
 ### 11. 服务层：`services/knowledge_graph_service.py`
 
 ```python
-def trigger_digest_build(session: Session, *, subject: str, file_ids: list[int]) -> GraphDigestJob
-async def run_graph_digest_background(*, subject: str, job_id: int) -> None
-async def run_curriculum_derive_background(*, subject: str, graph_job_id: int, curriculum_job_id: int) -> None
-def get_digest_status(session: Session, *, subject: str, job_id: int) -> DigestStatusResponse
+def trigger_digest_build(session: Session, *, course: str, file_ids: list[int]) -> GraphDigestJob
+async def run_graph_digest_background(*, course: str, job_id: int) -> None
+async def run_curriculum_derive_background(*, course: str, graph_job_id: int, curriculum_job_id: int) -> None
+def get_digest_status(session: Session, *, course: str, job_id: int) -> DigestStatusResponse
     """聚合查询：返回 GraphDigestJob + 关联 CurriculumDeriveJob + 当前快照 ID。"""
-def get_graph_nodes(session: Session, *, subject: str, node_type: str | None, page: int, size: int) -> PaginatedData
-def get_graph_node_detail(session: Session, *, subject: str, node_id: int) -> dict
-def get_teaching_units(session: Session, *, subject: str, page: int, size: int) -> PaginatedData
-def get_teaching_unit_detail(session: Session, *, subject: str, unit_id: int) -> dict
-def get_current_theme_tree(session: Session, *, subject: str) -> dict
-def get_current_prereq_dag(session: Session, *, subject: str) -> dict
-def get_current_curriculum_snapshot(session: Session, *, subject: str) -> dict  # 返回当前 published 快照（tree + dag 组合版本）
-def manage_taxonomy_anchors(session: Session, *, subject: str, action: str, **kwargs) -> list[TaxonomyAnchor]
+def get_graph_nodes(session: Session, *, course: str, node_type: str | None, page: int, size: int) -> PaginatedData
+def get_graph_node_detail(session: Session, *, course: str, node_id: int) -> dict
+def get_teaching_units(session: Session, *, course: str, page: int, size: int) -> PaginatedData
+def get_teaching_unit_detail(session: Session, *, course: str, unit_id: int) -> dict
+def get_current_theme_tree(session: Session, *, course: str) -> dict
+def get_current_prereq_dag(session: Session, *, course: str) -> dict
+def get_current_curriculum_snapshot(session: Session, *, course: str) -> dict  # 返回当前 published 快照（tree + dag 组合版本）
+def manage_taxonomy_anchors(session: Session, *, course: str, action: str, **kwargs) -> list[TaxonomyAnchor]
 ```
 
 ### 12. API 层：`api/knowledge.py`（扩展现有路由）
 
 ```python
-POST /api/v1/subjects/{subject}/digest/build            # 触发增量构建
-POST /api/v1/subjects/{subject}/digest/status            # 查询聚合状态（GraphDigestJob + CurriculumDeriveJob + 当前快照）
-POST /api/v1/subjects/{subject}/graph/nodes/query        # 分页查询节点
-POST /api/v1/subjects/{subject}/graph/nodes/detail       # 节点详情（含所属 teaching unit）
-POST /api/v1/subjects/{subject}/units/query              # 分页查询教学单元
-POST /api/v1/subjects/{subject}/units/detail             # 教学单元详情
-POST /api/v1/subjects/{subject}/theme-tree/current       # 当前主题树
-POST /api/v1/subjects/{subject}/prereq-dag/current       # 当前先修 DAG
-POST /api/v1/subjects/{subject}/curriculum/current       # 当前课程快照（tree + dag 组合版本）
-POST /api/v1/subjects/{subject}/taxonomy/anchors         # 锚点管理
+POST /api/v1/courses/{course}/digest/build            # 触发增量构建
+POST /api/v1/courses/{course}/digest/status            # 查询聚合状态（GraphDigestJob + CurriculumDeriveJob + 当前快照）
+POST /api/v1/courses/{course}/graph/nodes/query        # 分页查询节点
+POST /api/v1/courses/{course}/graph/nodes/detail       # 节点详情（含所属 teaching unit）
+POST /api/v1/courses/{course}/units/query              # 分页查询教学单元
+POST /api/v1/courses/{course}/units/detail             # 教学单元详情
+POST /api/v1/courses/{course}/theme-tree/current       # 当前主题树
+POST /api/v1/courses/{course}/prereq-dag/current       # 当前先修 DAG
+POST /api/v1/courses/{course}/curriculum/current       # 当前课程快照（tree + dag 组合版本）
+POST /api/v1/courses/{course}/taxonomy/anchors         # 锚点管理
 ```
 
 ## 数据模型
@@ -767,12 +767,12 @@ class DigestJobStatus(str, Enum):
 class KnowledgeNode(SQLModel, table=True):
     __tablename__ = "knowledge_node"
     __table_args__ = (
-        UniqueConstraint("subject", "node_type", "normalized_name",
-                         name="uq_node_subject_type_name"),
+        UniqueConstraint("course", "node_type", "normalized_name",
+                         name="uq_node_course_type_name"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     node_type: str = Field(index=True)              # KGNodeType
     canonical_name: str
     normalized_name: str = Field(index=True)
@@ -814,12 +814,12 @@ class KnowledgeAlias(SQLModel, table=True):
 class KnowledgeEdge(SQLModel, table=True):
     __tablename__ = "knowledge_edge"
     __table_args__ = (
-        UniqueConstraint("subject", "source_node_id", "target_node_id", "edge_type",
-                         name="uq_edge_subject_src_tgt_type"),
+        UniqueConstraint("course", "source_node_id", "target_node_id", "edge_type",
+                         name="uq_edge_course_src_tgt_type"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     source_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     target_node_id: int = Field(foreign_key="knowledge_node.id", index=True)
     edge_type: str = Field(index=True)
@@ -883,7 +883,7 @@ class EvidenceLink(SQLModel, table=True):
     __tablename__ = "evidence_link"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     entity_type: str                                 # "node" | "edge"
     entity_id: int = Field(index=True)
     entity_revision_id: int | None = Field(default=None)
@@ -910,12 +910,12 @@ class TeachingUnit(SQLModel, table=True):
     """教学单元：一组紧密相关的知识节点组成的最小可讲授单位（leaf-only）。"""
     __tablename__ = "teaching_unit"
     __table_args__ = (
-        UniqueConstraint("subject", "member_signature",
-                         name="uq_unit_subject_signature"),
+        UniqueConstraint("course", "member_signature",
+                         name="uq_unit_course_signature"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     canonical_name: str
     normalized_name: str = Field(index=True)
     member_signature: str = Field(index=True)        # 结构签名：排序后 core node ids 的 hash，用于稳定身份定位
@@ -976,7 +976,7 @@ class TaxonomyAnchor(SQLModel, table=True):
     __tablename__ = "taxonomy_anchor"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     anchor_type: str
     title: str
     normalized_title: str = Field(index=True)
@@ -995,11 +995,11 @@ class TaxonomyAnchor(SQLModel, table=True):
 class ThemeTreeVersion(SQLModel, table=True):
     __tablename__ = "theme_tree_version"
     __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_theme_tree_subject_version"),
+        UniqueConstraint("course", "version_no", name="uq_theme_tree_course_version"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")
     curriculum_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id")
@@ -1052,11 +1052,11 @@ class UnitTreeMembership(SQLModel, table=True):
 class PrereqDagVersion(SQLModel, table=True):
     __tablename__ = "prereq_dag_version"
     __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_prereq_dag_subject_version"),
+        UniqueConstraint("course", "version_no", name="uq_prereq_dag_course_version"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")
     curriculum_job_id: int | None = Field(default=None, foreign_key="curriculum_derive_job.id")
@@ -1093,9 +1093,9 @@ class GraphDigestJob(SQLModel, table=True):
     __tablename__ = "graph_digest_job"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     idempotency_key: str = Field(index=True, unique=True)
-    # 幂等键生成规则：推荐由客户端传入；若服务端生成，则基于 subject + 排序后的 file_ids + 文件当前 chunk parse version 计算 hash，不混入 timestamp
+    # 幂等键生成规则：推荐由客户端传入；若服务端生成，则基于 course + 排序后的 file_ids + 文件当前 chunk parse version 计算 hash，不混入 timestamp
     status: str = Field(default="pending")
     progress: int = Field(default=0)
     current_step: str | None = Field(default=None)
@@ -1124,7 +1124,7 @@ class CurriculumDeriveJob(SQLModel, table=True):
     __tablename__ = "curriculum_derive_job"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     graph_job_id: int = Field(foreign_key="graph_digest_job.id")
     status: str = Field(default="pending")
     progress: int = Field(default=0)
@@ -1138,14 +1138,14 @@ class CurriculumDeriveJob(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
-#### SubjectBuildLock
+#### CourseBuildLock
 
 ```python
-class SubjectBuildLock(SQLModel, table=True):
-    __tablename__ = "subject_build_lock"
+class CourseBuildLock(SQLModel, table=True):
+    __tablename__ = "course_build_lock"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(unique=True)
+    course: str = Field(unique=True)
     job_id: int | None = Field(default=None)
     locked_at: datetime = Field(default_factory=datetime.utcnow)
     expires_at: datetime | None = Field(default=None)
@@ -1159,11 +1159,11 @@ class CurriculumSnapshot(SQLModel, table=True):
     解决 CurriculumDeriveJob 部分成功时 tree/dag 版本不一致的问题。"""
     __tablename__ = "curriculum_snapshot"
     __table_args__ = (
-        UniqueConstraint("subject", "version_no", name="uq_curriculum_snapshot_subject_version"),
+        UniqueConstraint("course", "version_no", name="uq_curriculum_snapshot_course_version"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     version_no: int
     status: str = Field(default="draft")             # draft / published / archived
     curriculum_job_id: int = Field(foreign_key="curriculum_derive_job.id")
@@ -1256,8 +1256,8 @@ class DigestStatusResponse(BaseModel):
 API 层和工作流层各有职责，检查顺序如下：
 
 1. **幂等命中**：同一个 `idempotency_key` → 直接返回已有 job → 不视为冲突
-2. **运行中冲突**：存在同 subject 运行中的非同幂等 job → 返回 409 Conflict
-3. **工作流抢锁**：创建新 job 后，真正执行时再抢 `SubjectBuildLock` → 最终一致性保障，防竞态
+2. **运行中冲突**：存在同 course 运行中的非同幂等 job → 返回 409 Conflict
+3. **工作流抢锁**：创建新 job 后，真正执行时再抢 `CourseBuildLock` → 最终一致性保障，防竞态
 
 > API 层检查 = 减少明显冲突请求；工作流抢锁 = 最终一致性保障
 
@@ -1379,14 +1379,14 @@ def compute_unit_distance(i, j, embeddings, edges, co_occurrence, weights=None):
 #### 5. 先修 DAG 派生算法
 
 ```python
-def derive_prereq_dag(session, subject, impact_set, prev_dag_version):
+def derive_prereq_dag(session, course, impact_set, prev_dag_version):
     # Step 1: 收集节点级依赖边
-    prereq_edges = list_edges_by_type(session, subject, "prerequisite_of")
-    part_of_edges = list_edges_by_type(session, subject, "part_of")
-    defined_by_edges = list_edges_by_type(session, subject, "defined_by")
+    prereq_edges = list_edges_by_type(session, course, "prerequisite_of")
+    part_of_edges = list_edges_by_type(session, course, "part_of")
+    defined_by_edges = list_edges_by_type(session, course, "defined_by")
 
     # Step 2: 聚合为单元级依赖
-    unit_deps = aggregate_unit_dependencies(session, subject, unit_node_map)
+    unit_deps = aggregate_unit_dependencies(session, course, unit_node_map)
 
     # Step 3: 去环（必须先于传递约简，因为 transitive reduction 定义基于 DAG，对含环图行为未定义）
     acyclic_edges, broken_edges = break_cycles(unit_deps)
@@ -1395,7 +1395,7 @@ def derive_prereq_dag(session, subject, impact_set, prev_dag_version):
     reduced_edges = transitive_reduction(acyclic_edges)
 
     # Step 5: 创建版本
-    return create_prereq_dag_version(session, subject, reduced_edges)
+    return create_prereq_dag_version(session, course, reduced_edges)
 ```
 
 #### 6. 中间态一致性：staging/active 两层状态
@@ -1421,7 +1421,7 @@ stateDiagram-v2
 **候选知识抽取 Prompt：**
 
 ```
-你是一名学科知识图谱构建助手。请从以下文档片段中抽取知识节点和知识关系。
+你是一名课程知识图谱构建助手。请从以下文档片段中抽取知识节点和知识关系。
 
 文档片段标题：{chunk_title}
 文档路径：{header_path}
@@ -1631,8 +1631,8 @@ class NoPublishedCurriculumSnapshotError(AITeachMeError):
     error_code = "NO_PUBLISHED_CURRICULUM_SNAPSHOT"
     status_code = HTTPStatus.NOT_FOUND
 
-class SubjectBuildLockConflictError(AITeachMeError):
-    error_code = "SUBJECT_BUILD_LOCK_CONFLICT"
+class CourseBuildLockConflictError(AITeachMeError):
+    error_code = "COURSE_BUILD_LOCK_CONFLICT"
     status_code = HTTPStatus.CONFLICT
 
 class TreeVersionConflictError(AITeachMeError):
@@ -1646,7 +1646,7 @@ class TreeVersionConflictError(AITeachMeError):
 2. **保守对齐**：UNSURE 时倾向创建新节点而非错误合并
 3. **staging/active 两层状态**：pending → active 批量激活，失败时清理
 4. **图谱与课程解耦**：GraphDigestJob 成功但 CurriculumDeriveJob 失败时，图谱数据保留
-5. **subject 级构建锁**：同一 subject 同时只允许一个 GraphDigestJob
+5. **course 级构建锁**：同一 course 同时只允许一个 GraphDigestJob
 6. **幂等键防重复**：相同 idempotency_key 直接返回已有 job
 7. **DAG 去环容错**：环路不阻塞派生，断开最低置信度边并记录
 

@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
@@ -12,7 +12,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-import { graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
+import { graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../../api/generated/knowledge";
 import type { FullGraphResponse } from "../../api/generated/model";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -51,23 +51,23 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Node Detail Sidebar (unchanged) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function NodeDetailSidebar({
-  subject,
+  course,
   nodeId,
   onClose,
   onNavigate,
   onEvidenceClick,
 }: {
-  subject: string;
+  course: string;
   nodeId: number;
   onClose: () => void;
   onNavigate: (id: number) => void;
   onEvidenceClick?: (chunkId: number, quoteText: string) => void;
 }) {
   const { data, isLoading } = useQuery({
-    queryKey: ["graph-node-detail", subject, nodeId],
+    queryKey: ["graph-node-detail", course, nodeId],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await graphKnowledgeUnitDetailApiV1SubjectsSubjectIdKnowledgeGraphKnowledgeUnitsDetailPost(subject, {
+        await graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost(course, {
           knowledge_unit_id: nodeId,
         }),
       ) ?? null,
@@ -212,12 +212,12 @@ function NodeDetailSidebar({
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ D3 SVG Force Graph (MiroFish approach) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 export function ForceGraphView({
-  subject,
+  course,
   toolbar,
   onEvidenceClick,
   fullGraphData,
 }: {
-  subject: string;
+  course: string;
   toolbar?: React.ReactNode;
   onEvidenceClick?: (chunkId: number, quoteText: string) => void;
   fullGraphData: FullGraphResponse | null;
@@ -532,7 +532,7 @@ export function ForceGraphView({
         <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
           <div className="p-4">
             <NodeDetailSidebar
-              subject={subject}
+              course={course}
               nodeId={selectedNodeId}
               onClose={() => setSelectedNodeId(null)}
               onNavigate={(id) => setSelectedNodeId(id)}

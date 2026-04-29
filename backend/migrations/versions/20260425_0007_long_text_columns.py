@@ -18,7 +18,7 @@ depends_on = None
 
 _TEXT_COLUMNS: tuple[tuple[str, str, bool], ...] = (
     ("user", "profile_json", False),
-    ("subject", "preferred_digest_note", True),
+    ("course", "preferred_digest_note", True),
     ("raw_file", "markdown_path", True),
     ("raw_file", "markdown_content", False),
     ("raw_file", "asset_dir", True),

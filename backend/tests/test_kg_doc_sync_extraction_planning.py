@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 
 from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_chapter_chunks
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
@@ -106,7 +106,7 @@ def test_published_knowledge_doc_starts_with_first_chapter_without_overview() ->
                 "markdown": "# 行列式\n\n## 几何意义\n\n行列式描述有向面积或体积。",
             }
         ],
-        document_context={"subject": "线性代数", "digest_mode": "sprint"},
+        document_context={"course": "线性代数", "digest_mode": "sprint"},
     )
 
     assert "\n## 目录\n" not in markdown
@@ -131,7 +131,7 @@ def test_published_knowledge_doc_hides_source_appendix_by_default() -> None:
                 ],
             }
         ],
-        document_context={"subject_id": "subj_demo", "digest_mode": "sprint"},
+        document_context={"course_id": "course_demo", "digest_mode": "sprint"},
     )
 
     assert "参考资料与延伸阅读" not in markdown

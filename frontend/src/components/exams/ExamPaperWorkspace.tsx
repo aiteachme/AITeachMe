@@ -1,16 +1,16 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListChecks, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
-  getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey,
-  getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey,
-  useExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGet,
-  useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost,
+  getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey,
+  getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
+  useExamDetailApiV1CoursesCourseIdExamsExamPaperIdGet,
+  useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost,
 } from "../../api/generated/exams";
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
-import { getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
+import { getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../../api/client";
 import {
   AI_SOURCE_EXAM_QUESTION,
@@ -39,9 +39,9 @@ import {
   hasAnsweredQuestion,
 } from "./examDisplay";
 
-async function getExamStudyGuide(subjectId: string, paperId: number, signal?: AbortSignal) {
+async function getExamStudyGuide(courseId: string, paperId: number, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
-    `/api/v1/subjects/${subjectId}/exams/${paperId}/study-guide`,
+    `/api/v1/courses/${courseId}/exams/${paperId}/study-guide`,
     {
       method: "GET",
       signal,
@@ -50,12 +50,12 @@ async function getExamStudyGuide(subjectId: string, paperId: number, signal?: Ab
 }
 
 interface ExamPaperWorkspaceProps {
-  subjectId: string;
+  courseId: string;
   paperId: number;
   backHref: string;
 }
 
-export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWorkspaceProps) {
+export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWorkspaceProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -69,8 +69,8 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
   const answerStorageKey = useMemo(
-    () => `aiteachme:exam-draft-answers:${subjectId}:${paperId}`,
-    [paperId, subjectId],
+    () => `aiteachme:exam-draft-answers:${courseId}:${paperId}`,
+    [paperId, courseId],
   );
 
   useEffect(() => {
@@ -79,9 +79,9 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     }
   }, [isSidebarOpen]);
 
-  const examDetailQuery = useExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGet(subjectId, paperId, {
+  const examDetailQuery = useExamDetailApiV1CoursesCourseIdExamsExamPaperIdGet(courseId, paperId, {
     query: {
-      enabled: Boolean(subjectId && paperId),
+      enabled: Boolean(courseId && paperId),
     },
   });
 
@@ -209,22 +209,22 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   }, [isReviewLayout, paper?.items]);
 
   const studyGuideQuery = useQuery({
-    queryKey: ["exam-study-guide", subjectId, paperId],
-    enabled: Boolean(subjectId && paperId && paper?.status === "graded" && activeStage === 3),
+    queryKey: ["exam-study-guide", courseId, paperId],
+    enabled: Boolean(courseId && paperId && paper?.status === "graded" && activeStage === 3),
     queryFn: async ({ signal }) => {
-      const response = await getExamStudyGuide(subjectId, paperId, signal);
+      const response = await getExamStudyGuide(courseId, paperId, signal);
       return unwrapOrvalResponse<ExamStudyGuideResponse>(response);
     },
   });
 
   useEffect(() => {
-    if (!subjectId || !paperId || paper?.status !== "generating") return;
+    if (!courseId || !paperId || paper?.status !== "generating") return;
     const stream = new EventSource(
-      buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
+      buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
-    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
-    const detailQueryKey = getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId);
+    const historyQueryKey = getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 });
+    const detailQueryKey = getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId);
 
     const refreshPaper = () => {
       void Promise.all([
@@ -283,7 +283,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       stream.removeEventListener("snapshot", handleSnapshot);
       stream.close();
     };
-  }, [paper?.status, paperId, queryClient, subjectId, toast]);
+  }, [paper?.status, paperId, queryClient, courseId, toast]);
 
   useEffect(() => {
     if (!paper?.items) return;
@@ -360,7 +360,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
   useEffect(() => {
     const handleExamQuestionJump = (event: Event) => {
       const detail = (event as CustomEvent<ExamQuestionJumpDetail>).detail;
-      if (!detail || detail.subjectId !== subjectId || detail.paperId !== paperId) {
+      if (!detail || detail.courseId !== courseId || detail.paperId !== paperId) {
         return;
       }
       revealQuestion(detail.questionOrder);
@@ -368,7 +368,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
 
     window.addEventListener(EXAM_QUESTION_JUMP_EVENT, handleExamQuestionJump);
     return () => window.removeEventListener(EXAM_QUESTION_JUMP_EVENT, handleExamQuestionJump);
-  }, [paperId, revealQuestion, subjectId]);
+  }, [paperId, revealQuestion, courseId]);
 
   useEffect(() => {
     if (!paper) {
@@ -379,7 +379,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       examQuestionJumpAt?: number | null;
     } | null;
     const detail = state?.examQuestionJump ?? null;
-    if (!detail || detail.subjectId !== subjectId || detail.paperId !== paperId) {
+    if (!detail || detail.courseId !== courseId || detail.paperId !== paperId) {
       return;
     }
     const marker = state?.examQuestionJumpAt ?? `${detail.paperId}-${detail.questionOrder}`;
@@ -388,7 +388,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     }
     handledJumpMarkerRef.current = marker;
     revealQuestion(detail.questionOrder);
-  }, [location.state, paper, paperId, revealQuestion, subjectId]);
+  }, [location.state, paper, paperId, revealQuestion, courseId]);
 
   const openQuestionAi = useCallback((
     item: ExamPaperItemResponse,
@@ -403,7 +403,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     keepQuestionHighlight(item.item_order);
     openAiInteraction({
       mode: "sidebar",
-      scope: { type: "subject", subjectId },
+      scope: { type: "course", courseId },
       sessionId: null,
       draft: buildQuestionAiDraft(item, isReviewStage),
       source: AI_SOURCE_EXAM_QUESTION,
@@ -414,21 +414,21 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       newSession: true,
       showSelectionContext: true,
     });
-  }, [keepQuestionHighlight, openAiInteraction, paper, subjectId]);
+  }, [keepQuestionHighlight, openAiInteraction, paper, courseId]);
 
-  const submitExam = useSubmitExamApiV1SubjectsSubjectIdExamsExamPaperIdSubmitPost({
+  const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     mutation: {
       onSuccess: async (response) => {
         const graded = unwrapOrvalResponse(response);
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 }),
+            queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
           }),
           queryClient.invalidateQueries({
-            queryKey: getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId),
+            queryKey: getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId),
           }),
           queryClient.invalidateQueries({
-            queryKey: getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey(subjectId),
+            queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
           }),
         ]);
         toast({
@@ -673,7 +673,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
                     className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] ${paper.status === "graded" ? "hidden" : ""}`}
                     onClick={() =>
                       submitExam.mutate({
-                        subjectId,
+                        courseId,
                         examPaperId: paperId,
                         data: {
                           answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({

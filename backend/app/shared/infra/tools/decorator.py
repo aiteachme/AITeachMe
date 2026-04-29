@@ -34,7 +34,7 @@ def tool(
     risk_level: str = "low",
     scopes: list[str] | None = None,
     timeout_s: float | None = None,
-    requires_subject: bool = False,
+    requires_course: bool = False,
     requires_approval: bool = False,
     cache_policy: str = "none",
 ) -> Callable:
@@ -55,7 +55,7 @@ def tool(
             risk_level=risk_level,
             scopes=list(scopes or []),
             timeout_s=timeout_s,
-            requires_subject=requires_subject,
+            requires_course=requires_course,
             requires_approval=requires_approval,
             cache_policy=cache_policy,
         )

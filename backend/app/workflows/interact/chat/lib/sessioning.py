@@ -36,7 +36,7 @@ def should_generate_session_title(title: str, question: str) -> bool:
 
 async def generate_session_title(
     *,
-    subject_name: str,
+    course_name: str,
     question: str,
     selected_text: str | None,
     assistant_response: str,
@@ -57,7 +57,7 @@ async def generate_session_title(
             "role": USER,
             "content": "\n".join(
                 [
-                    f"学科：{clip_title_material(subject_name, 80)}",
+                    f"课程：{clip_title_material(course_name, 80)}",
                     f"用户问题：{clip_title_material(question, 400)}",
                     f"划选原文：{clip_title_material(selected_text, 400) or '无'}",
                     f"AI回答：{clip_title_material(assistant_response, 900)}",

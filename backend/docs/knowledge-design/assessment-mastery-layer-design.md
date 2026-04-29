@@ -142,7 +142,7 @@ graph LR
 async def build_question_templates(
     *,
     session: Session,
-    subject: str,
+    course: str,
     unit_ids: list[int],
     questions_per_unit: int = 9,  # 3 题型 × 3 难度
 ) -> list[QuestionTemplate]:
@@ -166,7 +166,7 @@ async def build_question_templates(
 async def assemble_paper(
     *,
     session: Session,
-    subject: str,
+    course: str,
     user_id: str,
     exam_mode: ExamMode,
     num_questions: int,
@@ -282,7 +282,7 @@ def analyze_weakness(
     *,
     session: Session,
     user_id: str,
-    subject: str,
+    course: str,
     top_n: int = 20,
 ) -> list[WeaknessItem]:
     """综合五维度计算薄弱 TeachingUnit 列表。
@@ -311,7 +311,7 @@ def schedule_reviews(
     *,
     session: Session,
     user_id: str,
-    subject: str,
+    course: str,
     updated_state_ids: list[int],
 ) -> list[ReviewTask]:
     """基于 SM-2 启发的间隔重复算法生成/更新 ReviewTask。
@@ -328,7 +328,7 @@ def schedule_reviews(
     - ease_factor 范围：[1.3, 2.5]
     - 正确率 > 0.8 → ease_factor 增加
     - 正确率 < 0.6 → ease_factor 降低
-    - 同一 user+subject+target+target_granularity 只保留一个 pending ReviewTask
+    - 同一 user+course+target+target_granularity 只保留一个 pending ReviewTask
     
     ReviewTask 生成时记录 reason（WeaknessReason）和 source 追踪信息。
     """
@@ -351,13 +351,13 @@ def compute_sm2_interval(
 ```python
 # backend/app/services/assessment_service.py
 
-async def trigger_question_build(session, *, subject, unit_ids, questions_per_unit) -> QuestionBuildJob
+async def trigger_question_build(session, *, course, unit_ids, questions_per_unit) -> QuestionBuildJob
 async def trigger_exam_generate(
-    session, *, subject, user_id, exam_mode, num_questions,
+    session, *, course, user_id, exam_mode, num_questions,
     theme_tree_node_id: int | None = None,
     teaching_unit_ids: list[int] | None = None,
 ) -> ExamGenerateJob
-async def submit_exam_answers(session, *, subject, exam_paper_id, user_id, answers) -> ExamPaper
+async def submit_exam_answers(session, *, course, exam_paper_id, user_id, answers) -> ExamPaper
     """提交答卷（仅落库，不自动触发判卷）。
     
     职责边界：
@@ -374,13 +374,13 @@ async def trigger_exam_grade(session, *, exam_paper_id, regrade: bool = False) -
     - 已 graded 的 paper 不允许再次触发，除非显式传入 regrade=True
     - 触发时将 ExamPaper.status 迁移到 grading
     """
-async def get_mastery_overview(session, *, subject, user_id) -> MasteryOverview
-async def get_mastery_detail(session, *, subject, user_id, target_id, granularity: MasteryGranularity) -> UserKnowledgeState
+async def get_mastery_overview(session, *, course, user_id) -> MasteryOverview
+async def get_mastery_detail(session, *, course, user_id, target_id, granularity: MasteryGranularity) -> UserKnowledgeState
     """获取单个单元/节点掌握度详情。
     
     注意：必须同时传入 target_id 和 granularity 以消除逻辑多态歧义。
     """
-async def get_review_tasks(session, *, subject, user_id) -> list[ReviewTask]
+async def get_review_tasks(session, *, course, user_id) -> list[ReviewTask]
 async def complete_review_task(session, *, task_id, user_id) -> ReviewTask
 ```
 
@@ -394,43 +394,43 @@ async def complete_review_task(session, *, task_id, user_id) -> ReviewTask
 
 ```python
 # backend/app/api/assessment.py
-# 修正：prefix 已包含 subjects/{subject}，各路由不再重复 {subject}
-router = APIRouter(prefix="/api/v1/subjects", tags=["assessment"])
+# 修正：prefix 已包含 courses/{course}，各路由不再重复 {course}
+router = APIRouter(prefix="/api/v1/courses", tags=["assessment"])
 
 # ── 路由注册顺序说明（FastAPI 重要） ──
 # FastAPI 按注册顺序匹配路由，固定路径必须在动态路径之前注册。
-# 例如 GET /{subject}/exam/history 必须在 GET /{subject}/exam/{exam_paper_id} 之前注册，
+# 例如 GET /{course}/exam/history 必须在 GET /{course}/exam/{exam_paper_id} 之前注册，
 # 否则 "history" 会被当作 exam_paper_id 参数捕获。
 # exam_paper_id 使用 int path converter 进一步防止误匹配：Path(..., ge=1)
 
-# ── 路由定义（{subject} 仅出现一次） ──
+# ── 路由定义（{course} 仅出现一次） ──
 
 # 组卷与试卷
-POST /{subject}/exam/generate                    # 触发组卷（创建 ExamGenerateJob）
-GET  /{subject}/exam/history                     # 分页获取试卷历史（固定路由，优先注册）
-GET  /{subject}/exam/{exam_paper_id:int}         # 获取试卷详情（动态路由，后注册）
-POST /{subject}/exam/{exam_paper_id:int}/submit  # 提交答卷
+POST /{course}/exam/generate                    # 触发组卷（创建 ExamGenerateJob）
+GET  /{course}/exam/history                     # 分页获取试卷历史（固定路由，优先注册）
+GET  /{course}/exam/{exam_paper_id:int}         # 获取试卷详情（动态路由，后注册）
+POST /{course}/exam/{exam_paper_id:int}/submit  # 提交答卷
 
 # 判卷
-POST /{subject}/exam/{exam_paper_id:int}/grade   # 触发判卷（支持 regrade=true 查询参数）
+POST /{course}/exam/{exam_paper_id:int}/grade   # 触发判卷（支持 regrade=true 查询参数）
 
 # 异步任务查询
-GET  /{subject}/exam/generate-jobs/{job_id:int}      # 查询组卷任务状态
-GET  /{subject}/exam/grade-jobs/{job_id:int}          # 查询判卷任务状态
-GET  /{subject}/question-build-jobs/{job_id:int}      # 查询题目构建任务状态
+GET  /{course}/exam/generate-jobs/{job_id:int}      # 查询组卷任务状态
+GET  /{course}/exam/grade-jobs/{job_id:int}          # 查询判卷任务状态
+GET  /{course}/question-build-jobs/{job_id:int}      # 查询题目构建任务状态
 
 # 掌握度（消除 target_id 逻辑多态歧义）
-GET  /{subject}/mastery                              # 获取掌握度概览
-GET  /{subject}/mastery/unit/{target_id:int}         # 获取单个 TeachingUnit 掌握度详情
-GET  /{subject}/mastery/node/{target_id:int}         # 获取单个 KnowledgeNode 掌握度详情
+GET  /{course}/mastery                              # 获取掌握度概览
+GET  /{course}/mastery/unit/{target_id:int}         # 获取单个 TeachingUnit 掌握度详情
+GET  /{course}/mastery/node/{target_id:int}         # 获取单个 KnowledgeNode 掌握度详情
 
 # 复习任务
-GET  /{subject}/review/tasks                     # 获取待复习任务列表
-POST /{subject}/review/tasks/{task_id}/complete  # 标记复习任务完成
+GET  /{course}/review/tasks                     # 获取待复习任务列表
+POST /{course}/review/tasks/{task_id}/complete  # 标记复习任务完成
 ```
 
-> 完整路径示例：`POST /api/v1/subjects/math/exam/generate`
-> 掌握度路径示例：`GET /api/v1/subjects/math/mastery/unit/42`、`GET /api/v1/subjects/math/mastery/node/101`
+> 完整路径示例：`POST /api/v1/courses/math/exam/generate`
+> 掌握度路径示例：`GET /api/v1/courses/math/mastery/unit/42`、`GET /api/v1/courses/math/mastery/node/101`
 
 API 层仅负责参数校验和响应格式化，全部业务逻辑通过 `services/assessment_service.py` 调用。响应使用统一 `ApiResponse[T]` 格式（`code` / `message` / `data`）。
 
@@ -454,7 +454,7 @@ def create_question_template(session, template) -> QuestionTemplate
 def create_template_node_links(session, links) -> list[QuestionTemplateNodeLink]
 def find_templates_by_unit(session, unit_id, *, status="active") -> list[QuestionTemplate]
 def find_templates_by_node(session, node_id, *, status="active") -> list[QuestionTemplate]
-def find_template_by_stem_hash(session, subject, unit_id, stem_hash) -> QuestionTemplate | None
+def find_template_by_stem_hash(session, course, unit_id, stem_hash) -> QuestionTemplate | None
 def find_node_links_by_template(session, template_id) -> list[QuestionTemplateNodeLink]
 
 # ExamPaper CRUD
@@ -469,16 +469,16 @@ def list_attempts_by_paper(session, paper_id) -> list[UserAnswerAttempt]
 
 # UserKnowledgeState CRUD
 def upsert_knowledge_state(session, state) -> UserKnowledgeState
-def get_knowledge_state(session, user_id, subject, granularity, target_id) -> UserKnowledgeState | None
-def list_knowledge_states(session, user_id, subject, *, granularity=None) -> list[UserKnowledgeState]
+def get_knowledge_state(session, user_id, course, granularity, target_id) -> UserKnowledgeState | None
+def list_knowledge_states(session, user_id, course, *, granularity=None) -> list[UserKnowledgeState]
 
 # ReviewTask CRUD
 def upsert_review_task(session, task) -> ReviewTask
     """使用 INSERT ... ON CONFLICT DO UPDATE 语义写入 ReviewTask。
     冲突键为部分唯一索引 uq_review_task_pending。
     """
-def find_pending_review(session, user_id, subject, target_id, target_granularity) -> ReviewTask | None
-def list_pending_reviews(session, user_id, subject) -> list[ReviewTask]
+def find_pending_review(session, user_id, course, target_id, target_granularity) -> ReviewTask | None
+def list_pending_reviews(session, user_id, course) -> list[ReviewTask]
 
 # Job CRUD
 def create_question_build_job(session, job) -> QuestionBuildJob
@@ -629,12 +629,12 @@ class QuestionTemplate(SQLModel, table=True):
     """
     __tablename__ = "question_template"
     __table_args__ = (
-        UniqueConstraint("subject", "teaching_unit_id", "stem_hash",
-                         name="uq_template_subject_unit_stem"),
+        UniqueConstraint("course", "teaching_unit_id", "stem_hash",
+                         name="uq_template_course_unit_stem"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     teaching_unit_id: int = Field(foreign_key="teaching_unit.id", index=True)
     # 注意：不再有 knowledge_node_id 外键，节点关联通过 QuestionTemplateNodeLink 多对多表实现
     question_type: str  # QuestionType 枚举（SINGLE_CHOICE / FILL_BLANK / SHORT_ANSWER）
@@ -695,7 +695,7 @@ class ExamPaper(SQLModel, table=True):
     __tablename__ = "exam_paper"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     exam_mode: str  # ExamMode 枚举
     curriculum_snapshot_id: int = Field(
@@ -806,13 +806,13 @@ class UserKnowledgeState(SQLModel, table=True):
     """
     __tablename__ = "user_knowledge_state"
     __table_args__ = (
-        UniqueConstraint("user_id", "subject", "granularity", "target_id",
+        UniqueConstraint("user_id", "course", "granularity", "target_id",
                          name="uq_knowledge_state"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", index=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     granularity: str  # MasteryGranularity 枚举：unit / node
     target_id: int = Field(index=True)  # 逻辑多态关联，非物理外键，引用完整性由 service/repo 层保证
     mastery_score: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -845,9 +845,9 @@ class ReviewTask(SQLModel, table=True):
     支持向用户解释"为什么要复习这个"。
     
     单 pending 约束说明：
-    同一 user_id + subject + target_id + target_granularity 组合最多一个 pending ReviewTask。
+    同一 user_id + course + target_id + target_granularity 组合最多一个 pending ReviewTask。
     该约束通过数据库部分唯一索引 + 应用层事务保护双重保证：
-    - 数据库层：partial unique index on (user_id, subject, target_id, target_granularity) WHERE status='pending'
+    - 数据库层：partial unique index on (user_id, course, target_id, target_granularity) WHERE status='pending'
     - 应用层：service 层使用 INSERT ... ON CONFLICT DO UPDATE (upsert) 语义，在事务内完成查询+写入
     - 并发安全：不依赖"先查再插"模式，避免 TOCTOU 竞态条件
     注意：target_granularity 必须参与唯一性判定，因为 unit id=12 和 node id=12 是不同目标。
@@ -856,7 +856,7 @@ class ReviewTask(SQLModel, table=True):
     __table_args__ = (
         # 部分唯一索引：同一目标最多一个 pending 任务
         UniqueConstraint(
-            "user_id", "subject", "target_id", "target_granularity",
+            "user_id", "course", "target_id", "target_granularity",
             name="uq_review_task_pending",
             sqlite_where=text("status='pending'"),
         ),
@@ -864,7 +864,7 @@ class ReviewTask(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", index=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     task_type: str  # ReviewTaskType 枚举
     target_id: int = Field(index=True)  # TeachingUnit.id 或 KnowledgeNode.id
     target_granularity: str  # MasteryGranularity 枚举：unit / node
@@ -935,7 +935,7 @@ class QuestionBuildJob(SQLModel, table=True):
     __tablename__ = "question_build_job"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     target_unit_ids_json: str = Field(default="[]")  # JSON 数组
     questions_per_unit: int = Field(default=9)
     status: str = Field(default="pending")  # AsyncJobStatus 枚举（pending / running / completed / failed）
@@ -952,7 +952,7 @@ class ExamGenerateJob(SQLModel, table=True):
     __tablename__ = "exam_generate_job"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject: str = Field(index=True)
+    course: str = Field(index=True)
     user_id: str = Field(default="local")
     exam_mode: str  # ExamMode 枚举
     num_questions: int
@@ -1136,7 +1136,7 @@ erDiagram
 
 ### Property 16: 单一待处理复习任务
 
-*对于任意* user_id + subject + target_id + target_granularity 组合，在任意时刻最多只有一个 status="pending" 的 ReviewTask。
+*对于任意* user_id + course + target_id + target_granularity 组合，在任意时刻最多只有一个 status="pending" 的 ReviewTask。
 
 **Validates: Requirements 12.6**
 
@@ -1176,7 +1176,7 @@ erDiagram
 
 ### Property 22: 复习任务去重一致性
 
-*对于任意* exam_paper_id 导致的 `schedule_reviews` 重试，同一 target（user_id + subject + target_id + target_granularity）最终至多产生一个 status="pending" 的 ReviewTask。即：对同一组 updated_state_ids 连续调用两次 `schedule_reviews`，pending ReviewTask 的数量不变。
+*对于任意* exam_paper_id 导致的 `schedule_reviews` 重试，同一 target（user_id + course + target_id + target_granularity）最终至多产生一个 status="pending" 的 ReviewTask。即：对同一组 updated_state_ids 连续调用两次 `schedule_reviews`，pending ReviewTask 的数量不变。
 
 **Validates: Requirements 12.6, 16.2**
 

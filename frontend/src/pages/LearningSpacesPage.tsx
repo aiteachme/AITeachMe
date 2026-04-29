@@ -5,24 +5,24 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, Download, LayoutGrid, Loader2, PackagePlus, Plus, Upload } from "lucide-react";
 
-import { listSubjectsApiApiV1SubjectsListPost } from "../api/generated/subjects";
-import { SubjectExportModal } from "../components/subject/SubjectExportModal";
-import { SubjectImportModal } from "../components/subject/SubjectImportModal";
+import { listCoursesApiApiV1CoursesListPost } from "../api/generated/courses";
+import { CourseExportModal } from "../components/course/CourseExportModal";
+import { CourseImportModal } from "../components/course/CourseImportModal";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-import { resolveSubjectIcon } from "../lib/subjectIcons";
+import { resolveCourseIcon } from "../lib/courseIcons";
 import { cn } from "../lib/utils";
 
-type SubjectWithIcon = {
-  subject_id: string;
+type CourseWithIcon = {
+  course_id: string;
   name?: string | null;
   icon_key?: string | null;
 };
 
-function displaySubjectName(subject: { name?: string | null }) {
-  return subject.name?.trim() || "未命名学科";
+function displayCourseName(course: { name?: string | null }) {
+  return course.name?.trim() || "未命名课程";
 }
 
-function subjectTone(name: string) {
+function courseTone(name: string) {
   const tones = [
     "from-slate-900 to-slate-700",
     "from-emerald-600 to-teal-500",
@@ -71,20 +71,20 @@ function WorkspaceActionButton({
 export function LearningSpacesPage() {
   const navigate = useNavigate();
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
+  const [exportCourseId, setExportCourseId] = useState<string | null>(null);
 
-  const { data: subjects = [], isLoading } = useQuery({
-    queryKey: ["subjects"],
+  const { data: courses = [], isLoading } = useQuery({
+    queryKey: ["courses"],
     queryFn: async () =>
       unwrapOrvalResponse(
-        await listSubjectsApiApiV1SubjectsListPost({
+        await listCoursesApiApiV1CoursesListPost({
           page: 1,
           size: 100,
         }),
       )?.items ?? [],
   });
 
-  const subjectCount = subjects.length;
+  const courseCount = courses.length;
   return (
     <>
       <div className="min-h-full px-4 pb-12 pt-10 sm:px-6 md:px-10 lg:px-12 xl:px-16">
@@ -98,7 +98,7 @@ export function LearningSpacesPage() {
               <div>
                 <h1 className="text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">学习空间</h1>
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  管理学科、资料和课程包迁移。每个学科都可以继续构建、查看知识库、导出备份。
+                  管理课程、资料和课程包迁移。每个课程都可以继续构建、查看知识库、导出备份。
                 </p>
               </div>
             </div>
@@ -109,7 +109,7 @@ export function LearningSpacesPage() {
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
               >
-                新建学科
+                新建课程
               </WorkspaceActionButton>
               <WorkspaceActionButton
                 icon={<Upload className="h-4 w-4" />}
@@ -128,9 +128,9 @@ export function LearningSpacesPage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">学科列表</h2>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">课程列表</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {isLoading ? "正在加载学科..." : subjectCount > 0 ? `${subjectCount} 个学科可继续学习` : "还没有创建学科"}
+                {isLoading ? "正在加载课程..." : courseCount > 0 ? `${courseCount} 个课程可继续学习` : "还没有创建课程"}
               </p>
             </div>
           </div>
@@ -144,14 +144,14 @@ export function LearningSpacesPage() {
             </div>
           ) : null}
 
-          {!isLoading && subjects.length === 0 ? (
+          {!isLoading && courses.length === 0 ? (
             <div className="mt-14 flex min-h-[180px] flex-col items-center justify-center px-6 text-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
                 <LayoutGrid className="h-5 w-5" />
               </div>
               <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">还没有学习空间</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                可以新建一个空学科，也可以直接导入别人分享的 .atmx 课程包。
+                可以新建一个空课程，也可以直接导入别人分享的 .atmx 课程包。
               </p>
               <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                 <WorkspaceActionButton
@@ -159,21 +159,21 @@ export function LearningSpacesPage() {
                   icon={<Plus className="h-4 w-4" />}
                   onClick={() => navigate("/", { state: { newEntryAt: Date.now() } })}
                 >
-                  新建学科
+                  新建课程
                 </WorkspaceActionButton>
               </div>
             </div>
           ) : null}
 
-          {!isLoading && subjects.length > 0 ? (
+          {!isLoading && courses.length > 0 ? (
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {subjects.map((subject: SubjectWithIcon, index: number) => {
-                const displayName = displaySubjectName(subject);
-                const SubjectIcon = resolveSubjectIcon(subject.icon_key);
+              {courses.map((course: CourseWithIcon, index: number) => {
+                const displayName = displayCourseName(course);
+                const CourseIcon = resolveCourseIcon(course.icon_key);
 
                 return (
                   <motion.div
-                    key={subject.subject_id}
+                    key={course.course_id}
                     className="group flex min-h-[232px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -186,8 +186,8 @@ export function LearningSpacesPage() {
                     whileTap={{ scale: 0.99 }}
                   >
                     <div className="flex items-start gap-3 px-4 pb-4 pt-4">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${subjectTone(displayName)} text-white shadow-sm`}>
-                        <SubjectIcon className="h-5 w-5" strokeWidth={2.1} />
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${courseTone(displayName)} text-white shadow-sm`}>
+                        <CourseIcon className="h-5 w-5" strokeWidth={2.1} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
@@ -195,7 +195,7 @@ export function LearningSpacesPage() {
                             {displayName}
                           </h3>
                           <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            学科
+                            课程
                           </span>
                         </div>
                         <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -213,7 +213,7 @@ export function LearningSpacesPage() {
                         ].map((item) => (
                           <Link
                             key={item.path}
-                            to={`/subject/${subject.subject_id}/${item.path}`}
+                            to={`/course/${course.course_id}/${item.path}`}
                             className="rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                           >
                             {item.label}
@@ -223,7 +223,7 @@ export function LearningSpacesPage() {
 
                       <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                         <Link
-                          to={`/subject/${subject.subject_id}/build`}
+                          to={`/course/${course.course_id}/build`}
                           className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           <BookOpen className="h-4 w-4" />
@@ -231,7 +231,7 @@ export function LearningSpacesPage() {
                           <ArrowRight className="h-4 w-4" />
                         </Link>
                         <Link
-                          to={`/subject/${subject.subject_id}/build`}
+                          to={`/course/${course.course_id}/build`}
                           className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                           title="进入构建页添加资料"
                         >
@@ -240,7 +240,7 @@ export function LearningSpacesPage() {
                         </Link>
                         <button
                           type="button"
-                          onClick={() => setExportSubjectId(subject.subject_id)}
+                          onClick={() => setExportCourseId(course.course_id)}
                           className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                           title="导出课程包"
                         >
@@ -258,11 +258,11 @@ export function LearningSpacesPage() {
       </div>
 
       {isImportModalOpen ? (
-        <SubjectImportModal onClose={() => setIsImportModalOpen(false)} />
+        <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
-      {exportSubjectId ? (
-        <SubjectExportModal subjectId={exportSubjectId} onClose={() => setExportSubjectId(null)} />
+      {exportCourseId ? (
+        <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
       ) : null}
     </>
   );

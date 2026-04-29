@@ -1,4 +1,4 @@
-﻿"""Shared build-contract helpers for digest planner and docgen lanes."""
+"""Shared build-contract helpers for digest planner and docgen lanes."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ class DigestConfirmedPlanContract(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
     user_prompt: str = ""
     digest_mode: str = DEFAULT_DIGEST_MODE
     chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
@@ -151,7 +151,7 @@ class DigestConfirmedPlanContract(BaseModel):
     mode_reason: str = ""
 
     @field_validator(
-        "subject_name",
+        "course_name",
         "user_prompt",
         "digest_mode",
         "plan_summary",
@@ -176,7 +176,7 @@ class DigestConfirmedPlanContract(BaseModel):
         return resolve_digest_retrieval_profile(
             self.digest_mode,
             user_prompt=self.user_prompt,
-            subject_name=self.subject_name,
+            course_name=self.course_name,
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -272,18 +272,18 @@ _ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?")
 def _looks_like_oi_topic(
     *,
     user_prompt: str | None,
-    subject_name: str | None,
+    course_name: str | None,
 ) -> bool:
-    """Return True when the requested subject reads like an OI/algorithm-contest topic.
+    """Return True when the requested course reads like an OI/algorithm-contest topic.
 
-    We intentionally key off the user-facing labels (subject name and the
+    We intentionally key off the user-facing labels (course name and the
     build prompt) rather than content-derived signals. For non-file builds
-    (e.g. "初中数学") a subject profile has not been recognized yet, so we
+    (e.g. "初中数学") a course profile has not been recognized yet, so we
     must decide profile selection from what the user typed.
     """
 
     haystack = " ".join(
-        part for part in (user_prompt, subject_name) if part and str(part).strip()
+        part for part in (user_prompt, course_name) if part and str(part).strip()
     ).lower()
     if not haystack:
         return False
@@ -299,10 +299,10 @@ def _looks_like_oi_topic(
 def _looks_like_math_topic(
     *,
     user_prompt: str | None,
-    subject_name: str | None,
+    course_name: str | None,
 ) -> bool:
     haystack = " ".join(
-        part for part in (user_prompt, subject_name) if part and str(part).strip()
+        part for part in (user_prompt, course_name) if part and str(part).strip()
     ).lower()
     if not haystack:
         return False
@@ -319,7 +319,7 @@ def resolve_digest_retrieval_profile(
     digest_mode: str | None,
     *,
     user_prompt: str | None = None,
-    subject_name: str | None = None,
+    course_name: str | None = None,
 ) -> str:
     """Resolve the retrieval profile that should be used for doc generation.
 
@@ -331,9 +331,9 @@ def resolve_digest_retrieval_profile(
     even as a ranking boost.
     """
 
-    if _looks_like_oi_topic(user_prompt=user_prompt, subject_name=subject_name):
+    if _looks_like_oi_topic(user_prompt=user_prompt, course_name=course_name):
         return "docgen_oi"
-    if _looks_like_math_topic(user_prompt=user_prompt, subject_name=subject_name):
+    if _looks_like_math_topic(user_prompt=user_prompt, course_name=course_name):
         return "docgen_zh_math"
 
     normalized_mode = normalize_digest_mode(digest_mode)

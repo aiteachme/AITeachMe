@@ -1,14 +1,14 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Clock3, Sparkles } from "lucide-react";
 import { useParams } from "react-router-dom";
 
 import {
-  getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey,
-  getReviewTasksApiV1SubjectsSubjectIdProfileReviewsGetQueryKey,
-  useCompleteReviewApiV1SubjectsSubjectIdProfileReviewsTaskIdCompletePost,
-  useMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGet,
-  useReviewTasksApiV1SubjectsSubjectIdProfileReviewsGet,
+  getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey,
+  getReviewTasksApiV1CoursesCourseIdProfileReviewsGetQueryKey,
+  useCompleteReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePost,
+  useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet,
+  useReviewTasksApiV1CoursesCourseIdProfileReviewsGet,
 } from "../api/generated/profile";
 import type { MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse } from "../api/generated/model";
 import { getApiErrorMessage } from "../api/client";
@@ -36,12 +36,12 @@ function StatTile({
 }
 
 export function ProfilePage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const masteryQuery = useMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGet(subjectId ?? "");
-  const reviewsQuery = useReviewTasksApiV1SubjectsSubjectIdProfileReviewsGet(subjectId ?? "");
+  const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(courseId ?? "");
+  const reviewsQuery = useReviewTasksApiV1CoursesCourseIdProfileReviewsGet(courseId ?? "");
 
   const mastery = useMemo<MasteryOverviewResponse | null>(
     () => unwrapOrvalResponse<MasteryOverviewResponse>(masteryQuery.data),
@@ -52,16 +52,16 @@ export function ProfilePage() {
     [reviewsQuery.data],
   );
 
-  const completeReview = useCompleteReviewApiV1SubjectsSubjectIdProfileReviewsTaskIdCompletePost({
+  const completeReview = useCompleteReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePost({
     mutation: {
       onSuccess: async () => {
-        if (!subjectId) return;
+        if (!courseId) return;
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey(subjectId),
+            queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
           }),
           queryClient.invalidateQueries({
-            queryKey: getReviewTasksApiV1SubjectsSubjectIdProfileReviewsGetQueryKey(subjectId),
+            queryKey: getReviewTasksApiV1CoursesCourseIdProfileReviewsGetQueryKey(courseId),
           }),
         ]);
         toast({
@@ -81,17 +81,17 @@ export function ProfilePage() {
   });
 
   const states = mastery?.knowledge_unit_states ?? [];
-  const subjectProfile = mastery?.subject_profile;
+  const courseProfile = mastery?.course_profile;
   const userProfile = mastery?.user_profile;
   const weakStates = [...states]
     .sort((left, right) => left.mastery_score - right.mastery_score)
     .slice(0, 8);
 
-  if (!subjectId) {
+  if (!courseId) {
     return (
       <div className="min-h-[calc(100dvh-4rem)] bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 sm:py-8">
         <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-          缺少学科标识，暂时无法加载学习画像。
+          缺少课程标识，暂时无法加载学习画像。
         </div>
       </div>
     );
@@ -104,15 +104,15 @@ export function ProfilePage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Profile</p>
-              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">{subjectId}</h1>
+              <h1 className="mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 sm:text-3xl">{courseId}</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 基于当前 KnowledgeUnit 掌握度、最近答题结果和待复习任务生成个性化画像。
               </p>
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 sm:items-center">
               <Sparkles className="h-4 w-4" />
-              推荐模式 {subjectProfile?.recommended_exam_mode ?? "web_practice"}，建议{" "}
-              {subjectProfile?.recommended_question_count ?? 10} 题
+              推荐模式 {courseProfile?.recommended_exam_mode ?? "web_practice"}，建议{" "}
+              {courseProfile?.recommended_question_count ?? 10} 题
             </div>
           </div>
         </section>
@@ -126,7 +126,7 @@ export function ProfilePage() {
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatTile
             label="平均掌握度"
-            value={subjectProfile?.avg_mastery != null ? `${Math.round(subjectProfile.avg_mastery * 100)}%` : "--"}
+            value={courseProfile?.avg_mastery != null ? `${Math.round(courseProfile.avg_mastery * 100)}%` : "--"}
             hint={`已记录 ${states.length} 个知识点`}
           />
           <StatTile
@@ -136,8 +136,8 @@ export function ProfilePage() {
           />
           <StatTile
             label="待复习"
-            value={String(subjectProfile?.pending_review_count ?? reviewTasks.length)}
-            hint={`其中到期 ${subjectProfile?.due_review_count ?? 0} 个`}
+            value={String(courseProfile?.pending_review_count ?? reviewTasks.length)}
+            hint={`其中到期 ${courseProfile?.due_review_count ?? 0} 个`}
           />
           <StatTile
             label="学习节奏"
@@ -154,7 +154,7 @@ export function ProfilePage() {
                 <p className="mt-1 text-sm text-slate-500">按掌握度从低到高排序</p>
               </div>
               <div className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                推荐难度 {subjectProfile?.difficulty_focus ?? "medium"}
+                推荐难度 {courseProfile?.difficulty_focus ?? "medium"}
               </div>
             </div>
 
@@ -215,7 +215,7 @@ export function ProfilePage() {
                   常用题型 {userProfile?.preferred_question_types?.join(", ") || "暂无历史数据"}
                 </div>
                 <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
-                  推荐题型 {subjectProfile?.recommended_question_types?.join(", ") || "single_choice, short_answer"}
+                  推荐题型 {courseProfile?.recommended_question_types?.join(", ") || "single_choice, short_answer"}
                 </div>
                 <div className="rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
                   讲解风格 {userProfile?.explanation_style ?? "balanced"}
@@ -261,7 +261,7 @@ export function ProfilePage() {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => completeReview.mutate({ subjectId, taskId: task.id })}
+                        onClick={() => completeReview.mutate({ courseId, taskId: task.id })}
                         disabled={completeReview.isPending}
                       >
                         完成
@@ -278,12 +278,12 @@ export function ProfilePage() {
                 <h2 className="text-lg font-semibold">画像备注</h2>
               </div>
               <div className="mt-4 space-y-2">
-                {(subjectProfile?.notes ?? userProfile?.notes ?? []).map((note: string) => (
+                {(courseProfile?.notes ?? userProfile?.notes ?? []).map((note: string) => (
                   <div key={note} className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">
                     {note}
                   </div>
                 ))}
-                {!(subjectProfile?.notes?.length || userProfile?.notes?.length) && (
+                {!(courseProfile?.notes?.length || userProfile?.notes?.length) && (
                   <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
                     还没有足够的行为数据，先完成几次练习会更准。
                   </div>

@@ -1,12 +1,12 @@
-﻿import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, CloudOff, Eye, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
-  getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey,
-  useExamHistoryApiV1SubjectsSubjectIdExamsHistoryGet,
-  useGenerateExamApiV1SubjectsSubjectIdExamsGeneratePost,
+  getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
+  useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
+  useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
 import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../api/client";
@@ -37,7 +37,7 @@ interface ExamPaperDeleteResponse {
 
 interface QuestionTemplateItem {
   id: number;
-  subject: string;
+  course: string;
   question_type: string;
   difficulty: string;
   stem: string;
@@ -57,7 +57,7 @@ interface QuestionTypeRegistryItem {
   type_key: string;
   display_name: string;
   scope: string;
-  subject: string;
+  course: string;
   description: string;
   answer_format: string;
   grading_method: string;
@@ -85,18 +85,18 @@ interface ExamPrewarmStatusResponse {
 }
 
 
-async function deleteExamPaper(subjectId: string, paperId: number) {
+async function deleteExamPaper(courseId: string, paperId: number) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPaperDeleteResponse } }>(
-    `/api/v1/subjects/${subjectId}/exams/${paperId}`,
+    `/api/v1/courses/${courseId}/exams/${paperId}`,
     {
       method: "DELETE",
     },
   );
 }
 
-async function getQuestionTemplates(subjectId: string, signal?: AbortSignal) {
+async function getQuestionTemplates(courseId: string, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateItem[] } }>(
-    `/api/v1/subjects/${subjectId}/exams/question-templates`,
+    `/api/v1/courses/${courseId}/exams/question-templates`,
     {
       method: "GET",
       signal,
@@ -104,9 +104,9 @@ async function getQuestionTemplates(subjectId: string, signal?: AbortSignal) {
   );
 }
 
-async function getQuestionTypes(subjectId: string, signal?: AbortSignal) {
+async function getQuestionTypes(courseId: string, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTypeRegistryItem[] } }>(
-    `/api/v1/subjects/${subjectId}/exams/question-types`,
+    `/api/v1/courses/${courseId}/exams/question-types`,
     {
       method: "GET",
       signal,
@@ -115,7 +115,7 @@ async function getQuestionTypes(subjectId: string, signal?: AbortSignal) {
 }
 
 async function getExamPrewarmStatus(
-  subjectId: string,
+  courseId: string,
   config: ReturnType<typeof loadCreateExamConfig>,
   signal?: AbortSignal,
 ) {
@@ -127,7 +127,7 @@ async function getExamPrewarmStatus(
     params.set("user_prompt", userPrompt);
   }
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPrewarmStatusResponse } }>(
-    `/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/prewarm-status?${params.toString()}`,
+    `/api/v1/courses/${encodeURIComponent(courseId)}/exams/prewarm-status?${params.toString()}`,
     {
       method: "GET",
       signal,
@@ -186,7 +186,7 @@ function ExamPrewarmStatusIcon({
 
 
 export function ExamsPage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -199,27 +199,27 @@ export function ExamsPage() {
   });
 
   const currentCreateConfig = useMemo(
-    () => (subjectId ? loadCreateExamConfig(subjectId) : null),
-    [createConfigRevision, subjectId],
+    () => (courseId ? loadCreateExamConfig(courseId) : null),
+    [createConfigRevision, courseId],
   );
   const prewarmStatusQuery = useQuery({
     queryKey: [
       "exam-prewarm-status",
-      subjectId,
+      courseId,
       currentCreateConfig?.examMode,
       currentCreateConfig?.numQuestions,
       currentCreateConfig?.userPrompt.trim(),
     ],
-    enabled: Boolean(subjectId && currentCreateConfig),
+    enabled: Boolean(courseId && currentCreateConfig),
     queryFn: async ({ signal }) => {
-      if (!subjectId || !currentCreateConfig) return null;
-      const response = await getExamPrewarmStatus(subjectId, currentCreateConfig, signal);
+      if (!courseId || !currentCreateConfig) return null;
+      const response = await getExamPrewarmStatus(courseId, currentCreateConfig, signal);
       return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
     },
     refetchInterval: 8000,
   });
 
-  const historyQuery = useExamHistoryApiV1SubjectsSubjectIdExamsHistoryGet(subjectId ?? "", { page: 1, size: 24 });
+  const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(courseId ?? "", { page: 1, size: 24 });
   const history = useMemo(
     () => unwrapOrvalResponse<{ items?: ExamHistoryItem[] }>(historyQuery.data),
     [historyQuery.data],
@@ -236,9 +236,9 @@ export function ExamsPage() {
   const generatingPaperIdsKey = generatingPaperIds.join(",");
 
   useEffect(() => {
-    if (!subjectId || !generatingPaperIds.length) return;
+    if (!courseId || !generatingPaperIds.length) return;
 
-    const historyQueryKey = getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, {
+    const historyQueryKey = getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, {
       page: 1,
       size: 24,
     });
@@ -258,7 +258,7 @@ export function ExamsPage() {
 
     const streams = generatingPaperIds.map((paperId) => {
       const stream = new EventSource(
-        buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
+        buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
         { withCredentials: true },
       );
       const handleSnapshot = (event: Event) => {
@@ -286,7 +286,7 @@ export function ExamsPage() {
         stream.close();
       });
     };
-  }, [generatingPaperIdsKey, queryClient, subjectId]);
+  }, [generatingPaperIdsKey, queryClient, courseId]);
 
   const activeHistoryItems = useMemo(
     () => historyItems.filter((item) => item.status !== "graded"),
@@ -299,14 +299,14 @@ export function ExamsPage() {
 
   const deleteExamMutation = useMutation({
     mutationFn: async (paperId: number) => {
-      if (!subjectId) {
-        throw new Error("缺少学科标识，无法删除考卷。");
+      if (!courseId) {
+        throw new Error("缺少课程标识，无法删除考卷。");
       }
-      return deleteExamPaper(subjectId, paperId);
+      return deleteExamPaper(courseId, paperId);
     },
     onSuccess: async (_response, paperId) => {
       await queryClient.invalidateQueries({
-        queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+        queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId ?? "", { page: 1, size: 24 }),
       });
       toast({
         title: "考卷已删除",
@@ -323,16 +323,16 @@ export function ExamsPage() {
     },
   });
 
-  const generateExam = useGenerateExamApiV1SubjectsSubjectIdExamsGeneratePost({
+  const generateExam = useGenerateExamApiV1CoursesCourseIdExamsGeneratePost({
     mutation: {
       onSuccess: async (response) => {
         const created = unwrapOrvalResponse(response);
         if (!created?.exam_paper_id) return;
         await queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId ?? "", { page: 1, size: 24 }),
+          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId ?? "", { page: 1, size: 24 }),
         });
-        await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", subjectId ?? ""] });
-        navigate(`/subject/${subjectId}/exams/${created.exam_paper_id}`);
+        await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", courseId ?? ""] });
+        navigate(`/course/${courseId}/exams/${created.exam_paper_id}`);
         toast({
           title: "试卷已创建",
           description: `已生成 ${created.num_questions} 题，马上开始考试。`,
@@ -350,19 +350,19 @@ export function ExamsPage() {
   });
 
   const handleCreateExam = () => {
-    if (!subjectId || generateExam.isPending) return;
-    const config = currentCreateConfig ?? loadCreateExamConfig(subjectId);
+    if (!courseId || generateExam.isPending) return;
+    const config = currentCreateConfig ?? loadCreateExamConfig(courseId);
     generateExam.mutate({
-      subjectId,
+      courseId,
       data: toExamGenerateRequest(config),
     });
   };
 
-  if (!subjectId) {
+  if (!courseId) {
     return (
       <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载考试中心。
+          缺少课程标识，暂时无法加载考试中心。
         </div>
       </div>
     );
@@ -424,7 +424,7 @@ export function ExamsPage() {
                     size="lg"
                     variant="outline"
                     className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(`/subject/${subjectId}/exams/question-templates`)}
+                    onClick={() => navigate(`/course/${courseId}/exams/question-templates`)}
                   >
                     <BookOpen className="h-4 w-4" />
                     题库查看
@@ -433,7 +433,7 @@ export function ExamsPage() {
                     size="lg"
                     variant="outline"
                     className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(`/subject/${subjectId}/exams/question-types`)}
+                    onClick={() => navigate(`/course/${courseId}/exams/question-types`)}
                   >
                     <Tags className="h-4 w-4" />
                     题型查看
@@ -511,7 +511,7 @@ export function ExamsPage() {
                                 item={item}
                                 resultDisplayMode={examResultDisplayMode}
                                 isDeleting={isDeleting}
-                                onOpen={() => navigate(`/subject/${subjectId}/exams/${item.id}`)}
+                                onOpen={() => navigate(`/course/${courseId}/exams/${item.id}`)}
                                 onDelete={handleDeleteExam}
                               />
                             );
@@ -529,7 +529,7 @@ export function ExamsPage() {
 
       <CreateExamModal
         open={isCreateConfigOpen}
-        subjectId={subjectId}
+        courseId={courseId}
         onClose={() => {
           setIsCreateConfigOpen(false);
           setCreateConfigRevision((current) => current + 1);
@@ -738,7 +738,7 @@ function QuestionTemplateDetailCard({
 
 function getQuestionTypeScopeLabel(scope: string) {
   if (scope === "global") return "基础题型";
-  if (scope === "subject") return "学科题型";
+  if (scope === "course") return "课程题型";
   return scope || "未分组";
 }
 
@@ -889,13 +889,13 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
 }
 
 function ExamCatalogShell({
-  subjectId,
+  courseId,
   eyebrow,
   title,
   description,
   children,
 }: {
-  subjectId: string;
+  courseId: string;
   eyebrow: string;
   title: string;
   description: string;
@@ -908,7 +908,7 @@ function ExamCatalogShell({
         <header className="px-2 py-4 sm:px-4 lg:px-6">
           <button
             type="button"
-            onClick={() => navigate(`/subject/${subjectId}/exams`)}
+            onClick={() => navigate(`/course/${courseId}/exams`)}
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -928,7 +928,7 @@ function ExamCatalogShell({
               </p>
             </div>
             <div className="text-sm font-semibold text-slate-500">
-              当前学科：{subjectId}
+              当前课程：{courseId}
             </div>
           </div>
         </header>
@@ -939,24 +939,24 @@ function ExamCatalogShell({
 }
 
 export function QuestionTemplatesPage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
 
   const templatesQuery = useQuery({
-    queryKey: ["exam-question-templates", subjectId],
-    enabled: Boolean(subjectId),
+    queryKey: ["exam-question-templates", courseId],
+    enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      const response = await getQuestionTemplates(subjectId ?? "", signal);
+      const response = await getQuestionTemplates(courseId ?? "", signal);
       return unwrapOrvalResponse<QuestionTemplateItem[]>(response) ?? [];
     },
   });
   const templates = templatesQuery.data ?? [];
 
   const typesQuery = useQuery({
-    queryKey: ["exam-question-types", subjectId],
-    enabled: Boolean(subjectId),
+    queryKey: ["exam-question-types", courseId],
+    enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      const response = await getQuestionTypes(subjectId ?? "", signal);
+      const response = await getQuestionTypes(courseId ?? "", signal);
       return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
     },
   });
@@ -973,11 +973,11 @@ export function QuestionTemplatesPage() {
   }, [typesQuery.data]);
   const getQuestionTypeLabel = (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? typeKey;
 
-  if (!subjectId) {
+  if (!courseId) {
     return (
       <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载题库。
+          缺少课程标识，暂时无法加载题库。
         </div>
       </div>
     );
@@ -985,10 +985,10 @@ export function QuestionTemplatesPage() {
 
   return (
     <ExamCatalogShell
-      subjectId={subjectId}
+      courseId={courseId}
       eyebrow="Question Bank"
       title="题库模板"
-      description="这里展示当前学科已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
+      description="这里展示当前课程已经沉淀下来的所有 QuestionTemplate。它们是可复用的题目模板，生成试卷时会复制为本次考试的题目快照。"
     >
       {templatesQuery.isLoading && (
         <div className="px-6 py-12 text-center text-sm text-slate-500">
@@ -1033,23 +1033,23 @@ export function QuestionTemplatesPage() {
 }
 
 export function QuestionTypesPage() {
-  const { subjectId } = useParams();
+  const { courseId } = useParams();
   const [selectedType, setSelectedType] = useState<QuestionTypeRegistryItem | null>(null);
 
   const typesQuery = useQuery({
-    queryKey: ["exam-question-types", subjectId],
-    enabled: Boolean(subjectId),
+    queryKey: ["exam-question-types", courseId],
+    enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      const response = await getQuestionTypes(subjectId ?? "", signal);
+      const response = await getQuestionTypes(courseId ?? "", signal);
       return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
     },
   });
 
-  if (!subjectId) {
+  if (!courseId) {
     return (
       <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
-          缺少学科标识，暂时无法加载题型。
+          缺少课程标识，暂时无法加载题型。
         </div>
       </div>
     );
@@ -1057,14 +1057,14 @@ export function QuestionTypesPage() {
 
   const rows = typesQuery.data ?? [];
   const globalRows = rows.filter((item) => item.scope === "global");
-  const subjectRows = rows.filter((item) => item.scope !== "global");
+  const courseRows = rows.filter((item) => item.scope !== "global");
 
   return (
     <ExamCatalogShell
-      subjectId={subjectId}
+      courseId={courseId}
       eyebrow="Question Types"
       title="题型注册表"
-      description="这里展示系统基础题型和当前学科题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
+      description="这里展示系统基础题型和当前课程题型。后续系统从样卷中学习出的特色题型，也可以进入这张注册表。"
     >
       {typesQuery.isLoading && (
         <div className="px-6 py-12 text-center text-sm text-slate-500">
@@ -1082,7 +1082,7 @@ export function QuestionTypesPage() {
         <div className="grid gap-6">
           {[
             { title: "基础题型", rows: globalRows, icon: <Tags className="h-5 w-5" /> },
-            { title: "当前学科题型", rows: subjectRows, icon: <Layers3 className="h-5 w-5" /> },
+            { title: "当前课程题型", rows: courseRows, icon: <Layers3 className="h-5 w-5" /> },
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
@@ -1116,9 +1116,9 @@ export function QuestionTypesPage() {
 }
 
 export function ExamPaperPage() {
-  const { subjectId, examPaperId } = useParams();
+  const { courseId, examPaperId } = useParams();
 
-  if (!subjectId || !examPaperId || Number.isNaN(Number(examPaperId))) {
+  if (!courseId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
       <div className="min-h-full px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
@@ -1130,9 +1130,9 @@ export function ExamPaperPage() {
 
   return (
     <ExamPaperWorkspace
-      subjectId={subjectId}
+      courseId={courseId}
       paperId={Number(examPaperId)}
-      backHref={`/subject/${subjectId}/exams`}
+      backHref={`/course/${courseId}/exams`}
     />
   );
 }

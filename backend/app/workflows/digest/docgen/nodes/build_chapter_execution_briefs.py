@@ -49,7 +49,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 if task_seed.chapter_index in item.target_chapters and (item.topic or item.contrast)
             ][:3]
             brief = await build_chapter_execution_brief(
-                subject_name=docgen_context.subject_name,
+                course_name=docgen_context.course_name,
                 digest_mode=docgen_context.digest_mode,
                 chapter={
                     "chapter_index": task_seed.chapter_index,
@@ -71,7 +71,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 },
             )
             append_knowledge_build_recent_event(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 event={
                     "stage": "chapter_execution_brief_ready",

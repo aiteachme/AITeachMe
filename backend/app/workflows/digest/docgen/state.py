@@ -15,8 +15,8 @@ from typing import Annotated, Any, TypedDict
 class DocGenState(TypedDict, total=False):
     """State carried by the DocGen graph."""
 
-    subject_id: str
-    subject_name: str
+    course_id: str
+    course_name: str
     user_id: str
     file_ids: list[str]
     user_prompt: str | None
@@ -30,7 +30,7 @@ class DocGenState(TypedDict, total=False):
     teaching_action: str
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]
-    subject_profile: dict[str, Any] | None
+    course_profile: dict[str, Any] | None
     document_context: dict[str, Any] | None
     docgen_context: dict[str, Any]
 

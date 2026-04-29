@@ -24,8 +24,8 @@ class MasteryStateResponse(BaseModel):
     updated_at: datetime
 
 
-class SubjectProfileSummary(BaseModel):
-    subject_id: str
+class CourseProfileSummary(BaseModel):
+    course_id: str
     generated_at: datetime
     avg_mastery: float | None = None
     weak_knowledge_unit_count: int = 0
@@ -45,9 +45,9 @@ class SubjectProfileSummary(BaseModel):
 class UserProfileSummary(BaseModel):
     user_id: str
     generated_at: datetime
-    active_subject_count: int = 0
-    active_subject_ids: list[str] = Field(default_factory=list)
-    recent_subject_ids: list[str] = Field(default_factory=list)
+    active_course_count: int = 0
+    active_course_ids: list[str] = Field(default_factory=list)
+    recent_course_ids: list[str] = Field(default_factory=list)
     preferred_question_types: list[str] = Field(default_factory=list)
     preferred_exam_modes: list[str] = Field(default_factory=list)
     dominant_exam_mode: str = "web_practice"
@@ -60,18 +60,18 @@ class UserProfileSummary(BaseModel):
 
 
 class MasteryOverviewResponse(BaseModel):
-    subject_id: str
+    course_id: str
     user_id: str
     weak_knowledge_unit_count: int
     knowledge_unit_states: list[MasteryStateResponse] = Field(default_factory=list)
-    subject_profile: SubjectProfileSummary | None = None
+    course_profile: CourseProfileSummary | None = None
     user_profile: UserProfileSummary | None = None
 
 
 class ReviewTaskResponse(BaseModel):
     id: int
     user_id: str
-    subject_id: str
+    course_id: str
     knowledge_unit_id: int
     knowledge_unit_name: str | None = None
     knowledge_unit_type: str | None = None

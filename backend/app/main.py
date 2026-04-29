@@ -98,7 +98,7 @@ def _log_infra_diagnostics(settings) -> None:
         lines.append(f"    Database               : {engine.url.database or 'unknown'}")
         lines.append(f"    pgvector               : ready")
     elif is_sqlite():
-        lines.append("    Subject Vector Index   : local subject-scoped store")
+        lines.append("    Course Vector Index   : local course-scoped store")
 
     lines.append("")
     lines.append("  [STORAGE]")
@@ -349,14 +349,14 @@ def _register_routers(app: FastAPI) -> None:
     from app.api.health import router as health_router
     from app.api.knowledge import router as knowledge_router
     from app.api.profile import router as profile_router
-    from app.api.subjects import router as subjects_router
+    from app.api.courses import router as courses_router
     from app.api.system import router as system_router
     from app.api.user_files import router as user_files_router
 
     app.include_router(health_router)
     app.include_router(system_router)
     app.include_router(auth_router)
-    app.include_router(subjects_router)
+    app.include_router(courses_router)
     app.include_router(user_files_router)
     app.include_router(files_router)
     app.include_router(knowledge_router)

@@ -1,4 +1,4 @@
-﻿"""Prompt builders for LLM-based exam question generation."""
+"""Prompt builders for LLM-based exam question generation."""
 
 from __future__ import annotations
 
@@ -32,33 +32,33 @@ _QUESTION_TYPE_FORMAT_RULES = (
 )
 
 SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
-你是 AITeachMe 严谨的考题生成专家。请根据提供的学科上下文、用户意图、知识单元和题目规格生成高质量考题。
+你是 AITeachMe 严谨的考题生成专家。请根据提供的课程上下文、用户意图、知识单元和题目规格生成高质量考题。
 每道题都必须紧扣分配到的知识单元，不得编造资料之外的事实。
 优先生成能考查理解、分析、应用和迁移能力的题目，而不是只考浅层定义记忆。
 只能返回符合指定结构化 schema 的数据，不要输出评论、解释或额外文本。
 """.strip()
 
 
-def _subject_payload(
+def _course_payload(
     *,
-    subject_id: str,
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    course_id: str,
+    course_name: str = "",
+    course_description: str = "",
+    course_user_intent: str = "",
 ) -> dict[str, str]:
     return {
-        "subject_id": subject_id,
-        "subject_name": subject_name or "未命名学科",
-        "subject_description": subject_description or "",
-        "user_intent": subject_user_intent or "",
+        "course_id": course_id,
+        "course_name": course_name or "未命名课程",
+        "course_description": course_description or "",
+        "user_intent": course_user_intent or "",
     }
 
 
 def build_exam_knowledge_unit_filter_messages(
     *,
-    subject_name: str,
-    subject_description: str,
-    subject_user_intent: str,
+    course_name: str,
+    course_description: str,
+    course_user_intent: str,
     exam_mode: str,
     requested_question_count: int,
     candidate_limit: int,
@@ -70,10 +70,10 @@ def build_exam_knowledge_unit_filter_messages(
     system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
-        "subject_profile": {
-            "subject_name": subject_name or "",
-            "subject_description": subject_description or "",
-            "user_intent": subject_user_intent or "",
+        "course_profile": {
+            "course_name": course_name or "",
+            "course_description": course_description or "",
+            "user_intent": course_user_intent or "",
         },
         "exam_mode": exam_mode,
         "requested_question_count": requested_question_count,
@@ -100,7 +100,7 @@ def build_exam_knowledge_unit_filter_messages(
 - 如果用户要求只考有限范围，将 scope_strict 设为 true，并且只选择该范围内的知识单元。
 - 如果用户要求聚焦、复习或强调某个主题，优先选择相关知识单元；必要时可加入基础单元或强相关单元。
 - 如果用户排除了某个主题，不要选择匹配该主题的知识单元。
-- 如果没有明确范围，选择最符合学科目标、exam_mode、priority_knowledge_unit_ids 和 weak_knowledge_unit_ids 的知识单元。
+- 如果没有明确范围，选择最符合课程目标、exam_mode、priority_knowledge_unit_ids 和 weak_knowledge_unit_ids 的知识单元。
 
 选择规则：
 - knowledge_unit_ids 只能来自 knowledge_graph.nodes，绝不要发明 ID。
@@ -130,9 +130,9 @@ def build_exam_knowledge_unit_filter_messages(
 
 def build_exam_question_blueprint_messages(
     *,
-    subject_name: str,
-    subject_description: str,
-    subject_user_intent: str,
+    course_name: str,
+    course_description: str,
+    course_user_intent: str,
     exam_mode: str,
     requested_question_count: int,
     user_prompt: str,
@@ -141,10 +141,10 @@ def build_exam_question_blueprint_messages(
     system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
-        "subject_profile": {
-            "subject_name": subject_name or "",
-            "subject_description": subject_description or "",
-            "user_intent": subject_user_intent or "",
+        "course_profile": {
+            "course_name": course_name or "",
+            "course_description": course_description or "",
+            "user_intent": course_user_intent or "",
         },
         "exam_mode": exam_mode,
         "requested_question_count": requested_question_count,
@@ -207,7 +207,7 @@ def build_exam_question_requirement_messages(
 - user_prompt 中的全局风格、整体范围、表达形式等要求，必须写入每一道匹配题目的 generation_prompt。
 - 如果 user_prompt 中包含针对特定题号、题号范围、题目分组或题型的要求，只能把这些要求写入对应题目的 generation_prompt。
 - 这个阶段不要分配 knowledge_unit_ids，也不要输出 difficulty 字段；后续节点会在看到题型后再分配知识单元和难度。
-- 这个阶段不要引入学科画像、知识单元详情、多样性运行 ID 或系统约束。
+- 这个阶段不要引入课程画像、知识单元详情、多样性运行 ID 或系统约束。
 - 每个 generation_prompt 要简洁，聚焦于用户对该题的生成要求。
 - 如果用户没有为某道题提出任何可写入该题 generation_prompt 的要求，就把该题 generation_prompt 写为“无”，不要自行补充中性要求。
 
@@ -232,11 +232,11 @@ def build_exam_question_messages(
     units: list[dict[str, Any]],
     spec: dict[str, Any],
     generation_prompt: str,
-    subject_profile: dict[str, str] | None = None,
+    course_profile: dict[str, str] | None = None,
     system_constraints: str = "",
 ) -> list[ChatMessage]:
     payload = {
-        "subject_profile": subject_profile or {},
+        "course_profile": course_profile or {},
         "system_constraints": system_constraints or "",
         "generation_prompt": generation_prompt or "",
         "knowledge_units": units,
@@ -246,7 +246,7 @@ def build_exam_question_messages(
 请根据提供的知识单元和题目规格生成一道高质量考题。
 
 要求：
-0. generation_prompt 是本题完整的生成指令。必须严格遵守它，不要到本 payload 之外寻找额外的全局用户要求或学科要求。
+0. generation_prompt 是本题完整的生成指令。必须严格遵守它，不要到本 payload 之外寻找额外的全局用户要求或课程要求。
 1. 生成的题目必须匹配 question_spec.item_order、question_spec.question_type 和 question_spec.difficulty。
 2. question_spec.allocation_rationale 说明这些知识单元为什么分配给本题。你可以把它作为考查角度和覆盖面的规划上下文，但不要在题干、选项、答案或解析中引用或暴露它。
 3. 使用 knowledge_unit_refs 描述本题覆盖的知识单元。不要额外输出 knowledge_unit_id 字段。
@@ -278,13 +278,13 @@ def build_exam_question_messages(
 
 def build_text_exam_messages(
     *,
-    subject_name: str,
+    course_name: str,
     knowledge_text: str,
     num_questions: int,
     difficulty: str,
 ) -> list[ChatMessage]:
     payload = {
-        "subject_name": subject_name,
+        "course_name": course_name,
         "num_questions": num_questions,
         "difficulty": difficulty,
         "knowledge_text": knowledge_text[:12000],

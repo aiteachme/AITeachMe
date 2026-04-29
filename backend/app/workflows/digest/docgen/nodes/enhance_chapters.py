@@ -50,7 +50,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         }
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="enhancing_chapters",
@@ -60,7 +60,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
 
         async def _enhance_one(draft: ChapterDraft):
             traced_context = TracedExecutionContext(
-                subject_id=state["subject_id"],
+                course_id=state["course_id"],
                 build_session_id=state.get("build_session_id", ""),
                 workflow_context=context,
                 planner_session_id=state.get("planner_session_id", ""),
@@ -70,12 +70,12 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 chapter_index=draft.chapter_index,
             )
             upsert_knowledge_build_chapter_progress(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "enhancing"},
             )
             upsert_knowledge_build_chapter_preview(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
@@ -93,7 +93,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
@@ -106,7 +106,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 },
             )
             upsert_knowledge_build_chapter_progress(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 chapter_progress={
                     "chapter_index": draft.chapter_index,
@@ -117,7 +117,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 },
             )
             append_knowledge_build_recent_event(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 event={
                     "stage": "chapter_enhanced",
@@ -135,7 +135,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
         kg_prefetch_started = start_docgen_kg_prefetch(
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             build_session_id=state.get("build_session_id", ""),
             chapters=[item.model_dump(mode="json") for item in enhanced_items],
             document_backbone=state.get("document_backbone") or {},
@@ -151,7 +151,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         )
         if kg_prefetch_started:
             append_knowledge_build_recent_event(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 event={
                     "stage": "kg_prefetch_started",
@@ -160,7 +160,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 },
             )
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="chapters_enhanced",

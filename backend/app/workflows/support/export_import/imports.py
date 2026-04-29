@@ -1,4 +1,4 @@
-"""Subject package import workflows."""
+"""Course package import workflows."""
 
 from __future__ import annotations
 
@@ -14,17 +14,17 @@ import structlog
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app.models import ChatSession, RawFile, RetrievalChunk, Subject
+from app.models import ChatSession, RawFile, RetrievalChunk, Course
 from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.subject import (
-    resolve_subject_build_vector_status,
-    should_generate_subject_embeddings,
+from app.shared.infra.course import (
+    resolve_course_build_vector_status,
+    should_generate_course_embeddings,
 )
 from app.shared.infra.storage import (
     build_file_storage_segment,
-    build_subject_storage_scope,
+    build_course_storage_scope,
     get_content_store,
     run_store_sync,
 )
@@ -34,7 +34,7 @@ from app.shared.infra.exceptions import (
 )
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
-    _create_unique_subject_id,
+    _create_unique_course_id,
     _import_table,
     _read_manifest,
 )
@@ -49,14 +49,14 @@ logger = structlog.get_logger()
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
-def import_subject(
+def import_course(
     session: Session,
     *,
     file_path: Path,
     options: ImportOptions | None = None,
     user_id: str = "local",
 ) -> ImportResultData:
-    """Import one subject from an ``.atmx`` archive."""
+    """Import one course from an ``.atmx`` archive."""
 
     options = options or ImportOptions()
 
@@ -76,8 +76,8 @@ def import_subject(
         except (OSError, ValueError, ValidationError) as exc:
             raise InvalidImportPackageError(str(exc)) from exc
 
-        new_subject_id = _create_unique_subject_id(session)
-        new_name = (options.new_subject_name or manifest.subject.name or "导入课程").strip() or "导入课程"
+        new_course_id = _create_unique_course_id(session)
+        new_name = (options.new_course_name or manifest.course.name or "导入课程").strip() or "导入课程"
 
         id_map: dict[str, dict[Any, Any]] = {}
         imported_counts: dict[str, int] = {}
@@ -96,7 +96,7 @@ def import_subject(
                     spec,
                     records,
                     id_map=id_map,
-                    new_subject_id=new_subject_id,
+                    new_course_id=new_course_id,
                     new_name=new_name,
                     user_id=user_id,
                     warnings=warnings,
@@ -106,7 +106,7 @@ def import_subject(
             legacy_plan_count = _import_legacy_confirmed_build_plans(
                 session,
                 tmpdir=tmpdir,
-                subject_id=new_subject_id,
+                course_id=new_course_id,
                 user_id=user_id,
                 id_map=id_map,
                 warnings=warnings,
@@ -114,45 +114,45 @@ def import_subject(
             if legacy_plan_count:
                 imported_counts["confirmed_build_plan"] = legacy_plan_count
 
-            _require_imported_subject(
+            _require_imported_course(
                 session,
-                subject_id=new_subject_id,
+                course_id=new_course_id,
                 imported_counts=imported_counts,
             )
             _unpack_files(
                 session,
                 tmpdir,
-                new_subject_id,
+                new_course_id,
                 user_id=user_id,
                 file_id_map=id_map.get("raw_file", {}),
             )
             _reconcile_imported_planner_metadata(
                 session,
-                subject_id=new_subject_id,
+                course_id=new_course_id,
                 id_map=id_map,
             )
             session.commit()
         except Exception:
             session.rollback()
-            _cleanup_import_artifacts(new_subject_id, user_id=user_id)
+            _cleanup_import_artifacts(new_course_id, user_id=user_id)
             raise
 
         _rebuild_imported_embeddings(
             session,
-            subject_id=new_subject_id,
+            course_id=new_course_id,
             imported_counts=imported_counts,
             warnings=warnings,
         )
 
         logger.info(
-            "subject_imported",
-            subject_id=new_subject_id,
-            subject_name=new_name,
+            "course_imported",
+            course_id=new_course_id,
+            course_name=new_name,
             counts=imported_counts,
         )
         return ImportResultData(
-            subject_id=new_subject_id,
-            subject_name=new_name,
+            course_id=new_course_id,
+            course_name=new_name,
             imported_counts=imported_counts,
             warnings=warnings,
         )
@@ -161,7 +161,7 @@ def import_subject(
 def _reconcile_imported_planner_metadata(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     id_map: dict[str, dict[Any, Any]],
 ) -> None:
     """Remap planner chat-session metadata after all import ids are known."""
@@ -171,7 +171,7 @@ def _reconcile_imported_planner_metadata(
     if not file_id_map and not plan_id_map:
         return
 
-    sessions = list(session.exec(select(ChatSession).where(ChatSession.subject_id == subject_id)).all())
+    sessions = list(session.exec(select(ChatSession).where(ChatSession.course_id == course_id)).all())
     for item in sessions:
         raw_meta = item.meta_json or {}
         if isinstance(raw_meta, str):
@@ -215,7 +215,7 @@ def _import_legacy_confirmed_build_plans(
     session: Session,
     *,
     tmpdir: Path,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     id_map: dict[str, dict[Any, Any]],
     warnings: list[str],
@@ -255,7 +255,7 @@ def _import_legacy_confirmed_build_plans(
                 selected_file_ids.append(new_file_id)
 
         plan_json = dict(record.get("plan_json") or {})
-        plan_json["subject_id"] = subject_id
+        plan_json["course_id"] = course_id
         plan_json["selected_file_ids"] = selected_file_ids
         plan_json["planner_session_id"] = str(new_session_id)
         plan_json["confirmed_plan_id"] = new_plan_id
@@ -270,7 +270,7 @@ def _import_legacy_confirmed_build_plans(
         meta["confirmed_plan_id"] = new_plan_id
         meta["confirmed_plan"] = {
             "id": new_plan_id,
-            "subject_id": subject_id,
+            "course_id": course_id,
             "planner_session_id": str(new_session_id),
             "user_id": user_id,
             "status": record.get("status") or "confirmed",
@@ -312,7 +312,7 @@ def _lookup_imported_or_existing_id(old_id: Any, value_map: dict[Any, Any]) -> A
 
 
 def _safe_extract_archive(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    """Extract a subject package after validating paths and archive size."""
+    """Extract a course package after validating paths and archive size."""
 
     target_root = target_dir.resolve()
     members = zf.infolist()
@@ -360,19 +360,19 @@ def _read_table_records(db_file: Path, table_name: str) -> list[dict[str, Any]]:
     return normalized
 
 
-def _require_imported_subject(
+def _require_imported_course(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     imported_counts: dict[str, int],
 ) -> None:
     """Fail malformed packages before returning a phantom import success."""
 
-    if int(imported_counts.get("subject", 0) or 0) != 1:
-        raise InvalidImportPackageError("课程包缺少有效的 subject 数据。")
+    if int(imported_counts.get("course", 0) or 0) != 1:
+        raise InvalidImportPackageError("课程包缺少有效的 course 数据。")
 
-    subject = session.exec(select(Subject).where(Subject.id == subject_id)).first()
-    if subject is None:
+    course = session.exec(select(Course).where(Course.id == course_id)).first()
+    if course is None:
         raise InvalidImportPackageError("课程包未能生成有效课程。")
 
 
@@ -407,14 +407,14 @@ def _exported_raw_file_segments(extract_dir: Path) -> dict[Any, str]:
 def _unpack_files(
     session: Session,
     extract_dir: Path,
-    new_subject_id: str,
+    new_course_id: str,
     *,
     user_id: str,
     file_id_map: dict[Any, Any],
 ) -> None:
     """Write packaged files into ContentStore using remapped file ids."""
 
-    subject_scope = build_subject_storage_scope(user_id=user_id, subject_id=new_subject_id)
+    course_scope = build_course_storage_scope(user_id=user_id, course_id=new_course_id)
     cs = get_content_store()
 
     def _raw_file_for_old_id(old_id: Any) -> RawFile | None:
@@ -454,24 +454,24 @@ def _unpack_files(
             if not item.is_file():
                 continue
             if item.stem == "cover" and item.suffix.lower() in _DOCGEN_COVER_IMAGE_EXTENSIONS:
-                key = f"{subject_scope.namespace}/assets/docgen/{item.name}"
+                key = f"{course_scope.namespace}/assets/docgen/{item.name}"
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
 
 
-def _cleanup_import_artifacts(subject_id: str, *, user_id: str) -> None:
+def _cleanup_import_artifacts(course_id: str, *, user_id: str) -> None:
     """Best-effort cleanup when import fails after files have been written."""
 
     cs = get_content_store()
     try:
         run_store_sync(
             cs.delete_prefix,
-            build_subject_storage_scope(user_id=user_id, subject_id=subject_id).subject_prefix(),
+            build_course_storage_scope(user_id=user_id, course_id=course_id).course_prefix(),
             default=0,
         )
     except Exception as exc:  # pragma: no cover - best-effort cleanup
         logger.warning(
-            "subject_import_artifact_cleanup_failed",
-            subject_id=subject_id,
+            "course_import_artifact_cleanup_failed",
+            course_id=course_id,
             error=str(exc),
         )
 
@@ -479,7 +479,7 @@ def _cleanup_import_artifacts(subject_id: str, *, user_id: str) -> None:
 def _rebuild_imported_embeddings(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     imported_counts: dict[str, int],
     warnings: list[str],
 ) -> None:
@@ -488,31 +488,31 @@ def _rebuild_imported_embeddings(
     if int(imported_counts.get("retrieval_chunk", 0) or 0) <= 0:
         return
 
-    subject_record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
-    if subject_record is None:
-        warnings.append("embedding_rebuild: imported subject not found after commit")
+    course_record = session.exec(select(Course).where(Course.id == course_id)).first()
+    if course_record is None:
+        warnings.append("embedding_rebuild: imported course not found after commit")
         return
 
     try:
-        resolve_subject_build_vector_status(
+        resolve_course_build_vector_status(
             session,
-            subject=subject_record,
+            course=course_record,
             embedding_resolution=None,
         )
     except Exception as exc:
         logger.warning(
-            "subject_import_embedding_precheck_failed",
-            subject_id=subject_id,
+            "course_import_embedding_precheck_failed",
+            course_id=course_id,
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: precheck failed: {exc}")
         return
 
-    if not should_generate_subject_embeddings(session, subject_id=subject_id):
+    if not should_generate_course_embeddings(session, course_id=course_id):
         logger.info(
-            "subject_import_embedding_skipped",
-            subject_id=subject_id,
-            reason="subject_vectors_disabled_or_unavailable",
+            "course_import_embedding_skipped",
+            course_id=course_id,
+            reason="course_vectors_disabled_or_unavailable",
         )
         return
 
@@ -520,7 +520,7 @@ def _rebuild_imported_embeddings(
         session.exec(
             select(RetrievalChunk)
             .where(
-                RetrievalChunk.subject_id == subject_id,
+                RetrievalChunk.course_id == course_id,
                 RetrievalChunk.is_active.is_(True),
             )
             .order_by(RetrievalChunk.file_id, RetrievalChunk.chunk_index)
@@ -534,8 +534,8 @@ def _rebuild_imported_embeddings(
     embeddings = _run_async(aembed_texts(payloads, soft_fail=True))
     if not embeddings:
         logger.warning(
-            "subject_import_embedding_soft_failed",
-            subject_id=subject_id,
+            "course_import_embedding_soft_failed",
+            course_id=course_id,
             chunk_count=len(chunk_rows),
         )
         warnings.append("embedding_rebuild: skipped because embedding service is unavailable")
@@ -544,14 +544,14 @@ def _rebuild_imported_embeddings(
     try:
         knowledge_repo.bulk_insert_embeddings(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             chunk_ids=[int(chunk.id) for chunk in chunk_rows],
             embeddings=embeddings,
         )
     except Exception as exc:
         logger.warning(
-            "subject_import_embedding_rebuild_failed",
-            subject_id=subject_id,
+            "course_import_embedding_rebuild_failed",
+            course_id=course_id,
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: failed: {exc}")
@@ -573,4 +573,4 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-__all__ = ["import_subject"]
+__all__ = ["import_course"]

@@ -1,4 +1,4 @@
-﻿"""Workflow execution context."""
+"""Workflow execution context."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from app.shared.infra.workflow.events import InProcessEventBus
 
 logger = structlog.get_logger()
 
-LANGGRAPH_DEV_SUBJECT_ID = "__langgraph_dev__"
-LOGGER_METADATA_RESERVED_KEYS = frozenset({"workflow", "subject_id", "correlation_id"})
+LANGGRAPH_DEV_COURSE_ID = "__langgraph_dev__"
+LOGGER_METADATA_RESERVED_KEYS = frozenset({"workflow", "course_id", "correlation_id"})
 
 
 @dataclass(slots=True)
@@ -21,7 +21,7 @@ class WorkflowContext:
     """Shared runtime context for one workflow run."""
 
     workflow_name: str
-    subject_id: str
+    course_id: str
     event_bus: InProcessEventBus = field(default_factory=InProcessEventBus)
     metadata: dict[str, Any] = field(default_factory=dict)
     correlation_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -36,7 +36,7 @@ class WorkflowContext:
         }
         return logger.bind(
             workflow=self.workflow_name,
-            subject_id=self.subject_id,
+            course_id=self.course_id,
             correlation_id=self.correlation_id,
             **metadata,
         )
@@ -47,5 +47,5 @@ def create_langgraph_dev_context(workflow_name: str) -> WorkflowContext:
 
     return WorkflowContext(
         workflow_name=workflow_name,
-        subject_id=LANGGRAPH_DEV_SUBJECT_ID,
+        course_id=LANGGRAPH_DEV_COURSE_ID,
     )

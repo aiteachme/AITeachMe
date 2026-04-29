@@ -17,7 +17,7 @@ _LEARNING_INTENT_KEYWORDS = (
     "复习",
     "课程",
     "这门课",
-    "学科",
+    "课程",
     "知识",
     "知识点",
     "章节",
@@ -72,7 +72,7 @@ class ChatPromptScene(str, Enum):
     """Prompt template scene for one chat turn."""
 
     GENERAL = "general"
-    SUBJECT_LEARNING = "subject_learning"
+    COURSE_LEARNING = "course_learning"
     DOCUMENT_SELECTION = "document_selection"
     EXAM_QUESTION = "exam_question"
     BUILD_ASSISTANT = "build_assistant"
@@ -115,13 +115,13 @@ def has_explicit_learning_intent(question: str) -> bool:
     return any(keyword.casefold() in normalized for keyword in _LEARNING_INTENT_KEYWORDS)
 
 
-def should_use_subject_grounding(
+def should_use_course_grounding(
     *,
     question: str,
     source: str | None,
     has_primary_context: bool,
 ) -> bool:
-    """Decide whether subject materials should be active evidence this turn."""
+    """Decide whether course materials should be active evidence this turn."""
 
     if has_primary_context:
         return True
@@ -145,12 +145,12 @@ def resolve_prompt_scene(
         return ChatPromptScene.BUILD_ASSISTANT
     if normalized_source == "quick_chat" and has_primary_context:
         return ChatPromptScene.DOCUMENT_SELECTION
-    if should_use_subject_grounding(
+    if should_use_course_grounding(
         question=question,
         source=source,
         has_primary_context=has_primary_context,
     ):
-        return ChatPromptScene.SUBJECT_LEARNING
+        return ChatPromptScene.COURSE_LEARNING
     return ChatPromptScene.GENERAL
 
 
@@ -163,5 +163,5 @@ __all__ = [
     "has_entry_context",
     "has_explicit_learning_intent",
     "resolve_prompt_scene",
-    "should_use_subject_grounding",
+    "should_use_course_grounding",
 ]

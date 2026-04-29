@@ -29,7 +29,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         logger.info(
             "planner_normalize_started",
             planner_session_id=state.get("planner_session_id", ""),
-            subject_id=state.get("subject_id", ""),
+            course_id=state.get("course_id", ""),
             has_build_plan_draft=bool(state.get("build_plan_draft")),
             state_error=state.get("error"),
         )
@@ -38,15 +38,15 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
         draft = normalize_planner_draft(
             state.get("build_plan_draft") or {},
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             user_prompt=state.get("user_prompt") or "",
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
         )
-        generated_subject_name = str(state.get("generated_subject_name") or "").strip()
-        if generated_subject_name:
-            draft.subject_name = generated_subject_name
+        generated_course_name = str(state.get("generated_course_name") or "").strip()
+        if generated_course_name:
+            draft.course_name = generated_course_name
         logger.info(
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),
@@ -54,7 +54,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             plan_step_count=len(draft.plan_steps),
             digest_mode=draft.digest_mode,
             plan_summary_chars=len(draft.plan_summary or ""),
-            generated_subject_name=generated_subject_name or None,
+            generated_course_name=generated_course_name or None,
         )
         plan = draft.model_dump(mode="json")
         outline_items = [
@@ -79,7 +79,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             "plan": plan,
             "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
-            "generated_subject_name": generated_subject_name,
+            "generated_course_name": generated_course_name,
         }
         persist_update = save_planner_result(
             {**state, **result},

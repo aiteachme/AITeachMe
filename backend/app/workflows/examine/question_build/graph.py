@@ -1,4 +1,4 @@
-﻿"""LangGraph definition and public runtime entrypoint for exam question build."""
+"""LangGraph definition and public runtime entrypoint for exam question build."""
 
 from __future__ import annotations
 
@@ -79,12 +79,12 @@ def get_langgraph_dev_question_build_graph() -> StateGraph:
 
 def create_question_build_initial_state(
     *,
-    subject_id: str,
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    course_id: str,
+    course_name: str = "",
+    course_description: str = "",
+    course_user_intent: str = "",
     exam_mode: str = "web_practice",
-    subject_context: str = "",
+    course_context: str = "",
     user_prompt: str = "",
     system_constraints: str = "",
     units: list | None = None,
@@ -95,12 +95,12 @@ def create_question_build_initial_state(
     progress_callback: object | None = None,
 ) -> QuestionBuildState:
     return {
-        "subject_id": subject_id,
-        "subject_name": subject_name,
-        "subject_description": subject_description,
-        "subject_user_intent": subject_user_intent,
+        "course_id": course_id,
+        "course_name": course_name,
+        "course_description": course_description,
+        "course_user_intent": course_user_intent,
         "exam_mode": exam_mode,
-        "subject_context": subject_context,
+        "course_context": course_context,
         "user_prompt": user_prompt,
         "system_constraints": system_constraints,
         "units": list(units or []),
@@ -123,12 +123,12 @@ def require_success_state(result: WorkflowResult[QuestionBuildState]) -> Questio
 
 async def run_question_build_workflow(
     *,
-    subject_id: str,
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    course_id: str,
+    course_name: str = "",
+    course_description: str = "",
+    course_user_intent: str = "",
     exam_mode: str = "web_practice",
-    subject_context: str = "",
+    course_context: str = "",
     user_prompt: str = "",
     system_constraints: str = "",
     units: list | None = None,
@@ -140,7 +140,7 @@ async def run_question_build_workflow(
 ) -> WorkflowResult[QuestionBuildState]:
     context = WorkflowContext(
         workflow_name="examine.question_build",
-        subject_id=subject_id,
+        course_id=course_id,
         metadata={
             "lane": "question_build",
             "langsmith_run_name": RUN_NAME_EXAM_QUESTION_BUILD,
@@ -152,12 +152,12 @@ async def run_question_build_workflow(
         workflow_name="examine.question_build",
         graph_builder=lambda: build_question_build_graph(context=context),
         initial_state=create_question_build_initial_state(
-            subject_id=subject_id,
-            subject_name=subject_name,
-            subject_description=subject_description,
-            subject_user_intent=subject_user_intent,
+            course_id=course_id,
+            course_name=course_name,
+            course_description=course_description,
+            course_user_intent=course_user_intent,
             exam_mode=exam_mode,
-            subject_context=subject_context,
+            course_context=course_context,
             user_prompt=user_prompt,
             system_constraints=system_constraints,
             units=list(units or []),

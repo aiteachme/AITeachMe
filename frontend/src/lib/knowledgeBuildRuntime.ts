@@ -37,7 +37,7 @@ export interface KnowledgeBuildRuntimeResponse {
 }
 
 export interface KnowledgeGraphBuildData {
-  subject?: string;
+  course?: string;
   status?: string;
   requested_at?: string;
   build_group_id?: string | null;
@@ -47,7 +47,7 @@ export interface KnowledgeGraphBuildData {
 }
 
 export interface KnowledgeBuildCancelData {
-  subject?: string;
+  course?: string;
   status?: string;
   cancelled_task_count?: number;
   requested_at?: string | null;
@@ -64,8 +64,8 @@ export type BuildPreviewChapterPreview = BuildPreviewChapterPreviewResponse;
 export type BuildPreviewMergePreview = BuildPreviewMergePreviewResponse;
 export type BuildSampleCard = BuildSampleCardResponse;
 
-export function buildKnowledgeBuildRuntimeQueryKey(subjectId: string) {
-  return ["knowledge-doc-build", subjectId] as const;
+export function buildKnowledgeBuildRuntimeQueryKey(courseId: string) {
+  return ["knowledge-doc-build", courseId] as const;
 }
 
 export function buildRuntimeFailureBackoffMs(fetchFailureCount: number): number | null {
@@ -75,29 +75,29 @@ export function buildRuntimeFailureBackoffMs(fetchFailureCount: number): number 
 }
 
 export async function fetchKnowledgeBuildRuntime(
-  subjectId: string,
+  courseId: string,
 ): Promise<KnowledgeBuildRuntimeResponse> {
   const response = await apiClient<ApiResponse<KnowledgeBuildRuntimeResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subjectId}/knowledge/build/runtime`,
+    url: `/api/v1/courses/${courseId}/knowledge/build/runtime`,
   });
 
   return response.data ?? {};
 }
 
-export async function triggerKnowledgeGraphBuild(subjectId: string): Promise<KnowledgeGraphBuildData> {
+export async function triggerKnowledgeGraphBuild(courseId: string): Promise<KnowledgeGraphBuildData> {
   const response = await apiClient<ApiResponse<KnowledgeGraphBuildData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subjectId}/knowledge/build/graph`,
+    url: `/api/v1/courses/${courseId}/knowledge/build/graph`,
   });
 
   return response.data ?? {};
 }
 
-export async function cancelKnowledgeBuild(subjectId: string): Promise<KnowledgeBuildCancelData> {
+export async function cancelKnowledgeBuild(courseId: string): Promise<KnowledgeBuildCancelData> {
   const response = await apiClient<ApiResponse<KnowledgeBuildCancelData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subjectId}/knowledge/build/cancel`,
+    url: `/api/v1/courses/${courseId}/knowledge/build/cancel`,
   });
 
   return response.data ?? {};

@@ -27,7 +27,7 @@ interface AiConversationSidebarSectionProps {
 
 type ConversationKind = "document" | "question" | "builder" | "general";
 
-const GLOBAL_SUBJECT_ID = "global";
+const GLOBAL_COURSE_ID = "global";
 const RECENT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.aiConversations.recentExpanded";
 
 const conversationListMotion: Variants = {
@@ -134,8 +134,8 @@ function isPendingAnchoredRequest(request: AiInteractionOpenRequest | null): boo
   );
 }
 
-function getSessionSubjectId(session: ChatSessionItem): string {
-  return session.subject_id?.trim() || GLOBAL_SUBJECT_ID;
+function getSessionCourseId(session: ChatSessionItem): string {
+  return session.course_id?.trim() || GLOBAL_COURSE_ID;
 }
 
 function getSessionId(session: ChatSessionItem): string | null {
@@ -147,23 +147,23 @@ function getSessionId(session: ChatSessionItem): string | null {
   return legacySessionId || null;
 }
 
-function getSessionSubjectLabel(session: ChatSessionItem): string {
-  const subjectId = getSessionSubjectId(session);
-  return session.subject_name?.trim() || (subjectId === GLOBAL_SUBJECT_ID ? "通用" : subjectId);
+function getSessionCourseLabel(session: ChatSessionItem): string {
+  const courseId = getSessionCourseId(session);
+  return session.course_name?.trim() || (courseId === GLOBAL_COURSE_ID ? "通用" : courseId);
 }
 
 function getSessionScope(session: ChatSessionItem): AiConversationScope {
-  const subjectId = getSessionSubjectId(session);
-  return subjectId === GLOBAL_SUBJECT_ID
+  const courseId = getSessionCourseId(session);
+  return courseId === GLOBAL_COURSE_ID
     ? { type: "global" }
-    : { type: "subject", subjectId };
+    : { type: "course", courseId };
 }
 
 function getSessionDeleteUrl(session: ChatSessionItem): string {
-  const subjectId = getSessionSubjectId(session);
-  return subjectId === GLOBAL_SUBJECT_ID
+  const courseId = getSessionCourseId(session);
+  return courseId === GLOBAL_COURSE_ID
     ? "/api/v1/chats/sessions/delete"
-    : `/api/v1/subjects/${subjectId}/chats/sessions/delete`;
+    : `/api/v1/courses/${courseId}/chats/sessions/delete`;
 }
 
 function readRecentSectionExpanded(): boolean {
@@ -247,7 +247,7 @@ export function AiConversationSidebarSection({
         const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
           method: "POST",
           url: "/api/v1/chats/sessions/list",
-          data: { page: 1, size: 100, include_all_subjects: true },
+          data: { page: 1, size: 100, include_all_courses: true },
         });
         if (cancelled) {
           return;
@@ -339,10 +339,10 @@ export function AiConversationSidebarSection({
           const sessionId = getSessionId(session);
           const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
           const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
-          const subjectLabel = getSessionSubjectLabel(session);
+          const courseLabel = getSessionCourseLabel(session);
           return (
             <button
-              key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
+              key={sessionId ?? `${getSessionCourseId(session)}-${session.title}-${session.last_message_at}`}
               type="button"
               onClick={() => openSession(session)}
               className={cn(
@@ -351,7 +351,7 @@ export function AiConversationSidebarSection({
                   ? kindStyle.selectedClassName
                   : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
               )}
-              title={`${subjectLabel} - ${session.title || "未命名对话"}`}
+              title={`${courseLabel} - ${session.title || "未命名对话"}`}
               aria-label={`打开对话：${session.title || "未命名对话"}`}
             >
               <MessageSquareText
@@ -442,10 +442,10 @@ export function AiConversationSidebarSection({
               const sessionId = getSessionId(session);
               const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
               const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
-              const subjectLabel = getSessionSubjectLabel(session);
+              const courseLabel = getSessionCourseLabel(session);
               return (
                 <motion.div
-                  key={sessionId ?? `${getSessionSubjectId(session)}-${session.title}-${session.last_message_at}`}
+                  key={sessionId ?? `${getSessionCourseId(session)}-${session.title}-${session.last_message_at}`}
                   variants={conversationItemMotion}
                   initial="hidden"
                   animate="visible"
@@ -475,9 +475,9 @@ export function AiConversationSidebarSection({
                   </span>
                   <span
                     className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
-                    title={subjectLabel}
+                    title={courseLabel}
                   >
-                    {subjectLabel}
+                    {courseLabel}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs leading-7">
                     {session.title || "未命名对话"}

@@ -6,17 +6,17 @@
 
 ## 当前业务表
 
-### 用户、系统与学科
+### 用户、系统与课程
 
 - `user`：用户主表，同时保存用户级非敏感运行设置覆盖 `runtime_settings_json`。
 - `email_confirmation`：邮箱验证记录。
-- `subject`：学科空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
+- `course`：课程空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
 - `system_runtime_settings`：系统级运行设置覆盖与状态快照表；这是一张单行表，正常只有 `id = "runtime"` 一行。同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。
 
 ### 文件、切片与知识文档
 
-- `raw_file`：用户文件库中的原始文件和解析状态。`user_id` 是文件归属，`subject` 仅保留兼容语义。
-- `subject_file`：用户文件到学科的多对多绑定表。
+- `raw_file`：用户文件库中的原始文件和解析状态。`user_id` 是文件归属，`course` 仅保留兼容语义。
+- `course_file`：用户文件到课程的多对多绑定表。
 - `retrieval_chunk`：解析后的检索切片，包含向量索引元数据、`document_id` 与可选 `digest_chunk_uid`。
 - `knowledge_document`：DocGen 发布后的知识文档章节与合并文档记录，使用 `version_no / is_current / status` 表达当前发布态。
 

@@ -1,4 +1,4 @@
-"""Shared limits for subject package import and demo-course downloads."""
+"""Shared limits for course package import and demo-course downloads."""
 
 from __future__ import annotations
 

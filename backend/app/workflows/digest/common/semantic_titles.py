@@ -1,4 +1,4 @@
-﻿"""Shared semantic title normalization helpers for digest lanes."""
+"""Shared semantic title normalization helpers for digest lanes."""
 
 from __future__ import annotations
 
@@ -143,11 +143,11 @@ def extract_semantic_path_segments(
     return cleaned_segments
 
 
-def _extract_subject_label(subject_context: str | None) -> str:
-    if not subject_context:
+def _extract_course_label(course_context: str | None) -> str:
+    if not course_context:
         return ""
-    prefixes = ("subject:", "domain:", "\u5b66\u79d1\uff1a", "\u9886\u57df\uff1a")
-    for line in subject_context.splitlines():
+    prefixes = ("course:", "domain:", "\u5b66\u79d1\uff1a", "\u9886\u57df\uff1a")
+    for line in course_context.splitlines():
         normalized = normalize_semantic_whitespace(line)
         if not normalized:
             continue
@@ -164,7 +164,7 @@ def choose_semantic_topic_path(
     fallback_title: str,
     chapter_topic_hints: list[str] | None = None,
     extracted_terms: list[str] | None = None,
-    subject_context: str | None = None,
+    course_context: str | None = None,
     question_mode: bool = False,
 ) -> list[str]:
     """Choose a usable semantic topic path for docs/knowledge graph fallbacks."""
@@ -186,11 +186,11 @@ def choose_semantic_topic_path(
     if cleaned_terms:
         return [cleaned_terms[0]]
 
-    subject_label = _extract_subject_label(subject_context)
+    course_label = _extract_course_label(course_context)
     if question_mode:
-        return [DEFAULT_QUESTION_TOPIC if not subject_label else f"{subject_label}{DEFAULT_QUESTION_TOPIC}"]
-    if subject_label:
-        return [f"{subject_label}{DEFAULT_STUDY_TOPIC}"]
+        return [DEFAULT_QUESTION_TOPIC if not course_label else f"{course_label}{DEFAULT_QUESTION_TOPIC}"]
+    if course_label:
+        return [f"{course_label}{DEFAULT_STUDY_TOPIC}"]
     return [DEFAULT_STUDY_TOPIC]
 
 

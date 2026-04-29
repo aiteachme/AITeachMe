@@ -34,7 +34,7 @@ type InternalItem = {
 
 type InternalPaper = {
   id: number;
-  subject: string;
+  course: string;
   user_id: string;
   exam_mode: ExamMode;
   status: "ready" | "in_progress" | "submitted" | "grading" | "graded";
@@ -53,7 +53,7 @@ type GenerateJob = {
   error_message: string | null;
   created_at: string;
   updated_at: string;
-  subject: string;
+  course: string;
   user_id: string;
   exam_mode: ExamMode;
   num_questions: number;
@@ -145,7 +145,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
 const papers = new Map<number, InternalPaper>();
 const generateJobs = new Map<number, GenerateJob>();
 const gradeJobs = new Map<number, GradeJob>();
-const activeGenerateSubject = new Set<string>();
+const activeGenerateCourse = new Set<string>();
 const PAPER_PREVIEW_ROW_LIMIT = 7;
 
 let nextPaperId = 10;
@@ -205,7 +205,7 @@ function selectTemplates(types: QuestionType[], count: number, seedShift: number
   return selected;
 }
 
-function createPaper(subject: string, mode: ExamMode, prompt: string | undefined): InternalPaper {
+function createPaper(course: string, mode: ExamMode, prompt: string | undefined): InternalPaper {
   const paperId = nextPaperId++;
   const requestedCount = extractRequestedCount(prompt);
   const count = requestedCount ?? defaultCountByMode(mode);
@@ -233,7 +233,7 @@ function createPaper(subject: string, mode: ExamMode, prompt: string | undefined
 
   return {
     id: paperId,
-    subject,
+    course,
     user_id: "local",
     exam_mode: mode,
     status: "ready",
@@ -302,7 +302,7 @@ function buildPaperPreview(paper: InternalPaper): Record<string, unknown> {
 function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
   return {
     id: paper.id,
-    subject: paper.subject,
+    course: paper.course,
     user_id: paper.user_id,
     exam_mode: paper.exam_mode,
     status: paper.status,
@@ -339,10 +339,10 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
   };
 }
 
-function buildQuestionBank(subject: string): Array<Record<string, unknown>> {
+function buildQuestionBank(course: string): Array<Record<string, unknown>> {
   const agg = new Map<number, Record<string, unknown>>();
   const rows = [...papers.values()]
-    .filter((paper) => paper.subject === subject)
+    .filter((paper) => paper.course === course)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   for (const paper of rows) {
@@ -369,7 +369,7 @@ function buildQuestionBank(subject: string): Array<Record<string, unknown>> {
 
 const seededPaper: InternalPaper = {
   id: 1,
-  subject: "math",
+  course: "math",
   user_id: "local",
   exam_mode: "practice",
   status: "graded",
@@ -436,11 +436,11 @@ const seededPaper: InternalPaper = {
 papers.set(seededPaper.id, seededPaper);
 
 export const examHandlers = [
-  http.post("/api/v1/subjects/:subject/exams/generate", async ({ params, request }) => {
-    const subject = String(params.subject);
-    if (activeGenerateSubject.has(subject)) {
+  http.post("/api/v1/courses/:course/exams/generate", async ({ params, request }) => {
+    const course = String(params.course);
+    if (activeGenerateCourse.has(course)) {
       return HttpResponse.json(
-        { code: 409, message: "A generation job is already running for this subject.", data: null },
+        { code: 409, message: "A generation job is already running for this course.", data: null },
         { status: 409 },
       );
     }
@@ -450,7 +450,7 @@ export const examHandlers = [
     const prompt = body.user_prompt;
     const count = extractRequestedCount(prompt) ?? defaultCountByMode(mode);
 
-    activeGenerateSubject.add(subject);
+    activeGenerateCourse.add(course);
     const now = nowIso();
     const job: GenerateJob = {
       id: nextGenerateJobId++,
@@ -458,7 +458,7 @@ export const examHandlers = [
       error_message: null,
       created_at: now,
       updated_at: now,
-      subject,
+      course,
       user_id: "local",
       exam_mode: mode,
       num_questions: count,
@@ -469,20 +469,20 @@ export const examHandlers = [
     setTimeout(() => {
       const target = generateJobs.get(job.id);
       if (!target) return;
-      const paper = createPaper(subject, mode, prompt);
+      const paper = createPaper(course, mode, prompt);
       papers.set(paper.id, paper);
       target.status = "completed";
       target.exam_paper_id = paper.id;
       target.updated_at = nowIso();
       generateJobs.set(target.id, target);
-      activeGenerateSubject.delete(subject);
+      activeGenerateCourse.delete(course);
     }, 800);
 
     await new Promise((resolve) => setTimeout(resolve, 120));
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/generate-jobs/:jobId", ({ params }) => {
+  http.post("/api/v1/courses/:course/exams/generate-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = generateJobs.get(jobId);
     if (!job) {
@@ -491,18 +491,18 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/history", ({ params, request }) => {
-    const subject = String(params.subject);
+  http.post("/api/v1/courses/:course/exams/history", ({ params, request }) => {
+    const course = String(params.course);
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const size = Math.max(1, Number(url.searchParams.get("size") ?? 20));
 
     const all = [...papers.values()]
-      .filter((paper) => paper.subject === subject)
+      .filter((paper) => paper.course === course)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((paper) => ({
         id: paper.id,
-        subject: paper.subject,
+        course: paper.course,
         user_id: paper.user_id,
         exam_mode: paper.exam_mode,
         status: paper.status,
@@ -520,12 +520,12 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { items, total: all.length, page, size } });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/question-bank", ({ params }) => {
-    const subject = String(params.subject);
-    return HttpResponse.json({ code: 0, data: buildQuestionBank(subject) });
+  http.post("/api/v1/courses/:course/exams/question-bank", ({ params }) => {
+    const course = String(params.course);
+    return HttpResponse.json({ code: 0, data: buildQuestionBank(course) });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/:examPaperId", ({ params }) => {
+  http.post("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -534,7 +534,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/:examPaperId/delete", ({ params }) => {
+  http.post("/api/v1/courses/:course/exams/:examPaperId/delete", ({ params }) => {
     const paperId = Number(params.examPaperId);
     if (!papers.has(paperId)) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
@@ -543,7 +543,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/:examPaperId/submit", async ({ params, request }) => {
+  http.post("/api/v1/courses/:course/exams/:examPaperId/submit", async ({ params, request }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -575,7 +575,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/:examPaperId/grade", async ({ params }) => {
+  http.post("/api/v1/courses/:course/exams/:examPaperId/grade", async ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
@@ -617,7 +617,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.post("/api/v1/subjects/:subject/exams/grade-jobs/:jobId", ({ params }) => {
+  http.post("/api/v1/courses/:course/exams/grade-jobs/:jobId", ({ params }) => {
     const jobId = Number(params.jobId);
     const job = gradeJobs.get(jobId);
     if (!job) {

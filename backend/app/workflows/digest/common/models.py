@@ -1,4 +1,4 @@
-﻿"""Shared input models for digest builds."""
+"""Shared input models for digest builds."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ class MaterialStats(BaseModel):
 class MaterialProfile(BaseModel):
     """A compact profile for the current digest input set."""
 
-    subject_name: str = Field(default="", validation_alias=AliasChoices("subject_name", "subject"))
-    sub_subjects: list[str] = Field(default_factory=list)
+    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
+    sub_courses: list[str] = Field(default_factory=list)
     material_types: dict[str, int] = Field(default_factory=dict)
     stats: MaterialStats = Field(default_factory=MaterialStats)
     discipline: str = ""
@@ -101,7 +101,7 @@ class AssetItem(BaseModel):
 class AssetRegistry(BaseModel):
     """Registry of source assets available during docs generation."""
 
-    subject_id: str = Field(default="", validation_alias=AliasChoices("subject_id", "subject"))
+    course_id: str = Field(default="", validation_alias=AliasChoices("course_id", "course"))
     asset_dir: str = ""
     assets: list[AssetItem] = Field(default_factory=list)
 
@@ -153,16 +153,16 @@ class TopicAnchorSnapshot(BaseModel):
     anchors: list[TopicAnchor] = Field(default_factory=list)
 
 
-class SubjectProfile(BaseModel):
+class CourseProfile(BaseModel):
     """Detected discipline profile used to guide Digest lanes.
 
-    `subject_name` 只是 UI/display label 的历史字段，不应作为教学语义输入；
+    `course_name` 只是 UI/display label 的历史字段，不应作为教学语义输入；
     规划和写作应以 user_prompt、资料内容和 confirmed plan 为准。
     """
 
-    subject_id: str = ""
-    subject_name: str = ""
-    subject_description: str = ""
+    course_id: str = ""
+    course_name: str = ""
+    course_description: str = ""
     discipline: str = ""  # e.g. "数学", "物理", "计算机科学"
     sub_discipline: str = ""  # e.g. "线性代数", "量子力学"
     content_type: str = ""  # "textbook", "exam_paper", "lecture_notes", "mixed"
@@ -182,8 +182,8 @@ class SubjectProfile(BaseModel):
             if self.sub_discipline:
                 label += f" > {self.sub_discipline}"
             parts.append(f"领域：{label}")
-        if self.subject_description:
-            parts.append(f"描述：{self.subject_description[:120]}")
+        if self.course_description:
+            parts.append(f"描述：{self.course_description[:120]}")
         if self.content_type:
             type_labels = {
                 "textbook": "教材",
@@ -201,14 +201,14 @@ class SubjectProfile(BaseModel):
             parts.append(f"难度：{level_labels.get(self.difficulty_level, self.difficulty_level)}")
         if self.key_topics:
             parts.append(f"核心主题：{', '.join(self.key_topics[:8])}")
-        return "\n".join(parts) if parts else "（未识别学科）"
+        return "\n".join(parts) if parts else "（未识别课程）"
 
 
 class DigestMaterialContext(BaseModel):
     """Digest-wide material understanding package prepared once and reused by lanes.
 
     中文理解：这是 Digest 的“资料理解包”，统一打包文件正文、切片、主题提示、
-    资产、学科画像、材料统计和模式判断，供 planner / docgen / KG 复用。
+    资产、课程画像、材料统计和模式判断，供 planner / docgen / KG 复用。
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -230,9 +230,9 @@ class DigestMaterialContext(BaseModel):
         default_factory=AssetRegistry,
         validation_alias=AliasChoices("material_assets", "asset_registry"),
     )
-    learning_domain_profile: SubjectProfile = Field(
-        default_factory=SubjectProfile,
-        validation_alias=AliasChoices("learning_domain_profile", "subject_profile"),
+    learning_domain_profile: CourseProfile = Field(
+        default_factory=CourseProfile,
+        validation_alias=AliasChoices("learning_domain_profile", "course_profile"),
     )
     material_stats_profile: MaterialProfile = Field(
         default_factory=MaterialProfile,
@@ -277,11 +277,11 @@ class DigestMaterialContext(BaseModel):
         self.material_assets = value
 
     @property
-    def subject_profile(self) -> SubjectProfile:
+    def course_profile(self) -> CourseProfile:
         return self.learning_domain_profile
 
-    @subject_profile.setter
-    def subject_profile(self, value: SubjectProfile) -> None:
+    @course_profile.setter
+    def course_profile(self, value: CourseProfile) -> None:
         self.learning_domain_profile = value
 
     @property

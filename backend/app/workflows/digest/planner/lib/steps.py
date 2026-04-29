@@ -1,11 +1,11 @@
-﻿"""Planner graph node ids, display names, and runtime timing fields."""
+"""Planner graph node ids, display names, and runtime timing fields."""
 
 from __future__ import annotations
 
 STEP_LOAD_MATERIALS = "load_planner_materials"
 STEP_UNDERSTAND_GOAL = "stream_brief_and_extract_intent"
 STEP_COMPOSE_PLAN = "stream_and_parse_plan_draft"
-STEP_GENERATE_TITLE = "generate_subject_name"
+STEP_GENERATE_TITLE = "generate_course_name"
 STEP_SAVE_PLAN = "normalize_and_persist_plan"
 
 STEP_DISPLAY_NAMES = {

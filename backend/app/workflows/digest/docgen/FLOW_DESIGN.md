@@ -1,4 +1,4 @@
-﻿# DocGen 流程设计
+# DocGen 流程设计
 
 最后更新：2026-04-28
 
@@ -312,7 +312,7 @@ prepare_global_seed
       - 同时接收 section catalog，让 LLM 为后续章节写作选择原文切片，而不是只做文件级摘要。
 
 lock_titles_for_chapters
-  输入：subject / digest_mode / user_prompt / plan_summary / docgen_history_brief / chapter_assignment
+  输入：course / digest_mode / user_prompt / plan_summary / docgen_history_brief / chapter_assignment
     - chapter_assignment：单章 confirmed contract。
   输出：LockedChapterTitle[]
     - LockedChapterTitle：单章锁定标题记录，只包含 confirmed_title / enhanced_title / warnings / fallback_used。

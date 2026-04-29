@@ -104,9 +104,9 @@ class ChatClearData(BaseModel):
 class ChatSessionListRequest(PageParams):
     """Pagination request for chat sessions."""
 
-    include_all_subjects: bool = Field(
+    include_all_courses: bool = Field(
         default=False,
-        description="When true, list recent sessions across all subjects owned by the user.",
+        description="When true, list recent sessions across all courses owned by the user.",
     )
 
 
@@ -137,8 +137,8 @@ class ChatSessionItem(BaseModel):
 
     id: str = Field(description="Session ID.")
     title: str = Field(description="Session title.")
-    subject_id: str | None = Field(default=None, description="Subject ID this session belongs to.")
-    subject_name: str | None = Field(default=None, description="Display name of the subject this session belongs to.")
+    course_id: str | None = Field(default=None, description="Course ID this session belongs to.")
+    course_name: str | None = Field(default=None, description="Display name of the course this session belongs to.")
     source: str | None = Field(default=None, description="Session source.")
     anchor_id: str | None = Field(default=None, description="Doc heading or exam-question anchor for anchored sessions.")
     selected_text: str | None = Field(default=None, description="Selected text or question preview for anchored sessions.")

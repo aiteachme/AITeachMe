@@ -58,7 +58,7 @@ def upgrade() -> None:
     op.create_index("ix_email_verification_code_created_at", "email_verification_code", ["created_at"])
 
     op.create_table(
-        "subject",
+        "course",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("user_id", sa.String(), sa.ForeignKey("user.id"), nullable=False),
         sa.Column("slug", sa.String(), nullable=False),
@@ -76,16 +76,16 @@ def upgrade() -> None:
         sa.Column("build_lock_holder", sa.String(), nullable=True),
         sa.Column("build_lock_at", sa.DateTime(), nullable=True),
     )
-    op.create_index("ix_subject_user_id", "subject", ["user_id"])
-    op.create_index("ix_subject_slug", "subject", ["slug"], unique=True)
-    op.create_index("ix_subject_normalized_name", "subject", ["normalized_name"])
-    op.create_index("ix_subject_status", "subject", ["status"])
+    op.create_index("ix_course_user_id", "course", ["user_id"])
+    op.create_index("ix_course_slug", "course", ["slug"], unique=True)
+    op.create_index("ix_course_normalized_name", "course", ["normalized_name"])
+    op.create_index("ix_course_status", "course", ["status"])
 
     op.create_table(
         "raw_file",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("uid", sa.String(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("filename", sa.String(), nullable=False),
         sa.Column("filetype", sa.String(), nullable=False),
         sa.Column("file_path", sa.String(), nullable=False),
@@ -119,7 +119,7 @@ def upgrade() -> None:
         sa.Column("current_step", sa.String(), nullable=True),
     )
     op.create_index("ix_raw_file_uid", "raw_file", ["uid"], unique=True)
-    op.create_index("ix_raw_file_subject", "raw_file", ["subject"])
+    op.create_index("ix_raw_file_course", "raw_file", ["course"])
     op.create_index("ix_raw_file_status", "raw_file", ["status"])
     op.create_index("ix_raw_file_detected_discipline", "raw_file", ["detected_discipline"])
     op.create_index("ix_raw_file_ingest_status", "raw_file", ["ingest_status"])
@@ -128,7 +128,7 @@ def upgrade() -> None:
     op.create_table(
         "confirmed_build_plan",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("planner_session_id", sa.String(), nullable=True),
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
@@ -142,7 +142,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_confirmed_build_plan_subject", "confirmed_build_plan", ["subject"])
+    op.create_index("ix_confirmed_build_plan_course", "confirmed_build_plan", ["course"])
     op.create_index("ix_confirmed_build_plan_planner_session_id", "confirmed_build_plan", ["planner_session_id"])
     op.create_index("ix_confirmed_build_plan_user_id", "confirmed_build_plan", ["user_id"])
     op.create_index("ix_confirmed_build_plan_status", "confirmed_build_plan", ["status"])
@@ -153,7 +153,7 @@ def upgrade() -> None:
     op.create_table(
         "knowledge_document",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("root_document_id", sa.Integer(), sa.ForeignKey("knowledge_document.id"), nullable=True),
         sa.Column("parent_document_id", sa.Integer(), sa.ForeignKey("knowledge_document.id"), nullable=True),
         sa.Column("package_key", sa.String(), nullable=True),
@@ -185,7 +185,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_knowledge_document_subject", "knowledge_document", ["subject"])
+    op.create_index("ix_knowledge_document_course", "knowledge_document", ["course"])
     op.create_index("ix_knowledge_document_root_document_id", "knowledge_document", ["root_document_id"])
     op.create_index("ix_knowledge_document_parent_document_id", "knowledge_document", ["parent_document_id"])
     op.create_index("ix_knowledge_document_package_key", "knowledge_document", ["package_key"])
@@ -198,7 +198,7 @@ def upgrade() -> None:
     op.create_table(
         "knowledge_unit",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("knowledge_unit_type", sa.String(), nullable=False),
         sa.Column("canonical_name", sa.String(), nullable=False),
         sa.Column("normalized_name", sa.String(), nullable=False),
@@ -216,19 +216,19 @@ def upgrade() -> None:
         sa.Column("merged_into_knowledge_unit_id", sa.Integer(), sa.ForeignKey("knowledge_unit.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.UniqueConstraint("subject", "knowledge_unit_type", "normalized_name", name="uq_unit_subject_type_name"),
+        sa.UniqueConstraint("course", "knowledge_unit_type", "normalized_name", name="uq_unit_course_type_name"),
     )
-    op.create_index("ix_knowledge_unit_subject", "knowledge_unit", ["subject"])
+    op.create_index("ix_knowledge_unit_course", "knowledge_unit", ["course"])
     op.create_index("ix_knowledge_unit_knowledge_unit_type", "knowledge_unit", ["knowledge_unit_type"])
     op.create_index("ix_knowledge_unit_normalized_name", "knowledge_unit", ["normalized_name"])
     op.create_index("ix_knowledge_unit_type_source", "knowledge_unit", ["type_source"])
     op.create_index("ix_knowledge_unit_build_revision_no", "knowledge_unit", ["build_revision_no"])
-    op.create_index("ix_unit_subject_status", "knowledge_unit", ["subject", "status"])
+    op.create_index("ix_unit_course_status", "knowledge_unit", ["course", "status"])
 
     op.create_table(
         "retrieval_chunk",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), sa.ForeignKey("subject.slug"), nullable=False),
+        sa.Column("course", sa.String(), sa.ForeignKey("course.slug"), nullable=False),
         sa.Column("document_id", sa.Integer(), sa.ForeignKey("raw_file.id"), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("level", sa.Integer(), nullable=False),
@@ -243,9 +243,9 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.UniqueConstraint("document_id", "chunk_index", name="uq_retrieval_chunk_document_id_chunk_index"),
-        sa.UniqueConstraint("subject", "digest_chunk_uid", name="uq_retrieval_chunk_subject_digest_chunk_uid"),
+        sa.UniqueConstraint("course", "digest_chunk_uid", name="uq_retrieval_chunk_course_digest_chunk_uid"),
     )
-    op.create_index("ix_retrieval_chunk_subject", "retrieval_chunk", ["subject"])
+    op.create_index("ix_retrieval_chunk_course", "retrieval_chunk", ["course"])
     op.create_index("ix_retrieval_chunk_document_id", "retrieval_chunk", ["document_id"])
     op.create_index("ix_retrieval_chunk_digest_chunk_uid", "retrieval_chunk", ["digest_chunk_uid"])
     op.create_index("ix_retrieval_chunk_build_session_id", "retrieval_chunk", ["build_session_id"])
@@ -254,7 +254,7 @@ def upgrade() -> None:
     op.create_table(
         "knowledge_edge",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("source_node_id", sa.Integer(), sa.ForeignKey("knowledge_unit.id"), nullable=False),
         sa.Column("target_node_id", sa.Integer(), sa.ForeignKey("knowledge_unit.id"), nullable=False),
         sa.Column("edge_type", sa.String(), nullable=False),
@@ -267,19 +267,19 @@ def upgrade() -> None:
         sa.Column("current_revision_id", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.UniqueConstraint("subject", "source_node_id", "target_node_id", "edge_type", name="uq_edge_subject_src_tgt_type"),
+        sa.UniqueConstraint("course", "source_node_id", "target_node_id", "edge_type", name="uq_edge_course_src_tgt_type"),
     )
-    op.create_index("ix_knowledge_edge_subject", "knowledge_edge", ["subject"])
+    op.create_index("ix_knowledge_edge_course", "knowledge_edge", ["course"])
     op.create_index("ix_knowledge_edge_source_node_id", "knowledge_edge", ["source_node_id"])
     op.create_index("ix_knowledge_edge_target_node_id", "knowledge_edge", ["target_node_id"])
     op.create_index("ix_knowledge_edge_edge_type", "knowledge_edge", ["edge_type"])
     op.create_index("ix_knowledge_edge_build_revision_no", "knowledge_edge", ["build_revision_no"])
-    op.create_index("ix_edge_subject_status", "knowledge_edge", ["subject", "status"])
+    op.create_index("ix_edge_course_status", "knowledge_edge", ["course", "status"])
 
     op.create_table(
         "question_template",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("knowledge_unit_id", sa.Integer(), sa.ForeignKey("knowledge_unit.id"), nullable=True),
         sa.Column("question_type", sa.String(), nullable=False),
         sa.Column("difficulty", sa.String(), nullable=False),
@@ -294,16 +294,16 @@ def upgrade() -> None:
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.UniqueConstraint("subject", "knowledge_unit_id", "stem_hash", name="uq_template_subject_node_stem"),
+        sa.UniqueConstraint("course", "knowledge_unit_id", "stem_hash", name="uq_template_course_node_stem"),
     )
-    op.create_index("ix_question_template_subject", "question_template", ["subject"])
+    op.create_index("ix_question_template_course", "question_template", ["course"])
     op.create_index("ix_question_template_knowledge_unit_id", "question_template", ["knowledge_unit_id"])
     op.create_index("ix_question_template_stem_hash", "question_template", ["stem_hash"])
 
     op.create_table(
         "exam_paper",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("exam_mode", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
@@ -317,7 +317,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_exam_paper_subject", "exam_paper", ["subject"])
+    op.create_index("ix_exam_paper_course", "exam_paper", ["course"])
     op.create_index("ix_exam_paper_user_id", "exam_paper", ["user_id"])
     op.create_index("ix_exam_paper_status", "exam_paper", ["status"])
 
@@ -359,7 +359,7 @@ def upgrade() -> None:
         "user_knowledge_state",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("knowledge_unit_id", sa.Integer(), sa.ForeignKey("knowledge_unit.id"), nullable=True),
         sa.Column("mastery_score", sa.Float(), nullable=False),
         sa.Column("confidence_score", sa.Float(), nullable=False),
@@ -382,7 +382,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
     op.create_index("ix_user_knowledge_state_user_id", "user_knowledge_state", ["user_id"])
-    op.create_index("ix_user_knowledge_state_subject", "user_knowledge_state", ["subject"])
+    op.create_index("ix_user_knowledge_state_course", "user_knowledge_state", ["course"])
     op.create_index("ix_user_knowledge_state_knowledge_unit_id", "user_knowledge_state", ["knowledge_unit_id"])
     op.create_index("ix_user_knowledge_state_review_status", "user_knowledge_state", ["review_status"])
     op.create_index("ix_user_knowledge_state_scheduled_review_at", "user_knowledge_state", ["scheduled_review_at"])
@@ -390,7 +390,7 @@ def upgrade() -> None:
     op.create_index(
         "uq_user_knowledge_state_node",
         "user_knowledge_state",
-        ["user_id", "subject", "knowledge_unit_id"],
+        ["user_id", "course", "knowledge_unit_id"],
         unique=True,
         postgresql_where=sa.text("knowledge_unit_id IS NOT NULL"),
     )
@@ -398,7 +398,7 @@ def upgrade() -> None:
     op.create_table(
         "chat_session",
         sa.Column("id", sa.String(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("source", sa.String(), nullable=True),
@@ -407,7 +407,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("last_message_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_chat_session_subject", "chat_session", ["subject"])
+    op.create_index("ix_chat_session_course", "chat_session", ["course"])
     op.create_index("ix_chat_session_user_id", "chat_session", ["user_id"])
     op.create_index("ix_chat_session_source", "chat_session", ["source"])
     op.create_index("ix_chat_session_created_at", "chat_session", ["created_at"])
@@ -417,7 +417,7 @@ def upgrade() -> None:
     op.create_table(
         "chat_message",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
-        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("course", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
         sa.Column("session_id", sa.String(), sa.ForeignKey("chat_session.id"), nullable=False),
         sa.Column("turn_id", sa.String(), nullable=False),
@@ -431,7 +431,7 @@ def upgrade() -> None:
         sa.Column("meta_json", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_chat_message_subject", "chat_message", ["subject"])
+    op.create_index("ix_chat_message_course", "chat_message", ["course"])
     op.create_index("ix_chat_message_user_id", "chat_message", ["user_id"])
     op.create_index("ix_chat_message_session_id", "chat_message", ["session_id"])
     op.create_index("ix_chat_message_turn_id", "chat_message", ["turn_id"])
@@ -480,21 +480,21 @@ def downgrade() -> None:
     op.drop_index("ix_chat_message_turn_id", table_name="chat_message")
     op.drop_index("ix_chat_message_session_id", table_name="chat_message")
     op.drop_index("ix_chat_message_user_id", table_name="chat_message")
-    op.drop_index("ix_chat_message_subject", table_name="chat_message")
+    op.drop_index("ix_chat_message_course", table_name="chat_message")
     op.drop_table("chat_message")
     op.drop_index("ix_chat_session_last_message_at", table_name="chat_session")
     op.drop_index("ix_chat_session_updated_at", table_name="chat_session")
     op.drop_index("ix_chat_session_created_at", table_name="chat_session")
     op.drop_index("ix_chat_session_source", table_name="chat_session")
     op.drop_index("ix_chat_session_user_id", table_name="chat_session")
-    op.drop_index("ix_chat_session_subject", table_name="chat_session")
+    op.drop_index("ix_chat_session_course", table_name="chat_session")
     op.drop_table("chat_session")
     op.drop_index("uq_user_knowledge_state_node", table_name="user_knowledge_state")
     op.drop_index("ix_user_knowledge_state_source_exam_paper_id", table_name="user_knowledge_state")
     op.drop_index("ix_user_knowledge_state_scheduled_review_at", table_name="user_knowledge_state")
     op.drop_index("ix_user_knowledge_state_review_status", table_name="user_knowledge_state")
     op.drop_index("ix_user_knowledge_state_knowledge_unit_id", table_name="user_knowledge_state")
-    op.drop_index("ix_user_knowledge_state_subject", table_name="user_knowledge_state")
+    op.drop_index("ix_user_knowledge_state_course", table_name="user_knowledge_state")
     op.drop_index("ix_user_knowledge_state_user_id", table_name="user_knowledge_state")
     op.drop_table("user_knowledge_state")
     op.drop_index("ix_exam_paper_item_knowledge_unit_id", table_name="exam_paper_item")
@@ -503,31 +503,31 @@ def downgrade() -> None:
     op.drop_table("exam_paper_item")
     op.drop_index("ix_exam_paper_status", table_name="exam_paper")
     op.drop_index("ix_exam_paper_user_id", table_name="exam_paper")
-    op.drop_index("ix_exam_paper_subject", table_name="exam_paper")
+    op.drop_index("ix_exam_paper_course", table_name="exam_paper")
     op.drop_table("exam_paper")
     op.drop_index("ix_question_template_stem_hash", table_name="question_template")
     op.drop_index("ix_question_template_knowledge_unit_id", table_name="question_template")
-    op.drop_index("ix_question_template_subject", table_name="question_template")
+    op.drop_index("ix_question_template_course", table_name="question_template")
     op.drop_table("question_template")
-    op.drop_index("ix_edge_subject_status", table_name="knowledge_edge")
+    op.drop_index("ix_edge_course_status", table_name="knowledge_edge")
     op.drop_index("ix_knowledge_edge_build_revision_no", table_name="knowledge_edge")
     op.drop_index("ix_knowledge_edge_edge_type", table_name="knowledge_edge")
     op.drop_index("ix_knowledge_edge_target_node_id", table_name="knowledge_edge")
     op.drop_index("ix_knowledge_edge_source_node_id", table_name="knowledge_edge")
-    op.drop_index("ix_knowledge_edge_subject", table_name="knowledge_edge")
+    op.drop_index("ix_knowledge_edge_course", table_name="knowledge_edge")
     op.drop_table("knowledge_edge")
     op.drop_index("ix_retrieval_chunk_is_active", table_name="retrieval_chunk")
     op.drop_index("ix_retrieval_chunk_build_session_id", table_name="retrieval_chunk")
     op.drop_index("ix_retrieval_chunk_digest_chunk_uid", table_name="retrieval_chunk")
     op.drop_index("ix_retrieval_chunk_document_id", table_name="retrieval_chunk")
-    op.drop_index("ix_retrieval_chunk_subject", table_name="retrieval_chunk")
+    op.drop_index("ix_retrieval_chunk_course", table_name="retrieval_chunk")
     op.drop_table("retrieval_chunk")
-    op.drop_index("ix_unit_subject_status", table_name="knowledge_unit")
+    op.drop_index("ix_unit_course_status", table_name="knowledge_unit")
     op.drop_index("ix_knowledge_unit_build_revision_no", table_name="knowledge_unit")
     op.drop_index("ix_knowledge_unit_type_source", table_name="knowledge_unit")
     op.drop_index("ix_knowledge_unit_normalized_name", table_name="knowledge_unit")
     op.drop_index("ix_knowledge_unit_knowledge_unit_type", table_name="knowledge_unit")
-    op.drop_index("ix_knowledge_unit_subject", table_name="knowledge_unit")
+    op.drop_index("ix_knowledge_unit_course", table_name="knowledge_unit")
     op.drop_table("knowledge_unit")
     op.drop_index("ix_knowledge_document_status", table_name="knowledge_document")
     op.drop_index("ix_knowledge_document_is_current", table_name="knowledge_document")
@@ -537,7 +537,7 @@ def downgrade() -> None:
     op.drop_index("ix_knowledge_document_package_key", table_name="knowledge_document")
     op.drop_index("ix_knowledge_document_parent_document_id", table_name="knowledge_document")
     op.drop_index("ix_knowledge_document_root_document_id", table_name="knowledge_document")
-    op.drop_index("ix_knowledge_document_subject", table_name="knowledge_document")
+    op.drop_index("ix_knowledge_document_course", table_name="knowledge_document")
     op.drop_table("knowledge_document")
     op.drop_index("ix_confirmed_build_plan_updated_at", table_name="confirmed_build_plan")
     op.drop_index("ix_confirmed_build_plan_created_at", table_name="confirmed_build_plan")
@@ -545,20 +545,20 @@ def downgrade() -> None:
     op.drop_index("ix_confirmed_build_plan_status", table_name="confirmed_build_plan")
     op.drop_index("ix_confirmed_build_plan_user_id", table_name="confirmed_build_plan")
     op.drop_index("ix_confirmed_build_plan_planner_session_id", table_name="confirmed_build_plan")
-    op.drop_index("ix_confirmed_build_plan_subject", table_name="confirmed_build_plan")
+    op.drop_index("ix_confirmed_build_plan_course", table_name="confirmed_build_plan")
     op.drop_table("confirmed_build_plan")
     op.drop_index("ix_raw_file_current_step", table_name="raw_file")
     op.drop_index("ix_raw_file_ingest_status", table_name="raw_file")
     op.drop_index("ix_raw_file_detected_discipline", table_name="raw_file")
     op.drop_index("ix_raw_file_status", table_name="raw_file")
-    op.drop_index("ix_raw_file_subject", table_name="raw_file")
+    op.drop_index("ix_raw_file_course", table_name="raw_file")
     op.drop_index("ix_raw_file_uid", table_name="raw_file")
     op.drop_table("raw_file")
-    op.drop_index("ix_subject_status", table_name="subject")
-    op.drop_index("ix_subject_normalized_name", table_name="subject")
-    op.drop_index("ix_subject_slug", table_name="subject")
-    op.drop_index("ix_subject_user_id", table_name="subject")
-    op.drop_table("subject")
+    op.drop_index("ix_course_status", table_name="course")
+    op.drop_index("ix_course_normalized_name", table_name="course")
+    op.drop_index("ix_course_slug", table_name="course")
+    op.drop_index("ix_course_user_id", table_name="course")
+    op.drop_table("course")
     op.drop_index("ix_email_verification_code_created_at", table_name="email_verification_code")
     op.drop_index("ix_email_verification_code_consumed_at", table_name="email_verification_code")
     op.drop_index("ix_email_verification_code_expires_at", table_name="email_verification_code")

@@ -28,7 +28,7 @@ async def publish_docgen_progress(
 
     await context.event_bus.publish(
         LoggedWorkflowEvent(
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             workflow_name=context.workflow_name,
             payload={
                 "kind": "docgen_progress",
@@ -75,12 +75,12 @@ def resolve_docgen_retrieval_profile(
     digest_mode: str | None,
     *,
     user_prompt: str | None = None,
-    subject_name: str | None = None,
+    course_name: str | None = None,
 ) -> str:
     return resolve_digest_retrieval_profile(
         digest_mode,
         user_prompt=user_prompt,
-        subject_name=subject_name,
+        course_name=course_name,
     )
 
 

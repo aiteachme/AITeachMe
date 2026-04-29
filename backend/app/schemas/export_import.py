@@ -1,4 +1,4 @@
-﻿"""Import/export request and response schemas."""
+"""Import/export request and response schemas."""
 
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ class ExportPreviewStats(BaseModel):
 class ExportPreviewData(BaseModel):
     """Export preview payload."""
 
-    subject_id: str
-    subject_name: str
+    course_id: str
+    course_name: str
     stats: ExportPreviewStats
     estimated_size_bytes: int = 0
 
@@ -54,14 +54,14 @@ class ExportPreviewData(BaseModel):
 class ImportOptions(BaseModel):
     """Import options payload."""
 
-    new_subject_name: str | None = Field(default=None, description="Optional custom subject name after import.")
+    new_course_name: str | None = Field(default=None, description="Optional custom course name after import.")
 
 
 class ImportResultData(BaseModel):
     """Import result payload."""
 
-    subject_id: str = Field(description="Imported subject external id.")
-    subject_name: str = Field(description="Imported subject name.")
+    course_id: str = Field(description="Imported course external id.")
+    course_name: str = Field(description="Imported course name.")
     imported_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
@@ -70,7 +70,7 @@ class CoursePackageItem(BaseModel):
     """One remote demo-course package listed from the configured catalog."""
 
     filename: str = Field(description="Stable course identifier used for remote import.")
-    subject_name: str = Field(description="Subject name from manifest.")
+    course_name: str = Field(description="Course name from manifest.")
     file_size_bytes: int = Field(default=0)
     exported_at: datetime | None = Field(default=None)
     stats: dict[str, int] = Field(default_factory=dict)

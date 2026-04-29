@@ -1,4 +1,4 @@
-﻿"""State contracts for the examine question-build workflow."""
+"""State contracts for the examine question-build workflow."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from app.models.knowledge_unit import KnowledgeUnit
 
 
 class QuestionBuildGraphInput(TypedDict, total=False):
-    subject_id: str
-    subject_name: str
-    subject_description: str
-    subject_user_intent: str
+    course_id: str
+    course_name: str
+    course_description: str
+    course_user_intent: str
     exam_mode: str
-    subject_context: str
+    course_context: str
     user_prompt: str
     system_constraints: str
     question_count: int

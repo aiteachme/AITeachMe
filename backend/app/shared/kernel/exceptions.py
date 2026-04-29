@@ -37,45 +37,45 @@ class KnowledgeChunkNotFoundError(AITeachMeError):
         super().__init__(detail=f"Knowledge chunk `{chunk_id}` does not exist.")
 
 
-class InvalidSubjectError(AITeachMeError):
-    error_code = "INVALID_SUBJECT"
+class InvalidCourseError(AITeachMeError):
+    error_code = "INVALID_COURSE"
     status_code = HTTPStatus.BAD_REQUEST
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject ID `{subject_id}` is invalid.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course ID `{course_id}` is invalid.")
 
 
-class SubjectAlreadyExistsError(AITeachMeError):
-    error_code = "SUBJECT_ALREADY_EXISTS"
+class CourseAlreadyExistsError(AITeachMeError):
+    error_code = "COURSE_ALREADY_EXISTS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject `{subject_id}` already exists.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course `{course_id}` already exists.")
 
 
-class SubjectRegistryNotFoundError(AITeachMeError):
-    error_code = "SUBJECT_NOT_FOUND"
+class CourseRegistryNotFoundError(AITeachMeError):
+    error_code = "COURSE_NOT_FOUND"
     status_code = HTTPStatus.NOT_FOUND
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject `{subject_id}` does not exist.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course `{course_id}` does not exist.")
 
 
-class SubjectInUseError(AITeachMeError):
-    error_code = "SUBJECT_IN_USE"
+class CourseInUseError(AITeachMeError):
+    error_code = "COURSE_IN_USE"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject `{subject_id}` still has content.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course `{course_id}` still has content.")
 
 
 class KnowledgeClearConflictError(AITeachMeError):
     error_code = "KNOWLEDGE_CLEAR_CONFLICT"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str, blocking_details: str) -> None:
+    def __init__(self, course_id: str, blocking_details: str) -> None:
         super().__init__(
-            detail=f"Subject `{subject_id}` still has linked data and cannot be cleared: {blocking_details}.",
+            detail=f"Course `{course_id}` still has linked data and cannot be cleared: {blocking_details}.",
         )
 
 
@@ -200,8 +200,8 @@ class NoReadyFilesForDocGenError(AITeachMeError):
     error_code = "NO_READY_FILES_FOR_DOCGEN"
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject `{subject_id}` has no ready parsed files for doc generation.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course `{course_id}` has no ready parsed files for doc generation.")
 
 
 class ConfirmedBuildPlanRequiredError(AITeachMeError):
@@ -212,12 +212,12 @@ class ConfirmedBuildPlanRequiredError(AITeachMeError):
         super().__init__(detail=f"Confirmed build plan is required for `{build_type}` build.")
 
 
-class SubjectBuildLockConflictError(AITeachMeError):
+class CourseBuildLockConflictError(AITeachMeError):
     error_code = "BUILD_IN_PROGRESS"
     status_code = HTTPStatus.CONFLICT
 
-    def __init__(self, subject_id: str) -> None:
-        super().__init__(detail=f"Subject `{subject_id}` is currently building.")
+    def __init__(self, course_id: str) -> None:
+        super().__init__(detail=f"Course `{course_id}` is currently building.")
 
 
 class KnowledgeBuildPrecheckConflictError(AITeachMeError):

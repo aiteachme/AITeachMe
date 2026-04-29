@@ -26,11 +26,11 @@ from app.shared.infra.search.llamaindex_index import prepare_postgres_store  # n
 _STORAGE_HEALTHCHECK_DATA = b"aiteachme-cloud-storage-ok"
 
 _REQUIRED_UNIQUE_CONSTRAINTS = (
-    ("retrieval_chunk", "uq_retrieval_chunk_subject_file_id_chunk_index"),
-    ("retrieval_chunk", "uq_retrieval_chunk_subject_digest_chunk_uid"),
-    ("knowledge_unit", "uq_unit_subject_type_name"),
-    ("knowledge_edge", "uq_edge_subject_src_tgt_type"),
-    ("question_template", "uq_template_subject_stem"),
+    ("retrieval_chunk", "uq_retrieval_chunk_course_file_id_chunk_index"),
+    ("retrieval_chunk", "uq_retrieval_chunk_course_digest_chunk_uid"),
+    ("knowledge_unit", "uq_unit_course_type_name"),
+    ("knowledge_edge", "uq_edge_course_src_tgt_type"),
+    ("question_template", "uq_template_course_stem"),
     ("exam_paper_item", "uq_paper_item_order"),
 )
 _REQUIRED_UNIQUE_INDEXES = (
@@ -41,10 +41,10 @@ _REQUIRED_UNIQUE_INDEXES = (
     "uq_user_knowledge_state_node",
 )
 _REQUIRED_FOREIGN_KEYS = (
-    ("subject", "user_id", "user"),
-    ("retrieval_chunk", "subject_id", "subject"),
-    ("subject_file", "subject_id", "subject"),
-    ("subject_file", "file_id", "raw_file"),
+    ("course", "user_id", "user"),
+    ("retrieval_chunk", "course_id", "course"),
+    ("course_file", "course_id", "course"),
+    ("course_file", "file_id", "raw_file"),
     ("retrieval_chunk", "file_id", "raw_file"),
     ("knowledge_edge", "source_node_id", "knowledge_unit"),
     ("knowledge_edge", "target_node_id", "knowledge_unit"),
@@ -54,12 +54,12 @@ _REQUIRED_FOREIGN_KEYS = (
     ("chat_message", "source_chunk_id", "retrieval_chunk"),
 )
 _FORBIDDEN_FOREIGN_KEYS = (
-    ("raw_file", "origin_subject_id", "subject"),
+    ("raw_file", "origin_course_id", "course"),
 )
 _FORBIDDEN_COLUMNS = (
-    ("raw_file", "subject"),
+    ("raw_file", "course"),
     ("raw_file", "uid"),
-    ("subject", "slug"),
+    ("course", "slug"),
 )
 
 

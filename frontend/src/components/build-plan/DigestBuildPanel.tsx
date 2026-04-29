@@ -137,11 +137,11 @@ function deriveBuildState(
   };
 }
 
-export function useKnowledgeDocsBuildState(subject: string) {
+export function useKnowledgeDocsBuildState(course: string) {
   return useQuery({
-    queryKey: buildKnowledgeBuildRuntimeQueryKey(subject),
-    queryFn: () => fetchKnowledgeBuildRuntime(subject),
-    enabled: Boolean(subject),
+    queryKey: buildKnowledgeBuildRuntimeQueryKey(course),
+    queryFn: () => fetchKnowledgeBuildRuntime(course),
+    enabled: Boolean(course),
     refetchInterval: (query) => {
       const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
       if (failureBackoff !== null) return failureBackoff;
@@ -171,17 +171,17 @@ function LaneBadge({
 }
 
 export function DigestBuildProgress({
-  subject,
+  course,
   compact = false,
   className = "",
   focus = "aggregate",
 }: {
-  subject: string;
+  course: string;
   compact?: boolean;
   className?: string;
   focus?: BuildProgressFocus;
 }) {
-  const { data, isFetching } = useKnowledgeDocsBuildState(subject);
+  const { data, isFetching } = useKnowledgeDocsBuildState(course);
   const state = useMemo(() => deriveBuildState(data, focus), [data, focus]);
   const preview = data?.docgen_preview ?? null;
   const metrics = data?.docgen_metrics ?? null;
@@ -320,13 +320,13 @@ export function DigestBuildProgress({
 }
 
 export function KnowledgeGraphBuildProgress({
-  subject,
+  course,
   className = "",
 }: {
-  subject: string;
+  course: string;
   className?: string;
 }) {
-  const { data, isFetching } = useKnowledgeDocsBuildState(subject);
+  const { data, isFetching } = useKnowledgeDocsBuildState(course);
   const state = useMemo(() => deriveBuildState(data, "graph"), [data]);
   const status = String(state.activeLane.status ?? "").trim();
 
@@ -405,8 +405,8 @@ export function KnowledgeGraphBuildProgress({
   );
 }
 
-export function DigestBuildStatusMeta({ subject }: { subject: string }) {
-  const { data } = useKnowledgeDocsBuildState(subject);
+export function DigestBuildStatusMeta({ course }: { course: string }) {
+  const { data } = useKnowledgeDocsBuildState(course);
   const state = useMemo(() => deriveBuildState(data), [data]);
 
   return (

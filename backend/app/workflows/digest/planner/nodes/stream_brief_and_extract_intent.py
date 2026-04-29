@@ -15,7 +15,7 @@ from app.workflows.digest.planner.lib.model_policy import (
 )
 from app.workflows.digest.planner.lib.plan_sketch import parse_planner_brief_text
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import _resolve_subject_name
+from app.workflows.digest.planner.lib.plans import _resolve_course_name
 from app.workflows.digest.planner.lib.models import (
     PlanIntent,
     PlannerBrief,
@@ -28,12 +28,12 @@ from app.workflows.digest.planner.state import BuildPlannerState
 logger = structlog.get_logger(__name__)
 
 
-def _subject_for_prompt(state: BuildPlannerState) -> str:
-    """Return a human-readable subject; never leak subj_* ids into prompts."""
+def _course_for_prompt(state: BuildPlannerState) -> str:
+    """Return a human-readable course; never leak generated ids into prompts."""
 
     material_context = state["material_context"]
-    return _resolve_subject_name(
-        state["subject_id"],
+    return _resolve_course_name(
+        state["course_id"],
         shared_inputs=material_context,
         user_prompt=state.get("user_prompt") or "",
     )
@@ -41,9 +41,9 @@ def _subject_for_prompt(state: BuildPlannerState) -> str:
 
 async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBrief) -> PlannerBrief:
     material_context = state["material_context"]
-    subject_name = _subject_for_prompt(state)
+    course_name = _course_for_prompt(state)
     prompt = build_plan_sketch_prompt(
-        subject_name=subject_name,
+        course_name=course_name,
         user_prompt=state.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
@@ -52,7 +52,7 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
     logger.info(
         "planner_brief_llm_starting",
         planner_session_id=state.get("planner_session_id") or "",
-        subject_id=state.get("subject_id", ""),
+        course_id=state.get("course_id", ""),
         prompt_chars=len(prompt),
         material_digest_chars=len(material_context.material_digest or ""),
     )
@@ -76,7 +76,7 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
                 logger.info(
                     "planner_brief_first_token_received",
                     planner_session_id=state.get("planner_session_id") or "",
-                    subject_id=state["subject_id"],
+                    course_id=state["course_id"],
                     first_token_ms=first_token_ms,
                 )
             tokens.append(token)
@@ -85,7 +85,7 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
         logger.exception(
             "planner_brief_failed",
             planner_session_id=state.get("planner_session_id") or "",
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             token_count=len(tokens),
             first_token_ms=first_token_ms,
         )
@@ -106,7 +106,7 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
     logger.info(
         "planner_brief_llm_completed",
         planner_session_id=state.get("planner_session_id") or "",
-        subject_id=state.get("subject_id", ""),
+        course_id=state.get("course_id", ""),
         token_count=len(tokens),
         text_chars=len(text),
     )
@@ -119,12 +119,12 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
         logger.info(
             "planner_plan_intent_llm_starting",
             planner_session_id=state.get("planner_session_id") or "",
-            subject_id=state.get("subject_id", ""),
+            course_id=state.get("course_id", ""),
             material_digest_chars=len(material_context.material_digest or ""),
         )
         plan_intent = await acompletion_with_fallback(
             build_plan_intent_messages(
-                subject_name=_subject_for_prompt(state),
+                course_name=_course_for_prompt(state),
                 user_prompt=state.get("user_prompt") or "",
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
@@ -146,7 +146,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
         logger.info(
             "planner_plan_intent_llm_completed",
             planner_session_id=state.get("planner_session_id") or "",
-            subject_id=state.get("subject_id", ""),
+            course_id=state.get("course_id", ""),
             plan_intent_chars=len(plan_intent.plan_intent or ""),
             query_count=len(plan_intent.plan_queries),
         )
@@ -155,7 +155,7 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
         logger.exception(
             "planner_plan_intent_failed",
             planner_session_id=state.get("planner_session_id") or "",
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
         )
         await emit_planner_event(
             state,
@@ -182,7 +182,7 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
         logger.info(
             "planner_brief_intent_node_started",
             planner_session_id=state.get("planner_session_id", ""),
-            subject_id=state.get("subject_id", ""),
+            course_id=state.get("course_id", ""),
         )
         empty_brief = build_empty_planner_brief()
         brief, plan_intent = await asyncio.gather(

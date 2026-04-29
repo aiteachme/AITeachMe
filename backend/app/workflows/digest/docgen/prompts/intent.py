@@ -1,4 +1,4 @@
-﻿"""Prompts for DocGen writing intent inference."""
+"""Prompts for DocGen writing intent inference."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 def build_intent_core_messages(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -32,7 +32,7 @@ Planner 已经决定大纲；你只判断文档应该怎样讲，不能修改章
     prompt = f"""
 请根据用户提示、Planner 摘要、材料画像和章节标题，识别本轮知识文档的文档级写作意图。
 
-主题：{subject_name}
+主题：{course_name}
 模式：{digest_mode}
 用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
@@ -65,7 +65,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
     return trace_prompt_build(
         "docgen_intent",
         inputs={
-            "subject_name": subject_name,
+            "course_name": course_name,
             "digest_mode": digest_mode,
             "chapter_count": len(chapters),
             "has_history": bool(docgen_history_brief),

@@ -10,7 +10,7 @@
 
 ## 2. 数据库存什么
 
-- 用户、学科、系统设置。
+- 用户、课程、系统设置。
 - 原始文件元数据和解析状态。
 - 检索 chunk、知识文档、知识单元、知识边。
 - 图谱同步记录和来源引用。
@@ -46,10 +46,10 @@
 
 ## 5. Key 规则
 
-Subject 级资产必须落在用户和 subject 作用域下：
+Course 级资产必须落在用户和 course 作用域下：
 
 ```text
-users/<user_id>/subjects/<subject>/
+users/<user_id>/courses/<course>/
   raw_files/
   raw_markdowns/
   assets/

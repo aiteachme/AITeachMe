@@ -38,7 +38,7 @@ _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
 @dataclass(frozen=True)
 class _RemoteCourseDescriptor:
     identifier: str
-    subject_name: str
+    course_name: str
     package_url: str
     package_filename: str
     file_size_bytes: int = 0
@@ -49,7 +49,7 @@ class _RemoteCourseDescriptor:
     def to_item(self) -> CoursePackageItem:
         return CoursePackageItem(
             filename=self.identifier,
-            subject_name=self.subject_name,
+            course_name=self.course_name,
             file_size_bytes=self.file_size_bytes,
             exported_at=self.exported_at,
             stats=dict(self.stats or {}),
@@ -200,7 +200,7 @@ def _extract_catalog_items(payload: Any) -> list[dict[str, Any]]:
             candidate = payload.get(key)
             if isinstance(candidate, list):
                 return [item for item in candidate if isinstance(item, dict)]
-        if any(key in payload for key in ("course_id", "id", "subject_id", "package_url", "download_url")):
+        if any(key in payload for key in ("course_id", "id", "course_id", "package_url", "download_url")):
             return [payload]
 
     logger.warning(
@@ -224,17 +224,17 @@ def _build_remote_course_descriptor(
         item.get("url"),
         item.get("path"),
     )
-    subject_name = _first_non_empty_str(
-        item.get("subject_name"),
+    course_name = _first_non_empty_str(
+        item.get("course_name"),
         item.get("name"),
         item.get("title"),
         item.get("course_name"),
     )
-    if not package_ref or not subject_name:
+    if not package_ref or not course_name:
         logger.warning(
             "demo_course_catalog_item_skipped",
             index=index,
-            reason="missing_subject_name_or_package_url",
+            reason="missing_course_name_or_package_url",
         )
         return None
 
@@ -262,13 +262,13 @@ def _build_remote_course_descriptor(
     identifier = _first_non_empty_str(
         item.get("course_id"),
         item.get("id"),
-        item.get("subject_id"),
+        item.get("course_id"),
         item.get("filename"),
     ) or Path(package_filename).stem or f"course_{index}"
 
     return _RemoteCourseDescriptor(
         identifier=identifier,
-        subject_name=subject_name,
+        course_name=course_name,
         package_url=package_url,
         package_filename=package_filename,
         file_size_bytes=_coerce_int(

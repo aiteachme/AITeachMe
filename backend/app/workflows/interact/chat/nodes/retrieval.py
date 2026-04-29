@@ -1,9 +1,9 @@
 """Retrieval node builders for the interact workflow.
 
-Reads DB: KnowledgeUnit/KG/evidence tables and subject-scoped vector tables as fallback.
+Reads DB: KnowledgeUnit/KG/evidence tables and course-scoped vector tables as fallback.
 Writes DB: none.
 Writes FS: none.
-Idempotency: read-only retrieval for one question / subject pair.
+Idempotency: read-only retrieval for one question / course pair.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
-from app.workflows.interact.chat.lib.intent import has_entry_context, should_use_subject_grounding
+from app.workflows.interact.chat.lib.intent import has_entry_context, should_use_course_grounding
 from app.workflows.interact.chat.lib.retrieval import retrieve_context
 
 
@@ -41,14 +41,14 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
             selected_context=state.get("selected_context"),
             selection_context=state.get("selection_context"),
         )
-        if not should_use_subject_grounding(
+        if not should_use_course_grounding(
             question=state["question"],
             source=state.get("source"),
             has_primary_context=has_primary_context,
         ):
             workflow_logger.info(
                 "interact_context_retrieval_skipped",
-                reason="ordinary_chat_without_subject_intent",
+                reason="ordinary_chat_without_course_intent",
             )
             return {
                 **state,
@@ -64,7 +64,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                     selected_context=state.get("selected_context"),
                     selection_context=state.get("selection_context"),
                 ),
-                subject_id=state["subject_id"],
+                course_id=state["course_id"],
                 top_k=settings.rag.top_k,
                 similarity_threshold=settings.rag.similarity_threshold,
                 user_id=state["user_id"],

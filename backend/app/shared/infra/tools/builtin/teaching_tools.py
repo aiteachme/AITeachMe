@@ -19,11 +19,11 @@ def _coerce_problem_count(value: object, *, default: int = 3, minimum: int = 1, 
     category="method",
     tags=["problem_solving"],
 )
-async def solve_step_by_step(problem: str, subject: str = "通用学科") -> str:
+async def solve_step_by_step(problem: str, course: str = "通用课程") -> str:
     cleaned_problem = " ".join(str(problem or "").split()).strip() or "请补充题目内容"
-    cleaned_subject = " ".join(str(subject or "").split()).strip() or "通用学科"
+    cleaned_course = " ".join(str(course or "").split()).strip() or "通用课程"
     return (
-        f"学科：{cleaned_subject}\n"
+        f"课程：{cleaned_course}\n"
         f"题目：{cleaned_problem}\n\n"
         "建议拆解路径：\n"
         "1. 先读题并圈出已知条件、目标量和约束条件。\n"

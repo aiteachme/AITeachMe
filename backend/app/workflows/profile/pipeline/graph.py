@@ -14,7 +14,7 @@ from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.workflows.profile.pipeline.lib.mastery import MasteryUpdateResult, update_mastery_from_exam
 from app.workflows.profile.pipeline.lib.reviews import schedule_reviews
-from app.workflows.profile.pipeline.lib.subject_profile import refresh_subject_profile_summary
+from app.workflows.profile.pipeline.lib.course_profile import refresh_course_profile_summary
 from app.workflows.profile.pipeline.lib.user_profile import refresh_user_profile_summary
 from app.workflows.profile.pipeline.lib.weakness import WeaknessItem, analyze_weakness
 from app.workflows.profile.pipeline.prompts import PROMPTS
@@ -100,11 +100,11 @@ def _resolve_profile_context_node(*, session: Session | None = None):
                         "error": f"exam_paper_not_found:{state['exam_paper_id']}",
                     }
 
-                requested_subject = state.get("subject_id")
-                if requested_subject and requested_subject != paper.subject_id:
+                requested_course = state.get("course_id")
+                if requested_course and requested_course != paper.course_id:
                     return {
                         **state,
-                        "error": f"exam_paper_subject_mismatch:{requested_subject}!={paper.subject_id}",
+                        "error": f"exam_paper_course_mismatch:{requested_course}!={paper.course_id}",
                     }
 
                 requested_user_id = state.get("user_id")
@@ -116,7 +116,7 @@ def _resolve_profile_context_node(*, session: Session | None = None):
 
                 return {
                     **state,
-                    "subject_id": paper.subject_id,
+                    "course_id": paper.course_id,
                     "user_id": paper.user_id,
                     "error": None,
                 }
@@ -156,9 +156,9 @@ def _update_mastery_node(*, session: Session | None = None):
 
 def _schedule_reviews_node(*, session: Session | None = None):
     def schedule_reviews_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
-        subject_id = state.get("subject_id")
+        course_id = state.get("course_id")
         user_id = state.get("user_id")
-        if not subject_id or not user_id:
+        if not course_id or not user_id:
             return {
                 **state,
                 "error": "profile_context_missing",
@@ -169,7 +169,7 @@ def _schedule_reviews_node(*, session: Session | None = None):
                 review_tasks = schedule_reviews(
                     db_session,
                     user_id=user_id,
-                    subject_id=subject_id,
+                    course_id=course_id,
                     updated_state_ids=list(state.get("updated_state_ids", [])),
                     auto_commit=False,
                 )
@@ -190,9 +190,9 @@ def _schedule_reviews_node(*, session: Session | None = None):
 
 def _analyze_weakness_node(*, session: Session | None = None):
     def analyze_weakness_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
-        subject_id = state.get("subject_id")
+        course_id = state.get("course_id")
         user_id = state.get("user_id")
-        if not subject_id or not user_id:
+        if not course_id or not user_id:
             return {
                 **state,
                 "error": "profile_context_missing",
@@ -203,7 +203,7 @@ def _analyze_weakness_node(*, session: Session | None = None):
                 weaknesses = analyze_weakness(
                     db_session,
                     user_id=user_id,
-                    subject_id=subject_id,
+                    course_id=course_id,
                     top_n=int(state.get("top_n") or 20),
                 )
         except Exception as exc:
@@ -221,34 +221,34 @@ def _analyze_weakness_node(*, session: Session | None = None):
     return analyze_weakness_node
 
 
-def _refresh_subject_profile_node(*, session: Session | None = None):
-    def refresh_subject_profile_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
-        subject_id = state.get("subject_id")
-        if not subject_id:
+def _refresh_course_profile_node(*, session: Session | None = None):
+    def refresh_course_profile_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
+        course_id = state.get("course_id")
+        if not course_id:
             return {
                 **state,
-                "error": "profile_subject_missing",
+                "error": "profile_course_missing",
             }
 
         try:
             with _node_session(session) as db_session:
-                summary = refresh_subject_profile_summary(
+                summary = refresh_course_profile_summary(
                     db_session,
-                    subject_id=subject_id,
+                    course_id=course_id,
                     auto_commit=False,
                 )
         except Exception as exc:
             return {
                 **state,
-                "error": f"refresh_subject_profile_failed:{exc}",
+                "error": f"refresh_course_profile_failed:{exc}",
             }
         return {
             **state,
-            "subject_profile": summary.model_dump(mode="json"),
+            "course_profile": summary.model_dump(mode="json"),
             "error": None,
         }
 
-    return refresh_subject_profile_node
+    return refresh_course_profile_node
 
 
 def _refresh_user_profile_node(*, session: Session | None = None):
@@ -320,10 +320,10 @@ def build_profile_pipeline_graph(*, session: Session | None = None) -> StateGrap
         ),
     )
     workflow.add_node(
-        "refresh_subject_profile",
+        "refresh_course_profile",
         trace.node(
-            _refresh_subject_profile_node(session=session),
-            name="refresh_subject_profile",
+            _refresh_course_profile_node(session=session),
+            name="refresh_course_profile",
         ),
     )
     workflow.add_node(
@@ -360,10 +360,10 @@ def build_profile_pipeline_graph(*, session: Session | None = None) -> StateGrap
     workflow.add_conditional_edges(
         "analyze_weakness",
         _route_after_step,
-        {"continue": "refresh_subject_profile", "fail": "fail_profile_pipeline"},
+        {"continue": "refresh_course_profile", "fail": "fail_profile_pipeline"},
     )
     workflow.add_conditional_edges(
-        "refresh_subject_profile",
+        "refresh_course_profile",
         _route_after_step,
         {"continue": "refresh_user_profile", "fail": "fail_profile_pipeline"},
     )
@@ -374,7 +374,7 @@ def build_profile_pipeline_graph(*, session: Session | None = None) -> StateGrap
 def create_profile_initial_state(
     *,
     exam_paper_id: int,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     user_id: str | None = None,
     top_n: int = 20,
 ) -> ProfileWorkflowState:
@@ -382,14 +382,14 @@ def create_profile_initial_state(
 
     return {
         "exam_paper_id": exam_paper_id,
-        "subject_id": subject_id or "",
+        "course_id": course_id or "",
         "user_id": user_id or "",
         "top_n": top_n,
         "updated_state_ids": [],
         "review_task_ids": [],
         "weaknesses": [],
         "mastery_result": None,
-        "subject_profile": None,
+        "course_profile": None,
         "user_profile": None,
         "mastery_updated": False,
         "review_scheduled": False,

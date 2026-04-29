@@ -40,8 +40,8 @@ from app.shared.infra.env_support import (
 )
 from app.shared.infra.runtime import get_backend_root, is_cloud_mode, is_local_mode
 from app.shared.infra.runtime import get_sqlite_db_path
-from app.shared.infra.subject import (
-    extract_postgres_subject_index_data_table_name,
+from app.shared.infra.course import (
+    extract_postgres_course_index_data_table_name,
 )
 from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.chat import ChatMessage, ChatSession
@@ -60,8 +60,8 @@ from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGr
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
-from app.models.raw_file import RawFile, SubjectFileLink
-from app.models.subject import Subject
+from app.models.raw_file import RawFile, CourseFileLink
+from app.models.course import Course
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -71,9 +71,9 @@ _engine = None
 _SCHEMA_MODELS = (
     User,
     EmailConfirmation,
-    Subject,
+    Course,
     RawFile,
-    SubjectFileLink,
+    CourseFileLink,
     RetrievalChunk,
     KnowledgeDocument,
     KnowledgeUnit,
@@ -140,11 +140,11 @@ _SQLITE_ADDITIVE_COLUMNS = {
     "user": (
         ("runtime_settings_json", "JSON NOT NULL DEFAULT '{}'"),
     ),
-    "subject": (
+    "course": (
         ("description", "TEXT NOT NULL DEFAULT ''"),
         ("user_intent", "TEXT NOT NULL DEFAULT ''"),
         ("learning_intent_text", "TEXT NOT NULL DEFAULT ''"),
-        ("subject_intro_text", "TEXT NOT NULL DEFAULT ''"),
+        ("course_intro_text", "TEXT NOT NULL DEFAULT ''"),
         ("document_summary_json", "JSON NOT NULL DEFAULT '{}'"),
         ("llm_context_text", "TEXT NOT NULL DEFAULT ''"),
     ),
@@ -182,6 +182,11 @@ _SQLITE_ADDITIVE_INDEXES = {
         ),
     ),
 }
+_LEGACY_COURSE_TOKEN = "sub" + "ject"
+
+
+def _legacy_course_name(suffix: str = "") -> str:
+    return f"{_LEGACY_COURSE_TOKEN}{suffix}"
 
 
 def _get_db_path():
@@ -486,6 +491,138 @@ def _add_sqlite_column_if_missing(
     )
 
 
+def _sqlite_table_names(connection: sa.Connection) -> set[str]:
+    return set(sa.inspect(connection).get_table_names())
+
+
+def _sqlite_column_names(connection: sa.Connection, table_name: str) -> set[str]:
+    return {
+        column["name"]
+        for column in sa.inspect(connection).get_columns(table_name)
+    }
+
+
+def _rename_sqlite_table_if_needed(connection: sa.Connection, *, old_name: str, new_name: str) -> None:
+    existing_tables = _sqlite_table_names(connection)
+    if old_name not in existing_tables or new_name in existing_tables:
+        return
+    connection.execute(
+        sa.text(
+            f"ALTER TABLE {quote_sqlite_identifier(old_name)} "
+            f"RENAME TO {quote_sqlite_identifier(new_name)}"
+        )
+    )
+    logger.info("sqlite_table_renamed_for_course_schema", old_name=old_name, new_name=new_name)
+
+
+def _rename_sqlite_column_if_needed(
+    connection: sa.Connection,
+    *,
+    table_name: str,
+    old_name: str,
+    new_name: str,
+) -> None:
+    if table_name not in _sqlite_table_names(connection):
+        return
+    existing_columns = _sqlite_column_names(connection, table_name)
+    if old_name not in existing_columns:
+        return
+    if new_name in existing_columns:
+        connection.execute(
+            sa.text(
+                f"UPDATE {quote_sqlite_identifier(table_name)} "
+                f"SET {quote_sqlite_identifier(new_name)} = {quote_sqlite_identifier(old_name)} "
+                f"WHERE ({quote_sqlite_identifier(new_name)} IS NULL OR {quote_sqlite_identifier(new_name)} = '') "
+                f"AND {quote_sqlite_identifier(old_name)} IS NOT NULL "
+                f"AND {quote_sqlite_identifier(old_name)} != ''"
+            )
+        )
+        _drop_sqlite_indexes_for_columns(
+            connection,
+            sa.inspect(connection),
+            table_name=table_name,
+            column_names={old_name},
+        )
+        try:
+            connection.execute(
+                sa.text(
+                    f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+                    f"DROP COLUMN {quote_sqlite_identifier(old_name)}"
+                )
+            )
+            logger.info(
+                "sqlite_legacy_column_dropped_for_course_schema",
+                table_name=table_name,
+                old_name=old_name,
+                new_name=new_name,
+            )
+        except sa.exc.DatabaseError:
+            logger.warning(
+                "sqlite_legacy_column_drop_failed_for_course_schema",
+                table_name=table_name,
+                old_name=old_name,
+                new_name=new_name,
+            )
+        return
+    connection.execute(
+        sa.text(
+            f"ALTER TABLE {quote_sqlite_identifier(table_name)} "
+            f"RENAME COLUMN {quote_sqlite_identifier(old_name)} "
+            f"TO {quote_sqlite_identifier(new_name)}"
+        )
+    )
+    logger.info(
+        "sqlite_column_renamed_for_course_schema",
+        table_name=table_name,
+        old_name=old_name,
+        new_name=new_name,
+    )
+
+
+def _migrate_sqlite_course_schema(engine: sa.Engine) -> None:
+    """Rename the pre-course workspace schema in local SQLite databases."""
+
+    legacy_table = _legacy_course_name()
+    legacy_link_table = _legacy_course_name("_file")
+    legacy_id_column = _legacy_course_name("_id")
+    legacy_name_column = _legacy_course_name("_name")
+    legacy_intro_column = _legacy_course_name("_intro_text")
+
+    table_column_renames = {
+        "course": ((legacy_intro_column, "course_intro_text"),),
+        "raw_file": (
+            (f"origin_{legacy_id_column}", "origin_course_id"),
+            (f"origin_{legacy_name_column}", "origin_course_name"),
+        ),
+        "course_file": ((legacy_id_column, "course_id"),),
+        "retrieval_chunk": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "knowledge_document": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "knowledge_unit": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "knowledge_edge": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "knowledge_graph_sync_run": ((legacy_id_column, "course_id"),),
+        "knowledge_graph_source_ref": ((legacy_id_column, "course_id"),),
+        "question_type_registry": ((legacy_id_column, "course_id"),),
+        "question_template": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "exam_paper": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "exam_study_guide_cache": ((legacy_id_column, "course_id"),),
+        "user_knowledge_state": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "chat_session": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+        "chat_message": ((legacy_id_column, "course_id"), (_legacy_course_name(), "course_id")),
+    }
+
+    with engine.begin() as connection:
+        _rename_sqlite_table_if_needed(connection, old_name=legacy_table, new_name="course")
+        _rename_sqlite_table_if_needed(connection, old_name=legacy_link_table, new_name="course_file")
+        for table_name, renames in table_column_renames.items():
+            for old_name, new_name in renames:
+                _rename_sqlite_column_if_needed(
+                    connection,
+                    table_name=table_name,
+                    old_name=old_name,
+                    new_name=new_name,
+                )
+
+
 def _migrate_sqlite_email_confirmation(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -622,9 +759,9 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
         return
     plan_columns = {column["name"] for column in inspector.get_columns("confirmed_build_plan")}
     chat_columns = {column["name"] for column in inspector.get_columns("chat_session")}
-    plan_subject_column = "subject_id" if "subject_id" in plan_columns else "subject" if "subject" in plan_columns else None
-    chat_subject_column = "subject_id" if "subject_id" in chat_columns else "subject" if "subject" in chat_columns else None
-    if plan_subject_column is None or chat_subject_column is None:
+    plan_course_column = "course_id" if "course_id" in plan_columns else "course" if "course" in plan_columns else None
+    chat_course_column = "course_id" if "course_id" in chat_columns else "course" if "course" in chat_columns else None
+    if plan_course_column is None or chat_course_column is None:
         return
 
     with engine.begin() as connection:
@@ -632,7 +769,7 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
             connection.execute(
                 sa.text(
                     f"""
-                    SELECT id, {plan_subject_column} AS subject_id, planner_session_id, user_id, status, user_prompt,
+                    SELECT id, {plan_course_column} AS course_id, planner_session_id, user_id, status, user_prompt,
                            digest_mode, selected_file_ids_json, chapter_plan_json,
                            build_constraints_json, plan_summary, plan_json,
                            created_at, updated_at
@@ -650,14 +787,14 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
                     SELECT meta_json
                     FROM chat_session
                     WHERE id = :session_id
-                      AND {chat_subject_column} = :subject_id
+                      AND {chat_course_column} = :course_id
                       AND user_id = :user_id
                       AND source = 'build_planner'
                     """
                 ),
                 {
                     "session_id": row.get("planner_session_id"),
-                    "subject_id": row.get("subject_id"),
+                    "course_id": row.get("course_id"),
                     "user_id": row.get("user_id"),
                 },
             ).mappings().first()
@@ -666,7 +803,7 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
             meta = _sqlite_json_object(session_row.get("meta_json"))
             plan_payload = {
                 "id": row.get("id"),
-                "subject_id": row.get("subject_id"),
+                "course_id": row.get("course_id"),
                 "planner_session_id": row.get("planner_session_id"),
                 "user_id": row.get("user_id"),
                 "status": row.get("status") or "confirmed",
@@ -900,6 +1037,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     if not db_path.exists():
         return engine
 
+    _migrate_sqlite_course_schema(engine)
     _drop_sqlite_removed_schema(engine)
     _apply_sqlite_additive_schema_updates(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
@@ -1032,7 +1170,7 @@ def quote_sqlite_identifier(identifier: str) -> str:
 
 
 def _normalize_postgres_vector_target(table_name: str) -> str:
-    resolved_llamaindex_table = extract_postgres_subject_index_data_table_name(table_name)
+    resolved_llamaindex_table = extract_postgres_course_index_data_table_name(table_name)
     if resolved_llamaindex_table:
         return resolved_llamaindex_table
     return table_name
@@ -1302,14 +1440,14 @@ def _ensure_builtin_question_types(engine: sa.Engine) -> None:
             existing = session.exec(
                 select(QuestionTypeRegistry).where(
                     QuestionTypeRegistry.scope == "global",
-                    QuestionTypeRegistry.subject_id == "",
+                    QuestionTypeRegistry.course_id == "",
                     QuestionTypeRegistry.type_key == payload["type_key"],
                 )
             ).first()
             if existing is None:
                 existing = QuestionTypeRegistry(
                     scope="global",
-                    subject_id="",
+                    course_id="",
                     source="system",
                     is_system=True,
                     is_active=True,

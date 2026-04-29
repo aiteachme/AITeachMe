@@ -1,4 +1,4 @@
-"""Storage helpers for subject knowledge build runtime and artifacts."""
+"""Storage helpers for course knowledge build runtime and artifacts."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from sqlmodel import Session
 
 from app.shared.infra.runtime import is_cloud_mode, is_local_mode
 from app.shared.infra.storage import (
-    SubjectStorageScope,
+    CourseStorageScope,
     get_content_store,
-    resolve_subject_storage_scope,
+    resolve_course_storage_scope,
     run_store_sync,
 )
 from app.utils.path_helpers import (
@@ -224,12 +224,12 @@ class KnowledgeBuildRuntimeEnvelope(BaseModel):
     graph_runtime: KnowledgeBuildRuntimeStatus | None = None
 
 
-def _get_status_lock(subject_id: str) -> RLock:
+def _get_status_lock(course_id: str) -> RLock:
     with _STATUS_LOCK_GUARD:
-        lock = _STATUS_LOCKS.get(subject_id)
+        lock = _STATUS_LOCKS.get(course_id)
         if lock is None:
             lock = RLock()
-            _STATUS_LOCKS[subject_id] = lock
+            _STATUS_LOCKS[course_id] = lock
         return lock
 
 
@@ -717,44 +717,44 @@ def build_aggregate_knowledge_build_status(
     )
 
 
-def _subject_scope_or_resolve(subject_id: str, subject_scope: SubjectStorageScope | None) -> SubjectStorageScope:
-    return subject_scope or resolve_subject_storage_scope(subject_id)
+def _course_scope_or_resolve(course_id: str, course_scope: CourseStorageScope | None) -> CourseStorageScope:
+    return course_scope or resolve_course_storage_scope(course_id)
 
 
-def _staged_build_manifest_key(subject_scope: SubjectStorageScope) -> str:
-    return f"{subject_scope.knowledge_build_prefix()}manifest.json"
+def _staged_build_manifest_key(course_scope: CourseStorageScope) -> str:
+    return f"{course_scope.knowledge_build_prefix()}manifest.json"
 
 
 def _migrate_staged_manifest_if_needed(
     cs: Any,
-    subject_scope: SubjectStorageScope,
+    course_scope: CourseStorageScope,
     manifest: KnowledgeDocsManifest,
 ) -> None:
     """Move old staged manifests to the published manifest key on first read."""
 
-    run_store_sync(cs.write_json, subject_scope.build_manifest_key(), manifest)
-    run_store_sync(cs.delete, _staged_build_manifest_key(subject_scope), default=None)
+    run_store_sync(cs.write_json, course_scope.build_manifest_key(), manifest)
+    run_store_sync(cs.delete, _staged_build_manifest_key(course_scope), default=None)
 
 
 def _read_legacy_knowledge_build_status(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus | None:
     cs = get_content_store()
-    key = _subject_scope_or_resolve(subject_id, subject_scope).build_status_key()
+    key = _course_scope_or_resolve(course_id, course_scope).build_status_key()
     status = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeStatus)
     return _hydrate_runtime_status(status) if status is not None else None
 
 
 def _write_legacy_knowledge_build_status(
-    subject_id: str,
+    course_id: str,
     status: KnowledgeBuildRuntimeStatus,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> str:
     cs = get_content_store()
-    key = _subject_scope_or_resolve(subject_id, subject_scope).build_status_key()
+    key = _course_scope_or_resolve(course_id, course_scope).build_status_key()
     run_store_sync(cs.write_json, key, status)
     return key
 
@@ -769,24 +769,24 @@ def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
 
 
 def read_knowledge_build_lock(
-    subject_id: str,
+    course_id: str,
     *,
     session: Session | None = None,
 ) -> KnowledgeBuildLock | None:
-    """Read the subject-level build lock, if present."""
+    """Read the course-level build lock, if present."""
 
     if is_cloud_mode():
-        return _cloud_read_build_lock(subject_id, session=session)
-    return _read_build_lock_path(build_knowledge_build_lock_path(subject_id))
+        return _cloud_read_build_lock(course_id, session=session)
+    return _read_build_lock_path(build_knowledge_build_lock_path(course_id))
 
 
-def acquire_knowledge_build_lock(subject_id: str, lock: KnowledgeBuildLock) -> bool:
-    """Create a subject-level build lock atomically."""
+def acquire_knowledge_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
+    """Create a course-level build lock atomically."""
 
     if is_cloud_mode():
-        return _cloud_acquire_build_lock(subject_id, lock)
+        return _cloud_acquire_build_lock(course_id, lock)
 
-    path = build_knowledge_build_lock_path(subject_id)
+    path = build_knowledge_build_lock_path(course_id)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = _read_build_lock_path(path)
@@ -801,32 +801,32 @@ def acquire_knowledge_build_lock(subject_id: str, lock: KnowledgeBuildLock) -> b
     return True
 
 
-def release_knowledge_build_lock(subject_id: str) -> None:
-    """Remove the subject-level build lock if it exists."""
+def release_knowledge_build_lock(course_id: str) -> None:
+    """Remove the course-level build lock if it exists."""
 
     if is_cloud_mode():
-        _cloud_release_build_lock(subject_id)
+        _cloud_release_build_lock(course_id)
         return
 
-    path = build_knowledge_build_lock_path(subject_id)
+    path = build_knowledge_build_lock_path(course_id)
     if path.exists():
         path.unlink()
 
 
-def is_knowledge_build_locked(subject_id: str) -> bool:
-    """Check whether the subject-level build lock exists."""
+def is_knowledge_build_locked(course_id: str) -> bool:
+    """Check whether the course-level build lock exists."""
 
     if is_cloud_mode():
-        return _cloud_read_build_lock(subject_id) is not None
-    return build_knowledge_build_lock_path(subject_id).exists()
+        return _cloud_read_build_lock(course_id) is not None
+    return build_knowledge_build_lock_path(course_id).exists()
 
 
-def _read_cloud_build_lock_from_session(session: Session, subject_id: str) -> KnowledgeBuildLock | None:
+def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> KnowledgeBuildLock | None:
     from sqlmodel import select
 
-    from app.models.subject import Subject
+    from app.models.course import Course
 
-    record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
+    record = session.exec(select(Course).where(Course.id == course_id)).first()
     if record is None or record.build_lock_holder is None:
         return None
     if record.build_lock_at is not None:
@@ -844,27 +844,27 @@ def _read_cloud_build_lock_from_session(session: Session, subject_id: str) -> Kn
 
 
 def _cloud_read_build_lock(
-    subject_id: str,
+    course_id: str,
     *,
     session: Session | None = None,
 ) -> KnowledgeBuildLock | None:
     from app.shared.infra.database import managed_session
 
     if session is not None:
-        return _read_cloud_build_lock_from_session(session, subject_id)
+        return _read_cloud_build_lock_from_session(session, course_id)
 
     with managed_session() as session:
-        return _read_cloud_build_lock_from_session(session, subject_id)
+        return _read_cloud_build_lock_from_session(session, course_id)
 
 
-def _cloud_acquire_build_lock(subject_id: str, lock: KnowledgeBuildLock) -> bool:
+def _cloud_acquire_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
     from sqlmodel import select
 
-    from app.models.subject import Subject
+    from app.models.course import Course
     from app.shared.infra.database import managed_session
 
     with managed_session() as session:
-        record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
+        record = session.exec(select(Course).where(Course.id == course_id)).first()
         if record is None:
             return False
 
@@ -881,14 +881,14 @@ def _cloud_acquire_build_lock(subject_id: str, lock: KnowledgeBuildLock) -> bool
     return True
 
 
-def _cloud_release_build_lock(subject_id: str) -> None:
+def _cloud_release_build_lock(course_id: str) -> None:
     from sqlmodel import select
 
-    from app.models.subject import Subject
+    from app.models.course import Course
     from app.shared.infra.database import managed_session
 
     with managed_session() as session:
-        record = session.exec(select(Subject).where(Subject.id == subject_id)).first()
+        record = session.exec(select(Course).where(Course.id == course_id)).first()
         if record is not None and record.build_lock_holder is not None:
             record.build_lock_holder = None
             record.build_lock_at = None
@@ -897,20 +897,20 @@ def _cloud_release_build_lock(subject_id: str) -> None:
 
 
 def read_knowledge_build_runtime(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeEnvelope | None:
-    """Read the unified runtime envelope for one subject."""
+    """Read the unified runtime envelope for one course."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     key = resolved_scope.build_runtime_key()
     runtime = run_store_sync(cs.read_json, key, KnowledgeBuildRuntimeEnvelope)
     if runtime is not None:
         return _hydrate_runtime_envelope(runtime)
 
-    legacy = _read_legacy_knowledge_build_status(subject_id, subject_scope=resolved_scope)
+    legacy = _read_legacy_knowledge_build_status(course_id, course_scope=resolved_scope)
     if legacy is None:
         return None
     return _hydrate_runtime_envelope(
@@ -922,72 +922,72 @@ def read_knowledge_build_runtime(
 
 
 def write_knowledge_build_runtime(
-    subject_id: str,
+    course_id: str,
     runtime: KnowledgeBuildRuntimeEnvelope,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> str:
-    """Persist the unified runtime envelope for one subject."""
+    """Persist the unified runtime envelope for one course."""
 
     cs = get_content_store()
-    key = _subject_scope_or_resolve(subject_id, subject_scope).build_runtime_key()
+    key = _course_scope_or_resolve(course_id, course_scope).build_runtime_key()
     run_store_sync(cs.write_json, key, _hydrate_runtime_envelope(runtime))
-    publish_workflow_stream_event(subject_id, "runtime_dirty", {"reason": "runtime_write"})
+    publish_workflow_stream_event(course_id, "runtime_dirty", {"reason": "runtime_write"})
     return key
 
 
 def read_knowledge_build_status(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus | None:
     """Read the legacy docgen runtime payload used by docs-oriented polling."""
 
-    runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+    runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     if runtime is not None and runtime.docgen_runtime is not None:
         return runtime.docgen_runtime
-    return _read_legacy_knowledge_build_status(subject_id, subject_scope=subject_scope)
+    return _read_legacy_knowledge_build_status(course_id, course_scope=course_scope)
 
 
 def write_knowledge_build_status(
-    subject_id: str,
+    course_id: str,
     status: KnowledgeBuildRuntimeStatus,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> str:
     """Persist the legacy docgen runtime payload."""
 
     return _write_legacy_knowledge_build_status(
-        subject_id,
+        course_id,
         _hydrate_runtime_status(status),
-        subject_scope=subject_scope,
+        course_scope=course_scope,
     )
 
 
 def read_knowledge_build_aggregate_status(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus | None:
-    """Read the aggregate runtime status for one subject."""
+    """Read the aggregate runtime status for one course."""
 
     return build_aggregate_knowledge_build_status(
-        read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+        read_knowledge_build_runtime(course_id, course_scope=course_scope)
     )
 
 
 def update_knowledge_build_lane_status(
-    subject_id: str,
+    course_id: str,
     *,
     lane: Literal["docgen", "graph"],
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
     **kwargs: object,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into one runtime lane and refresh the persisted envelope."""
 
-    with _get_status_lock(subject_id):
+    with _get_status_lock(course_id):
         runtime = (
-            read_knowledge_build_runtime(subject_id, subject_scope=subject_scope)
+            read_knowledge_build_runtime(course_id, course_scope=course_scope)
             or KnowledgeBuildRuntimeEnvelope()
         )
         attr_name = _lane_attr_name(lane)
@@ -1031,32 +1031,32 @@ def update_knowledge_build_lane_status(
             or runtime.build_group_id
         )
         runtime = _hydrate_runtime_envelope(runtime)
-        write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
+        write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
 
         if lane == "docgen":
-            write_knowledge_build_status(subject_id, updated, subject_scope=subject_scope)
+            write_knowledge_build_status(course_id, updated, course_scope=course_scope)
 
         return updated
 
 
-def update_knowledge_build_status(subject_id: str, **kwargs: object) -> KnowledgeBuildRuntimeStatus:
+def update_knowledge_build_status(course_id: str, **kwargs: object) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into the runtime build-status payload."""
 
     lane = _normalize_build_lane(str(kwargs.get("build_kind") or "docgen"))
-    return update_knowledge_build_lane_status(subject_id, lane=lane, **kwargs)
+    return update_knowledge_build_lane_status(course_id, lane=lane, **kwargs)
 
 
 def upsert_knowledge_build_chapter_progress(
-    subject_id: str,
+    course_id: str,
     *,
     chapter_progress: dict[str, object],
     requested_at: datetime | None = None,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge one chapter progress entry into the runtime build status."""
 
-    with _get_status_lock(subject_id):
-        runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
+    with _get_status_lock(course_id):
+        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1074,22 +1074,22 @@ def upsert_knowledge_build_chapter_progress(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
-        write_knowledge_build_status(subject_id, existing, subject_scope=subject_scope)
+        write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
+        write_knowledge_build_status(course_id, existing, course_scope=course_scope)
         return existing
 
 
 def upsert_knowledge_build_chapter_preview(
-    subject_id: str,
+    course_id: str,
     *,
     chapter_preview: dict[str, object],
     requested_at: datetime | None = None,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge one chapter preview entry into the runtime build status."""
 
-    with _get_status_lock(subject_id):
-        runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
+    with _get_status_lock(course_id):
+        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1098,8 +1098,8 @@ def upsert_knowledge_build_chapter_preview(
             existing = _hydrate_runtime_status(existing)
             runtime.docgen_runtime = existing
             runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-            write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
-            write_knowledge_build_status(subject_id, existing, subject_scope=subject_scope)
+            write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
+            write_knowledge_build_status(course_id, existing, course_scope=course_scope)
             return existing
         current = {
             int(item.get("chapter_index", 0) or 0): dict(item)
@@ -1114,23 +1114,23 @@ def upsert_knowledge_build_chapter_preview(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
-        write_knowledge_build_status(subject_id, existing, subject_scope=subject_scope)
+        write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
+        write_knowledge_build_status(course_id, existing, course_scope=course_scope)
         return existing
 
 
 def append_knowledge_build_recent_event(
-    subject_id: str,
+    course_id: str,
     *,
     event: dict[str, object],
     requested_at: datetime | None = None,
     limit: int = 24,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Append one recent event into the runtime build status."""
 
-    with _get_status_lock(subject_id):
-        runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
+    with _get_status_lock(course_id):
+        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1140,23 +1140,23 @@ def append_knowledge_build_recent_event(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
-        write_knowledge_build_status(subject_id, existing, subject_scope=subject_scope)
-        publish_workflow_stream_event(subject_id, "build_event", normalized)
+        write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
+        write_knowledge_build_status(course_id, existing, course_scope=course_scope)
+        publish_workflow_stream_event(course_id, "build_event", normalized)
         return existing
 
 
 def update_knowledge_build_merge_preview(
-    subject_id: str,
+    course_id: str,
     *,
     merge_preview: dict[str, object],
     requested_at: datetime | None = None,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge whole-document preview content into the runtime build status."""
 
-    with _get_status_lock(subject_id):
-        runtime = read_knowledge_build_runtime(subject_id, subject_scope=subject_scope) or KnowledgeBuildRuntimeEnvelope()
+    with _get_status_lock(course_id):
+        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
         if existing is None:
             existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
@@ -1168,33 +1168,33 @@ def update_knowledge_build_merge_preview(
         existing = _hydrate_runtime_status(existing)
         runtime.docgen_runtime = existing
         runtime.build_group_id = runtime.build_group_id or existing.build_group_id
-        write_knowledge_build_runtime(subject_id, runtime, subject_scope=subject_scope)
-        write_knowledge_build_status(subject_id, existing, subject_scope=subject_scope)
+        write_knowledge_build_runtime(course_id, runtime, course_scope=course_scope)
+        write_knowledge_build_status(course_id, existing, course_scope=course_scope)
         return existing
 
 
 def clear_knowledge_build_status(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
     """Remove runtime build-status metadata."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     run_store_sync(cs.delete, resolved_scope.build_status_key(), default=None)
     run_store_sync(cs.delete, resolved_scope.build_runtime_key(), default=None)
 
 
 def read_knowledge_manifest(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeDocsManifest | None:
     """Read the published manifest if it exists."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     manifest_key = resolved_scope.build_manifest_key()
     manifest = run_store_sync(
         cs.read_json,
@@ -1215,45 +1215,45 @@ def read_knowledge_manifest(
 
 
 def write_knowledge_manifest(
-    subject_id: str,
+    course_id: str,
     manifest: KnowledgeDocsManifest,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> str:
     """Persist the published manifest."""
 
     cs = get_content_store()
-    key = _subject_scope_or_resolve(subject_id, subject_scope).build_manifest_key()
+    key = _course_scope_or_resolve(course_id, course_scope).build_manifest_key()
     run_store_sync(cs.write_json, key, manifest)
     return key
 
 
 def clear_docgen_staging(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
     """Remove the current knowledge-markdown build directory."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     run_store_sync(cs.delete_prefix, resolved_scope.knowledge_build_prefix(), default=0)
 
     if is_local_mode():
-        intermediate_dir = build_docgen_intermediate_latest_dir(subject_id)
+        intermediate_dir = build_docgen_intermediate_latest_dir(course_id)
         if intermediate_dir.exists():
             shutil.rmtree(intermediate_dir, ignore_errors=True)
 
 
 def clear_published_knowledge_docs_files(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
     """Remove all published knowledge-doc files, including archived versions."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     prefix = resolved_scope.knowledge_doc_key("")
     keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
@@ -1269,14 +1269,14 @@ def clear_published_knowledge_docs_files(
 
 
 def clear_current_published_knowledge_docs_files(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
     """Remove only the current published chapter markdown files."""
 
     cs = get_content_store()
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     prefix = resolved_scope.knowledge_doc_key("")
     keys = run_store_sync(cs.list_prefix, prefix, default=[])
     for key in keys:
@@ -1289,22 +1289,22 @@ def clear_current_published_knowledge_docs_files(
 
 
 def clear_knowledge_runtime_artifacts(
-    subject_id: str,
+    course_id: str,
     *,
-    subject_scope: SubjectStorageScope | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> None:
-    """Remove published and staging knowledge-doc artifacts for one subject."""
+    """Remove published and staging knowledge-doc artifacts for one course."""
 
-    resolved_scope = _subject_scope_or_resolve(subject_id, subject_scope)
-    clear_docgen_staging(subject_id, subject_scope=resolved_scope)
-    clear_knowledge_build_status(subject_id, subject_scope=resolved_scope)
-    clear_published_knowledge_docs_files(subject_id, subject_scope=resolved_scope)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    clear_docgen_staging(course_id, course_scope=resolved_scope)
+    clear_knowledge_build_status(course_id, course_scope=resolved_scope)
+    clear_published_knowledge_docs_files(course_id, course_scope=resolved_scope)
 
     cs = get_content_store()
     run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
     run_store_sync(cs.delete, _staged_build_manifest_key(resolved_scope), default=None)
 
-    release_knowledge_build_lock(subject_id)
+    release_knowledge_build_lock(course_id)
 
 
 __all__ = [

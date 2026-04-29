@@ -1,12 +1,12 @@
 # Export Import Support
 
-`workflows/support/export_import/` is the canonical home for subject-level course package export and import use cases.
+`workflows/support/export_import/` is the canonical home for course-level course package export and import use cases.
 
 ## Responsibilities
 
-- Preview subject export size and table counts.
-- Export a subject into an `.atmx` package. Download filenames use `subject-name-subject-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
-- Import an `.atmx` package as a new subject.
+- Preview course export size and table counts.
+- Export a course into an `.atmx` package. Download filenames use `course-name-course-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
+- Import an `.atmx` package as a new course.
 - List remote demo-course packages from the configured OSS catalog in cloud mode.
 
 ## Module Split
@@ -20,16 +20,16 @@
 - 演示课程主源：仅云端模式使用现有 `S3_PUBLIC_BASE_URL` 下固定的 `demo-courses/`
 - 默认课程索引：`<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
 - 课程索引由本机私有脚本 `scripts/private/demo_course_package.py` 自动维护；不要手写 OSS 上的 `index.json`
-- 本地模式：不请求 OSS，`GET /api/v1/courses` 返回空列表，手动 `.atmx` 上传导入仍可用
+- 本地模式：不请求 OSS，`GET /api/v1/demo-courses` 返回空列表，手动 `.atmx` 上传导入仍可用
 
 ## Demo Course Paths
 
-- `GET /api/v1/courses`: 云端前端展示课程卡片。
-- `POST /api/v1/courses/{filename}/import`: 云端后端从 OSS 拉取 `.atmx` 后导入当前账号；导入成功后出现在左侧学科列表。
+- `GET /api/v1/demo-courses`: 云端前端展示演示课程卡片。
+- `POST /api/v1/demo-courses/{identifier}/import`: 云端后端从 OSS 拉取 `.atmx` 后导入当前账号；导入成功后出现在左侧课程列表。
 
 ## Export Data Boundary
 
-- Always included: subject metadata plus `knowledge_unit` / `knowledge_edge` graph tables.
+- Always included: course metadata plus `knowledge_unit` / `knowledge_edge` graph tables.
 - Optional: generated knowledge documents, exam history, chat history, learning profile, and parsed source metadata/retrieval cache.
 - Not exported: original uploaded binaries (`PDF/DOCX/PPT/...`), duplicated `files/raw_markdowns/*.md`, vector embeddings, build locks, temporary `_build/` files, and derived `merged_knowledge_base.md` files.
 - Published knowledge-document markdown is restored from `knowledge_document.markdown_content`; the archive only carries docgen assets that are not in DB, such as the cover image.

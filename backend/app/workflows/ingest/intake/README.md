@@ -16,5 +16,5 @@
 - Persisted upload artifacts are keyed by stable file ID plus a sanitized filename stem:
   `users/{user}/files/{file_id}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
   The database keeps the original filename for display; storage keys should not use bare auto-increment ids.
-- Subject import/export packages use the same `{file_id}__{safe_stem}` segment for raw files,
+- Course import/export packages use the same `{file_id}__{safe_stem}` segment for raw files,
   parsed markdown, and extracted assets inside the archive.

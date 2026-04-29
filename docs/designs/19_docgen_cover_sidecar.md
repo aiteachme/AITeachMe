@@ -23,7 +23,7 @@ load_context / prepare_global_seed
   -> publish_document
 ```
 
-`generate_cover` 会根据 subject、用户目标、confirmed plan、资料摘要和 intent profile 生成封面。它只写封面 state 和资产，不改正文结构；后续合成节点如果拿到封面，就把 Markdown 插到整本文档最顶部。
+`generate_cover` 会根据 course、用户目标、confirmed plan、资料摘要和 intent profile 生成封面。它只写封面 state 和资产，不改正文结构；后续合成节点如果拿到封面，就把 Markdown 插到整本文档最顶部。
 
 ## 3. 代码入口
 
@@ -43,7 +43,7 @@ load_context / prepare_global_seed
 稳定图片路径：
 
 ```text
-users/<user>/subjects/<subject>/assets/docgen/cover.<ext>
+users/<user>/courses/<course>/assets/docgen/cover.<ext>
 ```
 
 构建元数据：
@@ -58,7 +58,7 @@ knowledge_markdowns/_build/cover_artifact.json
 ![](../assets/docgen/cover.png)
 ```
 
-导出 `.atmx` 时只打包当前稳定封面；导入时恢复到目标用户和目标 subject 的 `assets/docgen/` 下。
+导出 `.atmx` 时只打包当前稳定封面；导入时恢复到目标用户和目标 course 的 `assets/docgen/` 下。
 
 ## 5. 文档顺序
 

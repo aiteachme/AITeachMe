@@ -9,7 +9,7 @@ import {
 } from "../api/client";
 import type {
   DocGenBuildData,
-  SubjectVectorStatusResponse,
+  CourseVectorStatusResponse,
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 import { useToast, type ToastVariant } from "../components/ui/Toast";
@@ -19,8 +19,8 @@ export type KnowledgeBuildResolution = "rebuild" | "disable";
 
 export interface KnowledgeBuildPrecheckConflictData {
   reason: string;
-  subject_model?: string | null;
-  subject_dim?: number | null;
+  course_model?: string | null;
+  course_dim?: number | null;
   runtime_model?: string | null;
   runtime_dim?: number | null;
   requires_full_rebuild?: boolean;
@@ -39,7 +39,7 @@ interface KnowledgeBuildRequestPayload extends KnowledgeBuildRequestInput {
 }
 
 interface UseKnowledgeBuildFlowOptions {
-  subjectId: string;
+  courseId: string;
   buildRequest: () => KnowledgeBuildRequestInput;
   buildType?: "docs";
   fallbackErrorMessage?: string;
@@ -87,7 +87,7 @@ interface VectorNoticeToast {
 }
 
 function buildVectorNoticeToast(
-  status?: SubjectVectorStatusResponse | null,
+  status?: CourseVectorStatusResponse | null,
 ): VectorNoticeToast | null {
   const notice = status?.notice?.trim();
   if (!notice) {
@@ -106,7 +106,7 @@ function buildVectorNoticeToast(
   if (notice.includes("已自动绑定当前 embedding 模型并初始化向量索引")) {
     return {
       title: "知识检索索引已准备好",
-      description: "系统已完成当前学科的检索索引初始化，后续构建和问答会使用资料检索增强。",
+      description: "系统已完成当前课程的检索索引初始化，后续构建和问答会使用资料检索增强。",
       variant: "success",
       duration: 4500,
     };
@@ -121,12 +121,12 @@ function buildVectorNoticeToast(
 }
 
 async function triggerKnowledgeBuild(
-  subjectId: string,
+  courseId: string,
   payload: KnowledgeBuildRequestPayload,
 ): Promise<DocGenBuildData> {
   const response = await apiClient<ApiResponse<DocGenBuildData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subjectId}/knowledge/build`,
+    url: `/api/v1/courses/${courseId}/knowledge/build`,
     data: payload,
   });
 
@@ -134,7 +134,7 @@ async function triggerKnowledgeBuild(
 }
 
 export function useKnowledgeBuildFlow({
-  subjectId,
+  courseId,
   buildRequest,
   buildType = "docs",
   fallbackErrorMessage = "知识构建失败，请稍后重试。",
@@ -148,17 +148,17 @@ export function useKnowledgeBuildFlow({
   const [precheckConflict, setPrecheckConflict] =
     useState<KnowledgeBuildPrecheckConflictData | null>(null);
   const [latestVectorStatus, setLatestVectorStatus] =
-    useState<SubjectVectorStatusResponse | null>(null);
+    useState<CourseVectorStatusResponse | null>(null);
 
   const buildMutation = useMutation({
     mutationFn: (payload: KnowledgeBuildRequestPayload) =>
-      triggerKnowledgeBuild(subjectId, payload),
+      triggerKnowledgeBuild(courseId, payload),
     onSuccess: (data) => {
       pendingRequestRef.current = null;
       setPrecheckConflict(null);
       setErrorMessage("");
       setLatestVectorStatus(data.vector_status ?? null);
-      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
       const vectorToast = buildVectorNoticeToast(data.vector_status);
       if (vectorToast && vectorToast.description !== vectorNoticeShownRef.current) {
         vectorNoticeShownRef.current = vectorToast.description;
@@ -209,8 +209,8 @@ export function useKnowledgeBuildFlow({
   });
 
   const submitBuild = useCallback((overrides?: Partial<KnowledgeBuildRequestInput>) => {
-    if (!subjectId) {
-      setErrorMessage("缺少学科 ID，暂时无法发起知识构建。");
+    if (!courseId) {
+      setErrorMessage("缺少课程 ID，暂时无法发起知识构建。");
       return;
     }
 
@@ -230,12 +230,12 @@ export function useKnowledgeBuildFlow({
     setErrorMessage("");
     setPrecheckConflict(null);
     buildMutation.mutate(requestPayload);
-  }, [buildMutation, buildRequest, buildType, subjectId]);
+  }, [buildMutation, buildRequest, buildType, courseId]);
 
   const resolvePrecheckConflict = useCallback(
     (resolution: KnowledgeBuildResolution) => {
-      if (!subjectId) {
-        setErrorMessage("缺少学科 ID，暂时无法发起知识构建。");
+      if (!courseId) {
+        setErrorMessage("缺少课程 ID，暂时无法发起知识构建。");
         return;
       }
 
@@ -250,7 +250,7 @@ export function useKnowledgeBuildFlow({
       setErrorMessage("");
       buildMutation.mutate(nextPayload);
     },
-    [buildMutation, buildRequest, buildType, subjectId],
+    [buildMutation, buildRequest, buildType, courseId],
   );
 
   const closePrecheckConflict = useCallback(() => {

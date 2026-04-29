@@ -18,7 +18,7 @@
 
 ## 资源设计
 
-### subjects
+### courses
 
 - `add`
 - `list`
@@ -67,7 +67,7 @@
 
 ## 数据模型
 
-- `Subject`
+- `Course`
 - `RawFile`
 - `DocSet`
 - `DocBuildJob`

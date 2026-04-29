@@ -4,7 +4,7 @@ import { Map } from "lucide-react";
 
 import { KnowledgeGraphSidePanel } from "./KnowledgeGraphSidePanel";
 
-export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
+export function FloatingGraphWidget({ courseId }: { courseId: string }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -66,7 +66,7 @@ export function FloatingGraphWidget({ subjectId }: { subjectId: string }) {
                 </button>
               </div>
               <div className="h-[calc(100%-52px)]">
-                <KnowledgeGraphSidePanel subjectId={subjectId} />
+                <KnowledgeGraphSidePanel courseId={courseId} />
               </div>
             </motion.div>
           </motion.div>

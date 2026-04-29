@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from app.models import ChatMessage, ChatSession
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
-from app.models.subject import Subject
+from app.models.course import Course
 from app.repositories.confirmed_plan_repo import (
     create_confirmed_plan,
     get_confirmed_plan,
@@ -28,7 +28,7 @@ from app.repositories.chats_repo import (
     get_chat_session,
     touch_chat_session,
 )
-from app.repositories.files_repo import list_all_raw_files_by_subject, list_raw_files_by_ids
+from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
 from app.shared.infra.database import managed_session
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
@@ -52,23 +52,23 @@ from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import normalize_planner_payload
 from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
-from app.workflows.support.subjects.icons import normalize_subject_icon_key, set_subject_icon_key
+from app.workflows.support.courses.icons import normalize_course_icon_key, set_course_icon_key
 
 logger = structlog.get_logger(__name__)
 PLANNER_CHAT_SOURCE = "build_planner"
-_AUTO_TITLE_PLACEHOLDERS = {"", "untitled subject", "新学科", "无标题", "未命名", "未命名学科"}
+_AUTO_TITLE_PLACEHOLDERS = {"", "untitled course", "新课程", "无标题", "未命名", "未命名课程"}
 
 
 def _select_planner_files(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     file_ids: list[str] | None,
 ) -> list[RawFile]:
-    available_files = [item for item in list_all_raw_files_by_subject(session, subject_id) if item.id]
+    available_files = [item for item in list_all_raw_files_by_course(session, course_id) if item.id]
     if not file_ids:
         return available_files
-    requested = list_raw_files_by_ids(session, subject_id, file_ids)
+    requested = list_raw_files_by_ids(session, course_id, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in requested}
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
@@ -144,45 +144,45 @@ def _planner_session_meta(
     }
 
 
-def _needs_auto_subject_name(value: str | None) -> bool:
+def _needs_auto_course_name(value: str | None) -> bool:
     return str(value or "").strip().casefold() in _AUTO_TITLE_PLACEHOLDERS
 
 
-def _clean_subject_metadata_text(value: str | None, *, max_chars: int = 800) -> str:
+def _clean_course_metadata_text(value: str | None, *, max_chars: int = 800) -> str:
     text = " ".join(str(value or "").split()).strip()
     if len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip()
 
 
-def _build_subject_description_from_plan(
+def _build_course_description_from_plan(
     plan_payload: Mapping[str, Any],
     *,
     material_context: Any,
 ) -> str:
     profile = getattr(material_context, "learning_domain_profile", None)
-    profile_description = _clean_subject_metadata_text(
-        getattr(profile, "subject_description", "") if profile is not None else "",
+    profile_description = _clean_course_metadata_text(
+        getattr(profile, "course_description", "") if profile is not None else "",
         max_chars=360,
     )
-    discipline = _clean_subject_metadata_text(
+    discipline = _clean_course_metadata_text(
         getattr(profile, "discipline", "") if profile is not None else "",
         max_chars=80,
     )
-    sub_discipline = _clean_subject_metadata_text(
+    sub_discipline = _clean_course_metadata_text(
         getattr(profile, "sub_discipline", "") if profile is not None else "",
         max_chars=80,
     )
     topics = (
         [
-            _clean_subject_metadata_text(str(item), max_chars=40)
+            _clean_course_metadata_text(str(item), max_chars=40)
             for item in list(getattr(profile, "key_topics", []) or [])[:6]
             if str(item or "").strip()
         ]
         if profile is not None
         else []
     )
-    summary = _clean_subject_metadata_text(str(plan_payload.get("plan_summary") or ""), max_chars=420)
+    summary = _clean_course_metadata_text(str(plan_payload.get("plan_summary") or ""), max_chars=420)
 
     parts: list[str] = []
     if profile_description:
@@ -198,22 +198,22 @@ def _build_subject_description_from_plan(
             parts.append(f"围绕{topic_text}展开的学习空间。")
     if summary and summary not in parts:
         parts.append(summary)
-    return _clean_subject_metadata_text(" ".join(parts), max_chars=800)
+    return _clean_course_metadata_text(" ".join(parts), max_chars=800)
 
 
-def _build_subject_user_intent_from_state(state: Mapping[str, Any]) -> str:
+def _build_course_user_intent_from_state(state: Mapping[str, Any]) -> str:
     raw_intent = state.get("plan_intent") or {}
     if isinstance(raw_intent, Mapping):
-        intent = _clean_subject_metadata_text(str(raw_intent.get("plan_intent") or ""), max_chars=420)
+        intent = _clean_course_metadata_text(str(raw_intent.get("plan_intent") or ""), max_chars=420)
         if intent:
             return intent
-    return _clean_subject_metadata_text(str(state.get("user_prompt") or ""), max_chars=420)
+    return _clean_course_metadata_text(str(state.get("user_prompt") or ""), max_chars=420)
 
 
-def _maybe_update_subject_from_planner(
+def _maybe_update_course_from_planner(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     generated_name: str,
     generated_icon_key: str | None = None,
@@ -222,47 +222,47 @@ def _maybe_update_subject_from_planner(
 ) -> None:
     title = " ".join(str(generated_name or "").strip().split())
     should_apply_title = bool(title) and title.casefold() not in _AUTO_TITLE_PLACEHOLDERS
-    description = _clean_subject_metadata_text(description, max_chars=800)
-    user_intent = _clean_subject_metadata_text(user_intent, max_chars=420)
-    subject_row = session.exec(
-        select(Subject).where(Subject.id == subject_id, Subject.user_id == user_id)
+    description = _clean_course_metadata_text(description, max_chars=800)
+    user_intent = _clean_course_metadata_text(user_intent, max_chars=420)
+    course_row = session.exec(
+        select(Course).where(Course.id == course_id, Course.user_id == user_id)
     ).first()
-    if subject_row is None:
+    if course_row is None:
         return
 
     updated = False
-    if should_apply_title and _needs_auto_subject_name(subject_row.name):
-        subject_row.name = title
-        icon_key = normalize_subject_icon_key(generated_icon_key)
+    if should_apply_title and _needs_auto_course_name(course_row.name):
+        course_row.name = title
+        icon_key = normalize_course_icon_key(generated_icon_key)
         if icon_key:
-            set_subject_icon_key(subject_row, icon_key)
+            set_course_icon_key(course_row, icon_key)
         updated = True
-    if description and subject_row.description != description:
-        subject_row.description = description
+    if description and course_row.description != description:
+        course_row.description = description
         updated = True
-    if user_intent and subject_row.user_intent != user_intent:
-        subject_row.user_intent = user_intent
+    if user_intent and course_row.user_intent != user_intent:
+        course_row.user_intent = user_intent
         updated = True
     if not updated:
         return
 
-    subject_row.updated_at = utcnow()
-    session.add(subject_row)
+    course_row.updated_at = utcnow()
+    session.add(course_row)
     session.commit()
     logger.info(
-        "planner_subject_metadata_updated",
-        subject_id=subject_id,
+        "planner_course_metadata_updated",
+        course_id=course_id,
         generated_name=title or None,
         description_chars=len(description),
         user_intent_chars=len(user_intent),
     )
 
 
-def _apply_generated_subject_name(plan_payload: dict[str, Any], generated_name: str) -> str:
+def _apply_generated_course_name(plan_payload: dict[str, Any], generated_name: str) -> str:
     title = " ".join(str(generated_name or "").strip().split())
     if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
         return ""
-    plan_payload["subject"] = title
+    plan_payload["course"] = title
     return title
 
 
@@ -285,21 +285,21 @@ def _update_planner_session_meta(
 def _get_planner_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     session_id: str,
     user_id: str,
 ) -> ChatSession | None:
-    item = get_chat_session(session, subject_id=subject_id, session_id=session_id, user_id=user_id)
+    item = get_chat_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
     if item is None or item.source != PLANNER_CHAT_SOURCE:
         return None
     return item
 
 
-def _get_latest_planner_session(session: Session, *, subject_id: str, user_id: str) -> ChatSession | None:
+def _get_latest_planner_session(session: Session, *, course_id: str, user_id: str) -> ChatSession | None:
     stmt = (
         select(ChatSession)
         .where(
-            ChatSession.subject_id == subject_id,
+            ChatSession.course_id == course_id,
             ChatSession.user_id == user_id,
             ChatSession.source == PLANNER_CHAT_SOURCE,
         )
@@ -309,12 +309,12 @@ def _get_latest_planner_session(session: Session, *, subject_id: str, user_id: s
     return session.exec(stmt).first()
 
 
-def _list_planner_turns(session: Session, *, session_id: str, subject_id: str, user_id: str) -> list[ChatMessage]:
+def _list_planner_turns(session: Session, *, session_id: str, course_id: str, user_id: str) -> list[ChatMessage]:
     stmt = (
         select(ChatMessage)
         .where(
             ChatMessage.session_id == session_id,
-            ChatMessage.subject_id == subject_id,
+            ChatMessage.course_id == course_id,
             ChatMessage.user_id == user_id,
             ChatMessage.source == PLANNER_CHAT_SOURCE,
         )
@@ -325,7 +325,7 @@ def _list_planner_turns(session: Session, *, session_id: str, subject_id: str, u
 
 def _plan_response(
     *,
-    subject_id: str,
+    course_id: str,
     selected_file_ids: list[str],
     session_id: str,
     confirmed_plan_id: str | None,
@@ -333,7 +333,7 @@ def _plan_response(
     plan: dict[str, Any],
 ) -> BuildPlannerPlanResponse:
     return BuildPlannerPlanResponse(
-        subject_id=subject_id,
+        course_id=course_id,
         selected_file_ids=selected_file_ids,
         user_prompt=str(plan.get("user_prompt") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
@@ -372,7 +372,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
     record = dict(final_state.get("planner_record") or {})
     plan = dict(final_state.get("plan") or {})
     turns = [dict(turn) for turn in list(final_state.get("planner_turns") or [])]
-    subject_id = str(record.get("subject_id") or final_state.get("subject_id") or "")
+    course_id = str(record.get("course_id") or final_state.get("course_id") or "")
     session_id = str(record.get("id") or final_state.get("planner_session_id") or "")
     status = str(record.get("status") or "draft")
     logger.info(
@@ -385,12 +385,12 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
     )
     return BuildPlannerSessionResponse(
         session_id=session_id,
-        subject_id=subject_id,
+        course_id=course_id,
         title=str(record.get("title") or ""),
         status=status,
         revision=len(turns),
         latest_plan=_plan_response(
-            subject_id=subject_id,
+            course_id=course_id,
             selected_file_ids=list(final_state.get("selected_file_ids") or []),
             session_id=session_id,
             confirmed_plan_id=record.get("confirmed_plan_id"),
@@ -407,7 +407,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
 def _planner_session_response(
     record: ChatSession,
     *,
-    subject_id: str,
+    course_id: str,
     selected_file_ids: list[str],
     plan: dict[str, Any],
     turns: list[ChatMessage],
@@ -415,12 +415,12 @@ def _planner_session_response(
     meta = _planner_meta(record)
     return BuildPlannerSessionResponse(
         session_id=record.id,
-        subject_id=subject_id,
+        course_id=course_id,
         title=record.title,
         status=_planner_status(record),
         revision=len(turns),
         latest_plan=_plan_response(
-            subject_id=subject_id,
+            course_id=course_id,
             selected_file_ids=selected_file_ids,
             session_id=record.id,
             confirmed_plan_id=meta.get("confirmed_plan_id"),
@@ -436,12 +436,12 @@ def _planner_session_response(
 
 def _workflow_files_or_raise(
     *,
-    subject_id: str,
+    course_id: str,
     planner_files: list[RawFile],
 ) -> list[RawFile]:
     workflow_files = _select_planner_workflow_files(planner_files)
     if planner_files and not workflow_files:
-        raise PlannerMaterialsNotReadyError(subject_id)
+        raise PlannerMaterialsNotReadyError(course_id)
     return workflow_files
 
 
@@ -465,7 +465,7 @@ def _create_planner_message(
 ) -> ChatMessage:
     message = create_chat_message(
         session,
-        subject_id=record.subject_id,
+        course_id=record.course_id,
         user_id=record.user_id,
         session_id=record.id,
         role=role,
@@ -483,7 +483,7 @@ def _create_planner_message(
     )
     touch_chat_session(
         session,
-        subject_id=record.subject_id,
+        course_id=record.course_id,
         user_id=record.user_id,
         session_id=record.id,
         title=record.title,
@@ -496,7 +496,7 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
     meta = _planner_meta(record)
     return {
         "id": record.id,
-        "subject_id": record.subject_id,
+        "course_id": record.course_id,
         "user_id": record.user_id,
         "title": record.title,
         "status": _planner_status(record),
@@ -581,7 +581,7 @@ def _build_planner_context_payload(
 def _normalize_persisted_plan(
     plan: dict[str, Any] | None,
     *,
-    subject_id: str,
+    course_id: str,
     user_prompt: str,
     digest_mode: str,
     material_context: Any | None = None,
@@ -589,7 +589,7 @@ def _normalize_persisted_plan(
 ) -> dict[str, Any]:
     return normalize_planner_payload(
         plan or {},
-        subject_id=subject_id,
+        course_id=course_id,
         user_prompt=user_prompt,
         requested_digest_mode=digest_mode,
         shared_inputs=material_context,
@@ -612,7 +612,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     logger.info(
         "planner_prepare_run_started",
         operation=operation,
-        subject_id=state.get("subject_id"),
+        course_id=state.get("course_id"),
         planner_session_id=state.get("planner_session_id"),
         requested_file_id_count=len(state.get("requested_file_ids") or []),
     )
@@ -620,7 +620,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         logger.info("planner_prepare_run_skipped_for_generate_only")
         return {}
 
-    subject_id = str(state["subject_id"])
+    course_id = str(state["course_id"])
     user_id = str(state.get("user_id") or "local")
 
     if operation == "create":
@@ -632,17 +632,17 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         ).strip() or planner_defaults.default_digest_mode
 
         with managed_session() as session:
-            subject_row = session.query(Subject).filter(Subject.id == subject_id).first()
-            latest = _get_latest_planner_session(session, subject_id=subject_id, user_id=user_id)
+            course_row = session.query(Course).filter(Course.id == course_id).first()
+            latest = _get_latest_planner_session(session, course_id=course_id, user_id=user_id)
             if latest is not None and _planner_status(latest) == "planning":
                 raise BuildPlannerSessionBusyError(latest.id)
             planner_files = _select_planner_files(
                 session,
-                subject_id=subject_id,
+                course_id=course_id,
                 file_ids=list(state.get("requested_file_ids") or []),
             )
             workflow_files = _workflow_files_or_raise(
-                subject_id=subject_id,
+                course_id=course_id,
                 planner_files=planner_files,
             )
             selected_file_ids = _file_ids(planner_files)
@@ -651,12 +651,12 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             session_title = str(
                 state.get("session_title")
                 or user_prompt
-                or getattr(subject_row, "name", "")
+                or getattr(course_row, "name", "")
                 or "学习规划"
             )
             record = create_chat_session(
                 session,
-                subject_id=subject_id,
+                course_id=course_id,
                 user_id=user_id,
                 session_id=str(state["planner_session_id"]),
                 title=session_title,
@@ -677,7 +677,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             )
             logger.info(
                 "planner_prepare_run_created_session",
-                subject_id=subject_id,
+                course_id=course_id,
                 planner_session_id=record.id,
                 selected_file_count=len(selected_file_ids),
                 workflow_file_count=len(workflow_file_ids),
@@ -699,7 +699,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         with managed_session() as session:
             record = _get_planner_session(
                 session,
-                subject_id=subject_id,
+                course_id=course_id,
                 session_id=str(state["planner_session_id"]),
                 user_id=user_id,
             )
@@ -710,7 +710,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             meta = _planner_meta(record)
             logger.info(
                 "planner_prepare_run_loaded_session",
-                subject_id=subject_id,
+                course_id=course_id,
                 planner_session_id=record.id,
                 has_latest_plan=bool(meta.get("latest_plan")),
                 selected_file_count=len(_planner_selected_file_ids(record)),
@@ -729,13 +729,13 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 role="user",
                 content=feedback,
             )
-            turns = _list_planner_turns(session, session_id=record.id, subject_id=subject_id, user_id=user_id)
+            turns = _list_planner_turns(session, session_id=record.id, course_id=course_id, user_id=user_id)
             selected_file_ids = _planner_selected_file_ids(record)
-            raw_files = list_raw_files_by_ids(session, subject_id, selected_file_ids)
+            raw_files = list_raw_files_by_ids(session, course_id, selected_file_ids)
             workflow_files = _select_planner_workflow_files(raw_files)
             workflow_file_ids = [require_id(item.id, "RawFile.id") for item in workflow_files]
             if selected_file_ids and not workflow_file_ids:
-                raise PlannerMaterialsNotReadyError(subject_id)
+                raise PlannerMaterialsNotReadyError(course_id)
             selected_file_ids = _file_ids(raw_files)
             return {
                 "file_ids": workflow_file_ids,
@@ -764,12 +764,12 @@ def save_planner_result(
         return {}
 
     # graph 已经生成稳定 plan 合同；这里只负责写持久化状态，并返回 API 需要的快照。
-    subject_id = str(state["subject_id"])
+    course_id = str(state["course_id"])
     user_id = str(state.get("user_id") or "local")
     with managed_session() as session:
         record = _get_planner_session(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             session_id=str(state["planner_session_id"]),
             user_id=user_id,
         )
@@ -779,36 +779,36 @@ def save_planner_result(
 
         logger.info(
             "planner_save_started",
-            subject_id=subject_id,
+            course_id=course_id,
             planner_session_id=record.id,
             input_chapter_count=len(list((plan or {}).get("chapter_plan") or [])),
             has_previous_plan=bool(meta.get("latest_plan")),
         )
         persisted_plan = _normalize_persisted_plan(
             plan,
-            subject_id=subject_id,
+            course_id=course_id,
             user_prompt=str(meta.get("user_prompt") or ""),
             digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
             latest_plan=_planner_plan(record),
         )
-        generated_title = _apply_generated_subject_name(
+        generated_title = _apply_generated_course_name(
             persisted_plan,
-            str(state.get("generated_subject_name") or ""),
+            str(state.get("generated_course_name") or ""),
         )
-        subject_description = _build_subject_description_from_plan(
+        course_description = _build_course_description_from_plan(
             persisted_plan,
             material_context=material_context,
         )
-        subject_user_intent = _build_subject_user_intent_from_state(state)
-        _maybe_update_subject_from_planner(
+        course_user_intent = _build_course_user_intent_from_state(state)
+        _maybe_update_course_from_planner(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             generated_name=generated_title,
-            generated_icon_key=str(state.get("generated_subject_icon_key") or ""),
-            description=subject_description,
-            user_intent=subject_user_intent,
+            generated_icon_key=str(state.get("generated_course_icon_key") or ""),
+            description=course_description,
+            user_intent=course_user_intent,
         )
         record = _update_planner_session_meta(
             session,
@@ -833,11 +833,11 @@ def save_planner_result(
             content=_render_final_plan_markdown(persisted_plan),
             plan=persisted_plan,
         )
-        turns = _list_planner_turns(session, session_id=record.id, subject_id=subject_id, user_id=user_id)
+        turns = _list_planner_turns(session, session_id=record.id, course_id=course_id, user_id=user_id)
         selected_file_ids = _planner_selected_file_ids(record)
         logger.info(
             "planner_save_finished",
-            subject_id=subject_id,
+            course_id=course_id,
             planner_session_id=record.id,
             persisted_chapter_count=len(list(persisted_plan.get("chapter_plan") or [])),
             turn_count=len(turns),
@@ -865,7 +865,7 @@ def _normalized_plan_payload(
         user_prompt=str(plan.get("user_prompt") or ""),
     )
     payload = {
-        "subject": str(plan.get("subject") or ""),
+        "course": str(plan.get("course") or ""),
         "user_prompt": str(plan.get("user_prompt") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
         "chapter_plan": chapter_plan,
@@ -921,25 +921,25 @@ def _ensure_min_chapter_payload(
     return normalized
 
 
-def mark_planner_session_failed(*, subject_id: str, user_id: str, session_id: str) -> None:
+def mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
-        record = _get_planner_session(session, subject_id=subject_id, session_id=session_id, user_id=user_id)
+        record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
         if record is None:
             return
         _update_planner_session_meta(session, record, planner_status="failed")
 
 
-def mark_planner_session_cancelled(*, subject_id: str, user_id: str, session_id: str) -> None:
+def mark_planner_session_cancelled(*, course_id: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
-        record = _get_planner_session(session, subject_id=subject_id, session_id=session_id, user_id=user_id)
+        record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
         if record is None:
             return
         _update_planner_session_meta(session, record, planner_status="cancelled")
 
 
-def mark_planner_session_draft(*, subject_id: str, user_id: str, session_id: str) -> None:
+def mark_planner_session_draft(*, course_id: str, user_id: str, session_id: str) -> None:
     with managed_session() as session:
-        record = _get_planner_session(session, subject_id=subject_id, session_id=session_id, user_id=user_id)
+        record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
         if record is None:
             return
         _update_planner_session_meta(session, record, planner_status="draft")
@@ -948,13 +948,13 @@ def mark_planner_session_draft(*, subject_id: str, user_id: str, session_id: str
 def confirm_planner_session(
     session: Session,
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     session_id: str,
 ) -> BuildPlannerConfirmResponse:
     """确认当前 Planner 草稿，并冻结成 DocGen 可执行的 confirmed plan。"""
 
-    record = _get_planner_session(session, subject_id=subject.id, session_id=session_id, user_id=user_id)
+    record = _get_planner_session(session, course_id=course.id, session_id=session_id, user_id=user_id)
     if record is None:
         raise BuildPlannerSessionNotFoundError(session_id)
     meta = _planner_meta(record)
@@ -962,7 +962,7 @@ def confirm_planner_session(
     if not latest_plan:
         raise BuildPlannerEmptyPlanError(session_id)
 
-    turns = _list_planner_turns(session, session_id=record.id, subject_id=subject.id, user_id=user_id)
+    turns = _list_planner_turns(session, session_id=record.id, course_id=course.id, user_id=user_id)
     planner_context = _build_planner_context_payload(
         record,
         turns=turns,
@@ -976,7 +976,7 @@ def confirm_planner_session(
     if meta.get("confirmed_plan_id"):
         current_confirmed = get_confirmed_plan(
             session,
-            subject_id=subject.id,
+            course_id=course.id,
             plan_id=str(meta.get("confirmed_plan_id")),
             user_id=user_id,
         )
@@ -990,7 +990,7 @@ def confirm_planner_session(
             session,
             ConfirmedBuildPlan(
                 id=uuid.uuid4().hex,
-                subject_id=subject.id,
+                course_id=course.id,
                 planner_session_id=session_id,
                 user_id=user_id,
                 status="confirmed",
@@ -1016,7 +1016,7 @@ def confirm_planner_session(
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
-        subject_id=subject.id,
+        course_id=course.id,
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
         selected_file_ids=list(confirmed.selected_file_ids_json),
@@ -1034,18 +1034,18 @@ def confirm_planner_session(
 def get_latest_planner_session(
     session: Session,
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
 ) -> BuildPlannerSessionResponse | None:
-    record = _get_latest_planner_session(session, subject_id=subject.id, user_id=user_id)
+    record = _get_latest_planner_session(session, course_id=course.id, user_id=user_id)
     if record is None:
-        logger.info("planner_latest_none", subject_id=subject.id, user_id=user_id)
+        logger.info("planner_latest_none", course_id=course.id, user_id=user_id)
         return None
-    turns = _list_planner_turns(session, session_id=record.id, subject_id=subject.id, user_id=user_id)
+    turns = _list_planner_turns(session, session_id=record.id, course_id=course.id, user_id=user_id)
     plan_payload = _planner_plan(record)
     logger.info(
         "planner_latest_found",
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         planner_session_id=record.id,
         turn_count=len(turns),
@@ -1054,7 +1054,7 @@ def get_latest_planner_session(
     )
     return _planner_session_response(
         record,
-        subject_id=subject.id,
+        course_id=course.id,
         selected_file_ids=_planner_selected_file_ids(record),
         plan=plan_payload,
         turns=turns,
@@ -1064,22 +1064,22 @@ def get_latest_planner_session(
 def get_planner_adjust_click_context(
     session: Session,
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     session_id: str,
 ) -> dict[str, Any]:
     """Return sparse session context for tracing the UI adjust entrypoint."""
 
-    record = _get_planner_session(session, subject_id=subject.id, session_id=session_id, user_id=user_id)
+    record = _get_planner_session(session, course_id=course.id, session_id=session_id, user_id=user_id)
     if record is None:
         raise BuildPlannerSessionNotFoundError(session_id)
 
     meta = _planner_meta(record)
-    turns = _list_planner_turns(session, session_id=record.id, subject_id=subject.id, user_id=user_id)
+    turns = _list_planner_turns(session, session_id=record.id, course_id=course.id, user_id=user_id)
     latest_plan = _planner_plan(record)
     selected_file_ids = _planner_selected_file_ids(record)
     context = {
-        "subject_id": subject.id,
+        "course_id": course.id,
         "user_id": user_id,
         "planner_session_id": record.id,
         "status": _planner_status(record),
@@ -1092,7 +1092,7 @@ def get_planner_adjust_click_context(
     }
     logger.info(
         "planner_adjust_click_context_loaded",
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         planner_session_id=record.id,
         status=context["status"],
@@ -1105,11 +1105,11 @@ def get_planner_adjust_click_context(
 def get_confirmed_plan_or_raise(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     plan_id: str,
 ) -> ConfirmedBuildPlan:
-    plan = get_confirmed_plan(session, subject_id=subject_id, plan_id=plan_id, user_id=user_id)
+    plan = get_confirmed_plan(session, course_id=course_id, plan_id=plan_id, user_id=user_id)
     if plan is None:
         raise ConfirmedBuildPlanNotFoundError(plan_id)
     return plan
@@ -1118,12 +1118,12 @@ def get_confirmed_plan_or_raise(
 def mark_confirmed_plan_status(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str,
     plan_id: str,
     status: str,
 ) -> None:
-    plan = get_confirmed_plan(session, subject_id=subject_id, plan_id=plan_id, user_id=user_id)
+    plan = get_confirmed_plan(session, course_id=course_id, plan_id=plan_id, user_id=user_id)
     if plan is None:
         return
     plan.status = status
@@ -1132,7 +1132,7 @@ def mark_confirmed_plan_status(
     if plan.planner_session_id:
         planner_session = _get_planner_session(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             session_id=plan.planner_session_id,
             user_id=user_id,
         )

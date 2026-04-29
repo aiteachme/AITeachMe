@@ -43,8 +43,8 @@ class RawFile(SQLModel, table=True):
 
     id: str = Field(primary_key=True, index=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
-    origin_subject_id: str | None = Field(default=None, index=True)
-    origin_subject_name: str | None = Field(default=None, index=True)
+    origin_course_id: str | None = Field(default=None, index=True)
+    origin_course_name: str | None = Field(default=None, index=True)
     filename: str
     filetype: str
     file_path: str
@@ -185,17 +185,17 @@ class RawFile(SQLModel, table=True):
         self.content_hash = value
 
 
-class SubjectFileLink(SQLModel, table=True):
-    """Many-to-many link between a subject workspace and a user-owned raw file."""
+class CourseFileLink(SQLModel, table=True):
+    """Many-to-many link between a course workspace and a user-owned raw file."""
 
-    __tablename__ = "subject_file"
+    __tablename__ = "course_file"
     __table_args__ = (
-        sa.UniqueConstraint("user_id", "subject_id", "file_id", name="uq_subject_file_user_subject_file"),
+        sa.UniqueConstraint("user_id", "course_id", "file_id", name="uq_course_file_user_course_file"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", foreign_key="user.id", index=True)
-    subject_id: str = Field(foreign_key="subject.id", index=True)
+    course_id: str = Field(foreign_key="course.id", index=True)
     file_id: str = Field(foreign_key="raw_file.id", index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

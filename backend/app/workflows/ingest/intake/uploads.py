@@ -21,13 +21,13 @@ from app.repositories.files_repo import (
     create_raw_file,
     delete_raw_file,
     get_reusable_raw_file_by_content_hash,
-    link_raw_files_to_subject,
+    link_raw_files_to_course,
     update_raw_file,
 )
 from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import build_temp_dir
 from app.utils.presenters import require_id
-from app.utils.subject import validate_subject_id
+from app.utils.course import validate_course_id
 from app.workflows.ingest.intake.catalog import build_file_record
 from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
@@ -47,9 +47,9 @@ def _validate_upload_extension(filename: str) -> str:
     return extension
 
 
-def _build_upload_data(*, subject_id: str | None, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
+def _build_upload_data(*, course_id: str | None, raw_files: list[RawFile], started_parse_count: int) -> FilesUploadData:
     return FilesUploadData(
-        subject_id=subject_id,
+        course_id=course_id,
         filenames=[item.filename for item in raw_files],
         uploaded_items=[build_file_record(item) for item in raw_files],
         started_parse_count=started_parse_count,
@@ -153,11 +153,11 @@ def _replace_refreshed_raw_files(raw_files: list[RawFile], refreshed: list[RawFi
 async def _save_uploaded_raw_files(
     session: Session,
     *,
-    subject_id: str | None,
+    course_id: str | None,
     owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
-    origin_subject_name: str | None = None,
+    origin_course_name: str | None = None,
 ) -> list[RawFile]:
     max_files = get_settings().ingest.max_files_per_upload
     if len(files) > max_files:
@@ -168,11 +168,11 @@ async def _save_uploaded_raw_files(
         saved.append(
             await save_uploaded_file(
                 session,
-                subject_id=subject_id,
+                course_id=course_id,
                 owner_user_id=owner_user_id,
                 file=file,
                 parse_request_metadata=parse_request_metadata,
-                origin_subject_name=origin_subject_name,
+                origin_course_name=origin_course_name,
             )
         )
     return saved
@@ -181,16 +181,16 @@ async def _save_uploaded_raw_files(
 async def save_uploaded_file(
     session: Session,
     *,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     owner_user_id: str,
     file: UploadFile,
     parse_request_metadata: dict[str, object] | None = None,
-    origin_subject_name: str | None = None,
+    origin_course_name: str | None = None,
 ) -> RawFile:
     settings = get_settings()
     cs = get_content_store()
     scope = cs.user_file_scope(user_id=owner_user_id)
-    normalized_subject_id = validate_subject_id(subject_id) if subject_id else None
+    normalized_course_id = validate_course_id(course_id) if course_id else None
     content = await file.read()
     max_upload_size_mb = settings.ingest.max_upload_size_mb
     if len(content) > max_upload_size_mb * 1024 * 1024:
@@ -212,7 +212,7 @@ async def save_uploaded_file(
     if reusable_raw_file is not None:
         return reusable_raw_file
 
-    temp_dir = build_temp_dir(normalized_subject_id or "library", user_id=owner_user_id)
+    temp_dir = build_temp_dir(normalized_course_id or "library", user_id=owner_user_id)
     file_id = _generate_file_id()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
@@ -230,8 +230,8 @@ async def save_uploaded_file(
             session,
             RawFile(
                 id=file_id,
-                origin_subject_id=normalized_subject_id,
-                origin_subject_name=origin_subject_name,
+                origin_course_id=normalized_course_id,
+                origin_course_name=origin_course_name,
                 user_id=owner_user_id,
                 filename=filename,
                 filetype=extension.lstrip("."),
@@ -286,53 +286,53 @@ async def save_uploaded_file(
 async def save_uploaded_files(
     session: Session,
     *,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     owner_user_id: str,
     files: list[UploadFile],
-    origin_subject_name: str | None = None,
+    origin_course_name: str | None = None,
 ) -> FilesUploadData:
     saved = await _save_uploaded_raw_files(
         session,
-        subject_id=subject_id,
+        course_id=course_id,
         owner_user_id=owner_user_id,
         files=files,
         parse_request_metadata=None,
-        origin_subject_name=origin_subject_name,
+        origin_course_name=origin_course_name,
     )
-    normalized_subject_id = validate_subject_id(subject_id) if subject_id else None
-    if normalized_subject_id:
-        saved = link_raw_files_to_subject(
+    normalized_course_id = validate_course_id(course_id) if course_id else None
+    if normalized_course_id:
+        saved = link_raw_files_to_course(
             session,
             owner_user_id=owner_user_id,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             raw_files=saved,
         )
-    return _build_upload_data(subject_id=normalized_subject_id, raw_files=saved, started_parse_count=0)
+    return _build_upload_data(course_id=normalized_course_id, raw_files=saved, started_parse_count=0)
 
 
 async def save_uploaded_files_and_request_parse(
     session: Session,
     *,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     owner_user_id: str,
     files: list[UploadFile],
     parse_request_metadata: dict[str, object] | None = None,
-    origin_subject_name: str | None = None,
+    origin_course_name: str | None = None,
 ) -> tuple[FilesUploadData, list[str]]:
     saved = await _save_uploaded_raw_files(
         session,
-        subject_id=subject_id,
+        course_id=course_id,
         owner_user_id=owner_user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
-        origin_subject_name=origin_subject_name,
+        origin_course_name=origin_course_name,
     )
-    normalized_subject_id = validate_subject_id(subject_id) if subject_id else None
-    if normalized_subject_id:
-        saved = link_raw_files_to_subject(
+    normalized_course_id = validate_course_id(course_id) if course_id else None
+    if normalized_course_id:
+        saved = link_raw_files_to_course(
             session,
             owner_user_id=owner_user_id,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             raw_files=saved,
         )
     file_ids = _unique_file_ids(saved, status=TaskStatus.PENDING.value)
@@ -341,12 +341,12 @@ async def save_uploaded_files_and_request_parse(
         refreshed_items = _start_parse_for_files(
             session,
             owner_user_id=owner_user_id,
-            subject_id=normalized_subject_id,
+            course_id=normalized_course_id,
             file_ids=file_ids,
         )
     response_items = _replace_refreshed_raw_files(saved, refreshed_items)
     return _build_upload_data(
-        subject_id=normalized_subject_id,
+        course_id=normalized_course_id,
         raw_files=response_items,
         started_parse_count=len(file_ids),
     ), file_ids

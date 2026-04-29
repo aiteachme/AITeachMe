@@ -29,7 +29,7 @@ interface GraphPayload {
 }
 
 interface SemanticUniverseProps {
-  subjectLabel: string;
+  courseLabel: string;
   overviewGraph: GraphPayload | null | undefined;
   height?: string | number;
   onNodeClick?: (nodeId: number) => void;
@@ -210,7 +210,7 @@ function layoutUniverse(
 }
 
 export function SemanticUniverse({
-  subjectLabel,
+  courseLabel,
   overviewGraph,
   height = "calc(100vh - 16rem)",
   onNodeClick,
@@ -289,7 +289,7 @@ export function SemanticUniverse({
         <div>
           <div className="flex items-center gap-2 text-slate-900">
             <Orbit className="h-4 w-4 text-sky-600" />
-            <p className="text-sm font-semibold">{subjectLabel} 的语义星图</p>
+            <p className="text-sm font-semibold">{courseLabel} 的语义星图</p>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             稳定聚类展示主题骨架、核心概念与相邻方法，点击节点可以锁定焦点。

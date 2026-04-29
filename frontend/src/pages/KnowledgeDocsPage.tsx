@@ -34,7 +34,7 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { SubjectVectorNotice } from "../components/knowledge-graph/SubjectVectorNotice";
+import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -182,7 +182,7 @@ type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "se
 
 interface QuickChatSyncEventDetail {
   phase?: QuickChatSyncPhase;
-  subjectId?: string | null;
+  courseId?: string | null;
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
@@ -197,7 +197,7 @@ interface QuickChatSyncEventDetail {
 }
 
 interface SelectionJumpEventDetail {
-  subjectId?: string | null;
+  courseId?: string | null;
   sessionId?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
@@ -301,16 +301,16 @@ function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
   };
 }
 
-function knowledgeDocsViewPrefsStorageKey(subjectId?: string): string {
-  return `aiteachme:knowledge-docs-view:v${KNOWLEDGE_DOCS_VIEW_PREFS_VERSION}:${subjectId ?? "default"}`;
+function knowledgeDocsViewPrefsStorageKey(courseId?: string): string {
+  return `aiteachme:knowledge-docs-view:v${KNOWLEDGE_DOCS_VIEW_PREFS_VERSION}:${courseId ?? "default"}`;
 }
 
-function readKnowledgeDocsViewPrefs(subjectId?: string): KnowledgeDocsViewPrefs {
-  if (!subjectId || typeof window === "undefined") {
+function readKnowledgeDocsViewPrefs(courseId?: string): KnowledgeDocsViewPrefs {
+  if (!courseId || typeof window === "undefined") {
     return createDefaultKnowledgeDocsViewPrefs();
   }
   try {
-    const raw = window.localStorage.getItem(knowledgeDocsViewPrefsStorageKey(subjectId));
+    const raw = window.localStorage.getItem(knowledgeDocsViewPrefsStorageKey(courseId));
     if (!raw) {
       return createDefaultKnowledgeDocsViewPrefs();
     }
@@ -320,13 +320,13 @@ function readKnowledgeDocsViewPrefs(subjectId?: string): KnowledgeDocsViewPrefs 
   }
 }
 
-function persistKnowledgeDocsViewPrefs(subjectId: string | undefined, prefs: KnowledgeDocsViewPrefs) {
-  if (!subjectId || typeof window === "undefined") {
+function persistKnowledgeDocsViewPrefs(courseId: string | undefined, prefs: KnowledgeDocsViewPrefs) {
+  if (!courseId || typeof window === "undefined") {
     return;
   }
   try {
     window.localStorage.setItem(
-      knowledgeDocsViewPrefsStorageKey(subjectId),
+      knowledgeDocsViewPrefsStorageKey(courseId),
       JSON.stringify({
         version: KNOWLEDGE_DOCS_VIEW_PREFS_VERSION,
         ...prefs,
@@ -1241,12 +1241,12 @@ function buildCommentThreadLayout(
 
 const DocMarkdown = memo(function DocMarkdown({
   content,
-  subjectId,
+  courseId,
   headingNumbering,
   onHeadingCollapseChange,
 }: {
   content: string;
-  subjectId?: string;
+  courseId?: string;
   headingNumbering: boolean;
   onHeadingCollapseChange: (id: string, collapsed: boolean) => void;
 }) {
@@ -1258,7 +1258,7 @@ const DocMarkdown = memo(function DocMarkdown({
       headingNumbering={headingNumbering}
       collapsibleHeadings
       onHeadingCollapseChange={onHeadingCollapseChange}
-      assetSubject={subjectId}
+      assetCourse={courseId}
     />
   );
 });
@@ -1742,7 +1742,7 @@ export function KnowledgeDocsPage() {
   } = useAiInteraction();
   const location = useLocation();
   const {
-    subjectId,
+    courseId,
     docMarkdownQuery,
     buildMeta,
     buildPreview,
@@ -1807,7 +1807,7 @@ export function KnowledgeDocsPage() {
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : COMMENT_DRAWER_BREAKPOINT
   );
-  const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(subjectId));
+  const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(courseId));
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
@@ -2163,12 +2163,12 @@ export function KnowledgeDocsPage() {
   }, [renderedMarkdown]);
 
   useEffect(() => {
-    setViewPrefs(readKnowledgeDocsViewPrefs(subjectId));
-  }, [subjectId]);
+    setViewPrefs(readKnowledgeDocsViewPrefs(courseId));
+  }, [courseId]);
 
   useEffect(() => {
-    persistKnowledgeDocsViewPrefs(subjectId, viewPrefs);
-  }, [subjectId, viewPrefs]);
+    persistKnowledgeDocsViewPrefs(courseId, viewPrefs);
+  }, [courseId, viewPrefs]);
 
   useEffect(() => {
     const syncViewportWidth = () => {
@@ -2250,7 +2250,7 @@ export function KnowledgeDocsPage() {
     let cancelled = false;
 
     async function loadThreadHistory() {
-      if (!subjectId) {
+      if (!courseId) {
         setComments([]);
         setThreadSessionIds({});
         setSelectionHighlights([]);
@@ -2272,7 +2272,7 @@ export function KnowledgeDocsPage() {
           }
           const response = await apiClient<ApiResponse<PaginatedData<ThreadTurnItem>>>({
             method: "POST",
-            url: `/api/v1/subjects/${subjectId}/chats/threads/list`,
+            url: `/api/v1/courses/${courseId}/chats/threads/list`,
             data: {
               page,
               size: THREAD_HISTORY_PAGE_SIZE,
@@ -2355,7 +2355,7 @@ export function KnowledgeDocsPage() {
     return () => {
       cancelled = true;
     };
-  }, [subjectId, threadHistoryRefreshKey]);
+  }, [courseId, threadHistoryRefreshKey]);
 
   useEffect(() => {
     commentsRef.current = comments;
@@ -3081,7 +3081,7 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const handleQuickChatUpdated = (event: Event) => {
       const detail = (event as CustomEvent<QuickChatSyncEventDetail>).detail;
-      if (detail?.subjectId && !routeIdsEqual(detail.subjectId, subjectId)) {
+      if (detail?.courseId && !routeIdsEqual(detail.courseId, courseId)) {
         return;
       }
       if (!detail?.phase) {
@@ -3207,7 +3207,7 @@ export function KnowledgeDocsPage() {
 
     window.addEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
     return () => window.removeEventListener(QUICK_CHAT_UPDATED_EVENT, handleQuickChatUpdated);
-  }, [addSelectionHighlight, buildSelectionSegmentsFromText, rebindThreadIdToSession, subjectId]);
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, rebindThreadIdToSession, courseId]);
 
   const streamAssistantReply = useCallback(async (
     threadId: string,
@@ -3282,10 +3282,10 @@ export function KnowledgeDocsPage() {
     };
 
     try {
-      const subject = subjectId ?? "demo";
+      const course = courseId ?? "demo";
       const selectionContext = buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText);
       const result = await postSseJson(
-        `/api/v1/subjects/${subject}/chats/send`,
+        `/api/v1/courses/${course}/chats/send`,
         {
           question: text,
           source: "quick_chat",
@@ -3345,7 +3345,7 @@ export function KnowledgeDocsPage() {
         setThreadStreaming((prev) => ({ ...prev, [boundThreadId]: false }));
       }
     }
-  }, [rebindThreadIdToSession, subjectId, threadSessionIds]);
+  }, [rebindThreadIdToSession, courseId, threadSessionIds]);
 
   const addComment = useCallback(() => {
     if (!floatingInput.trim() || !floatingComment) return;
@@ -3375,7 +3375,7 @@ export function KnowledgeDocsPage() {
   ]);
 
   const openCommentComposer = useCallback(() => {
-    if (!floatingToolbar || !subjectId) return;
+    if (!floatingToolbar || !courseId) return;
     const toolbar = floatingToolbar;
     const threadId = createLocalThreadId(toolbar.anchorId);
     const segments = captureSelectionSegments();
@@ -3386,7 +3386,7 @@ export function KnowledgeDocsPage() {
     setIsAutoCommentHighlightSuppressed(false);
     const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
     openAiInteraction({
-      scope: { type: "subject", subjectId },
+      scope: { type: "course", courseId },
       sessionId: null,
       draft: "",
       source: "quick_chat",
@@ -3402,7 +3402,7 @@ export function KnowledgeDocsPage() {
     setFloatingComment(null);
     setFloatingInput("");
     clearSelectionHighlight({ keepStoredRange: true });
-  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, subjectId]);
+  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, courseId]);
 
   // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
@@ -3721,7 +3721,7 @@ export function KnowledgeDocsPage() {
   }, [buildSelectionSegmentsFromText, commentThreadById, expandCollapsedDocHeadingSections, flashHeading, selectionHighlights]);
 
   const jumpToSelectionLocation = useCallback((detail: SelectionJumpEventDetail): boolean => {
-    if (detail.subjectId && !routeIdsEqual(detail.subjectId, subjectId)) {
+    if (detail.courseId && !routeIdsEqual(detail.courseId, courseId)) {
       return true;
     }
     const anchorId = detail.anchorId?.trim() ?? "";
@@ -3786,7 +3786,7 @@ export function KnowledgeDocsPage() {
     }
 
     return false;
-  }, [addSelectionHighlight, buildSelectionSegmentsFromText, expandCollapsedDocHeadingSections, flashHeading, hasRenderedMarkdown, scrollToHeading, subjectId]);
+  }, [addSelectionHighlight, buildSelectionSegmentsFromText, expandCollapsedDocHeadingSections, flashHeading, hasRenderedMarkdown, scrollToHeading, courseId]);
 
   useEffect(() => {
     const handleSelectionJump = (event: Event) => {
@@ -4440,7 +4440,7 @@ export function KnowledgeDocsPage() {
     focusCommentThread(nextThreadId);
   }, [activeCommentIndex, commentThreadIds, focusCommentThread]);
   const openAiInteractionFromThread = useCallback((threadId?: string) => {
-    if (!subjectId) return;
+    if (!courseId) return;
     const targetThreadId = threadId ?? activeThreadId ?? commentThreadIds[0] ?? null;
     const targetThread = targetThreadId ? commentThreadById.get(targetThreadId) ?? null : null;
     const targetHighlight = targetThreadId
@@ -4452,7 +4452,7 @@ export function KnowledgeDocsPage() {
     if (targetSessionId) {
       if (anchorId && selectedText) {
         openAiInteraction({
-          scope: { type: "subject", subjectId },
+          scope: { type: "course", courseId },
           sessionId: targetSessionId,
           source: "quick_chat",
           anchorId,
@@ -4462,12 +4462,12 @@ export function KnowledgeDocsPage() {
         });
         return;
       }
-      openAiInteraction({ scope: { type: "subject", subjectId }, sessionId: targetSessionId });
+      openAiInteraction({ scope: { type: "course", courseId }, sessionId: targetSessionId });
       return;
     }
     if (targetThreadId && anchorId && selectedText) {
       openAiInteraction({
-        scope: { type: "subject", subjectId },
+        scope: { type: "course", courseId },
         sessionId: null,
         draft: "",
         source: "quick_chat",
@@ -4480,8 +4480,8 @@ export function KnowledgeDocsPage() {
       });
       return;
     }
-    openAiInteraction({ scope: { type: "subject", subjectId } });
-  }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, subjectId, threadSessionIds]);
+    openAiInteraction({ scope: { type: "course", courseId } });
+  }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, courseId, threadSessionIds]);
 
   const openSelectionHighlightThread = useCallback((threadId: string) => {
     if (viewPrefs.showCommentPanel && commentThreadById.has(threadId)) {
@@ -4951,7 +4951,7 @@ export function KnowledgeDocsPage() {
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
-  const showFloatingActions = Boolean(subjectId && !isBuildActive && !showDocGeneratingState && !isAssistantOpen);
+  const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocGeneratingState && !isAssistantOpen);
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
@@ -4966,7 +4966,7 @@ export function KnowledgeDocsPage() {
           sourceFilesFetching={sourceFilesFetching}
           buildStage={buildMeta?.stage}
           isDocumentReady={isRequestedBuildReady}
-          subjectId={subjectId}
+          courseId={courseId}
         />
       </div>
     );
@@ -5130,7 +5130,7 @@ export function KnowledgeDocsPage() {
                 className={cn("feishu-doc-content min-w-0 w-full", docColumnMaxWidthClass)}
               >
                 <article className="min-w-0 px-2 py-2 md:px-4">
-                  <SubjectVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  <CourseVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -5150,7 +5150,7 @@ export function KnowledgeDocsPage() {
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
                       isDocumentReady={isRequestedBuildReady}
-                      subjectId={subjectId}
+                      courseId={courseId}
                     />
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
@@ -5178,7 +5178,7 @@ export function KnowledgeDocsPage() {
                       )}
                       <DocMarkdown
                         content={renderedMarkdown}
-                        subjectId={subjectId}
+                        courseId={courseId}
                         headingNumbering={viewPrefs.autoHeadingNumbering}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
@@ -5290,8 +5290,8 @@ export function KnowledgeDocsPage() {
           className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl"
         >
           <div className="border-b border-slate-200/80 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">学科设置</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">仅作用于当前学科的知识文档阅读体验。</p>
+            <p className="text-sm font-semibold text-slate-900">课程设置</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">仅作用于当前课程的知识文档阅读体验。</p>
           </div>
           <div className="p-3">
             <button
@@ -5396,11 +5396,11 @@ export function KnowledgeDocsPage() {
           type="button"
           onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
           className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98]"
-          aria-label="打开学科设置"
+          aria-label="打开课程设置"
           aria-expanded={isSettingsPanelOpen}
         >
           <SlidersHorizontal className="h-4 w-4" />
-          <span className="hidden sm:inline">学科设置</span>
+          <span className="hidden sm:inline">课程设置</span>
         </button>
       )}
 
@@ -5425,7 +5425,7 @@ export function KnowledgeDocsPage() {
         ref={graphDrawerRef}
         className={cn(
           "fixed top-0 bottom-0 right-0 z-[84] bg-slate-50 border-l border-zinc-200/80 shadow-[0_0_40px_rgba(0,0,0,0.15)] flex",
-          isGraphDrawerOpen && subjectId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
+          isGraphDrawerOpen && courseId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
         style={{
@@ -5441,9 +5441,9 @@ export function KnowledgeDocsPage() {
           onMouseDown={handleGraphMouseDown}
         />
         <div className="flex-1 w-full h-full relative bg-slate-50 overflow-hidden shadow-inner flex flex-col">
-          {subjectId && isGraphDrawerOpen && (
+          {courseId && isGraphDrawerOpen && (
             <Suspense fallback={<GraphPanelFallback />}>
-              <KnowledgeGraphSidePanel subjectId={subjectId} onClose={closeGraphPanel} />
+              <KnowledgeGraphSidePanel courseId={courseId} onClose={closeGraphPanel} />
             </Suspense>
           )}
         </div>

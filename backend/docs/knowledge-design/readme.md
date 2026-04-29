@@ -152,7 +152,7 @@ CurriculumDeriveJob 在图谱构建完成后触发，而不是与图谱任务同
 
 项目知识体系必须遵守以下约束：
 
-* 同一 subject 同时只允许一个图谱构建任务运行
+* 同一 course 同时只允许一个图谱构建任务运行
 * 相同 idempotency_key 的请求必须幂等返回已有任务
 * 课程结构的发布必须是原子性的
 * 主题树挂载对象必须是 TeachingUnit，而不是 KnowledgeNode

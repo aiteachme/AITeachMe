@@ -104,7 +104,7 @@ interface BuildPlanLocationState {
 let messageCounter = 0;
 
 const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
-const storageKey = (subjectId: string) => `${STORAGE_PREFIX}:${subjectId}`;
+const storageKey = (courseId: string) => `${STORAGE_PREFIX}:${courseId}`;
 
 function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
   if (!import.meta.env.DEV) {
@@ -223,24 +223,24 @@ function settleAbortedPlannerMessages(
   return next;
 }
 
-function readPersistedPlannerState(subjectId: string): PersistedPlannerState | null {
-  if (!subjectId || typeof window === "undefined") {
+function readPersistedPlannerState(courseId: string): PersistedPlannerState | null {
+  if (!courseId || typeof window === "undefined") {
     return null;
   }
 
   try {
-    const key = storageKey(subjectId);
+    const key = storageKey(courseId);
     const raw =
       window.localStorage.getItem(key) ??
       window.sessionStorage.getItem(key);
-    logPlannerDebug("read_persisted_state", { subjectId, hasRaw: Boolean(raw) });
+    logPlannerDebug("read_persisted_state", { courseId, hasRaw: Boolean(raw) });
     if (!raw) {
       return null;
     }
     const parsed = JSON.parse(raw) as PersistedPlannerState;
     if (parsed.version !== PLANNER_STATE_VERSION) {
       logPlannerDebug("ignore_persisted_state", {
-        subjectId,
+        courseId,
         version: parsed.version,
       });
       return null;
@@ -250,16 +250,16 @@ function readPersistedPlannerState(subjectId: string): PersistedPlannerState | n
       messages: sanitizePlannerMessages(parsed.messages ?? []),
     };
   } catch {
-    logPlannerDebug("read_persisted_state_failed", { subjectId });
+    logPlannerDebug("read_persisted_state_failed", { courseId });
     return null;
   }
 }
 
-function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
-  if (!subjectId || typeof window === "undefined") {
+function persistPlannerState(courseId: string, value: PersistedPlannerState) {
+  if (!courseId || typeof window === "undefined") {
     return;
   }
-  const key = storageKey(subjectId);
+  const key = storageKey(courseId);
   const serialized = JSON.stringify({
     ...value,
     version: PLANNER_STATE_VERSION,
@@ -268,7 +268,7 @@ function persistPlannerState(subjectId: string, value: PersistedPlannerState) {
   window.localStorage.setItem(key, serialized);
   window.sessionStorage.setItem(key, serialized);
   logPlannerDebug("persist_state", {
-    subjectId,
+    courseId,
     messageCount: value.messages.length,
     plannerSessionId: value.plannerSessionId,
     hasCurrentPlan: Boolean(value.currentPlan),
@@ -537,13 +537,13 @@ function fileIcon(file: FileRecord) {
   return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
 }
 
-async function fetchFiles(subject: string): Promise<FilesData> {
+async function fetchFiles(course: string): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "GET",
-    url: `/api/v1/subjects/${subject}/files`,
+    url: `/api/v1/courses/${course}/files`,
   });
   return response.data ?? {
-    subject_id: subject,
+    course_id: course,
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -552,30 +552,30 @@ async function fetchFiles(subject: string): Promise<FilesData> {
   };
 }
 
-async function uploadFiles(subject: string, files: File[]): Promise<FilesUploadData> {
+async function uploadFiles(course: string, files: File[]): Promise<FilesUploadData> {
   const data = new FormData();
   files.forEach((file) => data.append("files", file));
 
   const response = await apiClient<ApiResponse<FilesUploadData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/upload`,
+    url: `/api/v1/courses/${course}/files/upload`,
     data,
   });
-  return response.data ?? { subject_id: subject, filenames: [], uploaded_items: [], started_parse_count: 0 };
+  return response.data ?? { course_id: course, filenames: [], uploaded_items: [], started_parse_count: 0 };
 }
 
-async function deleteFile(subject: string, id: string) {
+async function deleteFile(course: string, id: string) {
   await apiClient<ApiResponse<{ deleted_file_ids: string[] }>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/delete`,
+    url: `/api/v1/courses/${course}/files/delete`,
     data: { file_id: id },
   });
 }
 
-async function confirmPlannerSession(subject: string, sessionId: string) {
+async function confirmPlannerSession(course: string, sessionId: string) {
   const response = await apiClient<ApiResponse<BuildPlannerConfirmResponse>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/confirm`,
+    url: `/api/v1/courses/${course}/knowledge/build/plans/${sessionId}/confirm`,
   });
   if (!response.data) {
     throw new Error("确认构建方案失败。");
@@ -583,20 +583,20 @@ async function confirmPlannerSession(subject: string, sessionId: string) {
   return response.data;
 }
 
-async function recordPlannerAdjustClick(subject: string, sessionId: string) {
+async function recordPlannerAdjustClick(course: string, sessionId: string) {
   await apiClient<ApiResponse<Record<string, unknown>>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/adjust-click`,
+    url: `/api/v1/courses/${course}/knowledge/build/plans/${sessionId}/adjust-click`,
   });
 }
 
-async function cancelKnowledgeBuild(subject: string): Promise<DocGenBuildCancelData> {
+async function cancelKnowledgeBuild(course: string): Promise<DocGenBuildCancelData> {
   const response = await apiClient<ApiResponse<DocGenBuildCancelData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/knowledge/build/cancel`,
+    url: `/api/v1/courses/${course}/knowledge/build/cancel`,
   });
   return response.data ?? {
-    subject_id: subject,
+    course_id: course,
     status: "cancelled",
     cancelled_task_count: 0,
     message: "已终止当前知识构建。",
@@ -655,7 +655,7 @@ async function streamPlannerSession(
 }
 
 async function createPlannerSessionStream(
-  subject: string,
+  course: string,
   payload: { file_ids: string[]; user_prompt: string; model?: string },
   options: {
     signal?: AbortSignal;
@@ -664,14 +664,14 @@ async function createPlannerSessionStream(
   } = {},
 ) {
   return streamPlannerSession(
-    `/api/v1/subjects/${subject}/knowledge/build/plans/stream`,
+    `/api/v1/courses/${course}/knowledge/build/plans/stream`,
     payload,
     options,
   );
 }
 
 async function revisePlannerSessionStream(
-  subject: string,
+  course: string,
   sessionId: string,
   message: string,
   model: string | undefined,
@@ -682,7 +682,7 @@ async function revisePlannerSessionStream(
   } = {},
 ) {
   return streamPlannerSession(
-    `/api/v1/subjects/${subject}/knowledge/build/plans/${sessionId}/messages/stream`,
+    `/api/v1/courses/${course}/knowledge/build/plans/${sessionId}/messages/stream`,
     { message, model },
     options,
   );
@@ -698,7 +698,7 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
 }
 
 export function BuildPlanPage() {
-  const { subjectId = "" } = useParams();
+  const { courseId = "" } = useParams();
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -714,17 +714,17 @@ export function BuildPlanPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
-  const hydratedSubjectRef = useRef<string | null>(null);
-  const localInteractionSubjectRef = useRef<string | null>(null);
+  const hydratedCourseRef = useRef<string | null>(null);
+  const localInteractionCourseRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const plannerPendingMessageIdRef = useRef<string | null>(null);
   const autoStartFiredRef = useRef(false);
 
   const markPlannerLocalInteraction = useCallback(() => {
-    localInteractionSubjectRef.current = subjectId;
-    hydratedSubjectRef.current = subjectId;
-  }, [subjectId]);
+    localInteractionCourseRef.current = courseId;
+    hydratedCourseRef.current = courseId;
+  }, [courseId]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
@@ -739,9 +739,9 @@ export function BuildPlanPage() {
   const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
-    queryKey: ["files", subjectId],
-    queryFn: () => fetchFiles(subjectId),
-    enabled: Boolean(subjectId),
+    queryKey: ["files", courseId],
+    queryFn: () => fetchFiles(courseId),
+    enabled: Boolean(courseId),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? [];
       return items.some((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()) ? 1500 : false;
@@ -749,9 +749,9 @@ export function BuildPlanPage() {
   });
 
   const knowledgeDocState = useQuery({
-    queryKey: [...buildKnowledgeDocStateQueryKey(subjectId), requestedAt],
-    queryFn: () => fetchKnowledgeDocState(subjectId),
-    enabled: Boolean(subjectId),
+    queryKey: [...buildKnowledgeDocStateQueryKey(courseId), requestedAt],
+    queryFn: () => fetchKnowledgeDocState(courseId),
+    enabled: Boolean(courseId),
     retry: false,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -784,9 +784,9 @@ export function BuildPlanPage() {
   });
 
   const buildRuntimeQuery = useQuery({
-    queryKey: [...buildKnowledgeBuildRuntimeQueryKey(subjectId), requestedAt],
-    queryFn: () => fetchKnowledgeBuildRuntime(subjectId),
-    enabled: Boolean(subjectId),
+    queryKey: [...buildKnowledgeBuildRuntimeQueryKey(courseId), requestedAt],
+    queryFn: () => fetchKnowledgeBuildRuntime(courseId),
+    enabled: Boolean(courseId),
     retry: false,
     refetchInterval: (query) => {
       const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
@@ -866,7 +866,7 @@ export function BuildPlanPage() {
   });
 
   useEffect(() => {
-    if (!subjectId) {
+    if (!courseId) {
       return;
     }
     let cancelled = false;
@@ -874,18 +874,18 @@ export function BuildPlanPage() {
     // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
     // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，
     // 否则异步恢复结果会把本地插入的 assistant 占位消息覆盖掉。
-    if (localInteractionSubjectRef.current === subjectId) {
-      logPlannerDebug("skip_restore_after_local_interaction", { subjectId });
+    if (localInteractionCourseRef.current === courseId) {
+      logPlannerDebug("skip_restore_after_local_interaction", { courseId });
       return;
     }
 
-    hydratedSubjectRef.current = null;
+    hydratedCourseRef.current = null;
 
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
-    const persisted = readPersistedPlannerState(subjectId);
+    const persisted = readPersistedPlannerState(courseId);
     if (persisted?.plannerSessionId && persisted.messages?.length) {
       logPlannerDebug("restore_from_local_storage", {
-        subjectId,
+        courseId,
         plannerSessionId: persisted.plannerSessionId,
         messageCount: persisted.messages.length,
         hasCurrentPlan: Boolean(persisted.currentPlan),
@@ -897,23 +897,23 @@ export function BuildPlanPage() {
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       setIsRevisingPlan(false);
-      hydratedSubjectRef.current = subjectId;
+      hydratedCourseRef.current = courseId;
       return;
     }
 
     // 本地没有可用缓存时，从后端恢复最近一次 planner 会话。
     async function restoreFromServer() {
       try {
-        logPlannerDebug("restore_latest_request", { subjectId });
+        logPlannerDebug("restore_latest_request", { courseId });
         const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
           method: "POST",
-          url: `/api/v1/subjects/${subjectId}/knowledge/build/plans/latest`,
+          url: `/api/v1/courses/${courseId}/knowledge/build/plans/latest`,
         });
-        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
+        if (cancelled || localInteractionCourseRef.current === courseId) return;
         const session = response.data;
         if (!session || !session.turns?.length) {
           logPlannerDebug("restore_latest_empty", {
-            subjectId,
+            courseId,
             found: Boolean(session),
           });
           // No server history either — fresh start
@@ -924,13 +924,13 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
           setIsRevisingPlan(false);
-          hydratedSubjectRef.current = subjectId;
+          hydratedCourseRef.current = courseId;
           return;
         }
 
         // 用后端 turns 重建聊天记录。
         logPlannerDebug("restore_latest_success", {
-          subjectId,
+          courseId,
           plannerSessionId: session.session_id,
           turnCount: session.turns.length,
           hasLatestPlan: Boolean(session.latest_plan),
@@ -952,11 +952,11 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        hydratedSubjectRef.current = subjectId;
+        hydratedCourseRef.current = courseId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
-        if (cancelled || localInteractionSubjectRef.current === subjectId) return;
-        logPlannerDebug("restore_latest_failed", { subjectId });
+        if (cancelled || localInteractionCourseRef.current === courseId) return;
+        logPlannerDebug("restore_latest_failed", { courseId });
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
         setCurrentPlan(null);
@@ -964,14 +964,14 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
         setIsRevisingPlan(false);
-        hydratedSubjectRef.current = subjectId;
+        hydratedCourseRef.current = courseId;
       }
     }
 
     void restoreFromServer();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectId]);
+  }, [courseId]);
 
   useEffect(() => {
     plannerSessionIdRef.current = plannerSessionId;
@@ -979,25 +979,25 @@ export function BuildPlanPage() {
   }, [plannerSessionId, currentPlan]);
 
   useEffect(() => {
-    if (!subjectId || hydratedSubjectRef.current !== subjectId) {
+    if (!courseId || hydratedCourseRef.current !== courseId) {
       return;
     }
-    persistPlannerState(subjectId, {
+    persistPlannerState(courseId, {
       messages,
       plannerSessionId,
       currentPlan,
       inputValue,
       plannerNeedsRefresh,
     });
-  }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, subjectId]);
+  }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
 
   useEffect(() => {
-    if (hydratedSubjectRef.current !== subjectId || !currentPlan) {
+    if (hydratedCourseRef.current !== courseId || !currentPlan) {
       return;
     }
     const selected = currentPlan.selected_file_ids ?? [];
     setPlannerNeedsRefresh(selected.length > 0 && !sameStringSet(selected, plannerFileIds));
-  }, [currentPlan, plannerFileIds, subjectId]);
+  }, [currentPlan, plannerFileIds, courseId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1008,7 +1008,7 @@ export function BuildPlanPage() {
     if (
       !navState?.autoStart ||
       autoStartFiredRef.current ||
-      !subjectId ||
+      !courseId ||
       plannerSessionId ||
       plannerStreaming
     ) {
@@ -1043,7 +1043,7 @@ export function BuildPlanPage() {
       try {
         const selectedModel = toChatRequestModel(chatModel);
         const response = await createPlannerSessionStream(
-          subjectId,
+          courseId,
           { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
           {
             signal: controller.signal,
@@ -1093,12 +1093,12 @@ export function BuildPlanPage() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markPlannerLocalInteraction, subjectId, navState?.autoStart, plannerSessionId, plannerStreaming]);
+  }, [markPlannerLocalInteraction, courseId, navState?.autoStart, plannerSessionId, plannerStreaming]);
 
   const uploadMutation = useMutation({
-    mutationFn: (selected: File[]) => uploadFiles(subjectId, selected),
+    mutationFn: (selected: File[]) => uploadFiles(courseId, selected),
     onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       if (data.filenames.length > 0) {
         markPlannerLocalInteraction();
         setMessages((prev) => [
@@ -1141,24 +1141,24 @@ export function BuildPlanPage() {
   }, [toast, uploadMutation]);
 
   const deleteMutation = useMutation({
-    mutationFn: (fileId: string) => deleteFile(subjectId, fileId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", subjectId] }),
+    mutationFn: (fileId: string) => deleteFile(courseId, fileId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["files", courseId] }),
   });
 
   const confirmPlannerMutation = useMutation({
-    mutationFn: (sessionId: string) => confirmPlannerSession(subjectId, sessionId),
+    mutationFn: (sessionId: string) => confirmPlannerSession(courseId, sessionId),
   });
 
   const cancelBuildMutation = useMutation({
-    mutationFn: () => cancelKnowledgeBuild(subjectId),
+    mutationFn: () => cancelKnowledgeBuild(courseId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
-      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(courseId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
     },
   });
 
   const knowledgeBuild = useKnowledgeBuildFlow({
-    subjectId,
+    courseId,
     buildType: "docs",
     buildRequest: () => ({
       file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
@@ -1167,8 +1167,8 @@ export function BuildPlanPage() {
     }),
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
-      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(subjectId) });
-      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(subjectId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(courseId) });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
       toast({
         title: "已开始构建知识文档",
         description:
@@ -1192,7 +1192,7 @@ export function BuildPlanPage() {
 
       navigate(
         {
-          pathname: `/subject/${subjectId}/knowledge-docs`,
+          pathname: `/course/${courseId}/knowledge-docs`,
           search: params.toString() ? `?${params.toString()}` : "",
         },
         {
@@ -1238,14 +1238,14 @@ export function BuildPlanPage() {
 
   const handleContinueAdjust = useCallback(() => {
     logPlannerDebug("click_adjust_plan", {
-      subjectId,
+      courseId,
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
     });
-    if (subjectId && plannerSessionId && currentPlan) {
-      void recordPlannerAdjustClick(subjectId, plannerSessionId).catch((error) => {
+    if (courseId && plannerSessionId && currentPlan) {
+      void recordPlannerAdjustClick(courseId, plannerSessionId).catch((error) => {
         logPlannerDebug("record_adjust_click_failed", {
-          subjectId,
+          courseId,
           plannerSessionId,
           error: getApiErrorMessage(error),
         });
@@ -1254,15 +1254,15 @@ export function BuildPlanPage() {
     setIsRevisingPlan(true);
     setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
     focusComposer();
-  }, [currentPlan, focusComposer, plannerSessionId, subjectId]);
+  }, [currentPlan, focusComposer, plannerSessionId, courseId]);
 
   const handleStopPlannerStream = useCallback(() => {
     logPlannerDebug("click_stop_plan_message", {
-      subjectId,
+      courseId,
       plannerSessionId,
     });
     plannerAbortControllerRef.current?.abort();
-  }, [plannerSessionId, subjectId]);
+  }, [plannerSessionId, courseId]);
 
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
@@ -1273,7 +1273,7 @@ export function BuildPlanPage() {
       setCurrentPlan(response.latest_plan);
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
-      void queryClient.invalidateQueries({ queryKey: ["subjects"] });
+      void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {
         if (pendingId) {
           return replaceMessageById(prev, pendingId, (message) => ({
@@ -1301,18 +1301,18 @@ export function BuildPlanPage() {
 
 
   const handleOpenKnowledgeDocs = useCallback(() => {
-    if (!subjectId) {
+    if (!courseId) {
       return;
     }
-    navigate(`/subject/${subjectId}/knowledge-docs${location.search}`);
-  }, [location.search, navigate, subjectId]);
+    navigate(`/course/${courseId}/knowledge-docs${location.search}`);
+  }, [location.search, navigate, courseId]);
 
   const handleCancelBuild = useCallback(() => {
-    if (!subjectId || cancelBuildMutation.isPending) {
+    if (!courseId || cancelBuildMutation.isPending) {
       return;
     }
     cancelBuildMutation.mutate();
-  }, [cancelBuildMutation, subjectId]);
+  }, [cancelBuildMutation, courseId]);
 
   const handleSend = useCallback(async () => {
     if (plannerStreaming) {
@@ -1321,7 +1321,7 @@ export function BuildPlanPage() {
     }
     const text = inputValue.trim();
     logPlannerDebug("click_send_plan_message", {
-      subjectId,
+      courseId,
       hasText: Boolean(text),
       isPlannerPending,
       isBuilding,
@@ -1340,7 +1340,7 @@ export function BuildPlanPage() {
 
     const shouldCreateSession = !plannerSessionId || !currentPlan || plannerNeedsRefresh;
     logPlannerDebug("send_plan_message_start", {
-      subjectId,
+      courseId,
       mode: shouldCreateSession ? "create" : "revise",
       plannerSessionId,
       effectiveFileCount: plannerEffectiveFileIds.length,
@@ -1369,7 +1369,7 @@ export function BuildPlanPage() {
     try {
       if (shouldCreateSession) {
         const response = await createPlannerSessionStream(
-          subjectId,
+          courseId,
           {
             file_ids: plannerEffectiveFileIds,
             user_prompt: text,
@@ -1387,7 +1387,7 @@ export function BuildPlanPage() {
           },
         );
         logPlannerDebug("create_planner_response", {
-          subjectId,
+          courseId,
           plannerSessionId: response.session_id,
           chapterCount: response.latest_plan?.chapter_plan?.length ?? 0,
           runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
@@ -1400,7 +1400,7 @@ export function BuildPlanPage() {
         return;
       }
 
-      const response = await revisePlannerSessionStream(subjectId, plannerSessionId, text, toChatRequestModel(chatModel), {
+      const response = await revisePlannerSessionStream(courseId, plannerSessionId, text, toChatRequestModel(chatModel), {
         signal: controller.signal,
         onStatus: (payload) => {
           setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -1411,7 +1411,7 @@ export function BuildPlanPage() {
         },
       });
       logPlannerDebug("revise_planner_response", {
-        subjectId,
+        courseId,
         plannerSessionId: response.session_id,
         chapterCount: response.latest_plan?.chapter_plan?.length ?? 0,
         runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
@@ -1423,7 +1423,7 @@ export function BuildPlanPage() {
       );
     } catch (error) {
       if (isAbortError(error)) {
-        logPlannerDebug("send_plan_message_aborted", { subjectId });
+        logPlannerDebug("send_plan_message_aborted", { courseId });
         const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
         setMessages((prev) => settleAbortedPlannerMessages(
           prev,
@@ -1436,7 +1436,7 @@ export function BuildPlanPage() {
         return;
       }
       logPlannerDebug("send_plan_message_failed", {
-        subjectId,
+        courseId,
         error: getApiErrorMessage(error, "unknown"),
       });
       setMessages((prev) => {
@@ -1471,12 +1471,12 @@ export function BuildPlanPage() {
     plannerStreaming,
     readyFileIds.length,
     markPlannerLocalInteraction,
-    subjectId,
+    courseId,
   ]);
 
   const handleConfirmBuild = useCallback(async () => {
     logPlannerDebug("click_confirm_build", {
-      subjectId,
+      courseId,
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
       isPlannerPending,
@@ -1503,7 +1503,7 @@ export function BuildPlanPage() {
     try {
       const response = await confirmPlannerMutation.mutateAsync(plannerSessionId);
       logPlannerDebug("confirm_build_response", {
-        subjectId,
+        courseId,
         plannerSessionId,
         confirmedPlanId: response.confirmed_plan_id,
       });
@@ -1516,7 +1516,7 @@ export function BuildPlanPage() {
       });
     } catch (error) {
       logPlannerDebug("confirm_build_failed", {
-        subjectId,
+        courseId,
         error: getApiErrorMessage(error, "unknown"),
       });
       setMessages((prev) => [
@@ -1536,7 +1536,7 @@ export function BuildPlanPage() {
   ]);
 
   useEffect(() => {
-    if (!navState?.initialFiles?.length || hasAutoUploaded || !subjectId) {
+    if (!navState?.initialFiles?.length || hasAutoUploaded || !courseId) {
       return;
     }
     setHasAutoUploaded(true);
@@ -1551,7 +1551,7 @@ export function BuildPlanPage() {
     navState?.initialFiles,
     navState?.initialPrompt,
     navigate,
-    subjectId,
+    courseId,
     queueUploadFiles,
   ]);
 

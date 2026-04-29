@@ -17,7 +17,7 @@ class ChatMessage(SQLModel, table=True):
     __tablename__ = "chat_message"
 
     id: int | None = Field(default=None, primary_key=True)
-    subject_id: str = Field(index=True)
+    course_id: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     session_id: str = Field(foreign_key="chat_session.id", index=True)
     turn_id: str = Field(index=True)
@@ -38,7 +38,7 @@ class ChatSession(SQLModel, table=True):
     __tablename__ = "chat_session"
 
     id: str = Field(primary_key=True)
-    subject_id: str = Field(index=True)
+    course_id: str = Field(index=True)
     user_id: str = Field(default="local", index=True)
     title: str = Field(default="New Chat")
     source: str | None = Field(default=None, index=True)

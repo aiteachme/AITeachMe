@@ -2,10 +2,10 @@
 
 from app.workflows.ingest.intake.catalog import (
     build_file_record,
-    get_subject_file_or_raise,
-    get_subject_files_or_raise,
+    get_course_file_or_raise,
+    get_course_files_or_raise,
     get_user_files_or_raise,
-    list_subject_files,
+    list_course_files,
     list_user_files,
 )
 from app.workflows.ingest.intake.deletion import delete_files, delete_user_files
@@ -20,10 +20,10 @@ __all__ = [
     "build_file_record",
     "delete_files",
     "delete_user_files",
-    "get_subject_file_or_raise",
-    "get_subject_files_or_raise",
+    "get_course_file_or_raise",
+    "get_course_files_or_raise",
     "get_user_files_or_raise",
-    "list_subject_files",
+    "list_course_files",
     "list_user_files",
     "run_parse_files_background",
     "save_uploaded_file",

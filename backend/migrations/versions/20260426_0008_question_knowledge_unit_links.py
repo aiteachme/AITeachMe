@@ -105,8 +105,8 @@ def upgrade() -> None:
         """
     )
 
-    op.drop_constraint("uq_template_subject_node_stem", "question_template", type_="unique")
-    op.create_unique_constraint("uq_template_subject_stem", "question_template", ["subject", "stem_hash"])
+    op.drop_constraint("uq_template_course_node_stem", "question_template", type_="unique")
+    op.create_unique_constraint("uq_template_course_stem", "question_template", ["course", "stem_hash"])
     op.execute(
         sa.text(
             "ALTER TABLE question_template DROP COLUMN knowledge_unit_refs_json "
@@ -192,6 +192,6 @@ def downgrade() -> None:
         """
     )
 
-    op.drop_constraint("uq_template_subject_stem", "question_template", type_="unique")
-    op.create_unique_constraint("uq_template_subject_node_stem", "question_template", ["subject", "knowledge_unit_id", "stem_hash"])
+    op.drop_constraint("uq_template_course_stem", "question_template", type_="unique")
+    op.create_unique_constraint("uq_template_course_node_stem", "question_template", ["course", "knowledge_unit_id", "stem_hash"])
     op.drop_table("question_knowledge_unit_link")

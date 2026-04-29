@@ -154,7 +154,7 @@ Core Requirements:
 5. **Quality Assurance**:
    - Absolutely forbidden to hallucinate or add content not present in the original image
    - Mark unclear or unrecognizable content with [unclear]
-   - Maintain professionalism, no subjective comments or greetings
+   - Maintain professionalism, no courseive comments or greetings
 
 Output Format:
 - Output Markdown content directly

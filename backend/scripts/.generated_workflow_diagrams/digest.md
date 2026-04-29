@@ -316,7 +316,7 @@ Mindmap rendering prompt used by DocGen.
 - 标题：{{ chunk_title }}
 - 标题路径：{{ header_path }}
 {% if doc_source_type %}- 文档类型：{{ doc_source_type }}{% endif %}
-{% if subject_context %}- 学科上下文：{{ subject_context }}{% endif %}
+{% if course_context %}- 课程上下文：{{ course_context }}{% endif %}
 {% if sibling_topics %}- 同级主题：{{ sibling_topics }}{% endif %}
 {% if digest_mode == "sprint" %}- 构建模式：冲刺课，重点关注方法、题型与常见错误{% endif %}
 {% if digest_mode == "systematic" %}- 构建模式：系统课，重点关注概念完整性、定义严谨性与前置链路{% endif %}
@@ -422,7 +422,7 @@ Mindmap rendering prompt used by DocGen.
 <summary><b>Knowledge Theme Tree User</b> (<code>knowledge_theme_tree_user</code>)</summary>
 
 ```
-## 学科：{{ subject }}
+## 课程：{{ course }}
 
 ## 教学单元
 

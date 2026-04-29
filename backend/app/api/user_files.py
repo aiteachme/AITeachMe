@@ -84,13 +84,13 @@ async def upload_user_files(
 
     data, parse_file_ids = await save_uploaded_files_and_request_parse(
         session,
-        subject_id=None,
+        course_id=None,
         owner_user_id=user.user_id,
         files=files,
         parse_request_metadata=parse_request_metadata,
     )
     if parse_file_ids:
-        registry_subject = f"files:{user.user_id}"
+        registry_course = f"files:{user.user_id}"
         request.app.state.background_task_registry.spawn(
             run_parse_files_background(
                 user_id=user.user_id,
@@ -98,8 +98,8 @@ async def upload_user_files(
                 background_task_registry=request.app.state.background_task_registry,
             ),
             kind="files.parse",
-            subject_id=registry_subject,
-            name=f"files.parse:{registry_subject}",
+            course_id=registry_course,
+            name=f"files.parse:{registry_course}",
         )
     return ok_response(data)
 

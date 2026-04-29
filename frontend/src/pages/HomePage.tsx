@@ -23,7 +23,7 @@ import {
   Package,
 } from "lucide-react";
 
-import { createSubjectApiApiV1SubjectsAddPost } from "../api/generated/subjects";
+import { createCourseApiApiV1CoursesAddPost } from "../api/generated/courses";
 import { apiClient, getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
@@ -36,10 +36,10 @@ import {
   partitionUploadFiles,
 } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
-import { notifySubjectsImported } from "../lib/subjectEvents";
+import { notifyCoursesImported } from "../lib/courseEvents";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
-import { SubjectExportModal } from "../components/subject/SubjectExportModal";
+import { CourseExportModal } from "../components/course/CourseExportModal";
 import { useToast } from "../components/ui/Toast";
 import {
   ChatModelSelect,
@@ -73,7 +73,7 @@ async function fetchFiles(fileIds: string[]): Promise<FilesData> {
     url: `/api/v1/files${query ? `?${query}` : ""}`,
   });
   return response.data ?? {
-    subject_id: null,
+    course_id: null,
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -82,10 +82,10 @@ async function fetchFiles(fileIds: string[]): Promise<FilesData> {
   };
 }
 
-async function linkFilesToSubject(subject: string, fileIds: string[]): Promise<FilesData> {
+async function linkFilesToCourse(course: string, fileIds: string[]): Promise<FilesData> {
   const response = await apiClient<ApiResponse<FilesData>>({
     method: "POST",
-    url: `/api/v1/subjects/${subject}/files/link`,
+    url: `/api/v1/courses/${course}/files/link`,
     data: { file_ids: fileIds },
   });
   return response.data;
@@ -94,8 +94,8 @@ async function linkFilesToSubject(subject: string, fileIds: string[]): Promise<F
 /* ── Export / Import API helpers ── */
 
 interface ImportResultData {
-  subject_id: string;
-  subject_name: string;
+  course_id: string;
+  course_name: string;
   imported_counts: Record<string, number>;
   warnings: string[];
 }
@@ -104,37 +104,37 @@ interface ImportResultData {
 
 interface CoursePackageItem {
   filename: string;
-  subject_name: string;
+  course_name: string;
   file_size_bytes: number;
   exported_at: string | null;
   stats: Record<string, number>;
 }
 
-async function fetchAvailableCourses(): Promise<CoursePackageItem[]> {
+async function fetchDemoCourses(): Promise<CoursePackageItem[]> {
   const response = await apiClient<ApiResponse<CoursePackageItem[]>>({
     method: "GET",
-    url: `/api/v1/courses`,
+    url: `/api/v1/demo-courses`,
   });
   return response.data;
 }
 
-async function importCourseByFilename(filename: string, newName?: string): Promise<ImportResultData> {
+async function importDemoCourse(identifier: string, newName?: string): Promise<ImportResultData> {
   const response = await apiClient<ApiResponse<ImportResultData>>({
     method: "POST",
-    url: `/api/v1/courses/${encodeURIComponent(filename)}/import`,
-    data: newName ? { new_subject_name: newName } : {},
+    url: `/api/v1/demo-courses/${encodeURIComponent(identifier)}/import`,
+    data: newName ? { new_course_name: newName } : {},
     timeout: 120000,
   });
   return response.data;
 }
 
-async function importSubject(file: File, newName?: string): Promise<ImportResultData> {
+async function importCourse(file: File, newName?: string): Promise<ImportResultData> {
   const formData = new FormData();
   formData.append("file", file);
-  if (newName) formData.append("new_subject_name", newName);
+  if (newName) formData.append("new_course_name", newName);
   const response = await apiClient<ApiResponse<ImportResultData>>({
     method: "POST",
-    url: `/api/v1/subjects/import`,
+    url: `/api/v1/courses/import`,
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 120000,
@@ -273,7 +273,7 @@ function LibraryPickerModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">从资料库选择</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入这次新建学科</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入这次新建课程</p>
             </div>
           </div>
           <button
@@ -429,7 +429,7 @@ function ImportModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const importMutation = useMutation({
-    mutationFn: () => importSubject(selectedFile!, customName.trim() || undefined),
+    mutationFn: () => importCourse(selectedFile!, customName.trim() || undefined),
     onSuccess: (result) => { onSuccess(result); onClose(); },
   });
 
@@ -448,8 +448,8 @@ function ImportModal({
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入学科</h3>
-              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的学科</p>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入课程</h3>
+              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的课程</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
@@ -508,7 +508,7 @@ function ImportModal({
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义学科名称（可选）</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义课程名称（可选）</label>
             <input
               type="text"
               value={customName}
@@ -552,12 +552,12 @@ function ImportModal({
 /* ── Rename Modal ── */
 
 function RenameModal({
-  subjectId,
+  courseId,
   initialName,
   onClose,
   onSuccess,
 }: {
-  subjectId: string;
+  courseId: string;
   initialName: string;
   onClose: () => void;
   onSuccess: () => void;
@@ -568,8 +568,8 @@ function RenameModal({
     mutationFn: async () => {
       await apiClient({
         method: "POST",
-        url: `/api/v1/subjects/update`,
-        data: { subject_id: subjectId, name: name.trim() },
+        url: `/api/v1/courses/update`,
+        data: { course_id: courseId, name: name.trim() },
       });
     },
     onSuccess: () => { onSuccess(); onClose(); },
@@ -585,7 +585,7 @@ function RenameModal({
         className="relative z-10 w-[420px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
-          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">重命名课程</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
             <X className="w-5 h-5" />
           </button>
@@ -596,7 +596,7 @@ function RenameModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) renameMutation.mutate(); }}
-            placeholder="输入学科名称"
+            placeholder="输入课程名称"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
             autoFocus
           />
@@ -640,8 +640,8 @@ export function HomePage() {
   const settingsOverview = useSystemSettingsOverview();
 
   const [prompt, setPrompt] = useState("");
-  const [draftSubjectId, setDraftSubjectId] = useState<string | null>(null);
-  const [isCreatingDraftSubject, setIsCreatingDraftSubject] = useState(false);
+  const [draftCourseId, setDraftCourseId] = useState<string | null>(null);
+  const [isCreatingDraftCourse, setIsCreatingDraftCourse] = useState(false);
   const [isStartingBuild, setIsStartingBuild] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
@@ -651,7 +651,7 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   // Modal state
-  const [exportSubjectId, setExportSubjectId] = useState<string | null>(null);
+  const [exportCourseId, setExportCourseId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
@@ -662,8 +662,8 @@ export function HomePage() {
       return;
     }
     setPrompt("");
-    setDraftSubjectId(null);
-    setIsCreatingDraftSubject(false);
+    setDraftCourseId(null);
+    setIsCreatingDraftCourse(false);
     setIsStartingBuild(false);
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
@@ -687,25 +687,25 @@ export function HomePage() {
     },
   });
 
-  // ── Courses query ──
+  // ── Demo courses query ──
   const shouldShowDemoCourses = settingsOverview?.mode === "cloud";
-  const { data: courses = [], isLoading: coursesLoading } = useQuery({
-    queryKey: ["available-courses"],
-    queryFn: fetchAvailableCourses,
+  const { data: demoCourses = [], isLoading: demoCoursesLoading } = useQuery({
+    queryKey: ["available-demo-courses"],
+    queryFn: fetchDemoCourses,
     enabled: shouldShowDemoCourses,
   });
 
   const courseImportMutation = useMutation({
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
-      importCourseByFilename(filename, newName),
+      importDemoCourse(filename, newName),
     onSuccess: (result) => {
       setError(null);
-      notifySubjectsImported({ subjectId: result.subject_id });
-      queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      queryClient.invalidateQueries({ queryKey: ["available-courses"] });
+      notifyCoursesImported({ courseId: result.course_id });
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
       toast({
         title: "导入成功",
-        description: `${result.subject_name} 已加入左侧学科列表。`,
+        description: `${result.course_name} 已加入左侧课程列表。`,
         variant: "success",
       });
     },
@@ -721,29 +721,29 @@ export function HomePage() {
   });
 
   // ── Mutations ──
-  const ensureDraftSubjectId = useCallback(async () => {
-    if (draftSubjectId) {
-      return draftSubjectId;
+  const ensureDraftCourseId = useCallback(async () => {
+    if (draftCourseId) {
+      return draftCourseId;
     }
-    setIsCreatingDraftSubject(true);
+    setIsCreatingDraftCourse(true);
     try {
       const created = unwrapOrvalResponse(
-        await createSubjectApiApiV1SubjectsAddPost({ name: "" })
+        await createCourseApiApiV1CoursesAddPost({ name: "" })
       );
       if (!created) {
-        throw new Error("创建学科失败");
+        throw new Error("创建课程失败");
       }
-      setDraftSubjectId(created.subject_id);
-      await queryClient.invalidateQueries({ queryKey: ["subjects"] });
-      return created.subject_id;
+      setDraftCourseId(created.course_id);
+      await queryClient.invalidateQueries({ queryKey: ["courses"] });
+      return created.course_id;
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
       setError(message);
       throw new Error(message);
     } finally {
-      setIsCreatingDraftSubject(false);
+      setIsCreatingDraftCourse(false);
     }
-  }, [draftSubjectId, queryClient]);
+  }, [draftCourseId, queryClient]);
 
   const syncEntryFilesCache = useCallback((fileIds: string[], uploaded: FileRecord[]) => {
     queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileIds), (previous) => {
@@ -758,7 +758,7 @@ export function HomePage() {
           Date.parse(left.latest_updated_at || left.created_at || ""),
       );
       return {
-        subject_id: null,
+        course_id: null,
         total: nextItems.length,
         ready_count: nextItems.filter((item) => item.markdown_ready).length,
         processing_count: nextItems.filter((item) => !item.markdown_ready && item.status !== "failed" && !item.error_message?.trim()).length,
@@ -818,7 +818,7 @@ export function HomePage() {
   );
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
-    if (isCreatingDraftSubject) {
+    if (isCreatingDraftCourse) {
       return "正在创建学习空间，并关联已选择资料。";
     }
     if (isUploadingFiles) {
@@ -848,7 +848,7 @@ export function HomePage() {
       return `${failedCount} 份资料处理失败；你可以先从本次新建中移除。`;
     }
     return "资料已加入，会继续在后台解析；从这里移除不会删除资料库文件。";
-  }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isCreatingDraftSubject, isUploadingFiles, uploadedFiles]);
+  }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isCreatingDraftCourse, isUploadingFiles, uploadedFiles]);
   const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
   const handleGenerate = async () => {
@@ -856,21 +856,21 @@ export function HomePage() {
     setError(null);
     setIsStartingBuild(true);
     try {
-      const subjectId = await ensureDraftSubjectId();
+      const courseId = await ensureDraftCourseId();
       if (entryFileIds.length > 0) {
-        await linkFilesToSubject(subjectId, entryFileIds);
-        await queryClient.invalidateQueries({ queryKey: ["subjects"] });
-        await queryClient.invalidateQueries({ queryKey: ["files", subjectId] });
+        await linkFilesToCourse(courseId, entryFileIds);
+        await queryClient.invalidateQueries({ queryKey: ["courses"] });
+        await queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       }
       const userGoal = prompt.trim();
       const selectedModel = toChatRequestModel(chatModel);
-      navigate(`/subject/${subjectId}/build`, {
+      navigate(`/course/${courseId}/build`, {
         state: userGoal || selectedModel
           ? { initialPrompt: userGoal || undefined, autoStart: Boolean(userGoal), model: selectedModel }
           : undefined,
       });
     } catch {
-      // ensureDraftSubjectId already writes user-facing error
+      // ensureDraftCourseId already writes user-facing error
     } finally {
       setIsStartingBuild(false);
     }
@@ -913,9 +913,9 @@ export function HomePage() {
     }
   }, [entryFileIds, syncEntryFilesCache, uploadedFiles]);
 
-  const isWorking = isCreatingDraftSubject || isStartingBuild || isUploadingFiles;
-  const hasDemoCourses = shouldShowDemoCourses && courses.length > 0;
-  const shouldShowDemoCourseSection = shouldShowDemoCourses && (coursesLoading || hasDemoCourses);
+  const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
+  const hasDemoCourses = shouldShowDemoCourses && demoCourses.length > 0;
+  const shouldShowDemoCourseSection = shouldShowDemoCourses && (demoCoursesLoading || hasDemoCourses);
 
   return (
     <>
@@ -923,7 +923,7 @@ export function HomePage() {
       onDrop={(droppedFiles) => {
         handleFileDrop(droppedFiles);
       }}
-      disabled={isWorking || Boolean(exportSubjectId) || importOpen || libraryPickerOpen || Boolean(renameTarget)}
+      disabled={isWorking || Boolean(exportCourseId) || importOpen || libraryPickerOpen || Boolean(renameTarget)}
     />
     <div
       className={cn(
@@ -998,7 +998,7 @@ export function HomePage() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               rows={3}
-              disabled={isCreatingDraftSubject}
+              disabled={isCreatingDraftCourse}
             />
 
             <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
@@ -1062,7 +1062,7 @@ export function HomePage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
-                    {isUploadingFiles || isCreatingDraftSubject ? (
+                    {isUploadingFiles || isCreatingDraftCourse ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Paperclip className="h-3.5 w-3.5" />
@@ -1082,7 +1082,7 @@ export function HomePage() {
                   {isWorking && (
                     <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      {isStartingBuild || isCreatingDraftSubject ? "正在创建学习空间..." : "正在上传并解析资料..."}
+                      {isStartingBuild || isCreatingDraftCourse ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
@@ -1145,7 +1145,7 @@ export function HomePage() {
             <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800 dark:text-slate-500 dark:group-hover:text-slate-300">
               <Package className="h-4 w-4" />
               演示课程
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{demoCourses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -1170,7 +1170,7 @@ export function HomePage() {
                   <button
                     onClick={() => setImportOpen(true)}
                     className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                    title="从文件导入学科包"
+                    title="从文件导入课程包"
                   >
                     <Upload className="w-4 h-4 text-emerald-500" />
                     上传导入
@@ -1178,14 +1178,14 @@ export function HomePage() {
                 </div>
 
                   <div className="pt-2 pb-12">
-                    {coursesLoading && (
+                    {demoCoursesLoading && (
                       <div className="py-8 flex justify-center">
                         <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
                       </div>
                     )}
-                    {courses.length > 0 && (
+                    {demoCourses.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {courses.map((course, i) => (
+                        {demoCourses.map((course, i) => (
                           <motion.div
                             key={course.filename}
                             initial={{ opacity: 0, y: 16 }}
@@ -1195,7 +1195,7 @@ export function HomePage() {
                             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-300 h-full flex flex-col hover:-translate-y-1">
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
-                                  <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.subject_name}</h3>
+                                  <h3 className="text-lg font-bold text-slate-900 line-clamp-1">{course.course_name}</h3>
                                   <p className="mt-1 text-xs font-medium text-emerald-600">演示课程</p>
                                 </div>
                                 <div className="p-2 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg border border-emerald-100">
@@ -1233,7 +1233,7 @@ export function HomePage() {
                                       ? "bg-slate-900 text-white hover:bg-slate-800 shadow-sm hover:shadow-md"
                                       : "bg-slate-200 text-slate-400 cursor-not-allowed"
                                   )}
-                                  title={`导入 ${course.subject_name} 到左侧学科列表`}
+                                  title={`导入 ${course.course_name} 到左侧课程列表`}
                                 >
                                   {courseImportMutation.isPending ? (
                                     <><Loader2 className="h-4 w-4 animate-spin" /> 导入中</>
@@ -1268,11 +1268,11 @@ export function HomePage() {
     </div>
     {/* ═══ Modals ═══ */}
     <AnimatePresence>
-      {exportSubjectId && (
-        <SubjectExportModal
+      {exportCourseId && (
+        <CourseExportModal
           key="export"
-          subjectId={exportSubjectId}
-          onClose={() => setExportSubjectId(null)}
+          courseId={exportCourseId}
+          onClose={() => setExportCourseId(null)}
         />
       )}
       {importOpen && (
@@ -1280,11 +1280,11 @@ export function HomePage() {
           key="import"
           onClose={() => setImportOpen(false)}
           onSuccess={(result) => {
-            notifySubjectsImported({ subjectId: result.subject_id });
-            queryClient.invalidateQueries({ queryKey: ["subjects"] });
+            notifyCoursesImported({ courseId: result.course_id });
+            queryClient.invalidateQueries({ queryKey: ["courses"] });
             toast({
               title: "导入成功",
-              description: `${result.subject_name} 已加入左侧学科列表。`,
+              description: `${result.course_name} 已加入左侧课程列表。`,
               variant: "success",
             });
           }}
@@ -1301,10 +1301,10 @@ export function HomePage() {
       {renameTarget && (
         <RenameModal
           key="rename"
-          subjectId={renameTarget.id}
+          courseId={renameTarget.id}
           initialName={renameTarget.name}
           onClose={() => setRenameTarget(null)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["subjects"] })}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["courses"] })}
         />
       )}
     </AnimatePresence>

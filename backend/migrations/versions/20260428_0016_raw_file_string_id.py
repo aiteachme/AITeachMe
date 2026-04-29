@@ -138,37 +138,37 @@ def upgrade() -> None:
         )
     )
 
-    op.execute(sa.text("ALTER TABLE subject_file DROP CONSTRAINT IF EXISTS subject_file_raw_file_id_fkey"))
-    op.execute(sa.text("ALTER TABLE subject_file DROP CONSTRAINT IF EXISTS uq_subject_file_user_subject_raw_file"))
-    op.execute(sa.text("DROP INDEX IF EXISTS ix_subject_file_raw_file_id"))
-    op.execute(sa.text("ALTER TABLE subject_file ADD COLUMN IF NOT EXISTS file_id VARCHAR"))
+    op.execute(sa.text("ALTER TABLE course_file DROP CONSTRAINT IF EXISTS course_file_raw_file_id_fkey"))
+    op.execute(sa.text("ALTER TABLE course_file DROP CONSTRAINT IF EXISTS uq_course_file_user_course_raw_file"))
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_course_file_raw_file_id"))
+    op.execute(sa.text("ALTER TABLE course_file ADD COLUMN IF NOT EXISTS file_id VARCHAR"))
     op.execute(
         sa.text(
             """
-            UPDATE subject_file AS subject_link
+            UPDATE course_file AS course_link
             SET file_id = mapping.file_id
             FROM atm_raw_file_id_map AS mapping
-            WHERE subject_link.raw_file_id::text = mapping.old_id
-              AND (subject_link.file_id IS NULL OR subject_link.file_id = '')
+            WHERE course_link.raw_file_id::text = mapping.old_id
+              AND (course_link.file_id IS NULL OR course_link.file_id = '')
             """
         )
     )
-    op.execute(sa.text("ALTER TABLE subject_file ALTER COLUMN file_id SET NOT NULL"))
+    op.execute(sa.text("ALTER TABLE course_file ALTER COLUMN file_id SET NOT NULL"))
     op.execute(
         sa.text(
-            "ALTER TABLE subject_file DROP COLUMN IF EXISTS raw_file_id "
-            "/* atm-allow-destructive-ddl: replaced by subject_file.file_id */"
+            "ALTER TABLE course_file DROP COLUMN IF EXISTS raw_file_id "
+            "/* atm-allow-destructive-ddl: replaced by course_file.file_id */"
         )
     )
     op.execute(
         sa.text(
             """
-            ALTER TABLE subject_file
-            ADD CONSTRAINT uq_subject_file_user_subject_file UNIQUE (user_id, subject, file_id)
+            ALTER TABLE course_file
+            ADD CONSTRAINT uq_course_file_user_course_file UNIQUE (user_id, course, file_id)
             """
         )
     )
-    op.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_subject_file_file_id ON subject_file (file_id)"))
+    op.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_course_file_file_id ON course_file (file_id)"))
 
     op.execute(sa.text("ALTER TABLE retrieval_chunk DROP CONSTRAINT IF EXISTS retrieval_chunk_document_id_fkey"))
     op.execute(sa.text("ALTER TABLE retrieval_chunk DROP CONSTRAINT IF EXISTS uq_retrieval_chunk_document_id_chunk_index"))
@@ -196,7 +196,7 @@ def upgrade() -> None:
         sa.text(
             """
             ALTER TABLE retrieval_chunk
-            ADD CONSTRAINT uq_retrieval_chunk_subject_file_id_chunk_index UNIQUE (subject, file_id, chunk_index)
+            ADD CONSTRAINT uq_retrieval_chunk_course_file_id_chunk_index UNIQUE (course, file_id, chunk_index)
             """
         )
     )
@@ -227,8 +227,8 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             """
-            ALTER TABLE subject_file
-            ADD CONSTRAINT subject_file_file_id_fkey
+            ALTER TABLE course_file
+            ADD CONSTRAINT course_file_file_id_fkey
             FOREIGN KEY (file_id) REFERENCES raw_file(id)
             """
         )

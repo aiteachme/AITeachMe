@@ -1,4 +1,4 @@
-# AITeachMe DocGen Build Workspace: SSE 协议与状态机设计
+﻿# AITeachMe DocGen Build Workspace: SSE 协议与状态机设计
 
 最后更新：2026-04-21
 
@@ -17,7 +17,7 @@
 
 ## 2. SSE 事件流协议设计
 
-接口建议设为：`GET /api/v1/subjects/{subject}/knowledge/build/stream?build_session_id=...`
+接口建议设为：`GET /api/v1/courses/{course}/knowledge/build/stream?build_session_id=...`
 
 SSE 只流出**轻量级快照**与**状态切换事件**，坚决不流出大段 Token（避免乱序与前端解析成本）。
 
@@ -90,9 +90,9 @@ SSE 只流出**轻量级快照**与**状态切换事件**，坚决不流出大�
 
 ```typescript
 // 伪代码架构：
-function useKnowledgeBuildWorkspace(subjectId: string, requestedAt: string) {
+function useKnowledgeBuildWorkspace(courseId: string, requestedAt: string) {
   // 1. 基础兜底：通过 React Query 轮询全局 Snapshot
-  const { data: snapshot } = useQuery({ queryKey: ['doc_state', subjectId]... });
+  const { data: snapshot } = useQuery({ queryKey: ['doc_state', courseId]... });
 
   // 2. 实时增量：订阅 SSE
   const [liveEvents, setLiveEvents] = useState([]);
@@ -106,7 +106,7 @@ function useKnowledgeBuildWorkspace(subjectId: string, requestedAt: string) {
       dispatch(data);
     };
     return () => eventSource.close();
-  }, [subjectId]);
+  }, [courseId]);
 
   // 3. 智能合并：以 Snapshot 为基底，以 SSE 为最新覆盖
   const derivedState = useMemo(() => {

@@ -50,13 +50,13 @@ def select_execution_mode(
     selected_context: str | None,
     strategy_mode: StrategyMode,
     retrieval_results: list[RetrievedContext],
-    allow_subject_tools: bool = True,
+    allow_course_tools: bool = True,
 ) -> InteractExecutionMode:
     """Choose a bounded execution mode without another model call."""
 
     if selected_context and selected_context.strip():
         return InteractExecutionMode.SINGLE_PASS
-    if not allow_subject_tools:
+    if not allow_course_tools:
         return InteractExecutionMode.SINGLE_PASS
 
     normalized_question = str(question or "").lower()

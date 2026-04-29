@@ -1,4 +1,4 @@
-﻿"""Prompt assembly for the interact workflow."""
+"""Prompt assembly for the interact workflow."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.workflows.interact.chat.lib.types import (
     MistakeSummary,
     RecentMessage,
     RetrievedContext,
-    SubjectContextSummary,
+    CourseContextSummary,
     WeakPointSummary,
 )
 
@@ -53,20 +53,20 @@ _MAX_RECENT_MISTAKES = 3
 _MAX_RETRIEVAL_ITEMS_WITH_PRIMARY = 2
 _MAX_RETRIEVAL_ITEMS_WITHOUT_PRIMARY = 4
 _DOCUMENT_SELECTION_PRIMARY_CONTEXT_SUFFICIENT_CHARS = 360
-_SubjectBackgroundMode = Literal["full", "chat_scope", "entry_context"]
+_CourseBackgroundMode = Literal["full", "chat_scope", "entry_context"]
 
 
 @traceable(name="interact.build_chat_messages", run_type="prompt")
 def build_chat_messages(
     *,
-    subject_id: str,
+    course_id: str,
     strategy_mode: StrategyMode,
     retrieval_results: list[RetrievedContext],
     recent_messages: list[RecentMessage],
     weak_points: list[WeakPointSummary],
     recent_mistakes: list[MistakeSummary],
     question: str,
-    subject_context: SubjectContextSummary | None = None,
+    course_context: CourseContextSummary | None = None,
     source: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
@@ -83,7 +83,7 @@ def build_chat_messages(
         source=source,
         has_primary_context=has_primary_context,
     )
-    use_subject_grounding = prompt_scene != ChatPromptScene.GENERAL
+    use_course_grounding = prompt_scene != ChatPromptScene.GENERAL
     focus_text = _build_focus_text(
         question=question,
         selected_context=selected_context,
@@ -96,11 +96,11 @@ def build_chat_messages(
     )
     system_prompt = populate_prompt(
         get_system_prompt_template(prompt_scene),
-        subject_name=_subject_display_name(subject_id, subject_context),
-        subject_background=_format_subject_background(
-            subject_id,
-            subject_context,
-            mode=_subject_background_mode(prompt_scene),
+        course_name=_course_display_name(course_id, course_context),
+        course_background=_format_course_background(
+            course_id,
+            course_context,
+            mode=_course_background_mode(prompt_scene),
         ),
         teaching_strategy=(
             get_strategy_instruction(strategy_mode)
@@ -113,12 +113,12 @@ def build_chat_messages(
                 focus_text=focus_text,
                 only_relevant=has_primary_context,
             )
-            if use_subject_grounding
+            if use_course_grounding
             else "本轮为通用对话，暂不使用薄弱项画像。"
         ),
         mistakes_context=(
             _format_mistakes_context(recent_mistakes, compact=compact_mistakes)
-            if use_subject_grounding
+            if use_course_grounding
             else "本轮为通用对话，暂不使用近期错题。"
         ),
         interaction_entry=_format_interaction_entry(
@@ -135,7 +135,7 @@ def build_chat_messages(
         for item in recent_messages
     ]
     retrieval_chunks = build_retrieval_context_items(
-        retrieval_results if use_subject_grounding else [],
+        retrieval_results if use_course_grounding else [],
         question=question,
         selected_context=selected_context,
         selection_context=selection_context,
@@ -393,34 +393,34 @@ def _tokens(text: str) -> list[str]:
     ]
 
 
-def _subject_display_name(subject_id: str, context: SubjectContextSummary | None) -> str:
-    name = (context.subject_name if context else "").strip()
+def _course_display_name(course_id: str, context: CourseContextSummary | None) -> str:
+    name = (context.course_name if context else "").strip()
     if name:
         return name
-    if _is_global_subject_label(subject_id):
+    if _is_global_course_label(course_id):
         return "通用"
     return "当前学习空间"
 
 
-def _format_subject_background(
-    subject_id: str,
-    context: SubjectContextSummary | None,
+def _format_course_background(
+    course_id: str,
+    context: CourseContextSummary | None,
     *,
-    mode: _SubjectBackgroundMode = "full",
+    mode: _CourseBackgroundMode = "full",
 ) -> str:
-    display_name = _subject_display_name(subject_id, context)
+    display_name = _course_display_name(course_id, context)
     if mode == "chat_scope":
         return "\n".join(
             [
                 f"- 当前学习空间：{display_name}",
-                "- 使用规则：仅在用户明确聊到学习、课程内容、练习、计划，或对话历史需要延续学科主题时使用；本轮普通闲聊不要主动展开学科内容。",
+                "- 使用规则：仅在用户明确聊到学习、课程内容、练习、计划，或对话历史需要延续课程主题时使用；本轮普通闲聊不要主动展开课程内容。",
             ]
         )
 
     if mode == "entry_context":
         lines = [
-            f"- 学科：{display_name}",
-            "- 使用规则：本轮以用户入口上下文为主；学科背景只用于术语理解和难度调节，不展开建课意图或完整学科摘要。",
+            f"- 课程：{display_name}",
+            "- 使用规则：本轮以用户入口上下文为主；课程背景只用于术语理解和难度调节，不展开建课意图或完整课程摘要。",
         ]
         profile_summary = _format_profile_summary(context)
         if profile_summary:
@@ -428,22 +428,22 @@ def _format_subject_background(
         return "\n".join(lines)
 
     if context is None:
-        return f"- 学科：{display_name}"
+        return f"- 课程：{display_name}"
 
-    lines = [f"- 学科：{display_name}"]
+    lines = [f"- 课程：{display_name}"]
     if context.discipline or context.sub_discipline:
         discipline = " / ".join(
             item for item in [context.discipline, context.sub_discipline] if item
         )
-        lines.append(f"- 学科领域：{discipline}")
+        lines.append(f"- 课程领域：{discipline}")
     if context.description:
-        lines.append(f"- 学科说明：{_clip_text(context.description, 180)}")
+        lines.append(f"- 课程说明：{_clip_text(context.description, 180)}")
     if context.user_intent:
         lines.append(f"- 用户建课意图：{_clip_text(context.user_intent, 180)}")
     if context.learning_intent:
         lines.append(f"- 学习目标：{_clip_text(context.learning_intent, 180)}")
-    if context.subject_intro:
-        lines.append(f"- 学科简介：{_clip_text(context.subject_intro, 220)}")
+    if context.course_intro:
+        lines.append(f"- 课程简介：{_clip_text(context.course_intro, 220)}")
     if context.llm_context:
         lines.append(f"- 教学背景摘要：{_clip_text(context.llm_context, 260)}")
 
@@ -459,7 +459,7 @@ def _format_subject_background(
     return "\n".join(lines)
 
 
-def _subject_background_mode(scene: ChatPromptScene) -> _SubjectBackgroundMode:
+def _course_background_mode(scene: ChatPromptScene) -> _CourseBackgroundMode:
     if scene == ChatPromptScene.GENERAL:
         return "chat_scope"
     if scene in {ChatPromptScene.DOCUMENT_SELECTION, ChatPromptScene.EXAM_QUESTION}:
@@ -467,7 +467,7 @@ def _subject_background_mode(scene: ChatPromptScene) -> _SubjectBackgroundMode:
     return "full"
 
 
-def _format_profile_summary(context: SubjectContextSummary | None) -> str:
+def _format_profile_summary(context: CourseContextSummary | None) -> str:
     if context is None:
         return ""
     profile_items = []
@@ -615,19 +615,19 @@ def _format_interaction_entry(source: str | None, *, scene: ChatPromptScene) -> 
         return "考卷题目触发。回答时优先围绕当前题目、题干、选项、用户答案或批改结果。"
     if scene == ChatPromptScene.BUILD_ASSISTANT:
         return "知识库构建过程触发。回答时优先解释当前构建阶段、资料处理或知识文档生成结果。"
-    if scene == ChatPromptScene.SUBJECT_LEARNING and normalized == "quick_chat":
+    if scene == ChatPromptScene.COURSE_LEARNING and normalized == "quick_chat":
         return "普通侧边栏学习对话：当前没有划选主证据；可以使用当前学习空间背景，但不要虚构具体划选内容。"
-    if scene == ChatPromptScene.SUBJECT_LEARNING and normalized:
+    if scene == ChatPromptScene.COURSE_LEARNING and normalized:
         return f"外部入口触发：{normalized}。回答时保留入口上下文，但不要虚构来源。"
-    if scene == ChatPromptScene.SUBJECT_LEARNING:
+    if scene == ChatPromptScene.COURSE_LEARNING:
         return "常规学习对话：可以使用当前学习空间背景，但以用户最后一句问题为准。"
     if normalized == "quick_chat":
-        return "普通侧边栏通用对话：当前没有划选主证据；不要把知识文档或当前学科当作默认主题。"
+        return "普通侧边栏通用对话：当前没有划选主证据；不要把知识文档或当前课程当作默认主题。"
     return "通用对话：当前没有用户入口上下文；自然回应用户，只有用户明确提出学习需求时才进入教学。"
 
 
-def _is_global_subject_label(subject: str | None) -> bool:
-    return (subject or "").strip().casefold() in {"", "global", "_global", "__global__"}
+def _is_global_course_label(course: str | None) -> bool:
+    return (course or "").strip().casefold() in {"", "global", "_global", "__global__"}
 
 
 def _clip_text(value: str | None, max_chars: int) -> str:

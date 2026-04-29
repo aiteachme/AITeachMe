@@ -1,4 +1,4 @@
-﻿"""Prompts for planner intent and query-grab generation."""
+"""Prompts for planner intent and query-grab generation."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ PLAN_QUERY_MAX = 8
 
 def build_plan_intent_messages(
     *,
-    subject_name: str,
+    course_name: str,
     user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
@@ -34,7 +34,7 @@ PlanIntent 只服务后续计划合成，不是对用户的最终展示，也不
 请先识别用户学习意图，再把结果整理成内部 PlanIntent。
 PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
 
-学科/主题：{subject_name}
+课程/主题：{course_name}
 用户提示：{user_prompt}
 请求模式：{digest_mode}
 
@@ -63,7 +63,7 @@ PlanIntent 不是最终展示内容，也不是外部检索承诺；它只用于
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
 6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
-7. 不要输出来源名单、网站名、论文名、长解释、subject id 或重复内容。
+7. 不要输出来源名单、网站名、论文名、长解释、course id 或重复内容。
 
 few-shot 示例：
 {render_plan_intent_examples()}
@@ -75,7 +75,7 @@ few-shot 示例：
     return trace_prompt_build(
         "planner_plan_intent",
         inputs={
-            "subject_name": subject_name,
+            "course_name": course_name,
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),

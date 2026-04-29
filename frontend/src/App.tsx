@@ -5,7 +5,7 @@ import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemePr
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
-import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
+import { COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 
@@ -52,7 +52,7 @@ function withRouteFallback(element: ReactElement) {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
 }
 
-const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
+const COURSE_PAGE_ELEMENTS: Record<CourseRouteId, ReactElement> = {
   build: withRouteFallback(<BuildPlanPage />),
   "knowledge-docs": withRouteFallback(<KnowledgeDocsPage />),
   exams: withRouteFallback(<ExamsPage />),
@@ -82,31 +82,31 @@ function App() {
                   <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
                   <Route path="spaces" element={withRouteFallback(<LearningSpacesPage />)} />
                   <Route path="library" element={withRouteFallback(<LibraryPage />)} />
-                  {(Object.entries(SUBJECT_PAGE_ELEMENTS) as Array<[SubjectRouteId, ReactElement]>).map(
+                  {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
                     ([routeId, element]) => (
-                      <Route key={routeId} path={`subject/:subjectId/${routeId}`} element={element} />
+                      <Route key={routeId} path={`course/:courseId/${routeId}`} element={element} />
                     ),
                   )}
                   <Route
-                    path="subject/:subjectId/knowledge-docs/interactive"
+                    path="course/:courseId/knowledge-docs/interactive"
                     element={withRouteFallback(<KnowledgeInteractivePage />)}
                   />
                   <Route
-                    path="subject/:subjectId/exams/question-templates"
+                    path="course/:courseId/exams/question-templates"
                     element={withRouteFallback(<QuestionTemplatesPage />)}
                   />
                   <Route
-                    path="subject/:subjectId/exams/question-types"
+                    path="course/:courseId/exams/question-types"
                     element={withRouteFallback(<QuestionTypesPage />)}
                   />
                   <Route
-                    path="subject/:subjectId/exams/:examPaperId"
+                    path="course/:courseId/exams/:examPaperId"
                     element={withRouteFallback(<ExamPaperPage />)}
                   />
-                  {Object.entries(SUBJECT_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
+                  {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
                     <Route
                       key={aliasPath}
-                      path={`subject/:subjectId/${aliasPath}`}
+                      path={`course/:courseId/${aliasPath}`}
                       element={<Navigate to={`../${targetRoute}`} replace />}
                     />
                   ))}

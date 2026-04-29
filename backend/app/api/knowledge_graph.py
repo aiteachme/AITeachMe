@@ -1,4 +1,4 @@
-﻿"""Knowledge graph API routes."""
+"""Knowledge graph API routes."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from app.api.deps import (
     CurrentUserContext,
     get_current_user_context,
     get_db,
-    normalize_subject_id,
+    normalize_course_id,
 )
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
@@ -40,7 +40,7 @@ from app.workflows.digest.kg_doc_sync import (
     get_knowledge_unit_relations,
     get_knowledge_units,
 )
-from app.workflows.support.subjects import get_subject_record
+from app.workflows.support.courses import get_course_record
 
 router = APIRouter(tags=["knowledge"])
 
@@ -52,17 +52,17 @@ router = APIRouter(tags=["knowledge"])
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_knowledge_units(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeUnitsQueryRequest = Body(default_factory=KnowledgeUnitsQueryRequest),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[PaginatedData[KnowledgeUnitResponse]]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_knowledge_units(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             knowledge_unit_type=body.knowledge_unit_type,
             page=body.page,
             size=body.size,
@@ -77,17 +77,17 @@ async def graph_knowledge_units(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_knowledge_unit_detail(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeUnitDetailRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeUnitDetailResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_knowledge_unit_detail(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             knowledge_unit_id=body.knowledge_unit_id,
         )
     )
@@ -100,17 +100,17 @@ async def graph_knowledge_unit_detail(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_knowledge_unit_relations(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeUnitRelationsRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[KnowledgeRelationResponse]]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_knowledge_unit_relations(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             knowledge_unit_id=body.knowledge_unit_id,
             direction=body.direction,
             edge_type=body.edge_type,
@@ -125,17 +125,17 @@ async def graph_knowledge_unit_relations(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_knowledge_unit_path(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeUnitPathRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgePathResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         find_knowledge_path(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             source_knowledge_unit_id=body.source_knowledge_unit_id,
             target_knowledge_unit_id=body.target_knowledge_unit_id,
             edge_type=body.edge_type,
@@ -151,17 +151,17 @@ async def graph_knowledge_unit_path(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_focus_subgraph(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeSubgraphRequest = Body(default_factory=KnowledgeSubgraphRequest),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeSubgraphResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         get_focus_subgraph(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             center_knowledge_unit_id=body.center_knowledge_unit_id,
             topic=body.topic,
             edge_type=body.edge_type,
@@ -178,17 +178,17 @@ async def graph_focus_subgraph(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_relation_explanation(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: KnowledgeRelationExplanationRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[KnowledgeRelationExplanationResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
         explain_relation_path(
             session,
-            subject_id=normalized,
+            course_id=normalized,
             source_knowledge_unit_id=body.source_knowledge_unit_id,
             target_knowledge_unit_id=body.target_knowledge_unit_id,
             edge_type=body.edge_type,
@@ -204,13 +204,13 @@ async def graph_relation_explanation(
     responses=build_error_responses([400, 404, 500]),
 )
 async def graph_full(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FullGraphResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(get_full_graph(session, subject_id=normalized))
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
+    return ok_response(get_full_graph(session, course_id=normalized))
 
 
 @router.post(
@@ -220,11 +220,11 @@ async def graph_full(
     responses=build_error_responses([400, 404, 500]),
 )
 async def chunk_context(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ChunkContextRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ChunkContextResponse]:
-    normalized = normalize_subject_id(subject_id)
-    get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(get_chunk_context(session, subject_id=normalized, chunk_id=body.chunk_id))
+    normalized = normalize_course_id(course_id)
+    get_course_record(session, normalized, owner_user_id=user.user_id)
+    return ok_response(get_chunk_context(session, course_id=normalized, chunk_id=body.chunk_id))

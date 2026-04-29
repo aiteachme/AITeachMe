@@ -9,7 +9,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
+from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.workflows.digest.common.material_profile import (
@@ -20,7 +20,7 @@ from app.workflows.digest.common.asset_indexer import build_asset_registry
 from app.workflows.digest.common.hint_extractor import extract_fast_topic_hints
 from app.workflows.digest.common.models import ChunkIdentityMap, DigestMaterialContext, SharedInputs, SourcePacket
 from app.workflows.digest.common.section_splitter import split_into_sections
-from app.workflows.digest.common.subject_recognizer import recognize_subject_profile
+from app.workflows.digest.common.course_recognizer import recognize_course_profile
 
 logger = structlog.get_logger()
 
@@ -30,17 +30,17 @@ IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[
 
 
 async def prepare_shared_inputs(
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
     """Prepare shared inputs once for a digest build."""
 
-    logger.info("shared_prepare_started", subject_id=subject_id, file_count=len(file_ids))
-    source_packets = await load_source_packets(subject_id, file_ids)
+    logger.info("shared_prepare_started", course_id=course_id, file_count=len(file_ids))
+    source_packets = await load_source_packets(course_id, file_ids)
     if not source_packets:
-        logger.warning("shared_prepare_empty", subject_id=subject_id)
+        logger.warning("shared_prepare_empty", course_id=course_id)
         return DigestMaterialContext()
 
     section_packets = [
@@ -61,8 +61,8 @@ async def prepare_shared_inputs(
         },
     )
     fast_hints = extract_fast_topic_hints(section_packets)
-    subject_profile = recognize_subject_profile(
-        subject_id=subject_id,
+    course_profile = recognize_course_profile(
+        course_id=course_id,
         source_packets=source_packets,
         section_packets=section_packets,
         fast_hints=fast_hints,
@@ -70,32 +70,32 @@ async def prepare_shared_inputs(
     material_profile = build_material_profile(
         source_packets,
         section_packets,
-        subject_profile,
+        course_profile,
     )
     digest_mode_decision = decide_digest_mode(
         material_profile,
         user_prompt=user_prompt,
-        subject_profile=subject_profile,
+        course_profile=course_profile,
     )
     material_context = DigestMaterialContext(
         source_documents=source_packets,
         material_sections=section_packets,
         chunk_identity_map=chunk_identity_map,
         material_hints=fast_hints,
-        material_assets=build_asset_registry(subject_id, source_packets),
-        learning_domain_profile=subject_profile,
+        material_assets=build_asset_registry(course_id, source_packets),
+        learning_domain_profile=course_profile,
         material_stats_profile=material_profile,
         course_mode_decision=digest_mode_decision,
     )
     logger.info(
         "shared_prepare_completed",
-        subject_id=subject_id,
+        course_id=course_id,
         source_count=len(source_packets),
         section_count=len(section_packets),
         asset_count=len(material_context.material_assets.assets),
-        discipline=subject_profile.discipline,
-        sub_discipline=subject_profile.sub_discipline,
-        content_type=subject_profile.content_type,
+        discipline=course_profile.discipline,
+        sub_discipline=course_profile.sub_discipline,
+        content_type=course_profile.content_type,
         digest_mode=digest_mode_decision.mode.value,
         digest_mode_confidence=digest_mode_decision.confidence,
         exercise_density=material_profile.stats.exercise_density,
@@ -104,25 +104,25 @@ async def prepare_shared_inputs(
 
 
 async def prepare_material_context(
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
     *,
     user_prompt: str | None = None,
 ) -> DigestMaterialContext:
     """New canonical name for shared material preparation."""
 
-    return await prepare_shared_inputs(subject_id, file_ids, user_prompt=user_prompt)
+    return await prepare_shared_inputs(course_id, file_ids, user_prompt=user_prompt)
 
 
-async def load_source_packets(subject_id: str, file_ids: list[str]) -> list[SourcePacket]:
+async def load_source_packets(course_id: str, file_ids: list[str]) -> list[SourcePacket]:
     """Load parsed raw markdown and normalize it into source packets."""
 
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject_id)
+    course_scope = resolve_course_storage_scope(course_id)
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
     with managed_session() as session:
         raw_files = sorted(
-            list_raw_files_by_ids(session, subject_id, file_ids),
+            list_raw_files_by_ids(session, course_id, file_ids),
             key=lambda raw_file: requested_order.get(raw_file.id, len(requested_order)),
         )
 
@@ -131,7 +131,7 @@ async def load_source_packets(subject_id: str, file_ids: list[str]) -> list[Sour
             return None
 
         file_id = raw_file.id
-        file_scope = cs.user_file_scope(user_id=raw_file.user_id or subject_scope.user_id)
+        file_scope = cs.user_file_scope(user_id=raw_file.user_id or course_scope.user_id)
         md_key = raw_file.markdown_path or file_scope.raw_markdown_key(
             file_id=raw_file.id,
             filename=raw_file.original_filename,

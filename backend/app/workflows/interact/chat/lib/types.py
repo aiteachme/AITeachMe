@@ -23,15 +23,15 @@ class WeakPointSummary(BaseModel):
     mastery_text: str
 
 
-class SubjectContextSummary(BaseModel):
-    """Subject and learner profile summary used as tutoring background."""
+class CourseContextSummary(BaseModel):
+    """Course and learner profile summary used as tutoring background."""
 
-    subject_id: str
-    subject_name: str
+    course_id: str
+    course_name: str
     description: str = ""
     user_intent: str = ""
     learning_intent: str = ""
-    subject_intro: str = ""
+    course_intro: str = ""
     llm_context: str = ""
     discipline: str | None = None
     sub_discipline: str | None = None

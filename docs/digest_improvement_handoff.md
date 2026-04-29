@@ -24,10 +24,10 @@ Digest 的核心问题不是单一 prompt，而是系统性组合问题：
 
 ### 保留
 
-- `POST /api/v1/subjects/{subject}/knowledge/build`
-- `POST /api/v1/subjects/{subject}/knowledge/docs`
-- `POST /api/v1/subjects/{subject}/knowledge/overview`
-- `POST /api/v1/subjects/{subject}/knowledge/study-plan`
+- `POST /api/v1/courses/{course}/knowledge/build`
+- `POST /api/v1/courses/{course}/knowledge/docs`
+- `POST /api/v1/courses/{course}/knowledge/overview`
+- `POST /api/v1/courses/{course}/knowledge/study-plan`
 
 ### 删除目标（不再保留）
 
@@ -53,7 +53,7 @@ Digest 的核心问题不是单一 prompt，而是系统性组合问题：
 
 - 后端：`build_session_id` 打通至 docs / graph 独立构建状态，便于关联日志和 LLM 调用统计。
 - 后端：`POST /knowledge/docs` 已返回 `build_preview` / `build_metrics`。
-- 后端：LLM timeout 与失败日志增加 trace 字段（subject/build_session_id/workflow/lane/node）。
+- 后端：LLM timeout 与失败日志增加 trace 字段（course/build_session_id/workflow/lane/node）。
 - 前端：`DigestBuildPanel` 与 `KnowledgeDocsPage` 已接入 `build_preview` / `build_metrics`，等待期展示卡片、样例节点、草稿摘录与调用统计。
 - 前端：修复了 `KnowledgeDocsPage.tsx`、`DigestBuildPanel.tsx` 的编码污染和语法断裂问题，`npm run build` 已通过。
 

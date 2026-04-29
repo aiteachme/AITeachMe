@@ -2,7 +2,7 @@
 
 Read these node files in graph order to understand the whole lane:
 
-1. ``prepare`` validates subject, markdown and DocGen structured context.
+1. ``prepare`` validates course, markdown and DocGen structured context.
 2. ``init_run`` opens one DB-backed sync run and resolves the target graph revision.
 3. ``extract`` fans out the published knowledge doc into section LLM extraction tasks.
 4. ``persist`` merges extracted candidates into knowledge_unit / knowledge_edge tables.

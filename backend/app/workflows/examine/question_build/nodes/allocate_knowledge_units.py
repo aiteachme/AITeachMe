@@ -1,4 +1,4 @@
-﻿"""Allocate knowledge units after question types and requirements are planned."""
+"""Allocate knowledge units after question types and requirements are planned."""
 
 from __future__ import annotations
 
@@ -30,10 +30,10 @@ def build_allocate_knowledge_units_node(*, context: WorkflowContext):
         )
         try:
             planned = await allocate_exam_question_knowledge_units(
-                subject_id=str(state.get("subject_id") or ""),
-                subject_name=str(state.get("subject_name") or ""),
-                subject_description=str(state.get("subject_description") or ""),
-                subject_user_intent=str(state.get("subject_user_intent") or ""),
+                course_id=str(state.get("course_id") or ""),
+                course_name=str(state.get("course_name") or ""),
+                course_description=str(state.get("course_description") or ""),
+                course_user_intent=str(state.get("course_user_intent") or ""),
                 exam_mode=str(state.get("exam_mode") or "web_practice"),
                 units=list(state.get("units") or []),
                 question_count=int(state.get("question_count") or 1),

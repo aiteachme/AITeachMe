@@ -1,4 +1,4 @@
-﻿"""Canonical section materialization for digest builds."""
+"""Canonical section materialization for digest builds."""
 
 from __future__ import annotations
 
@@ -11,17 +11,17 @@ import structlog
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.storage import resolve_subject_storage_scope
+from app.shared.infra.storage import resolve_course_storage_scope
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
 import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.utils.time import utcnow
-from app.shared.infra.subject import (
-    build_subject_index_ref_for_subject,
+from app.shared.infra.course import (
+    build_course_index_ref_for_course,
     get_runtime_embedding_config,
-    get_subject_record_by_id,
-    get_subject_vector_capability,
-    should_generate_subject_embeddings,
+    get_course_record_by_id,
+    get_course_vector_capability,
+    should_generate_course_embeddings,
 )
 from app.workflows.digest.common.models import MaterializedSections, SharedInputs
 
@@ -46,7 +46,7 @@ class ChunkManifestEntry(BaseModel):
 class KnowledgeChunkManifest(BaseModel):
     """Incremental manifest for canonical chunk materialization."""
 
-    subject_id: str
+    course_id: str
     updated_at: datetime
     build_session_id: str
     source_file_ids: list[str] = Field(default_factory=list)
@@ -58,22 +58,22 @@ def _chunk_content_hash(*, title: str, content: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _load_chunk_manifest(subject_id: str) -> KnowledgeChunkManifest | None:
+def _load_chunk_manifest(course_id: str) -> KnowledgeChunkManifest | None:
     from app.shared.infra.storage import get_content_store, run_store_sync
 
     cs = get_content_store()
     return run_store_sync(
         cs.read_json,
-        resolve_subject_storage_scope(subject_id).chunk_manifest_key(),
+        resolve_course_storage_scope(course_id).chunk_manifest_key(),
         KnowledgeChunkManifest,
     )
 
 
-def _write_chunk_manifest(subject_id: str, manifest: KnowledgeChunkManifest) -> str:
+def _write_chunk_manifest(course_id: str, manifest: KnowledgeChunkManifest) -> str:
     from app.shared.infra.storage import get_content_store, run_store_sync
 
     cs = get_content_store()
-    key = resolve_subject_storage_scope(subject_id).chunk_manifest_key()
+    key = resolve_course_storage_scope(course_id).chunk_manifest_key()
     run_store_sync(cs.write_json, key, manifest)
     return key
 
@@ -95,7 +95,7 @@ def _chunk_requires_embedding(
 
 async def materialize_shared_inputs(
     *,
-    subject_id: str,
+    course_id: str,
     shared_inputs: SharedInputs,
     build_session_id: str | None = None,
 ) -> MaterializedSections:
@@ -103,7 +103,7 @@ async def materialize_shared_inputs(
 
     session_id = build_session_id or uuid4().hex
     source_file_ids = [packet.file_id for packet in shared_inputs.source_packets]
-    existing_manifest = _load_chunk_manifest(subject_id)
+    existing_manifest = _load_chunk_manifest(course_id)
     previous_entries = {
         entry.digest_chunk_uid: entry
         for entry in (existing_manifest.chunks if existing_manifest is not None else [])
@@ -115,7 +115,7 @@ async def materialize_shared_inputs(
             [
                 RawFile(
                     id=packet.file_id,
-                    origin_subject_id=subject_id,
+                    origin_course_id=course_id,
                     filename=packet.filename,
                     filetype="markdown",
                     file_path="",
@@ -133,7 +133,7 @@ async def materialize_shared_inputs(
 
         existing_chunks = knowledge_repo.get_chunks_by_source_file_ids(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             source_file_ids=source_file_ids,
         )
         existing_chunk_by_uid = {
@@ -155,7 +155,7 @@ async def materialize_shared_inputs(
         ]
         deleted_chunks = knowledge_repo.delete_chunks_by_ids(
             session,
-            subject_id=subject_id,
+            course_id=course_id,
             chunk_ids=stale_chunk_ids,
         )
 
@@ -169,7 +169,7 @@ async def materialize_shared_inputs(
             if existing_chunk is None:
                 new_chunk_models.append(
                     RetrievalChunk(
-                        subject_id=subject_id,
+                        course_id=course_id,
                         file_id=file_id,
                         title=section.title,
                         level=section.level,
@@ -214,18 +214,18 @@ async def materialize_shared_inputs(
                 session.refresh(chunk)
 
         chunk_rows = knowledge_repo.bulk_create_chunks(session, new_chunk_models) if new_chunk_models else []
-        should_embed = should_generate_subject_embeddings(session, subject_id=subject_id)
+        should_embed = should_generate_course_embeddings(session, course_id=course_id)
         if should_embed and (chunk_rows or reused_chunks):
             runtime = get_runtime_embedding_config()
-            subject_record = get_subject_record_by_id(session, subject_id)
+            course_record = get_course_record_by_id(session, course_id)
             capability = (
-                get_subject_vector_capability(session, subject_record)
-                if subject_record is not None
+                get_course_vector_capability(session, course_record)
+                if course_record is not None
                 else None
             )
             expected_table = (
-                build_subject_index_ref_for_subject(subject_record)
-                if capability is not None and subject_record is not None
+                build_course_index_ref_for_course(course_record)
+                if capability is not None and course_record is not None
                 else None
             )
             reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]
@@ -257,7 +257,7 @@ async def materialize_shared_inputs(
                 if embeddings:
                     knowledge_repo.bulk_insert_embeddings(
                         session,
-                        subject_id=subject_id,
+                        course_id=course_id,
                         chunk_ids=[int(chunk.id) for chunk in embedding_targets if chunk.id is not None],
                         embeddings=embeddings,
                         embedding_model=runtime.embedding_model,
@@ -265,7 +265,7 @@ async def materialize_shared_inputs(
                 else:
                     logger.warning(
                         "canonical_chunk_embedding_soft_skipped",
-                        subject_id=subject_id,
+                        course_id=course_id,
                         build_session_id=session_id,
                         reason="embedding_call_unavailable_or_failed",
                         chunk_count=len(embedding_targets),
@@ -273,8 +273,8 @@ async def materialize_shared_inputs(
         elif chunk_rows:
             logger.info(
                 "canonical_chunk_embedding_skipped",
-                subject_id=subject_id,
-                reason="subject_vectors_disabled_or_unavailable",
+                course_id=course_id,
+                reason="course_vectors_disabled_or_unavailable",
                 chunk_count=len(chunk_rows),
             )
 
@@ -326,7 +326,7 @@ async def materialize_shared_inputs(
         chunk_id_to_chunk_uid=chunk_id_to_chunk_uid,
     )
     manifest = KnowledgeChunkManifest(
-        subject_id=subject_id,
+        course_id=course_id,
         updated_at=utcnow(),
         build_session_id=session_id,
         source_file_ids=sorted(
@@ -340,10 +340,10 @@ async def materialize_shared_inputs(
             key=lambda entry: (entry.source_file_id, entry.chunk_index, entry.digest_chunk_uid),
         ),
     )
-    _write_chunk_manifest(subject_id, manifest)
+    _write_chunk_manifest(course_id, manifest)
     logger.info(
         "canonical_chunk_materialization_completed",
-        subject_id=subject_id,
+        course_id=course_id,
         build_session_id=session_id,
         document_count=len(materialized.document_ids),
         chunk_count=len(materialized.chunk_ids),

@@ -35,7 +35,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             for item in list(state.get("review_actions") or [])
         ]
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="repairing_or_routing",
@@ -49,7 +49,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="repair_routed",
@@ -57,7 +57,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             current_stage_description=f"复核回流处理完成，已应用 {sum(1 for item in repair_trace if item.changed)} 项修补，待后续闭环处理 {len(unresolved)} 条。",
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "repair_routed",

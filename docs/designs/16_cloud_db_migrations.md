@@ -178,7 +178,7 @@ soffice --headless --version
 
 - `user`
 - `email_confirmation`
-- `subject`
+- `course`
 - `raw_file`
 - `retrieval_chunk`
 - `knowledge_document`

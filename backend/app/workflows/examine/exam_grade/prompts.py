@@ -12,7 +12,7 @@ _LATEX_FEEDBACK_RULE = (
 
 def build_objective_feedback_messages(
     *,
-    subject_name: str,
+    course_name: str,
     question_type: str,
     stem: str,
     options: list[str] | None,
@@ -41,7 +41,7 @@ def build_objective_feedback_messages(
         {
             "role": "user",
             "content": (
-                f"学科：{subject_name}\n"
+                f"课程：{course_name}\n"
                 f"题型：{question_type}\n"
                 f"题目：{stem}\n"
                 f"选项：\n{option_block}\n"
@@ -61,7 +61,7 @@ def build_objective_feedback_messages(
 
 def build_subjective_grade_messages(
     *,
-    subject_name: str,
+    course_name: str,
     question_type: str,
     stem: str,
     correct_answer: str,
@@ -83,7 +83,7 @@ def build_subjective_grade_messages(
         {
             "role": "user",
             "content": (
-                f"学科：{subject_name}\n"
+                f"课程：{course_name}\n"
                 f"题型：{question_type}\n"
                 f"题目：{stem}\n"
                 f"参考答案：{correct_answer}\n"
@@ -103,7 +103,7 @@ def build_subjective_grade_messages(
 
 def build_study_guide_messages(
     *,
-    subject_name: str,
+    course_name: str,
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, str]],
@@ -124,7 +124,7 @@ def build_study_guide_messages(
         {
             "role": "user",
             "content": (
-                f"学科：{subject_name}\n"
+                f"课程：{course_name}\n"
                 f"考卷标题：{exam_title}\n"
                 f"本次成绩概览：{score_summary}\n"
                 f"错题/未作答摘要：{wrong_question_summaries}\n"

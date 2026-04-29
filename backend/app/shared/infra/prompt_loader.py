@@ -5,11 +5,11 @@
 ```python
 from app.shared.infra.prompt_loader import populate_prompt
 
-SYSTEM_PROMPT = "你好，{{ subject }}。{% if weak_points %}薄弱点：...{% endif %}"
+SYSTEM_PROMPT = "你好，{{ course }}。{% if weak_points %}薄弱点：...{% endif %}"
 
 prompt = populate_prompt(
     SYSTEM_PROMPT,
-    subject="高等数学",
+    course="高等数学",
     weak_points=["极限", "导数"],
 )
 ```
@@ -17,7 +17,7 @@ prompt = populate_prompt(
 模板支持标准 Jinja2 语法：
 
 1. 单个变量
-   `{{ subject }}`
+   `{{ course }}`
 
 2. 条件分支
    `{% if weak_points %}...{% endif %}`

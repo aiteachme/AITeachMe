@@ -38,7 +38,7 @@ class LearningLogEntry:
 
     user_id: str
     event_type: str         # "chat" | "exam" | "review" | "study"
-    subject_id: str
+    course_id: str
     summary: str
     metadata: dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

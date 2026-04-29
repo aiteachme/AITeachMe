@@ -27,7 +27,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             return {"error": "DocGen 缺少可执行章节，无法准备全局种子上下文。"}
 
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="preparing_docgen_global_seed",
@@ -35,7 +35,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             current_stage_description="正在准备 DocGen 全局种子：文档级意图与文件摘要。",
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "preparing_docgen_global_seed",
@@ -64,7 +64,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
         async def _run_intent_core():
             step_started_at = perf_counter()
             result = await infer_intent_core(
-                subject_name=docgen_context.subject_name,
+                course_name=docgen_context.course_name,
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
                 plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
@@ -102,7 +102,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             source_affinity, evidence_units = [], []
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "docgen_global_seed_ready",

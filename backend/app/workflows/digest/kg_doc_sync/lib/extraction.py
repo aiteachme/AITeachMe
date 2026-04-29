@@ -1,4 +1,4 @@
-﻿"""Candidate extraction for knowledge-doc graph synchronization."""
+"""Candidate extraction for knowledge-doc graph synchronization."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ _MULTISPACE_RE = re.compile(r"\s+")
 # traces even though the section merely hit our local breaker.
 _DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90
 _DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000
-_DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS = 1600
+_DOCS_SYNC_COURSE_CONTEXT_MAX_CHARS = 1600
 _MAX_SECTION_CANDIDATE_NODES = 8
 _MAX_SECTION_CANDIDATE_EDGES = 10
 _MAX_CANDIDATE_NAME_CHARS = 90
@@ -224,10 +224,10 @@ def _prepare_llm_chunk_content(chunk_content: str) -> str:
     )
 
 
-def _prepare_llm_subject_context(subject_context: str | None) -> str:
+def _prepare_llm_course_context(course_context: str | None) -> str:
     return _limit_llm_text(
-        subject_context or "",
-        max_chars=_DOCS_SYNC_SUBJECT_CONTEXT_MAX_CHARS,
+        course_context or "",
+        max_chars=_DOCS_SYNC_COURSE_CONTEXT_MAX_CHARS,
     )
 
 
@@ -312,7 +312,7 @@ def _finalize_candidate_result(
     chunk_title: str,
     header_path: str,
     chapter_topic_hints: list[str] | None,
-    subject_context: str | None,
+    course_context: str | None,
     question_mode: bool,
 ) -> ChunkExtractionResult:
     result = _sanitize_candidate_graph(
@@ -320,7 +320,7 @@ def _finalize_candidate_result(
         chunk_title=chunk_title,
         header_path=header_path,
         chapter_topic_hints=chapter_topic_hints,
-        subject_context=subject_context,
+        course_context=course_context,
         question_mode=question_mode,
     )
     return _assign_candidate_ids_and_edge_types(result)
@@ -332,7 +332,7 @@ def _sanitize_candidate_graph(
     chunk_title: str,
     header_path: str,
     chapter_topic_hints: list[str] | None = None,
-    subject_context: str | None = None,
+    course_context: str | None = None,
     question_mode: bool = False,
 ) -> ChunkExtractionResult:
     primary_terms = [
@@ -345,7 +345,7 @@ def _sanitize_candidate_graph(
         fallback_title=chunk_title,
         chapter_topic_hints=chapter_topic_hints,
         extracted_terms=primary_terms,
-        subject_context=subject_context,
+        course_context=course_context,
         question_mode=question_mode,
     )
     semantic_topic_name = semantic_topic_path[-1] if semantic_topic_path else _clean_topic_name(chunk_title, header_path)
@@ -549,7 +549,7 @@ async def _extract_candidates_internal(
     chunk_title: str,
     header_path: str,
     doc_source_type: str | None = None,
-    subject_context: str | None = None,
+    course_context: str | None = None,
     prefer_fast_path: bool = False,
     allow_markdown_anchor_short_circuit: bool = True,
     sibling_topics: str = "",
@@ -573,7 +573,7 @@ async def _extract_candidates_internal(
                 chunk_title=chunk_title,
                 header_path=header_path,
                 chapter_topic_hints=chapter_topic_hints,
-                subject_context=subject_context,
+                course_context=course_context,
                 question_mode=False,
             )
             result = _assign_candidate_ids_and_edge_types(result)
@@ -592,14 +592,14 @@ async def _extract_candidates_internal(
             return result, diagnostics
 
     llm_chunk_content = _prepare_llm_chunk_content(chunk_content)
-    llm_subject_context = _prepare_llm_subject_context(subject_context)
+    llm_course_context = _prepare_llm_course_context(course_context)
     user_content = populate_prompt(
         USER_PROMPT_KNOWLEDGE_EXTRACT,
         chunk_content=llm_chunk_content,
         chunk_title=chunk_title,
         header_path=header_path,
         doc_source_type=doc_source_type or "",
-        subject_context=llm_subject_context,
+        course_context=llm_course_context,
         sibling_topics=sibling_topics,
         digest_mode=digest_mode,
     )
@@ -630,8 +630,8 @@ async def _extract_candidates_internal(
                 digest_mode=digest_mode,
                 chunk_chars=len(chunk_content),
                 llm_chunk_chars=len(llm_chunk_content),
-                subject_context_chars=len(subject_context or ""),
-                llm_subject_context_chars=len(llm_subject_context),
+                course_context_chars=len(course_context or ""),
+                llm_course_context_chars=len(llm_course_context),
                 section_timeout_s=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S,
             ),
         )
@@ -676,7 +676,7 @@ async def _extract_candidates_internal(
         chunk_title=chunk_title,
         header_path=header_path,
         chapter_topic_hints=chapter_topic_hints,
-        subject_context=subject_context,
+        course_context=course_context,
         question_mode=question_mode,
     )
 
@@ -700,7 +700,7 @@ async def extract_candidates(
     chunk_title: str,
     header_path: str,
     doc_source_type: str | None = None,
-    subject_context: str | None = None,
+    course_context: str | None = None,
     prefer_fast_path: bool = False,
     allow_markdown_anchor_short_circuit: bool = True,
     sibling_topics: str = "",
@@ -714,7 +714,7 @@ async def extract_candidates(
         chunk_title=chunk_title,
         header_path=header_path,
         doc_source_type=doc_source_type,
-        subject_context=subject_context,
+        course_context=course_context,
         prefer_fast_path=prefer_fast_path,
         allow_markdown_anchor_short_circuit=allow_markdown_anchor_short_circuit,
         sibling_topics=sibling_topics,
@@ -729,7 +729,7 @@ async def extract_candidates_with_diagnostics(
     chunk_title: str,
     header_path: str,
     doc_source_type: str | None = None,
-    subject_context: str | None = None,
+    course_context: str | None = None,
     prefer_fast_path: bool = False,
     allow_markdown_anchor_short_circuit: bool = True,
     sibling_topics: str = "",
@@ -743,7 +743,7 @@ async def extract_candidates_with_diagnostics(
         chunk_title=chunk_title,
         header_path=header_path,
         doc_source_type=doc_source_type,
-        subject_context=subject_context,
+        course_context=course_context,
         prefer_fast_path=prefer_fast_path,
         allow_markdown_anchor_short_circuit=allow_markdown_anchor_short_circuit,
         sibling_topics=sibling_topics,

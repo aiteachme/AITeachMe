@@ -1,4 +1,4 @@
-# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
+﻿# AITeachMe 云端部署实施计划：PostgreSQL + DogeCloud OSS
 
 ## Context
 
@@ -236,7 +236,7 @@ def is_postgres() -> bool:
 ### Step 2.4 — 向量表：pgvector 方案
 
 **关键区别**：
-- SQLite: 每个 subject 一个 `vec0` 虚拟表 `chunk_embeddings_{slug}`
+- SQLite: 每个 course 一个 `vec0` 虚拟表 `chunk_embeddings_{slug}`
 - PostgreSQL: 在 `retrieval_chunk` 表上直接加 `embedding` 列（`vector(dim)` 类型）
 
 **文件**: `backend/app/models/knowledge.py`
@@ -290,14 +290,14 @@ def _init_postgres_db(settings) -> None:
 当前 `bulk_insert_embeddings()` 使用 sqlite-vec 语法。需要按方言分支：
 
 ```python
-def bulk_insert_embeddings(session, chunk_ids, embeddings, subject, ...):
+def bulk_insert_embeddings(session, chunk_ids, embeddings, course, ...):
     if is_sqlite():
-        _sqlite_insert_embeddings(session, chunk_ids, embeddings, subject, ...)
+        _sqlite_insert_embeddings(session, chunk_ids, embeddings, course, ...)
     else:
         _postgres_insert_embeddings(session, chunk_ids, embeddings)
 
 
-def _sqlite_insert_embeddings(session, chunk_ids, embeddings, subject, ...):
+def _sqlite_insert_embeddings(session, chunk_ids, embeddings, course, ...):
     """当前逻辑原样保留：写入 vec0 虚拟表。"""
     # ... 现有代码 ...
 
@@ -320,20 +320,20 @@ def _postgres_insert_embeddings(session, chunk_ids, embeddings):
 当前 `search_similar_chunks()` 使用 `MATCH` 语法。需要按方言分支：
 
 ```python
-def search_similar_chunks(session, query_embedding, subject, top_k, ...):
+def search_similar_chunks(session, query_embedding, course, top_k, ...):
     if is_sqlite():
-        return _sqlite_search(session, query_embedding, subject, top_k, ...)
+        return _sqlite_search(session, query_embedding, course, top_k, ...)
     else:
-        return _postgres_search(session, query_embedding, subject, top_k, ...)
+        return _postgres_search(session, query_embedding, course, top_k, ...)
 
 
-def _postgres_search(session, query_embedding, subject, top_k, ...):
+def _postgres_search(session, query_embedding, course, top_k, ...):
     """pgvector 余弦相似度检索。"""
     results = session.execute(
         sa.text("""
             SELECT id, 1 - (embedding <=> :query_emb::vector) AS score
             FROM retrieval_chunk
-            WHERE subject = :subject
+            WHERE course = :course
               AND is_active = true
               AND embedding IS NOT NULL
             ORDER BY embedding <=> :query_emb::vector
@@ -341,7 +341,7 @@ def _postgres_search(session, query_embedding, subject, top_k, ...):
         """),
         {
             "query_emb": str(query_embedding),
-            "subject": subject,
+            "course": course,
             "top_k": top_k,
         },
     ).fetchall()
@@ -372,7 +372,7 @@ def is_vec_ready() -> bool:
 需要排查的文件：
 - `backend/app/repositories/knowledge/knowledge_repo.py` — upsert 语法
 - `backend/app/repositories/profile_repo.py` — 可能有 SQLite upsert
-- `backend/app/shared/infra/subject_embeddings.py` — vec 表管理
+- `backend/app/shared/infra/course_embeddings.py` — vec 表管理
 
 **SQLite vs PostgreSQL 常见差异**：
 | 操作 | SQLite | PostgreSQL |
@@ -411,18 +411,18 @@ temp写入 → store.write_file(storage_key, temp_path) → 更新DB → 清理t
 ```python
 from app.shared.infra.storage import get_artifact_store
 
-async def save_uploaded_file(subject, filename, content, ...):
+async def save_uploaded_file(course, filename, content, ...):
     store = get_artifact_store()
     settings = get_settings()
 
     # 1. 写入临时文件（两种模式都需要，因为要计算hash等）
-    temp_dir = build_temp_dir(subject)
+    temp_dir = build_temp_dir(course)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"
     temp_path.write_bytes(content)
 
     # 2. 创建DB记录，获取 file_uid
-    raw_file = _create_raw_file_record(session, subject, filename, ...)
+    raw_file = _create_raw_file_record(session, course, filename, ...)
 
     # 3. 构建 storage_key 并持久化
     storage_key = user_file_scope.raw_file_key(
@@ -476,7 +476,7 @@ async def load_raw_file(state, ...):
 
     if settings.is_cloud_mode:
         # 从OSS下载到临时目录
-        temp_dir = build_temp_dir(state.subject)
+        temp_dir = build_temp_dir(state.course)
         local_path = await store.materialize_to_temp(
             raw_file.storage_key, temp_dir
         )
@@ -520,52 +520,52 @@ Digest 产出：`knowledge_markdowns/chapter_*.md`, `manifest.json`, `merged_kno
 
 ```python
 # 所有写入操作增加 store 分支
-async def write_chapter(subject, chapter_index, title, content):
+async def write_chapter(course, chapter_index, title, content):
     store = get_artifact_store()
     settings = get_settings()
-    storage_key = _chapter_storage_key(subject, chapter_index, title)
+    storage_key = _chapter_storage_key(course, chapter_index, title)
 
     if settings.is_cloud_mode:
         await store.write_bytes(storage_key, content.encode("utf-8"))
     else:
-        path = build_knowledge_doc_path(subject, chapter_index, title)
+        path = build_knowledge_doc_path(course, chapter_index, title)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
 # 所有读取操作增加 store 分支
-async def read_chapter(subject, chapter_index, title) -> str:
+async def read_chapter(course, chapter_index, title) -> str:
     store = get_artifact_store()
     settings = get_settings()
 
     if settings.is_cloud_mode:
-        storage_key = _chapter_storage_key(subject, chapter_index, title)
+        storage_key = _chapter_storage_key(course, chapter_index, title)
         data = await store.read_bytes(storage_key)
         return data.decode("utf-8")
     else:
-        path = build_knowledge_doc_path(subject, chapter_index, title)
+        path = build_knowledge_doc_path(course, chapter_index, title)
         return path.read_text(encoding="utf-8")
 ```
 
-### Step 3.6 — 改造 Subject 删除清理
+### Step 3.6 — 改造 Course 删除清理
 
-**文件**: `backend/app/workflows/support/subjects/lib/deletion.py`
+**文件**: `backend/app/workflows/support/courses/lib/deletion.py`
 
-当前：`shutil.rmtree(subject_dir)`
+当前：`shutil.rmtree(course_dir)`
 
 改造后：
 ```python
-async def delete_subject_artifacts(subject: str):
+async def delete_course_artifacts(course: str):
     store = get_artifact_store()
     settings = get_settings()
 
     if settings.is_cloud_mode:
-        # 删除 OSS 上该 subject 的所有文件
-        await store.delete_prefix(f"{subject}/")
+        # 删除 OSS 上该 course 的所有文件
+        await store.delete_prefix(f"{course}/")
     else:
         # 原有逻辑：删除本地目录
-        subject_dir = build_subject_dir(subject)
-        if subject_dir.exists():
-            shutil.rmtree(subject_dir, ignore_errors=True)
+        course_dir = build_course_dir(course)
+        if course_dir.exists():
+            shutil.rmtree(course_dir, ignore_errors=True)
 ```
 
 ### Step 3.7 — 改造静态文件服务
@@ -651,14 +651,14 @@ Cloud 模式下：
 - `build_status.json` → 存入 OSS（需要持久化）
 - `.build.lock` → 改用数据库行锁或简单的 DB 标记（OSS 不支持原子锁）
 
-**建议**：在 `subject` 表中新增 `build_lock_holder` 和 `build_lock_at` 字段，cloud 模式下用 DB 行锁替代文件锁。
+**建议**：在 `course` 表中新增 `build_lock_holder` 和 `build_lock_at` 字段，cloud 模式下用 DB 行锁替代文件锁。
 
 ### Step 3.11 — 阶段 3 验收标准
 
 - [ ] 上传文件后，文件真实进入 DogeCloud OSS
 - [ ] Ingest 能从 OSS 读取原始文件并解析
 - [ ] Digest 能把知识文档写入 OSS
-- [ ] Subject 删除能清理对应 OSS prefix
+- [ ] Course 删除能清理对应 OSS prefix
 - [ ] Export 能从 OSS 读取文件打包
 - [ ] Import 能将文件写入 OSS
 - [ ] Local 模式仍完全正常
@@ -789,7 +789,7 @@ Render 创建 PostgreSQL 后：
 从空环境开始，按顺序验证：
 
 1. **注册/登录** — 用户创建成功，token 正常
-2. **创建学科** — subject 写入 PostgreSQL
+2. **创建课程** — course 写入 PostgreSQL
 3. **上传文件** — 文件进入 DogeCloud OSS，DB 记录正确
 4. **Ingest** — 从 OSS 读取文件，解析成功，markdown 写回 OSS
 5. **Digest** — 知识文档生成，写入 OSS，知识图谱写入 PostgreSQL
@@ -797,8 +797,8 @@ Render 创建 PostgreSQL 后：
 7. **Interact** — 聊天正常，能检索到知识上下文
 8. **Examine** — 生成考卷，批改正常
 9. **Profile** — 掌握度更新正常
-10. **删除学科** — PostgreSQL 记录清除，OSS prefix 清除
-11. **Export/Import** — 导出包正常，导入到新学科正常
+10. **删除课程** — PostgreSQL 记录清除，OSS prefix 清除
+11. **Export/Import** — 导出包正常，导入到新课程正常
 
 ### Step 5.2 — 常见问题排查顺序
 
@@ -834,7 +834,7 @@ Render 创建 PostgreSQL 后：
 | `backend/app/models/raw_file.py` | storage_key 在 cloud 模式下的语义 |
 | `backend/app/repositories/knowledge/knowledge_repo.py` | 向量写入/检索按方言分支 |
 | `backend/app/workflows/ingest/intake/uploads.py` | 文件上传走 store |
-| `backend/app/workflows/support/subjects/lib/deletion.py` | 删除走 store |
+| `backend/app/workflows/support/courses/lib/deletion.py` | 删除走 store |
 | `backend/app/workflows/support/export_import/exports.py` | 导出导入走 store |
 | `backend/app/main.py` | 静态挂载条件化 + init_db 适配 |
 | `backend/app/workflows/ingest/fast_parse/lib/file.py` | 文件加载走 store |
@@ -853,7 +853,7 @@ Render 创建 PostgreSQL 后：
 
 ### 可能需要适配的文件（视排查结果）
 
-- `backend/app/shared/infra/subject_embeddings.py` — vec 表管理逻辑
+- `backend/app/shared/infra/course_embeddings.py` — vec 表管理逻辑
 - `backend/app/repositories/profile_repo.py` — 可能有 SQLite 特有 SQL
 - `backend/app/workflows/digest/common/prepare.py` — 文件读取
 - `backend/app/workflows/digest/kg/support.py` — 可能读取本地文件

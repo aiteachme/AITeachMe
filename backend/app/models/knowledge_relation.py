@@ -1,4 +1,4 @@
-﻿"""Knowledge graph relation models."""
+"""Knowledge graph relation models."""
 
 from __future__ import annotations
 
@@ -17,17 +17,17 @@ class KnowledgeEdge(SQLModel, table=True):
     __tablename__ = "knowledge_edge"
     __table_args__ = (
         UniqueConstraint(
-            "subject_id",
+            "course_id",
             "source_node_id",
             "target_node_id",
             "edge_type",
-            name="uq_edge_subject_src_tgt_type",
+            name="uq_edge_course_src_tgt_type",
         ),
-        Index("ix_edge_subject_status", "subject_id", "status"),
+        Index("ix_edge_course_status", "course_id", "status"),
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subject_id: str = Field(foreign_key="subject.id", index=True)
+    course_id: str = Field(foreign_key="course.id", index=True)
     source_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     target_node_id: int = Field(foreign_key="knowledge_unit.id", index=True)
     edge_type: str = Field(index=True)
@@ -60,7 +60,7 @@ class EvidenceLink(SQLModel):
     """Structured evidence payload embedded on a knowledge unit or relation."""
 
     id: int | None = None
-    subject_id: str = ""
+    course_id: str = ""
     entity_type: str
     entity_id: int
     entity_revision_id: int | None = Field(default=None)

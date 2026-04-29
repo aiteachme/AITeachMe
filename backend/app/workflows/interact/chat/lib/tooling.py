@@ -36,7 +36,7 @@ class InteractToolPlan:
 def resolve_interact_tool_plan(
     *,
     execution_mode: InteractExecutionMode,
-    subject_id: str,
+    course_id: str,
     retrieval_results: list[RetrievedContext],
 ) -> InteractToolPlan:
     """Resolve the bounded tool plan for one turn.
@@ -48,20 +48,20 @@ def resolve_interact_tool_plan(
 
     if execution_mode != InteractExecutionMode.PLAN_EXECUTE:
         return InteractToolPlan(tool_names=[])
-    if not subject_id.strip():
+    if not course_id.strip():
         return InteractToolPlan(tool_names=[])
 
     # When retrieval already found enough material we still allow one search
     # turn; the model can skip it, and the final answer remains token-streamed.
     _ = retrieval_results
-    _ = subject_id
+    _ = course_id
     return InteractToolPlan(tool_names=list(DEFAULT_INTERACT_TOOLS))
 
 
 def build_agent_loop_config(
     *,
     tool_plan: InteractToolPlan,
-    subject_id: str,
+    course_id: str,
     model_selector: str | None = None,
 ) -> AgentLoopConfig:
     """Build the shared AgentLoop configuration for Interact."""
@@ -72,7 +72,7 @@ def build_agent_loop_config(
         tool_timeout_s=tool_plan.tool_timeout_s,
         task_type=LLMCallPurpose.CHAT,
         model=model_selector or tool_plan.model_selector,
-        tool_argument_overrides={"search_kb": {"subject_id": subject_id}},
+        tool_argument_overrides={"search_kb": {"course_id": course_id}},
     )
 
 

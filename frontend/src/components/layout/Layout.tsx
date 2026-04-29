@@ -3,7 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
-import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
+import { isFullBleedCoursePath } from "../../lib/courseNavigation";
 import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
 import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
@@ -12,28 +12,28 @@ import { isElectronRuntime } from "../../lib/electronRuntime";
 export function Layout() {
   const { pathname } = useLocation();
   const isElectron = isElectronRuntime();
-  const isFullBleed = isFullBleedSubjectPath(pathname);
-  const isExamFocusPage = /^\/subject\/[^/]+\/exams\/\d+$/.test(pathname);
-  const rawSubjectId = pathname.match(/^\/subject\/([^/]+)/)?.[1] ?? null;
-  const subjectId = useMemo(() => {
-    if (!rawSubjectId) {
+  const isFullBleed = isFullBleedCoursePath(pathname);
+  const isExamFocusPage = /^\/course\/[^/]+\/exams\/\d+$/.test(pathname);
+  const rawCourseId = pathname.match(/^\/course\/([^/]+)/)?.[1] ?? null;
+  const courseId = useMemo(() => {
+    if (!rawCourseId) {
       return null;
     }
     try {
-      return decodeURIComponent(rawSubjectId);
+      return decodeURIComponent(rawCourseId);
     } catch {
-      return rawSubjectId;
+      return rawCourseId;
     }
-  }, [rawSubjectId]);
+  }, [rawCourseId]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (pathname === "/assistant") {
       return { type: "global" };
     }
-    if (subjectId) {
-      return { type: "subject", subjectId };
+    if (courseId) {
+      return { type: "course", courseId };
     }
     return { type: "global" };
-  }, [pathname, subjectId]);
+  }, [pathname, courseId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsOverview = useSystemSettingsOverview();

@@ -75,7 +75,7 @@ def build_resolve_chat_session_node(
             if existing is None:
                 resolved = create_chat_session(
                     db_session,
-                    subject_id=state["subject_id"],
+                    course_id=state["course_id"],
                     user_id=state["user_id"],
                     source=state.get("source"),
                     title="New Chat",
@@ -143,7 +143,7 @@ def build_finalize_chat_session_node(
         with _node_session(session) as db_session:
             touched = touch_chat_session(
                 db_session,
-                subject_id=state["subject_id"],
+                course_id=state["course_id"],
                 user_id=state["user_id"],
                 session_id=session_id,
                 title=next_title,
@@ -182,7 +182,7 @@ def _load_requested_session(
         return None
     return get_chat_session(
         session,
-        subject_id=state["subject_id"],
+        course_id=state["course_id"],
         user_id=state["user_id"],
         session_id=requested_session_id,
     )
@@ -197,7 +197,7 @@ def _load_current_title(
     with _node_session(session_override) as db_session:
         existing = get_chat_session(
             db_session,
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             user_id=state["user_id"],
             session_id=session_id,
         )
@@ -211,16 +211,16 @@ async def _resolve_next_title(
 ) -> str | None:
     if not should_generate_session_title(current_title, state["question"]):
         return None
-    subject_context = state.get("subject_context")
-    subject_name = (
-        subject_context.subject_name
-        if subject_context is not None and subject_context.subject_name
-        else state["subject_id"]
+    course_context = state.get("course_context")
+    course_name = (
+        course_context.course_name
+        if course_context is not None and course_context.course_name
+        else state["course_id"]
     )
     try:
         return await asyncio.wait_for(
             generate_session_title(
-                subject_name=subject_name,
+                course_name=course_name,
                 question=state["question"],
                 selected_text=(
                     state.get("selected_text")

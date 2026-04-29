@@ -1,4 +1,4 @@
-﻿"""Filter KnowledgeUnit candidates before blueprint planning."""
+"""Filter KnowledgeUnit candidates before blueprint planning."""
 
 from __future__ import annotations
 
@@ -340,10 +340,10 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
             filter_strategy = "llm_graph"
             filter_rationale = ""
             selection = await select_exam_knowledge_units(
-                subject_id=str(state.get("subject_id") or ""),
-                subject_name=str(state.get("subject_name") or ""),
-                subject_description=str(state.get("subject_description") or ""),
-                subject_user_intent=str(state.get("subject_user_intent") or ""),
+                course_id=str(state.get("course_id") or ""),
+                course_name=str(state.get("course_name") or ""),
+                course_description=str(state.get("course_description") or ""),
+                course_user_intent=str(state.get("course_user_intent") or ""),
                 exam_mode=exam_mode,
                 units=input_units,
                 knowledge_graph_edges=list(state.get("knowledge_graph_edges") or []),

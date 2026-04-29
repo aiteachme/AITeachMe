@@ -22,7 +22,7 @@ flowchart TD
     update_mastery["❷ Update Mastery"]
     schedule_reviews["❸ Schedule Reviews"]
     analyze_weakness["❹ Analyze Weakness"]
-    refresh_subject_profile["❺ Refresh Subject Profile"]
+    refresh_course_profile["❺ Refresh Course Profile"]
     refresh_user_profile["❻ Refresh User Profile"]
     __end__(["⏹ END"])
 
@@ -33,9 +33,9 @@ flowchart TD
 
     __start__ --> resolve_profile_context
     analyze_weakness -. "✗ fail" .-> fail_profile_pipeline
-    analyze_weakness -->|"✓"| refresh_subject_profile
-    refresh_subject_profile -. "✗ fail" .-> fail_profile_pipeline
-    refresh_subject_profile -->|"✓"| refresh_user_profile
+    analyze_weakness -->|"✓"| refresh_course_profile
+    refresh_course_profile -. "✗ fail" .-> fail_profile_pipeline
+    refresh_course_profile -->|"✓"| refresh_user_profile
     resolve_profile_context -. "✗ fail" .-> fail_profile_pipeline
     resolve_profile_context -->|"✓"| update_mastery
     schedule_reviews -->|"✓"| analyze_weakness
@@ -65,8 +65,8 @@ flowchart TD
 | Resolve Profile Context | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Update Mastery |
 | Update Mastery | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Schedule Reviews |
 | Schedule Reviews | 🔀 条件路由 | `continue` -> Analyze Weakness / `fail` -> Fail Profile Pipeline |
-| Analyze Weakness | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Refresh Subject Profile |
-| Refresh Subject Profile | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Refresh User Profile |
+| Analyze Weakness | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Refresh Course Profile |
+| Refresh Course Profile | 🔀 条件路由 | `fail` -> Fail Profile Pipeline / `continue` -> Refresh User Profile |
 | Refresh User Profile | ⚙ 处理节点 | → END |
 | Fail Profile Pipeline | ❌ 错误处理 | → END |
 
@@ -126,8 +126,8 @@ flowchart TD
 2. 不要编号
 3. 不要空话，要能直接执行
 
-学科：
-{{ subject }}
+课程：
+{{ course }}
 
 整体掌握度：
 {{ overall_mastery }}

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from io import BytesIO
@@ -8,9 +8,9 @@ from fastapi import UploadFile
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import RawFile, Subject, SubjectFileLink, TaskStatus, User
+from app.models import RawFile, Course, CourseFileLink, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
-from app.shared.infra.storage.subject_scope import build_user_file_storage_scope
+from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
 
 
@@ -44,7 +44,7 @@ def _session() -> Session:
     )
     SQLModel.metadata.create_all(
         engine,
-        tables=[User.__table__, Subject.__table__, RawFile.__table__, SubjectFileLink.__table__],
+        tables=[User.__table__, Course.__table__, RawFile.__table__, CourseFileLink.__table__],
     )
     return Session(engine, expire_on_commit=False)
 
@@ -87,17 +87,17 @@ def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:
     assert raw_files[0].parse_request_signature == "default"
 
 
-def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) -> None:
+def test_duplicate_course_upload_links_once_and_starts_parse_once(monkeypatch) -> None:
     fake_store = _install_fake_store(monkeypatch)
     with _session() as session:
         session.add(User(id="user_a", username="user_a"))
-        session.add(Subject(user_id="user_a", id="subj_math00000000", name="Math"))
+        session.add(Course(user_id="user_a", id="course_math00000000", name="Math"))
         session.commit()
 
         data, parse_ids = asyncio.run(
             uploads.save_uploaded_files_and_request_parse(
                 session,
-                subject_id="subj_math00000000",
+                course_id="course_math00000000",
                 owner_user_id="user_a",
                 files=[
                     _upload("chapter.pdf", b"same pdf bytes"),
@@ -106,7 +106,7 @@ def test_duplicate_subject_upload_links_once_and_starts_parse_once(monkeypatch) 
             )
         )
         raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
-        links = list(session.exec(select(SubjectFileLink)).all())
+        links = list(session.exec(select(CourseFileLink)).all())
 
     assert total == 1
     assert len(raw_files) == 1

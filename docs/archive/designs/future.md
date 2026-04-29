@@ -1,4 +1,4 @@
-# AITeachMe 未来学习形式设计
+﻿# AITeachMe 未来学习形式设计
 
 > 日期：2026-03-27
 > 定位：在"终端沙箱 + 传统刷题"之外，AITeachMe 还能做哪些学习形式？
@@ -31,7 +31,7 @@
 - digest：统一构建文档/图谱/课程
 - interact：SSE 教学对话
 - examine：生成、判卷、回写掌握度
-- profile：`user.profile_json + subject.profile_json + user_knowledge_state` 三层
+- profile：`user.profile_json + course.profile_json + user_knowledge_state` 三层
 
 本文件中的 P0/P1/P2 代表“在现有架构上继续扩展”，默认遵循：
 
@@ -254,7 +254,7 @@ Step 4: 再进入正式发布
 
 **为什么值得做**：
 - 现在系统已经不只是一两个同步请求，用户需要知道“后台到底在做什么”
-- 同一个学科同时可能经历上传解析、知识构建、导出等多个流程，缺少统一面板会造成混乱
+- 同一个课程同时可能经历上传解析、知识构建、导出等多个流程，缺少统一面板会造成混乱
 - 后端已经有后台任务注册与运行时状态基础，前端补面板的投入回报很高
 
 **建议展示字段**：
@@ -271,7 +271,7 @@ Step 4: 再进入正式发布
 |------|------|
 | 统一任务状态模型 | `BackgroundTaskRegistry` + runtime status helpers |
 | 任务状态读取接口 | 优先复用现有资源组，不先拆大 job API |
-| 前端任务面板 | Home / Subject 入口增加“任务中心” |
+| 前端任务面板 | Home / Course 入口增加“任务中心” |
 
 ---
 
@@ -305,7 +305,7 @@ Step 4: 再进入正式发布
 
 **建议规则**：
 
-- `资料内模式`：只能引用 subject 内 chunks / docs / graph / profile
+- `资料内模式`：只能引用 course 内 chunks / docs / graph / profile
 - `联网增强模式`：允许 web search，但必须在回答中明确区分“教材内依据”和“外部补充”
 - 默认优先资料内模式，联网模式显式开启
 

@@ -28,7 +28,7 @@ class DocGenBuildRequest(BaseModel):
         default=None,
         description=(
             "Optional parsed raw file IDs; omitted means auto-pick all available ready files for "
-            "the subject. Ignored when `confirmed_plan_id` is provided."
+            "the course. Ignored when `confirmed_plan_id` is provided."
         ),
     )
     prompt: str | None = Field(
@@ -40,7 +40,7 @@ class DocGenBuildRequest(BaseModel):
     )
     embedding_resolution: Literal["rebuild", "disable"] | None = Field(
         default=None,
-        description="Optional subject-level embedding resolution chosen after a precheck conflict.",
+        description="Optional course-level embedding resolution chosen after a precheck conflict.",
     )
     build_type: Literal["docs"] = Field(
         default="docs",
@@ -132,8 +132,8 @@ class KnowledgeBuildPrecheckConflictData(BaseModel):
     """Structured payload for one build-precheck conflict."""
 
     reason: str = Field(description="Stable reason code for the precheck conflict.")
-    subject_model: str | None = Field(default=None, description="Subject-bound embedding model, if any.")
-    subject_dim: int | None = Field(default=None, description="Subject-bound embedding dimension, if any.")
+    course_model: str | None = Field(default=None, description="Course-bound embedding model, if any.")
+    course_dim: int | None = Field(default=None, description="Course-bound embedding dimension, if any.")
     runtime_model: str | None = Field(default=None, description="Current runtime embedding model, if any.")
     runtime_dim: int | None = Field(default=None, description="Current runtime embedding dimension, if any.")
     requires_full_rebuild: bool = Field(
@@ -146,13 +146,13 @@ class KnowledgeBuildPrecheckConflictData(BaseModel):
     )
 
 
-class SubjectVectorStatusResponse(BaseModel):
-    """Subject-level vector capability status shown to the UI."""
+class CourseVectorStatusResponse(BaseModel):
+    """Course-level vector capability status shown to the UI."""
 
     mode: str = Field(default="enabled", description="enabled / disabled")
     notice: str | None = Field(default=None, description="User-facing vector capability notice.")
-    embedding_model: str | None = Field(default=None, description="Current subject-bound embedding model, if any.")
-    vector_table: str | None = Field(default=None, description="Current subject-scoped vector index reference, if any.")
+    embedding_model: str | None = Field(default=None, description="Current course-bound embedding model, if any.")
+    vector_table: str | None = Field(default=None, description="Current course-scoped vector index reference, if any.")
 
 
 class DocGenBuildData(BaseModel):
@@ -163,11 +163,11 @@ class DocGenBuildData(BaseModel):
         default=None,
         description="Effective user prompt for the docs build after planner overrides are applied.",
     )
-    ready_file_count: int = Field(default=0, description="Current ready file count for this subject.")
+    ready_file_count: int = Field(default=0, description="Current ready file count for this course.")
     requested_at: datetime = Field(description="Build request timestamp.")
-    vector_status: SubjectVectorStatusResponse = Field(
-        default_factory=SubjectVectorStatusResponse,
-        description="Current subject-level vector capability status.",
+    vector_status: CourseVectorStatusResponse = Field(
+        default_factory=CourseVectorStatusResponse,
+        description="Current course-level vector capability status.",
     )
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
@@ -177,7 +177,7 @@ class DocGenBuildData(BaseModel):
 class DocGenBuildCancelData(BaseModel):
     """Result of cancelling the active knowledge build."""
 
-    subject_id: str
+    course_id: str
     status: str = "cancelled"
     cancelled_task_count: int = 0
     requested_at: datetime | None = None
@@ -187,7 +187,7 @@ class DocGenBuildCancelData(BaseModel):
 class KnowledgeGraphBuildData(BaseModel):
     """Knowledge graph rebuild response data."""
 
-    subject_id: str = Field(description="Subject ID.")
+    course_id: str = Field(description="Course ID.")
     status: str = Field(default="accepted", description="accepted / running")
     requested_at: datetime = Field(description="Graph build request timestamp.")
     build_group_id: str | None = Field(default=None, description="Runtime build group id.")
@@ -380,9 +380,9 @@ class DocGenGetResponse(BaseModel):
         default=None,
         description="Compact live build diagnostics surfaced through the docs polling endpoint.",
     )
-    vector_status: SubjectVectorStatusResponse = Field(
-        default_factory=SubjectVectorStatusResponse,
-        description="Current subject-level vector capability status.",
+    vector_status: CourseVectorStatusResponse = Field(
+        default_factory=CourseVectorStatusResponse,
+        description="Current course-level vector capability status.",
     )
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
@@ -393,7 +393,7 @@ class KnowledgeUnitResponse(BaseModel):
     """KnowledgeUnit list item."""
 
     id: int
-    subject_id: str
+    course_id: str
     knowledge_unit_type: str
     canonical_name: str
     status: str
@@ -482,7 +482,7 @@ class KnowledgeUnitDetailResponse(BaseModel):
     """KnowledgeUnit detail response."""
 
     id: int
-    subject_id: str
+    course_id: str
     knowledge_unit_type: str
     canonical_name: str
     normalized_name: str
@@ -514,7 +514,7 @@ class KnowledgeRelationResponse(BaseModel):
     """Knowledge relation with endpoint metadata."""
 
     id: int
-    subject_id: str
+    course_id: str
     source_node_id: int
     source_node_name: str
     source_node_type: str
@@ -578,13 +578,13 @@ class KnowledgeOverviewStats(BaseModel):
 class KnowledgeOverviewResponse(BaseModel):
     """Knowledge overview aggregated payload for summary tabs."""
 
-    subject_id: str
+    course_id: str
     generated_at: datetime
     graph: FullGraphResponse | None = None
     stats: KnowledgeOverviewStats = Field(default_factory=KnowledgeOverviewStats)
-    vector_status: SubjectVectorStatusResponse = Field(
-        default_factory=SubjectVectorStatusResponse,
-        description="Current subject-level vector capability status.",
+    vector_status: CourseVectorStatusResponse = Field(
+        default_factory=CourseVectorStatusResponse,
+        description="Current course-level vector capability status.",
     )
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
@@ -594,7 +594,7 @@ class KnowledgeOverviewResponse(BaseModel):
 class ClearKnowledgeResponse(BaseModel):
     """Knowledge clear response."""
 
-    subject_id: str
+    course_id: str
     deleted_counts: dict[str, int] = Field(default_factory=dict)
 
 
@@ -626,7 +626,7 @@ class BuildPlannerAdjustClickResponse(BaseModel):
 
     acknowledged: bool = True
     planner_session_id: str
-    subject_id: str
+    course_id: str
     status: str = ""
     has_latest_plan: bool = False
     latest_plan_chapter_count: int = 0
@@ -659,7 +659,7 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 
 
 class BuildPlannerPlanResponse(BaseModel):
-    subject_id: str
+    course_id: str
     selected_file_ids: list[str] = Field(default_factory=list)
     user_prompt: str
     digest_mode: str
@@ -673,7 +673,7 @@ class BuildPlannerPlanResponse(BaseModel):
 
 class BuildPlannerSessionResponse(BaseModel):
     session_id: str
-    subject_id: str
+    course_id: str
     title: str
     status: str
     revision: int
@@ -687,7 +687,7 @@ class BuildPlannerSessionResponse(BaseModel):
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
     confirmed_plan_id: str
-    subject_id: str
+    course_id: str
     status: str
     digest_mode: str
     selected_file_ids: list[str] = Field(default_factory=list)

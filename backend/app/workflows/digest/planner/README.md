@@ -26,7 +26,7 @@ load_planner_materials              # 读取资料
        ├─ stream_planner_brief
        └─ extract_plan_intent
   -> stream_and_parse_plan_draft     # 合成大纲
-  -> generate_subject_name           # 并行生成学科名
+  -> generate_course_name           # 并行生成课程名
   -> normalize_and_persist_plan      # 保存方案
 ```
 
@@ -75,7 +75,7 @@ stream_and_parse_plan_draft
     4. 转成待 normalize 的 `chapter_plan`。
 
 normalize_and_persist_plan
-  输入：build_plan_draft / material_context / latest_plan / planner_brief / plan_intent / generated_subject_name
+  输入：build_plan_draft / material_context / latest_plan / planner_brief / plan_intent / generated_course_name
   输出：plan / plan_summary / planner_record / planner_turns
     - plan：API、确认接口和 DocGen 消费的最终 plan payload。
     - plan_summary：计划摘要。
@@ -89,7 +89,7 @@ normalize_and_persist_plan
 
 ```text
 confirmed_plan
-  subject：展示用主题名
+  course：展示用主题名
   user_prompt：用户学习提示
   digest_mode：sprint / systematic
   chapter_plan：用户确认的章节合同，DocGen 不默认新增、删除、重排
@@ -116,7 +116,7 @@ flowchart TD
     B1["生成可见判断<br/>stream_planner_brief"]
     B2["生成规划抓手<br/>extract_plan_intent"]
     C["合成大纲<br/>stream_and_parse_plan_draft"]
-    E["生成学科名<br/>generate_subject_name"]
+    E["生成课程名<br/>generate_course_name"]
     D["保存方案<br/>normalize_and_persist_plan"]
 
     A --> B
@@ -137,7 +137,7 @@ flowchart TD
 | `load_planner_materials` | 读取资料 | `nodes/load_planner_materials.py` | 读取 Planner 对话会话、文件和历史消息，生成并打包 `DigestMaterialContext` |
 | `stream_brief_and_extract_intent` | 理解目标 | `nodes/stream_brief_and_extract_intent.py` | 并行做两件事：流式输出思考过程；生成内部 `plan_intent / plan_queries` |
 | `stream_and_parse_plan_draft` | 合成大纲 | `nodes/stream_and_parse_plan_draft.py` | 一次流式调用，输出可见计划说明和 `<PLAN_JSON>` 初步大纲 |
-| `generate_subject_name` | 生成学科名 | `nodes/generate_subject_name.py` | 在与大纲合成并行的展示分支中，基于 brief、intent 和资料线索生成标题与图标 |
+| `generate_course_name` | 生成课程名 | `nodes/generate_course_name.py` | 在与大纲合成并行的展示分支中，基于 brief、intent 和资料线索生成标题与图标 |
 | `normalize_and_persist_plan` | 保存方案 | `nodes/normalize_and_persist_plan.py` | 规范化 plan，保存 Planner 对话 session 和 assistant message |
 
 ## LLM 调用
@@ -149,8 +149,8 @@ flowchart TD
 | 1 | `stream_planner_brief` | `light` | 用户可见的思考过程 |
 | 2 | `extract_plan_intent` | `light` | `PlanIntent` |
 | 3 | `stream_and_parse_plan_draft` | `light` | 可见计划说明 + 极简 JSON 初步大纲 |
-| 4 | `generate_subject_name` | `light` | 基于可见判断、规划抓手和资料线索生成学科名 |
-| 5 | `select_subject_icon` | `light` | 为生成的学科名选择图标候选并随机收口 |
+| 4 | `generate_course_name` | `light` | 基于可见判断、规划抓手和资料线索生成课程名 |
+| 5 | `select_course_icon` | `light` | 为生成的课程名选择图标候选并随机收口 |
 
 模型策略来源：`lib/model_policy.py`。这里的 `reason / primary / light` 是逻辑模型槽位，最终 provider 模型名仍由运行时 settings 决定。
 

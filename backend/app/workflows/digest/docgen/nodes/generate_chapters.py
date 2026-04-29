@@ -347,7 +347,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             mode = "append" if previous and text.startswith(previous) else "replace"
             stream_preview_last_text = text
             publish_workflow_stream_event(
-                state["subject_id"],
+                state["course_id"],
                 "preview_delta",
                 {
                     "kind": "chapter_preview",
@@ -364,12 +364,12 @@ def build_generate_chapters_node(*, context: WorkflowContext):
 
         _publish_preview_delta(task_preview, status="generating")
         upsert_knowledge_build_chapter_progress(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             chapter_progress={"chapter_index": task.chapter_index, "title": title, "status": "generating"},
         )
         upsert_knowledge_build_chapter_preview(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             chapter_preview={
                 "chapter_index": task.chapter_index,
@@ -382,7 +382,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_generating",
@@ -393,7 +393,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             },
         )
         traced_context = TracedExecutionContext(
-            subject_id=state["subject_id"],
+            course_id=state["course_id"],
             build_session_id=state.get("build_session_id", ""),
             workflow_context=context,
             planner_session_id=state.get("planner_session_id", ""),
@@ -404,7 +404,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 or resolve_docgen_retrieval_profile(
                     state.get("digest_mode"),
                     user_prompt=state.get("user_prompt"),
-                    subject_name=state.get("subject_name"),
+                    course_name=state.get("course_name"),
                 )
             ),
             teaching_action="chapter_generate",
@@ -423,7 +423,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             runtime = DocGenChapterContextRuntime(traced_context)
             research = await runtime.run(
                 queries=task.retrieval_queries[: max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries)],
-                local_rag_subject_id=state["subject_id"],
+                local_rag_course_id=state["course_id"],
                 local_sections=list(getattr(shared_inputs, "section_packets", []) or []),
                 chapter_title=title,
                 objective=task.objective,
@@ -492,7 +492,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         )
         _publish_preview_delta(research_preview, status="generating")
         upsert_knowledge_build_chapter_preview(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             chapter_preview={
                 "chapter_index": task.chapter_index,
@@ -505,7 +505,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_research_ready",
@@ -611,7 +611,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             if not stream_progress_marked:
                 stream_progress_marked = True
                 upsert_knowledge_build_chapter_progress(
-                    state["subject_id"],
+                    state["course_id"],
                     requested_at=state["requested_at"],
                     chapter_progress={
                         "chapter_index": task.chapter_index,
@@ -624,7 +624,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     },
                 )
             upsert_knowledge_build_chapter_preview(
-                state["subject_id"],
+                state["course_id"],
                 requested_at=state["requested_at"],
                 chapter_preview={
                     "chapter_index": task.chapter_index,
@@ -718,7 +718,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         final_preview = _chapter_live_preview_markdown(writer_markdown, title=title)
         _publish_preview_delta(final_preview, status="generated")
         upsert_knowledge_build_chapter_preview(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             chapter_preview={
                 "chapter_index": task.chapter_index,
@@ -731,7 +731,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             },
         )
         upsert_knowledge_build_chapter_progress(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             chapter_progress={
                 "chapter_index": task.chapter_index,
@@ -746,7 +746,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             },
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_generated",

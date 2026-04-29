@@ -3,7 +3,7 @@
 `search` is intentionally broader than local RAG:
 - retrievers discover candidate sources
 - readers load URL content
-- knowledge retrieval searches the local subject corpus
+- knowledge retrieval searches the local course corpus
 - llamaindex_adapter bridges to LlamaIndex components
 """
 
@@ -17,7 +17,7 @@ from .factory import (
     get_external_retriever_names,
     get_reader_for_url,
     get_retriever,
-    get_retrievers_for_subject,
+    get_retrievers_for_course,
 )
 from .knowledge import RetrievalConfig, RetrievalPipeline, RetrievedChunk, rerank_chunks
 from .readers import get_registered_reader_names
@@ -37,12 +37,12 @@ def __getattr__(name: str):
         return getattr(api, name)
     if name in {
         "IndexedChunk",
-        "SubjectIndexHit",
-        "clear_subject_index",
+        "CourseIndexHit",
+        "clear_course_index",
         "delete_chunks",
-        "query_subject_index",
-        "rebuild_subject_index",
-        "retrieve_subject_chunks",
+        "query_course_index",
+        "rebuild_course_index",
+        "retrieve_course_chunks",
         "upsert_chunks",
     }:
         from . import llamaindex_index
@@ -66,10 +66,10 @@ __all__ = [
     "ScrapedPage",
     "SearchResult",
     "SourceCurator",
-    "SubjectIndexHit",
+    "CourseIndexHit",
     "WebSearchResult",
     "build_knowledge_retriever",
-    "clear_subject_index",
+    "clear_course_index",
     "delete_chunks",
     "get_compression_runtime_cache",
     "get_external_retriever_names",
@@ -80,12 +80,12 @@ __all__ = [
     "get_knowledge_search_notice",
     "get_retriever",
     "get_retriever_runtime_cache",
-    "get_retrievers_for_subject",
-    "query_subject_index",
-    "rebuild_subject_index",
+    "get_retrievers_for_course",
+    "query_course_index",
+    "rebuild_course_index",
     "rerank_chunks",
     "reset_search_runtime_caches",
-    "retrieve_subject_chunks",
+    "retrieve_course_chunks",
     "search_knowledge",
     "upsert_chunks",
     "web_search",

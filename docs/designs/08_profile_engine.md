@@ -6,7 +6,7 @@
 
 ## 当前职责
 
-Profile 负责把学习行为转成可查询的掌握度、薄弱点、复习任务和学科画像摘要。
+Profile 负责把学习行为转成可查询的掌握度、薄弱点、复习任务和课程画像摘要。
 
 当前真相表：
 
@@ -34,7 +34,7 @@ Profile 负责把学习行为转成可查询的掌握度、薄弱点、复习任
 from app.workflows.profile import (
     update_mastery_from_exam,
     schedule_reviews,
-    build_subject_profile_summary,
+    build_course_profile_summary,
     build_user_profile_summary,
 )
 ```
@@ -45,14 +45,14 @@ from app.workflows.profile import (
 graded exam
   -> update_mastery_from_exam
   -> schedule_reviews
-  -> build_subject_profile_summary / build_user_profile_summary
+  -> build_course_profile_summary / build_user_profile_summary
 ```
 
 掌握度、最近表现、薄弱原因、复习计划等结果落在 `user_knowledge_state` 或由其派生。
 
 ## API 形态
 
-当前 `/api/v1/subjects/{subject}/profile` 提供：
+当前 `/api/v1/courses/{course}/profile` 提供：
 
 - 掌握度概览。
 - 待复习任务。

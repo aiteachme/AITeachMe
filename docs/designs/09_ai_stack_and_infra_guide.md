@@ -99,12 +99,12 @@ from app.shared.infra.search import search_knowledge, web_search
 results = await web_search(
     "高等数学 导数 定义",
     top_k=5,
-    subject_id=subject_id,
+    course_id=course_id,
 )
 
 chunks = await search_knowledge(
     "导数的几何意义",
-    subject_id=subject_id,
+    course_id=course_id,
     top_k=5,
 )
 ```
@@ -117,7 +117,7 @@ from app.shared.infra.search.web import dispatch_web_search
 results = await dispatch_web_search(
     "线性代数 矩阵 特征值",
     top_k=5,
-    subject_id=subject_id,
+    course_id=course_id,
     profile="docgen_zh_math",
 )
 ```
@@ -203,7 +203,7 @@ SearchResult(
 3. fallback
    默认 `duckduckgo`。
 
-如果传入 `subject` 或 `local_sections`，`local_rag` 会按 `local_rag.priority` 优先参与；否则自动跳过，避免无上下文本地检索。
+如果传入 `course` 或 `local_sections`，`local_rag` 会按 `local_rag.priority` 优先参与；否则自动跳过，避免无上下文本地检索。
 
 当前无额外 key 时的主要 profile：
 

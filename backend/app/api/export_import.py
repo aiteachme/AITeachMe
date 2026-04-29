@@ -1,4 +1,4 @@
-"""学科导入导出 API。"""
+"""课程导入导出 API。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, Path, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
-from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_subject_id
+from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.export_import import (
@@ -21,10 +21,10 @@ from app.schemas.export_import import (
 )
 from app.shared.infra.exceptions import ImportPackageTooLargeError, UnsupportedFileTypeError
 from app.workflows.support.export_import import (
-    build_subject_export_filename,
+    build_course_export_filename,
     download_course_package,
-    export_subject,
-    import_subject,
+    export_course,
+    import_course,
     list_available_courses,
     preview_export,
 )
@@ -33,7 +33,7 @@ from app.workflows.support.export_import.limits import (
     MAX_IMPORT_PACKAGE_SIZE_MB,
     UPLOAD_COPY_CHUNK_BYTES,
 )
-from app.workflows.support.subjects import get_subject_record
+from app.workflows.support.courses import get_course_record
 
 router = APIRouter(prefix="/api/v1", tags=["export-import"])
 
@@ -46,41 +46,41 @@ _SUPPORTED_IMPORT_SUFFIXES = {".atmx", ".zip"}
 
 
 @router.post(
-    "/subjects/{subject_id}/export/preview",
+    "/courses/{course_id}/export/preview",
     response_model=ApiResponse[ExportPreviewData],
     summary="导出预览",
     responses=build_error_responses([404, 500]),
 )
 async def export_preview_api(
-    subject_id: str = Path(...),
+    course_id: str = Path(...),
     body: ExportOptions = Body(default=ExportOptions()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExportPreviewData]:
-    """获取学科导出内容摘要。"""
+    """获取课程导出内容摘要。"""
 
-    normalized = normalize_subject_id(subject_id)
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    return ok_response(preview_export(session, subject_id=subject_record.id, options=body))
+    normalized = normalize_course_id(course_id)
+    course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    return ok_response(preview_export(session, course_id=course_record.id, options=body))
 
 
 @router.post(
-    "/subjects/{subject_id}/export",
-    summary="导出学科",
+    "/courses/{course_id}/export",
+    summary="导出课程",
     responses=build_error_responses([404, 500]),
 )
-async def export_subject_api(
-    subject_id: str = Path(...),
+async def export_course_api(
+    course_id: str = Path(...),
     body: ExportOptions = Body(default=ExportOptions()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> FileResponse:
-    """将学科全部产物打包为 .atmx 文件下载。"""
+    """将课程全部产物打包为 .atmx 文件下载。"""
 
-    normalized = normalize_subject_id(subject_id)
-    subject_record = get_subject_record(session, normalized, owner_user_id=user.user_id)
-    tmp_path = export_subject(session, subject_id=subject_record.id, options=body)
-    filename = build_subject_export_filename(subject_record)
+    normalized = normalize_course_id(course_id)
+    course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    tmp_path = export_course(session, course_id=course_record.id, options=body)
+    filename = build_course_export_filename(course_record)
     return FileResponse(
         path=tmp_path,
         media_type="application/octet-stream",
@@ -95,18 +95,18 @@ async def export_subject_api(
 
 
 @router.post(
-    "/subjects/import",
+    "/courses/import",
     response_model=ApiResponse[ImportResultData],
-    summary="导入学科（上传）",
+    summary="导入课程（上传）",
     responses=build_error_responses([400, 409, 413, 422, 500]),
 )
-async def import_subject_api(
+async def import_uploaded_course_api(
     file: UploadFile = File(..., description="上传 .atmx 导出包。"),
-    new_subject_name: str | None = Form(default=None, description="自定义导入学科名。"),
+    new_course_name: str | None = Form(default=None, description="自定义导入课程名。"),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ImportResultData]:
-    """从上传的 .atmx 文件导入学科。"""
+    """从上传的 .atmx 文件导入课程。"""
 
     filename = file.filename or "upload.atmx"
     _validate_import_package_filename(filename)
@@ -116,10 +116,10 @@ async def import_subject_api(
 
     try:
         await _copy_upload_to_temp_file(file, tmp_path)
-        result = import_subject(
+        result = import_course(
             session,
             file_path=tmp_path,
-            options=ImportOptions(new_subject_name=new_subject_name),
+            options=ImportOptions(new_course_name=new_course_name),
             user_id=user.user_id,
         )
         return ok_response(result)
@@ -133,37 +133,37 @@ async def import_subject_api(
 
 
 @router.get(
-    "/courses",
+    "/demo-courses",
     response_model=ApiResponse[list[CoursePackageItem]],
-    summary="列出可导入课程",
+    summary="列出演示课程",
     responses=build_error_responses([500, 502]),
 )
-async def list_courses_api() -> ApiResponse[list[CoursePackageItem]]:
+async def list_demo_courses_api() -> ApiResponse[list[CoursePackageItem]]:
     """列出线上演示课程目录中的课程包。"""
 
     return ok_response(list_available_courses())
 
 
 @router.post(
-    "/courses/{filename}/import",
+    "/demo-courses/{identifier}/import",
     response_model=ApiResponse[ImportResultData],
     summary="从演示课程导入",
     responses=build_error_responses([404, 413, 422, 500, 502, 503]),
 )
-async def import_course_api(
-    filename: str,
-    new_subject_name: str | None = Body(default=None, embed=True),
+async def import_demo_course_api(
+    identifier: str,
+    new_course_name: str | None = Body(default=None, embed=True),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ImportResultData]:
     """从线上演示课程目录下载 `.atmx` 后导入。"""
 
-    tmp_path, _download_name = download_course_package(filename)
+    tmp_path, _download_name = download_course_package(identifier)
     try:
-        result = import_subject(
+        result = import_course(
             session,
             file_path=tmp_path,
-            options=ImportOptions(new_subject_name=new_subject_name),
+            options=ImportOptions(new_course_name=new_course_name),
             user_id=user.user_id,
         )
         return ok_response(result)

@@ -17,7 +17,7 @@ function normalizeAssetPath(raw: string | null): string {
 }
 
 export function KnowledgeInteractivePage() {
-  const { subjectId } = useParams<{ subjectId: string }>();
+  const { courseId } = useParams<{ courseId: string }>();
   const [searchParams] = useSearchParams();
   const assetPath = normalizeAssetPath(searchParams.get("asset"));
   const title = (searchParams.get("title") || "知识文档交互演示").trim();
@@ -26,9 +26,9 @@ export function KnowledgeInteractivePage() {
   const [error, setError] = useState<string | null>(null);
 
   const assetUrl = useMemo(() => {
-    if (!subjectId || !assetPath) return "";
-    return `/api/v1/subjects/${encodeURIComponent(subjectId)}/files/assets/${encodePathSegments(assetPath)}`;
-  }, [assetPath, subjectId]);
+    if (!courseId || !assetPath) return "";
+    return `/api/v1/courses/${encodeURIComponent(courseId)}/files/assets/${encodePathSegments(assetPath)}`;
+  }, [assetPath, courseId]);
 
   useEffect(() => {
     document.title = `${title} - AITeachMe`;

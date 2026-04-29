@@ -7,7 +7,7 @@ export interface ExamStudyGuideFocusUnit {
 
 export interface ExamStudyGuideResponse {
   exam_paper_id: number;
-  subject: string;
+  course: string;
   generated_at: string;
   overall_summary: string;
   strengths: string[];

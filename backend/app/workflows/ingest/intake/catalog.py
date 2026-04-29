@@ -19,9 +19,9 @@ from app.repositories.files_repo import (
     get_raw_file_by_id,
     list_raw_files_by_ids,
     list_raw_files_by_ids_for_user,
-    list_raw_files_by_subject,
+    list_raw_files_by_course,
     list_raw_files_by_user,
-    raw_file_belongs_to_subject,
+    raw_file_belongs_to_course,
 )
 from app.schemas.files import FileAssetItem, FileRecord, FilesData
 from app.utils.presenters import require_id
@@ -175,9 +175,9 @@ def _count_file_states(records: list[FileRecord]) -> tuple[int, int, int]:
     return ready_count, processing_count, failed_count
 
 
-def get_subject_file_or_raise(session: Session, *, subject_id: str, file_id: str) -> RawFile:
+def get_course_file_or_raise(session: Session, *, course_id: str, file_id: str) -> RawFile:
     raw_file = get_raw_file_by_id(session, file_id)
-    if raw_file is None or not raw_file_belongs_to_subject(session, raw_file=raw_file, subject_id=subject_id):
+    if raw_file is None or not raw_file_belongs_to_course(session, raw_file=raw_file, course_id=course_id):
         raise RawFileNotFoundError(file_id)
     return raw_file
 
@@ -198,13 +198,13 @@ def get_user_files_or_raise(
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
 
 
-def get_subject_files_or_raise(
+def get_course_files_or_raise(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
 ) -> list[RawFile]:
-    items = list_raw_files_by_ids(session, subject_id, file_ids)
+    items = list_raw_files_by_ids(session, course_id, file_ids)
     found_ids = {require_id(item.id, "RawFile.id") for item in items}
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
@@ -213,14 +213,14 @@ def get_subject_files_or_raise(
     order = {file_id: index for index, file_id in enumerate(file_ids)}
     return sorted(items, key=lambda item: order[require_id(item.id, "RawFile.id")])
 
-def list_subject_files(
+def list_course_files(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
 ) -> FilesData:
-    raw_files, total = list_raw_files_by_subject(
+    raw_files, total = list_raw_files_by_course(
         session,
-        subject_id,
+        course_id,
         limit=1000,
         offset=0,
         status=None,
@@ -228,7 +228,7 @@ def list_subject_files(
     records = [build_file_record(item) for item in raw_files]
     ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
-        subject_id=subject_id,
+        course_id=course_id,
         total=total,
         ready_count=ready_count,
         processing_count=processing_count,
@@ -254,7 +254,7 @@ def list_user_files(
     records = [build_file_record(item) for item in raw_files]
     ready_count, processing_count, failed_count = _count_file_states(records)
     return FilesData(
-        subject_id=None,
+        course_id=None,
         total=total,
         ready_count=ready_count,
         processing_count=processing_count,
@@ -265,9 +265,9 @@ def list_user_files(
 
 __all__ = [
     "build_file_record",
-    "get_subject_file_or_raise",
-    "get_subject_files_or_raise",
+    "get_course_file_or_raise",
+    "get_course_files_or_raise",
     "get_user_files_or_raise",
-    "list_subject_files",
+    "list_course_files",
     "list_user_files",
 ]

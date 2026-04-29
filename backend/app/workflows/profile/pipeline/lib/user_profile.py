@@ -12,12 +12,12 @@ from app.models import (
     ExamMode,
     ExamPaper,
     ExamPaperItem,
-    Subject,
+    Course,
     User,
     UserKnowledgeState,
     exam_mode_value,
 )
-from app.schemas.profile import SubjectProfileSummary, UserProfileSummary
+from app.schemas.profile import CourseProfileSummary, UserProfileSummary
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
 
 _RECENT_EXAM_ITEM_LIMIT = 300
@@ -38,14 +38,14 @@ def _load_user_record(session: Session, *, user_id: str) -> User | None:
     return session.get(User, user_id)
 
 
-def _load_active_subjects(session: Session, *, user_id: str) -> list[Subject]:
+def _load_active_courses(session: Session, *, user_id: str) -> list[Course]:
     stmt = (
-        select(Subject)
+        select(Course)
         .where(
-            Subject.user_id == user_id,
-            Subject.status == "active",
+            Course.user_id == user_id,
+            Course.status == "active",
         )
-        .order_by(Subject.updated_at.desc(), Subject.id.desc())
+        .order_by(Course.updated_at.desc(), Course.id.desc())
     )
     return list(session.exec(stmt).all())
 
@@ -81,28 +81,28 @@ def _pick_top_keys(counter: Counter[str], *, limit: int) -> list[str]:
     return [key for key, _ in ordered[:limit]]
 
 
-def _pick_recent_subject_ids(recent_papers: list[ExamPaper]) -> list[str]:
+def _pick_recent_course_ids(recent_papers: list[ExamPaper]) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
     for paper in recent_papers:
-        subject_id = (paper.subject_id or "").strip()
-        if not subject_id or subject_id in seen:
+        course_id = (paper.course_id or "").strip()
+        if not course_id or course_id in seen:
             continue
-        seen.add(subject_id)
-        ordered.append(subject_id)
+        seen.add(course_id)
+        ordered.append(course_id)
         if len(ordered) >= 5:
             break
     return ordered
 
 
-def _load_subject_profiles(subjects: list[Subject]) -> list[SubjectProfileSummary]:
-    profiles: list[SubjectProfileSummary] = []
-    for subject in subjects:
-        payload = _parse_json_object(subject.profile_json)
+def _load_course_profiles(courses: list[Course]) -> list[CourseProfileSummary]:
+    profiles: list[CourseProfileSummary] = []
+    for course in courses:
+        payload = _parse_json_object(course.profile_json)
         if not payload:
             continue
         try:
-            profiles.append(SubjectProfileSummary.model_validate(payload))
+            profiles.append(CourseProfileSummary.model_validate(payload))
         except Exception:
             continue
     return profiles
@@ -166,15 +166,15 @@ def _pick_consistency_level(
 
 def _build_notes(
     *,
-    active_subject_count: int,
+    active_course_count: int,
     dominant_exam_mode: str,
     due_review_count: int,
     preferred_question_types: list[str],
 ) -> list[str]:
     notes = [
-        f"Active subjects: {active_subject_count}",
+        f"Active courses: {active_course_count}",
         f"Dominant exam mode: {dominant_exam_mode}",
-        f"Due reviews across subjects: {due_review_count}",
+        f"Due reviews across courses: {due_review_count}",
     ]
     if preferred_question_types:
         notes.append("Preferred question types: " + ", ".join(preferred_question_types))
@@ -187,8 +187,8 @@ def build_user_profile_summary(
     user_id: str,
 ) -> UserProfileSummary:
     generated_at = utcnow()
-    subjects = _load_active_subjects(session, user_id=user_id)
-    subject_profiles = _load_subject_profiles(subjects)
+    courses = _load_active_courses(session, user_id=user_id)
+    course_profiles = _load_course_profiles(courses)
     recent_papers = _load_recent_exam_papers(session, user_id=user_id)
     recent_items = _load_recent_exam_items(session, user_id=user_id)
 
@@ -202,13 +202,13 @@ def build_user_profile_summary(
     if not question_type_totals:
         question_type_totals.update(
             question_type
-            for profile in subject_profiles
+            for profile in course_profiles
             for question_type in profile.preferred_question_types
         )
     if not exam_mode_totals:
         exam_mode_totals.update(
             profile.recommended_exam_mode
-            for profile in subject_profiles
+            for profile in course_profiles
             if profile.recommended_exam_mode
         )
 
@@ -233,9 +233,9 @@ def build_user_profile_summary(
     return UserProfileSummary(
         user_id=user_id,
         generated_at=generated_at,
-        active_subject_count=len(subjects),
-        active_subject_ids=[subject.id for subject in subjects if subject.id],
-        recent_subject_ids=_pick_recent_subject_ids(recent_papers),
+        active_course_count=len(courses),
+        active_course_ids=[course.id for course in courses if course.id],
+        recent_course_ids=_pick_recent_course_ids(recent_papers),
         preferred_question_types=preferred_question_types,
         preferred_exam_modes=preferred_exam_modes,
         dominant_exam_mode=dominant_exam_mode,
@@ -251,7 +251,7 @@ def build_user_profile_summary(
         pending_review_count=len(pending_reviews),
         due_review_count=due_review_count,
         notes=_build_notes(
-            active_subject_count=len(subjects),
+            active_course_count=len(courses),
             dominant_exam_mode=dominant_exam_mode,
             due_review_count=due_review_count,
             preferred_question_types=preferred_question_types,

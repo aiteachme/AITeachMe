@@ -1,4 +1,4 @@
-﻿"""Workflow export definitions shared by digest lanes."""
+"""Workflow export definitions shared by digest lanes."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ DOCGEN_PROMPTS = {
 def _build_docgen_graph_for_export():
     context = WorkflowContext(
         workflow_name="digest.docgen",
-        subject_id="__export__",
+        course_id="__export__",
         event_bus=InProcessEventBus(),
     )
     return build_docgen_graph(context=context)

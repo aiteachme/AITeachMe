@@ -1,4 +1,4 @@
-# 15. 学科项目导入与导出
+# 15. 课程项目导入与导出
 
 **状态**: 已实现（后端，ContentStore 统一，导入安全边界已加固）
 **最后更新**: 2026-04-27
@@ -7,9 +7,9 @@
 
 ## 1. 文档目标
 
-本文档定义 AITeachMe 的学科级导入与导出能力：
+本文档定义 AITeachMe 的课程级导入与导出能力：
 
-- 将一个 Subject 下的已生成产物打包成单个 `.atmx` 文件。
+- 将一个 Course 下的已生成产物打包成单个 `.atmx` 文件。
 - 导入后尽量复用已构建内容，直接进入交互、测验、知识文档与图谱浏览。
 - 同时覆盖本地部署、未来中心化部署和演示课程分发。
 
@@ -19,15 +19,15 @@
 
 ## 2. 导出文件格式
 
-`.atmx` 是一个 ZIP 压缩包，内部使用 JSON 序列化数据库数据，并可携带少量学科级资产。当前导出器不打包原始上传文件，也不打包解析后的 raw markdown 文件；解析正文和检索 chunk 通过数据库记录进入导出包。
+`.atmx` 是一个 ZIP 压缩包，内部使用 JSON 序列化数据库数据，并可携带少量课程级资产。当前导出器不打包原始上传文件，也不打包解析后的 raw markdown 文件；解析正文和检索 chunk 通过数据库记录进入导出包。
 
 ```text
-subject_export.atmx
+course_export.atmx
 ├── manifest.json
 ├── db/
-│   ├── subject.json
+│   ├── course.json
 │   ├── raw_file.json
-│   ├── subject_file.json
+│   ├── course_file.json
 │   ├── retrieval_chunk.json
 │   ├── knowledge_document.json
 │   ├── knowledge_unit.json
@@ -54,9 +54,9 @@ subject_export.atmx
 
 导出入口由 `backend/app/workflows/support/export_import/exports.py` 的 `TABLE_REGISTRY` 驱动。当前包含：
 
-- `subject`
+- `course`
 - `raw_file`
-- `subject_file`
+- `course_file`
 - `retrieval_chunk`
 - `knowledge_document`
 - `knowledge_unit`
@@ -134,9 +134,9 @@ Planner 已确认构建方案随 `chat_session.meta_json.confirmed_plan` 导出�
 导入流程需要保证以下依赖顺序：
 
 ```text
-subject
+course
 -> raw_file
--> subject_file
+-> course_file
 -> retrieval_chunk
 -> knowledge_document
 -> knowledge_unit
@@ -154,7 +154,7 @@ subject
 
 重点规则：
 
-- `subject.id` 导入时始终生成新的 `subject_id`，避免覆盖现有课程。
+- `course.id` 导入时始终生成新的 `course_id`，避免覆盖现有课程。
 - `raw_file.uid` 会重新生成，避免跨环境唯一约束冲突。
 - Planner 已确认计划内联在 `chat_session.meta_json.confirmed_plan`，导入时会重新生成 `confirmed_plan_id`。
 - `retrieval_chunk.document_id`、`knowledge_edge.source_node_id / target_node_id`、试题和画像中的 `knowledge_unit_id` 必须按新 ID 重映射。
@@ -167,9 +167,9 @@ subject
 ## 7. API
 
 ```text
-POST /api/v1/subjects/{subject}/export/preview
-POST /api/v1/subjects/{subject}/export
-POST /api/v1/subjects/import
+POST /api/v1/courses/{course}/export/preview
+POST /api/v1/courses/{course}/export
+POST /api/v1/courses/import
 GET  /api/v1/courses
 POST /api/v1/courses/{filename}/import
 ```
@@ -207,14 +207,14 @@ POST /api/v1/courses/{filename}/import
 - 拒绝绝对路径、`../` 和其他会逃出目标目录的 archive path。
 - `manifest.json` 缺失、格式不合法、版本不支持时返回业务错误。
 - 每个 `db/<table>.json` 必须是 `{ "records": [...] }` 形态。
-- 导入必须实际生成且只生成一个 `subject`，否则回滚并返回无效课程包错误。
+- 导入必须实际生成且只生成一个 `course`，否则回滚并返回无效课程包错误。
 - 导入后 retrieval chunk embedding 会按目标环境 best-effort 重建；向量索引不作为包内强一致资产。
 
 当前错误语义：
 
 | 场景 | HTTP | 错误码 |
 | --- | --- | --- |
-| 包格式错误、manifest/table 不合法、缺少 subject | 422 | `INVALID_IMPORT_PACKAGE` |
+| 包格式错误、manifest/table 不合法、缺少 course | 422 | `INVALID_IMPORT_PACKAGE` |
 | 上传包或解压包超过限制 | 413 | `IMPORT_PACKAGE_TOO_LARGE` |
 | 演示课程目录不可用 | 502 | `DEMO_COURSE_CATALOG_UNAVAILABLE` |
 | 本地模式调用演示课程下载 | 503 | `DEMO_COURSE_CATALOG_NOT_CONFIGURED` |
@@ -244,7 +244,7 @@ demo-courses/
 
 - 云端模式读取 `demo-courses/catalog/v1/index.json`；本地模式返回空列表。
 - 前端只消费统一后的课程目录 API，并按运行模式决定是否展示演示课程区。
-- 真正导入时，由后端下载到临时目录后复用同一套 `import_subject()` 逻辑。
+- 真正导入时，由后端下载到临时目录后复用同一套 `import_course()` 逻辑。
 - 后端只允许课程包 URL 位于配置出的 `<S3_PUBLIC_BASE_URL>/demo-courses/` 前缀下。
 - 下载时同时检查 catalog 声明大小、HTTP `Content-Length` 和实际流式写入字节数。
 - catalog 可提供 `sha256`，后端下载后校验，不匹配则拒绝导入。

@@ -55,7 +55,7 @@ def fallback_chapter_execution_brief(
 
 async def build_chapter_execution_brief(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     chapter: Mapping[str, object],
     locked_title: str,
@@ -70,7 +70,7 @@ async def build_chapter_execution_brief(
         async with get_chapter_brief_semaphore():
             response = await acompletion_with_fallback(
                 build_chapter_execution_brief_messages(
-                    subject_name=subject_name,
+                    course_name=course_name,
                     digest_mode=digest_mode,
                     chapter=chapter,
                     locked_title=locked_title,

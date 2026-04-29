@@ -13,7 +13,7 @@ import structlog
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.models.subject import Subject
+from app.models.course import Course
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
 from app.shared.infra.observability.trace import (
     langsmith_trace,
@@ -46,7 +46,7 @@ from app.workflows.digest.planner.lib.steps import (
     STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.lib.tracing import normalize_planner_operation, planner_trace_run_name
-from app.workflows.digest.planner.nodes.generate_subject_name import build_generate_subject_name_node
+from app.workflows.digest.planner.nodes.generate_course_name import build_generate_course_name_node
 from app.workflows.digest.planner.nodes.load_planner_materials import build_load_planner_materials_node
 from app.workflows.digest.planner.nodes.normalize_and_persist_plan import (
     build_normalize_and_persist_plan_node,
@@ -69,13 +69,13 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     STEP_LOAD_MATERIALS: {
         "description": (
             "读取或创建 Planner 会话，解析 create/append 请求中的资料选择、历史消息和最新方案，"
-            "并加载本轮可用的 DigestMaterialContext。若资料正文尚未解析完成，会基于文件名、用户提示和学科元信息生成 seed context，"
+            "并加载本轮可用的 DigestMaterialContext。若资料正文尚未解析完成，会基于文件名、用户提示和课程元信息生成 seed context，"
             "保证 Planner 能先产出可继续修改的临时方案。"
         ),
         "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
         "writes": ["selected_file_ids", "material_context", "digest_mode"],
         "input_keys": [
-            "subject_id",
+            "course_id",
             "user_id",
             "planner_operation",
             "requested_file_ids",
@@ -104,7 +104,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ),
         "reads": ["material_context", "user_prompt", "digest_mode", "message_history"],
         "writes": ["planner_brief", "plan_intent"],
-        "input_keys": ["subject_id", "material_context", "user_prompt", "digest_mode", "message_history", "planner_session_id", "model_override"],
+        "input_keys": ["course_id", "material_context", "user_prompt", "digest_mode", "message_history", "planner_session_id", "model_override"],
         "output_keys": ["planner_brief", "plan_intent", "bootstrap_ms", "error"],
         "fanout": "internal_async_brief_and_intent",
         "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
@@ -117,7 +117,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "reads": ["material_context", "planner_brief", "plan_intent", "message_history", "latest_plan"],
         "writes": ["build_plan_draft", "plan_outline_markdown"],
         "input_keys": [
-            "subject_id",
+            "course_id",
             "material_context",
             "planner_brief",
             "plan_intent",
@@ -134,10 +134,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     STEP_GENERATE_TITLE: {
         "description": (
             "仅在创建新 Planner 会话时运行，和大纲合成并行。它根据资料文件名、topic hints、planner_brief 和 plan_intent "
-            "生成短学科标题，并选择学科图标；不会依赖最终大纲，也不会改章节计划。"
+            "生成短课程标题，并选择课程图标；不会依赖最终大纲，也不会改章节计划。"
         ),
         "reads": ["material_context", "planner_brief", "plan_intent", "user_prompt", "digest_mode"],
-        "writes": ["generated_subject_name", "generated_subject_icon_key"],
+        "writes": ["generated_course_name", "generated_course_icon_key"],
         "input_keys": [
             "planner_operation",
             "material_context",
@@ -148,7 +148,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "model_override",
             "planner_session_id",
         ],
-        "output_keys": ["generated_subject_name", "generated_subject_icon_key", "title_ms"],
+        "output_keys": ["generated_course_name", "generated_course_icon_key", "title_ms"],
         "fanin": "joins STEP_COMPOSE_PLAN at STEP_SAVE_PLAN",
     },
     STEP_SAVE_PLAN: {
@@ -157,14 +157,14 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "补齐章节索引、目标、required_elements、模式和摘要，再写入 planner session / chat mirror。"
             "这是 Planner 的发布边界，DocGen 只消费这里保存后的 confirmed plan。"
         ),
-        "reads": ["build_plan_draft", "generated_subject_name", "material_context", "latest_plan"],
+        "reads": ["build_plan_draft", "generated_course_name", "material_context", "latest_plan"],
         "writes": ["plan", "plan_summary", "planner_record", "planner_turns", "digest_mode"],
         "input_keys": [
-            "subject_id",
+            "course_id",
             "user_id",
             "planner_session_id",
             "build_plan_draft",
-            "generated_subject_name",
+            "generated_course_name",
             "material_context",
             "latest_plan",
         ],
@@ -189,7 +189,7 @@ def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPl
         logger.warning(
             "planner_workflow_state_failed",
             planner_session_id=state.get("planner_session_id", ""),
-            subject_id=state.get("subject_id", ""),
+            course_id=state.get("course_id", ""),
             error=error,
         )
         raise WorkflowError(code="planner_failed", detail=error)
@@ -266,7 +266,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_GENERATE_TITLE,
-            build_generate_subject_name_node(context=context),
+            build_generate_course_name_node(context=context),
             timing_field="title_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_GENERATE_TITLE),
@@ -308,7 +308,7 @@ route_after_step_for_trace = named_route(route_after_step_for_trace, "检查是�
 
 def create_planner_initial_state(
     *,
-    subject_id: str,
+    course_id: str,
     user_id: str = "",
     planner_operation: str = "generate_only",
     requested_file_ids: list[str] | None = None,
@@ -325,7 +325,7 @@ def create_planner_initial_state(
     token_callback: object | None = None,
 ) -> BuildPlannerState:
     return {
-        "subject_id": subject_id,
+        "course_id": course_id,
         "user_id": user_id,
         "planner_operation": planner_operation,
         "requested_file_ids": list(requested_file_ids or []),
@@ -350,7 +350,7 @@ def get_langgraph_dev_planner_graph() -> StateGraph:
 
 def _planner_trace_inputs(
     *,
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
     user_prompt: str,
     planner_session_id: str,
@@ -366,7 +366,7 @@ def _planner_trace_inputs(
 ) -> dict[str, object]:
     return sanitize_langsmith_input(
         {
-            "subject_id": subject_id,
+            "course_id": course_id,
             "user_id": user_id,
             "planner_session_id": planner_session_id,
             "planner_operation": normalize_planner_operation(planner_operation),
@@ -413,7 +413,7 @@ def _end_planner_root_trace(trace_run: object | None, result: WorkflowResult[Bui
 
 async def run_build_planner_workflow(
     *,
-    subject_id: str,
+    course_id: str,
     file_ids: list[str],
     user_prompt: str,
     planner_session_id: str,
@@ -434,7 +434,7 @@ async def run_build_planner_workflow(
     model_override = normalize_runtime_model_override(model)
     logger.info(
         "planner_workflow_starting",
-        subject_id=subject_id,
+        course_id=course_id,
         planner_session_id=planner_session_id,
         planner_operation=planner_operation,
         file_id_count=len(file_ids),
@@ -447,7 +447,7 @@ async def run_build_planner_workflow(
     run_name = planner_trace_run_name(normalized_operation)
     context = WorkflowContext(
         workflow_name="digest.planner",
-        subject_id=subject_id,
+        course_id=course_id,
         metadata={
             "build_session_id": planner_session_id,
             "lane": "planner",
@@ -459,7 +459,7 @@ async def run_build_planner_workflow(
         },
     )
     initial_state = create_planner_initial_state(
-        subject_id=subject_id,
+        course_id=course_id,
         user_id=user_id,
         planner_operation=planner_operation,
         requested_file_ids=requested_file_ids,
@@ -479,7 +479,7 @@ async def run_build_planner_workflow(
         name=run_name,
         run_type="chain",
         inputs=_planner_trace_inputs(
-            subject_id=subject_id,
+            course_id=course_id,
             user_id=user_id,
             file_ids=file_ids,
             user_prompt=user_prompt,
@@ -493,7 +493,7 @@ async def run_build_planner_workflow(
             feedback_message=feedback_message,
             latest_plan=latest_plan,
         ),
-        subject_id=subject_id,
+        course_id=course_id,
         build_session_id=planner_session_id,
         workflow="digest.planner",
         lane="planner",
@@ -515,7 +515,7 @@ async def run_build_planner_workflow(
         _end_planner_root_trace(trace_run, result)
     logger.info(
         "planner_workflow_finished",
-        subject_id=subject_id,
+        course_id=course_id,
         planner_session_id=planner_session_id,
         failed=result.failed,
         error=str(result.error) if result.error else "",
@@ -527,7 +527,7 @@ async def run_build_planner_workflow(
 
 async def create_build_planner_session(
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     payload: BuildPlannerCreateRequest,
     progress_callback: object | None = None,
@@ -541,7 +541,7 @@ async def create_build_planner_session(
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     logger.info(
         "planner_create_session_starting",
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         planner_session_id=session_id,
         file_id_count=len(payload.file_ids or []),
@@ -550,7 +550,7 @@ async def create_build_planner_session(
     )
     try:
         result = await run_build_planner_workflow(
-            subject_id=subject.id,
+            course_id=course.id,
             user_id=user_id,
             planner_operation="create",
             requested_file_ids=list(payload.file_ids or []),
@@ -565,30 +565,30 @@ async def create_build_planner_session(
             token_callback=token_callback,
         )
     except asyncio.CancelledError:
-        _mark_planner_session_cancelled(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_cancelled(course_id=course.id, user_id=user_id, session_id=session_id)
         raise
     if result.failed:
-        _mark_planner_session_failed(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
     try:
         final_state = _require_success_state(result)
     except Exception:
-        _mark_planner_session_failed(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
         raise
     logger.info(
         "planner_create_session_state_ready",
-        subject_id=subject.id,
+        course_id=course.id,
         planner_session_id=session_id,
         has_plan=bool(final_state.get("plan")),
         state_error=final_state.get("error"),
     )
     response = planner_session_response_from_state(final_state)
-    _log_planner_runtime(subject_id=subject.id, response=response)
+    _log_planner_runtime(course_id=course.id, response=response)
     return response
 
 
 async def append_build_planner_message(
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     session_id: str,
     payload: BuildPlannerMessageRequest,
@@ -599,14 +599,14 @@ async def append_build_planner_message(
 
     logger.info(
         "planner_append_message_starting",
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         planner_session_id=session_id,
         message_preview=payload.message[:80],
     )
     try:
         result = await run_build_planner_workflow(
-            subject_id=subject.id,
+            course_id=course.id,
             user_id=user_id,
             planner_operation="append",
             feedback_message=payload.message.strip(),
@@ -620,31 +620,31 @@ async def append_build_planner_message(
             token_callback=token_callback,
         )
     except asyncio.CancelledError:
-        _mark_planner_session_cancelled(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_cancelled(course_id=course.id, user_id=user_id, session_id=session_id)
         raise
     if result.failed:
-        _mark_planner_session_failed(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
     try:
         final_state = _require_success_state(result)
     except Exception:
-        _mark_planner_session_failed(subject_id=subject.id, user_id=user_id, session_id=session_id)
+        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
         raise
     logger.info(
         "planner_append_message_state_ready",
-        subject_id=subject.id,
+        course_id=course.id,
         planner_session_id=session_id,
         has_plan=bool(final_state.get("plan")),
         state_error=final_state.get("error"),
     )
     response = planner_session_response_from_state(final_state)
-    _log_planner_runtime(subject_id=subject.id, response=response)
+    _log_planner_runtime(course_id=course.id, response=response)
     return response
 
 
 def record_build_planner_adjust_click(
     session: Session,
     *,
-    subject: Subject,
+    course: Course,
     user_id: str,
     session_id: str,
 ) -> dict[str, object]:
@@ -652,7 +652,7 @@ def record_build_planner_adjust_click(
 
     context = get_planner_adjust_click_context(
         session,
-        subject=subject,
+        course=course,
         user_id=user_id,
         session_id=session_id,
     )
@@ -660,7 +660,7 @@ def record_build_planner_adjust_click(
     trace_inputs = sanitize_langsmith_input(
         {
             "event": "click_adjust_plan",
-            "subject_id": subject.id,
+            "course_id": course.id,
             "user_id": user_id,
             "planner_session_id": session_id,
             "status": context.get("status"),
@@ -675,7 +675,7 @@ def record_build_planner_adjust_click(
         name=run_name,
         run_type="chain",
         inputs=trace_inputs,
-        subject_id=subject.id,
+        course_id=course.id,
         build_session_id=session_id,
         workflow="digest.planner",
         lane="planner",
@@ -701,7 +701,7 @@ def record_build_planner_adjust_click(
             )
     logger.info(
         "planner_adjust_click_recorded",
-        subject_id=subject.id,
+        course_id=course.id,
         user_id=user_id,
         planner_session_id=session_id,
         has_latest_plan=context.get("has_latest_plan"),
@@ -709,45 +709,45 @@ def record_build_planner_adjust_click(
     return {
         "acknowledged": True,
         "planner_session_id": session_id,
-        "subject_id": subject.id,
+        "course_id": course.id,
         "status": str(context.get("status") or ""),
         "has_latest_plan": bool(context.get("has_latest_plan")),
         "latest_plan_chapter_count": int(context.get("latest_plan_chapter_count") or 0),
     }
 
 
-def _log_planner_runtime(*, subject_id: str, response: BuildPlannerSessionResponse) -> None:
+def _log_planner_runtime(*, course_id: str, response: BuildPlannerSessionResponse) -> None:
     runtime_stats = response.runtime_stats
     if runtime_stats is None:
         return
     logger.info(
         "planner_runtime_summary",
-        subject_id=subject_id,
+        course_id=course_id,
         planner_session_id=response.session_id,
         elapsed_ms=runtime_stats.elapsed_ms,
         steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
     )
 
 
-def _mark_planner_session_failed(*, subject_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:
     try:
-        mark_planner_session_failed(subject_id=subject_id, user_id=user_id, session_id=session_id)
+        mark_planner_session_failed(course_id=course_id, user_id=user_id, session_id=session_id)
     except Exception:
-        logger.exception("planner_session_failed_status_update_failed", subject_id=subject_id, session_id=session_id)
+        logger.exception("planner_session_failed_status_update_failed", course_id=course_id, session_id=session_id)
 
 
-def _mark_planner_session_cancelled(*, subject_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_cancelled(*, course_id: str, user_id: str, session_id: str) -> None:
     try:
-        mark_planner_session_cancelled(subject_id=subject_id, user_id=user_id, session_id=session_id)
+        mark_planner_session_cancelled(course_id=course_id, user_id=user_id, session_id=session_id)
     except Exception:
-        logger.exception("planner_session_cancelled_status_update_failed", subject_id=subject_id, session_id=session_id)
+        logger.exception("planner_session_cancelled_status_update_failed", course_id=course_id, session_id=session_id)
 
 
-def _mark_planner_session_draft(*, subject_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_draft(*, course_id: str, user_id: str, session_id: str) -> None:
     try:
-        mark_planner_session_draft(subject_id=subject_id, user_id=user_id, session_id=session_id)
+        mark_planner_session_draft(course_id=course_id, user_id=user_id, session_id=session_id)
     except Exception:
-        logger.exception("planner_session_draft_status_update_failed", subject_id=subject_id, session_id=session_id)
+        logger.exception("planner_session_draft_status_update_failed", course_id=course_id, session_id=session_id)
 
 
 __all__ = [

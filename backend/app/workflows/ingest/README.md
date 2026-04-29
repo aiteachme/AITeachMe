@@ -301,7 +301,7 @@ Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 sta
    现在启动后可以扫描恢复，但正在执行的上下文、失败次数、重试退避都不够完整。建议后续引入 DB job / Redis queue / Celery / Dramatiq 一类持久化任务层。
 
 2. **增加基于 content_hash 的幂等跳过**
-   已有 `content_hash`，但当前上传后仍会进入解析。可以在同 subject 下发现同 hash 产物时复用 Markdown 与资产，减少重复解析成本。
+   已有 `content_hash`，但当前上传后仍会进入解析。可以在同 course 下发现同 hash 产物时复用 Markdown 与资产，减少重复解析成本。
 
 3. **把解析质量评估从启发式升级为可解释评分**
    当前 `quality_score` 是简单规则。后续可增加 Markdown 结构、图片覆盖、公式/表格保真度、OCR 低置信段落等维度。

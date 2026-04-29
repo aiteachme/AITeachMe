@@ -14,7 +14,7 @@ class ConfirmedBuildPlan(BaseModel):
     """Frozen planner contract confirmed by the user and consumed by DocGen."""
 
     id: str
-    subject_id: str
+    course_id: str
     planner_session_id: str | None = None
     user_id: str = "local"
     status: str = "confirmed"

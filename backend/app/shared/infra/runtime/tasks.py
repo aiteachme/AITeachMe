@@ -22,7 +22,7 @@ class ManagedTaskRecord:
     task_id: str
     task: asyncio.Task[Any]
     kind: str
-    subject_id: str | None
+    course_id: str | None
     name: str
     created_at: object
 
@@ -39,18 +39,18 @@ class BackgroundTaskRegistry:
         coro,
         *,
         kind: str,
-        subject_id: str | None = None,
+        course_id: str | None = None,
         name: str | None = None,
     ) -> asyncio.Task[Any]:
         """Create and register a tracked task."""
 
-        task_name = name or f"{kind}:{subject_id or 'global'}"
+        task_name = name or f"{kind}:{course_id or 'global'}"
         task = asyncio.create_task(coro, name=task_name)
         record = ManagedTaskRecord(
             task_id=uuid4().hex,
             task=task,
             kind=kind,
-            subject_id=subject_id,
+            course_id=course_id,
             name=task_name,
             created_at=utcnow(),
         )
@@ -63,7 +63,7 @@ class BackgroundTaskRegistry:
             "background_task_spawned",
             task_id=record.task_id,
             kind=kind,
-            subject_id=subject_id,
+            course_id=course_id,
             name=task_name,
         )
         return task
@@ -78,7 +78,7 @@ class BackgroundTaskRegistry:
                 "background_task_cancelled",
                 task_id=task_id,
                 kind=record.kind,
-                subject_id=record.subject_id,
+                course_id=record.course_id,
                 name=record.name,
             )
             return
@@ -89,7 +89,7 @@ class BackgroundTaskRegistry:
                 "background_task_cancelled",
                 task_id=task_id,
                 kind=record.kind,
-                subject_id=record.subject_id,
+                course_id=record.course_id,
                 name=record.name,
             )
             return
@@ -98,7 +98,7 @@ class BackgroundTaskRegistry:
                 "background_task_failed",
                 task_id=task_id,
                 kind=record.kind,
-                subject_id=record.subject_id,
+                course_id=record.course_id,
                 name=record.name,
                 error=str(exc),
             )
@@ -107,7 +107,7 @@ class BackgroundTaskRegistry:
             "background_task_completed",
             task_id=task_id,
             kind=record.kind,
-            subject_id=record.subject_id,
+            course_id=record.course_id,
             name=record.name,
         )
 
@@ -115,17 +115,17 @@ class BackgroundTaskRegistry:
         self,
         *,
         kind: str | None = None,
-        subject_id: str | None = None,
+        course_id: str | None = None,
         timeout_s: float = 3.0,
     ) -> int:
-        """Cancel active tasks matching kind and subject, returning task count."""
+        """Cancel active tasks matching kind and course, returning task count."""
 
         with self._lock:
             records = [
                 record
                 for record in self._tasks.values()
                 if (kind is None or record.kind == kind)
-                and (subject_id is None or record.subject_id == subject_id)
+                and (course_id is None or record.course_id == course_id)
             ]
         if not records:
             return 0
@@ -141,7 +141,7 @@ class BackgroundTaskRegistry:
             logger.warning(
                 "background_task_cancel_timeout",
                 kind=kind,
-                subject_id=subject_id,
+                course_id=course_id,
                 completed=len(done),
                 pending=len(pending),
             )

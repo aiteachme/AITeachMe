@@ -1,4 +1,4 @@
-# 21. DocGen Build Workspace 的 SSE 协议与落地计划
+﻿# 21. DocGen Build Workspace 的 SSE 协议与落地计划
 
 最后更新：2026-04-21
 
@@ -68,7 +68,7 @@
 
 仍然保留：
 
-- `POST /api/v1/subjects/{subject}/knowledge/build`
+- `POST /api/v1/courses/{course}/knowledge/build`
 
 这个接口继续只负责：
 
@@ -82,7 +82,7 @@
 
 仍然保留：
 
-- `POST /api/v1/subjects/{subject}/knowledge/docs`
+- `POST /api/v1/courses/{course}/knowledge/docs`
 
 这个接口继续提供：
 
@@ -97,7 +97,7 @@
 建议接口：
 
 ```text
-GET /api/v1/subjects/{subject}/knowledge/build/stream?build_session_id=...&last_event_id=...
+GET /api/v1/courses/{course}/knowledge/build/stream?build_session_id=...&last_event_id=...
 ```
 
 接口职责只有一个：
@@ -134,7 +134,7 @@ GET /api/v1/subjects/{subject}/knowledge/build/stream?build_session_id=...&last_
 {
   "event_id": "evt_000123",
   "build_session_id": "bld_xxx",
-  "subject": "math",
+  "course": "math",
   "timestamp": "2026-04-21T12:00:00Z"
 }
 ```
@@ -143,7 +143,7 @@ GET /api/v1/subjects/{subject}/knowledge/build/stream?build_session_id=...&last_
 
 - `event_id`：可排序、可恢复
 - `build_session_id`：前端用于校验是否属于当前构建
-- `subject`：当前学科
+- `course`：当前课程
 - `timestamp`：事件产生时间
 
 如果后续要支持 `last_event_id`，`event_id` 就不能省略。

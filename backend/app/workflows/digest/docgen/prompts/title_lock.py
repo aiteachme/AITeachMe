@@ -10,7 +10,7 @@ from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 
 def build_title_lock_messages(
     *,
-    subject_name: str,
+    course_name: str,
     digest_mode: str,
     user_prompt: str,
     plan_summary: str,
@@ -27,7 +27,7 @@ def build_title_lock_messages(
     prompt = f"""
 请为下面这一章锁定最终发布标题。
 
-主题：{subject_name}
+主题：{course_name}
 模式：{digest_mode}
 用户提示：{user_prompt or "未提供"}
 计划摘要：{plan_summary or "未提供"}
@@ -52,7 +52,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
 2. 只能做轻微收束、补足和具体化，不能新增学习主题。
 3. 如果不确定，enhanced_title 必须直接沿用 confirmed_title。
 4. confirmed_title 和 enhanced_title 都只保留语义标题；如果原标题带编号，只保留后面的语义部分。
-5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的学科对象，例如“跨模块联系：代数、几何与统计的综合应用”。
+5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的课程对象，例如“跨模块联系：代数、几何与统计的综合应用”。
 6. 不要输出任何教学大纲、检索词、媒体请求或其他字段。
 """.strip()
     messages = [
@@ -62,7 +62,7 @@ Planner 对话与修改摘要：{docgen_history_brief or "暂无"}
     return trace_prompt_build(
         "chapter_title_lock",
         inputs={
-            "subject_name": subject_name,
+            "course_name": course_name,
             "digest_mode": digest_mode,
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
             "has_history": bool(docgen_history_brief),

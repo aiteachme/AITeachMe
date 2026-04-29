@@ -42,7 +42,7 @@ class RuntimeStatusResponse(BaseModel):
 
 
 class ExamGenerateResponse(RuntimeStatusResponse):
-    subject_id: str
+    course_id: str
     user_id: str
     exam_mode: str
     num_questions: int
@@ -78,7 +78,7 @@ class ExamStudyGuideFocusUnit(BaseModel):
 
 class ExamStudyGuideResponse(BaseModel):
     exam_paper_id: int
-    subject_name: str
+    course_name: str
     generated_at: datetime
     overall_summary: str
     strengths: list[str] = Field(default_factory=list)
@@ -112,7 +112,7 @@ class PaperPreview(BaseModel):
 
 class ExamHistoryItem(BaseModel):
     id: int
-    subject_id: str
+    course_id: str
     user_id: str
     exam_mode: str
     status: str
@@ -145,7 +145,7 @@ class QuestionBankItemResponse(BaseModel):
 
 class QuestionTemplateItemResponse(BaseModel):
     id: int
-    subject_id: str
+    course_id: str
     question_type: str
     difficulty: str
     stem: str
@@ -165,7 +165,7 @@ class QuestionTypeRegistryItemResponse(BaseModel):
     type_key: str
     display_name: str
     scope: str
-    subject_id: str
+    course_id: str
     description: str
     answer_format: str
     grading_method: str
@@ -207,7 +207,7 @@ class ExamPaperItemResponse(BaseModel):
 
 class ExamPaperDetailResponse(BaseModel):
     id: int
-    subject_id: str
+    course_id: str
     user_id: str
     exam_mode: str
     status: str

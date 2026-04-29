@@ -7,7 +7,7 @@ from importlib import import_module
 __all__ = [
     "DocGenState",
     "build_docgen_graph",
-    "clear_subject_knowledge",
+    "clear_course_knowledge",
     "create_docgen_initial_state",
     "get_docgen_result",
     "get_knowledge_build_runtime_result",
@@ -20,7 +20,7 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "DocGenState": "app.workflows.digest.docgen.state",
     "build_docgen_graph": "app.workflows.digest.docgen.graph",
-    "clear_subject_knowledge": "app.workflows.digest.common.cleanup",
+    "clear_course_knowledge": "app.workflows.digest.common.cleanup",
     "create_docgen_initial_state": "app.workflows.digest.docgen.graph",
     "get_docgen_result": "app.workflows.digest.docgen.lib.build_lifecycle",
     "get_knowledge_build_runtime_result": "app.workflows.digest.docgen.lib.build_lifecycle",

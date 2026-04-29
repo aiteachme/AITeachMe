@@ -1,4 +1,4 @@
-﻿"""Material profiling and digest mode decision helpers.
+"""Material profiling and digest mode decision helpers.
 
 These helpers are shared by multiple digest lanes through ``SharedInputs``.
 """
@@ -16,7 +16,7 @@ from app.workflows.digest.common.models import (
     MaterialStats,
     SectionPacket,
     SourcePacket,
-    SubjectProfile,
+    CourseProfile,
 )
 
 logger = structlog.get_logger()
@@ -131,11 +131,11 @@ def _estimate_content_type(
 def decide_digest_mode(
     profile: MaterialProfile,
     user_prompt: str | None = None,
-    subject_profile: SubjectProfile | None = None,
+    course_profile: CourseProfile | None = None,
 ) -> DigestModeDecision:
     """综合判定 Digest 模式。
 
-    优先级：用户显式指定 > subject 元数据 > 材料自动识别
+    优先级：用户显式指定 > course 元数据 > 材料自动识别
     """
     evidence: dict[str, str] = {}
 
@@ -162,18 +162,18 @@ def decide_digest_mode(
             )
         evidence["user_prompt"] = "用户提示词未明确指定模式"
 
-    # === 优先级 2：subject 元数据 ===
-    if subject_profile:
-        if subject_profile.content_type == "exam_paper":
-            evidence["subject"] = "学科识别为试卷/考题类型"
+    # === 优先级 2：course 元数据 ===
+    if course_profile:
+        if course_profile.content_type == "exam_paper":
+            evidence["course"] = "课程识别为试卷/考题类型"
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.85,
                 reason="材料识别为试卷/考题，适合冲刺复习",
                 evidence=evidence,
             )
-        if subject_profile.difficulty_level == "advanced":
-            evidence["subject"] = "学科难度为高级/进阶"
+        if course_profile.difficulty_level == "advanced":
+            evidence["course"] = "课程难度为高级/进阶"
 
     # === 优先级 3：材料自动识别 ===
     stats = profile.stats
@@ -209,34 +209,34 @@ def decide_digest_mode(
 def build_material_profile(
     source_packets: list[SourcePacket],
     section_packets: list[SectionPacket],
-    subject_profile: SubjectProfile | None = None,
+    course_profile: CourseProfile | None = None,
 ) -> MaterialProfile:
     """构建材料画像（Phase 0 主入口）。
 
-    纯规则 + 复用 subject_profile，不额外调用 LLM。
+    纯规则 + 复用 course_profile，不额外调用 LLM。
     """
     stats = compute_material_stats(section_packets)
     material_types = _estimate_content_type(source_packets, stats)
-    semantic_subject = ""
-    if subject_profile is not None:
-        semantic_subject = (
-            subject_profile.sub_discipline
-            or subject_profile.discipline
-            or (subject_profile.key_topics[0] if subject_profile.key_topics else "")
+    semantic_course = ""
+    if course_profile is not None:
+        semantic_course = (
+            course_profile.sub_discipline
+            or course_profile.discipline
+            or (course_profile.key_topics[0] if course_profile.key_topics else "")
         )
 
     profile = MaterialProfile(
-        subject_name=semantic_subject,
-        sub_subjects=subject_profile.key_topics[:5] if subject_profile else [],
+        course_name=semantic_course,
+        sub_courses=course_profile.key_topics[:5] if course_profile else [],
         material_types=material_types,
         stats=stats,
-        discipline=subject_profile.discipline if subject_profile else "",
-        difficulty_level=subject_profile.difficulty_level if subject_profile else "",
+        discipline=course_profile.discipline if course_profile else "",
+        difficulty_level=course_profile.difficulty_level if course_profile else "",
     )
 
     logger.info(
         "material_profile_built",
-        subject_name=profile.subject_name,
+        course_name=profile.course_name,
         total_sources=stats.total_sources,
         total_sections=stats.total_sections,
         formula_density=stats.formula_density,

@@ -1,4 +1,4 @@
-﻿"""LLM-backed exam question generation helpers.
+"""LLM-backed exam question generation helpers.
 
 This module owns the structured generation contract for high-quality exam
 questions. It does not persist database rows; callers remain responsible for
@@ -904,10 +904,10 @@ def _validate_generation_prompts(
 
 async def _select_exam_knowledge_units_once(
     *,
-    subject_id: str,
-    subject_name: str,
-    subject_description: str,
-    subject_user_intent: str,
+    course_id: str,
+    course_name: str,
+    course_description: str,
+    course_user_intent: str,
     exam_mode: str,
     units: list[KnowledgeUnit],
     knowledge_graph_edges: list[dict[str, object]],
@@ -934,9 +934,9 @@ async def _select_exam_knowledge_units_once(
         and int(payload["target_id"]) in unit_ids
     ]
     messages = build_exam_knowledge_unit_filter_messages(
-        subject_name=subject_name,
-        subject_description=subject_description,
-        subject_user_intent=subject_user_intent,
+        course_name=course_name,
+        course_description=course_description,
+        course_user_intent=course_user_intent,
         exam_mode=exam_mode,
         requested_question_count=question_count,
         candidate_limit=candidate_limit,
@@ -956,7 +956,7 @@ async def _select_exam_knowledge_units_once(
         max_tokens=1400,
         extra_metadata={
             "substep": "exam.question_build.filter_units",
-            "subject_id": subject_id,
+            "course_id": course_id,
             "exam_mode": exam_mode,
             "question_count": question_count,
             "candidate_limit": candidate_limit,
@@ -974,10 +974,10 @@ async def _select_exam_knowledge_units_once(
 
 async def select_exam_knowledge_units(
     *,
-    subject_id: str = "",
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    course_id: str = "",
+    course_name: str = "",
+    course_description: str = "",
+    course_user_intent: str = "",
     exam_mode: str,
     units: list[KnowledgeUnit],
     question_count: int,
@@ -1002,10 +1002,10 @@ async def select_exam_knowledge_units(
     priority_ids = [int(unit_id) for unit_id in list(priority_unit_ids or []) if int(unit_id or 0) > 0]
 
     selection = await _select_exam_knowledge_units_once(
-        subject_id=subject_id,
-        subject_name=subject_name,
-        subject_description=subject_description,
-        subject_user_intent=subject_user_intent,
+        course_id=course_id,
+        course_name=course_name,
+        course_description=course_description,
+        course_user_intent=course_user_intent,
         exam_mode=exam_mode,
         units=eligible_units,
         knowledge_graph_edges=list(knowledge_graph_edges or []),
@@ -1024,10 +1024,10 @@ async def select_exam_knowledge_units(
 
 async def allocate_exam_question_knowledge_units(
     *,
-    subject_id: str = "",
-    subject_name: str = "",
-    subject_description: str = "",
-    subject_user_intent: str = "",
+    course_id: str = "",
+    course_name: str = "",
+    course_description: str = "",
+    course_user_intent: str = "",
     exam_mode: str,
     units: list[KnowledgeUnit],
     question_count: int,
@@ -1043,9 +1043,9 @@ async def allocate_exam_question_knowledge_units(
         return []
     max_tokens = min(9000, max(2200, normalized_count * 360))
     messages = build_exam_question_blueprint_messages(
-        subject_name=subject_name,
-        subject_description=subject_description,
-        subject_user_intent=subject_user_intent,
+        course_name=course_name,
+        course_description=course_description,
+        course_user_intent=course_user_intent,
         exam_mode=exam_mode,
         requested_question_count=normalized_count,
         user_prompt=user_prompt,
@@ -1063,7 +1063,7 @@ async def allocate_exam_question_knowledge_units(
             max_tokens=max_tokens,
             extra_metadata={
                 "substep": "exam.question_build.allocate_knowledge_units",
-                "subject_id": subject_id,
+                "course_id": course_id,
                 "exam_mode": exam_mode,
                 "question_count": normalized_count,
                 "unit_count": len(units),
@@ -1127,7 +1127,7 @@ async def _generate_one_exam_question(
     *,
     unit_by_id: dict[int, KnowledgeUnit],
     spec: ExamQuestionGenerationSpec,
-    subject_profile: dict[str, str] | None = None,
+    course_profile: dict[str, str] | None = None,
     system_constraints: str = "",
 ) -> ExamQuestionDraft:
     batch_units = [unit_by_id[unit_id] for unit_id in spec.knowledge_unit_ids if unit_id in unit_by_id]
@@ -1135,7 +1135,7 @@ async def _generate_one_exam_question(
         units=[_unit_payload(unit) for unit in batch_units],
         spec=_spec_payload(spec),
         generation_prompt=spec.generation_prompt,
-        subject_profile=subject_profile,
+        course_profile=course_profile,
         system_constraints=system_constraints,
     )
     last_error: Exception | None = None
@@ -1169,7 +1169,7 @@ async def generate_exam_questions_for_units(
     *,
     units: list[KnowledgeUnit],
     specs: list[ExamQuestionGenerationSpec],
-    subject_profile: dict[str, str] | None = None,
+    course_profile: dict[str, str] | None = None,
     system_constraints: str = "",
     on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
     on_question_failed: Callable[[ExamQuestionGenerationFailure], Awaitable[None]] | None = None,
@@ -1198,7 +1198,7 @@ async def generate_exam_questions_for_units(
             question = await _generate_one_exam_question(
                 unit_by_id=unit_by_id,
                 spec=spec,
-                subject_profile=subject_profile,
+                course_profile=course_profile,
                 system_constraints=system_constraints,
             )
             return spec, question
@@ -1251,7 +1251,7 @@ async def generate_exam_questions_for_units(
 
 async def generate_exam_from_text(
     *,
-    subject_name: str,
+    course_name: str,
     knowledge_text: str,
     num_questions: int = 5,
     difficulty: DifficultyLiteral = "medium",
@@ -1260,7 +1260,7 @@ async def generate_exam_from_text(
 
     normalized_count = max(1, min(int(num_questions), 12))
     messages = build_text_exam_messages(
-        subject_name=subject_name,
+        course_name=course_name,
         knowledge_text=knowledge_text,
         num_questions=normalized_count,
         difficulty=difficulty,
@@ -1274,7 +1274,7 @@ async def generate_exam_from_text(
         max_tokens=2800,
         extra_metadata={
             "substep": "exam.question_build.playground",
-            "subject_name": subject_name,
+            "course_name": course_name,
             "question_count": normalized_count,
         },
     )

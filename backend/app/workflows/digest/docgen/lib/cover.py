@@ -19,7 +19,7 @@ from app.shared.infra.settings.support import (
     normalize_openai_compatible_image_model_name,
     resolve_runtime_llm_provider,
 )
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
+from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, get_docgen_model_policy
@@ -102,7 +102,7 @@ def _file_summary_cues(file_summaries: list[Mapping[str, Any]] | None, *, limit:
 
 def _build_cover_prompt(
     *,
-    subject_name: str,
+    course_name: str,
     user_prompt: str,
     plan_summary: str,
     digest_mode: str,
@@ -111,7 +111,7 @@ def _build_cover_prompt(
     intent_profile: Mapping[str, Any] | None = None,
 ) -> str:
     chapter_titles = "；".join(_chapter_titles(confirmed_plan)) or "课程主线"
-    course_cues = "；".join(_course_cues(confirmed_plan)) or subject_name
+    course_cues = "；".join(_course_cues(confirmed_plan)) or course_name
     file_cues = "；".join(_file_summary_cues(file_summaries)) or course_cues
     mode_hint = (
         "compressed, focused, tense but elegant, like dusk before an exam"
@@ -135,7 +135,7 @@ def _build_cover_prompt(
         "- leave clean breathing space so it can sit above the document as a cover\n"
         "\n"
         "Course signals to loosely absorb, not literally depict:\n"
-        f"- subject: {subject_name}\n"
+        f"- course: {course_name}\n"
         f"- build intent: {user_prompt or 'teaching document cover'}\n"
         f"- plan summary: {plan_summary or 'structured learning document'}\n"
         f"- chapter arc: {chapter_titles}\n"
@@ -145,7 +145,7 @@ def _build_cover_prompt(
         f"- teaching intent hint: {abstract_intent or 'guide the learner through a meaningful landscape of ideas'}\n"
         "\n"
         "The final image should feel like a refined abstract landscape that quietly resonates with the course, "
-        "as if the subject had dissolved into scenery."
+        "as if the course had dissolved into scenery."
     )
 
 
@@ -215,15 +215,15 @@ async def _cleanup_stale_docgen_covers(*, namespace: str, keep_key: str) -> None
         logger.warning("docgen_cover_cleanup_failed", namespace=namespace, error=str(exc))
 
 
-async def read_docgen_cover_artifact(subject_id: str) -> dict[str, Any] | None:
+async def read_docgen_cover_artifact(course_id: str) -> dict[str, Any] | None:
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(subject_id)
-    payload = await cs.read_json_raw(subject_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME)
+    course_scope = resolve_course_storage_scope(course_id)
+    payload = await cs.read_json_raw(course_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME)
     return payload if isinstance(payload, dict) else None
 
 
 async def wait_for_docgen_cover_artifact(
-    subject_id: str,
+    course_id: str,
     *,
     max_wait_seconds: float = 4.0,
     poll_interval_seconds: float = 0.2,
@@ -236,7 +236,7 @@ async def wait_for_docgen_cover_artifact(
 
     waited = 0.0
     while waited <= max_wait_seconds:
-        artifact = await read_docgen_cover_artifact(subject_id)
+        artifact = await read_docgen_cover_artifact(course_id)
         if artifact:
             return artifact
         await asyncio.sleep(poll_interval_seconds)
@@ -246,8 +246,8 @@ async def wait_for_docgen_cover_artifact(
 
 async def generate_docgen_cover_artifact(
     *,
-    subject_id: str,
-    subject_name: str,
+    course_id: str,
+    course_name: str,
     build_session_id: str,
     user_prompt: str | None,
     plan_summary: str | None,
@@ -265,15 +265,15 @@ async def generate_docgen_cover_artifact(
     if not settings.image_generation_enabled:
         logger.info(
             "docgen_cover_generation_skipped",
-            subject_id=subject_id,
+            course_id=course_id,
             reason="image_generation_disabled",
         )
         return None
 
-    subject_scope = resolve_subject_storage_scope(subject_id)
+    course_scope = resolve_course_storage_scope(course_id)
     cs = get_content_store()
     prompt = _build_cover_prompt(
-        subject_name=subject_name,
+        course_name=course_name,
         user_prompt=str(user_prompt or "").strip(),
         plan_summary=str(plan_summary or "").strip(),
         digest_mode=str(digest_mode or "").strip().lower(),
@@ -298,8 +298,8 @@ async def generate_docgen_cover_artifact(
                 extra_metadata={
                     **model_policy.metadata(),
                     "docgen_stage": "cover_generation",
-                    "subject_id": subject_id,
-                    "subject_name": subject_name,
+                    "course_id": course_id,
+                    "course_name": course_name,
                     "build_session_id": build_session_id,
                 },
             )
@@ -309,12 +309,12 @@ async def generate_docgen_cover_artifact(
             image_bytes, mime_type = await _image_bytes(image)
             extension = _mime_extension(mime_type)
             filename = f"cover{extension}"
-            storage_key = f"{subject_scope.namespace}/assets/docgen/{filename}"
+            storage_key = f"{course_scope.namespace}/assets/docgen/{filename}"
             # merged_knowledge_base.md lives under knowledge_markdowns/, so it
             # needs to walk up one level to reach the sibling assets/ tree.
             asset_path = f"../assets/docgen/{filename}"
             await cs.write_bytes(storage_key, image_bytes)
-            await _cleanup_stale_docgen_covers(namespace=subject_scope.namespace, keep_key=storage_key)
+            await _cleanup_stale_docgen_covers(namespace=course_scope.namespace, keep_key=storage_key)
             artifact = {
                 "kind": "docgen_cover",
                 "asset_path": asset_path,
@@ -327,11 +327,11 @@ async def generate_docgen_cover_artifact(
                 "cover_markdown": build_docgen_cover_markdown({"asset_path": asset_path}),
             }
             await cs.write_json_raw(
-                subject_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME,
+                course_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME,
                 artifact,
             )
             append_knowledge_build_recent_event(
-                subject_id,
+                course_id,
                 requested_at=requested_at,
                 event={
                     "stage": "docgen_cover_ready",
@@ -341,8 +341,8 @@ async def generate_docgen_cover_artifact(
             )
             logger.info(
                 "docgen_cover_generation_completed",
-                subject_id=subject_id,
-                subject_name=subject_name,
+                course_id=course_id,
+                course_name=course_name,
                 build_session_id=build_session_id,
                 size=size,
                 asset_path=asset_path,
@@ -352,16 +352,16 @@ async def generate_docgen_cover_artifact(
             last_error = exc
             logger.warning(
                 "docgen_cover_generation_attempt_failed",
-                subject_id=subject_id,
-                subject_name=subject_name,
+                course_id=course_id,
+                course_name=course_name,
                 build_session_id=build_session_id,
                 size=size,
                 error=str(exc),
             )
     logger.warning(
         "docgen_cover_generation_failed",
-        subject_id=subject_id,
-        subject_name=subject_name,
+        course_id=course_id,
+        course_name=course_name,
         build_session_id=build_session_id,
         error=str(last_error) if last_error else "",
     )

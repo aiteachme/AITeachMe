@@ -16,12 +16,12 @@ frontend React
   -> SQLite/PostgreSQL + local/S3 storage
 ```
 
-核心业务边界是 `Subject`。上传资料、知识文档、知识图谱、对话、考试、画像都围绕同一个 subject 隔离。
+核心业务边界是 `Course`。上传资料、知识文档、知识图谱、对话、考试、画像都围绕同一个 course 隔离。
 
 ## 2. 主业务链路
 
 ```text
-Subject
+Course
   -> RawFile
   -> Ingest: raw_markdowns + assets
   -> Digest Planner: confirmed_plan
@@ -35,7 +35,7 @@ Subject
 - Ingest 只把资料变成可消费 Markdown 和资产。
 - Planner 只决定学习方案，不做 deep research。
 - DocGen 消费 confirmed plan，生成知识文档和 manifest。
-- Interact / Examine / Profile 复用同一套 subject 知识资产。
+- Interact / Examine / Profile 复用同一套 course 知识资产。
 
 ## 3. 后端分层
 
@@ -135,7 +135,7 @@ shared.infra -> shared.kernel
 - 掌握度更新。
 - 薄弱点识别。
 - 复习任务。
-- 学科/用户画像。
+- 课程/用户画像。
 
 ## 5. 配置边界
 
@@ -164,7 +164,7 @@ shared.infra -> shared.kernel
 | Search / Reader / RAG | `app.shared.infra.search` |
 | Tools | `app.shared.infra.tools` |
 | Storage | `app.shared.infra.storage` |
-| Subject vector status | `app.shared.infra.subject` |
+| Course vector status | `app.shared.infra.course` |
 | Workflow runtime / progress | `app.shared.infra.workflow` |
 | Execution / sandbox / safety checks | `app.shared.infra.execution` |
 | Observability | `app.shared.infra.observability` |
@@ -183,5 +183,5 @@ shared.infra -> shared.kernel
 当前架构不是全能 Agent，而是：
 
 ```text
-Subject 边界 + Workflow 业务编排 + Infra 能力接入 + 本地优先存储
+Course 边界 + Workflow 业务编排 + Infra 能力接入 + 本地优先存储
 ```

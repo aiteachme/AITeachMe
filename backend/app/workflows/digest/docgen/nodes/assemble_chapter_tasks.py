@@ -76,7 +76,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         tasks = [task.model_dump(mode="json") for task in generation_plan.chapters]
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             status="running",
             stage="generating_chapters",
@@ -87,7 +87,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
             current_stage_description=f"章节执行 brief 已合并，开始并行生成 {len(tasks)} 个章节。",
         )
         append_knowledge_build_recent_event(
-            state["subject_id"],
+            state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "chapter_tasks_ready",

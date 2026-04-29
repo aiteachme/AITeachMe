@@ -63,7 +63,7 @@ load_planner_materials
 
 DocGen 消费的关键字段：
 
-- `subject`
+- `course`
 - `user_prompt`
 - `digest_mode`
 - `chapter_plan`
@@ -145,7 +145,7 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 
 知识图谱不再直接从上传文件独立入图。DocGen 发布知识文档后可以自动触发
 `kg_doc_sync`；知识图谱面板也可以调用
-`POST /api/v1/subjects/{subject}/knowledge/build/graph` 手动重建当前发布文档对应的图谱。
+`POST /api/v1/courses/{course}/knowledge/build/graph` 手动重建当前发布文档对应的图谱。
 API-facing 的图谱查询、总览、来源解释和手动重建入口都通过
 `app.workflows.digest.kg_doc_sync` 暴露稳定用例，不再另建 support 影子模块。
 

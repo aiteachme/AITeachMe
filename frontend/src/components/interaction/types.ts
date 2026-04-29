@@ -4,14 +4,14 @@ export type AiInteractionDisplayMode = "sidebar" | "fullscreen";
 
 export type AiConversationScope =
   | { type: "global" }
-  | { type: "subject"; subjectId: string };
+  | { type: "course"; courseId: string };
 
 export const AI_SOURCE_DOCUMENT_SELECTION = "quick_chat";
 export const AI_SOURCE_EXAM_QUESTION = "exam_question";
 export const EXAM_QUESTION_JUMP_EVENT = "aiteachme:exam-question-jump";
 
 export interface ExamQuestionJumpDetail {
-  subjectId: string;
+  courseId: string;
   paperId: number;
   questionOrder: number;
   anchorId: string;
@@ -69,15 +69,15 @@ export function getAiConversationScopeKey(scope: AiConversationScope | null): st
   if (!scope) {
     return "none";
   }
-  return scope.type === "global" ? "global" : `subject:${scope.subjectId}`;
+  return scope.type === "global" ? "global" : `course:${scope.courseId}`;
 }
 
-export function getAiConversationBackendSubjectId(scope: AiConversationScope | null): string | null {
+export function getAiConversationBackendCourseId(scope: AiConversationScope | null): string | null {
   if (!scope) {
     return null;
   }
 
-  // The current chat APIs are subject-scoped. Keep the existing global compatibility scope
+  // The current chat APIs are course-scoped. Keep the existing global compatibility scope
   // isolated here so the window components do not care how the backend stores conversations.
-  return scope.type === "global" ? "global" : scope.subjectId;
+  return scope.type === "global" ? "global" : scope.courseId;
 }

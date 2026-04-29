@@ -1,4 +1,4 @@
-"""Compatibility VectorStore over the managed LlamaIndex subject index.
+"""Compatibility VectorStore over the managed LlamaIndex course index.
 
 The canonical index is now managed by ``llamaindex_index.manager``.  This
 adapter remains only for older call sites that still instantiate
@@ -6,7 +6,7 @@ adapter remains only for older call sites that still instantiate
 
 Key design decisions:
 - ``add()`` is a no-op because writes go through the unified index manager.
-- ``aquery()`` queries the LlamaIndex-managed subject index, then loads chunk
+- ``aquery()`` queries the LlamaIndex-managed course index, then loads chunk
   text from ``retrieval_chunk`` for compatibility with LlamaIndex nodes.
 """
 
@@ -36,15 +36,15 @@ class _ExtractedChunk:
     file_id: str
     title: str
     header_path: str
-    subject_id: str
+    course_id: str
     content: str
     score: float
 
 
 class ATMVectorStore(BasePydanticVectorStore):
-    """LlamaIndex VectorStore compatibility wrapper over the managed subject index."""
+    """LlamaIndex VectorStore compatibility wrapper over the managed course index."""
 
-    subject_id: str = ""
+    course_id: str = ""
     stores_text: bool = True
     is_embedding_query: bool = True
 
@@ -84,19 +84,19 @@ class ATMVectorStore(BasePydanticVectorStore):
     async def aquery(
         self, query: VectorStoreQuery, **kwargs: Any
     ) -> VectorStoreQueryResult:
-        """Execute a vector similarity search against the subject corpus."""
+        """Execute a vector similarity search against the course corpus."""
 
         from app.repositories.knowledge.knowledge_repo import get_chunks_by_ids
-        from app.shared.infra.search.llamaindex_index import query_subject_index
+        from app.shared.infra.search.llamaindex_index import query_course_index
 
         query_embedding = query.query_embedding
-        if not query_embedding or not self.subject_id:
+        if not query_embedding or not self.course_id:
             return VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
 
         top_k = query.similarity_top_k or 5
 
-        hits = query_subject_index(
-            self.subject_id,
+        hits = query_course_index(
+            self.course_id,
             query_embedding,
             top_k=top_k,
         )
@@ -112,7 +112,7 @@ class ATMVectorStore(BasePydanticVectorStore):
             
             for hit in hits:
                 chunk = chunk_by_id.get(hit.chunk_id)
-                if chunk is None or chunk.subject_id != self.subject_id:
+                if chunk is None or chunk.course_id != self.course_id:
                     continue
                 extracted.append(
                     _ExtractedChunk(
@@ -120,7 +120,7 @@ class ATMVectorStore(BasePydanticVectorStore):
                         file_id=chunk.file_id,
                         title=chunk.title,
                         header_path=chunk.header_path,
-                        subject_id=chunk.subject_id,
+                        course_id=chunk.course_id,
                         content=chunk.content,
                         score=hit.score,
                     )
@@ -140,11 +140,11 @@ class ATMVectorStore(BasePydanticVectorStore):
                     "file_id": item.file_id,
                     "title": item.title,
                     "header_path": item.header_path,
-                    "subject_id": item.subject_id,
+                    "course_id": item.course_id,
                     "source": "vector",
                 },
-                excluded_embed_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
-                excluded_llm_metadata_keys=["chunk_id", "file_id", "subject_id", "source"],
+                excluded_embed_metadata_keys=["chunk_id", "file_id", "course_id", "source"],
+                excluded_llm_metadata_keys=["chunk_id", "file_id", "course_id", "source"],
             )
             nodes.append(node)
             similarities.append(item.score)
@@ -152,7 +152,7 @@ class ATMVectorStore(BasePydanticVectorStore):
 
         logger.info(
             "llamaindex_vector_query",
-            subject_id=self.subject_id,
+            course_id=self.course_id,
             top_k=top_k,
             result_count=len(nodes),
         )

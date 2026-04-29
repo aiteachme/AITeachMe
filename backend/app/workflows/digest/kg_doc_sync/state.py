@@ -1,4 +1,4 @@
-﻿"""State model for docs-sync workflow."""
+"""State model for docs-sync workflow."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
 
 
 class DocsSyncState(TypedDict, total=False):
-    subject_id: str
+    course_id: str
     markdown: str
-    subject_context: str
+    course_context: str
     structured_context: dict[str, object]
     build_revision_no: int | None
     build_session_id: str

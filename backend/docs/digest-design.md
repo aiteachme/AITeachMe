@@ -2,15 +2,15 @@
 
 下面我按“**知识图谱型增量构建**”来给你做一版完整设计，并且重点回答第二个核心问题：
 
-> **如何在知识图谱的基础上稳定地产生一个“学科树”**，而不是每次都生成一份漂浮不定的目录。
+> **如何在知识图谱的基础上稳定地产生一个“课程树”**，而不是每次都生成一份漂浮不定的目录。
 
-我会尽量按你一贯偏好的工程化方式来写：**目标 → 总体架构 → 领域模型 → 增量更新流程 → 图谱构建算法 → 学科树派生算法 → 冲突与修订 → API / 数据表 → 推荐落地路径**。
+我会尽量按你一贯偏好的工程化方式来写：**目标 → 总体架构 → 领域模型 → 增量更新流程 → 图谱构建算法 → 课程树派生算法 → 冲突与修订 → API / 数据表 → 推荐落地路径**。
 
 ---
 
 # 1. 目标重述
 
-你要的不是一个普通 digest，而是一个长期演化的 **Subject Knowledge Compiler**。
+你要的不是一个普通 digest，而是一个长期演化的 **Course Knowledge Compiler**。
 
 它要满足：
 
@@ -20,7 +20,7 @@
 
 * 只处理新增/变更文档
 * 只更新受影响的知识节点与关系
-* 只重算受影响的学科树局部
+* 只重算受影响的课程树局部
 
 ## 1.2 图谱化表达
 
@@ -36,7 +36,7 @@
 
 虽然底层是真正的图谱，但前台/产品层仍然需要：
 
-* 学科目录树
+* 课程目录树
 * 章节页
 * 主题页
 * 可浏览、可折叠、可检索
@@ -52,7 +52,7 @@
 * 这条知识从哪篇文档来的？
 * 由哪些片段支撑？
 * 是哪个版本的文档引入或修订了它？
-* 为什么被放在这个学科树节点下？
+* 为什么被放在这个课程树节点下？
 
 ---
 
@@ -129,7 +129,7 @@
 
 ## 2.4 Graph Layer：知识图谱层
 
-维护学科底层真相：
+维护课程底层真相：
 
 * 节点
 * 边
@@ -149,9 +149,9 @@
 
 ---
 
-## 2.5 Tree Derivation Layer：学科树派生层
+## 2.5 Tree Derivation Layer：课程树派生层
 
-从图谱中派生出 **稳定的学科树**：
+从图谱中派生出 **稳定的课程树**：
 
 * 基于 taxonomy 类边与主题锚点生成树
 * 基于先验课程大纲、教材目录、聚类结果做融合
@@ -159,7 +159,7 @@
 
 产物：
 
-* SubjectTree
+* CourseTree
 * TreeNode
 * TreeMembership
 * TreeVersion
@@ -170,7 +170,7 @@
 
 为前台提供：
 
-* 学科总览
+* 课程总览
 * 目录树浏览
 * 主题页
 * 知识点详情页
@@ -182,7 +182,7 @@
 
 # 3. 为什么底层一定要“图”，上层才做“树”
 
-因为学科知识天然不是树，而是图。
+因为课程知识天然不是树，而是图。
 
 例如：
 
@@ -307,7 +307,7 @@
 * 第一章 函数与极限
 * 1.2 极限运算法则
 
-这个类型很重要，因为后面学科树不是纯自动聚类长出来的，往往需要 **SyllabusUnit / Topic** 作为锚点。
+这个类型很重要，因为后面课程树不是纯自动聚类长出来的，往往需要 **SyllabusUnit / Topic** 作为锚点。
 
 ---
 
@@ -444,7 +444,7 @@
 ```text
 KnowledgeNode
 - id
-- subject_id
+- course_id
 - node_type
 - canonical_name
 - normalized_name
@@ -491,7 +491,7 @@ KnowledgeRevision
 ```text
 KnowledgeEdge
 - id
-- subject_id
+- course_id
 - source_node_id
 - target_node_id
 - edge_type
@@ -529,7 +529,7 @@ EdgeRevision
 ```text
 EvidenceLink
 - id
-- subject_id
+- course_id
 - entity_type (node / edge / tree_membership / tree_node_summary)
 - entity_id
 - document_id
@@ -550,12 +550,12 @@ EvidenceLink
 
 ## 5.6 TaxonomyAnchor
 
-用于学科树锚点。
+用于课程树锚点。
 
 ```text
 TaxonomyAnchor
 - id
-- subject_id
+- course_id
 - anchor_type (syllabus / textbook_toc / teacher_defined / graph_discovered)
 - title
 - normalized_title
@@ -572,15 +572,15 @@ TaxonomyAnchor
 ## 5.7 TreeNode / TreeVersion
 
 ```text
-SubjectTreeVersion
+CourseTreeVersion
 - id
-- subject_id
+- course_id
 - version_no
 - derivation_strategy
 - status
 - created_at
 
-SubjectTreeNode
+CourseTreeNode
 - id
 - tree_version_id
 - anchor_id
@@ -760,13 +760,13 @@ CandidateNode
 * 极限主题
 * 极限定义摘要
 * 导数前置知识图
-* 第一章学科树摘要
+* 第一章课程树摘要
 
 不要全量重算整科。
 
 ---
 
-## Step 8. 学科树局部派生更新
+## Step 8. 课程树局部派生更新
 
 只对受影响主题子树做重算：
 
@@ -780,7 +780,7 @@ CandidateNode
 
 更新：
 
-* 学科目录页
+* 课程目录页
 * 主题摘要
 * 知识点详情页
 * 搜索索引
@@ -864,7 +864,7 @@ CandidateNode
 
 ---
 
-# 8. 核心难点二：如何从图谱得到一棵学科树
+# 8. 核心难点二：如何从图谱得到一棵课程树
 
 这是你问的重点。
 
@@ -888,7 +888,7 @@ CandidateNode
 
 ---
 
-# 9. 学科树派生的核心思想
+# 9. 课程树派生的核心思想
 
 我建议用：
 
@@ -955,7 +955,7 @@ Anchor 是用于树组织的节点，不等于所有知识节点。
 
 ---
 
-# 10. 学科树派生算法设计
+# 10. 课程树派生算法设计
 
 ---
 
@@ -966,13 +966,13 @@ Anchor 是用于树组织的节点，不等于所有知识节点。
 * Anchor parent-child 结构
 * 每个知识节点到 anchor 的候选关联分数
 * 人工规则 / 课程大纲优先级
-* 上一版本学科树 T_prev
+* 上一版本课程树 T_prev
 
 ---
 
 ## 10.2 输出
 
-* 新的学科树版本 T_new
+* 新的课程树版本 T_new
 * 每个知识节点的主归属与次归属
 * 每个树节点摘要
 
@@ -1096,7 +1096,7 @@ summary 也是派生产物，不是主数据。
 
 ---
 
-# 11. 如何保证学科树不是“漂移树”
+# 11. 如何保证课程树不是“漂移树”
 
 这非常关键。
 
@@ -1155,7 +1155,7 @@ summary 也是派生产物，不是主数据。
 不要直接覆盖旧树。
 每次派生出：
 
-* `SubjectTreeVersion`
+* `CourseTreeVersion`
 
 这样你可以：
 
@@ -1165,7 +1165,7 @@ summary 也是派生产物，不是主数据。
 
 ---
 
-# 12. 图谱到学科树的一个具体例子
+# 12. 图谱到课程树的一个具体例子
 
 以“高等数学”为例。
 
@@ -1290,7 +1290,7 @@ summary 也是派生产物，不是主数据。
 
 所以最好的产品不是只显示一个目录，而是：
 
-* 左侧：学科树
+* 左侧：课程树
 * 详情页：概念关系图 / 学习依赖图 / 证据来源
 
 ---
@@ -1341,7 +1341,7 @@ summary 也是派生产物，不是主数据。
 
 ## 15.1 上传文档并触发增量更新
 
-`POST /subjects/{subject_id}/documents:ingest`
+`POST /courses/{course_id}/documents:ingest`
 
 返回：
 
@@ -1352,7 +1352,7 @@ summary 也是派生产物，不是主数据。
 
 ## 15.2 查看 digest job
 
-`GET /subjects/{subject_id}/digest-jobs/{job_id}`
+`GET /courses/{course_id}/digest-jobs/{job_id}`
 
 返回：
 
@@ -1366,7 +1366,7 @@ summary 也是派生产物，不是主数据。
 
 ## 15.3 获取知识图谱节点
 
-`GET /subjects/{subject_id}/knowledge/nodes/{node_id}`
+`GET /courses/{course_id}/knowledge/nodes/{node_id}`
 
 返回：
 
@@ -1379,15 +1379,15 @@ summary 也是派生产物，不是主数据。
 
 ---
 
-## 15.4 获取学科树
+## 15.4 获取课程树
 
-`GET /subjects/{subject_id}/trees/current`
+`GET /courses/{course_id}/trees/current`
 
 ---
 
 ## 15.5 获取某树节点详情
 
-`GET /subjects/{subject_id}/trees/current/nodes/{tree_node_id}`
+`GET /courses/{course_id}/trees/current/nodes/{tree_node_id}`
 
 返回：
 
@@ -1403,7 +1403,7 @@ summary 也是派生产物，不是主数据。
 
 ## 15.6 人工确认挂载/合并
 
-`POST /subjects/{subject_id}/taxonomy/review-actions`
+`POST /courses/{course_id}/taxonomy/review-actions`
 
 动作：
 
@@ -1450,8 +1450,8 @@ summary 也是派生产物，不是主数据。
 
   * ingest_document_and_update_graph.py
   * reconcile_candidate_nodes.py
-  * rebuild_subject_subtree.py
-  * publish_subject_tree_version.py
+  * rebuild_course_subtree.py
+  * publish_course_tree_version.py
 
 ---
 
@@ -1474,9 +1474,9 @@ summary 也是派生产物，不是主数据。
 
 ## interfaces/api
 
-* subjects_documents_api.py
+* courses_documents_api.py
 * knowledge_graph_api.py
-* subject_tree_api.py
+* course_tree_api.py
 * taxonomy_review_api.py
 
 ---
@@ -1492,7 +1492,7 @@ summary 也是派生产物，不是主数据。
 * KnowledgeEdge
 * EvidenceLink
 * TaxonomyAnchor
-* SubjectTreeVersion
+* CourseTreeVersion
 * TreeMembership
 * 增量 ingest job
 * 局部子树更新
@@ -1528,7 +1528,7 @@ summary 也是派生产物，不是主数据。
 
 如果我把整套方案压缩成一句话，就是：
 
-> **把 digest 变成一个“证据驱动、版本化、可增量对齐的知识图谱系统”，然后基于 taxonomy anchors 派生出稳定的学科树。**
+> **把 digest 变成一个“证据驱动、版本化、可增量对齐的知识图谱系统”，然后基于 taxonomy anchors 派生出稳定的课程树。**
 
 它的关键点不是“让 LLM 生成一棵树”，而是：
 
@@ -1546,7 +1546,7 @@ summary 也是派生产物，不是主数据。
 ## 错误路线
 
 * 上传文档
-* LLM 直接生成“本学科的新目录与总结”
+* LLM 直接生成“本课程的新目录与总结”
 * 覆盖旧内容
 
 这会非常不稳定。
@@ -1557,7 +1557,7 @@ summary 也是派生产物，不是主数据。
 * 抽取候选知识节点与边
 * 与已有图谱做对齐归并
 * 更新 evidence / revisions
-* 基于稳定锚点派生局部学科树
+* 基于稳定锚点派生局部课程树
 * 生成局部 summary
 
 这样才是真正能长期演化的 digest。
@@ -1565,4 +1565,4 @@ summary 也是派生产物，不是主数据。
 ---
 
 下一步我可以直接继续给你写成更工程化的一版：
-**数据库表结构 + Python 领域模型 + 增量构建时序图 + “图谱生成学科树”的伪代码设计**。
+**数据库表结构 + Python 领域模型 + 增量构建时序图 + “图谱生成课程树”的伪代码设计**。

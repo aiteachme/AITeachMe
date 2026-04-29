@@ -1,4 +1,4 @@
-﻿"""Shared metrics helpers for digest workflows."""
+"""Shared metrics helpers for digest workflows."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ class DigestTimingReport(BaseModel):
 def build_token_summary(
     *,
     build_session_id: str | None = None,
-    subject_id: str | None = None,
+    course_id: str | None = None,
     workflow: str | None = None,
     lane: str | None = None,
     node: str | None = None,
@@ -88,7 +88,7 @@ def build_token_summary(
         return DigestTokenSummary()
     raw_summary = get_tracker().get_summary(
         build_session_id=build_session_id,
-        subject_id=subject_id,
+        course_id=course_id,
         workflow=workflow,
         lane=lane,
         node=node,

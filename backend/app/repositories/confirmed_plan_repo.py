@@ -15,11 +15,11 @@ PLANNER_CHAT_SOURCE = "build_planner"
 CONFIRMED_PLAN_META_KEY = "confirmed_plan"
 
 
-def _planner_sessions(session: Session, *, subject_id: str, user_id: str) -> Iterable[ChatSession]:
+def _planner_sessions(session: Session, *, course_id: str, user_id: str) -> Iterable[ChatSession]:
     stmt = (
         select(ChatSession)
         .where(
-            ChatSession.subject_id == subject_id,
+            ChatSession.course_id == course_id,
             ChatSession.user_id == user_id,
             ChatSession.source == PLANNER_CHAT_SOURCE,
         )
@@ -41,7 +41,7 @@ def _plan_from_session(session_item: ChatSession) -> ConfirmedBuildPlan | None:
         return None
     payload = dict(payload)
     payload.setdefault("planner_session_id", session_item.id)
-    payload.setdefault("subject_id", session_item.subject_id)
+    payload.setdefault("course_id", session_item.course_id)
     payload.setdefault("user_id", session_item.user_id)
     try:
         return ConfirmedBuildPlan.model_validate(payload)
@@ -82,7 +82,7 @@ def create_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
     session_item = session.get(ChatSession, record.planner_session_id)
     if (
         session_item is None
-        or session_item.subject_id != record.subject_id
+        or session_item.course_id != record.course_id
         or session_item.user_id != record.user_id
         or session_item.source != PLANNER_CHAT_SOURCE
     ):
@@ -95,13 +95,13 @@ def update_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
         session_item = session.get(ChatSession, record.planner_session_id)
         if (
             session_item is not None
-            and session_item.subject_id == record.subject_id
+            and session_item.course_id == record.course_id
             and session_item.user_id == record.user_id
             and session_item.source == PLANNER_CHAT_SOURCE
         ):
             return _store_plan_on_session(session, session_item, record)
 
-    for session_item in _planner_sessions(session, subject_id=record.subject_id, user_id=record.user_id):
+    for session_item in _planner_sessions(session, course_id=record.course_id, user_id=record.user_id):
         existing = _plan_from_session(session_item)
         if existing is not None and existing.id == record.id:
             return _store_plan_on_session(session, session_item, record)
@@ -111,11 +111,11 @@ def update_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
 def get_confirmed_plan(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     plan_id: str,
     user_id: str,
 ) -> ConfirmedBuildPlan | None:
-    for session_item in _planner_sessions(session, subject_id=subject_id, user_id=user_id):
+    for session_item in _planner_sessions(session, course_id=course_id, user_id=user_id):
         plan = _plan_from_session(session_item)
         if plan is not None and plan.id == plan_id:
             return plan
@@ -125,14 +125,14 @@ def get_confirmed_plan(
 def get_confirmed_plan_by_session(
     session: Session,
     *,
-    subject_id: str,
+    course_id: str,
     planner_session_id: str,
     user_id: str,
 ) -> ConfirmedBuildPlan | None:
     session_item = session.get(ChatSession, planner_session_id)
     if (
         session_item is None
-        or session_item.subject_id != subject_id
+        or session_item.course_id != course_id
         or session_item.user_id != user_id
         or session_item.source != PLANNER_CHAT_SOURCE
     ):

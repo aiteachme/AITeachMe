@@ -19,19 +19,19 @@ def bulk_create_knowledge_docs(session: Session, docs: list[KnowledgeDoc]) -> li
     return docs
 
 
-def get_docs_by_subject(
+def get_docs_by_course(
     session: Session,
-    subject_id: str,
+    course_id: str,
     *,
     status: str | None = None,
     only_current: bool | None = None,
     version_no: int | None = None,
 ) -> list[KnowledgeDoc]:
-    """按学科查询知识文档，并按章节顺序返回。"""
+    """按课程查询知识文档，并按章节顺序返回。"""
 
     statement = (
         select(KnowledgeDoc)
-        .where(KnowledgeDoc.subject_id == subject_id)
+        .where(KnowledgeDoc.course_id == course_id)
         .order_by(KnowledgeDoc.version_no, KnowledgeDoc.chapter_index)
     )
     if status is not None:
@@ -43,13 +43,13 @@ def get_docs_by_subject(
     return list(session.exec(statement).all())
 
 
-def get_current_published_docs(session: Session, subject_id: str) -> list[KnowledgeDoc]:
-    """Return current published chapter docs for one subject_id in display order."""
+def get_current_published_docs(session: Session, course_id: str) -> list[KnowledgeDoc]:
+    """Return current published chapter docs for one course_id in display order."""
 
     statement = (
         select(KnowledgeDoc)
         .where(
-            KnowledgeDoc.subject_id == subject_id,
+            KnowledgeDoc.course_id == course_id,
             KnowledgeDoc.is_current.is_(True),
             KnowledgeDoc.status == "published",
         )
@@ -58,12 +58,12 @@ def get_current_published_docs(session: Session, subject_id: str) -> list[Knowle
     return list(session.exec(statement).all())
 
 
-def get_latest_version_no(session: Session, subject_id: str) -> int:
-    """Return the latest published version number for one subject_id."""
+def get_latest_version_no(session: Session, course_id: str) -> int:
+    """Return the latest published version number for one course_id."""
 
     statement = (
         select(KnowledgeDoc.version_no)
-        .where(KnowledgeDoc.subject_id == subject_id)
+        .where(KnowledgeDoc.course_id == course_id)
         .order_by(KnowledgeDoc.version_no.desc(), KnowledgeDoc.id.desc())
     )
     latest = session.exec(statement).first()
@@ -90,10 +90,10 @@ def update_doc_status(session: Session, doc_id: int, status: str) -> KnowledgeDo
     return doc
 
 
-def delete_docs_by_subject(session: Session, subject_id: str) -> int:
-    """删除学科下的全部知识文档，返回删除数量。"""
+def delete_docs_by_course(session: Session, course_id: str) -> int:
+    """删除课程下的全部知识文档，返回删除数量。"""
 
-    docs = get_docs_by_subject(session, subject_id)
+    docs = get_docs_by_course(session, course_id)
     deleted_count = len(docs)
     for doc in docs:
         session.delete(doc)

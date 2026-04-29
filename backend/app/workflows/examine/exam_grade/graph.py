@@ -21,13 +21,13 @@ from app.workflows.examine.exam_grade.lib import (
 
 RUN_NAME_EXAM_GRADE = "考试引擎：判题工作流"
 RUN_NAME_EXAM_STUDY_GUIDE = "考试引擎：学习指南"
-_UNKNOWN_SUBJECT_NAME = "未命名学科"
+_UNKNOWN_COURSE_NAME = "未命名课程"
 
 
 class ExamGradeState(TypedDict, total=False):
     mode: Literal["grade_exam", "study_guide"]
-    subject_id: str
-    subject_name: str
+    course_id: str
+    course_name: str
     exam_paper_id: int
     items: list[ExamPaperItem]
     grade_decisions: list[ExamItemGradeDecision]
@@ -78,8 +78,8 @@ def _route_by_mode(state: ExamGradeState) -> str:
     return "grade_exam"
 
 
-def _state_subject_name(state: ExamGradeState) -> str:
-    return str(state.get("subject_name") or "").strip() or _UNKNOWN_SUBJECT_NAME
+def _state_course_name(state: ExamGradeState) -> str:
+    return str(state.get("course_name") or "").strip() or _UNKNOWN_COURSE_NAME
 
 
 async def _grade_exam_node(state: ExamGradeState) -> ExamGradeState:
@@ -91,7 +91,7 @@ async def _grade_exam_node(state: ExamGradeState) -> ExamGradeState:
         step="grade_exam",
     )
     decisions = await grade_exam_items_with_workflow(
-        subject_name=_state_subject_name(state),
+        course_name=_state_course_name(state),
         items=list(state.get("items") or []),
     )
     elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -119,7 +119,7 @@ async def _generate_study_guide_node(state: ExamGradeState) -> ExamGradeState:
     )
     study_guide = await generate_exam_study_guide(
         exam_paper_id=int(state.get("exam_paper_id") or 0),
-        subject_name=_state_subject_name(state),
+        course_name=_state_course_name(state),
         exam_title=str(state.get("exam_title") or ""),
         score_summary=str(state.get("score_summary") or ""),
         wrong_question_summaries=list(state.get("wrong_question_summaries") or []),
@@ -144,15 +144,15 @@ async def _generate_study_guide_node(state: ExamGradeState) -> ExamGradeState:
 
 def _create_grade_initial_state(
     *,
-    subject_id: str,
-    subject_name: str,
+    course_id: str,
+    course_name: str,
     items: list[ExamPaperItem],
     progress_callback: object | None = None,
 ) -> ExamGradeState:
     return {
         "mode": "grade_exam",
-        "subject_id": subject_id,
-        "subject_name": subject_name,
+        "course_id": course_id,
+        "course_name": course_name,
         "items": list(items),
         "progress_callback": progress_callback,
         "error": "",
@@ -162,8 +162,8 @@ def _create_grade_initial_state(
 def _create_study_guide_initial_state(
     *,
     exam_paper_id: int,
-    subject_id: str,
-    subject_name: str,
+    course_id: str,
+    course_name: str,
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, Any]],
@@ -175,8 +175,8 @@ def _create_study_guide_initial_state(
     return {
         "mode": "study_guide",
         "exam_paper_id": exam_paper_id,
-        "subject_id": subject_id,
-        "subject_name": subject_name,
+        "course_id": course_id,
+        "course_name": course_name,
         "exam_title": exam_title,
         "score_summary": score_summary,
         "wrong_question_summaries": list(wrong_question_summaries),
@@ -204,8 +204,8 @@ def get_langgraph_dev_exam_grade_graph() -> StateGraph:
 
 async def run_exam_grade_workflow(
     *,
-    subject_id: str,
-    subject_name: str = "",
+    course_id: str,
+    course_name: str = "",
     items: list[ExamPaperItem],
     progress_callback: object | None = None,
 ) -> list[ExamItemGradeDecision]:
@@ -213,7 +213,7 @@ async def run_exam_grade_workflow(
 
     context = WorkflowContext(
         workflow_name="examine.exam_grade",
-        subject_id=subject_id,
+        course_id=course_id,
         metadata={
             "lane": "exam_grade",
             "langsmith_run_name": RUN_NAME_EXAM_GRADE,
@@ -225,8 +225,8 @@ async def run_exam_grade_workflow(
         workflow_name="examine.exam_grade",
         graph_builder=lambda: build_exam_grade_graph(context=context),
         initial_state=_create_grade_initial_state(
-            subject_id=subject_id,
-            subject_name=subject_name or _UNKNOWN_SUBJECT_NAME,
+            course_id=course_id,
+            course_name=course_name or _UNKNOWN_COURSE_NAME,
             items=items,
             progress_callback=progress_callback,
         ),
@@ -239,8 +239,8 @@ async def run_exam_grade_workflow(
 async def run_exam_study_guide_workflow(
     *,
     exam_paper_id: int,
-    subject_id: str,
-    subject_name: str = "",
+    course_id: str,
+    course_name: str = "",
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, Any]],
@@ -253,7 +253,7 @@ async def run_exam_study_guide_workflow(
 
     context = WorkflowContext(
         workflow_name="examine.exam_grade",
-        subject_id=subject_id,
+        course_id=course_id,
         metadata={
             "lane": "exam_grade",
             "langsmith_run_name": RUN_NAME_EXAM_STUDY_GUIDE,
@@ -266,8 +266,8 @@ async def run_exam_study_guide_workflow(
         graph_builder=lambda: build_exam_grade_graph(context=context),
         initial_state=_create_study_guide_initial_state(
             exam_paper_id=exam_paper_id,
-            subject_id=subject_id,
-            subject_name=subject_name or _UNKNOWN_SUBJECT_NAME,
+            course_id=course_id,
+            course_name=course_name or _UNKNOWN_COURSE_NAME,
             exam_title=exam_title,
             score_summary=score_summary,
             wrong_question_summaries=wrong_question_summaries,

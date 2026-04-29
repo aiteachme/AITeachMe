@@ -8,7 +8,7 @@ from typing import Literal
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.storage import get_content_store, resolve_subject_storage_scope
+from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
@@ -148,11 +148,11 @@ def _sanitize_generated_html(html: str, *, title: str) -> str:
     return cleaned.strip() + "\n"
 
 
-def _build_preview_url(*, subject_id: str, asset_path: str, title: str) -> str:
+def _build_preview_url(*, course_id: str, asset_path: str, title: str) -> str:
     from urllib.parse import quote
 
     return (
-        f"/subject/{quote(subject_id)}/knowledge-docs/interactive"
+        f"/course/{quote(course_id)}/knowledge-docs/interactive"
         f"?asset={quote(asset_path, safe='/')}"
         f"&title={quote(title)}"
     )
@@ -208,12 +208,12 @@ async def maybe_generate_interactive_html_asset(
     )
     cleaned_html = _sanitize_generated_html(str(html), title=draft.title)
     cs = get_content_store()
-    subject_scope = resolve_subject_storage_scope(traced_context.subject_id)
+    course_scope = resolve_course_storage_scope(traced_context.course_id)
     filename = f"docgen_interactive_{traced_context.build_session_id}_ch{draft.chapter_index:02d}_{sanitize_doc_title(draft.title)}.html"
-    storage_key = f"{subject_scope.namespace}/assets/docgen/interactive/{filename}"
+    storage_key = f"{course_scope.namespace}/assets/docgen/interactive/{filename}"
     asset_path = f"docgen/interactive/{filename}"
     await cs.write_text(storage_key, cleaned_html)
-    preview_url = _build_preview_url(subject_id=traced_context.subject_id, asset_path=asset_path, title=draft.title)
+    preview_url = _build_preview_url(course_id=traced_context.course_id, asset_path=asset_path, title=draft.title)
     return {
         "asset_id": f"ch{draft.chapter_index:02d}_interactive_01",
         "chapter_index": draft.chapter_index,
@@ -222,7 +222,7 @@ async def maybe_generate_interactive_html_asset(
         "interaction_mode": interaction_mode,
         "storage_key": storage_key,
         "asset_path": asset_path,
-        "asset_url": f"/api/v1/subjects/{traced_context.subject_id}/files/assets/{asset_path}",
+        "asset_url": f"/api/v1/courses/{traced_context.course_id}/files/assets/{asset_path}",
         "preview_url": preview_url,
         "open_mode": "new_tab",
         "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=f"{draft.title} 交互演示"),

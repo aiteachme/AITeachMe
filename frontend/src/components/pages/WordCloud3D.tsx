@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import cloud from "d3-cloud";
 
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -10,7 +10,7 @@ interface WordCloudNode {
 }
 
 interface WordCloud3DProps {
-  subjectLabel: string;
+  courseLabel: string;
   nodes: WordCloudNode[];
   height?: number | string;
   onNodeClick?: (name: string) => void;
@@ -74,7 +74,7 @@ const MAX_WORDS = 100;
 
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Main Component 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCloud3DProps) {
+export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordCloud3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 500 });
@@ -406,7 +406,7 @@ export function WordCloud3D({ subjectLabel, nodes, height, onNodeClick }: WordCl
       >
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-sm font-bold text-slate-800">{subjectLabel}</p>
+            <p className="text-sm font-bold text-slate-800">{courseLabel}</p>
             <p className="mt-0.5 text-[9px] text-slate-400">
               {nodes.length} 个知识节点 · 点击查看详情 · 滚轮缩放 · 拖拽平移
             </p>

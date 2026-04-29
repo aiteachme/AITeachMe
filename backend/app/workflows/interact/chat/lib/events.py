@@ -15,7 +15,7 @@ class InteractRequestedEvent:
 
     event_name: ClassVar[str] = "interact.requested"
 
-    subject_id: str
+    course_id: str
     occurred_at: datetime = field(default_factory=utcnow)
 
 
@@ -25,7 +25,7 @@ class InteractCompletedEvent:
 
     event_name: ClassVar[str] = "interact.completed"
 
-    subject_id: str
+    course_id: str
     occurred_at: datetime = field(default_factory=utcnow)
 
 
@@ -35,7 +35,7 @@ class InteractFailedEvent:
 
     event_name: ClassVar[str] = "interact.failed"
 
-    subject_id: str
+    course_id: str
     error_message: str
     occurred_at: datetime = field(default_factory=utcnow)
 

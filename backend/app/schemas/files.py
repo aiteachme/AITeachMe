@@ -52,7 +52,7 @@ class FileRecord(BaseModel):
 class FilesData(BaseModel):
     """Aggregated files response."""
 
-    subject_id: str | None = Field(default=None, description="Subject ID, or null for the user library.")
+    course_id: str | None = Field(default=None, description="Course ID, or null for the user library.")
     total: int = Field(description="Total file count.")
     ready_count: int = Field(description="Count of markdown-ready files.")
     processing_count: int = Field(description="Count of files still processing.")
@@ -63,7 +63,7 @@ class FilesData(BaseModel):
 class FilesUploadData(BaseModel):
     """Upload response."""
 
-    subject_id: str | None = Field(default=None, description="Subject ID, or null for the user library.")
+    course_id: str | None = Field(default=None, description="Course ID, or null for the user library.")
     filenames: list[str] = Field(description="Uploaded filenames.")
     uploaded_items: list[FileRecord] = Field(default_factory=list, description="Uploaded file records.")
     started_parse_count: int = Field(default=0, description="Count of auto-started parse files.")
@@ -89,7 +89,7 @@ class FileDeleteData(BaseModel):
 
 
 class FileLinkRequest(BaseModel):
-    """Link existing user-library files to a subject."""
+    """Link existing user-library files to a course."""
 
     file_ids: list[str] = Field(default_factory=list, description="Public file IDs to link.")
 
