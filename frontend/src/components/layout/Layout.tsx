@@ -1,13 +1,16 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { isFullBleedSubjectPath } from "../../lib/subjectNavigation";
-import { SettingsDialog } from "../settings/SettingsDialog";
 import { cn } from "../../lib/utils";
 import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+
+const SettingsDialog = lazy(() =>
+  import("../settings/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
+);
 
 export function Layout() {
   const { pathname } = useLocation();
@@ -36,6 +39,7 @@ export function Layout() {
   }, [pathname, subjectId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const settingsOverview = useSystemSettingsOverview();
   const isCloudRuntime = settingsOverview?.mode === "cloud";
   const shouldShowTopBar = !isExamFocusPage && isCloudRuntime;
@@ -43,6 +47,10 @@ export function Layout() {
   const contentContainerClassName = shouldShowTopBar
     ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
     : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-6 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8";
+  const openSettings = useCallback(() => {
+    setHasLoadedSettingsDialog(true);
+    setIsSettingsOpen(true);
+  }, []);
 
   return (
     <>
@@ -61,7 +69,7 @@ export function Layout() {
             </div>
           ) : null}
 
-          {!isExamFocusPage && <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />}
+          {!isExamFocusPage && <Sidebar onOpenSettings={openSettings} />}
           <div className="relative z-10 flex min-w-0 flex-1 flex-col">
             {shouldShowTopBar && (
               <header className="pointer-events-none absolute left-0 right-0 top-0 z-40 flex h-16 items-center justify-end px-4 md:px-6">
@@ -92,7 +100,11 @@ export function Layout() {
         </div>
       </AiInteractionProvider>
 
-      <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      {hasLoadedSettingsDialog ? (
+        <Suspense fallback={null}>
+          <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

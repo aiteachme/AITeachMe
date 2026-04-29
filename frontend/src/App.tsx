@@ -6,10 +6,18 @@ import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
 import { SUBJECT_ROUTE_REDIRECTS, type SubjectRouteId } from "./lib/subjectNavigation";
-import { ensureSystemSettingsOverviewLoaded } from "./lib/systemSettings";
+import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
 const GlobalAssistantPage = lazy(() =>
@@ -61,7 +69,13 @@ const SUBJECT_PAGE_ELEMENTS: Record<SubjectRouteId, ReactElement> = {
 
 function RuntimeSettingsBootstrap() {
   useEffect(() => {
-    void ensureSystemSettingsOverviewLoaded(true);
+    const cachedOverview = getStoredSystemSettingsOverview();
+    void ensureSystemSettingsOverviewLoaded();
+    if (cachedOverview && typeof window !== "undefined") {
+      window.setTimeout(() => {
+        void ensureSystemSettingsOverviewLoaded(true);
+      }, 1200);
+    }
   }, []);
   return null;
 }

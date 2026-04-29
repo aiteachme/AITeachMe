@@ -20,6 +20,7 @@ from app.models import (
     ChatSession,
     ExamPaper,
     ExamPaperItem,
+    ExamStudyGuideCache,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeGraphSourceRef,
@@ -45,6 +46,7 @@ _EXAM_KEYS = [
     "question_type_registry",
     "exam_paper",
     "exam_paper_item",
+    "exam_study_guide_cache",
 ]
 _PROFILE_KEYS = ["user_knowledge_state"]
 _KNOWLEDGE_KEYS = [
@@ -99,6 +101,11 @@ def collect_subject_delete_counts(session: Session, *, subject_id: str) -> dict[
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.subject_id == subject_id),
         "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.subject_id == subject_id),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.subject_id == subject_id),
+        "exam_study_guide_cache": _count_rows(
+            session,
+            ExamStudyGuideCache,
+            ExamStudyGuideCache.subject_id == subject_id,
+        ),
         "exam_paper_item": _count_query(
             session,
             select(func.count())
@@ -259,6 +266,7 @@ def _delete_exam_records(session: Session, *, subject_id: str) -> None:
     paper_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))
     template_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
 
+    _bulk_delete_by_subject(session, ExamStudyGuideCache, subject_id=subject_id)
     session.exec(
         sa.delete(QuestionKnowledgeUnitLink)
         .where(

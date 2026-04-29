@@ -25,7 +25,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  deleteSubjectApiApiV1SubjectsDeletePost,
   listSubjectsApiApiV1SubjectsListPost,
   previewDeleteSubjectApiApiV1SubjectsDeletePreviewPost,
 } from "../../api/generated/subjects";
@@ -309,10 +308,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (subjectId: string) => {
-      await deleteSubjectApiApiV1SubjectsDeletePost({ subject_id: subjectId, force: true });
+    mutationFn: async ({
+      subjectId,
+      knownDetailCounts,
+    }: {
+      subjectId: string;
+      knownDetailCounts?: Record<string, number> | null;
+    }) => {
+      await apiClient({
+        method: "POST",
+        url: "/api/v1/subjects/delete",
+        data: {
+          subject_id: subjectId,
+          force: true,
+          known_detail_counts: knownDetailCounts ?? undefined,
+        },
+      });
     },
-    onSuccess: (_, subjectId) => {
+    onSuccess: (_, variables) => {
+      const subjectId = variables.subjectId;
       void queryClient.invalidateQueries({ queryKey: ["subjects"] });
       notifyConversationSessionsChanged();
       if (activeScope?.type === "subject" && activeScope.subjectId === subjectId) {
@@ -884,7 +898,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         }}
         onConfirm={() => {
           if (deleteTarget) {
-            deleteMutation.mutate(deleteTarget.subject_id);
+            deleteMutation.mutate({
+              subjectId: deleteTarget.subject_id,
+              knownDetailCounts: deletePreview?.detail_counts,
+            });
           }
         }}
       />

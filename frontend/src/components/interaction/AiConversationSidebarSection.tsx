@@ -168,12 +168,12 @@ function getSessionDeleteUrl(session: ChatSessionItem): string {
 
 function readRecentSectionExpanded(): boolean {
   if (typeof window === "undefined") {
-    return true;
+    return false;
   }
   try {
-    return window.localStorage.getItem(RECENT_SECTION_EXPANDED_STORAGE_KEY) !== "false";
+    return window.localStorage.getItem(RECENT_SECTION_EXPANDED_STORAGE_KEY) === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -211,7 +211,7 @@ export function AiConversationSidebarSection({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const shouldLoadSessions = collapsed || isExpanded || isSidebarOpen;
+  const shouldLoadSessions = isExpanded || isSidebarOpen;
   const hasActiveEmptyConversation =
     isSidebarOpen && activeConversationSessionId === null && !isPendingAnchoredRequest(sidebarRequest);
   const activeEmptyKind = getRequestKind(sidebarRequest);
@@ -247,7 +247,7 @@ export function AiConversationSidebarSection({
         const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
           method: "POST",
           url: "/api/v1/chats/sessions/list",
-          data: { page: 1, size: 100, include_all_subjects: true },
+          data: { page: 1, size: 30, include_all_subjects: true },
         });
         if (cancelled) {
           return;

@@ -57,8 +57,10 @@ export const CommunityModal = memo(function CommunityModal({
   }, [isOpen, onClose]);
 
   useEffect(() => {
-    ensureCommunityQrPreloaded();
-  }, []);
+    if (isOpen) {
+      ensureCommunityQrPreloaded();
+    }
+  }, [isOpen]);
 
   return (
     <AnimatePresence>

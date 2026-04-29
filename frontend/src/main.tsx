@@ -142,10 +142,15 @@ async function prepare() {
     setStartupStatus(STARTUP_MESSAGES.startingMockData);
     const { worker } = await import("./mocks/browser");
     await worker.start({ onUnhandledRequest: "bypass" });
-    return;
+    return { shouldProbeBackend: false };
   }
 
-  await waitForBackendReady();
+  if (isPackagedDesktopShell()) {
+    await waitForBackendReady();
+    return { shouldProbeBackend: false };
+  }
+
+  return { shouldProbeBackend: true };
 }
 
 applyInitialTheme();
@@ -153,11 +158,16 @@ applyInitialTheme();
 prepare()
   .catch(() => {
     // Startup preparation should never block initial rendering.
+    return { shouldProbeBackend: true };
   })
-  .then(() => {
+  .then(({ shouldProbeBackend }) => {
+    setStartupStatus(STARTUP_MESSAGES.openingInterface);
     ReactDOM.createRoot(document.getElementById("app")!).render(
       <React.StrictMode>
         <App />
       </React.StrictMode>,
     );
+    if (shouldProbeBackend) {
+      void waitForBackendReady();
+    }
   });
