@@ -46,7 +46,7 @@ export function ChatModelSelect({
     <div
       title="选择本轮模型"
       className={cn(
-        "group relative inline-flex h-8 max-w-full shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[12px] font-medium transition-all",
+        "group relative inline-flex h-8 w-[156px] max-w-full shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[12px] font-medium transition-all sm:w-[168px]",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] focus-within:ring-2 focus-within:ring-zinc-900/5 dark:shadow-none dark:focus-within:ring-slate-100/5",
         isUsingOverride
           ? "border-sky-200/90 bg-sky-50/80 text-sky-700 hover:border-sky-300 hover:bg-sky-50 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:border-sky-300/30"
@@ -68,14 +68,14 @@ export function ChatModelSelect({
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
-      <span className="relative inline-flex min-w-0 items-center">
+      <span className="relative inline-flex min-w-0 flex-1 items-center">
         <select
           id={selectId}
           value={value}
           onChange={(event) => onChange(toChatModelChoice(event.target.value))}
           disabled={disabled}
           aria-label="选择本轮模型"
-          className="h-7 max-w-[128px] cursor-pointer appearance-none truncate bg-transparent pr-4 text-[12px] font-medium leading-none text-current outline-none disabled:cursor-not-allowed sm:max-w-[150px]"
+          className="h-7 w-full min-w-0 cursor-pointer appearance-none truncate bg-transparent pr-4 text-[12px] font-medium leading-none text-current outline-none disabled:cursor-not-allowed"
         >
           {CHAT_MODEL_OPTIONS.map((option) => (
             <option key={option} value={option}>
