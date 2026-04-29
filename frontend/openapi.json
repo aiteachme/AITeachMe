@@ -5030,6 +5030,100 @@
         }
       }
     },
+    "/api/v1/subjects/{subject_id}/exams/question-templates/{question_template_id}/answer-history": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "List answer history for a question template",
+        "operationId": "question_template_answer_history_api_v1_subjects__subject_id__exams_question_templates__question_template_id__answer_history_get",
+        "parameters": [
+          {
+            "name": "subject_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subject Id"
+            }
+          },
+          {
+            "name": "question_template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Question Template Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTemplateAnswerHistoryItem__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subjects/{subject_id}/exams/question-templates/{question_template_id}/mark": {
       "patch": {
         "tags": [
@@ -8047,6 +8141,44 @@
         },
         "type": "object",
         "title": "ApiResponse[list[KnowledgeRelationResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_QuestionTemplateAnswerHistoryItem__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTemplateAnswerHistoryItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTemplateAnswerHistoryItem]]",
         "example": {
           "code": 0,
           "data": {},
@@ -14398,6 +14530,146 @@
           "difficulty"
         ],
         "title": "PaperPreviewRow"
+      },
+      "QuestionTemplateAnswerHistoryItem": {
+        "properties": {
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "exam_paper_item_id": {
+            "type": "integer",
+            "title": "Exam Paper Item Id"
+          },
+          "item_order": {
+            "type": "integer",
+            "title": "Item Order"
+          },
+          "exam_mode": {
+            "type": "string",
+            "title": "Exam Mode"
+          },
+          "exam_status": {
+            "type": "string",
+            "title": "Exam Status"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "graded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graded At"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "user_answer": {
+            "type": "string",
+            "title": "User Answer"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          },
+          "feedback_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Text"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_id",
+          "exam_paper_item_id",
+          "item_order",
+          "exam_mode",
+          "exam_status",
+          "user_answer",
+          "correct_answer",
+          "created_at"
+        ],
+        "title": "QuestionTemplateAnswerHistoryItem"
       },
       "QuestionTemplateItemResponse": {
         "properties": {

@@ -53,6 +53,25 @@ interface QuestionTemplateItem {
   updated_at: string;
 }
 
+interface QuestionTemplateAnswerHistoryItem {
+  exam_paper_id: number;
+  exam_paper_item_id: number;
+  item_order: number;
+  exam_mode: string;
+  exam_status: string;
+  submitted_at?: string | null;
+  graded_at?: string | null;
+  answered_at?: string | null;
+  user_answer: string;
+  correct_answer: string;
+  is_correct?: boolean | null;
+  score_obtained?: number | null;
+  score_max?: number | null;
+  error_cause_label?: string | null;
+  feedback_text?: string | null;
+  created_at: string;
+}
+
 interface QuestionTypeRegistryItem {
   id: number;
   type_key: string;
@@ -98,6 +117,16 @@ async function deleteExamPaper(subjectId: string, paperId: number) {
 async function getQuestionTemplates(subjectId: string, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateItem[] } }>(
     `/api/v1/subjects/${subjectId}/exams/question-templates`,
+    {
+      method: "GET",
+      signal,
+    },
+  );
+}
+
+async function getQuestionTemplateAnswerHistory(subjectId: string, templateId: number, signal?: AbortSignal) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateAnswerHistoryItem[] } }>(
+    `/api/v1/subjects/${subjectId}/exams/question-templates/${templateId}/answer-history`,
     {
       method: "GET",
       signal,
@@ -605,6 +634,43 @@ function getPrimaryKnowledgeUnitLabel(item: QuestionTemplateItem) {
   return unitId == null ? "未绑定" : String(unitId);
 }
 
+function formatQuestionTemplateHistoryTime(value?: string | null) {
+  if (!value) return "暂无时间";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getQuestionTemplateHistoryModeLabel(mode: string) {
+  const labels: Record<string, string> = {
+    web_practice: "专项练习",
+    paper_exam: "整卷测试",
+    practice: "练习",
+    diagnostic: "诊断测验",
+    weakpoint_boost: "弱点强化",
+    review: "复习",
+    mock_final: "模拟考试",
+  };
+  return labels[mode] ?? mode;
+}
+
+function getQuestionTemplateHistoryResultLabel(item: QuestionTemplateAnswerHistoryItem) {
+  if (item.is_correct === true) return "正确";
+  if (item.is_correct === false) return "需巩固";
+  return "待批改";
+}
+
+function getQuestionTemplateHistoryResultClass(item: QuestionTemplateAnswerHistoryItem) {
+  if (item.is_correct === true) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (item.is_correct === false) return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 function QuestionTemplateCard({
   item,
   questionTypeLabel,
@@ -672,14 +738,25 @@ function QuestionTemplateCard({
 
 function QuestionTemplateDetailCard({
   item,
+  subjectId,
   questionTypeLabel,
   onClose,
 }: {
   item: QuestionTemplateItem | null;
+  subjectId: string;
   questionTypeLabel: string;
   onClose: () => void;
 }) {
   const questionContent = item ? buildQuestionTemplateContent(item, "暂无题干") : "";
+  const historyQuery = useQuery({
+    queryKey: ["question-template-answer-history", subjectId, item?.id],
+    enabled: Boolean(subjectId && item?.id),
+    queryFn: async ({ signal }) => {
+      const response = await getQuestionTemplateAnswerHistory(subjectId, item?.id ?? 0, signal);
+      return unwrapOrvalResponse<QuestionTemplateAnswerHistoryItem[]>(response) ?? [];
+    },
+  });
+  const historyItems = historyQuery.data ?? [];
 
   return (
     <Modal
@@ -732,6 +809,75 @@ function QuestionTemplateDetailCard({
               </div>
             </section>
           </div>
+
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">历史答题记录</p>
+              {historyItems.length > 0 ? (
+                <span className="text-xs font-semibold text-slate-400">最近 {historyItems.length} 次</span>
+              ) : null}
+            </div>
+            {historyQuery.isLoading ? (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在加载历史记录...
+              </div>
+            ) : historyQuery.error ? (
+              <div className="mt-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
+                {getApiErrorMessage(historyQuery.error, "历史记录加载失败")}
+              </div>
+            ) : historyItems.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {historyItems.map((record) => (
+                  <article
+                    key={`${record.exam_paper_id}-${record.exam_paper_item_id}`}
+                    className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getQuestionTemplateHistoryResultClass(record)}`}>
+                        {getQuestionTemplateHistoryResultLabel(record)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        试卷 #{record.exam_paper_id} · 第 {record.item_order} 题
+                      </span>
+                      <span className="text-xs font-medium text-slate-400">
+                        {formatQuestionTemplateHistoryTime(record.answered_at ?? record.submitted_at ?? record.created_at)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-xl bg-slate-50 px-4 py-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">我的答案</p>
+                        <div className="text-sm leading-7 text-slate-800">
+                          <ExamMarkdown content={record.user_answer || "未作答"} />
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-emerald-50/70 px-4 py-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">参考答案</p>
+                        <div className="text-sm leading-7 text-emerald-950">
+                          <ExamMarkdown content={record.correct_answer || "暂无答案"} />
+                        </div>
+                      </div>
+                    </div>
+                    {record.feedback_text || record.error_cause_label ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-600">
+                        {record.error_cause_label ? (
+                          <p className="font-semibold text-slate-700">原因：{record.error_cause_label}</p>
+                        ) : null}
+                        {record.feedback_text ? <ExamMarkdown content={record.feedback_text} /> : null}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500">
+                这道题还没有历史答题记录。
+              </div>
+            )}
+          </section>
 
           <div className="grid gap-5 lg:grid-cols-2">
             <section>
@@ -1130,6 +1276,7 @@ export function QuestionTemplatesPage() {
 
       <QuestionTemplateDetailCard
         item={selectedTemplate}
+        subjectId={subjectId}
         questionTypeLabel={selectedTemplate ? getQuestionTypeLabel(selectedTemplate.question_type) : ""}
         onClose={() => setSelectedTemplate(null)}
       />

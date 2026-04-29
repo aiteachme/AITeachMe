@@ -527,6 +527,45 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: buildQuestionBank(subject) });
   }),
 
+  http.get("/api/v1/subjects/:subject/exams/question-templates/:questionTemplateId/answer-history", ({ params, request }) => {
+    const subject = String(params.subject);
+    const questionTemplateId = Number(params.questionTemplateId);
+    const url = new URL(request.url);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") ?? 20)));
+    if (!Number.isFinite(questionTemplateId) || questionTemplateId <= 0) {
+      return HttpResponse.json({ code: 404, message: "template not found", data: null }, { status: 404 });
+    }
+
+    const history = [...papers.values()]
+      .filter((paper) => paper.subject === subject && paper.submitted_at)
+      .flatMap((paper) =>
+        paper.items
+          .filter((item) => item.question_template_id === questionTemplateId && item.user_answer !== null)
+          .map((item) => ({
+            exam_paper_id: paper.id,
+            exam_paper_item_id: item.id,
+            item_order: item.item_order,
+            exam_mode: paper.exam_mode,
+            exam_status: paper.status,
+            submitted_at: paper.submitted_at,
+            graded_at: paper.graded_at,
+            answered_at: paper.submitted_at,
+            user_answer: item.user_answer ?? "",
+            correct_answer: item.correct_answer,
+            is_correct: item.is_correct,
+            score_obtained: item.score_obtained,
+            score_max: item.score_max,
+            error_cause_label: item.error_cause_label,
+            feedback_text: item.explanation,
+            created_at: paper.created_at,
+          })),
+      )
+      .sort((a, b) => String(b.answered_at ?? "").localeCompare(String(a.answered_at ?? "")))
+      .slice(0, limit);
+
+    return HttpResponse.json({ code: 0, data: history });
+  }),
+
   http.patch("/api/v1/subjects/:subject/exams/question-templates/:questionTemplateId/mark", async ({ params, request }) => {
     const questionTemplateId = Number(params.questionTemplateId);
     const body = (await request.json()) as { is_marked?: boolean };

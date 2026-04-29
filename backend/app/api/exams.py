@@ -32,6 +32,7 @@ from app.schemas.exams import (
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
     ExamPrewarmStatusResponse,
+    QuestionTemplateAnswerHistoryItem,
     QuestionTemplateMarkRequest,
     QuestionTemplateMarkResponse,
     QuestionTemplateItemResponse,
@@ -2054,6 +2055,30 @@ def _question_template_response(
     )
 
 
+def _question_template_answer_history_response(
+    item: ExamPaperItem,
+    paper: ExamPaper,
+) -> QuestionTemplateAnswerHistoryItem:
+    return QuestionTemplateAnswerHistoryItem(
+        exam_paper_id=paper.id or 0,
+        exam_paper_item_id=item.id or 0,
+        item_order=item.item_order,
+        exam_mode=paper.exam_mode,
+        exam_status=_effective_exam_paper_status(paper),
+        submitted_at=paper.submitted_at,
+        graded_at=paper.graded_at,
+        answered_at=item.answered_at,
+        user_answer=item.answer_content,
+        correct_answer=item.answer_snapshot,
+        is_correct=item.is_correct,
+        score_obtained=item.score_obtained,
+        score_max=item.score_max,
+        error_cause_label=item.error_cause_label,
+        feedback_text=item.feedback_text,
+        created_at=item.created_at,
+    )
+
+
 def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryItemResponse:
     return QuestionTypeRegistryItemResponse(
         id=item.id or 0,
@@ -2761,6 +2786,40 @@ async def question_templates(
             knowledge_unit_refs=links_by_template_id.get(int(item.id or 0), []),
         )
         for item in rows
+    ])
+
+
+@router.get(
+    "/question-templates/{question_template_id}/answer-history",
+    response_model=ApiResponse[list[QuestionTemplateAnswerHistoryItem]],
+    summary="List answer history for a question template",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def question_template_answer_history(
+    subject_id: str = Path(...),
+    question_template_id: int = Path(..., ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[list[QuestionTemplateAnswerHistoryItem]]:
+    normalized = normalize_subject_id(subject_id)
+    _ensure_subject(session, normalized, user.user_id)
+    template = session.get(QuestionTemplate, question_template_id)
+    if template is None or template.subject_id != normalized:
+        _raise_not_found(
+            f"Question template `{question_template_id}` not found.",
+            error_code="QUESTION_TEMPLATE_NOT_FOUND",
+        )
+    rows = exams_repo.list_question_template_answer_history(
+        session,
+        subject_id=normalized,
+        user_id=user.user_id,
+        template_id=question_template_id,
+        limit=limit,
+    )
+    return ok_response([
+        _question_template_answer_history_response(item, paper)
+        for item, paper in rows
     ])
 
 

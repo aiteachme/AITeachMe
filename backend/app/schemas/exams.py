@@ -172,6 +172,25 @@ class QuestionTemplateItemResponse(BaseModel):
     updated_at: datetime
 
 
+class QuestionTemplateAnswerHistoryItem(BaseModel):
+    exam_paper_id: int
+    exam_paper_item_id: int
+    item_order: int
+    exam_mode: str
+    exam_status: str
+    submitted_at: datetime | None = None
+    graded_at: datetime | None = None
+    answered_at: datetime | None = None
+    user_answer: str
+    correct_answer: str
+    is_correct: bool | None = None
+    score_obtained: float | None = None
+    score_max: float | None = None
+    error_cause_label: str | None = None
+    feedback_text: str | None = None
+    created_at: datetime
+
+
 class QuestionTypeRegistryItemResponse(BaseModel):
     id: int
     type_key: str

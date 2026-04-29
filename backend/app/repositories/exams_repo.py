@@ -56,6 +56,32 @@ def list_marked_question_template_ids(session: Session, template_ids: list[int])
     return {int(item) for item in rows if item is not None}
 
 
+def list_question_template_answer_history(
+    session: Session,
+    *,
+    subject_id: str,
+    user_id: str,
+    template_id: int,
+    limit: int = 20,
+) -> list[tuple[ExamPaperItem, ExamPaper]]:
+    if template_id <= 0 or limit <= 0:
+        return []
+    stmt = (
+        select(ExamPaperItem, ExamPaper)
+        .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
+        .where(
+            ExamPaperItem.question_template_id == template_id,
+            ExamPaperItem.answered_at.is_not(None),
+            ExamPaper.subject_id == subject_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility != "hidden",
+        )
+        .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
+        .limit(limit)
+    )
+    return [(item, paper) for item, paper in session.exec(stmt).all()]
+
+
 def _normalize_link_refs(refs: list[dict[str, object]]) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     seen: set[int] = set()
