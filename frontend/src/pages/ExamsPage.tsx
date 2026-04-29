@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Bookmark, CheckCircle2, ChevronDown, CloudOff, FileText, Layers3, Loader2, MoreVertical, Plus, Sparkles, Tags } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, CheckCircle2, ChevronDown, CloudOff, FileText, Layers3, Loader2, MoreVertical, Plus, Search, Sparkles, Tags, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -940,9 +940,6 @@ function ExamCatalogShell({
                 {description}
               </p>
             </div>
-            <div className="text-sm font-semibold text-slate-500">
-              当前学科：{subjectId}
-            </div>
           </div>
         </header>
         {children}
@@ -955,6 +952,7 @@ export function QuestionTemplatesPage() {
   const { subjectId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
   const [showMarkedOnly, setShowMarkedOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const templatesQuery = useQuery({
     queryKey: ["exam-question-templates", subjectId],
@@ -969,7 +967,6 @@ export function QuestionTemplatesPage() {
     () => templates.filter((item) => item.is_marked === true),
     [templates],
   );
-  const visibleTemplates = showMarkedOnly ? markedTemplates : templates;
 
   const typesQuery = useQuery({
     queryKey: ["exam-question-types", subjectId],
@@ -991,6 +988,30 @@ export function QuestionTemplatesPage() {
     return labels;
   }, [typesQuery.data]);
   const getQuestionTypeLabel = (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? typeKey;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const visibleTemplates = useMemo(() => {
+    const baseTemplates = showMarkedOnly ? markedTemplates : templates;
+    if (!normalizedSearchQuery) {
+      return baseTemplates;
+    }
+    return baseTemplates.filter((item) => {
+      const searchableText = [
+        String(item.id),
+        item.question_type,
+        getQuestionTypeLabel(item.question_type),
+        item.difficulty,
+        item.status,
+        getPrimaryKnowledgeUnitLabel(item),
+        buildQuestionTemplateContent(item, ""),
+        item.answer,
+        item.explanation,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return searchableText.includes(normalizedSearchQuery);
+    });
+  }, [markedTemplates, normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, templates]);
 
   if (!subjectId) {
     return (
@@ -1031,43 +1052,79 @@ export function QuestionTemplatesPage() {
 
       {templates.length > 0 ? (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 px-1">
-            <div className="text-sm text-slate-500">
-              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题
+          <div className="mb-4 px-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <label className="relative block min-w-0 flex-1 sm:max-w-[360px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索题干、题型、难度、ID"
+                  className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-10 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                    aria-label="清空搜索"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowMarkedOnly((current) => !current)}
+                className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
+                  showMarkedOnly
+                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+                aria-pressed={showMarkedOnly}
+              >
+                <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
+                只看已标记
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowMarkedOnly((current) => !current)}
-              className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
-                showMarkedOnly
-                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-              aria-pressed={showMarkedOnly}
-            >
-              <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
-              只看已标记
-            </button>
           </div>
 
-          {visibleTemplates.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 px-1 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
-              {visibleTemplates.map((item) => (
-                <QuestionTemplateCard
-                  key={item.id}
-                  item={item}
-                  questionTypeLabel={getQuestionTypeLabel(item.question_type)}
-                  onOpen={() => setSelectedTemplate(item)}
-                />
-              ))}
+          <section className="space-y-2 px-1">
+            <div className="text-sm text-slate-500">
+              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
             </div>
-          ) : (
-            <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
-              <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
-              <h3 className="mt-4 text-lg font-semibold text-slate-900">还没有已标记题目</h3>
-              <p className="mt-2 text-sm text-slate-500">在做题页面点“标记”后，收藏的题目会出现在这里。</p>
-            </div>
-          )}
+
+            {visibleTemplates.length > 0 ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5 pb-2 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+                {visibleTemplates.map((item) => (
+                  <QuestionTemplateCard
+                    key={item.id}
+                    item={item}
+                    questionTypeLabel={getQuestionTypeLabel(item.question_type)}
+                    onOpen={() => setSelectedTemplate(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+                {normalizedSearchQuery ? (
+                  <Search className="mx-auto h-10 w-10 text-slate-300" />
+                ) : (
+                  <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
+                )}
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                  {normalizedSearchQuery ? "没有匹配的题目" : "还没有已标记题目"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  {normalizedSearchQuery
+                    ? showMarkedOnly
+                      ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
+                      : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
+                    : "在做题页面点“标记”后，收藏的题目会出现在这里。"}
+                </p>
+              </div>
+            )}
+          </section>
         </>
       ) : null}
 
