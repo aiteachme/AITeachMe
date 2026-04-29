@@ -68,7 +68,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 | 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `knowledge_graph_build` | `api/knowledge_docs.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
+| `trigger_graph_docs_sync_manual_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；由 API 完成鉴权后调用，校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
 | `docgen kg_prefetch sidecar` | `kg_doc_sync/lib/prefetch.py` | 间接 LLM | `EXTRACT` | `light` | `qwen-flash` | DocGen 增强章节完成后后台预抽取 section payload，只进内存缓存，不落库 |
 | `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，消费并停止同 build 的预抽取 sidecar |
 | `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并把可复用预抽取 payload 传入 `digest.kg_doc_sync` |
@@ -175,8 +175,9 @@ run_graph_docs_sync_after_doc_build
 手动重建主线：
 
 ```text
-knowledge_graph_build
+trigger_graph_docs_sync_manual_build
   用户在知识图谱面板点击“构建图谱”。
+  API 路由只负责 subject 鉴权和响应包装。
   从当前已发布 KnowledgeDoc 和 manifest 读取输入。
   不读取、不等待、不复用 DocGen 预抽取缓存。
   后续仍走 prepare -> init_run -> extract -> persist -> finalize。
@@ -219,7 +220,7 @@ payload fan-in 后
 这一节是 KG docs-sync 的详细执行合同。字段以当前 state/model 为准，重点写清每一步输入、输出和失败边界。
 
 ```text
-knowledge_graph_build
+trigger_graph_docs_sync_manual_build
   输入：
     - subject_id：学科主键，形如 subj_xxx。
   前置校验：

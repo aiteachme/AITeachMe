@@ -24,6 +24,7 @@ __all__ = [
     "run_graph_docs_sync_after_doc_build",
     "run_graph_docs_sync_manual_build",
     "run_graph_docs_sync_workflow",
+    "trigger_graph_docs_sync_manual_build",
 ]
 
 _ATTR_TO_MODULE = {
@@ -46,6 +47,7 @@ _ATTR_TO_MODULE = {
     "run_graph_docs_sync_after_doc_build": "app.workflows.digest.kg_doc_sync.builds",
     "run_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
     "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync.graph",
+    "trigger_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
 }
 
 
