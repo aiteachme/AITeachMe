@@ -42,7 +42,7 @@ export function Layout() {
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
-    : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-6 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8";
+    : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8 lg:pt-6";
 
   return (
     <>

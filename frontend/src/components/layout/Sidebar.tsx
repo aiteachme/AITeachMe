@@ -148,7 +148,7 @@ function RenameSubjectModal({
       />
       <div className="relative z-10 w-[380px] max-w-[90vw] rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-24px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_56px_-28px_rgba(0,0,0,0.72)]">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h3 className="text-sm font-bold text-slate-900">重命名学科</h3>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">重命名学科</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200">
             <X className="h-4 w-4" />
           </button>
@@ -168,7 +168,7 @@ function RenameSubjectModal({
             autoFocus
           />
           {renameMutation.isError ? (
-            <p className="text-xs text-red-600">{getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}</p>
+            <p className="text-xs text-red-600 dark:text-red-400">{getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}</p>
           ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/80">

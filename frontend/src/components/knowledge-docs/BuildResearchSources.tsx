@@ -51,7 +51,7 @@ export function BuildResearchSources({ events, className }: Props) {
     <div className={cn("space-y-4", className)}>
         {domainPairs.length > 0 ? (
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">主要站点</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">主要站点</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {domainPairs.map((domain, index) => (
                 <motion.span
@@ -59,7 +59,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, scale: 0.92 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: index * 0.04, duration: 0.22 }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] text-sky-600"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] text-sky-600 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
                 >
                   <Globe className="h-3 w-3" />
                   {domain}
@@ -71,7 +71,7 @@ export function BuildResearchSources({ events, className }: Props) {
 
         {sourceTitles.length > 0 ? (
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">资料线索</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">资料线索</p>
             <div className="mt-2 space-y-2">
               {sourceTitles.map((title, index) => (
                 <motion.div
@@ -79,7 +79,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.03, duration: 0.2 }}
-                  className="py-1 text-[12px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-3"
+                  className="border-l-[2px] border-zinc-200 py-1 pl-3 text-[12px] leading-relaxed text-zinc-600 dark:border-slate-700 dark:text-slate-400"
                 >
                   {title}
                 </motion.div>
@@ -90,7 +90,7 @@ export function BuildResearchSources({ events, className }: Props) {
 
         {domainPairs.length === 0 && sourceTitles.length === 0 ? (
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">阶段摘要</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">阶段摘要</p>
             <div className="mt-2 space-y-2">
               {fallbackSummaries.map((summary, index) => (
                 <motion.div
@@ -98,7 +98,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.03, duration: 0.2 }}
-                  className="py-1 text-[12px] leading-relaxed text-zinc-600 border-l-[2px] border-zinc-200 pl-3"
+                  className="border-l-[2px] border-zinc-200 py-1 pl-3 text-[12px] leading-relaxed text-zinc-600 dark:border-slate-700 dark:text-slate-400"
                 >
                   {summary}
                 </motion.div>
@@ -107,7 +107,7 @@ export function BuildResearchSources({ events, className }: Props) {
           </div>
         ) : null}
 
-        <p className="text-[11px] leading-5 text-zinc-400">
+        <p className="text-[11px] leading-5 text-zinc-400 dark:text-slate-500">
           这里只展示最近事件里已经暴露出来的来源信号，不代表本轮构建使用到的全部证据。
         </p>
     </div>
