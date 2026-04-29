@@ -11,7 +11,13 @@ import {
 } from "../../api/generated/exams";
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
 import { getMasteryOverviewApiV1SubjectsSubjectIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
-import { buildApiUrl, getApiErrorMessage, orvalApiClient } from "../../api/client";
+import {
+  buildApiUrl,
+  getApiErrorMessage,
+  orvalApiClient,
+  registerBackendEventSource,
+  reportBackendConnectionIssue,
+} from "../../api/client";
 import {
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
@@ -223,6 +229,7 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
       buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subjectId)}/exams/${paperId}/stream`),
       { withCredentials: true },
     );
+    const unregisterEventSource = registerBackendEventSource(stream);
     const historyQueryKey = getExamHistoryApiV1SubjectsSubjectIdExamsHistoryGetQueryKey(subjectId, { page: 1, size: 24 });
     const detailQueryKey = getExamDetailApiV1SubjectsSubjectIdExamsExamPaperIdGetQueryKey(subjectId, paperId);
 
@@ -275,10 +282,12 @@ export function ExamPaperWorkspace({ subjectId, paperId, backHref }: ExamPaperWo
     stream.addEventListener("done", handleDone);
     stream.addEventListener("snapshot", handleSnapshot);
     stream.onerror = () => {
+      reportBackendConnectionIssue("exam_stream_error");
       refreshPaper();
     };
 
     return () => {
+      unregisterEventSource();
       stream.removeEventListener("done", handleDone);
       stream.removeEventListener("snapshot", handleSnapshot);
       stream.close();

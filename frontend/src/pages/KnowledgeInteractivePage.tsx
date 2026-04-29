@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { getApiErrorMessage, runTrackedApiFetch } from "../api/client";
 
 function encodePathSegments(path: string): string {
   return path
@@ -36,6 +37,7 @@ export function KnowledgeInteractivePage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadHtml() {
       if (!assetUrl) {
@@ -46,18 +48,24 @@ export function KnowledgeInteractivePage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(assetUrl, { method: "GET" });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const text = await response.text();
+        const text = await runTrackedApiFetch(
+          assetUrl,
+          { method: "GET", signal: controller.signal },
+          async (response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            return response.text();
+          },
+          "interactive_asset_disconnect",
+        );
         if (!cancelled) {
           setHtml(text);
           setLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "交互页加载失败");
+          setError(getApiErrorMessage(err, err instanceof Error ? err.message : "交互页加载失败"));
           setLoading(false);
         }
       }
@@ -66,6 +74,7 @@ export function KnowledgeInteractivePage() {
     void loadHtml();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [assetUrl]);
 

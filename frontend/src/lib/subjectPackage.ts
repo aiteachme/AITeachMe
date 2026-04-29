@@ -1,5 +1,4 @@
-import { buildApiUrl, getDeviceKey } from "../api/client";
-import { apiClient } from "../api/client";
+import { apiClient, runTrackedApiFetch } from "../api/client";
 import type { ExportOptions } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 
@@ -42,40 +41,41 @@ function parseContentDispositionFilename(disposition: string | null): string | n
 }
 
 export async function downloadSubjectPackage(subject: string, options: ExportOptions = {}): Promise<void> {
-  const token = localStorage.getItem("token");
-  const url = buildApiUrl(`/api/v1/subjects/${encodeURIComponent(subject)}/export`);
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Device-Key": getDeviceKey(),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  await runTrackedApiFetch(
+    `/api/v1/subjects/${encodeURIComponent(subject)}/export`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
     },
-    body: JSON.stringify(options),
-  });
-  if (!response.ok) {
-    const rawText = await response.text();
-    try {
-      const payload = JSON.parse(rawText) as { detail?: string; message?: string };
-      throw new Error(payload.detail || payload.message || `导出失败 (${response.status})`);
-    } catch {
-      throw new Error(rawText.trim() || `导出失败 (${response.status})`);
-    }
-  }
+    async (response) => {
+      if (!response.ok) {
+        const rawText = await response.text();
+        let message = rawText.trim() || `导出失败 (${response.status})`;
+        try {
+          const payload = JSON.parse(rawText) as { detail?: string; message?: string };
+          message = payload.detail || payload.message || message;
+        } catch {
+          // Keep the plain-text backend error as-is.
+        }
+        throw new Error(message);
+      }
 
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition");
-  const filename = parseContentDispositionFilename(disposition) ?? `${subject}.atmx`;
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition");
+      const filename = parseContentDispositionFilename(disposition) ?? `${subject}.atmx`;
 
-  const link = document.createElement("a");
-  const blobUrl = URL.createObjectURL(blob);
-  link.href = blobUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(blobUrl);
+      const link = document.createElement("a");
+      const blobUrl = URL.createObjectURL(blob);
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    },
+    "subject_export_disconnect",
+  );
 }
 
 export async function importSubjectPackage(file: File, newName?: string): Promise<ImportResultData> {

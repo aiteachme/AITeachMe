@@ -11,7 +11,11 @@
 
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { KnowledgeBuildRuntimeResponse } from "../lib/knowledgeBuildRuntime";
-import { buildApiUrl } from "../api/client";
+import {
+  buildApiUrl,
+  registerBackendEventSource,
+  reportBackendConnectionIssue,
+} from "../api/client";
 
 interface UseBuildEventStreamOptions {
   subjectId: string;
@@ -108,6 +112,7 @@ export function useBuildEventStream({
     setPreviewStreams({});
     setBuildEvents([]);
     const es = new EventSource(url, { withCredentials: true });
+    const unregisterEventSource = registerBackendEventSource(es);
 
     es.onopen = () => {
       setConnected(true);
@@ -189,11 +194,12 @@ export function useBuildEventStream({
     });
 
     es.onerror = () => {
-      // EventSource will auto-reconnect; we just mark disconnected
+      reportBackendConnectionIssue("knowledge_build_stream_error");
       setConnected(false);
     };
 
     return () => {
+      unregisterEventSource();
       es.close();
       clearPreviewFlushTimer();
       setConnected(false);
