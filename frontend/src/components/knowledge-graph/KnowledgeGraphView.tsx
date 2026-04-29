@@ -274,16 +274,6 @@ export function KnowledgeGraphView({
   const viewToggle = (
     <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg shrink-0">
       <button
-        onClick={() => setViewMode("list")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
-          viewMode === "list"
-            ? "bg-white text-slate-900 shadow-sm font-medium"
-            : "text-slate-500 hover:text-slate-700"
-        }`}
-      >
-        <List className="w-3.5 h-3.5" />列表视图
-      </button>
-      <button
         onClick={() => setViewMode("graph")}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
           viewMode === "graph"
@@ -291,13 +281,23 @@ export function KnowledgeGraphView({
             : "text-slate-500 hover:text-slate-700"
         }`}
       >
-        <Share2 className="w-3.5 h-3.5" />力导向图
+        <Share2 className="w-3.5 h-3.5" />图谱
+      </button>
+      <button
+        onClick={() => setViewMode("list")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+          viewMode === "list"
+            ? "bg-white text-slate-900 shadow-sm font-medium"
+            : "text-slate-500 hover:text-slate-700"
+        }`}
+      >
+        <List className="w-3.5 h-3.5" />节点列表
       </button>
     </div>
   );
 
   return (
-    <div className="knowledge-graph-view flex flex-col h-full min-h-0 gap-4">
+    <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white">
       {viewMode === "graph" && (
         <ForceGraphView
           subject={subject}
@@ -308,7 +308,7 @@ export function KnowledgeGraphView({
       )}
 
       {viewMode === "list" && (
-        <div className="flex gap-4">
+        <div className="flex h-full gap-4 overflow-auto p-3">
           <div className={`${selectedNodeId ? "w-1/2" : "w-full"} space-y-4 transition-all`}>
             <div className="flex items-center gap-3 flex-wrap">
               {viewToggle}
@@ -407,4 +407,3 @@ export function KnowledgeGraphView({
     </div>
   );
 }
-
