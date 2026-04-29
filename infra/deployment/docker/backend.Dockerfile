@@ -1,6 +1,8 @@
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 # 后端统一使用这份镜像定义；Render / Sealos / Compose 都应从仓库根目录构建。
+# 这是轻量镜像，不包含 LibreOffice / soffice；需要本地 Office 转 PDF 时使用
+# infra/deployment/docker/backend-office.Dockerfile。
 # PYTHONUTF8 保证容器内读写和日志默认走 UTF-8，和本地开发约束保持一致。
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

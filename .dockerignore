@@ -4,7 +4,9 @@
 .claude
 .history
 .idea
+.playwright-mcp
 .pytest_cache
+.tmp_logs
 .vscode
 .venv
 __pycache__

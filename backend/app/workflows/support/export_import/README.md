@@ -20,6 +20,7 @@
 - Demo-course root: `<S3_PUBLIC_BASE_URL>/demo-courses/`
 - Default catalog index: `<S3_PUBLIC_BASE_URL>/demo-courses/catalog/v1/index.json`
 - The catalog index is maintained by `scripts/private/demo_course_package.py`; avoid hand-editing `index.json` on OSS.
+- Backend catalog reads use no-cache headers plus a cache-buster query to reduce stale CDN catalog responses. After deleting or rebuilding demo courses, still refresh `demo-courses/catalog/v1/index.json` in the CDN console.
 - When `S3_PUBLIC_BASE_URL` is not configured, `GET /api/v1/demo-courses` returns an empty list and manual `.atmx` upload import remains available.
 
 ## Demo Course Paths

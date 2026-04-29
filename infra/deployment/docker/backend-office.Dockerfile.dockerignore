@@ -1,0 +1,28 @@
+# Backend Office image uses the same context rules as the slim backend image.
+# Keep this file in sync with backend.Dockerfile.dockerignore.
+
+*
+
+!backend/
+!backend/**
+
+backend/.env
+backend/.env.*
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
+backend/**/*.pyo
+backend/*.egg-info
+backend/**/*.egg-info
+backend/data
+backend/playground
+backend/tests
+backend/uploads
+backend/build
+backend/dist
+backend/docs
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/settings.private.yaml

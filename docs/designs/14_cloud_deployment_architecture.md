@@ -17,7 +17,7 @@ AITeachMe 同时支持：
 
 | 维度 | 本地模式 | 云端模式 |
 | --- | --- | --- |
-| `APP_MODE` | `local` | `cloud` |
+| `APP_MODE` | `local` 或未配置 | `cloud` |
 | 数据库 | SQLite，可自动初始化和本地重建 | PostgreSQL，只能通过 Alembic 迁移 |
 | 文件存储 | 本地 `backend/data` | S3-compatible OSS |
 | 鉴权 | 可关闭或 guest | 云端启用账号鉴权 |

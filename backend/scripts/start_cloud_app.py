@@ -10,8 +10,8 @@ Inside the Docker image:
 
     python scripts/start_cloud_app.py --host 0.0.0.0 --port $PORT
 
-It bootstraps the database first, then launches uvicorn. On normal deployments
-the bootstrap step is idempotent.
+When APP_MODE=cloud, it bootstraps the database first, then launches uvicorn.
+Without APP_MODE=cloud it only launches uvicorn in the resolved local mode.
 """
 
 from __future__ import annotations
@@ -68,5 +68,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("APP_MODE", "cloud")
     raise SystemExit(main())

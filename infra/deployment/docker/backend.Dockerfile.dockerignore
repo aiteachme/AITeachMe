@@ -1,0 +1,29 @@
+# Backend-specific build context filter.
+# Docker uses this file when building with infra/deployment/docker/backend.Dockerfile.
+# Keep only backend files needed by COPY commands; secrets and local runtime state stay out.
+
+*
+
+!backend/
+!backend/**
+
+backend/.env
+backend/.env.*
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
+backend/**/*.pyo
+backend/*.egg-info
+backend/**/*.egg-info
+backend/data
+backend/playground
+backend/tests
+backend/uploads
+backend/build
+backend/dist
+backend/docs
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/settings.private.yaml

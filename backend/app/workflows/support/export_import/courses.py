@@ -5,12 +5,13 @@ from __future__ import annotations
 import hashlib
 import posixpath
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 import structlog
@@ -211,8 +212,12 @@ def _fetch_remote_catalog_payload(catalog_url: str) -> Any:
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
             response = client.get(
-                catalog_url,
-                headers={"Accept": "application/json"},
+                _with_cache_buster(catalog_url),
+                headers={
+                    "Accept": "application/json",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                },
             )
             _raise_for_http_status(response, action="读取演示课程目录")
             return response.json()
@@ -220,6 +225,13 @@ def _fetch_remote_catalog_payload(catalog_url: str) -> Any:
         raise
     except Exception as exc:
         raise DemoCourseCatalogUnavailableError(reason=f"无法读取 `{catalog_url}`：{exc}") from exc
+
+
+def _with_cache_buster(url: str) -> str:
+    parsed = urlparse(url)
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    query_items.append(("_", str(time.time_ns())))
+    return urlunparse(parsed._replace(query=urlencode(query_items)))
 
 
 def _extract_catalog_items(payload: Any) -> list[dict[str, Any]]:
