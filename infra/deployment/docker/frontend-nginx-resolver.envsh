@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ -z "${AITEACHME_NGINX_RESOLVER:-}" ]; then
+  resolved_nameservers="$(awk '$1 == "nameserver" { print $2 }' /etc/resolv.conf 2>/dev/null | xargs || true)"
+  if [ -z "${resolved_nameservers}" ]; then
+    resolved_nameservers="127.0.0.1"
+  fi
+
+  AITEACHME_NGINX_RESOLVER="${resolved_nameservers}"
+fi
+
+export AITEACHME_NGINX_RESOLVER

@@ -25,6 +25,10 @@ ENV AITEACHME_API_UPSTREAM=http://backend:9020
 # 复制构建产物到 nginx
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# 注入 Kubernetes/Docker 运行时 DNS resolver，避免 Nginx 因 upstream 短暂解析失败而启动退出
+COPY infra/deployment/docker/frontend-nginx-resolver.envsh /docker-entrypoint.d/16-aiteachme-resolver.envsh
+RUN chmod +x /docker-entrypoint.d/16-aiteachme-resolver.envsh
+
 # 复制 nginx 模板，容器启动时由官方 entrypoint 注入 AITEACHME_API_UPSTREAM
 COPY infra/deployment/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 
