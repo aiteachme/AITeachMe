@@ -23,7 +23,9 @@ import {
   Package,
 } from "lucide-react";
 
+import { createCourseApiApiV1CoursesAddPost } from "../api/generated/courses";
 import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import {
@@ -34,7 +36,7 @@ import {
 } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { notifyCoursesImported } from "../lib/courseEvents";
-import { useAiInteraction } from "../components/interaction";
+import { buildCoursePath } from "../lib/courseNavigation";
 import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { CourseExportModal } from "../components/course/CourseExportModal";
@@ -43,6 +45,7 @@ import {
   ChatModelSelect,
   DEFAULT_CHAT_MODEL_CHOICE,
   type ChatModelChoice,
+  toChatRequestModel,
 } from "../components/chat/ChatModelSelect";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -77,6 +80,15 @@ async function fetchFiles(fileIds: string[]): Promise<FilesData> {
     failed_count: 0,
     items: [],
   };
+}
+
+async function linkFilesToCourse(course: string, fileIds: string[]): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "POST",
+    url: `/api/v1/courses/${course}/files/link`,
+    data: { file_ids: fileIds },
+  });
+  return response.data;
 }
 
 /* ── Export / Import API helpers ── */
@@ -627,12 +639,14 @@ export function HomePage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { openAiInteraction } = useAiInteraction();
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [prompt, setPrompt] = useState("");
+  const [draftCourseId, setDraftCourseId] = useState<string | null>(null);
+  const [isCreatingDraftCourse, setIsCreatingDraftCourse] = useState(false);
+  const [isStartingBuild, setIsStartingBuild] = useState(false);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
@@ -646,6 +660,23 @@ export function HomePage() {
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
+
+  useEffect(() => {
+    if (!newEntryAt) {
+      return;
+    }
+    setPrompt("");
+    setDraftCourseId(null);
+    setIsCreatingDraftCourse(false);
+    setIsStartingBuild(false);
+    setIsUploadingFiles(false);
+    setUploadingFileNames([]);
+    setEntryFileIds([]);
+    setLibraryPickerOpen(false);
+    setError(null);
+    navigate("/", { replace: true, state: null });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [navigate, newEntryAt]);
 
   const { data: entryFilesData } = useQuery({
     queryKey: HOME_ENTRY_FILES_QUERY_KEY(entryFileIds),
@@ -698,19 +729,29 @@ export function HomePage() {
     },
   });
 
-  useEffect(() => {
-    if (!newEntryAt) {
-      return;
+  const ensureDraftCourseId = useCallback(async () => {
+    if (draftCourseId) {
+      return draftCourseId;
     }
-    setPrompt("");
-    setIsUploadingFiles(false);
-    setUploadingFileNames([]);
-    setEntryFileIds([]);
-    setLibraryPickerOpen(false);
-    setError(null);
-    navigate("/", { replace: true, state: null });
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [navigate, newEntryAt]);
+    setIsCreatingDraftCourse(true);
+    try {
+      const created = unwrapOrvalResponse(
+        await createCourseApiApiV1CoursesAddPost({ name: "" }),
+      );
+      if (!created) {
+        throw new Error("创建课程失败");
+      }
+      setDraftCourseId(created.course_id);
+      void queryClient.invalidateQueries({ queryKey: ["courses"] });
+      return created.course_id;
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setIsCreatingDraftCourse(false);
+    }
+  }, [draftCourseId, queryClient]);
 
   const syncEntryFilesCache = useCallback((fileIds: string[], uploaded: FileRecord[]) => {
     queryClient.setQueryData<FilesData>(HOME_ENTRY_FILES_QUERY_KEY(fileIds), (previous) => {
@@ -792,6 +833,9 @@ export function HomePage() {
   );
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
+    if (isCreatingDraftCourse) {
+      return "正在创建学习空间，并关联已选择资料。";
+    }
     if (isUploadingFiles) {
       return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
     }
@@ -819,31 +863,36 @@ export function HomePage() {
       return `${failedCount} 份资料处理失败；你可以先从本次新建中移除。`;
     }
     return "资料已加入，会继续在后台解析；从这里移除不会删除资料库文件。";
-  }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isUploadingFiles, uploadedFiles]);
-  const canSendHomeMessage = prompt.trim().length > 0 || hasEntryFiles;
+  }, [entryFilesData?.failed_count, entryFilesData?.processing_count, entryFilesData?.ready_count, hasEntryFiles, isCreatingDraftCourse, isUploadingFiles, uploadedFiles]);
+  const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
-  const handleSendHomeMessage = () => {
-    if (!canSendHomeMessage) return;
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
     setError(null);
-    const question = prompt.trim() || "我已经选择了这些资料，请先帮我判断下一步。";
-    openAiInteraction({
-      mode: "fullscreen",
-      scope: { type: "global" },
-      sessionId: null,
-      draft: question,
-      autoSend: true,
-      model: chatModel,
-      source: "home_intake",
-      attachedFileIds: entryFileIds,
-      newSession: true,
-    });
-    setPrompt("");
+    setIsStartingBuild(true);
+    try {
+      const courseId = await ensureDraftCourseId();
+      if (entryFileIds.length > 0) {
+        await linkFilesToCourse(courseId, entryFileIds);
+        void queryClient.invalidateQueries({ queryKey: ["courses"] });
+        void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
+      }
+      const userGoal = prompt.trim() || "请基于我选择的资料，直接生成一份课程构建规划。";
+      const selectedModel = toChatRequestModel(chatModel);
+      navigate(buildCoursePath(courseId, "build"), {
+        state: { initialPrompt: userGoal, autoStart: true, model: selectedModel },
+      });
+    } catch {
+      // ensureDraftCourseId already writes user-facing error.
+    } finally {
+      setIsStartingBuild(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSendHomeMessage();
+      void handleGenerate();
     }
   };
 
@@ -877,7 +926,7 @@ export function HomePage() {
     }
   }, [entryFileIds, syncEntryFilesCache, uploadedFiles]);
 
-  const isWorking = isUploadingFiles;
+  const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
 
   return (
@@ -961,7 +1010,7 @@ export function HomePage() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               rows={3}
-              disabled={isUploadingFiles}
+              disabled={isCreatingDraftCourse}
             />
 
             <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
@@ -1046,7 +1095,7 @@ export function HomePage() {
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      正在上传并解析资料...
+                      {isStartingBuild || isCreatingDraftCourse ? "正在创建学习空间..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
@@ -1059,11 +1108,11 @@ export function HomePage() {
                     className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
                   />
                   <button
-                    onClick={handleSendHomeMessage}
-                    disabled={!canSendHomeMessage || isWorking}
+                    onClick={() => void handleGenerate()}
+                    disabled={!canGenerate || isWorking}
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
-                      canSendHomeMessage && !isWorking
+                      canGenerate && !isWorking
                         ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
                     )}

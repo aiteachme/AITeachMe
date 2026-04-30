@@ -231,8 +231,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
     activeScope,
     fullscreenScope,
-    fullscreenRequest,
-    openAiInteraction,
     closeAiInteraction,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
@@ -241,12 +239,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
-  const isGlobalAssistantDraftRoute =
-    isAssistantPage &&
-    assistantScope?.type === "global" &&
-    (!fullscreenRequest || fullscreenRequest.newSession || fullscreenRequest.sessionId === null);
-  const isCreateCourseActive =
-    location.pathname === "/" || isGlobalAssistantDraftRoute;
+  const isCreateCourseActive = location.pathname === "/";
   const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
   const sidebarConversationScope = useMemo<AiConversationScope>(() => {
     if (isAssistantPage && assistantScope) {
@@ -375,17 +368,14 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const closeMobileNavigation = useCallback(() => {
     setIsMobileOpen(false);
   }, []);
-  const openGlobalConversationDraft = useCallback(() => {
+  const openCreateCoursePage = useCallback(() => {
     setCourseActionError(undefined);
     setOpenMenuId(null);
     setIsMobileOpen(false);
-    openAiInteraction({
-      mode: "fullscreen",
-      scope: { type: "global" },
-      sessionId: null,
-      newSession: true,
+    navigate("/", {
+      state: { newEntryAt: Date.now() },
     });
-  }, [openAiInteraction]);
+  }, [navigate]);
 
   const toggleCourse = (courseId: string) => {
     if (effectiveCollapsed) {
@@ -483,7 +473,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 type="button"
                 onClick={() => {
                   setIsCollapsed(false);
-                  openGlobalConversationDraft();
+                  openCreateCoursePage();
                 }}
                 title="新建课程"
                 className={cn(
@@ -546,7 +536,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
-                onClick={openGlobalConversationDraft}
+                onClick={openCreateCoursePage}
               >
                 <Edit3
                   className={cn(
