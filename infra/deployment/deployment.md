@@ -188,21 +188,23 @@ Storage: DogeCloud / Sealos Object Storage / 其他 S3-compatible OSS
 Migration: 单独 Job / 临时任务运行 bootstrap_cloud_db.py
 ```
 
-Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并推送到 GHCR，再用 `kubectl set image` 更新 Sealos 后端 Deployment。
+Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并同时推送到 GHCR 与阿里云 ACR，再用阿里云 ACR 镜像地址更新 Sealos 后端 Deployment。GHCR 保留为 GitHub 侧备份产物，Sealos 拉取走北京 ACR，减少跨境拉取超时。
 
 ### Sealos 最简自动部署
 
 仓库提供 `.github/workflows/deploy.yml`，用于在 `CI` 通过后自动部署前端与后端。其中后端发布会：
 
-1. 构建 `backend.Dockerfile` 轻量镜像。
-2. 推送到 GHCR：
+1. 构建 `backend.Dockerfile` 轻量镜像，镜像会安装后端 `cloud` extra 依赖以支持 PostgreSQL、S3 和 pgvector。
+2. 同时推送到 GHCR 和阿里云 ACR：
 
 ```text
 ghcr.io/<github-owner>/aiteachme-backend:slim-<short-sha>
 ghcr.io/<github-owner>/aiteachme-backend:slim-latest
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-<short-sha>
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-latest
 ```
 
-3. 使用 `kubectl set image` 更新 Sealos 中已有的后端 Deployment。
+3. 使用 `kubectl set image` 将 Sealos 中已有的后端 Deployment 更新为阿里云 ACR 镜像地址。
 4. 将 Deployment 的 `progressDeadlineSeconds` 调整为 60 分钟，并等待 `kubectl rollout status` 完成。
 5. 打印 Deployment、ReplicaSet、Pod 和相关 Events，便于查看镜像拉取耗时或定位启动失败原因。
 6. 如果配置了健康检查地址，再请求 `/api/health`。
@@ -212,16 +214,22 @@ GitHub Actions Secrets：
 | 名称 | 说明 |
 | --- | --- |
 | `SEALOS_KUBECONFIG_B64` | 完整 Sealos kubeconfig 文件的 base64 内容 |
+| `ALIYUN_ACR_USERNAME` | 阿里云 ACR 登录用户名 |
+| `ALIYUN_ACR_PASSWORD` | 阿里云 ACR 登录密码 |
 | `GHCR_USERNAME` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
 | `GHCR_TOKEN` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
 
-GitHub Actions Variables：
+以下非敏感部署常量直接维护在 `.github/workflows/deploy.yml` 的 `deploy-backend.env` 中，方便在一个地方改：
 
 | 名称 | 示例 | 说明 |
 | --- | --- | --- |
 | `SEALOS_NAMESPACE` | `ns-icbq3ltw` | Sealos namespace |
-| `SEALOS_BACKEND_DEPLOYMENT` | `atm` | 后端 Deployment 名称 |
-| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 可选；后端健康检查地址 |
+| `SEALOS_BACKEND_DEPLOYMENT` | `atm-d` | 后端 Deployment 名称 |
+| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 后端健康检查地址；不需要时可置空 |
+| `BACKEND_ACR_REGISTRY` | `crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com` | 阿里云 ACR registry |
+| `BACKEND_ACR_NAMESPACE` | `aiteachme` | 阿里云 ACR 命名空间 |
+| `BACKEND_IMAGE_NAME` | `aiteachme-backend` | 后端镜像仓库名 |
+| `SEALOS_IMAGE_PULL_SECRET` | `aliyun-acr-regcred` | Sealos 里用于拉取 ACR 私有镜像的 imagePullSecret |
 
 生成 `SEALOS_KUBECONFIG_B64`：
 
@@ -236,7 +244,19 @@ $raw = Get-Content -Raw -Encoding UTF8 "C:\Users\L5C\Downloads\kubeconfig.yaml"
 kubectl -n <namespace> get deploy
 ```
 
-如果 GHCR package 是 private，Sealos 侧需要能拉取 `ghcr.io/<github-owner>/aiteachme-backend`，要么把 package visibility 改成 public，要么给 Deployment 配置 registry credential / imagePullSecret。
+GHCR 当前只作为 GitHub 侧备份镜像产物，Sealos 不直接拉取 GHCR 镜像。
+
+当前 Sealos 默认使用阿里云 ACR 镜像地址。如果 ACR 仓库是 private，Sealos 侧需要创建一次 imagePullSecret。部署 workflow 会检查这个 Secret 存在，并确保它绑定到后端 Deployment：
+
+```bash
+kubectl -n ns-icbq3ltw create secret docker-registry aliyun-acr-regcred \
+  --docker-server=crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com \
+  --docker-username=<ALIYUN_ACR_USERNAME> \
+  --docker-password=<ALIYUN_ACR_PASSWORD>
+
+kubectl -n ns-icbq3ltw patch deployment atm-d \
+  -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"aliyun-acr-regcred"}]}}}}'
+```
 
 如果 GitHub Actions 推送 GHCR 报 `403 Forbidden`：
 

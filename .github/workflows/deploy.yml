@@ -103,12 +103,18 @@ jobs:
       contents: read
       packages: write
     env:
-      BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
-      SEALOS_BACKEND_DEPLOYMENT: ${{ vars.SEALOS_BACKEND_DEPLOYMENT }}
+      BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
+      SEALOS_BACKEND_DEPLOYMENT: atm-d
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
-      SEALOS_NAMESPACE: ${{ vars.SEALOS_NAMESPACE }}
+      SEALOS_NAMESPACE: ns-icbq3ltw
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
       ROLLOUT_TIMEOUT_SECONDS: "3600"
+      BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+      BACKEND_ACR_NAMESPACE: aiteachme
+      BACKEND_IMAGE_NAME: aiteachme-backend
+      SEALOS_IMAGE_PULL_SECRET: aliyun-acr-regcred
+      ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
+      ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -122,9 +128,15 @@ jobs:
           set -euo pipefail
 
           missing=()
+          [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
+          [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
           [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
-          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("variable:SEALOS_NAMESPACE")
-          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("variable:SEALOS_BACKEND_DEPLOYMENT")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("env:SEALOS_BACKEND_DEPLOYMENT")
+          [ -n "${BACKEND_ACR_REGISTRY}" ] || missing+=("env:BACKEND_ACR_REGISTRY")
+          [ -n "${BACKEND_ACR_NAMESPACE}" ] || missing+=("env:BACKEND_ACR_NAMESPACE")
+          [ -n "${BACKEND_IMAGE_NAME}" ] || missing+=("env:BACKEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required deploy configuration:\n' >&2
@@ -147,6 +159,13 @@ jobs:
           username: ${{ secrets.GHCR_USERNAME || github.actor }}
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.BACKEND_ACR_REGISTRY }}
+          username: ${{ env.ALIYUN_ACR_USERNAME }}
+          password: ${{ env.ALIYUN_ACR_PASSWORD }}
+
       - name: Resolve backend image tags
         id: image
         shell: bash
@@ -154,12 +173,14 @@ jobs:
           set -euo pipefail
 
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          image="ghcr.io/${owner}/aiteachme-backend"
+          ghcr_image="ghcr.io/${owner}/${BACKEND_IMAGE_NAME}"
+          acr_image="${BACKEND_ACR_REGISTRY}/${BACKEND_ACR_NAMESPACE}/${BACKEND_IMAGE_NAME}"
           short_sha="${SOURCE_SHA::7}"
           version_tag="slim-${short_sha}"
 
-          echo "image=${image}:${version_tag}" >> "$GITHUB_OUTPUT"
-          echo "tags=${image}:${version_tag},${image}:slim-latest" >> "$GITHUB_OUTPUT"
+          echo "image=${acr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "ghcr_image=${ghcr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:slim-latest,${acr_image}:${version_tag},${acr_image}:slim-latest" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
@@ -204,6 +225,14 @@ jobs:
             --type=merge \
             -p "{\"spec\":{\"progressDeadlineSeconds\":${ROLLOUT_TIMEOUT_SECONDS}}}"
 
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "secret/${SEALOS_IMAGE_PULL_SECRET}" \
+            >/dev/null
+
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
+
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             "*=${{ steps.image.outputs.image }}"
@@ -240,7 +269,7 @@ jobs:
             | tail -n 80 || true
 
       - name: Smoke test backend
-        if: vars.BACKEND_HEALTH_URL != ''
+        if: ${{ env.BACKEND_HEALTH_URL != '' }}
         shell: bash
         run: |
           set -euo pipefail
