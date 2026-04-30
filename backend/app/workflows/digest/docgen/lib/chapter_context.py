@@ -17,6 +17,10 @@ from app.shared.infra.search.defaults import (
 )
 from app.shared.infra.search import ContextCompressor, SourceCurator
 from app.shared.infra.search.factory import get_configured_retriever_names, get_retrievers_for_course
+from app.shared.infra.search.local_sufficiency import (
+    DEFAULT_EFFECTIVE_LOCAL_SCORE,
+    effective_local_result_count,
+)
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.shared.infra.tools.builtin.web_reading import read_urls
@@ -429,8 +433,15 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_local_hits += len(local_results)
             results_by_query[query] = list(local_results)
 
-            should_query_external = bool(other_retrievers) and len(local_results) < settings.local_rag.min_results
-            if len(local_results) < settings.local_rag.min_results:
+            effective_local_hits = effective_local_result_count(
+                local_results,
+                min_score=max(
+                    float(settings.rag.similarity_threshold or 0.0),
+                    DEFAULT_EFFECTIVE_LOCAL_SCORE,
+                ),
+            )
+            should_query_external = bool(other_retrievers) and effective_local_hits < settings.local_rag.min_results
+            if effective_local_hits < settings.local_rag.min_results:
                 fallback_queries_total.append(query)
                 round_fallback_queries.append(query)
             if should_query_external:

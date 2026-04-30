@@ -4,8 +4,11 @@ import pytest
 
 from app.shared.infra.search.knowledge import RetrievedChunk
 from app.shared.infra.search.llamaindex_index import ingestion
+from app.shared.infra.search.local_sufficiency import effective_local_result_count
 from app.shared.infra.search.retrievers import local_rag
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
+from app.shared.infra.search.types import SearchResult
+from app.shared.infra.search.web import dispatch_web_search
 from app.workflows.digest.common import section_splitter
 
 
@@ -48,6 +51,7 @@ async def test_local_rag_prefers_vector_results_when_available(monkeypatch) -> N
 
     assert results
     assert results[0].url == "local://chunk/7"
+    assert results[0].score > 0.55
     assert any(item.url.startswith("local://section/") for item in results)
 
 
@@ -77,6 +81,68 @@ async def test_local_rag_uses_sections_only_when_vector_unavailable(monkeypatch)
 
     assert len(results) == 1
     assert results[0].url == "local://section/0"
+
+
+def test_effective_local_result_count_ignores_weak_hits() -> None:
+    results = [
+        SearchResult(url="local://chunk/1", title="弱命中", snippet="noise", score=0.35, source="local_rag"),
+        SearchResult(url="local://chunk/2", title="强命中", snippet="useful", score=0.8, source="local_rag"),
+        SearchResult(url="https://example.com", title="外部", snippet="web", score=1.0, source="duckduckgo"),
+    ]
+
+    assert effective_local_result_count(results) == 1
+
+
+@pytest.mark.anyio
+async def test_dispatch_web_search_continues_when_local_hits_are_weak(monkeypatch) -> None:
+    class FakeRetriever:
+        def __init__(self, name: str, results: list[SearchResult]) -> None:
+            self.name = name
+            self.results = results
+            self.called = False
+
+        async def traced_search(self, query: str, *, max_results: int) -> list[SearchResult]:
+            self.called = True
+            return self.results[:max_results]
+
+    local = FakeRetriever(
+        "local_rag",
+        [
+            SearchResult(url="local://chunk/1", title="弱命中 1", snippet="noise", score=0.2, source="local_rag"),
+            SearchResult(url="local://chunk/2", title="弱命中 2", snippet="noise", score=0.25, source="local_rag"),
+        ],
+    )
+    external = FakeRetriever(
+        "duckduckgo",
+        [
+            SearchResult(
+                url="https://example.com/strong",
+                title="外部强命中",
+                snippet="useful",
+                score=1.0,
+                source="duckduckgo",
+            )
+        ],
+    )
+
+    def fake_retrievers_for_course(**kwargs):
+        return [local, external]
+
+    monkeypatch.setattr(
+        "app.shared.infra.search.factory.get_retrievers_for_course",
+        fake_retrievers_for_course,
+    )
+
+    results = await dispatch_web_search(
+        "测试查询",
+        top_k=2,
+        total_timeout_s=5,
+        provider_timeout_s=1,
+    )
+
+    assert local.called
+    assert external.called
+    assert any(item.url == "https://example.com/strong" for item in results)
 
 
 def test_large_section_splitting_delegates_to_llamaindex(monkeypatch) -> None:

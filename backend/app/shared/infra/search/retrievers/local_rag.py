@@ -188,7 +188,7 @@ class LocalRAGRetriever(BaseRetriever):
                 if not key:
                     continue
                 raw_score = max(0.0, float(item.score or 0.0))
-                score = weight / (60.0 + rank + 1.0) + min(raw_score, 1.0) * 0.05
+                score = min(raw_score, 1.0) * weight + weight / (60.0 + rank + 1.0)
                 candidate = replace(item, score=score, source=self.name)
                 existing = fused.get(key)
                 if existing is None:
