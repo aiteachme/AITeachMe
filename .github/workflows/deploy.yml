@@ -16,7 +16,7 @@ permissions:
 env:
   # Non-secret Sealos/ACR deployment constants. Update these here when the
   # Sealos app name, public address, internal service address, or registry path changes.
-  AITEACHME_API_UPSTREAM: http://atm-d-tqkmhxmhaeer.ns-icbq3ltw:9020
+  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw:9020
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
@@ -316,6 +316,11 @@ jobs:
             | tail -n 80 || true
 
           echo
+          echo "## Services"
+          kubectl -n "${SEALOS_NAMESPACE}" get svc,endpoints -o wide \
+            | grep -E "^${SEALOS_FRONTEND_DEPLOYMENT}\\b|^${SEALOS_BACKEND_DEPLOYMENT}\\b|^NAME" || true
+
+          echo
           echo "## Frontend pod logs"
           for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods -o name | grep -E "pod/${SEALOS_FRONTEND_DEPLOYMENT}-" || true); do
             echo
@@ -324,6 +329,17 @@ jobs:
             echo
             echo "### ${pod} previous logs"
             kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=160 || true
+            echo
+            echo "### ${pod} nginx runtime probe"
+            kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -lc '
+              echo "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM:-}";
+              echo "--- /etc/nginx/conf.d/default.conf";
+              sed -n "1,140p" /etc/nginx/conf.d/default.conf;
+              echo "--- local static probe";
+              wget -S -O /dev/null -T 5 http://127.0.0.1/ 2>&1 || true;
+              echo "--- local api probe";
+              wget -S -O - -T 5 http://127.0.0.1/api/health 2>&1 || true;
+            ' || true
           done
 
       - name: Smoke test Sealos frontend
@@ -334,10 +350,18 @@ jobs:
 
           base_url="${FRONTEND_PUBLIC_URL%/}"
           for attempt in {1..12}; do
-            if curl -fsS "${base_url}/" >/dev/null && curl -fsS "${base_url}/api/health" >/dev/null; then
+            static_ok=false
+            api_ok=false
+            if curl -fsS "${base_url}/" >/dev/null; then
+              static_ok=true
+            fi
+            if curl -fsS "${base_url}/api/health" >/dev/null; then
+              api_ok=true
+            fi
+            if [ "${static_ok}" = "true" ] && [ "${api_ok}" = "true" ]; then
               exit 0
             fi
-            echo "Frontend smoke check failed; retrying (${attempt}/12)..."
+            echo "Frontend smoke check failed; retrying (${attempt}/12)... static=${static_ok} api=${api_ok}"
             sleep 10
           done
 
