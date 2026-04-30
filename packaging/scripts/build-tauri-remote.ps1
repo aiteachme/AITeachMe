@@ -2,7 +2,8 @@ param(
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvArtifactSuffix = "bundled"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -24,6 +25,9 @@ Assert-RustToolchain
 Write-Host "Repo: $repoRoot"
 Write-Host "npm: $npm"
 Write-Host "Remote API URL: $ApiUrl"
+. (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+$releaseSuffix = Get-AITeachMeInstallerReleaseSuffix -Remote -Tauri
+Write-Host "Release suffix: $releaseSuffix"
 if ($ImportBundledEnv) {
     Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for tauri-remote." -ForegroundColor Yellow
 }
@@ -45,4 +49,4 @@ finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
 }
 
-Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-remote"
+Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-remote" -ReleaseSuffix $releaseSuffix

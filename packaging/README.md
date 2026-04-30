@@ -3,7 +3,10 @@
 在项目根目录运行下面这些脚本：
 
 ```powershell
-.\packaging\all.bat -ApiUrl https://api.example.com
+.\packaging\all.bat
+.\packaging\all.bat -IncludeTauri
+.\packaging\all.bat -IncludeRemote -ApiUrl https://api.example.com
+.\packaging\all.bat -IncludeTauri -IncludeRemote -ApiUrl https://api.example.com
 .\packaging\electron-local.bat
 .\packaging\electron-remote.bat -ApiUrl https://api.example.com
 .\packaging\tauri-local.bat
@@ -16,18 +19,17 @@
 
 文件名会自动带上 `frontend\package.json` 里的版本号，格式如下：
 
-- `AiTeachMe-v<version>-electron-local-installer.exe`
-- `AiTeachMe-v<version>-electron-local-portable.exe`
-- `AiTeachMe-v<version>-electron-remote-installer.exe`
-- `AiTeachMe-v<version>-electron-remote-portable.exe`
-- `AiTeachMe-v<version>-tauri-local-installer.exe`
-- `AiTeachMe-v<version>-tauri-local-direct.zip`
-- `AiTeachMe-v<version>-tauri-remote-installer.exe`
-- `AiTeachMe-v<version>-tauri-remote-direct.zip`
+- `AiTeachMe-v<version>-installer.exe`
+- `AiTeachMe-v<version>-installer-bundled.exe`
+- `AiTeachMe-v<version>-installer-remote.exe`
+- `AiTeachMe-v<version>-installer-tauri.exe`
+- `AiTeachMe-v<version>-installer-tauri-bundled.exe`
+- `AiTeachMe-v<version>-installer-tauri-remote.exe`
+- `AiTeachMe-v<version>-installer-electron.exe`
+- `AiTeachMe-v<version>-installer-electron-bundled.exe`
+- `AiTeachMe-v<version>-installer-electron-remote.exe`
 
-Electron 每种模式会生成一个安装包和一个便携版 exe。Tauri 每种模式会生成一个安装包和一个可直接运行的 zip。打包过程的中间产物会保留在 `packaging\artifacts`，Tauri 的未压缩直运行目录会保留在 `packaging\artifacts\direct`。
-
-Electron 便携版 exe 是自解压启动器。第一次运行仍然需要解压应用，但后续运行会复用本机用户目录下的版本缓存，不会每次都重新解压再删除，因此再次打开会快很多。
+`all.bat` 默认只生成 Electron local 安装包，并隐藏 `-electron` 后缀，因此默认产物是 `AiTeachMe-v<version>-installer.exe`。Tauri 需要显式传入 `-IncludeTauri`，remote 需要显式传入 `-IncludeRemote`。通过 `all.bat` 生成的默认 Electron 包不带 `-electron`；直接运行 `electron-local.bat` / `electron-remote.bat` 时仍会追加 `-electron`。Tauri 版本会追加 `-tauri` 后缀。打包过程的中间产物会保留在 `packaging\artifacts`。
 
 具体的 PowerShell 打包逻辑都在 `packaging\scripts` 目录里。
 
@@ -58,6 +60,19 @@ JSON 结构：
 ```powershell
 .\packaging\electron-local.bat -ImportBundledEnv
 .\packaging\tauri-local.bat -ImportBundledEnv
+```
+
+带预绑定密钥的本地包会在最终产物文件名中追加 `-bundled` 后缀，例如：
+
+```text
+AiTeachMe-v0.0.1-installer-bundled.exe
+AiTeachMe-v0.0.1-installer-tauri-bundled.exe
+```
+
+也可以自定义这个后缀：
+
+```powershell
+.\packaging\electron-local.bat -ImportBundledEnv -BundledEnvArtifactSuffix campus-a
 ```
 
 如果私有 JSON 文件不使用默认路径：

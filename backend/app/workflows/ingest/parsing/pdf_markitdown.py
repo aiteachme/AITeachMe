@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from importlib import import_module
 from pathlib import Path
 
 import structlog
@@ -25,12 +26,13 @@ async def parse_pdf_with_markitdown(
 
 def _parse_pdf_with_markitdown_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
     try:
-        from markitdown import MarkItDown
-    except ImportError as exc:
+        markitdown_module = import_module("markitdown")
+        markitdown_converter = getattr(markitdown_module, "MarkItDown")
+    except (AttributeError, ImportError) as exc:
         raise FileParseError(path.name, reason="MarkItDown is not available.") from exc
 
     logger.info("parse_pdf_markitdown_start", filename=path.name, parser_parallelism=options.parser_parallelism)
-    result = MarkItDown().convert(str(path))
+    result = markitdown_converter().convert(str(path))
     if not result.text_content or not result.text_content.strip():
         raise FileParseError(path.name, reason="MarkItDown returned empty markdown.")
     return result.text_content

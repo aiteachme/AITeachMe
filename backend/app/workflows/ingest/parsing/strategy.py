@@ -130,8 +130,8 @@ def _preferred_parser_order(
         return ["markitdown"]
 
     if extension == ".docx":
-        # markitdown (Microsoft) 对 LLM 场景最优化，mammoth 语义保留好作为 fallback
-        return ["markitdown", "mammoth", "docx_native"]
+        # Mammoth is the default local DOCX parser; native archive parsing is the fallback.
+        return ["mammoth", "docx_native"]
 
     # 旧链路：.doc 已停用，不再支持上传和解析。
     # if extension == ".doc":

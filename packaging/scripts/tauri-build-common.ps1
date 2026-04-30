@@ -150,7 +150,8 @@ function Remove-TauriBundleOutput {
 function Copy-TauriArtifacts {
     param(
         [string]$RepoRoot,
-        [string]$Flavor
+        [string]$Flavor,
+        [string]$ReleaseSuffix = ""
     )
 
     $bundleDir = Join-Path $RepoRoot "frontend\src-tauri\target\release\bundle"
@@ -172,61 +173,33 @@ function Copy-TauriArtifacts {
     }
     New-Item -ItemType Directory -Path $bundleArtifactDir -Force | Out-Null
 
-    $directRoot = Join-Path $artifactDir "direct"
-    $directDir = Join-Path $directRoot $Flavor
+    $directDir = Join-Path (Join-Path $artifactDir "direct") $Flavor
     if (Test-Path $directDir) {
         Remove-Item -LiteralPath $directDir -Recurse -Force
     }
-    New-Item -ItemType Directory -Path $directDir -Force | Out-Null
 
     $artifacts = @(Get-ChildItem $bundleDir -Recurse -File |
-        Where-Object { $_.Extension -in @(".exe", ".msi", ".msix", ".zip") } |
+        Where-Object { $_.Extension -in @(".exe", ".msi", ".msix") } |
         Sort-Object LastWriteTime -Descending)
 
     if ($artifacts.Count -eq 0) {
         throw "Could not find Tauri installer artifacts under $bundleDir"
     }
 
+    $releaseOutputs = @()
     foreach ($artifact in $artifacts) {
-        $artifactKind = if ($artifact.Extension -eq ".zip") { "bundle" } else { "installer" }
-        $artifactName = "AiTeachMe-v$projectVersion-$Flavor-$artifactKind$($artifact.Extension)"
+        $artifactName = "AiTeachMe-v$projectVersion-installer$ReleaseSuffix$($artifact.Extension)"
+        $releaseOutput = Join-Path $releaseDir $artifactName
         Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $bundleArtifactDir $artifact.Name) -Force
-        if ($artifact.Extension -ne ".zip") {
-            Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $releaseDir $artifactName) -Force
-        }
+        Copy-Item -LiteralPath $artifact.FullName -Destination $releaseOutput -Force
+        $releaseOutputs += $releaseOutput
     }
-
-    $releaseDir = Join-Path $RepoRoot "frontend\src-tauri\target\release"
-    $mainBinaryName = if ($Flavor -eq "tauri-local") { "aiteachme-local.exe" } else { "aiteachme-remote.exe" }
-    $productExeName = if ($Flavor -eq "tauri-local") { "AiTeachMe Local.exe" } else { "AiTeachMe Remote.exe" }
-    $mainBinary = Join-Path $releaseDir $mainBinaryName
-
-    if (-not (Test-Path $mainBinary)) {
-        throw "Tauri direct executable was not produced: $mainBinary"
-    }
-
-    Copy-Item -LiteralPath $mainBinary -Destination (Join-Path $directDir $productExeName) -Force
-
-    if ($Flavor -eq "tauri-local") {
-        $sidecar = Join-Path $releaseDir "aiteachme-backend.exe"
-        if (-not (Test-Path $sidecar)) {
-            throw "Tauri local backend sidecar was not produced: $sidecar"
-        }
-        Copy-Item -LiteralPath $sidecar -Destination (Join-Path $directDir "aiteachme-backend.exe") -Force
-    }
-
-    $directZip = Join-Path $releaseDir "AiTeachMe-v$projectVersion-$Flavor-direct.zip"
-    if (Test-Path $directZip) {
-        Remove-Item -LiteralPath $directZip -Force
-    }
-    Compress-Archive -Path (Join-Path $directDir "*") -DestinationPath $directZip -Force
 
     Write-Host ""
     Write-Host "Tauri $Flavor release packages:" -ForegroundColor Green
-    Get-ChildItem $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" | ForEach-Object {
-        Write-Host "  $($_.FullName)"
+    $releaseOutputs | ForEach-Object {
+        Write-Host "  $_"
     }
     Write-Host "Intermediate artifacts:" -ForegroundColor DarkGray
     Write-Host "  $bundleArtifactDir"
-    Write-Host "  $directDir"
 }

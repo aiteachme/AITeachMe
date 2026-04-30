@@ -2,7 +2,8 @@ param(
     [switch]$SkipInstall,
     [string]$BackendPort = "9020",
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvArtifactSuffix = "bundled"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -16,6 +17,15 @@ Assert-RustToolchain
 Write-Host "Repo: $repoRoot"
 Write-Host "npm: $npm"
 Write-Host "Backend port: $BackendPort"
+
+. (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+$releaseSuffix = Get-AITeachMeInstallerReleaseSuffix `
+    -Bundled:$ImportBundledEnv `
+    -Tauri `
+    -BundledEnvArtifactSuffix $BundledEnvArtifactSuffix
+if ($releaseSuffix) {
+    Write-Host "Release suffix: $releaseSuffix"
+}
 
 if (-not $SkipInstall) {
     Invoke-External -File $npm -Arguments @("install") -WorkingDirectory $frontendDir
@@ -54,4 +64,4 @@ finally {
     [Environment]::SetEnvironmentVariable("AITEACHME_TAURI_BACKEND_PORT", $previousTauriBackendPort, "Process")
 }
 
-Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-local"
+Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-local" -ReleaseSuffix $releaseSuffix

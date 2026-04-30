@@ -1,4 +1,5 @@
 $DefaultBundledEnvConfigPath = "packaging\private\bundled-env.json"
+$DefaultBundledEnvArtifactSuffix = "bundled"
 $BundledEnvFileName = "aiteachme_bundled_env.enc.json"
 
 function Resolve-BundledEnvRepoRoot {
@@ -80,6 +81,58 @@ function Remove-BundledEnvOutput {
     if (Test-Path $outputPath) {
         Remove-Item -LiteralPath $outputPath -Force
     }
+}
+
+function ConvertTo-BundledEnvArtifactSuffix {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $DefaultBundledEnvArtifactSuffix
+    }
+    $slug = ($Value.Trim() -replace '[^A-Za-z0-9._-]+', '-').Trim("-._")
+    if ($slug) {
+        return $slug
+    }
+    return $DefaultBundledEnvArtifactSuffix
+}
+
+function Get-BundledEnvReleaseSuffix {
+    param(
+        [switch]$ImportBundledEnv,
+        [string]$BundledEnvArtifactSuffix = $DefaultBundledEnvArtifactSuffix
+    )
+
+    return Get-AITeachMeInstallerReleaseSuffix `
+        -Bundled:$ImportBundledEnv `
+        -BundledEnvArtifactSuffix $BundledEnvArtifactSuffix
+}
+
+function Get-AITeachMeInstallerReleaseSuffix {
+    param(
+        [switch]$Bundled,
+        [switch]$Remote,
+        [switch]$Electron,
+        [switch]$Tauri,
+        [string]$BundledEnvArtifactSuffix = $DefaultBundledEnvArtifactSuffix
+    )
+
+    $parts = @()
+    if ($Electron) {
+        $parts += "electron"
+    }
+    if ($Tauri) {
+        $parts += "tauri"
+    }
+    if ($Bundled) {
+        $parts += (ConvertTo-BundledEnvArtifactSuffix -Value $BundledEnvArtifactSuffix)
+    }
+    if ($Remote) {
+        $parts += "remote"
+    }
+    if ($parts.Count -eq 0) {
+        return ""
+    }
+    return "-" + ($parts -join "-")
 }
 
 function Get-BundledEnvCryptoBytes {

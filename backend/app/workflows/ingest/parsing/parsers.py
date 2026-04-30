@@ -142,7 +142,7 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     **_build_pdf_parser_chain(),
-    ".docx": ["markitdown", "mammoth", "docx_native"],
+    ".docx": ["mammoth", "docx_native"],
     **_build_text_parser_chain(),
 }
 

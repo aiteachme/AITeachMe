@@ -6,7 +6,9 @@ param(
     [string]$BackendPort = "9020",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvArtifactSuffix = "bundled",
+    [switch]$HideElectronSuffix
 )
 
 $ErrorActionPreference = "Stop"
@@ -307,6 +309,11 @@ $bundledEnvConfigPath = Initialize-BundledEnvConfig `
     -RepoRoot $repoRoot `
     -ImportBundledEnv:($ImportBundledEnv -and $Flavor -eq "local") `
     -BundledEnvConfigPath $BundledEnvConfigPath
+$releaseSuffix = Get-AITeachMeInstallerReleaseSuffix `
+    -Bundled:($ImportBundledEnv -and $Flavor -eq "local") `
+    -Remote:($Flavor -eq "remote") `
+    -Electron:(-not $HideElectronSuffix) `
+    -BundledEnvArtifactSuffix $BundledEnvArtifactSuffix
 if ($ImportBundledEnv -and $Flavor -ne "local") {
     Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for electron-$Flavor." -ForegroundColor Yellow
 }
@@ -329,6 +336,7 @@ if ($Flavor -eq "local") {
     Write-Host "Backend port: $BackendPort"
     if ($bundledEnvConfigPath) {
         Write-Host "Bundled env: $bundledEnvConfigPath"
+        Write-Host "Release suffix: $releaseSuffix"
     }
 }
 
@@ -387,23 +395,12 @@ try {
     Write-Step "Build frontend"
     Invoke-External -File $npm -Arguments @("run", "build") -WorkingDirectory $frontendDir
 
-    Write-Step "Build Electron installer and portable exe"
+    Write-Step "Build Electron installer"
     Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
     Stop-ProcessesUnderPath -Path $frontendReleaseDir
     Remove-DirectoryIfExists -Path $frontendReleaseDir -RepoRoot $repoRoot
     Invoke-External -File $npm -Arguments @("run", "electron:installer") -WorkingDirectory $frontendDir
     Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
-    Invoke-External -File "powershell" -Arguments @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        (Join-Path $repoRoot "packaging\scripts\build-electron-portable-nsis.ps1"),
-        "-RepoRoot",
-        $repoRoot,
-        "-ProductName",
-        $productName
-    ) -WorkingDirectory $repoRoot
 }
 finally {
     Restore-ProcessEnv -PreviousValues $previousEnv
@@ -423,30 +420,16 @@ $installer = Get-ChildItem $frontendReleaseDir -Recurse -File -Filter "*.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
-$portable = Get-ChildItem $frontendReleaseDir -Recurse -File -Filter "*.exe" |
-    Where-Object { $_.Name -eq "$productName.exe" } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-
 if ($null -eq $installer) {
     throw "Could not find installer exe under $frontendReleaseDir"
 }
 
-if ($null -eq $portable) {
-    throw "Could not find portable exe under $frontendReleaseDir"
-}
-
-$installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-installer$($installer.Extension)"
-$portableOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-electron-$Flavor-portable$($portable.Extension)"
+$installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-installer$releaseSuffix$($installer.Extension)"
 $installerArtifact = Join-Path $electronArtifactDir $installer.Name
-$portableArtifact = Join-Path $electronArtifactDir $portable.Name
 
 Copy-Item -LiteralPath $installer.FullName -Destination $installerArtifact -Force
-Copy-Item -LiteralPath $portable.FullName -Destination $portableArtifact -Force
 Copy-Item -LiteralPath $installerArtifact -Destination $installerOutput -Force
-Copy-Item -LiteralPath $portableArtifact -Destination $portableOutput -Force
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
 Write-Host "Installer: $installerOutput"
-Write-Host "Portable : $portableOutput"
