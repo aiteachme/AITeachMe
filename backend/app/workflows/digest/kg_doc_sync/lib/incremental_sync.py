@@ -1831,7 +1831,7 @@ def _build_cross_section_semantic_edges(
                 source_name,
                 str(target_context.get("name") or hint_name),
                 default_relation_for_unit_type(source_type),
-                f"{source_name} references {hint_name} across sections via {hint_field}.",
+                f"{source_name} 通过 {hint_field} 指向跨小节主题 {hint_name}。",
                 source_context=context,
             )
 
@@ -1855,7 +1855,7 @@ def _build_cross_section_semantic_edges(
                     context.primary_name,
                     other.primary_name,
                     relation,
-                    f"{context.primary_name} is presented as an example of {other.primary_name}.",
+                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的例证出现。",
                     source_context={
                         "knowledge_document_id": context.knowledge_document_id,
                         "section_index": context.section_index,
@@ -1867,7 +1867,7 @@ def _build_cross_section_semantic_edges(
                     context.primary_name,
                     other.primary_name,
                     relation,
-                    f"{context.primary_name} is discussed together with {other.primary_name}.",
+                    f"{context.primary_name} 在正文中与 {other.primary_name} 一起讨论。",
                     source_context={
                         "knowledge_document_id": context.knowledge_document_id,
                         "section_index": context.section_index,

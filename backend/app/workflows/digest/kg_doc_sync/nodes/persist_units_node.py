@@ -9,6 +9,8 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
+from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import persist_knowledge_graph_units_early
 from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
@@ -34,6 +36,22 @@ async def persist_units_node(state: DocsSyncState) -> DocsSyncState:
                 run_context=run_context,
                 payload=payload,
             )
+        publish_workflow_stream_event(
+            run_context.course_id,
+            "graph_delta",
+            {
+                "stage": "persist_units",
+                "build_revision_no": run_context.build_revision_no,
+                "unit_count": int(metrics.get("unit_count", 0) or 0),
+                "created_unit_count": int(metrics.get("created_unit_count", 0) or 0),
+                "updated_unit_count": int(metrics.get("updated_unit_count", 0) or 0),
+                "edge_count": 0,
+                "created_edge_count": 0,
+                "updated_edge_count": 0,
+                "deprecated_edge_count": 0,
+                "emitted_at": utcnow().isoformat(),
+            },
+        )
         callback = state.get("early_units_callback")
         seed_already_covers_final_exam = bool(
             state.get("early_units_callback_requested") and state.get("early_units_seed_complete")

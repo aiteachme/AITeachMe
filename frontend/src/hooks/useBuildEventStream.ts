@@ -43,6 +43,21 @@ export interface BuildStreamRecentEvent {
   [key: string]: unknown;
 }
 
+export interface BuildStreamGraphDeltaEvent {
+  stage?: string | null;
+  build_revision_no?: number | null;
+  unit_count?: number | null;
+  edge_count?: number | null;
+  created_unit_count?: number | null;
+  updated_unit_count?: number | null;
+  deprecated_unit_count?: number | null;
+  created_edge_count?: number | null;
+  updated_edge_count?: number | null;
+  deprecated_edge_count?: number | null;
+  emitted_at?: string | null;
+  [key: string]: unknown;
+}
+
 interface BuildPreviewDeltaEvent {
   kind?: string;
   chapter_index?: number;
@@ -66,6 +81,7 @@ export function useBuildEventStream({
   const [connected, setConnected] = useState(false);
   const [previewStreams, setPreviewStreams] = useState<Record<number, BuildPreviewStreamState>>({});
   const [buildEvents, setBuildEvents] = useState<BuildStreamRecentEvent[]>([]);
+  const [graphDeltas, setGraphDeltas] = useState<BuildStreamGraphDeltaEvent[]>([]);
   const onDoneRef = useRef(onDone);
   const previewStreamsRef = useRef<Record<number, BuildPreviewStreamState>>({});
   const previewFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -103,6 +119,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setPreviewStreams({});
       setBuildEvents([]);
+      setGraphDeltas([]);
       return;
     }
 
@@ -111,6 +128,7 @@ export function useBuildEventStream({
     clearPreviewFlushTimer();
     setPreviewStreams({});
     setBuildEvents([]);
+    setGraphDeltas([]);
     const es = new EventSource(url, { withCredentials: true });
     const unregisterEventSource = registerBackendEventSource(es);
 
@@ -181,6 +199,16 @@ export function useBuildEventStream({
       }
     });
 
+    es.addEventListener("graph_delta", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as BuildStreamGraphDeltaEvent;
+        setGraphDeltas((prev) => [data, ...prev].slice(0, 24));
+        setConnected(true);
+      } catch {
+        // ignore malformed graph delta events
+      }
+    });
+
     es.addEventListener("done", (e: MessageEvent) => {
       flushPreviewStreams();
       try {
@@ -207,5 +235,5 @@ export function useBuildEventStream({
     };
   }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush]);
 
-  return { snapshot, connected, previewStreams, buildEvents };
+  return { snapshot, connected, previewStreams, buildEvents, graphDeltas };
 }

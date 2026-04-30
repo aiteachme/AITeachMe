@@ -7,6 +7,8 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
+from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import persist_knowledge_graph_items
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncReport
 from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
@@ -75,6 +77,25 @@ def persist_node(state: DocsSyncState) -> DocsSyncState:
                 run_context=run_context,
                 payload=payload,
             )
+        publish_workflow_stream_event(
+            run_context.course_id,
+            "graph_delta",
+            {
+                "stage": "persist",
+                "build_revision_no": run_context.build_revision_no,
+                "unit_count": report.unit_change_count,
+                "edge_count": report.edge_change_count,
+                "created_unit_count": len(report.created_unit_ids),
+                "updated_unit_count": len(report.updated_unit_ids),
+                "deprecated_unit_count": report.deprecated_unit_count,
+                "created_edge_count": len(report.created_edge_ids),
+                "updated_edge_count": len(report.updated_edge_ids),
+                "deprecated_edge_count": report.deprecated_edge_count,
+                "graph_active_unit_count": report.graph_active_unit_count,
+                "graph_active_edge_count": report.graph_active_edge_count,
+                "emitted_at": utcnow().isoformat(),
+            },
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         return with_node_metrics(
             state,

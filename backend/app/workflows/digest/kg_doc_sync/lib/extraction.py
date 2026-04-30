@@ -46,7 +46,7 @@ logger = structlog.get_logger()
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 _MAX_SECTION_CANDIDATE_NODES = 8
-_MAX_SECTION_CANDIDATE_EDGES = 10
+_MAX_SECTION_CANDIDATE_EDGES = 12
 _MAX_CANDIDATE_NAME_CHARS = 90
 _MAX_CANDIDATE_SUMMARY_CHARS = 140
 _MAX_EDGE_DESCRIPTION_CHARS = 140
@@ -145,7 +145,7 @@ class ChunkExtractionResult(BaseModel):
     )
     edges: list[CandidateEdge] = Field(
         default_factory=list,
-        description="本片段最多 10 条高置信候选关系。",
+        description="本片段最多 12 条高置信候选关系。",
         json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_EDGES},
     )
 
