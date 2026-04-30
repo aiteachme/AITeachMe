@@ -4,7 +4,6 @@ import {
   Loader2,
   MessageSquareText,
   Plus,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
@@ -17,7 +16,7 @@ import type {
 } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
+import type { AiConversationScope } from "./types";
 import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
@@ -121,21 +120,6 @@ function getSessionKind(session: ChatSessionItem): ConversationKind {
   return getConversationKindBySource(session.source, hasSelectionTarget(session));
 }
 
-function getRequestKind(request: AiInteractionOpenRequest | null): ConversationKind {
-  return getConversationKindBySource(
-    request?.source,
-    Boolean(request?.anchorId?.trim() && request?.selectedText?.trim()),
-  );
-}
-
-function isPendingAnchoredRequest(request: AiInteractionOpenRequest | null): boolean {
-  return Boolean(
-    request?.sessionId === null &&
-    request.anchorId?.trim() &&
-    request.selectedText?.trim(),
-  );
-}
-
 function getSessionCourseId(session: ChatSessionItem): string {
   return session.course_id?.trim() || GLOBAL_COURSE_ID;
 }
@@ -228,8 +212,6 @@ export function AiConversationSidebarSection({
     activeScope,
     sidebarScope,
     fullscreenScope,
-    sidebarRequest,
-    fullscreenRequest,
     isSidebarOpen,
     activeConversationSessionId,
     sessionListVersion,
@@ -239,7 +221,6 @@ export function AiConversationSidebarSection({
   } = useAiInteraction();
   const location = useLocation();
   const isAssistantPage = location.pathname === "/assistant";
-  const currentRequest = isAssistantPage ? fullscreenRequest : sidebarRequest;
   const currentViewScope = isAssistantPage ? fullscreenScope ?? activeScope : sidebarScope ?? activeScope;
   const listScope = targetScope ?? currentViewScope ?? activeScope ?? DEFAULT_GLOBAL_SCOPE;
   const listScopeKey = getAiConversationScopeKey(listScope);
@@ -259,13 +240,6 @@ export function AiConversationSidebarSection({
   const shouldLoadSessions = isListExpanded || (isConversationViewActive && isActiveViewForListScope);
   const hasCurrentScopeSessions = sessionsScopeKey === listScopeKey;
   const isListLoading = isLoading || (shouldLoadSessions && !hasCurrentScopeSessions);
-  const hasActiveEmptyConversation =
-    isConversationViewActive &&
-    isActiveViewForListScope &&
-    activeConversationSessionId === null &&
-    !isPendingAnchoredRequest(currentRequest);
-  const activeEmptyKind = getRequestKind(currentRequest);
-  const activeEmptyStyle = CONVERSATION_KIND_STYLES[activeEmptyKind];
   const visibleSessions = useMemo(
     () => (hasCurrentScopeSessions ? sessions : []).slice(0, maxItems),
     [hasCurrentScopeSessions, maxItems, sessions],
@@ -561,34 +535,12 @@ export function AiConversationSidebarSection({
             </p>
           ) : null}
 
-          {hasActiveEmptyConversation ? (
-            <motion.button
-              type="button"
-              onClick={openNewConversation}
-              variants={conversationItemMotion}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              whileTap={{ scale: 0.985 }}
-              className={cn(
-                "group relative flex h-7 w-full items-center gap-1.5 overflow-hidden rounded-md px-2 text-left",
-                CONVERSATION_SELECTED_CLASS_NAME,
-              )}
-            >
-              <Sparkles className={cn("h-3.5 w-3.5 shrink-0", CONVERSATION_SELECTED_ICON_CLASS_NAME)} />
-              <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", activeEmptyStyle.badgeClassName)}>
-                {activeEmptyStyle.label}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">新会话</span>
-            </motion.button>
-          ) : null}
-
           {hasCurrentScopeSessions ? (
             <AnimatePresence initial={false}>
               {visibleSessions.map(renderSessionItem)}
             </AnimatePresence>
           ) : null}
-          {!isListLoading && !error && !hasActiveEmptyConversation && visibleSessions.length === 0 ? (
+          {!isListLoading && !error && visibleSessions.length === 0 ? (
             <p className="px-2 py-1 text-[11px] text-slate-300 dark:text-slate-600">{emptyText}</p>
           ) : null}
           </motion.div>
