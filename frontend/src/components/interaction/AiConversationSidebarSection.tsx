@@ -368,7 +368,9 @@ export function AiConversationSidebarSection({
       isActiveViewForListScope &&
       sessionId !== null &&
       activeConversationSessionId === sessionId;
-    const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
+    const kind = getSessionKind(session);
+    const kindStyle = CONVERSATION_KIND_STYLES[kind];
+    const shouldShowKindBadge = !(isGlobalListScope && kind === "general");
     const courseLabel = getSessionCourseLabel(session);
 
     return (
@@ -395,9 +397,11 @@ export function AiConversationSidebarSection({
           )}
           title={session.title || "未命名对话"}
         >
-          <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
-            {kindStyle.label}
-          </span>
+          {shouldShowKindBadge ? (
+            <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
+              {kindStyle.label}
+            </span>
+          ) : null}
           {showCourseBadge ? (
             <span
               className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
