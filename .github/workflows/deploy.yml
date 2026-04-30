@@ -30,6 +30,7 @@ jobs:
         id: guard
         env:
           EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
@@ -43,7 +44,19 @@ jobs:
             exit 0
           fi
 
-          latest_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main | awk '{print $1}')"
+          latest_sha="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
+              | jq -r '.object.sha'
+          )"
+          if [ -z "${latest_sha}" ] || [ "${latest_sha}" = "null" ]; then
+            echo "Could not resolve latest main SHA." >&2
+            exit 1
+          fi
+
           if [ "${SOURCE_SHA}" = "${latest_sha}" ]; then
             echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           else
