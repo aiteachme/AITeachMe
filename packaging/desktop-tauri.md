@@ -6,7 +6,15 @@ Tauri 作为可选桌面端包，通过统一入口显式启用：
 .\packaging\release.bat -IncludeTauri
 ```
 
-这会在默认 Electron local 之外，额外生成 Tauri local 安装包。Tauri local 会打包 Vite 前端、Tauri 壳，以及 PyInstaller 生成的本地后端 sidecar。
+这会在默认 Electron local 之外，额外生成 Tauri local 安装包。只需要 Tauri local 时使用：
+
+```powershell
+.\packaging\release.bat -TauriOnly
+```
+
+Tauri local 会打包 Vite 前端、Tauri 壳，以及 PyInstaller 生成的本地后端运行件。后端运行件会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\`，由 Tauri 主程序自动启动；默认启动时自动申请可用本地端口并注入前端，避免固定占用 `9020`。后端日志、本地数据和 PyInstaller onefile 临时解包目录写入 Tauri app data 目录下的 `backend-data`。
+
+NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` 标记为隐藏文件，普通文件夹视图里只保留用户启动的主程序 `.exe`。
 
 产物写入：
 
@@ -18,6 +26,12 @@ Tauri 作为可选桌面端包，通过统一入口显式启用：
 
 ```powershell
 .\packaging\release.bat -IncludeTauri -IncludeRemote -ApiUrl https://api.example.com
+```
+
+只需要 Tauri local 和 Tauri remote 时使用：
+
+```powershell
+.\packaging\release.bat -TauriOnly -IncludeRemote -ApiUrl https://api.example.com
 ```
 
 产物写入：

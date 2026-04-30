@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "AiTeachMe",
         "width": 1280,
         "height": 820,
@@ -38,7 +39,8 @@
     ],
     "windows": {
       "nsis": {
-        "installerIcon": "../../docs/brand/app-icon.ico"
+        "installerIcon": "../../docs/brand/app-icon.ico",
+        "installerHooks": "windows/nsis-hooks.nsh"
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

@@ -20,22 +20,29 @@
 # 额外构建 Tauri local
 .\packaging\release.bat -IncludeTauri
 
+# 只构建 Tauri local
+.\packaging\release.bat -TauriOnly
+
 # 额外构建 Electron remote
 .\packaging\release.bat -IncludeRemote -ApiUrl https://api.example.com
 
 # 同时额外构建 Tauri local、Electron remote、Tauri remote
 .\packaging\release.bat -IncludeTauri -IncludeRemote -ApiUrl https://api.example.com
+
+# 只构建 Tauri local 和 Tauri remote
+.\packaging\release.bat -TauriOnly -IncludeRemote -ApiUrl https://api.example.com
 ```
 
 可选参数：
 
 - `-IncludeTauri`：额外构建 Tauri 安装包。
+- `-TauriOnly`：只构建 Tauri 安装包，不生成默认 Electron 安装包。
 - `-IncludeRemote`：额外构建 remote 安装包。
 - `-ApiUrl <url>`：remote 包使用的后端地址，也可用环境变量 `AITEACHME_REMOTE_API_URL`。
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
-- `-BackendPort <port>`：本地后端端口，默认 `9020`。
+- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `9020`；Tauri local 启动时会自动申请可用本地端口。
 - `-SkipInstall`：跳过依赖安装步骤。
 
 ## 产物命名
@@ -54,6 +61,16 @@
 - `AiTeachMe-v<version>-installer-tauri-remote.exe`：Tauri remote。
 
 中间产物会保留在 `packaging\artifacts`。
+
+## Tauri local 的 exe 结构
+
+`-IncludeTauri` 表示“在默认 Electron local 之外额外生成 Tauri local”，所以会看到 Electron 和 Tauri 两个安装包；只需要 Tauri 时请用 `-TauriOnly`。
+
+Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller 生成的 FastAPI 后端运行件。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\` 下，由 Tauri 主程序自动启动，因此安装目录中不会额外出现后端 `.exe`。
+
+NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记为隐藏文件，避免普通文件夹视图里出现多个 `.exe`。不要删除它，否则系统卸载入口会失效。
+
+Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都写入 Tauri app data 目录下的 `backend-data`，不写入安装目录根部。
 
 ## 预绑定本地大模型配置
 

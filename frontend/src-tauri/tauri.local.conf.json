@@ -3,8 +3,8 @@
   "identifier": "com.aiteachme.desktop.local",
   "mainBinaryName": "aiteachme-local",
   "bundle": {
-    "externalBin": [
-      "binaries/aiteachme-backend"
-    ]
+    "resources": {
+      "resources/backend/aiteachme-backend.bin": "backend/aiteachme-backend.bin"
+    }
   }
 }

@@ -1,6 +1,5 @@
 param(
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020",
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
@@ -10,13 +9,14 @@ param(
 $repoRoot = Resolve-RepoRoot
 $backendDir = Join-Path $repoRoot "backend"
 $tauriBinariesDir = Join-Path $repoRoot "frontend\src-tauri\binaries"
+$tauriBackendResourcesDir = Join-Path $repoRoot "frontend\src-tauri\resources\backend"
 $python = Resolve-PythonCommand $repoRoot
 $targetTriple = Get-RustHostTriple
 
 Write-Host "Repo: $repoRoot"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "Tauri sidecar target: $targetTriple"
-Write-Host "Backend port: $BackendPort"
+Write-Host "Backend port: dynamic local loopback port (resolved at app startup)"
 
 . (Join-Path $PSScriptRoot "bundled-env-common.ps1")
 $bundledEnvConfigPath = Initialize-BundledEnvConfig `
@@ -46,9 +46,12 @@ New-Item -ItemType Directory -Path $tauriBinariesDir -Force | Out-Null
 Get-ChildItem -LiteralPath $tauriBinariesDir -File -Filter "aiteachme-backend-*" -ErrorAction SilentlyContinue |
     Remove-Item -Force
 
-$suffix = if ($targetTriple -match "windows") { ".exe" } else { "" }
-$targetExe = Join-Path $tauriBinariesDir "aiteachme-backend-$targetTriple$suffix"
-Copy-Item -LiteralPath $sourceExe -Destination $targetExe -Force
+New-Item -ItemType Directory -Path $tauriBackendResourcesDir -Force | Out-Null
+Get-ChildItem -LiteralPath $tauriBackendResourcesDir -File -Filter "aiteachme-backend.*" -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
+$targetBackend = Join-Path $tauriBackendResourcesDir "aiteachme-backend.bin"
+Copy-Item -LiteralPath $sourceExe -Destination $targetBackend -Force
 
 Write-Host ""
-Write-Host "Prepared Tauri backend sidecar: $targetExe" -ForegroundColor Green
+Write-Host "Prepared Tauri backend resource: $targetBackend" -ForegroundColor Green

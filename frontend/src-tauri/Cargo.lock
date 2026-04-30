@@ -23,7 +23,6 @@ version = "0.0.1"
 dependencies = [
  "tauri",
  "tauri-build",
- "tauri-plugin-shell",
 ]
 
 [[package]]

@@ -11,6 +11,21 @@ import traceback
 _log_stream = None
 
 
+def get_packaged_default_data_dir() -> Path | None:
+    """Return a user-writable data dir for packaged desktop backends."""
+
+    if not getattr(sys, "frozen", False):
+        return None
+
+    if os.name == "nt":
+        base_dir = os.environ.get("LOCALAPPDATA")
+        if base_dir:
+            return Path(base_dir) / "AiTeachMe" / "backend-data"
+        return Path.home() / "AppData" / "Local" / "AiTeachMe" / "backend-data"
+
+    return Path.home() / ".local" / "share" / "AiTeachMe" / "backend-data"
+
+
 def configure_desktop_environment() -> None:
     """Set safe local defaults before importing the FastAPI app."""
 
@@ -24,6 +39,11 @@ def configure_desktop_environment() -> None:
     )
 
     data_dir = os.environ.get("AITEACHME_DATA_DIR")
+    if not data_dir:
+        packaged_data_dir = get_packaged_default_data_dir()
+        if packaged_data_dir is not None:
+            os.environ["AITEACHME_DATA_DIR"] = str(packaged_data_dir)
+            data_dir = str(packaged_data_dir)
     if data_dir:
         Path(data_dir).expanduser().mkdir(parents=True, exist_ok=True)
 

@@ -15,4 +15,3 @@ tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 tauri = { version = "2.10.3", features = [] }
-tauri-plugin-shell = "2.3.5"

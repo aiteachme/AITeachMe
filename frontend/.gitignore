@@ -11,6 +11,8 @@ src-tauri/gen/
 src-tauri/binaries/*.exe
 src-tauri/binaries/*-pc-windows-msvc
 src-tauri/binaries/*-pc-windows-gnu
+src-tauri/resources/backend/aiteachme-backend.exe
+src-tauri/resources/backend/aiteachme-backend.bin
 desktop-release/
 desktop-release-electron/
 desktop-release-tauri/

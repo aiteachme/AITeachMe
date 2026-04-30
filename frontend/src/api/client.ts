@@ -1,18 +1,23 @@
 import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 
-const DEFAULT_LOCAL_DESKTOP_API_BASE_URL = "http://127.0.0.1:9020";
+const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:9020";
 
 function resolveDesktopApiBaseUrl(): string {
   if (typeof window === "undefined") {
     return "";
   }
 
+  const runtimeBase = (window.aiteachmeDesktop?.apiBaseUrl ?? "").trim();
+  if (runtimeBase) {
+    return runtimeBase;
+  }
+
   const buildTimeBase = (import.meta.env.VITE_API_URL ?? "").trim();
   if (window.location.protocol === "file:") {
-    return window.aiteachmeDesktop?.apiBaseUrl ?? (buildTimeBase || DEFAULT_LOCAL_DESKTOP_API_BASE_URL);
+    return buildTimeBase || DEFAULT_ELECTRON_LOCAL_API_BASE_URL;
   }
   if (!buildTimeBase && window.location.hostname === "tauri.localhost") {
-    return DEFAULT_LOCAL_DESKTOP_API_BASE_URL;
+    return "";
   }
 
   return "";

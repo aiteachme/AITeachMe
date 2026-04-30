@@ -209,7 +209,11 @@ function Copy-TauriArtifacts {
     }
 
     $artifacts = @(Get-ChildItem $bundleDir -Recurse -File |
-        Where-Object { $_.Extension -in @(".exe", ".msi", ".msix") } |
+        Where-Object {
+            $isNsisInstaller = $_.Extension -eq ".exe" -and $_.Directory.Name -eq "nsis"
+            $isMsiInstaller = $_.Extension -in @(".msi", ".msix")
+            $isNsisInstaller -or $isMsiInstaller
+        } |
         Sort-Object LastWriteTime -Descending)
 
     if ($artifacts.Count -eq 0) {

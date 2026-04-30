@@ -4,7 +4,6 @@ param(
     [string]$Flavor,
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020",
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled"
@@ -29,7 +28,7 @@ if ($Flavor -eq "remote") {
 
 Assert-RustToolchain
 
-$apiBaseUrl = if ($Flavor -eq "local") { "http://127.0.0.1:$BackendPort" } else { $ApiUrl.TrimEnd("/") }
+$apiBaseUrl = if ($Flavor -eq "local") { "" } else { $ApiUrl.TrimEnd("/") }
 $releaseSuffix = if ($Flavor -eq "local") {
     Get-AITeachMeInstallerReleaseSuffix `
         -Bundled:$ImportBundledEnv `
@@ -43,9 +42,11 @@ else {
 Write-Host "Repo: $repoRoot"
 Write-Host "Flavor: tauri-$Flavor"
 Write-Host "npm: $npm"
-Write-Host "API base URL: $apiBaseUrl"
 if ($Flavor -eq "local") {
-    Write-Host "Backend port: $BackendPort"
+    Write-Host "API base URL: dynamic local loopback port (resolved at app startup)"
+}
+else {
+    Write-Host "API base URL: $apiBaseUrl"
 }
 if ($releaseSuffix) {
     Write-Host "Release suffix: $releaseSuffix"
@@ -67,9 +68,7 @@ if ($Flavor -eq "local") {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        (Join-Path $repoRoot "packaging\scripts\prepare-tauri-sidecar.ps1"),
-        "-BackendPort",
-        $BackendPort
+        (Join-Path $repoRoot "packaging\scripts\prepare-tauri-sidecar.ps1")
     )
     if ($SkipInstall) {
         $prepareArgs += "-SkipInstall"
@@ -81,13 +80,9 @@ if ($Flavor -eq "local") {
 }
 
 $previousViteApiUrl = [Environment]::GetEnvironmentVariable("VITE_API_URL", "Process")
-$previousTauriBackendPort = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_BACKEND_PORT", "Process")
 
 try {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $apiBaseUrl, "Process")
-    if ($Flavor -eq "local") {
-        [Environment]::SetEnvironmentVariable("AITEACHME_TAURI_BACKEND_PORT", $BackendPort, "Process")
-    }
 
     Write-Host ""
     Write-Host "==== Generate frontend API client ====" -ForegroundColor Cyan
@@ -98,7 +93,6 @@ try {
 }
 finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
-    [Environment]::SetEnvironmentVariable("AITEACHME_TAURI_BACKEND_PORT", $previousTauriBackendPort, "Process")
 }
 
 Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix
