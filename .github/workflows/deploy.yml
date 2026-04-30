@@ -315,6 +315,17 @@ jobs:
             | grep -E "^LAST SEEN|${SEALOS_FRONTEND_DEPLOYMENT}" \
             | tail -n 80 || true
 
+          echo
+          echo "## Frontend pod logs"
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods -o name | grep -E "pod/${SEALOS_FRONTEND_DEPLOYMENT}-" || true); do
+            echo
+            echo "### ${pod} current logs"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=160 || true
+            echo
+            echo "### ${pod} previous logs"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=160 || true
+          done
+
       - name: Smoke test Sealos frontend
         if: steps.optin.outputs.enabled == 'true' && env.FRONTEND_PUBLIC_URL != ''
         shell: bash
