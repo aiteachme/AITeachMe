@@ -18,18 +18,33 @@ import type {
 import { cn } from "../../lib/utils";
 import { useAiInteraction } from "./AiInteractionProvider";
 import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
-import { AI_SOURCE_DOCUMENT_SELECTION, AI_SOURCE_EXAM_QUESTION } from "./types";
+import {
+  AI_SOURCE_DOCUMENT_SELECTION,
+  AI_SOURCE_EXAM_QUESTION,
+  getAiConversationScopeKey,
+} from "./types";
 
 interface AiConversationSidebarSectionProps {
   collapsed: boolean;
   onExpandSidebar: () => void;
   onNavigate?: () => void;
+  targetScope?: AiConversationScope;
+  title?: string;
+  storageKey?: string;
+  initialExpanded?: boolean;
+  showTopBorder?: boolean;
+  showCourseBadge?: boolean;
+  maxItems?: number;
+  emptyText?: string;
+  className?: string;
+  hideHeader?: boolean;
 }
 
 type ConversationKind = "document" | "question" | "builder" | "general";
 
 const GLOBAL_COURSE_ID = "global";
 const RECENT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.aiConversations.recentExpanded";
+const DEFAULT_GLOBAL_SCOPE: AiConversationScope = { type: "global" };
 
 const conversationListMotion: Variants = {
   visible: {
@@ -153,32 +168,61 @@ function getSessionDeleteUrl(session: ChatSessionItem): string {
     : `/api/v1/courses/${courseId}/chats/sessions/delete`;
 }
 
-function readRecentSectionExpanded(): boolean {
+function readSectionExpanded(storageKey: string, defaultValue: boolean): boolean {
   if (typeof window === "undefined") {
-    return false;
+    return defaultValue;
   }
   try {
-    return window.localStorage.getItem(RECENT_SECTION_EXPANDED_STORAGE_KEY) === "true";
+    const value = window.localStorage.getItem(storageKey);
+    return value === null ? defaultValue : value === "true";
   } catch {
-    return false;
+    return defaultValue;
   }
 }
 
-function writeRecentSectionExpanded(value: boolean) {
+function writeSectionExpanded(storageKey: string, value: boolean) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    window.localStorage.setItem(RECENT_SECTION_EXPANDED_STORAGE_KEY, value ? "true" : "false");
+    window.localStorage.setItem(storageKey, value ? "true" : "false");
   } catch {
     // Storage can be unavailable in restricted webviews; the in-memory state still works.
   }
+}
+
+function getSessionListRequest(scope: AiConversationScope, size: number) {
+  if (scope.type === "global") {
+    return {
+      url: "/api/v1/chats/sessions/list",
+      data: { page: 1, size, include_all_courses: false },
+    };
+  }
+
+  return {
+    url: `/api/v1/courses/${scope.courseId}/chats/sessions/list`,
+    data: { page: 1, size },
+  };
+}
+
+function getNewConversationLabel(scope: AiConversationScope): string {
+  return scope.type === "global" ? "新建全局对话" : "新建课程对话";
 }
 
 export function AiConversationSidebarSection({
   collapsed,
   onExpandSidebar,
   onNavigate,
+  targetScope,
+  title = "最近",
+  storageKey = RECENT_SECTION_EXPANDED_STORAGE_KEY,
+  initialExpanded = false,
+  showTopBorder = true,
+  showCourseBadge = true,
+  maxItems = 30,
+  emptyText = "暂无对话",
+  className,
+  hideHeader = false,
 }: AiConversationSidebarSectionProps) {
   const {
     activeScope,
@@ -196,36 +240,46 @@ export function AiConversationSidebarSection({
   const location = useLocation();
   const isAssistantPage = location.pathname === "/assistant";
   const currentRequest = isAssistantPage ? fullscreenRequest : sidebarRequest;
-  const scope = isAssistantPage ? fullscreenScope ?? activeScope : sidebarScope ?? activeScope;
-  const newConversationScope = activeScope ?? scope ?? { type: "global" as const };
-  const [isExpanded, setIsExpanded] = useState(readRecentSectionExpanded);
+  const currentViewScope = isAssistantPage ? fullscreenScope ?? activeScope : sidebarScope ?? activeScope;
+  const listScope = targetScope ?? currentViewScope ?? activeScope ?? DEFAULT_GLOBAL_SCOPE;
+  const listScopeKey = getAiConversationScopeKey(listScope);
+  const currentViewScopeKey = getAiConversationScopeKey(currentViewScope);
+  const newConversationScope = listScope;
+  const newConversationLabel = getNewConversationLabel(listScope);
+  const isGlobalListScope = listScope.type === "global";
+  const isActiveViewForListScope = currentViewScopeKey === listScopeKey;
+  const [isExpanded, setIsExpanded] = useState(() => readSectionExpanded(storageKey, initialExpanded));
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isConversationViewActive = isAssistantPage || isSidebarOpen;
-  const shouldLoadSessions = isExpanded || isConversationViewActive;
+  const isListExpanded = hideHeader || isExpanded;
+  const shouldLoadSessions = isListExpanded || (isConversationViewActive && isActiveViewForListScope);
   const hasActiveEmptyConversation =
-    isConversationViewActive && activeConversationSessionId === null && !isPendingAnchoredRequest(currentRequest);
+    isConversationViewActive &&
+    isActiveViewForListScope &&
+    activeConversationSessionId === null &&
+    !isPendingAnchoredRequest(currentRequest);
   const activeEmptyKind = getRequestKind(currentRequest);
   const activeEmptyStyle = CONVERSATION_KIND_STYLES[activeEmptyKind];
-  const visibleSessions = useMemo(() => sessions.slice(0, 30), [sessions]);
+  const visibleSessions = useMemo(() => sessions.slice(0, maxItems), [maxItems, sessions]);
   const updateExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
     setIsExpanded((current) => {
       const value = typeof next === "function" ? next(current) : next;
-      writeRecentSectionExpanded(value);
+      writeSectionExpanded(storageKey, value);
       return value;
     });
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
-    if (isSidebarOpen) {
+    if (isSidebarOpen && isActiveViewForListScope) {
       updateExpanded(true);
       if (collapsed) {
         onExpandSidebar();
       }
     }
-  }, [collapsed, isSidebarOpen, onExpandSidebar, updateExpanded]);
+  }, [collapsed, isActiveViewForListScope, isSidebarOpen, onExpandSidebar, updateExpanded]);
 
   useEffect(() => {
     if (!shouldLoadSessions) {
@@ -237,15 +291,19 @@ export function AiConversationSidebarSection({
       setIsLoading(true);
       setError(null);
       try {
+        const request = getSessionListRequest(listScope, maxItems);
         const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
           method: "POST",
-          url: "/api/v1/chats/sessions/list",
-          data: { page: 1, size: 30, include_all_courses: true },
+          url: request.url,
+          data: request.data,
         });
         if (cancelled) {
           return;
         }
-        setSessions(res.data?.items ?? []);
+        const items = res.data?.items ?? [];
+        setSessions(isGlobalListScope
+          ? items.filter((item) => getSessionCourseId(item) === GLOBAL_COURSE_ID)
+          : items);
       } catch (requestError: unknown) {
         if (!cancelled) {
           setError(getApiErrorMessage(requestError, "加载对话失败"));
@@ -261,7 +319,7 @@ export function AiConversationSidebarSection({
     return () => {
       cancelled = true;
     };
-  }, [sessionListVersion, shouldLoadSessions]);
+  }, [isGlobalListScope, listScope, listScopeKey, maxItems, sessionListVersion, shouldLoadSessions]);
 
   const openNewConversation = useCallback(() => {
     updateExpanded(true);
@@ -335,7 +393,11 @@ export function AiConversationSidebarSection({
         ) : null}
         {visibleSessions.map((session) => {
           const sessionId = getSessionId(session);
-          const isSelected = isConversationViewActive && sessionId !== null && activeConversationSessionId === sessionId;
+          const isSelected =
+            isConversationViewActive &&
+            isActiveViewForListScope &&
+            sessionId !== null &&
+            activeConversationSessionId === sessionId;
           const courseLabel = getSessionCourseLabel(session);
           return (
             <button
@@ -349,7 +411,7 @@ export function AiConversationSidebarSection({
                   ? CONVERSATION_SELECTED_CLASS_NAME
                   : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
               )}
-              title={`${courseLabel} - ${session.title || "未命名对话"}`}
+              title={showCourseBadge ? `${courseLabel} - ${session.title || "未命名对话"}` : session.title || "未命名对话"}
               aria-label={`打开对话：${session.title || "未命名对话"}`}
             >
               <MessageSquareText
@@ -367,36 +429,47 @@ export function AiConversationSidebarSection({
   }
 
   return (
-    <section className="mt-3 border-t border-slate-200/70 pt-2 dark:border-slate-800/70">
-      <div className="flex h-7 items-center gap-1">
-        <button
-          type="button"
-          onClick={() => updateExpanded((value) => !value)}
-          className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
-          aria-expanded={isExpanded}
-        >
-          <span className="truncate">最近</span>
-          <ChevronRight
-            className={cn(
-              "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
-              isExpanded && "rotate-90",
-            )}
-          />
-          {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
-        </button>
-        <button
-          type="button"
-          onClick={openNewConversation}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
-          aria-label="新建 AI 对话"
-          title="新建 AI 对话"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      </div>
+    <section
+      className={cn(
+        showTopBorder
+          ? "mt-3 border-t border-slate-200/70 pt-2 dark:border-slate-800/70"
+          : hideHeader
+            ? ""
+            : "mt-1",
+        className,
+      )}
+    >
+      {!hideHeader ? (
+        <div className="flex h-7 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => updateExpanded((value) => !value)}
+            className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
+            aria-expanded={isExpanded}
+          >
+            <span className="truncate">{title}</span>
+            <ChevronRight
+              className={cn(
+                "h-3 w-3 shrink-0 opacity-0 transition-[opacity,transform] group-hover:opacity-100 group-focus-visible:opacity-100",
+                isExpanded && "rotate-90",
+              )}
+            />
+            {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
+          </button>
+          <button
+            type="button"
+            onClick={openNewConversation}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
+            aria-label={newConversationLabel}
+            title={newConversationLabel}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       <AnimatePresence initial={false}>
-        {isExpanded ? (
+        {isListExpanded ? (
           <motion.div
             key="conversation-list"
             variants={conversationListMotion}
@@ -437,7 +510,11 @@ export function AiConversationSidebarSection({
           <AnimatePresence initial={false}>
             {visibleSessions.map((session) => {
               const sessionId = getSessionId(session);
-              const isSelected = isConversationViewActive && sessionId !== null && activeConversationSessionId === sessionId;
+              const isSelected =
+                isConversationViewActive &&
+                isActiveViewForListScope &&
+                sessionId !== null &&
+                activeConversationSessionId === sessionId;
               const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
               const courseLabel = getSessionCourseLabel(session);
               return (
@@ -467,12 +544,14 @@ export function AiConversationSidebarSection({
                   <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
                     {kindStyle.label}
                   </span>
-                  <span
-                    className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
-                    title={courseLabel}
-                  >
-                    {courseLabel}
-                  </span>
+                  {showCourseBadge ? (
+                    <span
+                      className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                      title={courseLabel}
+                    >
+                      {courseLabel}
+                    </span>
+                  ) : null}
                   <span className="min-w-0 flex-1 truncate text-xs leading-7">
                     {session.title || "未命名对话"}
                   </span>
@@ -497,6 +576,9 @@ export function AiConversationSidebarSection({
               );
             })}
           </AnimatePresence>
+          {!isLoading && !error && !hasActiveEmptyConversation && visibleSessions.length === 0 ? (
+            <p className="px-2 py-1 text-[11px] text-slate-300 dark:text-slate-600">{emptyText}</p>
+          ) : null}
           </motion.div>
         ) : null}
       </AnimatePresence>

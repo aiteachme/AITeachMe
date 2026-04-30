@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
+import { BookOpen, FileText, MessageSquareText, Plus, Sparkles } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import type {
@@ -42,6 +43,7 @@ interface AiConversationViewProps {
 }
 
 type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
+type ConversationHistoryKind = "general" | "document" | "question" | "builder";
 
 interface QuickChatInputContext {
   source: string;
@@ -60,6 +62,33 @@ interface PendingAutoSendRequest {
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
+const HISTORY_KIND_ORDER: ConversationHistoryKind[] = ["general", "document", "question", "builder"];
+const HISTORY_KIND_META: Record<ConversationHistoryKind, {
+  label: string;
+  icon: typeof MessageSquareText;
+  badgeClassName: string;
+}> = {
+  general: {
+    label: "普通对话",
+    icon: MessageSquareText,
+    badgeClassName: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
+  },
+  document: {
+    label: "文档片段",
+    icon: BookOpen,
+    badgeClassName: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+  },
+  question: {
+    label: "题目对话",
+    icon: FileText,
+    badgeClassName: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
+  },
+  builder: {
+    label: "构建对话",
+    icon: Sparkles,
+    badgeClassName: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
+  },
+};
 
 function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext | null {
   const source = input.source?.trim() ?? "";
@@ -123,6 +152,38 @@ function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSession
     anchorId,
     selectedText,
   };
+}
+
+function hasAnchoredTarget(session: ChatSessionItem): boolean {
+  return Boolean(session.anchor_id?.trim() && session.selected_text?.trim());
+}
+
+function getHistoryKind(session: ChatSessionItem): ConversationHistoryKind {
+  const source = session.source?.trim() ?? "";
+  if (source === AI_SOURCE_EXAM_QUESTION) {
+    return "question";
+  }
+  if (source === AI_SOURCE_DOCUMENT_SELECTION || hasAnchoredTarget(session)) {
+    return "document";
+  }
+  if (source === "build_planner" || source.includes("build")) {
+    return "builder";
+  }
+  return "general";
+}
+
+function formatSessionDate(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
 }
 
 function getChatSessionItemId(session: ChatSessionItem | null): string | null {
@@ -481,6 +542,15 @@ export const AiConversationView = memo(function AiConversationView({
     () => getSessionSelectionTarget(selectedSession) ?? getContextSelectionTarget(activeQuickChatContext),
     [activeQuickChatContext, selectedSession],
   );
+  const historyGroups = useMemo(() =>
+    HISTORY_KIND_ORDER
+      .map((kind) => ({
+        kind,
+        sessions: sessions.filter((session) => getHistoryKind(session) === kind),
+      }))
+      .filter((group) => group.sessions.length > 0),
+  [sessions]);
+  const historyTitle = scope?.type === "course" ? "课程历史" : "全局历史";
 
   useEffect(() => {
     if (presentation !== "sidebar") {
@@ -911,6 +981,22 @@ export const AiConversationView = memo(function AiConversationView({
     setActiveConversationSessionId(null);
   }, [replaceMessages, setActiveConversationSessionId]);
 
+  const handleSelectHistorySession = useCallback((session: ChatSessionItem) => {
+    const nextSessionId = getChatSessionItemId(session);
+    if (!nextSessionId || isStreaming) {
+      return;
+    }
+    preferEmptySessionRef.current = false;
+    pendingSelectionSubmittedRef.current = false;
+    pendingSelectionContextRef.current = null;
+    requestedSessionIdRef.current = nextSessionId;
+    setDraft("");
+    setPendingSelectionContext(null);
+    setActiveQuickChatContext(null);
+    setSelectedSessionId(nextSessionId);
+    setActiveConversationSessionId(nextSessionId);
+  }, [isStreaming, setActiveConversationSessionId]);
+
   const sendAutoRequest = useCallback(async (autoRequest: PendingAutoSendRequest) => {
     if (!courseId || isStreaming || isPlannerConversation) {
       return;
@@ -1020,54 +1106,146 @@ export const AiConversationView = memo(function AiConversationView({
   return (
     <div
       className={cn(
-        "relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen ? "bg-transparent" : "bg-white dark:bg-slate-950",
-        isFullscreen && "border border-zinc-200/80 shadow-sm dark:border-slate-800",
+        "relative flex h-full min-h-0 w-full overflow-hidden",
+        isFullscreen
+          ? "border border-zinc-200/80 bg-white/85 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+          : "bg-white dark:bg-slate-950",
         className,
       )}
     >
-      <AiConversationHeader
-        title={panelTitle}
-        selectionTarget={currentSelectionTarget}
-        onClose={onClose}
-        onStartNewSession={handleStartNewSession}
-        onClearCurrentSession={() => void handleClearCurrentSession()}
-        onJumpToSelectionTarget={jumpToSelectionTarget}
-        isStreaming={isStreaming}
-        selectedSessionId={selectedSessionId}
-      />
+      {isFullscreen ? (
+        <aside className="hidden w-[280px] shrink-0 flex-col border-r border-zinc-200/70 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/35 lg:flex">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">历史对话</p>
+              <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{historyTitle}</h2>
+            </div>
+            <button
+              type="button"
+              onClick={handleStartNewSession}
+              disabled={isStreaming}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              aria-label="新建会话"
+              title="新建会话"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
 
-      {historyError || sessionsError ? (
-        <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-          {historyError ?? sessionsError}
-        </div>
+          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-webkit">
+            {sessionsError ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] leading-4 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                {sessionsError}
+              </p>
+            ) : null}
+
+            {!sessionsError && sessions.length === 0 ? (
+              <p className="rounded-md px-2 py-3 text-[12px] leading-5 text-slate-400 dark:text-slate-500">
+                暂无历史对话
+              </p>
+            ) : null}
+
+            {historyGroups.map((group) => {
+              const meta = HISTORY_KIND_META[group.kind];
+              const Icon = meta.icon;
+              return (
+                <section key={group.kind} className="space-y-1">
+                  <div className="flex h-5 items-center gap-1 px-1 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                    <Icon className="h-3 w-3" />
+                    <span>{meta.label}</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {group.sessions.map((session) => {
+                      const sessionId = getChatSessionItemId(session);
+                      const isSelected = Boolean(sessionId && sessionId === selectedSessionId);
+                      const sessionDate = formatSessionDate(session.last_message_at || session.updated_at);
+                      const previewText = session.selected_text?.trim();
+                      return (
+                        <button
+                          key={sessionId ?? `${session.title}-${session.last_message_at}`}
+                          type="button"
+                          onClick={() => handleSelectHistorySession(session)}
+                          disabled={!sessionId || isStreaming}
+                          className={cn(
+                            "group flex w-full flex-col rounded-md px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:bg-[#edf3f8] focus-visible:text-[#243246] disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:bg-slate-800 dark:focus-visible:text-slate-200",
+                            isSelected
+                              ? "bg-[#edf3f8] text-[#243246] dark:bg-slate-800 dark:text-slate-100"
+                              : "text-slate-600 hover:bg-white hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100",
+                          )}
+                          title={session.title || "未命名对话"}
+                        >
+                          <span className="flex w-full min-w-0 items-center gap-1.5">
+                            <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", meta.badgeClassName)}>
+                              {meta.label.slice(0, 2)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                              {session.title || "未命名对话"}
+                            </span>
+                          </span>
+                          {previewText ? (
+                            <span className="mt-0.5 line-clamp-1 text-[11px] text-slate-400 dark:text-slate-500">
+                              {previewText}
+                            </span>
+                          ) : null}
+                          <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-300 dark:text-slate-600">
+                            {sessionDate ? <span>{sessionDate}</span> : null}
+                            <span>{session.message_count} 条消息</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </aside>
       ) : null}
 
-      <AiConversationMessageView
-        scrollRef={messageScrollRef}
-        onScroll={handleMessageScroll}
-        messages={visibleMessages}
-        selectedSessionId={selectedSessionId}
-        historyLoaded={currentHistoryLoaded}
-        isStreaming={isStreaming}
-        emptyAnimationKey={emptyAnimationKey}
-        onOpenCitation={handleOpenCitation}
-      />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <AiConversationHeader
+          title={panelTitle}
+          selectionTarget={currentSelectionTarget}
+          onClose={onClose}
+          onStartNewSession={handleStartNewSession}
+          onClearCurrentSession={() => void handleClearCurrentSession()}
+          onJumpToSelectionTarget={jumpToSelectionTarget}
+          isStreaming={isStreaming}
+          selectedSessionId={selectedSessionId}
+        />
 
-      <AiConversationComposerDock
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={() => void handleSend()}
-        onAbort={abortStream}
-        isStreaming={isStreaming}
-        disabled={!courseId || isPlannerConversation}
-        autoFocusKey={composerFocusKey}
-        modelValue={chatModel}
-        onModelChange={setChatModel}
-        isPlannerConversation={isPlannerConversation}
-        pendingSelectionContext={pendingSelectionContext}
-        onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-      />
+        {historyError || sessionsError ? (
+          <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+            {historyError ?? sessionsError}
+          </div>
+        ) : null}
+
+        <AiConversationMessageView
+          scrollRef={messageScrollRef}
+          onScroll={handleMessageScroll}
+          messages={visibleMessages}
+          selectedSessionId={selectedSessionId}
+          historyLoaded={currentHistoryLoaded}
+          isStreaming={isStreaming}
+          emptyAnimationKey={emptyAnimationKey}
+          onOpenCitation={handleOpenCitation}
+        />
+
+        <AiConversationComposerDock
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => void handleSend()}
+          onAbort={abortStream}
+          isStreaming={isStreaming}
+          disabled={!courseId || isPlannerConversation}
+          autoFocusKey={composerFocusKey}
+          modelValue={chatModel}
+          onModelChange={setChatModel}
+          isPlannerConversation={isPlannerConversation}
+          pendingSelectionContext={pendingSelectionContext}
+          onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+        />
+      </div>
 
       <ChatCitationModal
         open={selectedChunkId !== null}
