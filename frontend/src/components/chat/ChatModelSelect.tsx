@@ -64,9 +64,10 @@ export function ChatModelSelect({
     <div
       title={`选择本轮模型：${meta.title}`}
       className={cn(
-        "group relative inline-flex h-9 max-w-[168px] shrink-0 items-center gap-1.5 overflow-hidden rounded-full px-3 text-[13px] font-medium transition-all",
-        "bg-zinc-50/95 text-zinc-500 shadow-sm hover:bg-zinc-100 hover:text-zinc-700",
-        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
+        "group relative inline-flex h-9 min-w-[132px] max-w-[176px] shrink-0 items-center gap-1.5 overflow-hidden rounded-full border px-3 text-[13px] font-medium transition-all",
+        "border-zinc-200/70 bg-gradient-to-b from-white to-zinc-50/95 text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_8px_20px_-18px_rgba(24,24,27,0.5)]",
+        "hover:border-zinc-300/80 hover:from-white hover:to-zinc-100 hover:text-zinc-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_10px_22px_-18px_rgba(24,24,27,0.6)]",
+        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:border-slate-700/70 dark:from-slate-800 dark:to-slate-900/90 dark:text-slate-300 dark:shadow-none dark:hover:border-slate-600 dark:hover:from-slate-800 dark:hover:to-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
         disabled && "opacity-55",
         className,
       )}
