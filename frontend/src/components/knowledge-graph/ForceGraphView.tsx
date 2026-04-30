@@ -90,6 +90,17 @@ function relationLabel(edgeType: string): string {
   return RELATION_LABELS[edgeType] ?? edgeType.replace(/_/g, " ");
 }
 
+function deterministicEdgeBend(edge: Pick<GraphEdgeResponse, "id" | "source_node_id" | "target_node_id" | "edge_type">): number {
+  const seed = `${edge.id}:${edge.source_node_id}:${edge.target_node_id}:${edge.edge_type}`;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = Math.imul(31, hash) + seed.charCodeAt(index);
+  }
+  const sign = hash % 2 === 0 ? 1 : -1;
+  const magnitude = 0.22 + (Math.abs(hash) % 4) * 0.035;
+  return sign * magnitude;
+}
+
 function isLiveBuildLane(lane: KnowledgeBuildLaneRuntime | null | undefined): boolean {
   const status = String(lane?.status || "").toLowerCase();
   return status === "accepted" || status === "running";
@@ -766,6 +777,7 @@ export function ForceGraphView({
         pairIndexes.set(pairKey, pairIndex + 1);
         const centeredIndex = pairIndex - (pairTotal - 1) / 2;
         const direction = Number(e.source_node_id) > Number(e.target_node_id) ? -1 : 1;
+        const baseBend = deterministicEdgeBend(e);
         return {
           id: e.id,
           source: e.source_node_id,
@@ -777,7 +789,9 @@ export function ForceGraphView({
           target_node_id: e.target_node_id,
           pair_index: pairIndex,
           pair_total: pairTotal,
-          curvature: pairTotal > 1 ? centeredIndex * 0.28 * direction : 0,
+          curvature: pairTotal > 1
+            ? (centeredIndex * 0.34 + baseBend * 0.35) * direction
+            : baseBend * direction,
         };
       });
     const degreeByNodeId = new Map<number, number>();
@@ -880,9 +894,9 @@ export function ForceGraphView({
       const rank = node.component_rank;
       const angle = (rank - 1) * 2.399963229728653;
       const spread = Math.min(width, height);
-      const ring = Math.min(spread * 0.5, spread * (0.24 + 0.075 * Math.sqrt(rank)));
-      const aspectX = width > height ? 1.42 : 1.08;
-      const aspectY = height > width ? 1.24 : 0.9;
+      const ring = Math.min(spread * 0.64, spread * (0.32 + 0.098 * Math.sqrt(rank)));
+      const aspectX = width > height ? 1.58 : 1.16;
+      const aspectY = height > width ? 1.34 : 1.02;
       return {
         x: width / 2 + Math.cos(angle) * ring * aspectX,
         y: height / 2 + Math.sin(angle) * ring * aspectY,
@@ -900,7 +914,7 @@ export function ForceGraphView({
       if (saved) return { ...node, x: saved.x, y: saved.y, fx: saved.fx ?? undefined, fy: saved.fy ?? undefined };
       const center = componentCenter(node);
       const angle = index * 2.399963229728653;
-      const radius = 36 + (index % 9) * 9;
+      const radius = 56 + (index % 11) * 13;
       return {
         ...node,
         x: center.x + Math.cos(angle) * radius,
@@ -1211,32 +1225,32 @@ export function ForceGraphView({
         const targetDegree = typeof d.target === "object" ? d.target.degree : 1;
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        const base = sourceIsCore && targetIsCore ? 170 : sourceIsCore || targetIsCore ? 154 : 192;
-        return Math.max(132, base + Math.max(0, d.pair_total - 1) * 42 - Math.min(sourceDegree + targetDegree, 10));
+        const base = sourceIsCore && targetIsCore ? 226 : sourceIsCore || targetIsCore ? 212 : 252;
+        return Math.max(176, base + Math.max(0, d.pair_total - 1) * 52 - Math.min(sourceDegree + targetDegree, 10) * 1.2);
       }).strength((d) => {
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        return sourceIsCore || targetIsCore ? 0.3 : 0.2;
+        return sourceIsCore || targetIsCore ? 0.24 : 0.16;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -420 - Math.min(d.degree, 9) * 46 : -260 - Math.min(d.degree, 7) * 34
+        isAssessmentCoreNode(d) ? -660 - Math.min(d.degree, 9) * 62 : -420 - Math.min(d.degree, 7) * 46
       )))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 38 : isAssessmentCoreNode(d) ? 32 : 26)))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 54 : isAssessmentCoreNode(d) ? 46 : 36)).iterations(2))
       .force("radial", d3.forceRadial<GraphNode>(
         (d) => {
-          if (d.component_size <= 2) return Math.min(width, height) * 0.12;
-          return isAssessmentCoreNode(d) ? Math.min(width, height) * 0.23 : Math.min(width, height) * 0.38;
+          if (d.component_size <= 2) return Math.min(width, height) * 0.18;
+          return isAssessmentCoreNode(d) ? Math.min(width, height) * 0.3 : Math.min(width, height) * 0.5;
         },
         width / 2,
         height / 2,
-      ).strength((d) => (d.component_size <= 2 ? 0.012 : isAssessmentCoreNode(d) ? 0.028 : 0.014)))
-      .force("componentX", d3.forceX<GraphNode>((d) => componentCenter(d).x).strength((d) => (d.component_size <= 2 ? 0.1 : 0.034)))
-      .force("componentY", d3.forceY<GraphNode>((d) => componentCenter(d).y).strength((d) => (d.component_size <= 2 ? 0.1 : 0.034)))
-      .force("x", d3.forceX(width / 2).strength(0.0035))
-      .force("y", d3.forceY(height / 2).strength(0.0035))
-      .alphaDecay(0.06)
-      .velocityDecay(0.58);
+      ).strength((d) => (d.component_size <= 2 ? 0.01 : isAssessmentCoreNode(d) ? 0.022 : 0.01)))
+      .force("componentX", d3.forceX<GraphNode>((d) => componentCenter(d).x).strength((d) => (d.component_size <= 2 ? 0.08 : 0.026)))
+      .force("componentY", d3.forceY<GraphNode>((d) => componentCenter(d).y).strength((d) => (d.component_size <= 2 ? 0.08 : 0.026)))
+      .force("x", d3.forceX(width / 2).strength(0.0024))
+      .force("y", d3.forceY(height / 2).strength(0.0024))
+      .alphaDecay(0.048)
+      .velocityDecay(0.54);
     simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 ? 0.2 : 0.035) : 1);
 
     simulationRef.current = simulation;
@@ -1254,25 +1268,25 @@ export function ForceGraphView({
       const sy = d.source.y;
       const tx = d.target.x;
       const ty = d.target.y;
-      if (!d.curvature) return `M${sx},${sy} L${tx},${ty}`;
       const dx = tx - sx;
       const dy = ty - sy;
       const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const curve = Math.min(70, Math.max(24, distance * 0.22)) * d.curvature;
-      const mx = (sx + tx) / 2 - (dy / distance) * curve;
-      const my = (sy + ty) / 2 + (dx / distance) * curve;
-      return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
+      const curve = Math.min(110, Math.max(32, distance * 0.26)) * d.curvature;
+      const c1x = sx + dx * 0.34 - (dy / distance) * curve;
+      const c1y = sy + dy * 0.34 + (dx / distance) * curve;
+      const c2x = sx + dx * 0.66 - (dy / distance) * curve;
+      const c2y = sy + dy * 0.66 + (dx / distance) * curve;
+      return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
     };
     const linkMidpoint = (d: any) => {
       const sx = d.source.x;
       const sy = d.source.y;
       const tx = d.target.x;
       const ty = d.target.y;
-      if (!d.curvature) return { x: (sx + tx) / 2, y: (sy + ty) / 2 };
       const dx = tx - sx;
       const dy = ty - sy;
       const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const curve = Math.min(70, Math.max(24, distance * 0.22)) * d.curvature;
+      const curve = Math.min(110, Math.max(32, distance * 0.26)) * d.curvature;
       const cx = (sx + tx) / 2 - (dy / distance) * curve;
       const cy = (sy + ty) / 2 + (dx / distance) * curve;
       return {
@@ -1322,7 +1336,7 @@ export function ForceGraphView({
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
       const yExtent = d3.extent(simNodes, (d) => d.y) as [number, number];
       if (xExtent[0] == null) return;
-      const pad = 150;
+      const pad = 220;
       const gw = xExtent[1] - xExtent[0] + pad * 2;
       const gh = yExtent[1] - yExtent[0] + pad * 2;
       const scale = Math.min(width / gw, height / gh, 1.5);
