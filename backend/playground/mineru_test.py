@@ -5,8 +5,11 @@ import time
 # ==========================================
 # 1. 配置区域
 # ==========================================
-# 您的真实 API Token
-API_TOKEN = "eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI3ODgwMDcxMSIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc3NTIzODkyOSwiY2xpZW50SWQiOiJsa3pkeDU3bnZ5MjJqa3BxOXgydyIsInBob25lIjoiMTg4NjMyMTE3OTEiLCJvcGVuSWQiOm51bGwsInV1aWQiOiI0YjhjYTA3OC0wNzIzLTRhZjMtOTkxNC1jZWIxM2RhNjVmNWUiLCJlbWFpbCI6IiIsImV4cCI6MTc4MzAxNDkyOX0.NwZss1F6SAjo25tmyQw-wyJHbIPglcR25eN-jIxqlyBvjk4sXFESTtNsGJ1TnTd-yHEpghuo4ly4a4ed5xqehg" 
+# 通过环境变量传入 API Token，例如：export MINERU_API_TOKEN=<your token>
+API_TOKEN = os.getenv("MINERU_API_TOKEN", "").strip()
+
+if not API_TOKEN:
+    raise RuntimeError("Please set MINERU_API_TOKEN before running this playground script.")
 
 BATCH_URL_API = "https://mineru.net/api/v4/file-urls/batch"
 
