@@ -546,10 +546,10 @@ export function AiConversationSidebarSection({
         </div>
       ) : null}
 
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="wait">
         {isListExpanded ? (
           <motion.div
-            key="conversation-list"
+            key={`conversation-list-${listScopeKey}`}
             variants={conversationListMotion}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
