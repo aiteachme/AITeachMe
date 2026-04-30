@@ -37,6 +37,7 @@ def tool(
     requires_course: bool = False,
     requires_approval: bool = False,
     cache_policy: str = "none",
+    hidden_args: list[str] | None = None,
 ) -> Callable:
     """装饰器：将函数注册为 LLM 可调用的工具。
 
@@ -58,7 +59,9 @@ def tool(
             requires_course=requires_course,
             requires_approval=requires_approval,
             cache_policy=cache_policy,
+            hidden_args=list(hidden_args or []),
         )
+        setattr(func, "__tool_definition__", td)
         get_tool_registry().register(td)
         return func
     return decorator

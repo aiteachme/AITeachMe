@@ -12,9 +12,7 @@ from app.shared.infra.tools.registry import get_tool_registry
 logger = structlog.get_logger(__name__)
 
 _PROJECT_TOOL_MODULES = (
-    "app.shared.infra.tools.builtin.memory_ops",
-    "app.shared.infra.tools.builtin.search_kb",
-    "app.shared.infra.tools.builtin.web_search",
+    "app.agent_tools.registry",
     "app.shared.infra.tools.builtin.teaching_tools",
 )
 _project_tool_modules_loaded = False
@@ -87,6 +85,7 @@ def list_agent_tools() -> list[dict[str, object]]:
             "scopes": list(definition.scopes),
             "requires_course": definition.requires_course,
             "requires_approval": definition.requires_approval,
+            "hidden_args": list(definition.hidden_args),
         }
         for definition in get_tool_registry().list_all()
     ]

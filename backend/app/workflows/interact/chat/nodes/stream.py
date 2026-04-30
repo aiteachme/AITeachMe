@@ -84,6 +84,7 @@ def _build_response_stream(state: InteractWorkflowState, *, course_id: str, mode
         execution_mode=execution_mode,
         course_id=course_id,
         retrieval_results=state.get("retrieval_results", []),
+        source=state.get("source"),
     )
     if tool_plan.uses_tools:
         return run_agent_loop_stream(
@@ -92,6 +93,9 @@ def _build_response_stream(state: InteractWorkflowState, *, course_id: str, mode
             config=build_agent_loop_config(
                 tool_plan=tool_plan,
                 course_id=course_id,
+                user_id=state.get("user_id"),
+                session_id=state.get("session_id"),
+                source=state.get("source"),
                 model_selector=model_selector,
                 extra_metadata=trace_metadata,
             ),
@@ -126,6 +130,7 @@ def build_stream_answer_node(
             execution_mode=execution_mode,
             course_id=course_id,
             retrieval_results=state.get("retrieval_results", []),
+            source=state.get("source"),
         )
         await _emit_status(
             emitter,
