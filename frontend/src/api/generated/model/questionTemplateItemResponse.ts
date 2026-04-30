@@ -22,6 +22,7 @@ export interface QuestionTemplateItemResponse {
   template_version: number;
   status: string;
   is_marked?: boolean;
+  has_wrong_attempt?: boolean;
   created_at: string;
   updated_at: string;
 }

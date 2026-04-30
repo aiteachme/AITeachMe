@@ -203,8 +203,9 @@ ghcr.io/<github-owner>/aiteachme-backend:slim-latest
 ```
 
 3. 使用 `kubectl set image` 更新 Sealos 中已有的后端 Deployment。
-4. 将 Deployment 的 `progressDeadlineSeconds` 调整为 30 分钟，并等待 `kubectl rollout status` 完成。
-5. 如果配置了健康检查地址，再请求 `/api/health`。
+4. 将 Deployment 的 `progressDeadlineSeconds` 调整为 60 分钟，并等待 `kubectl rollout status` 完成。
+5. 打印 Deployment、ReplicaSet、Pod 和相关 Events，便于查看镜像拉取耗时或定位启动失败原因。
+6. 如果配置了健康检查地址，再请求 `/api/health`。
 
 GitHub Actions Secrets：
 
