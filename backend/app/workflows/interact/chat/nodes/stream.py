@@ -17,6 +17,10 @@ from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
+from app.workflows.interact.chat.lib.home_intake import (
+    is_home_intake_source,
+    run_home_intake_turn,
+)
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.workflows.interact.chat.lib.tooling import (
     INTERACT_MODEL_SELECTOR,
@@ -54,6 +58,7 @@ def _build_stream_state(
     *,
     stream_interrupted: bool | None = None,
     error: str | None = None,
+    client_actions: list[dict] | None = None,
 ) -> InteractWorkflowState:
     next_state: InteractWorkflowState = {
         **state,
@@ -63,6 +68,8 @@ def _build_stream_state(
         next_state["stream_interrupted"] = stream_interrupted
     if error is not None:
         next_state["error"] = error
+    if client_actions is not None:
+        next_state["client_actions"] = client_actions
     return next_state
 
 
@@ -123,6 +130,47 @@ def build_stream_answer_node(
             return state
 
         collected_tokens: list[str] = []
+        if is_home_intake_source(state.get("source")):
+            await _emit_status(
+                emitter,
+                "home_intake",
+                "正在理解你的意图...",
+                model=normalize_runtime_model_override(state.get("model_override")) or "settings",
+            )
+            try:
+                background_task_registry = (
+                    getattr(request.app.state, "background_task_registry", None)
+                    if request is not None
+                    else None
+                )
+                result = await run_home_intake_turn(
+                    state,
+                    background_task_registry=background_task_registry,
+                )
+                if await _is_disconnected(request):
+                    workflow_logger.info("home_intake_stream_disconnected")
+                    return _build_stream_state(
+                        state,
+                        collected_tokens,
+                        stream_interrupted=True,
+                    )
+                if result.assistant_response:
+                    collected_tokens.append(result.assistant_response)
+                    await _emit_token(emitter, result.assistant_response)
+                return _build_stream_state(
+                    state,
+                    collected_tokens,
+                    stream_interrupted=False,
+                    client_actions=result.client_actions,
+                )
+            except Exception as exc:
+                workflow_logger.exception("home_intake_stream_failed")
+                return _build_stream_state(
+                    state,
+                    collected_tokens,
+                    error=str(exc),
+                )
+
         course_id = str(state.get("course_id") or context.course_id or "")
         model_selector = INTERACT_MODEL_SELECTOR
         execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)

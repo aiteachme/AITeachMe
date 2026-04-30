@@ -131,9 +131,16 @@ NODE_TRACE_DETAILS = {
         "description": "调用主模型或受控工具流式生成回答，把 token 逐步推给 SSE；如果客户端断开则标记中断，不继续写库。",
         "reads": ["LLM provider"],
         "writes": [],
-        "emits": ["status:answering", "token"],
-        "input_keys": ["messages", "execution_mode", "retrieval_results", "model_override"],
-        "output_keys": ["assistant_response", "stream_interrupted", "error"],
+        "emits": ["status:answering", "status:home_intake", "token"],
+        "input_keys": [
+            "messages",
+            "execution_mode",
+            "retrieval_results",
+            "model_override",
+            "source",
+            "attached_file_ids",
+        ],
+        "output_keys": ["assistant_response", "client_actions", "stream_interrupted", "error"],
     },
     NODE_PERSIST_TURN: {
         "description": "在完整回答生成后，把用户消息和助手消息作为同一个 turn 写入 chat_message，并保存引用上下文和划选定位字段。",
@@ -488,6 +495,7 @@ def create_interact_initial_state(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
+    attached_file_ids: list[str] | None = None,
 ) -> InteractWorkflowState:
     """Create the initial state for one interact workflow run."""
 
@@ -503,6 +511,8 @@ def create_interact_initial_state(
         "selected_context": selected_context,
         "selection_context": selection_context,
         "source_chunk_id": source_chunk_id,
+        "attached_file_ids": list(attached_file_ids or []),
+        "client_actions": [],
         "stream_interrupted": False,
         "error": None,
     }
@@ -524,6 +534,7 @@ async def run_interact_workflow(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
+    attached_file_ids: list[str] | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> WorkflowResult[InteractWorkflowState]:
     """Run the interact workflow once."""
@@ -560,6 +571,7 @@ async def run_interact_workflow(
                 selected_context=selected_context,
                 selection_context=selection_context,
                 source_chunk_id=source_chunk_id,
+                attached_file_ids=attached_file_ids,
             ),
             context=context,
         )
@@ -607,6 +619,7 @@ async def stream_chat_workflow(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
+    attached_file_ids: list[str] | None = None,
     event_bus: InProcessEventBus | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream one interact workflow run as SSE."""
@@ -627,6 +640,7 @@ async def stream_chat_workflow(
             selection_context=selection_context,
             session=session,
             source_chunk_id=source_chunk_id,
+            attached_file_ids=attached_file_ids,
             course_id=course_id,
             user_id=user_id,
         )
@@ -650,6 +664,7 @@ async def _execute_interact_workflow(
     selection_context: ChatSelectionContext | None,
     session: Session | None,
     source_chunk_id: int | None,
+    attached_file_ids: list[str] | None,
     course_id: str,
     user_id: str,
 ) -> None:
@@ -669,6 +684,7 @@ async def _execute_interact_workflow(
             selected_context=selected_context,
             selection_context=selection_context,
             source_chunk_id=source_chunk_id,
+            attached_file_ids=attached_file_ids,
             event_bus=event_bus,
         )
         if result.failed:
@@ -687,6 +703,7 @@ async def _execute_interact_workflow(
             contexts=final_state.get("contexts"),
             session_id=final_state.get("session_id"),
             session_title=final_state.get("session_title"),
+            client_actions=final_state.get("client_actions"),
         )
     except asyncio.CancelledError:
         raise

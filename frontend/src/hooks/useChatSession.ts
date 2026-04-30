@@ -10,6 +10,12 @@ import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 
 export type ChatMessageStatus = "ready" | "streaming" | "error" | "interrupted";
 
+export interface ChatClientAction {
+  type: string;
+  payload?: unknown;
+  [key: string]: unknown;
+}
+
 export interface ChatSessionMessage {
   localId: string;
   role: "user" | "assistant";
@@ -55,6 +61,7 @@ interface ChatMessageDonePayload {
   sessionId: string | null;
   sessionTitle: string | null;
   turnId: string;
+  clientActions: ChatClientAction[];
 }
 
 interface ChatMessageSessionPayload {
@@ -348,6 +355,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               sessionId: streamSessionId,
               sessionTitle: donePayload.sessionTitle,
               turnId: donePayload.turnId,
+              clientActions: donePayload.clientActions,
             });
           },
           onError: (payload) => {
@@ -534,6 +542,7 @@ function parseChatDonePayload(payload: unknown): {
   sessionId: string | null;
   sessionTitle: string | null;
   contexts: ChatContextItem[] | null;
+  clientActions: ChatClientAction[];
 } {
   if (!isRecord(payload)) {
     return {
@@ -541,6 +550,7 @@ function parseChatDonePayload(payload: unknown): {
       sessionId: null,
       sessionTitle: null,
       contexts: null,
+      clientActions: [],
     };
   }
 
@@ -549,7 +559,17 @@ function parseChatDonePayload(payload: unknown): {
     sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
     sessionTitle: typeof payload.session_title === "string" ? payload.session_title : null,
     contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
+    clientActions: parseClientActions(payload.client_actions ?? payload.actions),
   };
+}
+
+function parseClientActions(value: unknown): ChatClientAction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is ChatClientAction => {
+    return isRecord(item) && typeof item.type === "string" && item.type.trim().length > 0;
+  });
 }
 
 function parseChatStatusSessionId(payload: unknown): string | null {

@@ -123,6 +123,8 @@ def should_use_course_grounding(
 ) -> bool:
     """Decide whether course materials should be active evidence this turn."""
 
+    if (source or "").strip() == "home_intake":
+        return False
     if has_primary_context:
         return True
     if (source or "").strip() in _CONTEXTUAL_SOURCES:

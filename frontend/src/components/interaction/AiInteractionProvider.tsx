@@ -94,10 +94,13 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       key: requestSeqRef.current,
       sessionId: options?.sessionId,
       draft: options?.draft,
+      autoSend: options?.autoSend,
+      model: options?.model,
       source: options?.source,
       anchorId: options?.anchorId,
       selectedText: options?.selectedText,
       selectionContext: options?.selectionContext,
+      attachedFileIds: options?.attachedFileIds,
       clientThreadId: options?.clientThreadId,
       newSession: options?.newSession,
       showSelectionContext: options?.showSelectionContext,
@@ -190,6 +193,18 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     if (mode === "fullscreen") {
       setFullscreenScope(nextScope);
       setFullscreenRequest(request);
+      const nextAnchorId = options?.anchorId?.trim() ?? "";
+      const nextSelectedText = options?.selectedText?.trim() ?? "";
+      setActiveConversationSelectionTarget(nextAnchorId && nextSelectedText
+        ? {
+            sessionId: typeof options?.sessionId === "string" ? options.sessionId.trim() || null : null,
+            anchorId: nextAnchorId,
+            selectedText: nextSelectedText,
+          }
+        : null);
+      if (options?.sessionId !== undefined) {
+        setActiveConversationSessionId(options.sessionId);
+      }
       setIsSidebarOpen(false);
       navigate("/assistant");
       return;

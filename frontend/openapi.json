@@ -9918,6 +9918,14 @@
             ],
             "title": "Source Chunk Id",
             "description": "Optional source chunk ID for the highlighted context."
+          },
+          "attached_file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attached File Ids",
+            "description": "Optional user-library file IDs attached to this chat turn."
           }
         },
         "type": "object",

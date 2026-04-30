@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
   MessageCircle,
+  MessageSquareText,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -41,7 +42,7 @@ import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
-import { useAiInteraction } from "../interaction";
+import { useAiInteraction, type AiConversationScope } from "../interaction";
 
 import { Button } from "../ui/Button";
 
@@ -104,6 +105,7 @@ const sidebarChildItemMotion: Variants = {
 };
 
 type CourseWithIcon = CourseItem & { icon_key?: string | null };
+type CoursePanelMode = "modules" | "chat";
 
 function colorClassForCourse(name: string) {
   let hash = 0;
@@ -211,6 +213,7 @@ function writeCourseSectionExpanded(value: boolean) {
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
+  const [coursePanelModes, setCoursePanelModes] = useState<Record<string, CoursePanelMode>>({});
   const [isCourseSectionExpanded, setIsCourseSectionExpanded] = useState(readCourseSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -230,6 +233,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const queryClient = useQueryClient();
   const {
     activeScope,
+    fullscreenScope,
     closeAiInteraction,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
@@ -237,6 +241,19 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const isCreateCourseActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
+  const isAssistantPage = location.pathname === "/assistant";
+  const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
+  const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
+  const sidebarConversationScope = useMemo<AiConversationScope>(() => {
+    if (isAssistantPage && assistantScope) {
+      return assistantScope;
+    }
+    if (routeCourseId) {
+      return { type: "course", courseId: routeCourseId };
+    }
+    return { type: "global" };
+  }, [assistantScope, isAssistantPage, routeCourseId]);
+  const isCourseConversationScope = sidebarConversationScope.type === "course";
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses"],
@@ -284,14 +301,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }, [updateCourseSectionExpanded]);
 
   useEffect(() => {
-    const activeCourseId = getCourseIdFromPathname(location.pathname);
-    if (!activeCourseId) {
+    if (!routeCourseId) {
       return;
     }
-    setExpandedCourses((prev) => new Set([...prev, activeCourseId]));
+    setExpandedCourses((prev) => new Set([...prev, routeCourseId]));
     updateCourseSectionExpanded(true);
     setIsCollapsed(false);
-  }, [location.pathname, updateCourseSectionExpanded]);
+  }, [routeCourseId, updateCourseSectionExpanded]);
 
   const deletePreviewMutation = useMutation({
     mutationFn: async (courseId: string) =>
@@ -372,6 +388,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     });
   };
 
+  const toggleCoursePanelMode = useCallback((courseId: string, mode?: CoursePanelMode) => {
+    setExpandedCourses((prev) => new Set([...prev, courseId]));
+    setCoursePanelModes((prev) => {
+      const current = prev[courseId] ?? "modules";
+      const next = mode ?? (current === "chat" ? "modules" : "chat");
+      return { ...prev, [courseId]: next };
+    });
+  }, []);
+
   const openDeleteModal = (course: CourseItem) => {
     setDeleteTarget(course);
     setDeletePreview(null);
@@ -400,7 +425,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       <aside
         data-app-sidebar="true"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden rounded-r-[22px] border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90]",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90]",
+          isAssistantPage ? "rounded-none" : "rounded-r-[22px]",
           effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -685,6 +711,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   <AnimatePresence initial={false}>
               {groupedCourses.map((course) => {
                 const expanded = expandedCourses.has(course.course_id);
+                const coursePanelMode = coursePanelModes[course.course_id] ?? "modules";
                 const displayName = displayCourseName(course);
                 const badgeClass = colorClassForCourse(course.name || course.course_id);
                 const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
@@ -734,15 +761,37 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   </button>
 
                   {!effectiveCollapsed ? (
-                    <div className="relative" ref={openMenuId === course.course_id ? menuRef : undefined}>
+                    <>
                       <button
                         type="button"
-                        onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
-                        title="更多操作"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setOpenMenuId(null);
+                          toggleCoursePanelMode(course.course_id);
+                        }}
+                        className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition",
+                          coursePanelMode === "chat"
+                            ? "bg-[#edf3f8] text-[#556b86] dark:bg-slate-800 dark:text-slate-300"
+                            : "text-slate-400 opacity-100 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100",
+                        )}
+                        title={coursePanelMode === "chat" ? "显示课程内容" : "显示课程对话"}
+                        aria-label={coursePanelMode === "chat" ? "显示课程内容" : "显示课程对话"}
+                        aria-pressed={coursePanelMode === "chat"}
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MessageSquareText className="h-4 w-4" />
                       </button>
+
+                      <div className="relative" ref={openMenuId === course.course_id ? menuRef : undefined}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                          title="更多操作"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
 
                       {openMenuId === course.course_id ? (
                         <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
@@ -783,6 +832,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                         </div>
                       ) : null}
                     </div>
+                    </>
                   ) : null}
                 </div>
 
@@ -799,7 +849,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <div className="min-h-0 overflow-hidden">
                         <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                           <AnimatePresence initial={false}>
-                            {MODULES.map((moduleItem) => {
+                            {coursePanelMode === "modules" ? MODULES.map((moduleItem) => {
                               const path = buildCoursePath(course.course_id, moduleItem.id);
                               const isActive = isCourseRouteActive(location.pathname, course.course_id, moduleItem.id);
                               const Icon = moduleItem.icon;
@@ -827,7 +877,28 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                                   </Link>
                                 </motion.div>
                               );
-                            })}
+                            }) : (
+                              <motion.div
+                                key="course-conversations"
+                                variants={sidebarChildItemMotion}
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                              >
+                                <AiConversationSidebarSection
+                                  collapsed={false}
+                                  onExpandSidebar={expandNavigationSidebar}
+                                  onNavigate={closeMobileNavigation}
+                                  targetScope={{ type: "course", courseId: course.course_id }}
+                                  storageKey={`aiteachme.aiConversations.course.${course.course_id}.expanded`}
+                                  showTopBorder={false}
+                                  showCourseBadge={false}
+                                  hideHeader
+                                  maxItems={24}
+                                  emptyText="暂无课程对话"
+                                />
+                              </motion.div>
+                            )}
                           </AnimatePresence>
                         </div>
                       </div>
@@ -847,6 +918,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             collapsed={effectiveCollapsed}
             onExpandSidebar={expandNavigationSidebar}
             onNavigate={closeMobileNavigation}
+            targetScope={sidebarConversationScope}
+            title={isCourseConversationScope ? "课程最近" : "全局最近"}
+            showTopBorder={false}
+            showCourseBadge={false}
+            emptyText={isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />
         </div>
 

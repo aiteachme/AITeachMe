@@ -29,4 +29,6 @@ export interface ChatSendRequest {
   selection_context?: ChatSelectionContext | null;
   /** Optional source chunk ID for the highlighted context. */
   source_chunk_id?: number | null;
+  /** Optional user-library file IDs attached to this chat turn. */
+  attached_file_ids?: string[];
 }

@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Bot } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 import { useResizablePanel } from "../../hooks/useResizablePanel";
@@ -13,7 +12,7 @@ interface AiInteractionWindowProps {
   className?: string;
 }
 
-interface AiConversationPanelLoaderProps {
+interface AiConversationViewLoaderProps {
   scope: AiConversationScope | null;
   request?: AiInteractionOpenRequest | null;
   active: boolean;
@@ -24,13 +23,13 @@ interface AiConversationPanelLoaderProps {
 
 const SIDEBAR_TRANSITION_MS = 220;
 
-const LazyAiConversationPanel = lazy(() =>
-  import("./AiConversationPanel").then((module) => ({
-    default: module.AiConversationPanel as ComponentType<AiConversationPanelLoaderProps>,
+const LazyAiConversationView = lazy(() =>
+  import("./conversation/AiConversationView").then((module) => ({
+    default: module.AiConversationView as ComponentType<AiConversationViewLoaderProps>,
   })),
 );
 
-function AiConversationPanelFallback() {
+function AiConversationViewFallback() {
   return (
     <div className="flex h-full w-full items-center justify-center text-sm text-zinc-500 dark:text-slate-400">
       加载中...
@@ -53,7 +52,6 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     fullscreenRequest,
     isSidebarOpen,
     isSidebarStreaming,
-    openAiInteraction,
     closeAiInteraction,
   } = useAiInteraction();
 
@@ -178,12 +176,12 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     return (
       <section
         className={cn(
-          "flex min-h-[calc(100dvh-8rem)] flex-col overflow-hidden bg-white dark:bg-slate-950",
+          "flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent",
           className,
         )}
       >
-        <Suspense fallback={<AiConversationPanelFallback />}>
-          <LazyAiConversationPanel
+        <Suspense fallback={<AiConversationViewFallback />}>
+          <LazyAiConversationView
             scope={fullscreenConversationScope}
             request={fullscreenRequest}
             active
@@ -196,21 +194,6 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
 
   return (
     <>
-      {canShowSidebar ? (
-        <button
-          type="button"
-          onClick={() => openAiInteraction({ mode: "sidebar", sessionId: null, newSession: true })}
-          className={cn(
-            "fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-[86] inline-flex h-12 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800/80 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.7)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100 sm:bottom-6 sm:right-6 sm:h-11 sm:px-4",
-            shouldShowSidebarPanel ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100",
-          )}
-          aria-label="打开 AI 交互窗口"
-        >
-          <Bot className="h-4 w-4 text-zinc-500 dark:text-slate-400" />
-          <span className="hidden sm:inline">AI 交互窗口</span>
-        </button>
-      ) : null}
-
       <div
         ref={panelShellRef}
         data-ai-interaction-window="true"
@@ -239,8 +222,8 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
               )}
               onMouseDown={handleMouseDown}
             />
-            <Suspense fallback={<AiConversationPanelFallback />}>
-              <LazyAiConversationPanel
+            <Suspense fallback={<AiConversationViewFallback />}>
+              <LazyAiConversationView
                 scope={panelScope}
                 request={sidebarRequest}
                 active={shouldShowSidebarPanel}

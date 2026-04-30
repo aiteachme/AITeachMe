@@ -43,10 +43,13 @@ export interface OpenAiInteractionOptions {
   scope?: AiConversationScope | null;
   sessionId?: string | null;
   draft?: string;
+  autoSend?: boolean;
+  model?: string | null;
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
   selectionContext?: ChatSelectionContext | null;
+  attachedFileIds?: string[];
   clientThreadId?: string | null;
   newSession?: boolean;
   showSelectionContext?: boolean;
@@ -56,10 +59,13 @@ export interface AiInteractionOpenRequest {
   key: number;
   sessionId?: string | null;
   draft?: string;
+  autoSend?: boolean;
+  model?: string | null;
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
   selectionContext?: OpenAiInteractionOptions["selectionContext"];
+  attachedFileIds?: string[];
   clientThreadId?: string | null;
   newSession?: boolean;
   showSelectionContext?: boolean;

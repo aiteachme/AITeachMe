@@ -388,6 +388,7 @@ export interface SseDonePayload {
   session_id?: string;
   session_title?: string;
   contexts?: unknown;
+  client_actions?: unknown;
 }
 
 export interface SseErrorPayload {

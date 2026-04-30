@@ -78,6 +78,7 @@ class ChatSendRequest(BaseModel):
     selected_context: str | None = Field(default=None, description="Legacy highlighted context string.")
     selection_context: ChatSelectionContext | None = Field(default=None, description="Structured doc-selection context for the prompt.")
     source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
+    attached_file_ids: list[str] = Field(default_factory=list, description="Optional user-library file IDs attached to this chat turn.")
 
 
 class ChatListRequest(PageParams):
@@ -175,6 +176,7 @@ class SSEDoneEvent(BaseModel):
     session_id: str = Field(description="Resolved session ID.")
     session_title: str | None = Field(default=None, description="Generated session title when available.")
     contexts: list[ChatContextItem] | None = Field(default=None, description="Retrieved citation list.")
+    client_actions: list[dict] | None = Field(default=None, description="Optional client actions emitted by the assistant turn.")
 
 
 class SSEErrorEvent(BaseModel):

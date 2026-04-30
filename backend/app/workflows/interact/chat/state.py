@@ -31,6 +31,7 @@ class InteractWorkflowState(TypedDict, total=False):
     selected_context: str | None
     selection_context: ChatSelectionContext | None
     source_chunk_id: int | None
+    attached_file_ids: list[str]
     recent_messages: list[RecentMessage]
     course_context: CourseContextSummary
     weak_points: list[WeakPointSummary]
@@ -41,6 +42,7 @@ class InteractWorkflowState(TypedDict, total=False):
     execution_mode: InteractExecutionMode
     messages: list[ChatMessage]
     assistant_response: str
+    client_actions: list[dict]
     turn_id: str
     stream_interrupted: bool
     error: str | None
