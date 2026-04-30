@@ -16,7 +16,9 @@ permissions:
 env:
   # Non-secret Sealos/ACR deployment constants. Update these here when the
   # Sealos app name, public address, internal service address, or registry path changes.
-  AITEACHME_API_UPSTREAM: http://atm-d-tqkmhxmhaeer.ns-icbq3ltw:9020
+  # Nginx resolves runtime proxy_pass variables by itself, so use the full
+  # Kubernetes service FQDN instead of the Sealos UI short service.namespace form.
+  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
@@ -327,22 +329,62 @@ jobs:
           done
 
       - name: Smoke test Sealos frontend
+        id: smoke_frontend
         if: steps.optin.outputs.enabled == 'true' && env.FRONTEND_PUBLIC_URL != ''
         shell: bash
         run: |
           set -euo pipefail
 
           base_url="${FRONTEND_PUBLIC_URL%/}"
+          root_url="${base_url}/"
+          health_url="${base_url}/api/health"
+
           for attempt in {1..12}; do
-            if curl -fsS "${base_url}/" >/dev/null && curl -fsS "${base_url}/api/health" >/dev/null; then
+            root_status="$(curl -sS -o /tmp/frontend-root.out -w "%{http_code}" "${root_url}" || true)"
+            health_status="$(curl -sS -o /tmp/frontend-health.out -w "%{http_code}" "${health_url}" || true)"
+
+            echo "Frontend smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}"
+
+            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ]; then
               exit 0
             fi
-            echo "Frontend smoke check failed; retrying (${attempt}/12)..."
             sleep 10
           done
 
           echo "Sealos frontend smoke check did not pass: ${base_url}" >&2
+          echo "Last frontend root response:" >&2
+          tail -c 1000 /tmp/frontend-root.out >&2 || true
+          echo "" >&2
+          echo "Last frontend health response:" >&2
+          tail -c 1000 /tmp/frontend-health.out >&2 || true
+          echo "" >&2
           exit 1
+
+      - name: Show Sealos frontend logs after failed smoke
+        if: always() && steps.smoke_frontend.outcome == 'failure' && steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          selector="app=${SEALOS_FRONTEND_DEPLOYMENT}"
+          pods="$(kubectl -n "${SEALOS_NAMESPACE}" get pods -l "${selector}" -o name 2>/dev/null || true)"
+          if [ -z "${pods}" ]; then
+            pods="$(
+              kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+                | awk -v prefix="${SEALOS_FRONTEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print "pod/" $1 }' \
+                || true
+            )"
+          fi
+
+          if [ -z "${pods}" ]; then
+            echo "No frontend pods found for diagnostics."
+            exit 0
+          fi
+
+          for pod in ${pods}; do
+            echo "### ${pod} logs after failed smoke"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=240 || true
+          done
 
       - name: Sealos frontend summary
         if: steps.optin.outputs.enabled == 'true'

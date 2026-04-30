@@ -358,7 +358,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
 前端部署支持两种入口并存，便于做 A/B 测试：
 
 - Cloudflare Pages：继续使用 deploy hook，构建时设置 `VITE_API_URL=https://<sealos-backend-public-address>`，后端 `CORS_ALLOWED_ORIGINS` 包含 Cloudflare Pages 域名。
-- Sealos Nginx 前端：使用 `infra/deployment/docker/frontend.Dockerfile` 构建镜像，容器运行时通过 `AITEACHME_API_UPSTREAM=http://<backend-service>:9020` 把 `/api` 反代到后端内网服务。前端 Sealos App 不配置 `VITE_API_URL`。
+- Sealos Nginx 前端：使用 `infra/deployment/docker/frontend.Dockerfile` 构建镜像，容器运行时通过 `AITEACHME_API_UPSTREAM=http://<backend-service>.<namespace>.svc.cluster.local:9020` 把 `/api` 反代到后端内网服务。前端 Sealos App 不配置 `VITE_API_URL`。
 
 双入口测试阶段需要保留后端公网访问，因为 Cloudflare Pages 仍会直接请求后端公网 API。等只保留 Sealos 前端后，再关闭后端公网访问。详细步骤见 `infra/deployment/sealos-frontend.md`。
 

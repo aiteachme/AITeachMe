@@ -111,7 +111,7 @@ UI 遵循现代 SaaS 设计原则：
 1. 使用 `infra/deployment/docker/frontend.Dockerfile` 构建镜像
 2. Sealos 前端 App 暴露 `80` 端口并开启公网访问
 3. 不配置 `VITE_API_URL`
-4. 配置运行时环境变量 `AITEACHME_API_UPSTREAM=http://<后端 Sealos 服务名>:9020`
+4. 配置运行时环境变量 `AITEACHME_API_UPSTREAM=http://<后端服务名>.<命名空间>.svc.cluster.local:9020`
 
 完整步骤见 `infra/deployment/sealos-frontend.md`。
 
