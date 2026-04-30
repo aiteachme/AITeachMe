@@ -149,16 +149,16 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           image="ghcr.io/${owner}/aiteachme-backend"
           short_sha="${SOURCE_SHA::7}"
-          version_tag="office-${short_sha}"
+          version_tag="slim-${short_sha}"
 
           echo "image=${image}:${version_tag}" >> "$GITHUB_OUTPUT"
-          echo "tags=${image}:${version_tag},${image}:office-latest" >> "$GITHUB_OUTPUT"
+          echo "tags=${image}:${version_tag},${image}:slim-latest" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: infra/deployment/docker/backend-office.Dockerfile
+          file: infra/deployment/docker/backend.Dockerfile
           platforms: linux/amd64
           push: true
           provenance: false
@@ -166,9 +166,9 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
-            org.opencontainers.image.title=AITeachMe backend office
-          cache-from: type=gha,scope=backend-office
-          cache-to: type=gha,mode=max,scope=backend-office
+            org.opencontainers.image.title=AITeachMe backend slim
+          cache-from: type=gha,scope=backend-slim
+          cache-to: type=gha,mode=max,scope=backend-slim
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -195,7 +195,7 @@ jobs:
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            --timeout=600s
+            --timeout=1800s
 
       - name: Smoke test backend
         if: vars.BACKEND_HEALTH_URL != ''
