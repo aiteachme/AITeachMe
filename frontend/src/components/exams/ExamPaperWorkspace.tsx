@@ -596,12 +596,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         }}
       />
 
-      <div className="px-4 py-6 sm:px-6 lg:px-8">
+      <div className="px-4 py-6 sm:px-6 md:px-10 lg:px-12 xl:px-16">
         <div
           className={`mx-auto space-y-6 ${
             isReviewLayout
               ? "max-w-none lg:mr-16 xl:mr-20 2xl:mr-24"
-              : "max-w-7xl"
+              : "max-w-none"
           }`}
         >
           {examDetailQuery.isLoading && (
