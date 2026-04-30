@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
@@ -27,6 +28,10 @@ datas = [
     ("alembic.ini", "."),
     ("migrations", "migrations"),
 ]
+
+_BUNDLED_ENV_PATH = Path("../packaging/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
+if _BUNDLED_ENV_PATH.exists():
+    datas.append((str(_BUNDLED_ENV_PATH), "configs"))
 
 for package_name in (
     "alembic",

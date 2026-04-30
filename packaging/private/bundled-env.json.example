@@ -1,0 +1,8 @@
+{
+  "env": {
+    "LLM_API_KEY": "sk-...",
+    "LLM_BASE_URL": "https://api.example.com/v1",
+    "LLM_PROVIDER": "openai-compatible",
+    "LLM_API_VERSION": ""
+  }
+}

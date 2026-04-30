@@ -4,7 +4,9 @@ param(
     [string]$Flavor,
     [switch]$SkipInstall,
     [string]$BackendPort = "9020",
-    [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL
+    [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -300,6 +302,15 @@ $python = Resolve-PythonCommand $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
 
+. (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+$bundledEnvConfigPath = Initialize-BundledEnvConfig `
+    -RepoRoot $repoRoot `
+    -ImportBundledEnv:($ImportBundledEnv -and $Flavor -eq "local") `
+    -BundledEnvConfigPath $BundledEnvConfigPath
+if ($ImportBundledEnv -and $Flavor -ne "local") {
+    Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for electron-$Flavor." -ForegroundColor Yellow
+}
+
 if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("ELECTRON_MIRROR", "Process"))) {
     Set-ProcessEnv -Name "ELECTRON_MIRROR" -Value "https://npmmirror.com/mirrors/electron/"
 }
@@ -316,6 +327,9 @@ Write-Host "npm: $npm"
 Write-Host "API base URL: $apiBaseUrl"
 if ($Flavor -eq "local") {
     Write-Host "Backend port: $BackendPort"
+    if ($bundledEnvConfigPath) {
+        Write-Host "Bundled env: $bundledEnvConfigPath"
+    }
 }
 
 Write-Step "Install build dependencies"

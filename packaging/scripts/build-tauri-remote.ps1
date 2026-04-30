@@ -1,6 +1,8 @@
 param(
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
-    [switch]$SkipInstall
+    [switch]$SkipInstall,
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -22,6 +24,9 @@ Assert-RustToolchain
 Write-Host "Repo: $repoRoot"
 Write-Host "npm: $npm"
 Write-Host "Remote API URL: $ApiUrl"
+if ($ImportBundledEnv) {
+    Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for tauri-remote." -ForegroundColor Yellow
+}
 
 if (-not $SkipInstall) {
     Invoke-External -File $npm -Arguments @("install") -WorkingDirectory $frontendDir

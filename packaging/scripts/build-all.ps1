@@ -1,7 +1,9 @@
 param(
     [string]$ApiUrl = "https://aiteachme.onrender.com",
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020"
+    [string]$BackendPort = "9020",
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,11 +36,15 @@ $commonArgs = @()
 if ($SkipInstall) {
     $commonArgs += "-SkipInstall"
 }
+$bundledEnvArgs = @()
+if ($ImportBundledEnv) {
+    $bundledEnvArgs += @("-ImportBundledEnv", "-BundledEnvConfigPath", $BundledEnvConfigPath)
+}
 
 Invoke-BuildStep `
     -Name "Electron local installer and portable" `
     -Script (Join-Path $scriptDir "build-electron-local.ps1") `
-    -Arguments @($commonArgs + @("-BackendPort", $BackendPort))
+    -Arguments @($commonArgs + $bundledEnvArgs + @("-BackendPort", $BackendPort))
 
 Invoke-BuildStep `
     -Name "Electron remote installer and portable" `
@@ -48,7 +54,7 @@ Invoke-BuildStep `
 Invoke-BuildStep `
     -Name "Tauri local installer and direct package" `
     -Script (Join-Path $scriptDir "build-tauri-local.ps1") `
-    -Arguments @($commonArgs + @("-BackendPort", $BackendPort))
+    -Arguments @($commonArgs + $bundledEnvArgs + @("-BackendPort", $BackendPort))
 
 Invoke-BuildStep `
     -Name "Tauri remote installer and direct package" `

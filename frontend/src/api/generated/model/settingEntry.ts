@@ -32,6 +32,8 @@ export interface SettingEntry {
   status: SettingEntryStatus;
   /** 是否为敏感配置。 */
   secret?: boolean;
+  /** 敏感配置来源，如 bundled/env/runtime_override。 */
+  secret_source?: string | null;
   /** 是否可在页面直接编辑。 */
   editable?: boolean;
   /** 修改后是否需要重启后端。 */

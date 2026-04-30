@@ -26,10 +26,13 @@ Thumbs.db
 /packaging/*
 !/packaging/*.bat
 !/packaging/*.md
+!/packaging/private/
+!/packaging/private/*.json.example
 !/packaging/scripts/
 !/packaging/scripts/*.ps1
 !/packaging/scripts/*.cjs
 /packaging/artifacts/
+/packaging/private/*.json
 /packaging/release/
 /packaging/electron/
 /packaging/electron-local/

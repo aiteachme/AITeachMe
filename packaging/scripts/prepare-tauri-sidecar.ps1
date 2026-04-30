@@ -1,6 +1,8 @@
 param(
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020"
+    [string]$BackendPort = "9020",
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -15,6 +17,15 @@ Write-Host "Repo: $repoRoot"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "Tauri sidecar target: $targetTriple"
 Write-Host "Backend port: $BackendPort"
+
+. (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+$bundledEnvConfigPath = Initialize-BundledEnvConfig `
+    -RepoRoot $repoRoot `
+    -ImportBundledEnv:$ImportBundledEnv `
+    -BundledEnvConfigPath $BundledEnvConfigPath
+if ($bundledEnvConfigPath) {
+    Write-Host "Bundled env: $bundledEnvConfigPath"
+}
 
 if (-not $SkipInstall) {
     Invoke-Python -Python $python -Arguments @("-m", "pip", "install", "-e", ".") -WorkingDirectory $backendDir

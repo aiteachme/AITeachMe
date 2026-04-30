@@ -1,6 +1,8 @@
 param(
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020"
+    [string]$BackendPort = "9020",
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -33,6 +35,9 @@ $prepareArgs = @(
 )
 if ($SkipInstall) {
     $prepareArgs += "-SkipInstall"
+}
+if ($ImportBundledEnv) {
+    $prepareArgs += @("-ImportBundledEnv", "-BundledEnvConfigPath", $BundledEnvConfigPath)
 }
 Invoke-External -File "powershell" -Arguments $prepareArgs -WorkingDirectory $repoRoot
 

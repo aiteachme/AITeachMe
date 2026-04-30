@@ -15444,6 +15444,11 @@
             "title": "Is Marked",
             "default": false
           },
+          "has_wrong_attempt": {
+            "type": "boolean",
+            "title": "Has Wrong Attempt",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -16077,6 +16082,18 @@
             "title": "Secret",
             "description": "是否为敏感配置。",
             "default": false
+          },
+          "secret_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Source",
+            "description": "敏感配置来源，如 bundled/env/runtime_override。"
           },
           "editable": {
             "type": "boolean",

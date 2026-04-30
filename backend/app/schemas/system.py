@@ -53,6 +53,7 @@ class SettingEntry(BaseModel):
     display_value: str | None = Field(default=None, description="格式化展示值。")
     status: SettingStatus = Field(description="当前配置状态。")
     secret: bool = Field(default=False, description="是否为敏感配置。")
+    secret_source: str | None = Field(default=None, description="敏感配置来源，如 bundled/env/runtime_override。")
     editable: bool = Field(default=False, description="是否可在页面直接编辑。")
     restart_required: bool = Field(default=True, description="修改后是否需要重启后端。")
     derived: bool = Field(default=False, description="是否为运行时派生值，只读展示。")

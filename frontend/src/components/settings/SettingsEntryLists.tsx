@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  BundledSecretValue,
   FieldLabelBlock,
   InfoCard,
   ReadonlyValue,
@@ -12,6 +13,7 @@ import {
 import { SETTING_SELECT_OPTIONS, SETTINGS_STYLES } from "./settingsStyles";
 import {
   displayValue,
+  isBundledSecretEntry,
   isConfiguredSecretEntry,
   isPrimitive,
   parseInputValue,
@@ -80,7 +82,11 @@ const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
         helper={renderEntryHelper(entry.key)}
       />
       <div className={SETTINGS_STYLES.list.readonlyControl}>
-        <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
+        {isBundledSecretEntry(entry) ? (
+          <BundledSecretValue />
+        ) : (
+          <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
+        )}
       </div>
     </div>
   );
@@ -127,6 +133,7 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const resolvedInputType = resolveEntryInputType(entry, value);
   const isConfiguredSecret = isConfiguredSecretEntry(entry);
+  const isBundledSecret = isBundledSecretEntry(entry);
   const isSavedSecretDraft = isConfiguredSecret && value === SECRET_PRESERVE_VALUE;
   const isSecretInput = resolvedInputType === "password";
   const secretRevealValue = revealSecretValue(entry);
@@ -235,6 +242,21 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
           enabled={value}
           onToggle={handleBooleanToggle}
         />
+      </div>
+    );
+  }
+
+  if (isBundledSecret && isSavedSecretDraft) {
+    return (
+      <div className={SETTINGS_STYLES.list.item}>
+        <FieldLabelBlock
+          label={entry.label}
+          description={entry.description}
+          helper={renderEntryHelper(entry.key)}
+        />
+        <div className={SETTINGS_STYLES.list.controlWrap}>
+          <BundledSecretValue />
+        </div>
       </div>
     );
   }
