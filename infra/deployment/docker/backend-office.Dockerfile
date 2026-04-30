@@ -28,19 +28,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-cache --no-install-project
+RUN uv sync --frozen --no-cache --extra cloud --no-install-project
 
 # 再复制后端源码并安装当前项目本身。
 COPY backend/ ./
-RUN uv sync --frozen --no-cache
+RUN uv sync --frozen --no-cache --extra cloud
 
 ENV PATH="/app/.venv/bin:$PATH"
 
 # 构建阶段直接验证 soffice 存在，避免部署后才发现系统依赖缺失。
 RUN command -v soffice && soffice --headless --version
 
-# Render 默认通过 PORT 注入监听端口；Compose/Sealos 可显式设置 PORT=9020。
-EXPOSE 10000
+# 默认部署端口统一为 9020；Render 等平台仍可通过 PORT 覆盖。
+EXPOSE 9020
 
 # 单副本可以使用默认命令；正式多副本仍建议单独 Job 跑 bootstrap，Web 只跑 uvicorn。
-CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}"]

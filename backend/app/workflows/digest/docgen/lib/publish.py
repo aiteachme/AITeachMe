@@ -34,7 +34,10 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
-from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
+from app.workflows.digest.docgen.lib.textbook_style import (
+    normalize_educational_callouts,
+    normalize_textbook_headings,
+)
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.support.courses.learning_context import update_course_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
@@ -86,6 +89,7 @@ def _prepare_chapter_markdown(
         fallback_title=title,
         focus_items=focus_items or [],
     )
+    cleaned = normalize_educational_callouts(cleaned)
     return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned))
 
 
@@ -162,6 +166,7 @@ def build_merged_markdown(
     merged = separator.join(body).strip()
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
+    merged = normalize_educational_callouts(merged)
     return _finalize_markdown_rendering(sanitize_public_markdown(normalize_mermaid_blocks(merged.strip())))
 
 

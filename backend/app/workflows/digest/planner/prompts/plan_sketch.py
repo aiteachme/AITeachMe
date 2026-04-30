@@ -10,6 +10,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_overview,
     render_message_history,
 )
+from app.workflows.digest.planner.lib.plans import planner_mode_label
 
 
 def build_plan_sketch_prompt(
@@ -21,14 +22,15 @@ def build_plan_sketch_prompt(
     message_history: list[str],
 ) -> str:
     # sketch 是流式展示的“正在理解中”，不是最终计划。最终卡片只使用
-    # composer 生成的计划说明和初步大纲。
+    # 计划合成器生成的计划说明和初步大纲。
+    mode_label = planner_mode_label(digest_mode)
     prompt = f"""
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。
 不要输出正式计划，不要输出初步大纲，也不要写知识文档正文。
 
 课程/主题：{course_name}
 用户提示：{user_prompt}
-模式：{digest_mode}
+模式：{mode_label}
 
 资料画像：
 {render_material_overview(material_context)}
@@ -53,7 +55,7 @@ def build_plan_sketch_prompt(
 5. 全文控制在 260-520 字以内，宁可把判断原因讲清楚，不要铺陈。
 6. 如果没有上传资料，只能基于用户提示和课程常识判断，不要写“这批资料显示/资料里包含”。
 
-请参考下面这些 few-shot 示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
+请参考下面这些示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 
 {render_plan_sketch_examples()}
 """.strip()

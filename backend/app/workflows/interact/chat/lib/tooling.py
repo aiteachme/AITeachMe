@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.agent_tools.context import AgentToolContext
+from app.agent_tools.policy import AgentToolPolicyRequest, resolve_agent_tool_names
 from app.shared.infra.agent_loop import AgentLoopConfig
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
@@ -38,6 +40,9 @@ def resolve_interact_tool_plan(
     execution_mode: InteractExecutionMode,
     course_id: str,
     retrieval_results: list[RetrievedContext],
+    source: str | None = None,
+    allow_write_tools: bool = False,
+    approved_tool_names: set[str] | None = None,
 ) -> InteractToolPlan:
     """Resolve the bounded tool plan for one turn.
 
@@ -48,21 +53,30 @@ def resolve_interact_tool_plan(
 
     if execution_mode != InteractExecutionMode.PLAN_EXECUTE:
         return InteractToolPlan(tool_names=[])
-    if not course_id.strip():
-        return InteractToolPlan(tool_names=[])
-
-    # When retrieval already found enough material we still allow one search
-    # turn; the model can skip it, and the final answer remains token-streamed.
     _ = retrieval_results
-    _ = course_id
-    return InteractToolPlan(tool_names=list(DEFAULT_INTERACT_TOOLS))
+    return InteractToolPlan(
+        tool_names=resolve_agent_tool_names(
+            AgentToolPolicyRequest(
+                source=source,
+                course_id=course_id,
+                allow_write_tools=allow_write_tools,
+                approved_tool_names=frozenset(approved_tool_names or set()),
+            )
+        )
+    )
 
 
 def build_agent_loop_config(
     *,
     tool_plan: InteractToolPlan,
     course_id: str,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    source: str | None = None,
+    attached_file_ids: list[str] | None = None,
+    approved_tool_names: set[str] | None = None,
     model_selector: str | None = None,
+    extra_metadata: dict[str, object] | None = None,
 ) -> AgentLoopConfig:
     """Build the shared AgentLoop configuration for Interact."""
 
@@ -72,7 +86,16 @@ def build_agent_loop_config(
         tool_timeout_s=tool_plan.tool_timeout_s,
         task_type=LLMCallPurpose.CHAT,
         model=model_selector or tool_plan.model_selector,
-        tool_argument_overrides={"search_kb": {"course_id": course_id}},
+        tool_context=AgentToolContext(
+            user_id=user_id,
+            course_id=course_id,
+            session_id=session_id,
+            source=source,
+            attached_file_ids=tuple(attached_file_ids or ()),
+            approved_tool_names=frozenset(approved_tool_names or set()),
+        ),
+        approved_tool_names=set(approved_tool_names or set()),
+        extra_metadata=dict(extra_metadata or {}),
     )
 
 

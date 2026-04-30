@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
 def build_file_summary_messages(
@@ -16,16 +17,17 @@ def build_file_summary_messages(
     section_catalog: list[dict[str, object]] | None = None,
 ) -> list[dict[str, str]]:
     section_catalog_text = json.dumps(section_catalog or [], ensure_ascii=False, indent=2)
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
 你是 AITeachMe 的学习资料摘要器。
 你只输出合法 JSON，不能输出 Markdown、解释或额外文本。
-你只能从文件内容中提取对 DocGen 写作有帮助的信息，不能编造文件里没有的内容。
+你只能从文件内容中提取对知识文档写作有帮助的信息，不能编造文件里没有的内容。
 """.strip()
     prompt = f"""
-请为 DocGen 写作阶段提取这个文件中最有用的内容。
+请为知识文档写作阶段提取这个文件中最有用的内容。
 
 文件：{filename}
-模式：{digest_mode}
+模式：{mode_label}
 目标章节：{"、".join(chapter_titles) or "未提供"}
 
 切片目录（只能从这里选择 section_ref；line_start/line_end 用于后续精确提取原文）：

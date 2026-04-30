@@ -9,8 +9,13 @@ It only:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import os
 import secrets
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Mapping
@@ -24,6 +29,9 @@ _FALSY_VALUES = {"0", "false", "no", "off"}
 _MISSING_ENV_VALUE = object()
 _RUNTIME_ENV_OVERRIDES: dict[str, str] = {}
 _RUNTIME_ENV_BASE_VALUES: dict[str, str | object] = {}
+_BUNDLED_ENV_FILE_NAME = "aiteachme_bundled_env.enc.json"
+_BUNDLED_ENV_APPLIED_KEYS: set[str] = set()
+_BUNDLED_ENV_VALUES: dict[str, str] = {}
 
 
 def _configured_data_dir() -> Path | None:
@@ -57,6 +65,99 @@ def _dotenv_candidates() -> tuple[Path, ...]:
     return tuple(unique)
 
 
+def _bundled_env_candidates() -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    configured = os.getenv("AITEACHME_BUNDLED_ENV_PATH")
+    if configured and configured.strip():
+        configured_path = Path(configured).expanduser()
+        candidates.append(
+            configured_path if configured_path.is_absolute() else _PROJECT_ROOT / configured_path
+        )
+
+    packaged_root = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
+    candidates.extend(
+        [
+            packaged_root / "configs" / _BUNDLED_ENV_FILE_NAME,
+            _PROJECT_ROOT / "configs" / _BUNDLED_ENV_FILE_NAME,
+            _PROJECT_ROOT
+            / "packaging"
+            / "artifacts"
+            / "generated-configs"
+            / _BUNDLED_ENV_FILE_NAME,
+        ]
+    )
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return tuple(unique)
+
+
+def _bundled_env_crypto_key(purpose: str) -> bytes:
+    return hashlib.sha256(purpose.encode("utf-8")).digest()
+
+
+def _decrypt_bundled_env_document(document: Mapping[str, object]) -> dict[str, str]:
+    if document.get("version") != 1:
+        raise ValueError("Unsupported bundled env version.")
+    if document.get("algorithm") != "AES-256-CBC-HMAC-SHA256":
+        raise ValueError("Unsupported bundled env algorithm.")
+
+    iv = base64.b64decode(str(document.get("iv") or ""))
+    ciphertext = base64.b64decode(str(document.get("ciphertext") or ""))
+    tag = base64.b64decode(str(document.get("tag") or ""))
+    mac_key = _bundled_env_crypto_key("AiTeachMe bundled env authentication v1")
+    expected_tag = hmac.new(mac_key, iv + ciphertext, hashlib.sha256).digest()
+    if not hmac.compare_digest(tag, expected_tag):
+        raise ValueError("Bundled env authentication failed.")
+
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.primitives.padding import PKCS7
+
+    encryption_key = _bundled_env_crypto_key("AiTeachMe bundled env encryption v1")
+    decryptor = Cipher(algorithms.AES(encryption_key), modes.CBC(iv)).decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = PKCS7(algorithms.AES.block_size).unpadder()
+    plaintext = unpadder.update(padded) + unpadder.finalize()
+    payload = json.loads(plaintext.decode("utf-8"))
+    env_values = payload.get("env") if isinstance(payload, dict) else None
+    if not isinstance(env_values, dict):
+        return {}
+    return {
+        str(key).strip(): str(value)
+        for key, value in env_values.items()
+        if str(key).strip() and str(value).strip()
+    }
+
+
+@lru_cache(maxsize=1)
+def _load_bundled_env_values() -> dict[str, str]:
+    _BUNDLED_ENV_VALUES.clear()
+    for path in _bundled_env_candidates():
+        if not path.exists():
+            continue
+        document = json.loads(path.read_text(encoding="utf-8-sig"))
+        values = _decrypt_bundled_env_document(document)
+        _BUNDLED_ENV_VALUES.update(values)
+        return values
+    return {}
+
+
+def _apply_bundled_env_defaults() -> None:
+    values = _load_bundled_env_values()
+    for key, value in values.items():
+        current = os.environ.get(key)
+        if current is not None and current.strip():
+            continue
+        os.environ[key] = value
+        _BUNDLED_ENV_APPLIED_KEYS.add(key)
+
+
 @lru_cache(maxsize=1)
 def load_local_dotenv() -> None:
     """Load repo-local `.env` values into `os.environ` if they are unset."""
@@ -73,6 +174,7 @@ def load_local_dotenv() -> None:
             if not env_key or env_key in os.environ:
                 continue
             os.environ[env_key] = "" if value is None else str(value)
+    _apply_bundled_env_defaults()
 
 
 def get_env(name: str, default: str | None = None) -> str | None:
@@ -83,6 +185,17 @@ def get_env(name: str, default: str | None = None) -> str | None:
     if value is None:
         return default
     return value
+
+
+def get_env_source(name: str) -> str | None:
+    load_local_dotenv()
+    if name in _RUNTIME_ENV_OVERRIDES:
+        return "runtime_override"
+    if name in _BUNDLED_ENV_APPLIED_KEYS and os.getenv(name) == _BUNDLED_ENV_VALUES.get(name):
+        return "bundled"
+    if os.getenv(name) is not None:
+        return "env"
+    return None
 
 
 def set_runtime_env_overrides(overrides: Mapping[str, str | None] | None) -> None:
@@ -220,6 +333,7 @@ __all__ = [
     "get_env_int",
     "get_env_list",
     "get_env_optional_bool",
+    "get_env_source",
     "get_project_root",
     "load_local_dotenv",
     "describe_project_settings_source",

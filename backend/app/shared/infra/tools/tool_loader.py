@@ -178,6 +178,7 @@ def _register_toolpack_result(
             requires_course=bool(result.get("requires_course", False)),
             requires_approval=bool(result.get("requires_approval", False)),
             cache_policy=str(result.get("cache_policy") or "none"),
+            hidden_args=list(result.get("hidden_args") or []),
         )
         registry.register(definition)
         return

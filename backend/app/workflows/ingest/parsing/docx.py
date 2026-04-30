@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from importlib import import_module
+from importlib.util import find_spec
 from pathlib import Path
 
 import structlog
@@ -21,16 +23,10 @@ except ImportError:
     Document = None
     qn = None
 
-try:
-    from markitdown import MarkItDown
-except ImportError:
-    MarkItDown = None
-
-
 logger = structlog.get_logger()
 
 DOCX_NATIVE_AVAILABLE = True
-DOCX_MARKITDOWN_AVAILABLE = MarkItDown is not None
+DOCX_MARKITDOWN_AVAILABLE = find_spec("markitdown") is not None
 
 
 async def parse_docx_with_markitdown(
@@ -54,11 +50,14 @@ async def parse_docx_with_native(
 
 
 def _parse_docx_with_markitdown_sync(path: Path, asset_dir: Path, options: ParserRunOptions) -> str:
-    if MarkItDown is None:
-        raise FileParseError(path.name, reason="MarkItDown is not available.")
+    try:
+        markitdown_module = import_module("markitdown")
+        markitdown_converter = getattr(markitdown_module, "MarkItDown")
+    except (AttributeError, ImportError) as exc:
+        raise FileParseError(path.name, reason="MarkItDown is not available.") from exc
 
     logger.info("parse_docx_markitdown_start", filename=path.name, parser_parallelism=options.parser_parallelism)
-    result = MarkItDown().convert(str(path))
+    result = markitdown_converter().convert(str(path))
     if not result.text_content or not result.text_content.strip():
         raise FileParseError(path.name, reason="MarkItDown returned empty markdown.")
 
@@ -342,4 +341,3 @@ def _extract_run_images(paragraph: object) -> list[tuple[bytes, str]]:
             ext = Path(str(image_part.partname)).suffix or ".png"
             images.append((image_part.blob, ext))
     return images
-

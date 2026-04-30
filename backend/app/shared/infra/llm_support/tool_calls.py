@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from app.schemas.llm import ChatMessage
@@ -42,6 +43,7 @@ async def acompletion_with_tools(
     call_purpose: LLMCallPurpose | None = None,
     task_type: LLMCallPurpose | None = None,
     model: str | None = None,
+    extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
 ) -> Any:
     """Async completion with tool-call support."""
@@ -86,6 +88,7 @@ async def acompletion_with_tools(
                         call_kwargs=prepared.call_kwargs,
                         attempt=prepared.attempt,
                         tools=tools,
+                        extra_metadata=extra_metadata,
                     ),
                 ) as trace_run:
                     response = await asyncio.wait_for(

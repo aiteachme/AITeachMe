@@ -1,7 +1,12 @@
 param(
     [string]$ApiUrl = "https://aiteachme.onrender.com",
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020"
+    [string]$BackendPort = "9020",
+    [switch]$ImportBundledEnv,
+    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvArtifactSuffix = "bundled",
+    [switch]$IncludeTauri,
+    [switch]$IncludeRemote
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,26 +39,42 @@ $commonArgs = @()
 if ($SkipInstall) {
     $commonArgs += "-SkipInstall"
 }
+$bundledEnvArgs = @()
+if ($ImportBundledEnv) {
+    $bundledEnvArgs += @(
+        "-ImportBundledEnv",
+        "-BundledEnvConfigPath",
+        $BundledEnvConfigPath,
+        "-BundledEnvArtifactSuffix",
+        $BundledEnvArtifactSuffix
+    )
+}
 
 Invoke-BuildStep `
-    -Name "Electron local installer and portable" `
-    -Script (Join-Path $scriptDir "build-electron-local.ps1") `
-    -Arguments @($commonArgs + @("-BackendPort", $BackendPort))
+    -Name "Electron local installer" `
+    -Script (Join-Path $scriptDir "build-electron.ps1") `
+    -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-BackendPort", $BackendPort, "-HideElectronSuffix"))
 
-Invoke-BuildStep `
-    -Name "Electron remote installer and portable" `
-    -Script (Join-Path $scriptDir "build-electron-remote.ps1") `
-    -Arguments @($commonArgs + @("-ApiUrl", $ApiUrl))
+if ($IncludeTauri) {
+    Invoke-BuildStep `
+        -Name "Tauri local installer" `
+        -Script (Join-Path $scriptDir "build-tauri.ps1") `
+        -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-BackendPort", $BackendPort))
+}
 
-Invoke-BuildStep `
-    -Name "Tauri local installer and direct package" `
-    -Script (Join-Path $scriptDir "build-tauri-local.ps1") `
-    -Arguments @($commonArgs + @("-BackendPort", $BackendPort))
+if ($IncludeRemote) {
+    Invoke-BuildStep `
+        -Name "Electron remote installer" `
+        -Script (Join-Path $scriptDir "build-electron.ps1") `
+        -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-HideElectronSuffix"))
 
-Invoke-BuildStep `
-    -Name "Tauri remote installer and direct package" `
-    -Script (Join-Path $scriptDir "build-tauri-remote.ps1") `
-    -Arguments @($commonArgs + @("-ApiUrl", $ApiUrl))
+    if ($IncludeTauri) {
+        Invoke-BuildStep `
+            -Name "Tauri remote installer" `
+            -Script (Join-Path $scriptDir "build-tauri.ps1") `
+            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl))
+    }
+}
 
 Write-Host ""
 Write-Host "All desktop packages generated under:" -ForegroundColor Green

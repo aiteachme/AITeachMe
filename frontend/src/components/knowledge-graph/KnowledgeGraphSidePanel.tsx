@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -33,6 +33,7 @@ const KnowledgeGraphView = lazy(() =>
 );
 
 const ACTIVE_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
+const GRAPH_TERMINAL_BUILD_STATUSES = new Set(["completed", "partial_failed", "failed", "cancelled", "skipped"]);
 
 function TabFallback({ message }: { message: string }) {
   return (
@@ -83,6 +84,20 @@ export function KnowledgeGraphSidePanel({
   const { data: buildRuntime } = useKnowledgeDocsBuildState(courseId);
   const graphStatus = String(buildRuntime?.graph?.status ?? "").trim();
   const graphIsActive = ACTIVE_BUILD_STATUSES.has(graphStatus);
+  const previousGraphStatusRef = useRef(graphStatus);
+
+  useEffect(() => {
+    const previousStatus = previousGraphStatusRef.current;
+    previousGraphStatusRef.current = graphStatus;
+    if (!courseId || !ACTIVE_BUILD_STATUSES.has(previousStatus) || !GRAPH_TERMINAL_BUILD_STATUSES.has(graphStatus)) {
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude) });
+    queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["graph-node-list", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["graph-node-detail", courseId] });
+  }, [courseId, graphStatus, overviewInclude, queryClient]);
 
   const graphBuildMutation = useMutation({
     mutationFn: () => triggerKnowledgeGraphBuild(courseId),

@@ -5,6 +5,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowl
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
+from app.workflows.digest.kg_doc_sync.lib.extraction import _prepare_llm_chunk_content
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _build_backbone_graph_items,
     _build_extraction_tasks,
@@ -93,7 +94,7 @@ def test_many_chapters_keep_chapter_tasks_and_limit_parallel_lanes() -> None:
     tasks, metrics = _build_extraction_tasks(chapters, {})
 
     assert len(tasks) == len(chapters)
-    assert metrics["planned_task_limit"] == 32
+    assert metrics["planned_task_limit"] == 16
     assert metrics["chapter_split_count"] == 0
 
 
@@ -324,4 +325,20 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
     )
 
     assert len(result.nodes) == 8
-    assert len(result.edges) == 10
+    assert len(result.edges) == 12
+
+
+def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> None:
+    prepared = _prepare_llm_chunk_content(
+        "# 数据标准化\n\n"
+        "> [!WARNING]\n"
+        ">\n"
+        "> ⚠️ **易错点**：不要把未标准化的数据直接用于主成分分析。\n\n"
+        "[!TIP]\n"
+        "💡 快速抓手：先检查变量量纲。"
+    )
+
+    assert "[!WARNING]" not in prepared
+    assert "[!TIP]" not in prepared
+    assert "易错点" in prepared
+    assert "快速抓手" in prepared

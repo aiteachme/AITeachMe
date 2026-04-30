@@ -1,36 +1,37 @@
 # Electron 桌面端打包
 
-Electron 现在和 Tauri 一样，分为本地后端模式和远程后端模式。
-
-## 本地后端模式
+Electron 打包通过统一入口执行：
 
 ```powershell
-.\packaging\electron-local.bat
+.\packaging\release.bat
 ```
 
-本地模式会把 PyInstaller 打出来的后端一起打进 Electron 应用里，产物会写入：
+默认生成 Electron local 安装包，内含 PyInstaller 打出的本地后端。产物写入：
 
-- `packaging/release`
+- `packaging\release\AiTeachMe-v<version>-installer.exe`
 
-## 远程后端模式
+## Remote 包
+
+如果需要额外生成只连接远程后端的 Electron remote 安装包：
 
 ```powershell
-.\packaging\electron-remote.bat -ApiUrl https://api.example.com
+.\packaging\release.bat -IncludeRemote -ApiUrl https://api.example.com
 ```
 
-远程模式只打包 Electron 壳和前端，不包含 Python 后端，产物同样会写入：
+产物写入：
 
-- `packaging/release`
+- `packaging\release\AiTeachMe-v<version>-installer-remote.exe`
 
-便携版 exe 是自解压启动器。第一次运行需要解压应用，后续运行会复用本机用户目录里的版本缓存，避免每次启动都经历较长的解压和删除流程。
+## 预绑定本地配置
 
-前端里的底层 Electron 打包脚本仍然保留；如果没有设置额外构建环境，默认按本地后端模式处理：
+本地包可以加入加密后的预绑定大模型配置：
 
 ```powershell
-cd frontend
-npm run electron:installer
-npm run electron:portable
-npm run electron:dist
+.\packaging\release.bat -ImportBundledEnv
 ```
 
-旧的 `desktop:*` npm 脚本仍然保留，作为 Electron 脚本的别名。
+产物写入：
+
+- `packaging\release\AiTeachMe-v<version>-installer-bundled.exe`
+
+底层实现脚本是 `packaging\scripts\build-electron.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

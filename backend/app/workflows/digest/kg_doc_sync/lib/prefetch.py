@@ -17,6 +17,7 @@ from app.shared.infra.llm_support.common import (
 )
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
+    _graph_llm_concurrency_cap,
     extract_knowledge_graph_section_records_async,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
@@ -151,7 +152,13 @@ def start_docgen_kg_prefetch(
         document_backbone=document_backbone,
         docgen_manifest=docgen_manifest,
     )
-    concurrency = max(1, int(settings.knowledge_graph.prefetch_concurrency or 1))
+    concurrency = max(
+        1,
+        min(
+            int(settings.knowledge_graph.prefetch_concurrency or 1),
+            _graph_llm_concurrency_cap(),
+        ),
+    )
 
     def _on_record(record: SectionExtractionRecord) -> None:
         with _LOCK:

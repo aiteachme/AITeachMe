@@ -102,7 +102,7 @@ cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
 Render Docker runtime 使用 `infra/deployment/docker/backend.Dockerfile` 或 `infra/deployment/docker/backend-office.Dockerfile` 时，镜像默认命令会在单副本场景下调用
-`python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}`。多副本平台仍建议把迁移拆成独立 Job，只让 Web 容器启动 Uvicorn。
+`python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}`。多副本平台仍建议把迁移拆成独立 Job，只让 Web 容器启动 Uvicorn。
 
 推荐环境变量：
 
@@ -125,7 +125,7 @@ ALLOW_CLOUD_VECTOR_REBUILD=false
 - `ALLOW_CLOUD_VECTOR_REBUILD` 默认必须是 `false`。
 - 只有在明确知道旧向量可以完全重建时，才临时改为 `true`。
 
-GitHub Actions 的 `deploy.yml` 目前只是触发 Render 部署，它不会替代 Render Dashboard 上的 pre-deploy command。
+GitHub Actions 的 `deploy.yml` 只触发 Cloudflare Pages 前端部署；Sealos 后端镜像由 `build-backend-images.yml` 手动构建并推送到 GHCR。
 
 ### 4.1 Docker 部署
 
@@ -153,7 +153,7 @@ Docker Build Context Directory: .
 Docker 模式下不需要再配置原来的 Start command，镜像默认命令已经复用：
 
 ```bash
-python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-10000}
+python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}
 ```
 
 如果 Render 已经把 Root Directory 设置为 `backend`，应改回仓库根目录；否则 Dockerfile 无法复用根目录 `.dockerignore`，也会重新出现多套部署入口问题。

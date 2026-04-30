@@ -24,6 +24,7 @@ from app.schemas.system import SettingEntry, SettingSection, SettingsOverviewDat
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
+    get_env_source,
     set_runtime_env_overrides,
 )
 from app.shared.infra.exceptions import AITeachMeError
@@ -305,22 +306,27 @@ def _env_entry(
     ui_group: str = "",
     ui_order: int = 0,
 ) -> SettingEntry:
+    primary_env_name = env_names[0] if env_names else ""
     env_value = (
         override_value
         if has_override
         else _first_configured_env_value(env_names)
     )
+    env_source = "runtime_override" if has_override else get_env_source(primary_env_name)
     configured = _has_configured_value(env_value)
     local_mode = is_local_mode()
     actual_value = env_value if env_value is not None and str(env_value).strip() else value
     safe_secret = bool(secret)
+    bundled_secret = safe_secret and env_source == "bundled" and configured
     safe_value = None if safe_secret else actual_value
     reveal_value = (
         str(actual_value)
-        if local_mode and safe_secret and _has_configured_value(actual_value)
+        if local_mode and safe_secret and not bundled_secret and _has_configured_value(actual_value)
         else None
     )
-    if safe_secret and configured:
+    if bundled_secret:
+        display_value = "预绑定密钥，已加密隐藏"
+    elif safe_secret and configured:
         display_value = "已配置"
     elif safe_secret:
         display_value = "未配置"
@@ -335,6 +341,7 @@ def _env_entry(
         display_value=display_value,
         status="configured" if configured else "missing",
         secret=safe_secret,
+        secret_source=env_source if safe_secret else None,
         editable=local_mode,
         restart_required=restart_required if local_mode else True,
         ui_group=ui_group,

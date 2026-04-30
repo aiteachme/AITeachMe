@@ -13,6 +13,10 @@ export function isConfiguredSecretEntry(entry: SettingEntry): boolean {
   return Boolean(entry.secret && entry.status === "configured");
 }
 
+export function isBundledSecretEntry(entry: SettingEntry): boolean {
+  return Boolean(entry.secret && entry.secret_source === "bundled");
+}
+
 export function isCredentialKey(key: string): boolean {
   const normalizedKey = key.toLowerCase();
   return (

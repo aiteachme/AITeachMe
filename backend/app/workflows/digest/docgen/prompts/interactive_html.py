@@ -5,6 +5,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+
+
+_INTERACTION_MODE_LABELS = {
+    "parameter_explorer": "参数探索",
+    "process_stepper": "过程分步",
+    "concept_mapper": "概念关系映射",
+}
 
 
 def build_interactive_html_messages(
@@ -18,6 +26,8 @@ def build_interactive_html_messages(
     claim_targets: Sequence[str],
     chapter_context: str,
 ) -> list[dict[str, str]]:
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
+    interaction_label = _INTERACTION_MODE_LABELS.get(interaction_mode, interaction_mode or "未指定")
     system_prompt = """
 你是 AITeachMe 的交互式教学页面生成器。
 你必须只输出一个完整、自包含、可直接运行的 HTML5 文档，不输出 Markdown、解释或额外文本。
@@ -43,8 +53,8 @@ def build_interactive_html_messages(
 
 章节标题：{chapter_title}
 章节目标：{chapter_objective or "帮助学生直观理解本章核心概念。"}
-文档模式：{digest_mode}
-建议交互模式：{interaction_mode}
+文档模式：{mode_label}
+建议交互模式：{interaction_label}
 核心概念：{"、".join(concept_targets) or "未提供"}
 关键公式：{"、".join(formula_targets) or "未提供"}
 核心主张：{"、".join(claim_targets) or "未提供"}
@@ -54,9 +64,9 @@ def build_interactive_html_messages(
 
 要求：
 1. 只聚焦一个最适合做交互展示的点，不要把整章所有内容都塞进页面。
-2. 如果是 `parameter_explorer`，优先做滑块/切换器，让学生看到参数变化如何影响图像、关系或结果。
-3. 如果是 `process_stepper`，优先做步骤展开、分阶段高亮、条件切换。
-4. 如果是 `concept_mapper`，优先做结构关系、状态切换、概念对照。
+2. 如果建议交互模式是“参数探索”，优先做滑块/切换器，让学生看到参数变化如何影响图像、关系或结果。
+3. 如果建议交互模式是“过程分步”，优先做步骤展开、分阶段高亮、条件切换。
+4. 如果建议交互模式是“概念关系映射”，优先做结构关系、状态切换、概念对照。
 5. 如果内容涉及函数、几何、导数、积分、方程、概率等，优先用 SVG / Canvas 做直观可视化。
 6. 不要写超长说明，不要做多页面，不要做聊天框，不要做登录、分享、导出、联网搜索。
 7. 交互和讲解要服务学习，不要只做炫技动画。

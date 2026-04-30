@@ -13734,6 +13734,66 @@
             "description": "Knowledge edges added from DocGen document_backbone between already extracted units.",
             "default": 0
           },
+          "stitched_edge_count": {
+            "type": "integer",
+            "title": "Stitched Edge Count",
+            "description": "No-LLM relation-stitching edges added before graph persistence.",
+            "default": 0
+          },
+          "section_local_stitch_edge_count": {
+            "type": "integer",
+            "title": "Section Local Stitch Edge Count",
+            "description": "Edges stitched inside the same section to reduce isolated units.",
+            "default": 0
+          },
+          "mention_stitch_edge_count": {
+            "type": "integer",
+            "title": "Mention Stitch Edge Count",
+            "description": "Edges stitched from explicit cross-unit mentions in extracted text.",
+            "default": 0
+          },
+          "graph_isolated_unit_count": {
+            "type": "integer",
+            "title": "Graph Isolated Unit Count",
+            "description": "Extracted units with zero incident edges after relation stitching.",
+            "default": 0
+          },
+          "graph_component_count": {
+            "type": "integer",
+            "title": "Graph Component Count",
+            "description": "Undirected connected component count after relation stitching.",
+            "default": 0
+          },
+          "graph_largest_component_unit_count": {
+            "type": "integer",
+            "title": "Graph Largest Component Unit Count",
+            "description": "Largest connected component size after relation stitching.",
+            "default": 0
+          },
+          "graph_active_unit_count": {
+            "type": "integer",
+            "title": "Graph Active Unit Count",
+            "description": "Extracted active-unit count used for graph health metrics.",
+            "default": 0
+          },
+          "graph_active_edge_count": {
+            "type": "integer",
+            "title": "Graph Active Edge Count",
+            "description": "Extracted active-edge count used for graph health metrics.",
+            "default": 0
+          },
+          "graph_avg_degree": {
+            "type": "number",
+            "title": "Graph Avg Degree",
+            "description": "Average undirected degree after relation stitching.",
+            "default": 0.0
+          },
+          "graph_isolated_unit_pct": {
+            "type": "number",
+            "title": "Graph Isolated Unit Pct",
+            "description": "Percentage of extracted units with no incident edge after relation stitching.",
+            "default": 0.0
+          },
           "stable_anchor_count": {
             "type": "integer",
             "title": "Stable Anchor Count",
@@ -15384,6 +15444,11 @@
             "title": "Is Marked",
             "default": false
           },
+          "has_wrong_attempt": {
+            "type": "boolean",
+            "title": "Has Wrong Attempt",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -16017,6 +16082,18 @@
             "title": "Secret",
             "description": "是否为敏感配置。",
             "default": false
+          },
+          "secret_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Source",
+            "description": "敏感配置来源，如 bundled/env/runtime_override。"
           },
           "editable": {
             "type": "boolean",

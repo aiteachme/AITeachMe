@@ -15,6 +15,8 @@ from typing import Any
 
 
 _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
+_BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
+_CALLOUT_MARKER_RE = re.compile(r"^\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
@@ -95,6 +97,42 @@ _KIND_SUFFIX = {
     "practice": "练习与巩固",
     "structure": "知识结构",
     "quickref": "公式与判定速查",
+}
+_CALLOUT_WARNING_START_RE = re.compile(
+    r"^\s*(?:⚠️?|❗|❌|⛔|🚫)?\s*(?:\*\*)?"
+    r"(?:易错|误区|陷阱|警示|注意|不能|不要|失分|关键区别|使用前提|混淆|风险|坑点|防坑|常见错误|限制)",
+)
+_CALLOUT_TIP_START_RE = re.compile(
+    r"^\s*(?:💡|📌|🎯|🔍|🧩|🚀|✨)?\s*(?:\*\*)?"
+    r"(?:技巧|速判|口诀|模板|题眼|捷径|快速|实战|应用提示|转化技巧|快捷|定位|冲刺策略|快速抓手|关键线索|处理模板|操作要领|实践提示|案例提示)",
+)
+_CALLOUT_IMPORTANT_START_RE = re.compile(
+    r"^\s*(?:✅|🔥|⭐)?\s*(?:\*\*)?"
+    r"(?:核心|关键|重点|高频|结论|前提|原理|价值|判断标准|正确逻辑|正确判断|本章定位|高价值|必备|主线|核心判断)",
+)
+_CALLOUT_NOTE_START_RE = re.compile(
+    r"^\s*(?:📝|🔗|📚|📌)?\s*(?:\*\*)?"
+    r"(?:补充|延伸|联系|学习价值|提示|应用价值|背景|拓展|小贴士)",
+)
+_CALLOUT_EMOJI_KIND = {
+    "💡": "TIP",
+    "📌": "TIP",
+    "🎯": "TIP",
+    "🔍": "TIP",
+    "🧩": "TIP",
+    "🚀": "TIP",
+    "✨": "TIP",
+    "✅": "IMPORTANT",
+    "🔥": "IMPORTANT",
+    "⭐": "IMPORTANT",
+    "⚠": "WARNING",
+    "❗": "WARNING",
+    "❌": "WARNING",
+    "⛔": "WARNING",
+    "🚫": "WARNING",
+    "📝": "NOTE",
+    "🔗": "NOTE",
+    "📚": "NOTE",
 }
 
 
@@ -302,6 +340,88 @@ def normalize_textbook_headings(
     return "\n".join(lines)
 
 
+def _infer_callout_kind(body_lines: Iterable[str]) -> str:
+    first_line = next((str(item or "").strip() for item in body_lines if str(item or "").strip()), "")
+    if not first_line:
+        return ""
+    if "答案" in first_line and not any(marker in first_line for marker in ("题眼", "易错", "技巧", "结论", "前提")):
+        return ""
+    if _CALLOUT_WARNING_START_RE.search(first_line):
+        return "WARNING"
+    if _CALLOUT_TIP_START_RE.search(first_line):
+        return "TIP"
+    if _CALLOUT_IMPORTANT_START_RE.search(first_line):
+        return "IMPORTANT"
+    if _CALLOUT_NOTE_START_RE.search(first_line):
+        return "NOTE"
+    first_char = first_line[0]
+    if first_char in _CALLOUT_EMOJI_KIND and re.search(r"(?:\*\*|[:：])", first_line):
+        return _CALLOUT_EMOJI_KIND[first_char]
+    return ""
+
+
+def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
+    body_lines: list[str] = []
+    for line in block_lines:
+        match = _BLOCKQUOTE_LINE_RE.match(line)
+        if match is None:
+            return block_lines
+        body_lines.append(str(match.group("body") or "").rstrip())
+
+    first_nonempty = next((line.strip() for line in body_lines if line.strip()), "")
+    if not first_nonempty or _CALLOUT_MARKER_RE.match(first_nonempty):
+        return block_lines
+
+    kind = _infer_callout_kind(body_lines)
+    if not kind:
+        return block_lines
+
+    normalized = [f"> [!{kind}]", ">"]
+    normalized.extend(f"> {line}" if line.strip() else ">" for line in body_lines)
+    return normalized
+
+
+def normalize_educational_callouts(markdown: str) -> str:
+    """Promote legacy emoji blockquotes into GitHub-style teaching callouts.
+
+    Writer models often produce useful learner-facing blocks such as
+    ``> ✅ **速判技巧**`` or ``> ⚠️ **易错点**``. The frontend only renders
+    first-class callouts for ``> [!TIP]`` / ``> [!WARNING]`` markers, so this
+    deterministic pass preserves the original emoji text while adding the
+    stable marker expected by the renderer.
+    """
+
+    text = str(markdown or "")
+    if ">" not in text:
+        return text
+
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    output: list[str] = []
+    in_fence = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            output.append(line)
+            index += 1
+            continue
+
+        if in_fence or _BLOCKQUOTE_LINE_RE.match(line) is None:
+            output.append(line)
+            index += 1
+            continue
+
+        block: list[str] = []
+        while index < len(lines) and _BLOCKQUOTE_LINE_RE.match(lines[index]) is not None:
+            block.append(lines[index])
+            index += 1
+        output.extend(_normalize_blockquote_callout(block))
+
+    return "\n".join(output)
+
+
 def has_worked_example_section(markdown: str) -> bool:
     return bool(
         re.search(
@@ -367,6 +487,7 @@ __all__ = [
     "clean_heading_focus",
     "format_worked_example_section",
     "has_worked_example_section",
+    "normalize_educational_callouts",
     "normalize_textbook_headings",
     "rewrite_textbook_heading_line",
     "strip_heading_number_prefix",

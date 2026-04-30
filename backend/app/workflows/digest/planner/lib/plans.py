@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
 
@@ -94,6 +95,52 @@ def _normalize_digest_mode(value: Any) -> str:
     return "sprint" if mode == "sprint" else "systematic"
 
 
+def planner_mode_label(value: Any) -> str:
+    return "冲刺型" if _normalize_digest_mode(value) == "sprint" else "系统型"
+
+
+def render_planner_chapter_contract(value: Any) -> str:
+    """Render the high-priority chapter planning contract for Planner prompts."""
+
+    mode = _normalize_digest_mode(value)
+    config = get_planner_mode_runtime_config(mode)
+    if mode == "sprint":
+        granularity = "按短期可执行的复习任务、常见任务/题型、易错边界和回看节奏划分。"
+    else:
+        granularity = "按概念依赖、知识对象、方法结构、应用迁移和综合收束划分。"
+    return "\n".join(
+        [
+            "章节规划合同：",
+            f"- 模式：{planner_mode_label(mode)}。",
+            (
+                f"- 章节数量：必须在 {config.min_chapters}-{config.max_chapters} 章之间；"
+                f"少于 {config.min_chapters} 章通常会过粗，超过 {config.max_chapters} 章通常会过碎。"
+            ),
+            (
+                f"- 目标成稿长度：{config.target_length}。这是整份知识文档的预算，"
+                "用于判断章节颗粒度，不要写进章节标题或正文承诺。"
+            ),
+            f"- 划分主线：{granularity}",
+            "- 每章只能承担一个主要学习任务；相邻章节要有清楚的前后依赖、能力递进或场景切换。",
+            "- 不要按文件名、页码、资料来源、PPT 顺序机械切章；要按学习者真正需要建立的理解路径切章。",
+            "- 不要把同一个知识对象拆成多个空心章节，也不要把多个独立主题硬塞进一个大杂烩章节。",
+            "- 章节标题要能回答“这一章到底帮我学会什么/解决什么问题”。",
+            "- 章节标题要自然像真实讲义目录，避免口号化、过度对仗或统一句式。",
+        ]
+    )
+
+
+def _compact_supplement_title(value: Any, *, index: int, max_chars: int = 18) -> str:
+    text = _text(value)
+    for piece in re.split(r"[，,、/／：:；;。！？!?\n]+", text):
+        cleaned = _text(piece).strip(" -—_")
+        if 2 <= len(cleaned) <= max_chars:
+            return cleaned
+    if text:
+        return text[:max_chars].rstrip(" ：:，,。；;|-")
+    return f"补充章节 {index}"
+
+
 def _minimal_shared_inputs(course_id: str) -> SharedInputs:
     return SharedInputs(
         fast_hints=FastTopicHints(),
@@ -123,7 +170,7 @@ def _resolve_course_name(
 
 
 def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
-    title = _text(raw.get("title"))
+    title = clean_generated_chapter_title(_text(raw.get("title")))
     key_points = _strings(raw.get("required_elements") or raw.get("key_points"))
     if not title:
         raise ValueError(f"planner chapter #{index} is missing title")
@@ -145,25 +192,141 @@ def _build_supplement_chapter(
     digest_mode: str,
     user_prompt: str,
 ) -> PlannerChapterPlan:
-    title = _text(topic) or f"补充章节 {index}"
+    return PlannerChapterPlan.model_validate(
+        build_supplement_chapter_payload(
+            index=index,
+            topic=topic,
+            digest_mode=digest_mode,
+            user_prompt=user_prompt,
+        )
+    )
+
+
+def _reindex_chapters(chapters: list[PlannerChapterPlan]) -> list[PlannerChapterPlan]:
+    return [
+        chapter.model_copy(update={"chapter_index": index})
+        for index, chapter in enumerate(chapters, start=1)
+    ]
+
+
+def _merge_chapter_into(
+    base: PlannerChapterPlan,
+    extra: PlannerChapterPlan,
+    *,
+    note_prefix: str,
+) -> PlannerChapterPlan:
+    extra_title = _text(extra.title)
+    note = f"{note_prefix}：{extra_title}" if extra_title else ""
+    required = _strings([*base.required_elements, note, *extra.required_elements])[:10]
+    objective_parts = _strings(
+        [
+            base.objective,
+            f"同时吸收《{extra_title}》中的相邻内容。" if extra_title else extra.objective,
+        ]
+    )
+    writing_parts = _strings(
+        [
+            base.writing_instructions,
+            f"同时处理《{extra_title}》的相邻内容，保持边界清楚，避免重复展开。" if extra_title else "",
+        ]
+    )
+    return base.model_copy(
+        update={
+            "objective": "；".join(objective_parts[:3]),
+            "required_elements": required,
+            "writing_instructions": " ".join(writing_parts[:2]),
+        }
+    )
+
+
+def _dedupe_chapters_by_title(chapters: list[PlannerChapterPlan]) -> list[PlannerChapterPlan]:
+    result: list[PlannerChapterPlan] = []
+    title_positions: dict[str, int] = {}
+    for chapter in chapters:
+        key = _text(chapter.title).casefold()
+        if key and key in title_positions:
+            position = title_positions[key]
+            result[position] = _merge_chapter_into(
+                result[position],
+                chapter,
+                note_prefix="重复章节合并",
+            )
+            continue
+        if key:
+            title_positions[key] = len(result)
+        result.append(chapter)
+    return _reindex_chapters(result)
+
+
+def _cap_chapters_to_maximum(
+    chapters: list[PlannerChapterPlan],
+    *,
+    digest_mode: str,
+) -> list[PlannerChapterPlan]:
+    config = get_planner_mode_runtime_config(digest_mode)
+    max_chapters = max(config.min_chapters, config.max_chapters)
+    if len(chapters) <= max_chapters:
+        return _reindex_chapters(chapters)
+
+    kept = list(chapters[:max_chapters])
+    overflow = chapters[max_chapters:]
+    if not kept:
+        return []
+    for extra in overflow:
+        kept[-1] = _merge_chapter_into(
+            kept[-1],
+            extra,
+            note_prefix="超出章节预算后合并覆盖",
+        )
+    return _reindex_chapters(kept)
+
+
+def _normalize_chapter_count(
+    chapters: list[PlannerChapterPlan],
+    *,
+    digest_mode: str,
+    shared_inputs: SharedInputs,
+    user_prompt: str,
+    course_name: str,
+) -> list[PlannerChapterPlan]:
+    chapters = _dedupe_chapters_by_title(chapters)
+    chapters = _cap_chapters_to_maximum(chapters, digest_mode=digest_mode)
+    chapters = _pad_chapters_to_minimum(
+        chapters,
+        digest_mode=digest_mode,
+        shared_inputs=shared_inputs,
+        user_prompt=user_prompt,
+        course_name=course_name,
+    )
+    return _reindex_chapters(chapters)
+
+
+def build_supplement_chapter_payload(
+    *,
+    index: int,
+    topic: str,
+    digest_mode: str,
+    user_prompt: str = "",
+) -> dict[str, Any]:
+    title = _compact_supplement_title(topic, index=index)
     normalized_mode = _normalize_digest_mode(digest_mode)
     if normalized_mode == "sprint":
-        required = _strings([f"{title} 的高频考点", f"{title} 的典型题型", f"{title} 的易错点"])
-        objective = f"把《{title}》整理成考前可快速复盘的考点、题型和易错清单。"
-        writing = "按速成课写法组织：先给抓手，再讲题型和易错点。"
+        required = _strings([f"{title} 的常见任务/题型", f"{title} 的快速抓手", f"{title} 的易错边界"])
+        objective = f"把《{title}》整理成能快速定位、练习和查漏的任务主线。"
+        writing = "按冲刺型写法组织：先给判断抓手，再讲典型任务/题型和易错边界。"
     else:
-        required = _strings([f"{title} 的核心概念", f"{title} 的关键结构", f"{title} 的例子与迁移"])
+        required = _strings([f"{title} 的核心对象", f"{title} 的结构关系", f"{title} 的例子与迁移"])
         objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
-        writing = "按系统课写法组织：先讲定义和结构，再展开推理、例子与迁移。"
+        writing = "按系统型写法组织：先讲对象和结构，再展开推理、例子与迁移。"
     if user_prompt:
-        required = _strings([*required, user_prompt])
-    return PlannerChapterPlan(
-        chapter_index=index,
-        title=title,
-        objective=objective,
-        required_elements=required[:6],
-        writing_instructions=writing,
-    )
+        required = _strings([*required, f"{title} 与用户目标的连接"])
+    return {
+        "chapter_index": index,
+        "title": title,
+        "objective": objective,
+        "required_elements": required[:6],
+        "writing_instructions": writing,
+    }
 
 
 def _pad_chapters_to_minimum(
@@ -186,11 +349,11 @@ def _pad_chapters_to_minimum(
     ]
     if not topics:
         topics = [
-            "核心概念总览",
-            "关键结构与流程",
-            "典型例题与应用",
-            "易错点与复盘",
-            "综合练习",
+            "学习边界与主线",
+            "关键对象与关系",
+            "方法应用与例子",
+            "易错边界与复盘",
+            "综合迁移任务",
         ]
 
     padded = list(chapters)
@@ -257,7 +420,7 @@ def normalize_planner_draft(
         raise ValueError("planner plan is missing chapters")
 
     chapters = [_merge_chapter(raw, index) for index, raw in enumerate(raw_chapters, start=1)]
-    chapters = _pad_chapters_to_minimum(
+    chapters = _normalize_chapter_count(
         chapters,
         digest_mode=mode,
         shared_inputs=shared,
@@ -303,6 +466,9 @@ __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
     "_resolve_course_name",
+    "build_supplement_chapter_payload",
     "normalize_planner_draft",
     "normalize_planner_payload",
+    "planner_mode_label",
+    "render_planner_chapter_contract",
 ]

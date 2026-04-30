@@ -1,126 +1,298 @@
-name: Trigger Deploy Webhooks
+name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
-      - main  # 仅在推送或合并到 main 分支时触发
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main
+  # Keep only the newest main deployment; older in-progress runs may appear as canceled.
+  cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Trigger Cloudflare & Render Hooks
+  verify-latest:
+    name: Verify deploy target
     runs-on: ubuntu-latest
-    env:
-      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-      RENDER_SERVICE_ID: srv-d6ore72a214c73f6mk60
+    outputs:
+      should_deploy: ${{ steps.guard.outputs.should_deploy }}
+      source_sha: ${{ steps.guard.outputs.source_sha }}
 
     steps:
-      - name: Validate deploy secrets
+      - name: Skip stale CI runs
+        id: guard
         env:
-          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
-          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
-          missing=0
+          set -euo pipefail
 
-          if [ -z "$CLOUDFLARE_DEPLOY_KEY" ]; then
-            echo "❌ 缺少 CLOUDFLARE_DEPLOY_KEY"
-            missing=1
-          fi
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
 
-          if [ -z "$RENDER_DEPLOY_KEY" ]; then
-            echo "❌ 缺少 RENDER_DEPLOY_KEY"
-            missing=1
-          fi
-
-          if [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "❌ 缺少 RENDER_SERVICE_ID"
-            missing=1
-          fi
-
-          if [ "$missing" -ne 0 ]; then
-            echo "请在 GitHub Secrets 中配置缺失的部署参数。"
-            exit 1
-          fi
-
-      - name: Trigger Cloudflare Pages (Frontend) Build
-        run: |
-          curl -X POST ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
-
-      - name: Trigger Render (Backend) Build
-        id: trigger_render
-        run: |
-          echo "🚀 触发 Render 后端部署..."
-          RESPONSE=$(curl -s -X POST ${{ secrets.RENDER_DEPLOY_KEY }})
-          echo "Response: $RESPONSE"
-          echo "✅ 部署已触发，开始监测状态..."
-
-      - name: Wait for Render Deployment
-        run: |
-          echo "⏳ 等待 Render 部署完成..."
-
-          # 检查 API Key 是否配置
-          if [ -z "$RENDER_API_KEY" ]; then
-            echo "⚠️ RENDER_API_KEY 未配置，跳过状态监测"
-            echo "💡 请在 GitHub Settings → Secrets 中添加 RENDER_API_KEY"
+          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${WORKFLOW_RUN_CONCLUSION}" != "success" ]; then
+            echo "Skipping deploy because CI conclusion is ${WORKFLOW_RUN_CONCLUSION}."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          MAX_WAIT=900
-          INTERVAL=30
-          ELAPSED=0
+          latest_sha="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
+              | jq -r '.object.sha'
+          )"
+          if [ -z "${latest_sha}" ] || [ "${latest_sha}" = "null" ]; then
+            echo "Could not resolve latest main SHA." >&2
+            exit 1
+          fi
 
-          while [ $ELAPSED -lt $MAX_WAIT ]; do
-            DEPLOY_INFO=$(curl -s "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys?limit=1" \
-              -H "Accept: application/json" \
-              -H "Authorization: Bearer ${RENDER_API_KEY}")
+          if [ "${SOURCE_SHA}" = "${latest_sha}" ]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping stale deploy: source SHA ${SOURCE_SHA} is not current main ${latest_sha}."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
-            if echo "$DEPLOY_INFO" | grep -q "Unauthorized"; then
-              echo "❌ API Key 无效或已过期"
-              exit 1
-            fi
+  deploy-frontend:
+    name: Deploy frontend to Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs: verify-latest
+    if: needs.verify-latest.outputs.should_deploy == 'true'
 
-            STATUS=$(echo "$DEPLOY_INFO" | jq -r '.[0].deploy.status // "unknown"' 2>/dev/null || echo "error")
-            DEPLOY_ID=$(echo "$DEPLOY_INFO" | jq -r '.[0].deploy.id // "unknown"' 2>/dev/null || echo "error")
+    steps:
+      - name: Validate Cloudflare deploy hook
+        env:
+          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_DEPLOY_KEY" ]; then
+            echo "Missing CLOUDFLARE_DEPLOY_KEY."
+            echo "Configure it in GitHub Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
 
-            if [ "$STATUS" = "error" ]; then
-              echo "⚠️ 无法解析部署状态，等待下次检查..."
-              sleep $INTERVAL
-              ELAPSED=$((ELAPSED + INTERVAL))
-              continue
-            fi
+      - name: Trigger Cloudflare Pages build
+        env:
+          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$CLOUDFLARE_DEPLOY_KEY"
 
-            echo "📊 部署状态: $STATUS (ID: $DEPLOY_ID)"
+      - name: Frontend summary
+        run: |
+          echo "Frontend: Cloudflare Pages deploy hook triggered." >> "$GITHUB_STEP_SUMMARY"
 
-            if [ "$STATUS" = "live" ]; then
-              echo "✅ 后端部署成功！"
-              echo "🔗 服务地址: https://aiteachme.onrender.com"
+  deploy-backend:
+    name: Deploy backend to Sealos
+    runs-on: ubuntu-latest
+    needs: verify-latest
+    if: needs.verify-latest.outputs.should_deploy == 'true'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
+      SEALOS_BACKEND_DEPLOYMENT: atm-d
+      SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
+      SEALOS_NAMESPACE: ns-icbq3ltw
+      SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+      ROLLOUT_TIMEOUT_SECONDS: "3600"
+      BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+      BACKEND_ACR_NAMESPACE: aiteachme
+      BACKEND_IMAGE_NAME: aiteachme-backend
+      SEALOS_IMAGE_PULL_SECRET: aliyun-acr-regcred
+      ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
+      ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Validate Sealos deploy configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
+          [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
+          [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("env:SEALOS_BACKEND_DEPLOYMENT")
+          [ -n "${BACKEND_ACR_REGISTRY}" ] || missing+=("env:BACKEND_ACR_REGISTRY")
+          [ -n "${BACKEND_ACR_NAMESPACE}" ] || missing+=("env:BACKEND_ACR_NAMESPACE")
+          [ -n "${BACKEND_IMAGE_NAME}" ] || missing+=("env:BACKEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required deploy configuration:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${ROLLOUT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.BACKEND_ACR_REGISTRY }}
+          username: ${{ env.ALIYUN_ACR_USERNAME }}
+          password: ${{ env.ALIYUN_ACR_PASSWORD }}
+
+      - name: Resolve backend image tags
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          ghcr_image="ghcr.io/${owner}/${BACKEND_IMAGE_NAME}"
+          acr_image="${BACKEND_ACR_REGISTRY}/${BACKEND_ACR_NAMESPACE}/${BACKEND_IMAGE_NAME}"
+          short_sha="${SOURCE_SHA::7}"
+          version_tag="slim-${short_sha}"
+
+          echo "image=${acr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "ghcr_image=${ghcr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:slim-latest,${acr_image}:${version_tag},${acr_image}:slim-latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/deployment/docker/backend.Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.title=AITeachMe backend slim
+          cache-from: type=gha,scope=backend-slim
+          cache-to: type=gha,mode=max,scope=backend-slim
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure Sealos kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kube_dir="${RUNNER_TEMP}/kube"
+          mkdir -p "${kube_dir}"
+          printf '%s' "${SEALOS_KUBECONFIG_B64}" | base64 -d > "${kube_dir}/config"
+          chmod 600 "${kube_dir}/config"
+          echo "KUBECONFIG=${kube_dir}/config" >> "$GITHUB_ENV"
+
+      - name: Update Sealos deployment image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Deploying backend image: ${{ steps.image.outputs.image }}"
+          echo "Rollout timeout: ${ROLLOUT_TIMEOUT_SECONDS}s"
+
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --type=merge \
+            -p "{\"spec\":{\"progressDeadlineSeconds\":${ROLLOUT_TIMEOUT_SECONDS}}}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "secret/${SEALOS_IMAGE_PULL_SECRET}" \
+            >/dev/null
+
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" set image \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            "*=${{ steps.image.outputs.image }}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" rollout status \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --timeout="${ROLLOUT_TIMEOUT_SECONDS}s"
+
+      - name: Show Sealos rollout diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          echo "## Deployment"
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            -o wide
+
+          echo
+          echo "## ReplicaSets"
+          kubectl -n "${SEALOS_NAMESPACE}" get rs -o wide \
+            | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Pods"
+          kubectl -n "${SEALOS_NAMESPACE}" get pods -o wide \
+            | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Recent events"
+          kubectl -n "${SEALOS_NAMESPACE}" get events --sort-by=.lastTimestamp \
+            | grep -E "^LAST SEEN|${SEALOS_BACKEND_DEPLOYMENT}" \
+            | tail -n 80 || true
+
+      - name: Smoke test backend
+        if: ${{ env.BACKEND_HEALTH_URL != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..12}; do
+            if curl -fsS "${BACKEND_HEALTH_URL}"; then
               exit 0
-            elif [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ]; then
-              echo "❌ 后端部署失败！状态: $STATUS"
-              exit 1
-            elif [ "$STATUS" = "canceled" ]; then
-              echo "⚠️ 部署已取消"
-              exit 1
             fi
-
-            if [ "$STATUS" = "building" ]; then
-              echo "🔨 正在构建..."
-            elif [ "$STATUS" = "deploying" ]; then
-              echo "📦 正在部署..."
-            fi
-
-            sleep $INTERVAL
-            ELAPSED=$((ELAPSED + INTERVAL))
+            echo "Health check failed; retrying (${attempt}/12)..."
+            sleep 10
           done
 
-          echo "⏰ 部署超时（超过 ${MAX_WAIT} 秒）"
+          echo "Backend health check did not pass: ${BACKEND_HEALTH_URL}" >&2
           exit 1
 
-      - name: Deployment Summary
-        if: always()
+      - name: Backend summary
+        shell: bash
         run: |
-          echo "================================"
-          echo "📋 部署摘要"
-          echo "================================"
-          echo "前端: Cloudflare Pages"
-          echo "后端: Render (https://aiteachme.onrender.com)"
-          echo "================================"
+          {
+            echo "Backend image: ${{ steps.image.outputs.image }}"
+            echo "Sealos namespace: ${SEALOS_NAMESPACE}"
+            echo "Sealos deployment: ${SEALOS_BACKEND_DEPLOYMENT}"
+            if [ -n "${BACKEND_HEALTH_URL}" ]; then
+              echo "Health URL: ${BACKEND_HEALTH_URL}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

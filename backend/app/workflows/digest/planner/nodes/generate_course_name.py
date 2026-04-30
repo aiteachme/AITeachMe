@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
@@ -18,18 +20,34 @@ from app.workflows.support.courses.icons import choose_course_icon_key
 logger = structlog.get_logger(__name__)
 
 _AUTO_TITLE_PLACEHOLDERS = {"", "untitled course", "新课程", "无标题", "未命名", "未命名课程"}
+_TITLE_LINE_RE = re.compile(r"[\r\n]+")
+_TITLE_PREFIX_RE = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?:(?:候选|标题|名称)\s*\d*\s*[:：]\s*|\d+\s*[.)）．、]\s*)",
+    re.IGNORECASE,
+)
+_TITLE_MAX_CHARS = 16
 
 
 def _needs_auto_course_name(state: BuildPlannerState) -> bool:
     return str(state.get("planner_operation") or "") == "create"
 
 
+def _iter_title_candidates(value: str | None) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    return [item for item in _TITLE_LINE_RE.split(text) if item.strip()]
+
+
 def _clean_course_name(value: str | None) -> str:
-    cleaned = str(value or "").strip().strip("\"'“”‘’`，。；;:： ")
-    cleaned = " ".join(cleaned.split())
-    if not cleaned or cleaned.casefold() in _AUTO_TITLE_PLACEHOLDERS:
-        return ""
-    return cleaned
+    for candidate in _iter_title_candidates(value):
+        cleaned = _TITLE_PREFIX_RE.sub("", candidate)
+        cleaned = cleaned.strip().strip("\"'“”‘’`，。；;:：.． ")
+        cleaned = " ".join(cleaned.split())
+        if not cleaned or cleaned.casefold() in _AUTO_TITLE_PLACEHOLDERS:
+            continue
+        return cleaned[:_TITLE_MAX_CHARS].rstrip("，。；;:：.．、 ")
+    return ""
 
 
 def _collect_topic_hints(state: BuildPlannerState) -> list[str]:

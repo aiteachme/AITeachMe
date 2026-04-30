@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Bookmark, CheckCircle2, ChevronDown, CloudOff, FileText, Layers3, Loader2, MoreVertical, Plus, Search, Sparkles, Tags, X } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Bookmark,
+  CheckCircle2,
+  ChevronDown,
+  CloudOff,
+  FileText,
+  Layers3,
+  Loader2,
+  MoreVertical,
+  Plus,
+  Search,
+  Sparkles,
+  Tags,
+  X,
+  XCircle,
+} from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -25,6 +42,7 @@ import {
   ExamPaperCard,
   ExamPaperWorkspace,
   buildExamTitle,
+  formatDifficultyLabel,
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "../components/exams";
@@ -57,6 +75,7 @@ interface QuestionTemplateItem {
   template_version: number;
   status: string;
   is_marked?: boolean;
+  has_wrong_attempt?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -587,7 +606,7 @@ export function ExamsPage() {
 function JsonBadge({ value }: { value: unknown }) {
   const text = JSON.stringify(value ?? {}, null, 2);
   if (!text || text === "{}" || text === "[]") {
-    return <span className="text-slate-400">无</span>;
+    return <span className="text-sm text-slate-400">无</span>;
   }
   return (
     <pre className="max-h-40 overflow-auto border-l-2 border-slate-200 pl-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:text-slate-300">
@@ -624,6 +643,25 @@ function KnowledgeRefTags({ refs }: { refs: Array<Record<string, unknown>> }) {
         );
       })}
     </div>
+  );
+}
+
+function QuestionTemplatePlainSection({
+  title,
+  children,
+  showDivider = true,
+}: {
+  title: string;
+  children: ReactNode;
+  showDivider?: boolean;
+}) {
+  return (
+    <section className={showDivider ? "border-t border-slate-200 pt-5 dark:border-slate-800" : ""}>
+      <h3 className="font-serif text-lg font-bold text-slate-950 dark:text-slate-100">{title}</h3>
+      <div className="mt-3 break-words text-sm leading-8 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_.katex-display]:my-3">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -681,9 +719,18 @@ function getQuestionTemplateHistoryResultLabel(item: QuestionTemplateAnswerHisto
 }
 
 function getQuestionTemplateHistoryResultClass(item: QuestionTemplateAnswerHistoryItem) {
-  if (item.is_correct === true) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (item.is_correct === false) return "border-rose-200 bg-rose-50 text-rose-700";
-  return "border-slate-200 bg-slate-50 text-slate-600";
+  if (item.is_correct === true) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200";
+  }
+  if (item.is_correct === false) {
+    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200";
+  }
+  return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+}
+
+function formatQuestionTemplateScore(item: QuestionTemplateAnswerHistoryItem) {
+  if (item.score_obtained == null || item.score_max == null) return null;
+  return `${item.score_obtained}/${item.score_max} 分`;
 }
 
 function QuestionTemplateCard({
@@ -729,7 +776,7 @@ function QuestionTemplateCard({
               #{item.id}
             </span>
             <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-              {item.difficulty}
+              {formatDifficultyLabel(item.difficulty)}
             </span>
           </span>
         </span>
@@ -782,128 +829,112 @@ function QuestionTemplateDetailCard({
     >
       {item ? (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-              {questionTypeLabel}
-            </span>
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-              {item.difficulty}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {item.status}
-            </span>
-            {item.is_marked ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
-                <Bookmark className="h-3.5 w-3.5 fill-current" />
-                已标记
-              </span>
-            ) : null}
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
-              v{item.template_version}
-            </span>
-          </div>
-
-          <section>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">题目</p>
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base leading-8 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200">
-              <ExamMarkdown content={questionContent} />
+          <header className="border-b border-slate-200 pb-5 dark:border-slate-800">
+            <div className="min-w-0">
+              <h2 className="font-serif text-2xl font-bold text-slate-950 dark:text-slate-100">
+                {questionTypeLabel}
+              </h2>
+              <div className="mt-3 break-words text-sm leading-8 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_.katex-display]:my-3">
+                <ExamMarkdown content={questionContent} />
+              </div>
             </div>
-          </section>
-
-          <div className="grid gap-5 lg:grid-cols-2">
-            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-5 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">标准答案</p>
-              <div className="mt-3 text-sm leading-7 text-emerald-950 dark:text-emerald-100">
-                <ExamMarkdown content={item.answer || "暂无答案"} />
-              </div>
-            </section>
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">解析</p>
-              <div className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">
-                <ExamMarkdown content={item.explanation || "暂无解析"} />
-              </div>
-            </section>
-          </div>
-
-          <section>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">历史答题记录</p>
-              {historyItems.length > 0 ? (
-                <span className="text-xs font-semibold text-slate-400">最近 {historyItems.length} 次</span>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {item.is_marked ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+                  <Bookmark className="h-3.5 w-3.5 fill-current" />
+                  已标记
+                </span>
               ) : null}
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{formatDifficultyLabel(item.difficulty)}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{item.status}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">v{item.template_version}</span>
+              <span className="text-slate-400">
+                更新 {formatQuestionTemplateHistoryTime(item.updated_at || item.created_at)}
+              </span>
             </div>
+          </header>
+
+          <QuestionTemplatePlainSection title="标准答案" showDivider={false}>
+            <ExamMarkdown content={item.answer || "暂无答案"} />
+          </QuestionTemplatePlainSection>
+
+          <QuestionTemplatePlainSection title="解析">
+            <ExamMarkdown content={item.explanation || "暂无解析"} />
+          </QuestionTemplatePlainSection>
+
+          <QuestionTemplatePlainSection title="知识点应用">
+            <KnowledgeRefTags refs={item.knowledge_unit_refs} />
+          </QuestionTemplatePlainSection>
+
+          <QuestionTemplatePlainSection title="历史答题记录">
             {historyQuery.isLoading ? (
-              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-500">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 正在加载历史记录...
               </div>
             ) : historyQuery.error ? (
-              <div className="mt-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
+              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
                 {getApiErrorMessage(historyQuery.error, "历史记录加载失败")}
               </div>
             ) : historyItems.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                {historyItems.map((record) => (
-                  <article
-                    key={`${record.exam_paper_id}-${record.exam_paper_item_id}`}
-                    className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getQuestionTemplateHistoryResultClass(record)}`}>
-                        {getQuestionTemplateHistoryResultLabel(record)}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        试卷 #{record.exam_paper_id} · 第 {record.item_order} 题
-                      </span>
-                      <span className="text-xs font-medium text-slate-400">
-                        {formatQuestionTemplateHistoryTime(record.answered_at ?? record.submitted_at ?? record.created_at)}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-xl bg-slate-50 px-4 py-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">我的答案</p>
-                        <div className="text-sm leading-7 text-slate-800">
+              <div className="space-y-4">
+                {historyItems.map((record) => {
+                  const scoreText = formatQuestionTemplateScore(record);
+
+                  return (
+                    <article
+                      key={`${record.exam_paper_id}-${record.exam_paper_item_id}`}
+                      className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/70"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getQuestionTemplateHistoryResultClass(record)}`}>
+                          {getQuestionTemplateHistoryResultLabel(record)}
+                        </span>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                          {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
+                        </span>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                          试卷 #{record.exam_paper_id} · 第 {record.item_order} 题
+                        </span>
+                        {scoreText ? (
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{scoreText}</span>
+                        ) : null}
+                        <span className="text-xs font-medium text-slate-400">
+                          {formatQuestionTemplateHistoryTime(record.answered_at ?? record.submitted_at ?? record.created_at)}
+                        </span>
+                      </div>
+                      <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+                        <div>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">我的答案</p>
                           <ExamMarkdown content={record.user_answer || "未作答"} />
                         </div>
-                      </div>
-                      <div className="rounded-xl bg-emerald-50/70 px-4 py-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">参考答案</p>
-                        <div className="text-sm leading-7 text-emerald-950">
+                        <div>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">参考答案</p>
                           <ExamMarkdown content={record.correct_answer || "暂无答案"} />
                         </div>
-                      </div>
-                    </div>
-                    {record.feedback_text || record.error_cause_label ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-7 text-slate-600">
-                        {record.error_cause_label ? (
-                          <p className="font-semibold text-slate-700">原因：{record.error_cause_label}</p>
+                        {record.feedback_text || record.error_cause_label ? (
+                          <div className="border-t border-dashed border-slate-200 pt-3 dark:border-slate-800">
+                            {record.error_cause_label ? (
+                              <p className="font-semibold text-slate-700 dark:text-slate-200">原因：{record.error_cause_label}</p>
+                            ) : null}
+                            {record.feedback_text ? <ExamMarkdown content={record.feedback_text} /> : null}
+                          </div>
                         ) : null}
-                        {record.feedback_text ? <ExamMarkdown content={record.feedback_text} /> : null}
                       </div>
-                    ) : null}
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             ) : (
-              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500">
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
                 这道题还没有历史答题记录。
               </div>
             )}
-          </section>
+          </QuestionTemplatePlainSection>
 
-          <div className="grid gap-5 lg:grid-cols-2">
-            <section>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">知识点应用</p>
-              <KnowledgeRefTags refs={item.knowledge_unit_refs} />
-            </section>
-            <section>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">选择提示</p>
-              <JsonBadge value={item.selection_hints} />
-            </section>
-          </div>
+          <QuestionTemplatePlainSection title="选择提示">
+            <JsonBadge value={item.selection_hints} />
+          </QuestionTemplatePlainSection>
         </div>
       ) : null}
     </Modal>
@@ -1113,6 +1144,7 @@ export function QuestionTemplatesPage() {
   const { courseId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
   const [showMarkedOnly, setShowMarkedOnly] = useState(false);
+  const [showWrongOnly, setShowWrongOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const templatesQuery = useQuery({
@@ -1126,6 +1158,10 @@ export function QuestionTemplatesPage() {
   const templates = templatesQuery.data ?? [];
   const markedTemplates = useMemo(
     () => templates.filter((item) => item.is_marked === true),
+    [templates],
+  );
+  const wrongTemplates = useMemo(
+    () => templates.filter((item) => item.has_wrong_attempt === true),
     [templates],
   );
 
@@ -1151,7 +1187,13 @@ export function QuestionTemplatesPage() {
   const getQuestionTypeLabel = (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? typeKey;
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleTemplates = useMemo(() => {
-    const baseTemplates = showMarkedOnly ? markedTemplates : templates;
+    let baseTemplates = templates;
+    if (showMarkedOnly) {
+      baseTemplates = baseTemplates.filter((item) => item.is_marked === true);
+    }
+    if (showWrongOnly) {
+      baseTemplates = baseTemplates.filter((item) => item.has_wrong_attempt === true);
+    }
     if (!normalizedSearchQuery) {
       return baseTemplates;
     }
@@ -1172,7 +1214,22 @@ export function QuestionTemplatesPage() {
         .toLowerCase();
       return searchableText.includes(normalizedSearchQuery);
     });
-  }, [markedTemplates, normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, templates]);
+  }, [normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, showWrongOnly, templates]);
+
+  const emptyTitle = normalizedSearchQuery ? "没有匹配的题目" : showWrongOnly ? "还没有错题" : "还没有已标记题目";
+  const emptyDescription = normalizedSearchQuery
+    ? showMarkedOnly && showWrongOnly
+      ? "当前只搜索已标记错题，可以换个关键词或关闭部分筛选。"
+      : showMarkedOnly
+        ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
+        : showWrongOnly
+          ? "当前只搜索错题，可以换个关键词或关闭“只看错题”。"
+          : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
+    : showMarkedOnly && showWrongOnly
+      ? "暂时没有同时满足已标记和做错过的题目。"
+      : showWrongOnly
+        ? "批改后判定错误的题目会出现在这里。"
+        : "在做题页面点“标记”后，收藏的题目会出现在这里。";
 
   if (!courseId) {
     return (
@@ -1247,12 +1304,25 @@ export function QuestionTemplatesPage() {
                 <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
                 只看已标记
               </button>
+              <button
+                type="button"
+                onClick={() => setShowWrongOnly((current) => !current)}
+                className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
+                  showWrongOnly
+                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+                aria-pressed={showWrongOnly}
+              >
+                <XCircle className="h-4 w-4" />
+                只看错题
+              </button>
             </div>
           </div>
 
           <section className="space-y-2 px-1">
             <div className="text-sm text-slate-500">
-              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
+              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 错题 {wrongTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
             </div>
 
             {visibleTemplates.length > 0 ? (
@@ -1270,18 +1340,16 @@ export function QuestionTemplatesPage() {
               <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
                 {normalizedSearchQuery ? (
                   <Search className="mx-auto h-10 w-10 text-slate-300" />
+                ) : showWrongOnly ? (
+                  <XCircle className="mx-auto h-10 w-10 text-slate-300" />
                 ) : (
                   <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
                 )}
                 <h3 className="mt-4 text-lg font-semibold text-slate-900">
-                  {normalizedSearchQuery ? "没有匹配的题目" : "还没有已标记题目"}
+                  {emptyTitle}
                 </h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  {normalizedSearchQuery
-                    ? showMarkedOnly
-                      ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
-                      : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
-                    : "在做题页面点“标记”后，收藏的题目会出现在这里。"}
+                  {emptyDescription}
                 </p>
               </div>
             )}

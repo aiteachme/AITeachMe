@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, KeyRound } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { SETTINGS_STYLES } from "./settingsStyles";
@@ -96,6 +96,28 @@ export function ReadonlyValue({
   return (
     <div className={cn(SETTINGS_STYLES.field.readonlyValue, className)}>
       {children}
+    </div>
+  );
+}
+
+export function BundledSecretValue() {
+  return (
+    <div
+      className={cn(
+        SETTINGS_STYLES.field.control,
+        "flex items-center gap-3 text-slate-500 dark:text-slate-400",
+      )}
+    >
+      <KeyRound
+        className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
+        aria-hidden="true"
+      />
+      <span className="shrink-0 font-mono text-[18px] font-semibold leading-none text-slate-900 dark:text-slate-100">
+        ••••••••
+      </span>
+      <span className="min-w-0 text-[14px] font-semibold text-slate-500 dark:text-slate-400">
+        预绑定密钥，已加密隐藏
+      </span>
     </div>
   );
 }

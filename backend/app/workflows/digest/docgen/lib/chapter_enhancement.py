@@ -27,6 +27,7 @@ from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
+    normalize_educational_callouts,
     normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
@@ -78,11 +79,11 @@ def _build_practice_questions(
                 "chapter_index": draft.chapter_index,
                 "type": "worked_example",
                 "label": choose_heading_focus([first_claim], fallback=title),
-                "stem": f"围绕《{title}》中的“{first_claim}”设计一道基础判定题，并说明应使用哪个定义、公式或方法。",
+                "stem": f"围绕《{title}》中的“{first_claim}”完成一个基础判断：先说清对象和条件，再说明应使用哪个定义、结论或方法。",
                 "analysis_steps": [
-                    "先圈出题目给出的对象、条件和要求，确认它对应本章哪一个知识点。",
-                    "再选择相应的定义、公式或判定方法，并说明为什么能用。",
-                    "最后把结果代回题目条件，检查范围、单位或逻辑方向是否一致。",
+                    "先圈出任务给出的对象、条件和要求，确认它对应本章哪一个知识点。",
+                    "再选择相应的定义、结论或判定方法，并说明为什么能用。",
+                    "最后把结果代回原条件，检查范围、单位或逻辑方向是否一致。",
                 ],
                 "pitfall": "只看到熟悉关键词就套方法，容易忽略题目条件是否满足。",
             },
@@ -91,13 +92,13 @@ def _build_practice_questions(
                 "chapter_index": draft.chapter_index,
                 "type": "worked_example",
                 "label": choose_heading_focus([second_claim], fallback=title),
-                "stem": f"把“{second_claim}”改造成一道变式题：题目条件稍作变化，判断原方法是否仍然适用。",
+                "stem": f"围绕“{second_claim}”做一次变式检查：条件稍作变化时，判断原方法是否仍然适用。",
                 "analysis_steps": [
-                    "先比较变式题和基础题的条件差异。",
+                    "先比较变式任务和基础任务的条件差异。",
                     "再判断原结论的适用前提是否仍然成立。",
                     "如果前提改变，需要说明应替换成哪一种方法或补充哪一步检验。",
                 ],
-                "pitfall": "变式题最容易错在把旧题路径完整照搬，而没有重新检查前提。",
+                "pitfall": "变式任务最容易错在把旧路径完整照搬，而没有重新检查前提。",
             },
         ]
         if confusion_items:
@@ -140,9 +141,9 @@ def _build_practice_questions(
             "chapter_index": draft.chapter_index,
             "type": "worked_example",
             "label": choose_heading_focus([first_claim], fallback=title),
-            "stem": f"为《{title}》中的“{first_claim}”设计一个概念例题，并说明它检验了哪些定义条件。",
+            "stem": f"围绕《{title}》中的“{first_claim}”完成一个概念自检：说明它检验了哪些定义条件。",
             "analysis_steps": [
-                "先写清题目对象和需要验证的定义条件。",
+                "先写清讨论对象和需要验证的定义条件。",
                 "再逐条检查条件是否成立。",
                 "最后说明这个例子体现了概念的哪一部分含义。",
             ],
@@ -287,6 +288,7 @@ async def enhance_chapter_draft(
             draft.title,
         ],
     )
+    markdown = normalize_educational_callouts(markdown)
 
     interactive_asset: dict[str, object] | None = None
     if settings.docgen.generate_interactive_html:
@@ -316,6 +318,7 @@ async def enhance_chapter_draft(
         else []
     )
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
+    markdown = normalize_educational_callouts(markdown)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

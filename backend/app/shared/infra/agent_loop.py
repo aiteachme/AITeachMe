@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
@@ -37,6 +38,7 @@ class AgentLoopConfig:
         task_type: 任务类型，用于调用 profile 和观测标签。
         model: 模型选择器，默认固定使用 settings.models.primary。
         result_max_chars: 工具返回结果截断长度（防止 context 爆炸）。
+        extra_metadata: 透传到 LangSmith LLM span 的业务观测字段。
     """
 
     max_iterations: int = 10
@@ -46,6 +48,9 @@ class AgentLoopConfig:
     model: str = "primary"
     result_max_chars: int = 2000
     tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    tool_context: Any | None = None
+    approved_tool_names: set[str] = field(default_factory=set)
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ── 结果 ──────────────────────────────────────────────────────
@@ -116,7 +121,12 @@ async def run_agent_loop(
     available_tools = _get_tool_definitions(registry, tools)
     if not available_tools:
         # 无可用工具 → 直接走普通补全（极简路径）
-        answer = await acompletion(messages, task_type=cfg.task_type, model=cfg.model)
+        answer = await acompletion(
+            messages,
+            task_type=cfg.task_type,
+            model=cfg.model,
+            extra_metadata=cfg.extra_metadata,
+        )
         return AgentLoopResult(final_answer=answer, iterations=1)
 
     all_tool_calls: list[ToolCallRecord] = []
@@ -131,6 +141,7 @@ async def run_agent_loop(
             tools=available_tools,
             task_type=cfg.task_type,
             model=cfg.model,
+            extra_metadata=cfg.extra_metadata,
         )
 
         message = response.choices[0].message
@@ -162,7 +173,12 @@ async def run_agent_loop(
     logger.warning("agent_loop_max_iterations", max=cfg.max_iterations)
 
     # 最后一轮强制普通补全获取回答
-    final_answer = await acompletion(current_messages, task_type=cfg.task_type, model=cfg.model)
+    final_answer = await acompletion(
+        current_messages,
+        task_type=cfg.task_type,
+        model=cfg.model,
+        extra_metadata=cfg.extra_metadata,
+    )
     return AgentLoopResult(
         final_answer=final_answer,
         iterations=cfg.max_iterations,
@@ -205,7 +221,12 @@ async def run_agent_loop_stream(
 
     available_tools = _get_tool_definitions(registry, tools)
     if not available_tools:
-        async for chunk in acompletion_stream(messages, task_type=cfg.task_type, model=cfg.model):
+        async for chunk in acompletion_stream(
+            messages,
+            task_type=cfg.task_type,
+            model=cfg.model,
+            extra_metadata=cfg.extra_metadata,
+        ):
             yield chunk
         return
 
@@ -218,6 +239,7 @@ async def run_agent_loop_stream(
             tools=available_tools,
             task_type=cfg.task_type,
             model=cfg.model,
+            extra_metadata=cfg.extra_metadata,
         )
 
         message = response.choices[0].message
@@ -229,6 +251,7 @@ async def run_agent_loop_stream(
                 current_messages,
                 task_type=cfg.task_type,
                 model=cfg.model,
+                extra_metadata=cfg.extra_metadata,
             ):
                 yield chunk
             return
@@ -244,7 +267,12 @@ async def run_agent_loop_stream(
             })
 
     # 安全阀 → 流式获取最终回答
-    async for chunk in acompletion_stream(current_messages, task_type=cfg.task_type, model=cfg.model):
+    async for chunk in acompletion_stream(
+        current_messages,
+        task_type=cfg.task_type,
+        model=cfg.model,
+        extra_metadata=cfg.extra_metadata,
+    ):
         yield chunk
 
 
@@ -284,23 +312,35 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
     """执行一次工具调用并返回记录。"""
 
     func_name = tool_call.function.name
+    tool_definition = registry.get(func_name)
     try:
         args = json.loads(tool_call.function.arguments)
     except (json.JSONDecodeError, TypeError):
         args = {}
     if not isinstance(args, dict):
         args = {}
+    context_args = _resolve_context_tool_args(
+        cfg.tool_context,
+        tool_name=func_name,
+        hidden_args=list(getattr(tool_definition, "hidden_args", []) or []),
+    )
     injected_args = dict(cfg.tool_argument_overrides.get(func_name, {}) or {})
-    if injected_args:
+    if context_args or injected_args:
         args = {
             **args,
+            **context_args,
             **injected_args,
         }
 
     start = time.monotonic()
     try:
         raw_result = await asyncio.wait_for(
-            registry.execute(func_name, **args),
+            registry.execute(
+                func_name,
+                _approval_granted=_is_tool_approved(cfg.tool_context, func_name)
+                or func_name in cfg.approved_tool_names,
+                **args,
+            ),
             timeout=cfg.tool_timeout_s,
         )
         result_str = str(raw_result)[: cfg.result_max_chars]
@@ -341,3 +381,39 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             success=False,
             error=str(exc),
         )
+
+
+def _resolve_context_tool_args(
+    tool_context: Any | None,
+    *,
+    tool_name: str,
+    hidden_args: list[str],
+) -> dict[str, Any]:
+    if tool_context is None or not hidden_args:
+        return {}
+    if hasattr(tool_context, "tool_arguments_for"):
+        resolved = tool_context.tool_arguments_for(
+            tool_name=tool_name,
+            hidden_args=hidden_args,
+        )
+        return dict(resolved or {})
+    if isinstance(tool_context, Mapping):
+        return {
+            name: tool_context[name]
+            for name in hidden_args
+            if name in tool_context and tool_context[name] is not None
+        }
+    return {
+        name: getattr(tool_context, name)
+        for name in hidden_args
+        if hasattr(tool_context, name) and getattr(tool_context, name) is not None
+    }
+
+
+def _is_tool_approved(tool_context: Any | None, tool_name: str) -> bool:
+    if tool_context is None:
+        return False
+    if hasattr(tool_context, "is_tool_approved"):
+        return bool(tool_context.is_tool_approved(tool_name))
+    approved_tool_names = getattr(tool_context, "approved_tool_names", None)
+    return tool_name in set(approved_tool_names or ())

@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
@@ -16,6 +17,35 @@ _EXCLUDED_MODULES = [
     "pypdfium2_raw",
     "pypdf",
     "PyPDF2",
+    "markitdown",
+    "magika",
+    "onnxruntime",
+    "speech_recognition",
+    "speechrecognition",
+    "pydub",
+    "pyaudio",
+    "soundfile",
+    "whisper",
+    "faster_whisper",
+    "pocketsphinx",
+    "pandas",
+    "openpyxl",
+    "xlrd",
+    "xlwt",
+    "tkinter",
+    "_tkinter",
+    "tcl",
+    "tk",
+    "boto3",
+    "botocore",
+    "s3transfer",
+    "asyncpg",
+    "psycopg",
+    "psycopg2",
+    "psycopg_binary",
+    "psycopg2_binary",
+    "pgvector",
+    "llama_index.vector_stores.postgres",
 ]
 
 
@@ -28,12 +58,15 @@ datas = [
     ("migrations", "migrations"),
 ]
 
+_BUNDLED_ENV_PATH = Path("../packaging/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
+if _BUNDLED_ENV_PATH.exists():
+    datas.append((str(_BUNDLED_ENV_PATH), "configs"))
+
 for package_name in (
     "alembic",
     "fastapi",
     "langgraph",
     "llama_index",
-    "markitdown",
     "pydantic",
     "pydantic_settings",
     "sqlalchemy",

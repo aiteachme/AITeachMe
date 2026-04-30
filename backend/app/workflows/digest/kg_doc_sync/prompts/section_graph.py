@@ -75,14 +75,14 @@ USER_PROMPT_KNOWLEDGE_EXTRACT = """
 {% if doc_source_type %}- 来源类型：{{ doc_source_type }}{% endif %}
 {% if course_context %}- 课程上下文：{{ course_context }}{% endif %}
 {% if sibling_topics %}- 相邻主题：{{ sibling_topics }}{% endif %}
-{% if digest_mode == "sprint" %}- 讲义模式：sprint，优先识别方法、题型和常见错误。{% endif %}
-{% if digest_mode == "systematic" %}- 讲义模式：systematic，优先识别完整概念、严谨定义和前置依赖。{% endif %}
+{% if digest_mode == "sprint" %}- 讲义模式：冲刺型，优先识别方法、常见任务/题型和常见错误。{% endif %}
+{% if digest_mode == "systematic" %}- 讲义模式：系统型，优先识别完整概念、严谨定义和前置依赖。{% endif %}
 
 {% if doc_source_type == "knowledge_doc_markdown" %}
 ## 本片段特别要求
 - 这是按标题切出的知识文档片段。
 - 必须结合标题和正文判断。
-- 课程上下文和 DocGen 辅助信号只用于消歧、确定范围和提醒重点，不能作为创建节点或关系的证据。
+- 课程上下文和知识文档生成辅助信号只用于消歧、确定范围和提醒重点，不能作为创建节点或关系的证据。
 - 如果正文是解释性内容，而不是纯题目或流程指令，不要轻易返回空结果。
 - 如果片段描述含义、公式、性质、方法、例题或注意事项，要显式抽取。
 - 优先返回 KU 质量的原子单元，不要返回宽泛的小节包装。

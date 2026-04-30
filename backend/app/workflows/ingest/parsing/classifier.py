@@ -106,7 +106,7 @@ def _classify_docx(path: Path) -> ClassificationResult:
         detected_language=_detect_language(sample_text[:5000]) if sample_text else "unknown",
         has_tables=bool(_TABLE_LIKE_RE.search(sample_text[:10000])),
         has_formulas=bool(_FORMULA_RE.search(sample_text[:10000])),
-        recommended_parser="markitdown",
+        recommended_parser="mammoth",
         fallback_parsers=["docx_native"],
     )
 

@@ -28,6 +28,7 @@ export interface SettingEntry {
   reveal_value?: string | null;
   status: SettingStatus;
   secret?: boolean;
+  secret_source?: string | null;
   editable?: boolean;
   restart_required?: boolean;
   ui_group?: string;

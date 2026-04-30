@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 from sqlmodel import Session, select
 
 from app.models.knowledge_doc import KnowledgeDocument
+from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
 from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
@@ -60,6 +61,48 @@ def _require_unit(session: Session, course_id: str, knowledge_unit_id: int) -> K
 def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
     source = session.get(KnowledgeUnit, edge.source_node_id)
     target = session.get(KnowledgeUnit, edge.target_node_id)
+    return KnowledgeRelationResponse(
+        id=edge.id,  # type: ignore[arg-type]
+        course_id=edge.course_id,
+        source_node_id=edge.source_node_id,
+        source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
+        source_node_type=source.knowledge_unit_type if source else "unknown",
+        target_node_id=edge.target_node_id,
+        target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
+        target_node_type=target.knowledge_unit_type if target else "unknown",
+        edge_type=edge.edge_type,
+        description=edge.description,
+        weight=edge.weight,
+        confidence=edge.confidence,
+    )
+
+
+def _load_units_by_ids(
+    session: Session,
+    *,
+    course_id: str,
+    unit_ids: set[int],
+) -> dict[int, KnowledgeUnit]:
+    if not unit_ids:
+        return {}
+    return {
+        int(unit.id): unit
+        for unit in session.exec(
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.course_id == course_id,
+                KnowledgeUnit.id.in_(unit_ids),
+            )
+        ).all()
+        if unit.id is not None
+    }
+
+
+def _to_relation_response_with_units(
+    edge: KnowledgeEdge,
+    unit_by_id: dict[int, KnowledgeUnit],
+) -> KnowledgeRelationResponse:
+    source = unit_by_id.get(int(edge.source_node_id or 0))
+    target = unit_by_id.get(int(edge.target_node_id or 0))
     return KnowledgeRelationResponse(
         id=edge.id,  # type: ignore[arg-type]
         course_id=edge.course_id,
@@ -384,6 +427,10 @@ def get_focus_subgraph(
 ) -> KnowledgeSubgraphResponse:
     node_limit = max(1, limit)
     edge_limit = max(node_limit * 3, node_limit)
+    center_ids: set[int] = set()
+    if center_knowledge_unit_id is not None:
+        _require_unit(session, course_id, center_knowledge_unit_id)
+        center_ids.add(center_knowledge_unit_id)
     all_edges = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
     if edge_type:
         all_edges = [edge for edge in all_edges if edge.edge_type == edge_type]
@@ -399,10 +446,6 @@ def get_focus_subgraph(
         adjacency[source_id].add(target_id)
         adjacency[target_id].add(source_id)
 
-    center_ids: set[int] = set()
-    if center_knowledge_unit_id is not None:
-        _require_unit(session, course_id, center_knowledge_unit_id)
-        center_ids.add(center_knowledge_unit_id)
     if topic:
         topic_text = topic.casefold()
         units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
@@ -422,6 +465,7 @@ def get_focus_subgraph(
                 or topic_text in unit.knowledge_unit_type.casefold()
             )
         )
+
     if not center_ids:
         units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
             session,
@@ -458,18 +502,18 @@ def get_focus_subgraph(
             selected_order = [int(unit.id) for unit in units[:node_limit] if unit.id is not None]
             selected_ids = set(selected_order)
         node_ids = set(selected_order[:node_limit])
-        nodes = [
-            _to_unit_response(unit)
-            for unit_id in node_ids
-            if (unit := session.get(KnowledgeUnit, unit_id)) is not None
-        ]
+        unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=node_ids)
+        ordered_node_ids = [unit_id for unit_id in selected_order if unit_id in unit_by_id]
+        if not ordered_node_ids:
+            ordered_node_ids = sorted(unit_by_id)
+        sub_edges = [
+            edge
+            for edge in all_edges
+            if edge.source_node_id in node_ids and edge.target_node_id in node_ids
+        ][:edge_limit]
         return KnowledgeSubgraphResponse(
-            nodes=nodes,
-            edges=[
-                _to_relation_response(session, edge)
-                for edge in all_edges
-                if edge.source_node_id in node_ids and edge.target_node_id in node_ids
-            ][:edge_limit],
+            nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in ordered_node_ids],
+            edges=[_to_relation_response_with_units(edge, unit_by_id) for edge in sub_edges],
             center_knowledge_unit_id=None,
         )
 
@@ -486,19 +530,15 @@ def get_focus_subgraph(
             break
     selected_ids = set(sorted(selected_ids, key=lambda item: (-degree.get(item, 0), item))[:node_limit])
 
-    nodes = [
-        _to_unit_response(unit)
-        for unit_id in selected_ids
-        if (unit := session.get(KnowledgeUnit, unit_id)) is not None
-    ]
     sub_edges = [
         edge
         for edge in all_edges
         if edge.source_node_id in selected_ids and edge.target_node_id in selected_ids
     ][:edge_limit]
+    unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=selected_ids)
     return KnowledgeSubgraphResponse(
-        nodes=nodes,
-        edges=[_to_relation_response(session, edge) for edge in sub_edges],
+        nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in sorted(unit_by_id)],
+        edges=[_to_relation_response_with_units(edge, unit_by_id) for edge in sub_edges],
         center_knowledge_unit_id=center_knowledge_unit_id,
     )
 

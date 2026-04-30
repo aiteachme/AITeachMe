@@ -125,7 +125,7 @@ export function ChatComposer({
                 value={modelValue}
                 onChange={onModelChange}
                 disabled={disabled || isStreaming}
-                className="h-7"
+                className="h-8"
               />
             </div>
           ) : null}

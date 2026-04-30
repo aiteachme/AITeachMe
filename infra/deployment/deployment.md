@@ -26,8 +26,8 @@ infra/deployment/
 
 ## 当前部署结论
 
-- 后端部署优先使用 Docker 镜像；当前推荐生产直接使用 `backend-office.Dockerfile` 构建的 Office 镜像，减少后续支持 PPT/PPTX 时的部署切换。
-- 轻量镜像仍保留，适合不需要本地 Office 转换、希望镜像更小的环境。当前产品入口仍只开放 `.pdf` / `.docx` / Markdown / 文本上传。
+- 后端部署优先使用 Docker 镜像；当前生产自动部署默认使用 `backend.Dockerfile` 构建轻量镜像，匹配现有 `.pdf` / `.docx` / Markdown / 文本上传入口，镜像更小、Sealos 拉取更稳定。
+- `backend-office.Dockerfile` 保留给后续恢复 `.doc` / PPT/PPTX 本地转 PDF 链路；开启前需确认 Sealos 能稳定拉取较大的 Office 镜像。
 - 运行模式只由 `APP_MODE` 显式控制；未配置或配置非法时默认 `local`。Render / Sealos 不会被自动识别成云端模式，线上必须配置 `APP_MODE=cloud`。
 - 云端正式环境使用 PostgreSQL + pgvector，不使用本地 SQLite。
 - 文件与生成产物通过 `STORAGE_BACKEND=s3` 接入 S3-compatible OSS，Render 和 Sealos 都按同一组 `S3_*` 变量配置。
@@ -114,6 +114,8 @@ AUTH_ENABLED=true
 LLM_API_KEY=<model api key>
 LLM_BASE_URL=<model api base url>
 LLM_CONCURRENCY_LIMIT=8
+SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S=2
+SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S=2
 ```
 
 数据库连接建议：
@@ -121,6 +123,7 @@ LLM_CONCURRENCY_LIMIT=8
 - 生产优先使用 PgBouncer 或平台提供的 pooled connection string，让后端只维护小连接池。
 - 总连接预算约等于实例数 * worker 数 * (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`)；小规格库先从 `3~5` 常驻连接和 `2~5` 溢出连接开始。
 - SSE、轮询和后台 workflow 不应长期持有 DB session；接口只在读取/写入状态时短暂取连接。
+- `SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S` / `SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S` 默认按实时体感取 `2` 秒；高并发或数据库压力明显时可调到 `3~8`。根治多实例实时事件不稳定的方案仍是把 workflow live stream 外置到 Redis/PostgreSQL 事件通道。
 
 迁移有两种口径：
 
@@ -145,7 +148,7 @@ which soffice
 soffice --headless --version
 ```
 
-注意：Render Web Service 必须监听 `0.0.0.0:$PORT`。当前 Dockerfile 默认兼容 Render 的 `PORT=10000`，Compose 会覆盖为 `9020`。
+注意：Render Web Service 必须监听 `0.0.0.0:$PORT`。当前后端 Dockerfile 默认端口统一为 `9020`，但仍会优先使用平台注入的 `PORT`。
 
 ### Render / OSS 上线检查
 
@@ -185,28 +188,104 @@ Storage: DogeCloud / Sealos Object Storage / 其他 S3-compatible OSS
 Migration: 单独 Job / 临时任务运行 bootstrap_cloud_db.py
 ```
 
-Sealos 更适合使用预构建镜像。先在本地或 CI 从仓库根目录构建并推送后端镜像：
+Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并同时推送到 GHCR 与阿里云 ACR，再用阿里云 ACR 镜像地址更新 Sealos 后端 Deployment。GHCR 保留为 GitHub 侧备份产物，Sealos 拉取走北京 ACR，减少跨境拉取超时。
 
-```bash
-docker build -f infra/deployment/docker/backend-office.Dockerfile -t <registry>/aiteachme-backend:office-<tag> .
-docker push <registry>/aiteachme-backend:office-<tag>
+### Sealos 最简自动部署
+
+仓库提供 `.github/workflows/deploy.yml`，用于在 `CI` 通过后自动部署前端与后端。其中后端发布会：
+
+1. 构建 `backend.Dockerfile` 轻量镜像，镜像会安装后端 `cloud` extra 依赖以支持 PostgreSQL、S3 和 pgvector。
+2. 同时推送到 GHCR 和阿里云 ACR：
+
+```text
+ghcr.io/<github-owner>/aiteachme-backend:slim-<short-sha>
+ghcr.io/<github-owner>/aiteachme-backend:slim-latest
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-<short-sha>
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-latest
 ```
 
-也可以用仓库内 PowerShell 脚本：
+3. 使用 `kubectl set image` 将 Sealos 中已有的后端 Deployment 更新为阿里云 ACR 镜像地址。
+4. 将 Deployment 的 `progressDeadlineSeconds` 调整为 60 分钟，并等待 `kubectl rollout status` 完成。
+5. 打印 Deployment、ReplicaSet、Pod 和相关 Events，便于查看镜像拉取耗时或定位启动失败原因。
+6. 如果配置了健康检查地址，再请求 `/api/health`。
+
+GitHub Actions Secrets：
+
+| 名称 | 说明 |
+| --- | --- |
+| `SEALOS_KUBECONFIG_B64` | 完整 Sealos kubeconfig 文件的 base64 内容 |
+| `ALIYUN_ACR_USERNAME` | 阿里云 ACR 登录用户名 |
+| `ALIYUN_ACR_PASSWORD` | 阿里云 ACR 登录密码 |
+| `GHCR_USERNAME` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
+| `GHCR_TOKEN` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
+
+以下非敏感部署常量直接维护在 `.github/workflows/deploy.yml` 的 `deploy-backend.env` 中，方便在一个地方改：
+
+| 名称 | 示例 | 说明 |
+| --- | --- | --- |
+| `SEALOS_NAMESPACE` | `ns-icbq3ltw` | Sealos namespace |
+| `SEALOS_BACKEND_DEPLOYMENT` | `atm-d` | 后端 Deployment 名称 |
+| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 后端健康检查地址；不需要时可置空 |
+| `BACKEND_ACR_REGISTRY` | `crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com` | 阿里云 ACR registry |
+| `BACKEND_ACR_NAMESPACE` | `aiteachme` | 阿里云 ACR 命名空间 |
+| `BACKEND_IMAGE_NAME` | `aiteachme-backend` | 后端镜像仓库名 |
+| `SEALOS_IMAGE_PULL_SECRET` | `aliyun-acr-regcred` | Sealos 里用于拉取 ACR 私有镜像的 imagePullSecret |
+
+生成 `SEALOS_KUBECONFIG_B64`：
 
 ```powershell
-.\scripts\build_backend_image.ps1 -Image <registry>/aiteachme-backend -Variant office -Tag office-<tag> -Push
+$raw = Get-Content -Raw -Encoding UTF8 "C:\Users\L5C\Downloads\kubeconfig.yaml"
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($raw))
 ```
 
-如果明确不需要 LibreOffice，构建轻量镜像：
+确认 Deployment 名称：
+
+```bash
+kubectl -n <namespace> get deploy
+```
+
+GHCR 当前只作为 GitHub 侧备份镜像产物，Sealos 不直接拉取 GHCR 镜像。
+
+当前 Sealos 默认使用阿里云 ACR 镜像地址。如果 ACR 仓库是 private，Sealos 侧需要创建一次 imagePullSecret。部署 workflow 会检查这个 Secret 存在，并确保它绑定到后端 Deployment：
+
+```bash
+kubectl -n ns-icbq3ltw create secret docker-registry aliyun-acr-regcred \
+  --docker-server=crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com \
+  --docker-username=<ALIYUN_ACR_USERNAME> \
+  --docker-password=<ALIYUN_ACR_PASSWORD>
+
+kubectl -n ns-icbq3ltw patch deployment atm-d \
+  -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"aliyun-acr-regcred"}]}}}}'
+```
+
+如果 GitHub Actions 推送 GHCR 报 `403 Forbidden`：
+
+- 先确认仓库 `Settings -> Actions -> General -> Workflow permissions` 允许 `Read and write permissions`。
+- 如果 `ghcr.io/<owner>/aiteachme-backend` 这个 package 已经存在，到 package 的 `Package settings -> Manage Actions access` 给当前仓库授予写入权限，或删除旧 package 后重新由当前 workflow 创建。
+- 如果组织策略不允许 `GITHUB_TOKEN` 写包，创建 classic PAT，至少勾选 `write:packages`，私有仓库/私有包通常还需要 `read:packages` 和 `repo`，并在仓库 Secrets 中配置 `GHCR_TOKEN`；如果 PAT 所属用户不是触发 workflow 的账号，同时配置 `GHCR_USERNAME`。
+
+也可以在本地或其他 CI 从仓库根目录构建并推送默认轻量镜像：
 
 ```bash
 docker build -f infra/deployment/docker/backend.Dockerfile -t <registry>/aiteachme-backend:slim-<tag> .
 docker push <registry>/aiteachme-backend:slim-<tag>
 ```
 
+也可以用仓库内 PowerShell 脚本：
+
 ```powershell
 .\scripts\build_backend_image.ps1 -Image <registry>/aiteachme-backend -Variant slim -Tag slim-<tag> -Push
+```
+
+如果需要 LibreOffice，构建 Office 镜像：
+
+```bash
+docker build -f infra/deployment/docker/backend-office.Dockerfile -t <registry>/aiteachme-backend:office-<tag> .
+docker push <registry>/aiteachme-backend:office-<tag>
+```
+
+```powershell
+.\scripts\build_backend_image.ps1 -Image <registry>/aiteachme-backend -Variant office -Tag office-<tag> -Push
 ```
 
 不要在 Sealos 容器启动后临时 `apt install libreoffice`；系统依赖应在 Docker 构建期固化到镜像里。
@@ -214,7 +293,7 @@ docker push <registry>/aiteachme-backend:slim-<tag>
 如需手动多平台构建并直接推送：
 
 ```bash
-docker buildx build --platform linux/amd64 -f infra/deployment/docker/backend-office.Dockerfile -t <registry>/aiteachme-backend:office-<tag> --push .
+docker buildx build --platform linux/amd64 -f infra/deployment/docker/backend.Dockerfile -t <registry>/aiteachme-backend:slim-<tag> --push .
 ```
 
 创建 PostgreSQL：
@@ -254,12 +333,14 @@ LLM_BASE_URL=<model api base url>
 创建后端 App：
 
 ```text
-Image: <registry>/aiteachme-backend:office-<tag>
+Image: <registry>/aiteachme-backend:slim-<tag>
 Container Port: 9020
 Environment: 同迁移任务，另加 PORT=9020、AUTH_ENABLED=true、LLM_CONCURRENCY_LIMIT=8、CORS_ALLOWED_ORIGINS=<frontend origins>
 Public Address: 使用 Cloudflare Pages 前端时需要开启并绑定 API 域名
 Health Check: /api/health
 ```
+
+Sealos 首次上线建议后端保持单副本、单 uvicorn worker。当前 workflow live stream 是进程内订阅，多副本会让后台任务和 SSE 连接落到不同进程，只能依赖 snapshot 兜底，体感会变成阶段性刷新。
 
 单副本试运行可以继续使用镜像默认 `CMD`。如果后续开多副本，建议把后端启动命令改成：
 
@@ -284,6 +365,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
 - 首次接入新 OSS 时临时打开 `S3_STARTUP_SMOKE_TEST=true`，确认启动日志里没有 bucket 读写/权限错误；稳定后可关闭。
 - PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 Alembic migration、运行时对象准备和 schema 检查。
 - 多副本部署时只让独立 Job 执行 `bootstrap_cloud_db.py`；Web 容器启动命令保持为 `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`。
+- 后端公网网关或自建 Nginx 需关闭 SSE 响应缓冲和压缩；自建 Nginx 可参考 `infra/deployment/nginx/default.conf` 的 `proxy_buffering off`、`proxy_request_buffering off`、`gzip off`。
 - 前端环境变量 `VITE_API_URL` 指向后端公网地址，且后端 `CORS_ALLOWED_ORIGINS` 包含前端域名。
 
 ## 参考文档
