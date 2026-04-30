@@ -52,27 +52,27 @@ if ($ImportBundledEnv) {
 
 Invoke-BuildStep `
     -Name "Electron local installer" `
-    -Script (Join-Path $scriptDir "build-electron-local.ps1") `
-    -Arguments @($commonArgs + $bundledEnvArgs + @("-BackendPort", $BackendPort, "-HideElectronSuffix"))
+    -Script (Join-Path $scriptDir "build-electron.ps1") `
+    -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-BackendPort", $BackendPort, "-HideElectronSuffix"))
 
 if ($IncludeTauri) {
     Invoke-BuildStep `
         -Name "Tauri local installer" `
-        -Script (Join-Path $scriptDir "build-tauri-local.ps1") `
-        -Arguments @($commonArgs + $bundledEnvArgs + @("-BackendPort", $BackendPort))
+        -Script (Join-Path $scriptDir "build-tauri.ps1") `
+        -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-BackendPort", $BackendPort))
 }
 
 if ($IncludeRemote) {
     Invoke-BuildStep `
         -Name "Electron remote installer" `
-        -Script (Join-Path $scriptDir "build-electron-remote.ps1") `
-        -Arguments @($commonArgs + @("-ApiUrl", $ApiUrl, "-HideElectronSuffix"))
+        -Script (Join-Path $scriptDir "build-electron.ps1") `
+        -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-HideElectronSuffix"))
 
     if ($IncludeTauri) {
         Invoke-BuildStep `
             -Name "Tauri remote installer" `
-            -Script (Join-Path $scriptDir "build-tauri-remote.ps1") `
-            -Arguments @($commonArgs + @("-ApiUrl", $ApiUrl))
+            -Script (Join-Path $scriptDir "build-tauri.ps1") `
+            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl))
     }
 }
 
