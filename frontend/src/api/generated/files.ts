@@ -1171,9 +1171,3 @@ export function useServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet<TDa
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-
-
-
-
-

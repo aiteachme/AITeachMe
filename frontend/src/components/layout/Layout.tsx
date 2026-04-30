@@ -17,22 +17,23 @@ export function Layout() {
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedCoursePath(pathname);
   const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
+  const isAssistantPage = pathname === "/assistant";
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
-    if (pathname === "/assistant") {
+    if (isAssistantPage) {
       return { type: "global" };
     }
     if (courseId) {
       return { type: "course", courseId };
     }
     return { type: "global" };
-  }, [pathname, courseId]);
+  }, [isAssistantPage, courseId]);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const settingsOverview = useSystemSettingsOverview();
   const isCloudRuntime = settingsOverview?.mode === "cloud";
-  const shouldShowTopBar = !isExamFocusPage && isCloudRuntime;
+  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && isCloudRuntime;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
@@ -62,7 +63,7 @@ export function Layout() {
             )}
 
             <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || pathname === "/" || pathname === "/spaces" ? (
+              {isFullBleed || pathname === "/" || pathname === "/spaces" || isAssistantPage ? (
                 <div
                   className={cn(
                     "flex min-h-0 w-full flex-1 flex-col",

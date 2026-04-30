@@ -8,7 +8,7 @@ from app.utils.course import is_global_course
 
 COURSE_LEARNING_TOOLS = ("search_kb",)
 GLOBAL_QUERY_TOOLS = ("web_search", "recall_info")
-GLOBAL_WRITE_TOOLS = ("remember_info",)
+GLOBAL_WRITE_TOOLS = ("remember_info", "create_course_from_home_intake")
 BUILD_TOOLS: tuple[str, ...] = ()
 EDITING_TOOLS: tuple[str, ...] = ()
 

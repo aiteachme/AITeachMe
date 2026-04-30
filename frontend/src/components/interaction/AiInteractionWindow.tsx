@@ -13,7 +13,7 @@ interface AiInteractionWindowProps {
   className?: string;
 }
 
-interface AiConversationPanelLoaderProps {
+interface AiConversationViewLoaderProps {
   scope: AiConversationScope | null;
   request?: AiInteractionOpenRequest | null;
   active: boolean;
@@ -24,13 +24,13 @@ interface AiConversationPanelLoaderProps {
 
 const SIDEBAR_TRANSITION_MS = 220;
 
-const LazyAiConversationPanel = lazy(() =>
-  import("./AiConversationPanel").then((module) => ({
-    default: module.AiConversationPanel as ComponentType<AiConversationPanelLoaderProps>,
+const LazyAiConversationView = lazy(() =>
+  import("./AiConversationView").then((module) => ({
+    default: module.AiConversationView as ComponentType<AiConversationViewLoaderProps>,
   })),
 );
 
-function AiConversationPanelFallback() {
+function AiConversationViewFallback() {
   return (
     <div className="flex h-full w-full items-center justify-center text-sm text-zinc-500 dark:text-slate-400">
       加载中...
@@ -178,12 +178,12 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     return (
       <section
         className={cn(
-          "flex min-h-[calc(100dvh-8rem)] flex-col overflow-hidden bg-white dark:bg-slate-950",
+          "flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent",
           className,
         )}
       >
-        <Suspense fallback={<AiConversationPanelFallback />}>
-          <LazyAiConversationPanel
+        <Suspense fallback={<AiConversationViewFallback />}>
+          <LazyAiConversationView
             scope={fullscreenConversationScope}
             request={fullscreenRequest}
             active
@@ -239,8 +239,8 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
               )}
               onMouseDown={handleMouseDown}
             />
-            <Suspense fallback={<AiConversationPanelFallback />}>
-              <LazyAiConversationPanel
+            <Suspense fallback={<AiConversationViewFallback />}>
+              <LazyAiConversationView
                 scope={panelScope}
                 request={sidebarRequest}
                 active={shouldShowSidebarPanel}

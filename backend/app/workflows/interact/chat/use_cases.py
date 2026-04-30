@@ -279,6 +279,7 @@ async def chat_stream(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
+    attached_file_ids: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     async for payload in stream_chat_workflow(
         request=request,
@@ -294,6 +295,7 @@ async def chat_stream(
         selected_context=selected_context,
         selection_context=selection_context,
         source_chunk_id=source_chunk_id,
+        attached_file_ids=attached_file_ids,
     ):
         yield payload
 

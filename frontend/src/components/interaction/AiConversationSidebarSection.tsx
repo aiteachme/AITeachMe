@@ -8,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
+import { useLocation } from "react-router-dom";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type {
@@ -55,45 +56,31 @@ const conversationItemMotion: Variants = {
   },
 };
 
+const CONVERSATION_SELECTED_CLASS_NAME =
+  "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200";
+const CONVERSATION_SELECTED_ICON_CLASS_NAME = "text-[#556b86] dark:text-slate-300";
+const CONVERSATION_FOCUS_CLASS_NAME =
+  "focus-visible:bg-[#edf3f8] focus-visible:text-[#243246] dark:focus-visible:bg-slate-800 dark:focus-visible:text-slate-200";
+
 const CONVERSATION_KIND_STYLES: Record<ConversationKind, {
   label: string;
   badgeClassName: string;
-  selectedClassName: string;
-  stripClassName: string;
-  pulseClassName: string;
-  iconClassName: string;
 }> = {
   document: {
     label: "文档",
     badgeClassName: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
-    selectedClassName: "bg-sky-50 text-sky-950 ring-2 ring-sky-300/70 shadow-[0_0_0_4px_rgba(14,165,233,0.10)] dark:bg-sky-500/14 dark:text-sky-50 dark:ring-sky-400/45 dark:shadow-[0_0_0_4px_rgba(56,189,248,0.10)]",
-    stripClassName: "bg-sky-500 dark:bg-sky-300",
-    pulseClassName: "ring-sky-300/80 dark:ring-sky-300/45",
-    iconClassName: "text-sky-600 dark:text-sky-200",
   },
   question: {
     label: "题目",
     badgeClassName: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
-    selectedClassName: "bg-violet-50 text-violet-950 ring-2 ring-violet-300/70 shadow-[0_0_0_4px_rgba(139,92,246,0.10)] dark:bg-violet-500/14 dark:text-violet-50 dark:ring-violet-400/45 dark:shadow-[0_0_0_4px_rgba(167,139,250,0.10)]",
-    stripClassName: "bg-violet-500 dark:bg-violet-300",
-    pulseClassName: "ring-violet-300/80 dark:ring-violet-300/45",
-    iconClassName: "text-violet-600 dark:text-violet-200",
   },
   builder: {
     label: "构建",
     badgeClassName: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
-    selectedClassName: "bg-amber-50 text-amber-950 ring-2 ring-amber-300/75 shadow-[0_0_0_4px_rgba(245,158,11,0.12)] dark:bg-amber-500/14 dark:text-amber-50 dark:ring-amber-400/45 dark:shadow-[0_0_0_4px_rgba(251,191,36,0.10)]",
-    stripClassName: "bg-amber-500 dark:bg-amber-300",
-    pulseClassName: "ring-amber-300/80 dark:ring-amber-300/45",
-    iconClassName: "text-amber-600 dark:text-amber-200",
   },
   general: {
     label: "通用",
     badgeClassName: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
-    selectedClassName: "bg-indigo-50 text-indigo-950 ring-2 ring-indigo-300/70 shadow-[0_0_0_4px_rgba(99,102,241,0.10)] dark:bg-indigo-500/14 dark:text-indigo-50 dark:ring-indigo-400/45 dark:shadow-[0_0_0_4px_rgba(129,140,248,0.10)]",
-    stripClassName: "bg-indigo-500 dark:bg-indigo-300",
-    pulseClassName: "ring-indigo-300/80 dark:ring-indigo-300/45",
-    iconClassName: "text-indigo-600 dark:text-indigo-200",
   },
 };
 
@@ -196,7 +183,9 @@ export function AiConversationSidebarSection({
   const {
     activeScope,
     sidebarScope,
+    fullscreenScope,
     sidebarRequest,
+    fullscreenRequest,
     isSidebarOpen,
     activeConversationSessionId,
     sessionListVersion,
@@ -204,17 +193,21 @@ export function AiConversationSidebarSection({
     setActiveConversationSessionId,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
-  const scope = sidebarScope ?? activeScope;
+  const location = useLocation();
+  const isAssistantPage = location.pathname === "/assistant";
+  const currentRequest = isAssistantPage ? fullscreenRequest : sidebarRequest;
+  const scope = isAssistantPage ? fullscreenScope ?? activeScope : sidebarScope ?? activeScope;
   const newConversationScope = activeScope ?? scope ?? { type: "global" as const };
   const [isExpanded, setIsExpanded] = useState(readRecentSectionExpanded);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const shouldLoadSessions = isExpanded || isSidebarOpen;
+  const isConversationViewActive = isAssistantPage || isSidebarOpen;
+  const shouldLoadSessions = isExpanded || isConversationViewActive;
   const hasActiveEmptyConversation =
-    isSidebarOpen && activeConversationSessionId === null && !isPendingAnchoredRequest(sidebarRequest);
-  const activeEmptyKind = getRequestKind(sidebarRequest);
+    isConversationViewActive && activeConversationSessionId === null && !isPendingAnchoredRequest(currentRequest);
+  const activeEmptyKind = getRequestKind(currentRequest);
   const activeEmptyStyle = CONVERSATION_KIND_STYLES[activeEmptyKind];
   const visibleSessions = useMemo(() => sessions.slice(0, 30), [sessions]);
   const updateExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
@@ -273,9 +266,14 @@ export function AiConversationSidebarSection({
   const openNewConversation = useCallback(() => {
     updateExpanded(true);
     onExpandSidebar();
-    openAiInteraction({ mode: "sidebar", scope: newConversationScope, sessionId: null, newSession: true });
+    openAiInteraction({
+      mode: isAssistantPage ? "fullscreen" : "sidebar",
+      scope: newConversationScope,
+      sessionId: null,
+      newSession: true,
+    });
     onNavigate?.();
-  }, [newConversationScope, onExpandSidebar, onNavigate, openAiInteraction, updateExpanded]);
+  }, [isAssistantPage, newConversationScope, onExpandSidebar, onNavigate, openAiInteraction, updateExpanded]);
 
   const openSession = useCallback((session: ChatSessionItem) => {
     const sessionId = getSessionId(session);
@@ -286,7 +284,7 @@ export function AiConversationSidebarSection({
     updateExpanded(true);
     onExpandSidebar();
     openAiInteraction({
-      mode: "sidebar",
+      mode: isAssistantPage ? "fullscreen" : "sidebar",
       scope: getSessionScope(session),
       sessionId,
       source: session.source,
@@ -295,7 +293,7 @@ export function AiConversationSidebarSection({
       showSelectionContext: false,
     });
     onNavigate?.();
-  }, [onExpandSidebar, onNavigate, openAiInteraction, updateExpanded]);
+  }, [isAssistantPage, onExpandSidebar, onNavigate, openAiInteraction, updateExpanded]);
 
   const deleteSession = useCallback(async (target: ChatSessionItem) => {
     const sessionId = getSessionId(target);
@@ -337,8 +335,7 @@ export function AiConversationSidebarSection({
         ) : null}
         {visibleSessions.map((session) => {
           const sessionId = getSessionId(session);
-          const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
-          const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
+          const isSelected = isConversationViewActive && sessionId !== null && activeConversationSessionId === sessionId;
           const courseLabel = getSessionCourseLabel(session);
           return (
             <button
@@ -346,9 +343,10 @@ export function AiConversationSidebarSection({
               type="button"
               onClick={() => openSession(session)}
               className={cn(
-                "group flex h-7 w-full items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45",
+                "group flex h-7 w-full items-center justify-center rounded-md transition-colors focus-visible:outline-none",
+                CONVERSATION_FOCUS_CLASS_NAME,
                 isSelected
-                  ? kindStyle.selectedClassName
+                  ? CONVERSATION_SELECTED_CLASS_NAME
                   : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
               )}
               title={`${courseLabel} - ${session.title || "未命名对话"}`}
@@ -357,7 +355,7 @@ export function AiConversationSidebarSection({
               <MessageSquareText
                 className={cn(
                   "h-3.5 w-3.5 shrink-0",
-                  isSelected ? kindStyle.iconClassName : undefined,
+                  isSelected ? CONVERSATION_SELECTED_ICON_CLASS_NAME : undefined,
                 )}
                 strokeWidth={2.2}
               />
@@ -425,11 +423,10 @@ export function AiConversationSidebarSection({
               whileTap={{ scale: 0.985 }}
               className={cn(
                 "group relative flex h-7 w-full items-center gap-1.5 overflow-hidden rounded-md px-2 text-left",
-                activeEmptyStyle.selectedClassName,
+                CONVERSATION_SELECTED_CLASS_NAME,
               )}
             >
-              <span className={cn("pointer-events-none absolute inset-0 rounded-md ring-2 opacity-60 animate-pulse", activeEmptyStyle.pulseClassName)} />
-              <Sparkles className={cn("h-3.5 w-3.5 shrink-0", activeEmptyStyle.iconClassName)} />
+              <Sparkles className={cn("h-3.5 w-3.5 shrink-0", CONVERSATION_SELECTED_ICON_CLASS_NAME)} />
               <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", activeEmptyStyle.badgeClassName)}>
                 {activeEmptyStyle.label}
               </span>
@@ -440,7 +437,7 @@ export function AiConversationSidebarSection({
           <AnimatePresence initial={false}>
             {visibleSessions.map((session) => {
               const sessionId = getSessionId(session);
-              const isSelected = isSidebarOpen && sessionId !== null && activeConversationSessionId === sessionId;
+              const isSelected = isConversationViewActive && sessionId !== null && activeConversationSessionId === sessionId;
               const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
               const courseLabel = getSessionCourseLabel(session);
               return (
@@ -454,20 +451,17 @@ export function AiConversationSidebarSection({
                   className={cn(
                     "group relative h-7 overflow-hidden rounded-md transition-colors",
                     isSelected
-                      ? kindStyle.selectedClassName
+                      ? CONVERSATION_SELECTED_CLASS_NAME
                       : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
                   )}
                 >
-                {isSelected ? (
-                  <>
-                    <span className={cn("absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full", kindStyle.stripClassName)} />
-                    <span className={cn("pointer-events-none absolute inset-0 rounded-md ring-2 opacity-60 animate-pulse", kindStyle.pulseClassName)} />
-                  </>
-                ) : null}
                 <button
                   type="button"
                   onClick={() => openSession(session)}
-                  className="flex h-7 w-full items-center gap-1.5 px-2 pr-7 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45"
+                  className={cn(
+                    "flex h-7 w-full items-center gap-1.5 px-2 pr-7 text-left focus-visible:outline-none",
+                    CONVERSATION_FOCUS_CLASS_NAME,
+                  )}
                   title={session.title || "未命名对话"}
                 >
                   <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
