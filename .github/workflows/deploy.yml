@@ -15,6 +15,7 @@ permissions:
 
 concurrency:
   group: deploy-main
+  # Keep only the newest main deployment; older in-progress runs may appear as canceled.
   cancel-in-progress: true
 
 jobs:
@@ -107,6 +108,7 @@ jobs:
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
       SEALOS_NAMESPACE: ${{ vars.SEALOS_NAMESPACE }}
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+      ROLLOUT_TIMEOUT_SECONDS: "3600"
 
     steps:
       - name: Checkout
@@ -127,6 +129,11 @@ jobs:
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required deploy configuration:\n' >&2
             printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${ROLLOUT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
             exit 1
           fi
 
@@ -189,10 +196,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Deploying backend image: ${{ steps.image.outputs.image }}"
+          echo "Rollout timeout: ${ROLLOUT_TIMEOUT_SECONDS}s"
+
           kubectl -n "${SEALOS_NAMESPACE}" patch \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             --type=merge \
-            -p '{"spec":{"progressDeadlineSeconds":1800}}'
+            -p "{\"spec\":{\"progressDeadlineSeconds\":${ROLLOUT_TIMEOUT_SECONDS}}}"
 
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
@@ -200,7 +210,34 @@ jobs:
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            --timeout=1800s
+            --timeout="${ROLLOUT_TIMEOUT_SECONDS}s"
+
+      - name: Show Sealos rollout diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          echo "## Deployment"
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            -o wide
+
+          echo
+          echo "## ReplicaSets"
+          kubectl -n "${SEALOS_NAMESPACE}" get rs -o wide \
+            | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Pods"
+          kubectl -n "${SEALOS_NAMESPACE}" get pods -o wide \
+            | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Recent events"
+          kubectl -n "${SEALOS_NAMESPACE}" get events --sort-by=.lastTimestamp \
+            | grep -E "^LAST SEEN|${SEALOS_BACKEND_DEPLOYMENT}" \
+            | tail -n 80 || true
 
       - name: Smoke test backend
         if: vars.BACKEND_HEALTH_URL != ''

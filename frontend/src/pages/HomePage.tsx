@@ -968,7 +968,7 @@ export function HomePage() {
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.45, ease: "easeOut", delay: 0.35 }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 2.8 }}
             className="flex flex-col items-center mt-3"
           >
             <h1
@@ -984,7 +984,7 @@ export function HomePage() {
         <motion.p
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45, duration: 0.45 }}
+          transition={{ delay: 3.0, duration: 0.6 }}
           className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
@@ -994,7 +994,7 @@ export function HomePage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.18 }}
+          transition={{ delay: 0.35 }}
           className="w-full relative z-10"
         >
           <div className={cn(
