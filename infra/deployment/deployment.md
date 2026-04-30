@@ -185,27 +185,54 @@ Storage: DogeCloud / Sealos Object Storage / 其他 S3-compatible OSS
 Migration: 单独 Job / 临时任务运行 bootstrap_cloud_db.py
 ```
 
-Sealos 更适合使用预构建镜像。推荐先用 GitHub Actions 在 GitHub runner 中构建并推送到 GHCR：
+Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并推送到 GHCR，再用 `kubectl set image` 更新 Sealos 后端 Deployment。
 
-1. 打开 GitHub 仓库的 `Actions`。
-2. 选择 `Build Backend Images`。
-3. 点击 `Run workflow`，`variant` 选择 `office`、`slim` 或 `both`。
-4. `tag` 可留空，默认生成 `YYYYMMDD-shortsha`；也可以填写 `20260429-rc1` 这类发布标记。
-5. 构建完成后，Sealos 镜像地址使用：
+### Sealos 最简自动部署
 
-```text
-ghcr.io/<github-owner>/aiteachme-backend:office-<tag>
-ghcr.io/<github-owner>/aiteachme-backend:slim-<tag>
-```
+仓库提供 `.github/workflows/deploy.yml`，用于在 `CI` 通过后自动部署前端与后端。其中后端发布会：
 
-`push_latest=true` 时还会推送：
+1. 构建 `backend-office.Dockerfile` 镜像。
+2. 推送到 GHCR：
 
 ```text
+ghcr.io/<github-owner>/aiteachme-backend:office-<short-sha>
 ghcr.io/<github-owner>/aiteachme-backend:office-latest
-ghcr.io/<github-owner>/aiteachme-backend:slim-latest
 ```
 
-如果 GHCR package 是 private，Sealos 拉取镜像时需要配置 registry credential；内测阶段也可以把对应 package visibility 改成 public，部署会更简单。
+3. 使用 `kubectl set image` 更新 Sealos 中已有的后端 Deployment。
+4. 等待 `kubectl rollout status` 完成。
+5. 如果配置了健康检查地址，再请求 `/api/health`。
+
+GitHub Actions Secrets：
+
+| 名称 | 说明 |
+| --- | --- |
+| `SEALOS_KUBECONFIG_B64` | 完整 Sealos kubeconfig 文件的 base64 内容 |
+| `GHCR_USERNAME` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
+| `GHCR_TOKEN` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
+
+GitHub Actions Variables：
+
+| 名称 | 示例 | 说明 |
+| --- | --- | --- |
+| `SEALOS_NAMESPACE` | `ns-icbq3ltw` | Sealos namespace |
+| `SEALOS_BACKEND_DEPLOYMENT` | `atm` | 后端 Deployment 名称 |
+| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 可选；后端健康检查地址 |
+
+生成 `SEALOS_KUBECONFIG_B64`：
+
+```powershell
+$raw = Get-Content -Raw -Encoding UTF8 "C:\Users\L5C\Downloads\kubeconfig.yaml"
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($raw))
+```
+
+确认 Deployment 名称：
+
+```bash
+kubectl -n <namespace> get deploy
+```
+
+如果 GHCR package 是 private，Sealos 侧需要能拉取 `ghcr.io/<github-owner>/aiteachme-backend`，要么把 package visibility 改成 public，要么给 Deployment 配置 registry credential / imagePullSecret。
 
 如果 GitHub Actions 推送 GHCR 报 `403 Forbidden`：
 

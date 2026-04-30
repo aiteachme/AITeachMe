@@ -1,21 +1,64 @@
-name: Trigger Frontend Deploy
+name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 jobs:
-  deploy-frontend:
-    name: Trigger Cloudflare Pages
+  verify-latest:
+    name: Verify deploy target
     runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.guard.outputs.should_deploy }}
+      source_sha: ${{ steps.guard.outputs.source_sha }}
 
     steps:
-      - name: Validate deploy secret
+      - name: Skip stale CI runs
+        id: guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+
+          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${WORKFLOW_RUN_CONCLUSION}" != "success" ]; then
+            echo "Skipping deploy because CI conclusion is ${WORKFLOW_RUN_CONCLUSION}."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main | awk '{print $1}')"
+          if [ "${SOURCE_SHA}" = "${latest_sha}" ]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping stale deploy: source SHA ${SOURCE_SHA} is not current main ${latest_sha}."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-frontend:
+    name: Deploy frontend to Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs: verify-latest
+    if: needs.verify-latest.outputs.should_deploy == 'true'
+
+    steps:
+      - name: Validate Cloudflare deploy hook
         env:
           CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
         run: |
@@ -33,7 +76,139 @@ jobs:
           set -euo pipefail
           curl -fsS -X POST "$CLOUDFLARE_DEPLOY_KEY"
 
-      - name: Deployment summary
+      - name: Frontend summary
         run: |
-          echo "Frontend: Cloudflare Pages" >> "$GITHUB_STEP_SUMMARY"
-          echo "Backend: Sealos backend image is built by the Build Backend Images workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend: Cloudflare Pages deploy hook triggered." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-backend:
+    name: Deploy backend to Sealos
+    runs-on: ubuntu-latest
+    needs: verify-latest
+    if: needs.verify-latest.outputs.should_deploy == 'true'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+      SEALOS_BACKEND_DEPLOYMENT: ${{ vars.SEALOS_BACKEND_DEPLOYMENT }}
+      SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
+      SEALOS_NAMESPACE: ${{ vars.SEALOS_NAMESPACE }}
+      SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Validate Sealos deploy configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("variable:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("variable:SEALOS_BACKEND_DEPLOYMENT")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required deploy configuration:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Resolve backend image tags
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/aiteachme-backend"
+          short_sha="${SOURCE_SHA::7}"
+          version_tag="office-${short_sha}"
+
+          echo "image=${image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "tags=${image}:${version_tag},${image}:office-latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/deployment/docker/backend-office.Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.title=AITeachMe backend office
+          cache-from: type=gha,scope=backend-office
+          cache-to: type=gha,mode=max,scope=backend-office
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure Sealos kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kube_dir="${RUNNER_TEMP}/kube"
+          mkdir -p "${kube_dir}"
+          printf '%s' "${SEALOS_KUBECONFIG_B64}" | base64 -d > "${kube_dir}/config"
+          chmod 600 "${kube_dir}/config"
+          echo "KUBECONFIG=${kube_dir}/config" >> "$GITHUB_ENV"
+
+      - name: Update Sealos deployment image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kubectl -n "${SEALOS_NAMESPACE}" set image \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            "*=${{ steps.image.outputs.image }}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" rollout status \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --timeout=600s
+
+      - name: Smoke test backend
+        if: vars.BACKEND_HEALTH_URL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..12}; do
+            if curl -fsS "${BACKEND_HEALTH_URL}"; then
+              exit 0
+            fi
+            echo "Health check failed; retrying (${attempt}/12)..."
+            sleep 10
+          done
+
+          echo "Backend health check did not pass: ${BACKEND_HEALTH_URL}" >&2
+          exit 1
+
+      - name: Backend summary
+        shell: bash
+        run: |
+          {
+            echo "Backend image: ${{ steps.image.outputs.image }}"
+            echo "Sealos namespace: ${SEALOS_NAMESPACE}"
+            echo "Sealos deployment: ${SEALOS_BACKEND_DEPLOYMENT}"
+            if [ -n "${BACKEND_HEALTH_URL}" ]; then
+              echo "Health URL: ${BACKEND_HEALTH_URL}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
