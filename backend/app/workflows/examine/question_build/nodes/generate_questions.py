@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 from app.shared.infra.workflow import emit_progress
@@ -86,6 +87,22 @@ def build_generate_questions_node(*, context: WorkflowContext):
                 on_question_failed=handle_question_failed,
                 allow_partial=True,
             )
+        except asyncio.CancelledError:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            await emit_progress(
+                state,
+                stage="generate_exam_questions",
+                detail="Exam question generation was cancelled.",
+                step="generate_questions",
+                elapsed_ms=elapsed_ms,
+            )
+            return {
+                "generated_questions": [],
+                "failed_questions": failed_questions,
+                "failed_question_count": len(failed_questions),
+                "generate_ms": elapsed_ms,
+                "error": "Exam question generation was cancelled.",
+            }
         except Exception as exc:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(
