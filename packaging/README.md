@@ -88,6 +88,17 @@ JSON 结构：
 
 该选项只对带本地后端的 Electron local / Tauri local 有实际效果。打包脚本会生成 `packaging\artifacts\generated-configs\aiteachme_bundled_env.enc.json`，PyInstaller 会把它收进后端运行时。应用启动后会把这些值作为默认环境变量使用；设置页中的预绑定密钥不会回显明文，会显示为“预绑定密钥，已加密隐藏”。
 
+## GitHub Release 预绑定配置
+
+GitHub Actions 不能读取你本机的 `packaging\private\bundled-env.json`。如需在发布时内置私有模型配置，需要先在仓库 Secrets 里配置：
+
+- `AITEACHME_BUNDLED_ENV_JSON`：内容与 `packaging\private\bundled-env.json.example` 一致。
+
+手动运行 `Publish Release` workflow 时：
+
+- `bundle_private_env = false`：默认，不内置私有环境变量。
+- `bundle_private_env = true`：仅对 `electron-local` / `tauri-local` / `all-local` / `all` 生效，会把上述 Secret 写入 runner 的 `packaging\private\bundled-env.json`，再加密打进 local 桌面包。
+
 ## 脚本结构
 
 用户入口只保留：
@@ -96,6 +107,7 @@ JSON 结构：
 
 内部实现脚本保留在 `packaging\scripts`：
 
+- `build-desktop-mode.ps1`：GitHub Release 使用的桌面端模式选择入口。
 - `build-all.ps1`：统一编排 Electron、Tauri、local、remote 的可选构建。
 - `build-electron.ps1`：Electron 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
 - `build-tauri.ps1`：Tauri 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
