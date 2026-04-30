@@ -194,7 +194,7 @@ Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后
 
 仓库提供 `.github/workflows/deploy.yml`，用于在 `CI` 通过后自动部署前端与后端。其中后端发布会：
 
-1. 构建 `backend.Dockerfile` 轻量镜像。
+1. 构建 `backend.Dockerfile` 轻量镜像，镜像会安装后端 `cloud` extra 依赖以支持 PostgreSQL、S3 和 pgvector。
 2. 推送到 GHCR：
 
 ```text
