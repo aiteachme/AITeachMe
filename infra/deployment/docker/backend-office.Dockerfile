@@ -28,11 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-cache --no-install-project
+RUN uv sync --frozen --no-cache --extra cloud --no-install-project
 
 # 再复制后端源码并安装当前项目本身。
 COPY backend/ ./
-RUN uv sync --frozen --no-cache
+RUN uv sync --frozen --no-cache --extra cloud
 
 ENV PATH="/app/.venv/bin:$PATH"
 

@@ -27,7 +27,8 @@ from app.schemas.files import FileAssetItem, FileRecord, FilesData
 from app.utils.presenters import require_id
 
 
-def _is_markdown_ready(raw_file: RawFile) -> bool:
+def _is_markdown_ready(raw_file: RawFile, *, markdown_content: str | None = None) -> bool:
+    content = markdown_content if markdown_content is not None else raw_file.parsed_markdown
     return (
         raw_file.status == TaskStatus.COMPLETED.value
         and raw_file.ingest_status
@@ -37,7 +38,7 @@ def _is_markdown_ready(raw_file: RawFile) -> bool:
             IngestStatus.READY_FOR_DIGEST.value,
             IngestStatus.ENHANCE_FAILED.value,
         }
-        and bool((raw_file.parsed_markdown or "").strip())
+        and bool(str(content or "").strip())
     )
 
 
@@ -121,7 +122,11 @@ def _read_markdown(markdown_path_value: str | None, *, markdown_content: str | N
 
 def build_file_record(raw_file: RawFile) -> FileRecord:
     file_id = require_id(raw_file.id, "RawFile.id")
-    markdown_ready = _is_markdown_ready(raw_file)
+    markdown_content = _read_markdown(
+        raw_file.markdown_path,
+        markdown_content=raw_file.markdown_content,
+    )
+    markdown_ready = _is_markdown_ready(raw_file, markdown_content=markdown_content)
     asset_dir_value = raw_file.asset_dir
     if not asset_dir_value:
         scope = get_content_store().user_file_scope(user_id=raw_file.user_id or "local")
@@ -145,10 +150,7 @@ def build_file_record(raw_file: RawFile) -> FileRecord:
         estimated_pages=raw_file.estimated_pages,
         image_count=raw_file.image_count,
         parser_used=_extract_parser_used(raw_file),
-        markdown_content=_read_markdown(
-            raw_file.markdown_path,
-            markdown_content=raw_file.markdown_content,
-        ),
+        markdown_content=markdown_content,
         asset_base_url=asset_base_url,
         assets=assets,
         classification_json=raw_file.classification_json,

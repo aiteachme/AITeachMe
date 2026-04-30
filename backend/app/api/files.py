@@ -19,8 +19,10 @@ from app.workflows.ingest.intake import (
     delete_files,
     get_user_files_or_raise,
     list_course_files,
+    ready_file_ids_for_course_indexing,
     run_parse_files_background,
     save_uploaded_files_and_request_parse,
+    spawn_index_course_files_background,
 )
 from app.workflows.support.courses import get_course_record
 
@@ -105,18 +107,34 @@ async def upload_files(
         parse_request_metadata=parse_request_metadata,
         origin_course_name=course_record.name,
     )
+    background_task_registry = getattr(request.app.state, "background_task_registry", None)
     if parse_file_ids:
-        request.app.state.background_task_registry.spawn(
+        if background_task_registry is None:
+            raise RuntimeError("background_task_registry unavailable")
+        background_task_registry.spawn(
             run_parse_files_background(
                 user_id=user.user_id,
                 course_id=normalized_course_id,
                 file_ids=parse_file_ids,
-                background_task_registry=request.app.state.background_task_registry,
+                background_task_registry=background_task_registry,
             ),
             kind="files.parse",
             course_id=normalized_course_id,
             name=f"files.parse:{normalized_course_id}",
         )
+    parse_file_id_set = set(parse_file_ids)
+    reused_ready_file_ids = [
+        item.id
+        for item in data.uploaded_items
+        if item.markdown_ready and item.id not in parse_file_id_set
+    ]
+    spawn_index_course_files_background(
+        background_task_registry,
+        user_id=user.user_id,
+        course_id=normalized_course_id,
+        file_ids=reused_ready_file_ids,
+        reason="ingest.upload.reused_completed",
+    )
     return ok_response(data)
 
 
@@ -143,6 +161,7 @@ async def list_files_api(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def link_files_api(
+    request: Request,
     course_id: str = Path(...),
     body: FileLinkRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -160,6 +179,13 @@ async def link_files_api(
         owner_user_id=user.user_id,
         course_id=normalized_course_id,
         raw_files=raw_files,
+    )
+    spawn_index_course_files_background(
+        getattr(request.app.state, "background_task_registry", None),
+        user_id=user.user_id,
+        course_id=normalized_course_id,
+        file_ids=ready_file_ids_for_course_indexing(raw_files),
+        reason="ingest.link.completed",
     )
     return ok_response(list_course_files(session, course_id=normalized_course_id))
 

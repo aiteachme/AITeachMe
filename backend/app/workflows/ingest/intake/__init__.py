@@ -9,7 +9,12 @@ from app.workflows.ingest.intake.catalog import (
     list_user_files,
 )
 from app.workflows.ingest.intake.deletion import delete_files, delete_user_files
-from app.workflows.ingest.intake.parse_dispatch import run_parse_files_background
+from app.workflows.ingest.intake.parse_dispatch import (
+    ready_file_ids_for_course_indexing,
+    run_index_course_files_background,
+    run_parse_files_background,
+    spawn_index_course_files_background,
+)
 from app.workflows.ingest.intake.uploads import (
     save_uploaded_file,
     save_uploaded_files,
@@ -25,8 +30,11 @@ __all__ = [
     "get_user_files_or_raise",
     "list_course_files",
     "list_user_files",
+    "ready_file_ids_for_course_indexing",
+    "run_index_course_files_background",
     "run_parse_files_background",
     "save_uploaded_file",
     "save_uploaded_files",
     "save_uploaded_files_and_request_parse",
+    "spawn_index_course_files_background",
 ]
