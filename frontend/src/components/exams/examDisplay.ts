@@ -13,9 +13,9 @@ export const EXAM_MODES = [
 ] as const;
 
 export const DIFFICULTIES = [
-  { value: "easy", label: "基础" },
-  { value: "medium", label: "标准" },
-  { value: "hard", label: "挑战" },
+  { value: "easy", label: "易" },
+  { value: "medium", label: "中" },
+  { value: "hard", label: "难" },
 ] as const;
 
 export function formatDateTime(value?: string | null) {
@@ -35,7 +35,8 @@ export function formatModeLabel(mode?: string | null) {
 }
 
 export function formatDifficultyLabel(value: string) {
-  return DIFFICULTIES.find((item) => item.value === value)?.label ?? value;
+  const normalized = String(value || "").toLowerCase();
+  return DIFFICULTIES.find((item) => item.value === normalized)?.label ?? value;
 }
 
 export function formatQuestionTypeLabel(type: string) {

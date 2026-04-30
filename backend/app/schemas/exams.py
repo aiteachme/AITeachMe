@@ -168,6 +168,7 @@ class QuestionTemplateItemResponse(BaseModel):
     template_version: int
     status: str
     is_marked: bool = False
+    has_wrong_attempt: bool = False
     created_at: datetime
     updated_at: datetime
 
