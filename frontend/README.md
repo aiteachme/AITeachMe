@@ -104,6 +104,17 @@ UI 遵循现代 SaaS 设计原则：
 3. 在控制台配置环境变量。若没有网关把 `/api/*` 转发到后端，需要配置 `VITE_API_URL`
 4. 部署
 
+### Sealos Nginx
+
+前端也可以构建为 Nginx 容器部署到 Sealos，用同源 `/api` 反代后端内网服务：
+
+1. 使用 `infra/deployment/docker/frontend.Dockerfile` 构建镜像
+2. Sealos 前端 App 暴露 `80` 端口并开启公网访问
+3. 不配置 `VITE_API_URL`
+4. 配置运行时环境变量 `AITEACHME_API_UPSTREAM=http://<后端 Sealos 服务名>:9020`
+
+完整步骤见 `infra/deployment/sealos-frontend.md`。
+
 ## 许可证
 
 私有项目
