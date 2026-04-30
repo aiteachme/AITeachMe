@@ -16,6 +16,7 @@ from app.api.deps import (
     normalize_course_id,
 )
 from app.api.openapi import build_error_responses
+from app.api.sse import get_sse_interval, sse_headers
 from app.models import Course
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
@@ -149,10 +150,7 @@ def _planner_stream_response(
     stream_response = StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers=sse_headers(),
     )
     set_guest_cookie_for_user(stream_response, user_id=user_id)
     return stream_response
@@ -530,7 +528,10 @@ async def knowledge_build_stream(
         course_scope = _storage_scope_for_course_record(course_record)
 
     _TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed", "skipped"}
-    _SNAPSHOT_FALLBACK_INTERVAL = 8.0
+    snapshot_fallback_interval_s = get_sse_interval(
+        "SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S",
+        default=2.0,
+    )
 
     async def event_generator():
         last_hash: str | None = None
@@ -634,7 +635,7 @@ async def knowledge_build_stream(
                 try:
                     stream_event = await asyncio.wait_for(
                         queue.get(),
-                        timeout=_SNAPSHOT_FALLBACK_INTERVAL,
+                        timeout=snapshot_fallback_interval_s,
                     )
                 except asyncio.TimeoutError:
                     events, terminal = await build_snapshot_events(force=False)
@@ -661,11 +662,7 @@ async def knowledge_build_stream(
     stream_response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers=sse_headers(),
     )
     for key, value in response.raw_headers:
         if key.lower() == b"set-cookie":

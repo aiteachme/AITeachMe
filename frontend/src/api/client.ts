@@ -485,6 +485,7 @@ export async function postSseJson<TBody>(
       {
         method: "POST",
         headers,
+        cache: "no-store",
         body: JSON.stringify(body),
         signal: options.signal,
       },
