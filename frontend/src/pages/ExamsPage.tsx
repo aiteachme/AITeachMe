@@ -644,9 +644,17 @@ function KnowledgeRefTags({ refs }: { refs: Array<Record<string, unknown>> }) {
   );
 }
 
-function QuestionTemplatePlainSection({ title, children }: { title: string; children: ReactNode }) {
+function QuestionTemplatePlainSection({
+  title,
+  children,
+  showDivider = true,
+}: {
+  title: string;
+  children: ReactNode;
+  showDivider?: boolean;
+}) {
   return (
-    <section className="border-t border-slate-200 pt-5 dark:border-slate-800">
+    <section className={showDivider ? "border-t border-slate-200 pt-5 dark:border-slate-800" : ""}>
       <h3 className="font-serif text-lg font-bold text-slate-950 dark:text-slate-100">{title}</h3>
       <div className="mt-3 break-words text-sm leading-8 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_.katex-display]:my-3">
         {children}
@@ -844,7 +852,7 @@ function QuestionTemplateDetailCard({
             </div>
           </header>
 
-          <QuestionTemplatePlainSection title="标准答案">
+          <QuestionTemplatePlainSection title="标准答案" showDivider={false}>
             <ExamMarkdown content={item.answer || "暂无答案"} />
           </QuestionTemplatePlainSection>
 
