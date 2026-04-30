@@ -920,6 +920,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onNavigate={closeMobileNavigation}
             targetScope={sidebarConversationScope}
             title={isCourseConversationScope ? "课程最近" : "全局最近"}
+            showTopBorder={false}
             showCourseBadge={false}
             emptyText={isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />
