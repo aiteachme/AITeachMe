@@ -5,4 +5,4 @@ export { ExamPaperCard } from "./ExamPaperCard";
 export { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 export { ExamPaperSheet } from "./ExamPaperSheet";
 export { ExamPaperWorkspace } from "./ExamPaperWorkspace";
-export { buildExamTitle } from "./examDisplay";
+export { buildExamTitle, formatDifficultyLabel } from "./examDisplay";
