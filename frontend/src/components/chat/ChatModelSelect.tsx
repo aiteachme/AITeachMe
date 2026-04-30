@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, Settings2 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -18,8 +18,8 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
 }> = {
   settings: {
     optionLabel: "默认模式",
-    displayLabel: "",
-    title: "默认模式",
+    displayLabel: "使用设置",
+    title: "使用设置",
   },
   "qwen-flash": {
     optionLabel: "qwen-flash",
@@ -58,41 +58,25 @@ export function ChatModelSelect({
   className,
 }: ChatModelSelectProps) {
   const selectId = useId();
-  const isUsingOverride = value !== DEFAULT_CHAT_MODEL_CHOICE;
   const meta = CHAT_MODEL_META[value];
 
   return (
     <div
       title={`选择本轮模型：${meta.title}`}
       className={cn(
-        "group relative inline-flex h-9 max-w-full shrink-0 items-center overflow-hidden rounded-full border text-xs font-semibold transition-all",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_8px_18px_-14px_rgba(79,70,229,0.55)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:shadow-none",
-        isUsingOverride
-          ? "w-9 justify-center border-indigo-200/80 bg-indigo-50/90 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100/80 dark:border-indigo-400/25 dark:bg-indigo-400/15 dark:text-indigo-100 dark:hover:border-indigo-300/35 sm:min-w-[132px] sm:max-w-[180px] sm:justify-start sm:gap-2 sm:bg-white/80 sm:px-2.5 sm:pr-3 sm:hover:bg-indigo-50/80 dark:sm:bg-indigo-400/10 dark:sm:hover:bg-indigo-400/15"
-          : "w-9 justify-center border-indigo-200/80 bg-indigo-50/90 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100/80 dark:border-indigo-400/30 dark:bg-indigo-400/15 dark:text-indigo-100 dark:hover:border-indigo-300/35",
+        "group relative inline-flex h-9 max-w-[168px] shrink-0 items-center gap-1.5 overflow-hidden rounded-full px-3 text-[13px] font-medium transition-all",
+        "bg-zinc-50/95 text-zinc-500 shadow-sm hover:bg-zinc-100 hover:text-zinc-700",
+        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
         disabled && "opacity-55",
         className,
       )}
     >
-      <span
-        className={cn(
-          "flex shrink-0 items-center justify-center text-indigo-500 transition-colors group-hover:text-indigo-600 dark:text-indigo-300 dark:group-hover:text-indigo-200",
-          isUsingOverride
-            ? "h-7 w-7 sm:h-5 sm:w-5"
-            : "h-7 w-7",
-        )}
-      >
-        <Sparkles className={cn(isUsingOverride ? "h-4 w-4 sm:h-3.5 sm:w-3.5" : "h-[18px] w-[18px]")} />
-      </span>
+      <Settings2 className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
-      {isUsingOverride ? (
-        <>
-          <span className="hidden min-w-0 truncate leading-none sm:inline">{meta.displayLabel}</span>
-          <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 opacity-55 transition-opacity group-hover:opacity-80 sm:block" />
-        </>
-      ) : null}
+      <span className="min-w-0 truncate leading-none">{meta.displayLabel}</span>
+      <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-70" />
       <select
         id={selectId}
         value={value}
