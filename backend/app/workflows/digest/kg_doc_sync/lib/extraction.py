@@ -15,7 +15,10 @@ from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg_doc_sync.lib.model_policy import (
     KGDocSyncModelStep,
+    kg_doc_sync_course_context_max_chars,
     kg_doc_sync_completion_kwargs_with_metadata,
+    kg_doc_sync_section_llm_max_content_chars,
+    kg_doc_sync_section_llm_timeout_s,
 )
 from app.workflows.digest.kg_doc_sync.lib.ontology import relation_endpoint_type_preferences
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
@@ -42,12 +45,6 @@ logger = structlog.get_logger()
 
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
-# Keep this aligned with the shared EXTRACT profile. A shorter outer wait_for
-# would cancel the structured-call helper and show up as noisy CancelledError
-# traces even though the section merely hit our local breaker.
-_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90
-_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000
-_DOCS_SYNC_COURSE_CONTEXT_MAX_CHARS = 1600
 _MAX_SECTION_CANDIDATE_NODES = 8
 _MAX_SECTION_CANDIDATE_EDGES = 10
 _MAX_CANDIDATE_NAME_CHARS = 90
@@ -184,11 +181,11 @@ class CandidateExtractionDiagnostics:
 
 
 def docs_section_llm_timeout_s() -> int:
-    return _DOCS_SYNC_SECTION_LLM_TIMEOUT_S
+    return kg_doc_sync_section_llm_timeout_s()
 
 
 def docs_section_llm_max_content_chars() -> int:
-    return _DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS
+    return kg_doc_sync_section_llm_max_content_chars()
 
 
 def _normalize_text(text: str) -> str:
@@ -220,14 +217,14 @@ def _limit_llm_text(text: str, *, max_chars: int) -> str:
 def _prepare_llm_chunk_content(chunk_content: str) -> str:
     return _limit_llm_text(
         chunk_content,
-        max_chars=_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS,
+        max_chars=kg_doc_sync_section_llm_max_content_chars(),
     )
 
 
 def _prepare_llm_course_context(course_context: str | None) -> str:
     return _limit_llm_text(
         course_context or "",
-        max_chars=_DOCS_SYNC_COURSE_CONTEXT_MAX_CHARS,
+        max_chars=kg_doc_sync_course_context_max_chars(),
     )
 
 
@@ -632,7 +629,7 @@ async def _extract_candidates_internal(
                 llm_chunk_chars=len(llm_chunk_content),
                 course_context_chars=len(course_context or ""),
                 llm_course_context_chars=len(llm_course_context),
-                section_timeout_s=_DOCS_SYNC_SECTION_LLM_TIMEOUT_S,
+                section_timeout_s=kg_doc_sync_section_llm_timeout_s(),
             ),
         )
         result = await llm_call

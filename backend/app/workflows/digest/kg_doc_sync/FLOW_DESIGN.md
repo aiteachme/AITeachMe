@@ -1,6 +1,6 @@
 # kg_doc_sync Flow Design
 
-最后更新：2026-04-28
+最后更新：2026-04-30
 
 `kg_doc_sync` 是知识文档到知识图谱的正式同步链路。它不再直接解析用户上传的原始文件；正式落库输入仍然只有当前课程已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Course.document_summary_json`。自动同步可以复用 DocGen 期间产生的内存预抽取缓存，但发布前不会写 `knowledge_unit / knowledge_edge`。除 DocGen 发布后的自动同步外，前端知识图谱面板可以调用 `/api/v1/courses/{course}/knowledge/build/graph` 手动重建图谱；该入口仍然只从已入库的知识文档和 manifest 读取输入，不依赖预抽取缓存，也不接收前端临时 Markdown。
 
@@ -31,6 +31,134 @@ LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱�
 - `lib/`：节点内部复用逻辑、抽取合同、候选过滤、增量写库、查询、总览和清理。
 - `prompts/`：只放 prompt builder。当前抽取提示词、ontology 展示文案和结构化 schema 描述统一使用中文；枚举值仍保留英文稳定值，便于落库和关系方向校验。
 
+## 0. 图谱生成的两个阶段
+
+当前知识图谱生成不是“知识文档发布后才从零开始慢慢跑”的单阶段任务，而是拆成两个阶段：
+
+```text
+阶段 A：DocGen 期间预抽取
+  enhanced chapters ready
+  -> start kg_prefetch sidecar
+  -> 按正式切章规则切 section
+  -> 并发调用结构化 LLM 抽取 SectionExtractionPayload
+  -> 写入内存缓存 course_id + build_session_id
+  -> 不写 knowledge_unit / knowledge_edge / source_ref
+
+阶段 B：发布后正式同步
+  KnowledgeDoc 已发布
+  -> load persisted KnowledgeDoc + manifest + structured_context
+  -> consume prefetch cache
+  -> section_key + content_hash 命中则复用预抽取 payload
+  -> 未命中 / 失败 / 内容变更则 catch-up LLM 补抽
+  -> 合并候选、补关系、写库、记录 sync run 和 source refs
+```
+
+### 阶段 A：DocGen 期间预抽取
+
+触发条件：
+
+- `knowledge_graph.sync_after_docgen=true`
+- `knowledge_graph.prefetch_during_docgen=true`
+- DocGen 的 `enhance_chapters` 已产出稳定增强章节 Markdown。
+- 当前构建有合法的 `course_id` 和 `build_session_id`。
+
+输入内容：
+
+- 增强后的章节 Markdown。
+- DocGen 阶段已经形成的 `document_backbone`、`docgen_manifest`、章节摘要、章节模式和来源文件 ID。
+- 课程 LLM context。
+- DocGen 构建开始时捕获的 LLM runtime snapshot，避免长任务中途设置变更导致同一轮构建前后模型配置漂移。
+
+它做的事：
+
+- 调用 `extract_knowledge_graph_section_records_async(...)`，复用正式同步的切章、子章节拆分、结构化 LLM 抽取和诊断统计逻辑。
+- 对每个 section 生成 `SectionExtractionRecord`：
+  - `section_key`：按章节序号、任务类型和标题路径生成。
+  - `content_hash`：基于去掉标题后的正文计算。
+  - `payload`：结构化 LLM 抽取出的节点、待解析关系、节点上下文和诊断。
+  - `error`：该 section 抽取失败时记录错误。
+- 将结果存在进程内 `_CACHES[(course_id, build_session_id)]`，只作为同一轮 DocGen 发布后的加速缓存。
+
+它不做的事：
+
+- 不写 `knowledge_unit`。
+- 不写 `knowledge_edge`。
+- 不写 `knowledge_graph_source_ref`。
+- 不影响 DocGen 的 review / repair / publish 路由判定。
+- 不把标题、题干或关键词本地造点；语义节点仍来自结构化 LLM 主抽取或 LLM 空结果修复。
+
+生命周期：
+
+- sidecar 启动前会等待 `_PREFETCH_START_DELAY_S = 0.5s`，让后续 DocGen review 先进入调度。
+- DocGen 发布成功后，正式同步通过 `consume_docgen_kg_prefetch(...)` 消费缓存。
+- 消费时最多等待 `_PREFETCH_CONSUME_GRACE_S = 8s`，如果 sidecar 仍未完成，会拿已完成记录并取消未完成任务。
+- DocGen 失败、取消或发布前退出时，会丢弃缓存并取消 sidecar。
+
+### 阶段 B：发布后正式同步
+
+触发方式：
+
+- 自动触发：DocGen 发布完成且 `knowledge_graph.sync_after_docgen=true`。
+- 手动触发：知识图谱面板调用 `/api/v1/courses/{course}/knowledge/build/graph`。
+
+输入内容：
+
+- 数据库中已发布的 `KnowledgeDoc` Markdown。
+- `docgen_manifest`、`document_backbone_snapshot`、`Course.document_summary_json`。
+- 章节来源映射、知识文档版本号、来源文件 ID。
+- 自动同步时可选携带同一 `build_session_id` 下的预抽取缓存；手动重建不依赖预抽取缓存。
+
+正式 LangGraph 主线：
+
+```text
+prepare
+-> init_run
+-> persist_seed_units
+-> extract
+-> persist_units
+-> stitch_relations
+-> persist
+-> finalize
+```
+
+核心行为：
+
+- `prepare` 校验课程和 Markdown。
+- `init_run` 校验 anchors，创建 `knowledge_graph_sync_run`，确定图谱 revision 和知识文档版本。
+- `persist_seed_units` 只把命中最终文档 hash 的预抽取 LLM 节点提前写入，供下游考卷预热等能力更早看到知识点；没有命中时不会用本地规则造节点。
+- `extract` 按最终发布 Markdown 重新规划 section 任务：
+  - `section_key + content_hash` 命中预抽取记录时直接复用 payload。
+  - hash 唯一命中也可复用，用于容忍标题轻微变化。
+  - 缓存缺失、过期、失败或最终正文变化时，立即走正式 LLM catch-up 抽取。
+- `persist_units` 提前写入本轮 LLM 节点，但不写边、不写 source_ref、不废弃旧实体。
+- `stitch_relations` 只做本地保守关系缝合，不调用 LLM，也不创建新节点。
+- `persist` 是权威落库点：写节点、边、source_ref，标记本轮消失的旧同步实体 deprecated，并完成 sync run。
+
+节点来源边界：
+
+- KnowledgeUnit 语义候选必须来自结构化 LLM 主抽取、结构化 LLM 空结果修复，或已经命中最终文档的 LLM 预抽取 payload。
+- `DocGen backbone` 当前只给已经存在的 LLM 节点补关系，不创建兜底节点。
+- 标题结构、跨章节语义边和 `stitch_relations` 只补关系，不负责从关键词生成节点。
+- 单个章节/子章节 LLM 抽取失败时，该分片会变成空 payload，并计入 `failed_section_count` / `llm_error_count`；其它成功分片继续合并和落库。
+
+### 当前并发度
+
+图谱生成有三层并发控制：
+
+| 层级 | 配置 / 常量 | 当前默认 | 作用 |
+| --- | --- | --- | --- |
+| 全局 LLM semaphore | `LLM_CONCURRENCY_LIMIT` | `32` | 所有文本、结构化 LLM 调用共享的进程级并发上限 |
+| 阶段 A 预抽取 | `settings.knowledge_graph.prefetch_concurrency` | `6` | DocGen 仍在运行时，KG sidecar 最多占用的 section 抽取并发 |
+| 阶段 B 正式同步 | `settings.knowledge_graph.max_parallel_extractions` | `32` | 发布后正式图谱同步的章节/子章节抽取规划上限和默认执行上限 |
+
+实际生效规则：
+
+- 阶段 A 的 section 抽取执行并发是 `min(任务数, prefetch_concurrency)`，同时仍受全局 `LLM_CONCURRENCY_LIMIT` 限制。
+- 阶段 B 的任务规划上限是 `max_parallel_extractions`；章节很少但内容很长时，会把大章拆成子章节任务，最多扩展到该上限。
+- 阶段 B 的执行并发默认是 `min(任务数, max_parallel_extractions)`；底层还兼容 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT`，它只能进一步压低执行并发，不能超过 `max_parallel_extractions`。
+- 阶段 A 与 DocGen review / repair 共享同一个 LLM semaphore，所以默认 6 路是为了让图谱预热提速，但不抢满 DocGen 的后半段复核资源。
+- 阶段 B 如果大部分 section 命中预抽取缓存，真正需要 catch-up 的 LLM 调用数会明显低于任务数；runtime 中的 `prefetch_reused_section_count` / `prefetch_catchup_section_count` 用于判断复用效果。
+
 ## 1. 流程总览与执行合同
 
 ### 1.1 短流程总览
@@ -60,7 +188,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 - 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
 - KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
-- `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
+- `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens + timeout + prompt 输入截断预算` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
 - Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`；提示词正文必须以中文教学语境为主。
 - 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`question_blocks.py` 只用于题目块识别和抽取辅助判断，不再生成兜底知识点。
 
@@ -218,7 +346,7 @@ finalize--error--> fail --> END
 
 ```text
 LangGraph 层
-  prepare -> init_run -> extract -> stitch_relations -> persist -> finalize
+  prepare -> init_run -> persist_seed_units -> extract -> persist_units -> stitch_relations -> persist -> finalize
   当前没有 LangGraph Send fan-out。
   每个节点负责本阶段输入合同、数据库会话边界、错误归一化和 `node_metrics`。
 
@@ -487,8 +615,9 @@ _extract_chapter_with_retries
     - `_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1800`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
-    - `_DOCS_SYNC_SECTION_LLM_TIMEOUT_S = 90`，与共享 EXTRACT LLM profile 对齐，避免外层短超时把结构化调用取消成 `CancelledError` 噪声。
-    - `_DOCS_SYNC_SECTION_LLM_MAX_CONTENT_CHARS = 9000`，主抽取仍走 LLM，但会限制单章输入窗口。
+    - `KGDocSyncModelPolicy.timeout_s = 180`，位于 `kg_doc_sync/lib/model_policy.py`，与共享 EXTRACT LLM profile 保持一致。
+    - `KGDocSyncModelPolicy.max_content_chars = 12000`，主抽取仍走 LLM，但会限制单章输入窗口；常规任务通常先被 1800 字符目标拆小，这里主要保护无清晰子标题的长章。
+    - `KGDocSyncModelPolicy.course_context_max_chars = 2400`，避免课程上下文挤占正文片段预算，同时保留足够的 DocGen 辅助信号用于消歧。
   SectionExtractionPayload 包含：
     - units：本章候选 MarkdownKnowledgeUnit。
     - pending_edges：尚未解析 endpoint anchor 的边。
@@ -499,9 +628,9 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2200`，并限制单片段最多 8 个节点、10 条关系。
-    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=900`。
-    - 结构化抽取失败会按任务重试；重试耗尽后让图谱同步失败，不再用标题或题目关键词本地生成 KnowledgeUnit。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=3600`，`timeout_s=180`，并限制单片段最多 8 个节点、10 条关系。
+    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`，`timeout_s=180`。
+    - 结构化抽取失败会按任务重试；重试耗尽后该分片写入失败诊断并返回空 payload，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items
   输入：
@@ -525,7 +654,8 @@ _extract_chapter_graph_items
     - 只做结构性收口：schema 枚举、名称/摘要长度、关系类型归一化、关系方向校验、endpoint 解析和去重。
   重要边界：
     - LLM 负责语义候选。
-    - LLM 调用失败会按任务重试；重试耗尽后让同步失败，不再用标题、题干或关键词本地生成 KnowledgeUnit。
+    - LLM 调用失败会按任务重试；重试耗尽后该分片写入失败诊断并返回空 payload，不再用标题、题干或关键词本地生成 KnowledgeUnit。
+    - 单个分片失败不会让整条同步直接失败；其它成功分片会继续合并和落库。
 
 payload fan-in
   输入：

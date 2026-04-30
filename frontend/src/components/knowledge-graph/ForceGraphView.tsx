@@ -79,6 +79,53 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   target_node_id: number;
 }
 
+function graphNodeRadius(node: GraphNode): number {
+  return Math.min(18, 8 + Math.sqrt(Math.max(1, node.degree)) * 2.2);
+}
+
+function applyGraphInteractiveStyles(
+  svg: SVGSVGElement,
+  links: GraphLink[],
+  selectedNodeId: number | null,
+  showEdgeLabels: boolean,
+) {
+  const selectedNeighbors = new Set<number>();
+  if (selectedNodeId !== null) {
+    for (const link of links) {
+      if (link.source_node_id === selectedNodeId) selectedNeighbors.add(link.target_node_id);
+      if (link.target_node_id === selectedNodeId) selectedNeighbors.add(link.source_node_id);
+    }
+  }
+  const isConnectedToSelected = (link: GraphLink) =>
+    selectedNodeId === null || link.source_node_id === selectedNodeId || link.target_node_id === selectedNodeId;
+
+  const root = d3.select(svg);
+  root.selectAll<SVGPathElement, GraphLink>("path.graph-link")
+    .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.8 : 1.1))
+    .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.32 : isConnectedToSelected(d) ? 0.74 : 0.1));
+
+  root.selectAll<SVGTextElement, GraphLink>("text.graph-link-label")
+    .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 1 : 0));
+
+  const nodeG = root.selectAll<SVGGElement, GraphNode>("g.graph-node");
+  nodeG.select<SVGCircleElement>("circle.node-halo")
+    .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
+  nodeG.select<SVGCircleElement>("circle.node-circle")
+    .attr("stroke", (d) => (d.id === selectedNodeId ? "#0f172a" : "#ffffff"))
+    .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : 2.5))
+    .attr("opacity", (d) => (
+      selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.42
+    ));
+  nodeG.select<SVGTextElement>("text.node-label")
+    .attr("font-size", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "12px" : "11px"))
+    .attr("font-weight", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "650" : "500"))
+    .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#334155"))
+    .attr("opacity", (d) => (
+      selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.5
+    ))
+    .text((d) => truncateGraphLabel(d.canonical_name, d.degree >= 4 || d.id === selectedNodeId ? 16 : 12));
+}
+
 type LoadedGraphData = {
   nodes: KnowledgeUnitResponse[];
   edges: KnowledgeRelationResponse[];
@@ -298,6 +345,9 @@ export function ForceGraphView({
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
   const [expandingNodeId, setExpandingNodeId] = useState<number | null>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+  const selectedNodeIdRef = useRef<number | null>(null);
+  const showEdgeLabelsRef = useRef(false);
+  const expandedNodeIdsRef = useRef<Set<number>>(new Set());
 
   const {
     data: initialSubgraph,
@@ -321,12 +371,25 @@ export function ForceGraphView({
     if (!initialSubgraph) return;
     setGraphData(compactSubgraph(initialSubgraph));
     setExpandedNodeIds(new Set());
+    expandedNodeIdsRef.current = new Set();
     setSelectedNodeId(null);
   }, [initialSubgraph, course]);
 
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    showEdgeLabelsRef.current = showEdgeLabels;
+  }, [showEdgeLabels]);
+
+  useEffect(() => {
+    expandedNodeIdsRef.current = expandedNodeIds;
+  }, [expandedNodeIds]);
+
   const expandNode = useCallback(
     async (nodeId: number) => {
-      if (!course || expandedNodeIds.has(nodeId)) return;
+      if (!course || expandedNodeIdsRef.current.has(nodeId)) return;
       setExpandingNodeId(nodeId);
       try {
         const payload =
@@ -339,8 +402,10 @@ export function ForceGraphView({
           ) ?? null;
         setGraphData((current) => mergeGraphData(current, payload));
         setExpandedNodeIds((current) => {
+          if (current.has(nodeId)) return current;
           const next = new Set(current);
           next.add(nodeId);
+          expandedNodeIdsRef.current = next;
           return next;
         });
       } catch {
@@ -349,7 +414,7 @@ export function ForceGraphView({
         setExpandingNodeId(null);
       }
     },
-    [expandedNodeIds, course],
+    [course],
   );
 
   const resetGraph = useCallback(() => {
@@ -430,17 +495,6 @@ export function ForceGraphView({
     // Clear previous
     d3.select(svg).selectAll("*").remove();
 
-    const selectedNeighbors = new Set<number>();
-    if (selectedNodeId !== null) {
-      for (const link of links) {
-        if (link.source_node_id === selectedNodeId) selectedNeighbors.add(link.target_node_id);
-        if (link.target_node_id === selectedNodeId) selectedNeighbors.add(link.source_node_id);
-      }
-    }
-    const isConnectedToSelected = (link: GraphLink) =>
-      selectedNodeId === null || link.source_node_id === selectedNodeId || link.target_node_id === selectedNodeId;
-    const nodeRadius = (node: GraphNode) => Math.min(18, 8 + Math.sqrt(Math.max(1, node.degree)) * 2.2);
-
     // Deep copy nodes/links so D3 can mutate them
     const simNodes: GraphNode[] = nodes.map((n) => ({ ...n }));
     const simLinks: GraphLink[] = links.map((l) => ({ ...l, source: l.source_node_id, target: l.target_node_id }));
@@ -519,11 +573,12 @@ export function ForceGraphView({
     const linkLine = linkGroup.selectAll<SVGPathElement, GraphLink>("path")
       .data(simLinks)
       .join("path")
+      .attr("class", "graph-link")
       .attr("fill", "none")
       .attr("stroke", (d) => RELATION_COLORS[d.edge_type] ?? "#94a3b8")
       .attr("stroke-linecap", "round")
-      .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.8 : 1.1))
-      .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.32 : isConnectedToSelected(d) ? 0.74 : 0.1))
+      .attr("stroke-width", 1.1)
+      .attr("stroke-opacity", 0.32)
       .attr("marker-end", "url(#arrowhead)");
 
     linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
@@ -538,6 +593,7 @@ export function ForceGraphView({
     const linkLabel = linkGroup.selectAll<SVGTextElement, GraphLink>("text")
       .data(simLinks)
       .join("text")
+      .attr("class", "graph-link-label")
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
       .attr("font-size", "10px")
@@ -547,7 +603,7 @@ export function ForceGraphView({
       .attr("paint-order", "stroke")
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
-      .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 1 : 0))
+      .attr("opacity", 0)
       .text((d) => d.relation_label);
 
     // Node group
@@ -557,6 +613,7 @@ export function ForceGraphView({
     const nodeG = nodeGroup.selectAll<SVGGElement, GraphNode>("g")
       .data(simNodes)
       .join("g")
+      .attr("class", "graph-node")
       .attr("cursor", "pointer")
       .call(
         d3.drag<SVGGElement, GraphNode>()
@@ -577,42 +634,40 @@ export function ForceGraphView({
       );
 
     // Node click handler
-    nodeG.on("click", (_event, d) => {
+    nodeG.on("click", (event, d) => {
+      event.stopPropagation();
       setSelectedNodeId((prev) => (prev === d.id ? null : d.id));
       void expandNode(d.id);
     });
 
     nodeG.append("circle")
       .attr("class", "node-halo")
-      .attr("r", (d) => nodeRadius(d) + 6)
+      .attr("r", (d) => graphNodeRadius(d) + 6)
       .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
-      .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
+      .attr("opacity", 0);
 
     nodeG.append("circle")
       .attr("class", "node-circle")
-      .attr("r", (d) => nodeRadius(d))
+      .attr("r", (d) => graphNodeRadius(d))
       .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
-      .attr("stroke", (d) => (d.id === selectedNodeId ? "#0f172a" : "#ffffff"))
-      .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : 2.5))
-      .attr("opacity", (d) => (
-        selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.42
-      ));
+      .attr("stroke", "#ffffff")
+      .attr("stroke-width", 2.5)
+      .attr("opacity", 1);
 
     nodeG.append("text")
-      .attr("dx", (d) => nodeRadius(d) + 6)
+      .attr("class", "node-label")
+      .attr("dx", (d) => graphNodeRadius(d) + 6)
       .attr("dy", 4)
-      .attr("font-size", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "12px" : "11px"))
+      .attr("font-size", (d) => (d.degree >= 4 ? "12px" : "11px"))
       .attr("font-family", "system-ui, sans-serif")
-      .attr("font-weight", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "650" : "500"))
-      .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#334155"))
+      .attr("font-weight", (d) => (d.degree >= 4 ? "650" : "500"))
+      .attr("fill", "#334155")
       .attr("stroke", "rgba(248,250,252,0.95)")
       .attr("stroke-width", 4)
       .attr("paint-order", "stroke")
-      .attr("opacity", (d) => (
-        selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.5
-      ))
+      .attr("opacity", 1)
       .style("pointer-events", "none")
-      .text((d) => truncateGraphLabel(d.canonical_name, d.degree >= 4 || d.id === selectedNodeId ? 16 : 12));
+      .text((d) => truncateGraphLabel(d.canonical_name, d.degree >= 4 ? 16 : 12));
 
     // Hover effects
     nodeG
@@ -632,28 +687,13 @@ export function ForceGraphView({
             link.source_node_id === d.id || link.target_node_id === d.id ? 2.3 : 1
           ));
         linkLabel.attr("opacity", (link) => (
-          showEdgeLabels && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
+          showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
         ));
         d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
         d3.select(this).select("circle.node-circle").attr("stroke", "#0f172a").attr("stroke-width", 3);
       })
-      .on("mouseleave", function (_event, d) {
-        nodeG.select<SVGCircleElement>("circle.node-circle")
-          .attr("opacity", (node) => (
-            selectedNodeId === null || node.id === selectedNodeId || selectedNeighbors.has(node.id) ? 1 : 0.42
-          ));
-        linkLine
-          .attr("stroke-opacity", (link) => (
-            selectedNodeId === null ? 0.32 : isConnectedToSelected(link) ? 0.74 : 0.1
-          ))
-          .attr("stroke-width", (link) => (isConnectedToSelected(link) ? 1.8 : 1.1));
-        linkLabel.attr("opacity", (link) => (
-          showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(link)) ? 1 : 0
-        ));
-        d3.select(this).select("circle.node-halo").attr("opacity", d.id === selectedNodeId ? 0.18 : 0);
-        d3.select(this).select("circle.node-circle")
-          .attr("stroke", d.id === selectedNodeId ? "#0f172a" : "#ffffff")
-          .attr("stroke-width", d.id === selectedNodeId ? 3 : 2.5);
+      .on("mouseleave", function () {
+        applyGraphInteractiveStyles(svg, simLinks, selectedNodeIdRef.current, showEdgeLabelsRef.current);
       });
 
     const simulation = d3.forceSimulation<GraphNode>(simNodes)
@@ -664,11 +704,12 @@ export function ForceGraphView({
       }).strength(0.38))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => -260 - Math.min(d.degree, 8) * 34))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => nodeRadius(d) + 34))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + 34))
       .force("x", d3.forceX(width / 2).strength(0.035))
       .force("y", d3.forceY(height / 2).strength(0.035));
 
     simulationRef.current = simulation;
+    applyGraphInteractiveStyles(svg, simLinks, selectedNodeIdRef.current, showEdgeLabelsRef.current);
 
     simulation.on("tick", () => {
       const linkPath = (d: any) => {
@@ -713,7 +754,13 @@ export function ForceGraphView({
     return () => {
       simulation.stop();
     };
-  }, [nodes, links, dimensions, showEdgeLabels, selectedNodeId, expandNode]);
+  }, [nodes, links, dimensions, expandNode]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || nodes.length === 0) return;
+    applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels);
+  }, [links, nodes.length, selectedNodeId, showEdgeLabels]);
 
   const graphIsLoading = initialLoading || (initialFetching && !rawData);
 

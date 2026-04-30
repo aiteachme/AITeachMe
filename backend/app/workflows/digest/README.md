@@ -1,6 +1,6 @@
 # Digest 模块说明
 
-最后更新：2026-04-28
+最后更新：2026-04-30
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -58,7 +58,7 @@ from app.workflows.digest.planner import (
 当前 digest 的 canonical 主线是：
 
 - `planner -> docgen`
-- `docgen sidecar prefetch -> publish -> kg_doc_sync persist`
+- `docgen kg_prefetch sidecar -> publish -> kg_doc_sync reuse/catch-up -> persist`
 
 ## 两条核心链路介绍口径
 
@@ -93,6 +93,22 @@ DocGen 消费 Planner 已确认的 `confirmed_plan`，不重新推翻用户确�
 
 KG 同步的正式落库仍只消费 DocGen 发布后的知识文档和结构化产物，不再直接解析原始上传文件入图。
 自动同步可以复用 DocGen 期间产生的 section 级预抽取缓存；缓存命中才复用，最终内容变更则补抽。
+
+图谱生成按两个阶段理解：
+
+```text
+阶段 A：DocGen 期间预抽取
+  enhance_chapters 完成后启动非阻塞 kg_prefetch sidecar。
+  sidecar 按正式切章规则并发调用结构化 LLM，生成 SectionExtractionRecord 内存缓存。
+  这个阶段不写 knowledge_unit / knowledge_edge / source_ref，也不影响 DocGen 发布判定。
+
+阶段 B：发布后正式同步
+  读取已发布 KnowledgeDoc、manifest、document_backbone 和章节来源。
+  先用 section_key + content_hash 复用预抽取 payload。
+  对缺失、失败或内容变更的 section 立即补抽。
+  最后统一写 knowledge_unit、knowledge_edge、knowledge_graph_source_ref 和 knowledge_graph_sync_run。
+```
+
 当前主线是：
 
 ```text
@@ -100,15 +116,27 @@ prefetch_extract（可选，DocGen sidecar，发布前不落库）
 -> publish_gate
 -> prepare
 -> init_run
+-> persist_seed_units
 -> reuse_or_catchup extract（节点内部按章节 async gather + semaphore 并发）
+-> persist_units
+-> stitch_relations
 -> persist
 -> finalize
 ```
 
 对外讲的时候可以概括成：DocGen 期间可提前抽取候选，发布后先校验最终文档版本与缓存，再对缺失或变更章节补抽，随后统一写入 `knowledge_unit`、`knowledge_edge` 和 `knowledge_graph_source_ref`，并用 `knowledge_graph_sync_run` 记录本轮图谱同步结果。
 
+当前并发口径：
+
+- 全局 LLM 并发由 `LLM_CONCURRENCY_LIMIT` 控制，默认 `32`，所有 LLM 调用共享。
+- 预抽取阶段由 `settings.knowledge_graph.prefetch_concurrency` 控制，默认 `6`，实际执行仍受全局 LLM semaphore 限制。
+- 正式同步阶段由 `settings.knowledge_graph.max_parallel_extractions` 控制任务规划和默认执行上限，默认 `32`；章节少但大章很长时会拆成子章节任务，最多扩展到该上限。
+- 底层兼容 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT` 作为执行并发兜底，只能压低正式同步并发，不能超过 `max_parallel_extractions`。
+- KG docs-sync 的模型槽位、`call_purpose`、`max_tokens`、`timeout_s`、正文片段和课程上下文截断预算都集中在 `kg_doc_sync/lib/model_policy.py`。
+- KnowledgeUnit 不再由标题、题干或关键词本地生成；语义节点来自结构化 LLM 主抽取、LLM 空结果修复，或发布后 hash 命中的 LLM 预抽取 payload。DocGen backbone、标题结构和本地关系缝合只补关系。
+
 旧 `kg_file_ingest` 调试链路已经删除。知识图谱同步只保留 `kg_doc_sync`。
-KG 同步编排按 `prepare -> init_run -> extract -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，
+KG 同步编排按 `prepare -> init_run -> persist_seed_units -> extract -> persist_units -> stitch_relations -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，
 抽取、候选合并、增量写库等可复用实现位于 `kg_doc_sync/lib/`。
 
 如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`
