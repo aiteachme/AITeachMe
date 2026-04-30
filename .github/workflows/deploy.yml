@@ -189,6 +189,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --type=merge \
+            -p '{"spec":{"progressDeadlineSeconds":1800}}'
+
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             "*=${{ steps.image.outputs.image }}"
