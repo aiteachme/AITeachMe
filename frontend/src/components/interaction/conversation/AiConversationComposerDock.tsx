@@ -1,4 +1,5 @@
 import { MessageSquareText, X } from "lucide-react";
+import type { ClipboardEventHandler, ReactNode } from "react";
 
 import type { ChatModelChoice } from "../../chat/ChatModelSelect";
 import { ChatComposer } from "../../chat/ChatComposer";
@@ -20,6 +21,12 @@ interface AiConversationComposerDockProps {
   isPlannerConversation: boolean;
   pendingSelectionContext: PendingSelectionContext | null;
   onClearPendingSelectionContext: () => void;
+  layout?: "dock" | "home";
+  canSend?: boolean;
+  homeAttachmentContent?: ReactNode;
+  homeToolbarActions?: ReactNode;
+  homeHighlighted?: boolean;
+  onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
 }
 
 export function AiConversationComposerDock({
@@ -35,11 +42,18 @@ export function AiConversationComposerDock({
   isPlannerConversation,
   pendingSelectionContext,
   onClearPendingSelectionContext,
+  layout = "dock",
+  canSend,
+  homeAttachmentContent,
+  homeToolbarActions,
+  homeHighlighted,
+  onPaste,
 }: AiConversationComposerDockProps) {
   const isExamQuestionContext = pendingSelectionContext?.source === AI_SOURCE_EXAM_QUESTION;
+  const isHomeLayout = layout === "home";
 
   return (
-    <div className="shrink-0 border-t border-transparent bg-white dark:bg-slate-950">
+    <div className={isHomeLayout ? "w-full bg-transparent" : "shrink-0 border-t border-transparent bg-white dark:bg-slate-950"}>
       {isPlannerConversation ? (
         <div className="border-t border-amber-100 bg-amber-50/80 px-4 py-2 text-[12px] leading-relaxed text-amber-700">
           这是构建规划会话，可在这里回看；继续修改规划请回到构建页操作。
@@ -116,9 +130,15 @@ export function AiConversationComposerDock({
         autoFocusKey={autoFocusKey}
         modelValue={modelValue}
         onModelChange={onModelChange}
+        layout={layout}
+        canSend={canSend}
+        homeAttachmentContent={homeAttachmentContent}
+        homeToolbarActions={homeToolbarActions}
+        homeHighlighted={homeHighlighted}
+        onPaste={onPaste}
         placeholder={pendingSelectionContext ? (
           isExamQuestionContext ? "围绕这道题提问..." : "结合原文上下文提问..."
-        ) : undefined}
+        ) : isHomeLayout ? "直接输入问题，也可以先添加资料再一起讨论" : undefined}
       />
     </div>
   );

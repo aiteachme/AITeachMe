@@ -21,7 +21,6 @@ import {
   Trash2,
   X,
   MessageCircle,
-  MessageSquareText,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -105,7 +104,6 @@ const sidebarChildItemMotion: Variants = {
 };
 
 type CourseWithIcon = CourseItem & { icon_key?: string | null };
-type CoursePanelMode = "modules" | "chat";
 
 function colorClassForCourse(name: string) {
   let hash = 0;
@@ -213,7 +211,6 @@ function writeCourseSectionExpanded(value: boolean) {
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
-  const [coursePanelModes, setCoursePanelModes] = useState<Record<string, CoursePanelMode>>({});
   const [isCourseSectionExpanded, setIsCourseSectionExpanded] = useState(readCourseSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -234,15 +231,22 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
     activeScope,
     fullscreenScope,
+    fullscreenRequest,
+    openAiInteraction,
     closeAiInteraction,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
-  const isCreateCourseActive = location.pathname === "/";
   const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
+  const isGlobalAssistantDraftRoute =
+    isAssistantPage &&
+    assistantScope?.type === "global" &&
+    (!fullscreenRequest || fullscreenRequest.newSession || fullscreenRequest.sessionId === null);
+  const isCreateCourseActive =
+    location.pathname === "/" || isGlobalAssistantDraftRoute;
   const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
   const sidebarConversationScope = useMemo<AiConversationScope>(() => {
     if (isAssistantPage && assistantScope) {
@@ -371,6 +375,17 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const closeMobileNavigation = useCallback(() => {
     setIsMobileOpen(false);
   }, []);
+  const openGlobalConversationDraft = useCallback(() => {
+    setCourseActionError(undefined);
+    setOpenMenuId(null);
+    setIsMobileOpen(false);
+    openAiInteraction({
+      mode: "fullscreen",
+      scope: { type: "global" },
+      sessionId: null,
+      newSession: true,
+    });
+  }, [openAiInteraction]);
 
   const toggleCourse = (courseId: string) => {
     if (effectiveCollapsed) {
@@ -387,15 +402,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       return next;
     });
   };
-
-  const toggleCoursePanelMode = useCallback((courseId: string, mode?: CoursePanelMode) => {
-    setExpandedCourses((prev) => new Set([...prev, courseId]));
-    setCoursePanelModes((prev) => {
-      const current = prev[courseId] ?? "modules";
-      const next = mode ?? (current === "chat" ? "modules" : "chat");
-      return { ...prev, [courseId]: next };
-    });
-  }, []);
 
   const openDeleteModal = (course: CourseItem) => {
     setDeleteTarget(course);
@@ -476,13 +482,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
                   setIsCollapsed(false);
-                  navigate("/", {
-                    state: { newEntryAt: Date.now() },
-                  });
+                  openGlobalConversationDraft();
                 }}
                 title="新建课程"
                 className={cn(
@@ -545,14 +546,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
                 )}
-                onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  navigate("/", {
-                    state: { newEntryAt: Date.now() },
-                  });
-                }}
+                onClick={openGlobalConversationDraft}
               >
                 <Edit3
                   className={cn(
@@ -711,7 +705,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   <AnimatePresence initial={false}>
               {groupedCourses.map((course) => {
                 const expanded = expandedCourses.has(course.course_id);
-                const coursePanelMode = coursePanelModes[course.course_id] ?? "modules";
                 const displayName = displayCourseName(course);
                 const badgeClass = colorClassForCourse(course.name || course.course_id);
                 const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
@@ -762,27 +755,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
                   {!effectiveCollapsed ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setOpenMenuId(null);
-                          toggleCoursePanelMode(course.course_id);
-                        }}
-                        className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition",
-                          coursePanelMode === "chat"
-                            ? "bg-[#edf3f8] text-[#556b86] dark:bg-slate-800 dark:text-slate-300"
-                            : "text-slate-400 opacity-100 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100",
-                        )}
-                        title={coursePanelMode === "chat" ? "显示课程内容" : "显示课程对话"}
-                        aria-label={coursePanelMode === "chat" ? "显示课程内容" : "显示课程对话"}
-                        aria-pressed={coursePanelMode === "chat"}
-                      >
-                        <MessageSquareText className="h-4 w-4" />
-                      </button>
-
                       <div className="relative" ref={openMenuId === course.course_id ? menuRef : undefined}>
                         <button
                           type="button"
@@ -849,7 +821,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       <div className="min-h-0 overflow-hidden">
                         <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                           <AnimatePresence initial={false}>
-                            {coursePanelMode === "modules" ? MODULES.map((moduleItem) => {
+                            {MODULES.map((moduleItem) => {
                               const path = buildCoursePath(course.course_id, moduleItem.id);
                               const isActive = isCourseRouteActive(location.pathname, course.course_id, moduleItem.id);
                               const Icon = moduleItem.icon;
@@ -877,28 +849,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                                   </Link>
                                 </motion.div>
                               );
-                            }) : (
-                              <motion.div
-                                key="course-conversations"
-                                variants={sidebarChildItemMotion}
-                                initial="hidden"
-                                animate="visible"
-                                exit="exit"
-                              >
-                                <AiConversationSidebarSection
-                                  collapsed={false}
-                                  onExpandSidebar={expandNavigationSidebar}
-                                  onNavigate={closeMobileNavigation}
-                                  targetScope={{ type: "course", courseId: course.course_id }}
-                                  storageKey={`aiteachme.aiConversations.course.${course.course_id}.expanded`}
-                                  showTopBorder={false}
-                                  showCourseBadge={false}
-                                  hideHeader
-                                  maxItems={24}
-                                  emptyText="暂无课程对话"
-                                />
-                              </motion.div>
-                            )}
+                            })}
                           </AnimatePresence>
                         </div>
                       </div>

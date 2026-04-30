@@ -1,5 +1,12 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
-import { Loader2, Send, Square } from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ClipboardEventHandler,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { ArrowUp, Loader2, Send, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ChatModelSelect, type ChatModelChoice } from "./ChatModelSelect";
 
@@ -14,10 +21,18 @@ interface ChatComposerProps {
   placeholder?: string;
   modelValue?: ChatModelChoice;
   onModelChange?: (value: ChatModelChoice) => void;
+  layout?: "dock" | "home";
+  canSend?: boolean;
+  homeAttachmentContent?: ReactNode;
+  homeToolbarActions?: ReactNode;
+  homeHighlighted?: boolean;
+  onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
 }
 
 const TEXTAREA_MIN_HEIGHT = 52;
 const TEXTAREA_MAX_HEIGHT = 160;
+const HOME_TEXTAREA_MIN_HEIGHT = 104;
+const HOME_TEXTAREA_MAX_HEIGHT = 240;
 
 export function ChatComposer({
   value,
@@ -30,9 +45,18 @@ export function ChatComposer({
   placeholder = "问我一个问题，或者让我结合资料解释某个概念...",
   modelValue,
   onModelChange,
+  layout = "dock",
+  canSend,
+  homeAttachmentContent,
+  homeToolbarActions,
+  homeHighlighted = false,
+  onPaste,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const shouldShowModelSelect = Boolean(modelValue && onModelChange);
+  const textareaMinHeight = layout === "home" ? HOME_TEXTAREA_MIN_HEIGHT : TEXTAREA_MIN_HEIGHT;
+  const textareaMaxHeight = layout === "home" ? HOME_TEXTAREA_MAX_HEIGHT : TEXTAREA_MAX_HEIGHT;
+  const canSubmit = canSend ?? Boolean(value.trim());
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -40,18 +64,18 @@ export function ChatComposer({
       return;
     }
 
-    textarea.style.height = `${TEXTAREA_MIN_HEIGHT}px`;
+    textarea.style.height = `${textareaMinHeight}px`;
     textarea.style.overflowY = "hidden";
 
     if (value.length > 0) {
       const nextHeight = Math.min(
-        Math.max(textarea.scrollHeight, TEXTAREA_MIN_HEIGHT),
-        TEXTAREA_MAX_HEIGHT,
+        Math.max(textarea.scrollHeight, textareaMinHeight),
+        textareaMaxHeight,
       );
       textarea.style.height = `${nextHeight}px`;
-      textarea.style.overflowY = textarea.scrollHeight > TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
+      textarea.style.overflowY = textarea.scrollHeight > textareaMaxHeight ? "auto" : "hidden";
     }
-  }, [autoFocusKey, placeholder, value]);
+  }, [autoFocusKey, placeholder, textareaMaxHeight, textareaMinHeight, value]);
 
   useEffect(() => {
     if (autoFocusKey === undefined) {
@@ -60,8 +84,8 @@ export function ChatComposer({
     textareaRef.current?.focus({ preventScroll: true });
   }, [autoFocusKey]);
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !isStreaming) {
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey && !isStreaming && canSubmit && !disabled) {
       event.preventDefault();
       onSend();
     }
@@ -81,10 +105,10 @@ export function ChatComposer({
     <button
       type="button"
       onClick={onSend}
-      disabled={!value.trim() || disabled}
+      disabled={!canSubmit || disabled}
       className={cn(
         "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10",
-        value.trim() && !disabled
+        canSubmit && !disabled
           ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",
       )}
@@ -92,6 +116,86 @@ export function ChatComposer({
       <Send className="ml-0.5 h-4 w-4" />
     </button>
   );
+
+  if (layout === "home") {
+    const homeActionButton = isStreaming ? (
+      <button
+        type="button"
+        onClick={onAbort}
+        aria-label="停止生成"
+        title="停止生成"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 shadow-sm transition-all hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus:ring-slate-100/10"
+      >
+        <Square className="h-3.5 w-3.5 fill-current stroke-0" />
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={onSend}
+        disabled={!canSubmit || disabled}
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+          canSubmit && !disabled
+            ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",
+        )}
+      >
+        <ArrowUp className="h-4 w-4" />
+      </button>
+    );
+
+    return (
+      <div className="w-full bg-transparent">
+        <div className="mx-auto w-full max-w-[800px]">
+          <div
+            className={cn(
+              "w-full overflow-hidden rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] backdrop-blur-xl transition-all hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90 dark:focus-within:border-indigo-500/50",
+              (value.trim() || homeHighlighted) && "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgba(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgba(99,102,241,0.2)]",
+            )}
+          >
+            <textarea
+              ref={textareaRef}
+              rows={3}
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={onPaste}
+              disabled={disabled}
+              placeholder={placeholder}
+              className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-200 dark:placeholder:text-slate-500"
+            />
+
+            <div className="flex flex-col gap-2 px-4 pb-3 pt-1">
+              {homeAttachmentContent}
+              <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
+                  {homeToolbarActions}
+                </div>
+                <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+                  {shouldShowModelSelect ? (
+                    <ChatModelSelect
+                      value={modelValue!}
+                      onChange={onModelChange!}
+                      disabled={disabled || isStreaming}
+                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                    />
+                  ) : <span />}
+                  {homeActionButton}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex items-center justify-end gap-3 px-2 text-[12px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
+            <span className="inline-flex items-center gap-1.5">
+              {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              AI 可能会出错，请核实关键结论
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
@@ -108,7 +212,7 @@ export function ChatComposer({
                 disabled={disabled}
                 placeholder={placeholder}
                 className="h-[52px] min-h-[52px] max-h-40 flex-1 resize-none overflow-y-hidden bg-transparent px-3 py-3 text-[15px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
-                style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
+                style={{ maxHeight: `${textareaMaxHeight}px` }}
               />
 
               {shouldShowModelSelect ? (

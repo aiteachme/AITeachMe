@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { Bot } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 import { useResizablePanel } from "../../hooks/useResizablePanel";
@@ -52,6 +53,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     fullscreenRequest,
     isSidebarOpen,
     isSidebarStreaming,
+    openAiInteraction,
     closeAiInteraction,
   } = useAiInteraction();
 
@@ -71,6 +73,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const shouldReserveSidebarWidth = shouldShowSidebarPanel || isSidebarMounted;
   const shouldRenderSidebarPanel = canShowSidebar && (shouldReserveSidebarWidth || isSidebarStreaming);
   const isSidebarVisuallyOpen = shouldShowSidebarPanel && isSidebarVisible;
+  const shouldShowFloatingTrigger = canShowSidebar && !shouldReserveSidebarWidth && !isSidebarStreaming;
   const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
     defaultWidth: defaultSidebarWidth,
     minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
@@ -98,6 +101,10 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     }, SIDEBAR_TRANSITION_MS);
     return () => window.clearTimeout(timeoutId);
   }, [canShowSidebar, shouldShowSidebarPanel]);
+
+  const handleOpenSidebar = useCallback(() => {
+    openAiInteraction({ mode: "sidebar" });
+  }, [openAiInteraction]);
 
   const isInsidePanel = useCallback((target: EventTarget | null) => {
     const node = target instanceof Node ? target : null;
@@ -194,6 +201,17 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
 
   return (
     <>
+      {shouldShowFloatingTrigger ? (
+        <button
+          type="button"
+          className="fixed bottom-6 right-6 z-[80] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100"
+          onClick={handleOpenSidebar}
+          aria-label="打开 AI 交互窗口"
+        >
+          <Bot className="h-4 w-4" />
+          <span>AI 交互窗口</span>
+        </button>
+      ) : null}
       <div
         ref={panelShellRef}
         data-ai-interaction-window="true"

@@ -12,6 +12,7 @@ import type {
 import { type ChatClientAction, type ChatSessionMessage, useChatSession } from "../../../hooks/useChatSession";
 import { buildCoursePath, buildCourseSubPath, isCourseRouteActive } from "../../../lib/courseNavigation";
 import { cn } from "../../../lib/utils";
+import type { FileRecord } from "../../../types/files";
 import { ChatCitationModal } from "../../chat/ChatCitationModal";
 import {
   DEFAULT_CHAT_MODEL_CHOICE,
@@ -20,6 +21,7 @@ import {
   toChatRequestModel,
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
+import { AiConversationFullscreenDraft } from "./AiConversationFullscreenDraft";
 import { AiConversationHeader } from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
@@ -268,6 +270,9 @@ export const AiConversationView = memo(function AiConversationView({
   const isKnowledgeDocsPage = Boolean(docsCourseId && isCourseRouteActive(pathname, docsCourseId, "knowledge-docs"));
 
   const [draft, setDraft] = useState("");
+  const [draftAttachedFileIds, setDraftAttachedFileIds] = useState<string[]>([]);
+  const [draftAttachedFiles, setDraftAttachedFiles] = useState<FileRecord[]>([]);
+  const [isDraftUploadingFiles, setIsDraftUploadingFiles] = useState(false);
   const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -337,6 +342,11 @@ export const AiConversationView = memo(function AiConversationView({
       },
     }));
   }, [docsCourseId]);
+
+  const handleDraftAttachedFilesChange = useCallback((fileIds: string[], files: FileRecord[]) => {
+    setDraftAttachedFileIds(fileIds);
+    setDraftAttachedFiles(files);
+  }, []);
 
   const applyResolvedSessionTitle = useCallback((sessionId: string | null, title: string | null) => {
     const nextTitle = title?.trim();
@@ -518,6 +528,14 @@ export const AiConversationView = memo(function AiConversationView({
   const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId || hasLocalStreamingMessages;
   const visibleMessages = messagesBelongToCurrentSession ? messages : [];
   const currentHistoryLoaded = hasLocalStreamingMessages || (historyLoaded && messagesBelongToCurrentSession);
+  const shouldShowGlobalFullscreenDraft =
+    isFullscreen &&
+    scope?.type === "global" &&
+    !selectedSessionId &&
+    visibleMessages.length === 0 &&
+    !pendingSelectionContext &&
+    !activeQuickChatContext &&
+    !isStreaming;
   const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
@@ -780,6 +798,9 @@ export const AiConversationView = memo(function AiConversationView({
 
   useEffect(() => {
     setDraft("");
+    setDraftAttachedFileIds([]);
+    setDraftAttachedFiles([]);
+    setIsDraftUploadingFiles(false);
     setSessions([]);
     setSessionsError(null);
     setSelectedSessionId(null);
@@ -798,8 +819,17 @@ export const AiConversationView = memo(function AiConversationView({
     }
 
     setComposerFocusKey((prev) => prev + 1);
+    if (request.newSession || request.sessionId !== undefined) {
+      setDraftAttachedFileIds([]);
+      setDraftAttachedFiles([]);
+      setIsDraftUploadingFiles(false);
+    }
     if (request.draft !== undefined) {
       setDraft(request.draft);
+    }
+    if (request.attachedFileIds !== undefined && !request.autoSend) {
+      setDraftAttachedFileIds(Array.from(new Set(request.attachedFileIds.map((item) => item.trim()).filter(Boolean))));
+      setDraftAttachedFiles([]);
     }
     if (request.model !== undefined) {
       setChatModel(toChatModelChoice(request.model));
@@ -972,6 +1002,9 @@ export const AiConversationView = memo(function AiConversationView({
   const handleStartNewSession = useCallback(() => {
     preferEmptySessionRef.current = true;
     setDraft("");
+    setDraftAttachedFileIds([]);
+    setDraftAttachedFiles([]);
+    setIsDraftUploadingFiles(false);
     setSelectedSessionId(null);
     setPendingSelectionContext(null);
     setActiveQuickChatContext(null);
@@ -992,6 +1025,9 @@ export const AiConversationView = memo(function AiConversationView({
     pendingSelectionContextRef.current = null;
     requestedSessionIdRef.current = nextSessionId;
     setDraft("");
+    setDraftAttachedFileIds([]);
+    setDraftAttachedFiles([]);
+    setIsDraftUploadingFiles(false);
     setPendingSelectionContext(null);
     setActiveQuickChatContext(null);
     setSelectedSessionId(nextSessionId);
@@ -1054,8 +1090,11 @@ export const AiConversationView = memo(function AiConversationView({
   }, [pendingAutoSendRequest, sendAutoRequest]);
 
   async function handleSend() {
-    const question = draft.trim();
-    if (!question || !courseId || isStreaming || isPlannerConversation) {
+    const trimmedQuestion = draft.trim();
+    const attachedFileIds = scope?.type === "global" ? draftAttachedFileIds : [];
+    const hasAttachedFiles = attachedFileIds.length > 0;
+    const question = trimmedQuestion || (hasAttachedFiles ? "我已经选择了这些资料，请先帮我判断下一步。" : "");
+    if (!question || !courseId || isStreaming || isPlannerConversation || isDraftUploadingFiles) {
       return;
     }
 
@@ -1069,11 +1108,12 @@ export const AiConversationView = memo(function AiConversationView({
         question,
         model: toChatRequestModel(chatModel),
         session_id: pendingSelectionContext ? undefined : selectedSessionId ?? undefined,
-        source: selectionContext?.source,
+        source: selectionContext?.source ?? (hasAttachedFiles ? "home_intake" : undefined),
         anchor_id: selectionContext?.anchorId,
         selected_text: selectionContext?.selectedText,
         selected_context: selectionContext?.selectedText,
         selection_context: selectionContext?.selectionContext,
+        attached_file_ids: hasAttachedFiles ? attachedFileIds : undefined,
       },
       {
         localThreadId: pendingSelectionContext?.clientThreadId ?? undefined,
@@ -1081,8 +1121,12 @@ export const AiConversationView = memo(function AiConversationView({
     );
     if (!result.accepted) {
       pendingSelectionSubmittedRef.current = false;
-      setDraft(question);
+      setDraft(trimmedQuestion);
       return;
+    }
+    if (hasAttachedFiles) {
+      setDraftAttachedFileIds([]);
+      setDraftAttachedFiles([]);
     }
     if (pendingSelectionContext) {
       pendingSelectionContextRef.current = null;
@@ -1108,7 +1152,9 @@ export const AiConversationView = memo(function AiConversationView({
     <div
       className={cn(
         "relative flex h-full min-h-0 w-full overflow-hidden",
-        isFullscreen
+        shouldShowGlobalFullscreenDraft
+          ? "bg-[#fafafa] dark:bg-[#0b0f19]"
+          : isFullscreen
           ? "border border-zinc-200/80 bg-white/85 shadow-sm dark:border-slate-800 dark:bg-slate-950"
           : "bg-white dark:bg-slate-950",
         className,
@@ -1203,49 +1249,78 @@ export const AiConversationView = memo(function AiConversationView({
         </aside>
       ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-slate-950">
-        <AiConversationHeader
-          title={panelTitle}
-          selectionTarget={currentSelectionTarget}
-          onClose={onClose}
-          onStartNewSession={handleStartNewSession}
-          onClearCurrentSession={() => void handleClearCurrentSession()}
-          onJumpToSelectionTarget={jumpToSelectionTarget}
-          isStreaming={isStreaming}
-          selectedSessionId={selectedSessionId}
-        />
+      {shouldShowGlobalFullscreenDraft ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {historyError || sessionsError ? (
+            <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+              {historyError ?? sessionsError}
+            </div>
+          ) : null}
+          <AiConversationFullscreenDraft
+            animationKey={emptyAnimationKey}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={() => void handleSend()}
+            onAbort={abortStream}
+            isStreaming={isStreaming}
+            disabled={!courseId || isPlannerConversation || isDraftUploadingFiles}
+            autoFocusKey={composerFocusKey}
+            modelValue={chatModel}
+            onModelChange={setChatModel}
+            isPlannerConversation={isPlannerConversation}
+            pendingSelectionContext={pendingSelectionContext}
+            onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+            attachedFileIds={draftAttachedFileIds}
+            attachedFiles={draftAttachedFiles}
+            onAttachedFilesChange={handleDraftAttachedFilesChange}
+            onUploadingChange={setIsDraftUploadingFiles}
+          />
+        </div>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-slate-950">
+          <AiConversationHeader
+            title={panelTitle}
+            selectionTarget={currentSelectionTarget}
+            onClose={onClose}
+            onStartNewSession={handleStartNewSession}
+            onClearCurrentSession={() => void handleClearCurrentSession()}
+            onJumpToSelectionTarget={jumpToSelectionTarget}
+            isStreaming={isStreaming}
+            selectedSessionId={selectedSessionId}
+          />
 
-        {historyError || sessionsError ? (
-          <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-            {historyError ?? sessionsError}
-          </div>
-        ) : null}
-        <AiConversationMessageView
-          scrollRef={messageScrollRef}
-          onScroll={handleMessageScroll}
-          messages={visibleMessages}
-          selectedSessionId={selectedSessionId}
-          historyLoaded={currentHistoryLoaded}
-          isStreaming={isStreaming}
-          emptyAnimationKey={emptyAnimationKey}
-          onOpenCitation={handleOpenCitation}
-        />
+          {historyError || sessionsError ? (
+            <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+              {historyError ?? sessionsError}
+            </div>
+          ) : null}
+          <AiConversationMessageView
+            scrollRef={messageScrollRef}
+            onScroll={handleMessageScroll}
+            messages={visibleMessages}
+            selectedSessionId={selectedSessionId}
+            historyLoaded={currentHistoryLoaded}
+            isStreaming={isStreaming}
+            emptyAnimationKey={emptyAnimationKey}
+            onOpenCitation={handleOpenCitation}
+          />
 
-        <AiConversationComposerDock
-          draft={draft}
-          onDraftChange={setDraft}
-          onSend={() => void handleSend()}
-          onAbort={abortStream}
-          isStreaming={isStreaming}
-          disabled={!courseId || isPlannerConversation}
-          autoFocusKey={composerFocusKey}
-          modelValue={chatModel}
-          onModelChange={setChatModel}
-          isPlannerConversation={isPlannerConversation}
-          pendingSelectionContext={pendingSelectionContext}
-          onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-        />
-      </div>
+          <AiConversationComposerDock
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={() => void handleSend()}
+            onAbort={abortStream}
+            isStreaming={isStreaming}
+            disabled={!courseId || isPlannerConversation}
+            autoFocusKey={composerFocusKey}
+            modelValue={chatModel}
+            onModelChange={setChatModel}
+            isPlannerConversation={isPlannerConversation}
+            pendingSelectionContext={pendingSelectionContext}
+            onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+          />
+        </div>
+      )}
 
       <ChatCitationModal
         open={selectedChunkId !== null}
