@@ -65,6 +65,91 @@ def test_question_template_marking_is_persisted_on_template() -> None:
         assert persisted.is_marked is True
 
 
+def test_wrong_question_template_ids_filter_visible_user_attempts() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        target_template = QuestionTemplate(
+            course_id="course_math00000000",
+            question_type="single_choice",
+            difficulty="medium",
+            stem="Which function is not differentiable at x=0?",
+            stem_hash="stem-hash-wrong-target",
+            answer="|x|",
+            explanation="Absolute value has different one-sided derivatives at 0.",
+        )
+        correct_template = QuestionTemplate(
+            course_id="course_math00000000",
+            question_type="true_false",
+            difficulty="easy",
+            stem="Every differentiable function is continuous.",
+            stem_hash="stem-hash-wrong-correct",
+            answer="True",
+            explanation="Differentiability implies continuity.",
+        )
+        session.add(target_template)
+        session.add(correct_template)
+        session.commit()
+        session.refresh(target_template)
+        session.refresh(correct_template)
+
+        target_id = int(target_template.id or 0)
+        correct_id = int(correct_template.id or 0)
+        now = utcnow()
+
+        def add_attempt(
+            *,
+            template: QuestionTemplate,
+            is_correct: bool,
+            course_id: str = "course_math00000000",
+            user_id: str = "local",
+            visibility: str = "visible",
+        ) -> None:
+            paper = ExamPaper(
+                course_id=course_id,
+                user_id=user_id,
+                exam_mode="web_practice",
+                status="graded",
+                visibility=visibility,
+                total_items=1,
+                submitted_at=now,
+                graded_at=now,
+            )
+            session.add(paper)
+            session.commit()
+            session.refresh(paper)
+            session.add(
+                ExamPaperItem(
+                    exam_paper_id=int(paper.id or 0),
+                    question_template_id=int(template.id or 0),
+                    item_order=1,
+                    stem_snapshot=template.stem,
+                    answer_snapshot=template.answer,
+                    explanation_snapshot=template.explanation,
+                    difficulty=template.difficulty,
+                    question_type=template.question_type,
+                    answer_content=template.answer if is_correct else "wrong",
+                    is_correct=is_correct,
+                    score_obtained=1.0 if is_correct else 0.0,
+                    score_max=1.0,
+                    answered_at=now,
+                )
+            )
+            session.commit()
+
+        add_attempt(template=target_template, is_correct=False)
+        add_attempt(template=correct_template, is_correct=True)
+        add_attempt(template=correct_template, is_correct=False, user_id="other-user")
+        add_attempt(template=correct_template, is_correct=False, course_id="course_other00000000")
+        add_attempt(template=correct_template, is_correct=False, visibility="hidden")
+
+        assert exams_repo.list_wrong_question_template_ids(
+            session,
+            course_id="course_math00000000",
+            user_id="local",
+            template_ids=[target_id, correct_id],
+        ) == {target_id}
+
+
 def test_question_template_answer_history_filters_visible_user_attempts() -> None:
     engine = _engine()
     with Session(engine) as session:

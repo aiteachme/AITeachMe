@@ -16,6 +16,7 @@ import {
   Sparkles,
   Tags,
   X,
+  XCircle,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -74,6 +75,7 @@ interface QuestionTemplateItem {
   template_version: number;
   status: string;
   is_marked?: boolean;
+  has_wrong_attempt?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1142,6 +1144,7 @@ export function QuestionTemplatesPage() {
   const { courseId } = useParams();
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplateItem | null>(null);
   const [showMarkedOnly, setShowMarkedOnly] = useState(false);
+  const [showWrongOnly, setShowWrongOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const templatesQuery = useQuery({
@@ -1155,6 +1158,10 @@ export function QuestionTemplatesPage() {
   const templates = templatesQuery.data ?? [];
   const markedTemplates = useMemo(
     () => templates.filter((item) => item.is_marked === true),
+    [templates],
+  );
+  const wrongTemplates = useMemo(
+    () => templates.filter((item) => item.has_wrong_attempt === true),
     [templates],
   );
 
@@ -1180,7 +1187,13 @@ export function QuestionTemplatesPage() {
   const getQuestionTypeLabel = (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? typeKey;
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleTemplates = useMemo(() => {
-    const baseTemplates = showMarkedOnly ? markedTemplates : templates;
+    let baseTemplates = templates;
+    if (showMarkedOnly) {
+      baseTemplates = baseTemplates.filter((item) => item.is_marked === true);
+    }
+    if (showWrongOnly) {
+      baseTemplates = baseTemplates.filter((item) => item.has_wrong_attempt === true);
+    }
     if (!normalizedSearchQuery) {
       return baseTemplates;
     }
@@ -1201,7 +1214,22 @@ export function QuestionTemplatesPage() {
         .toLowerCase();
       return searchableText.includes(normalizedSearchQuery);
     });
-  }, [markedTemplates, normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, templates]);
+  }, [normalizedSearchQuery, questionTypeLabelByKey, showMarkedOnly, showWrongOnly, templates]);
+
+  const emptyTitle = normalizedSearchQuery ? "没有匹配的题目" : showWrongOnly ? "还没有错题" : "还没有已标记题目";
+  const emptyDescription = normalizedSearchQuery
+    ? showMarkedOnly && showWrongOnly
+      ? "当前只搜索已标记错题，可以换个关键词或关闭部分筛选。"
+      : showMarkedOnly
+        ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
+        : showWrongOnly
+          ? "当前只搜索错题，可以换个关键词或关闭“只看错题”。"
+          : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
+    : showMarkedOnly && showWrongOnly
+      ? "暂时没有同时满足已标记和做错过的题目。"
+      : showWrongOnly
+        ? "批改后判定错误的题目会出现在这里。"
+        : "在做题页面点“标记”后，收藏的题目会出现在这里。";
 
   if (!courseId) {
     return (
@@ -1276,12 +1304,25 @@ export function QuestionTemplatesPage() {
                 <Bookmark className={`h-4 w-4 ${showMarkedOnly ? "fill-current" : ""}`} />
                 只看已标记
               </button>
+              <button
+                type="button"
+                onClick={() => setShowWrongOnly((current) => !current)}
+                className={`inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition ${
+                  showWrongOnly
+                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                }`}
+                aria-pressed={showWrongOnly}
+              >
+                <XCircle className="h-4 w-4" />
+                只看错题
+              </button>
             </div>
           </div>
 
           <section className="space-y-2 px-1">
             <div className="text-sm text-slate-500">
-              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
+              共 {templates.length} 题 · 已标记 {markedTemplates.length} 题 · 错题 {wrongTemplates.length} 题 · 当前显示 {visibleTemplates.length} 题
             </div>
 
             {visibleTemplates.length > 0 ? (
@@ -1299,18 +1340,16 @@ export function QuestionTemplatesPage() {
               <div className="rounded-[26px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
                 {normalizedSearchQuery ? (
                   <Search className="mx-auto h-10 w-10 text-slate-300" />
+                ) : showWrongOnly ? (
+                  <XCircle className="mx-auto h-10 w-10 text-slate-300" />
                 ) : (
                   <Bookmark className="mx-auto h-10 w-10 text-slate-300" />
                 )}
                 <h3 className="mt-4 text-lg font-semibold text-slate-900">
-                  {normalizedSearchQuery ? "没有匹配的题目" : "还没有已标记题目"}
+                  {emptyTitle}
                 </h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  {normalizedSearchQuery
-                    ? showMarkedOnly
-                      ? "当前只搜索已标记题目，可以换个关键词或关闭“只看已标记”。"
-                      : "换个关键词试试，支持搜索题干、题型、难度、ID 和知识单元。"
-                    : "在做题页面点“标记”后，收藏的题目会出现在这里。"}
+                  {emptyDescription}
                 </p>
               </div>
             )}
