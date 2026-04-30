@@ -89,6 +89,10 @@ try {
         [Environment]::SetEnvironmentVariable("AITEACHME_TAURI_BACKEND_PORT", $BackendPort, "Process")
     }
 
+    Write-Host ""
+    Write-Host "==== Generate frontend API client ====" -ForegroundColor Cyan
+    Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
+
     Remove-TauriBundleOutput -RepoRoot $repoRoot
     Invoke-External -File $npm -Arguments @("run", "tauri:build:$Flavor") -WorkingDirectory $frontendDir
 }
