@@ -3,7 +3,7 @@ param(
     [ValidateSet("local", "remote")]
     [string]$Flavor,
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020",
+    [string]$BackendPort = "19020",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",

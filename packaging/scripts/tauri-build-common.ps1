@@ -194,6 +194,8 @@ function Copy-TauriArtifacts {
     $releaseDir = Join-Path $RepoRoot "packaging\release"
     New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+    Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-installer$ReleaseSuffix.*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force
     Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
         Remove-Item -Force
 

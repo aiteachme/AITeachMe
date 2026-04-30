@@ -29,7 +29,8 @@ const APP_NAME =
   buildConfig.appName ||
   (isDevMode ? "AiTeachMe Dev" : "AiTeachMe");
 const BACKEND_MODE = buildConfig.backendMode || "local";
-const BACKEND_PORT = String(process.env.AITEACHME_BACKEND_PORT || buildConfig.backendPort || "9020");
+const DEFAULT_BACKEND_PORT = app.isPackaged ? "19020" : "9020";
+const BACKEND_PORT = String(process.env.AITEACHME_BACKEND_PORT || buildConfig.backendPort || DEFAULT_BACKEND_PORT);
 const appIconPath = app.isPackaged
   ? path.join(process.resourcesPath, "app-icon.ico")
   : path.join(__dirname, "..", "..", "docs", "brand", "app-icon.ico");

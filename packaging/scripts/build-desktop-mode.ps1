@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("tauri-local", "tauri-remote", "electron-local", "electron-remote", "all-local", "all")]
     [string]$PackageMode,
-    [string]$BackendPort = "9020",
+    [string]$BackendPort = "19020",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
     [switch]$HideElectronSuffix,
@@ -69,7 +69,7 @@ function Build-ElectronRemote {
 }
 
 function Build-TauriLocal {
-    $arguments = @("-Flavor", "local", "-BackendPort", $BackendPort)
+    $arguments = @("-Flavor", "local")
     if ($SkipInstall) {
         $arguments += "-SkipInstall"
     }

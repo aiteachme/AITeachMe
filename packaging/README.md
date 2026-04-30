@@ -42,7 +42,7 @@
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
-- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `9020`；Tauri local 启动时会自动申请可用本地端口。
+- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `19020`，用于避开开发后端默认端口 `9020`；Tauri local 启动时会自动申请可用本地端口，不使用此参数。
 - `-SkipInstall`：跳过依赖安装步骤。
 
 ## 产物命名
@@ -129,6 +129,7 @@ GitHub Actions 不能读取你本机的 `packaging\private\bundled-env.json`。�
 - `build-electron.ps1`：Electron 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
 - `build-tauri.ps1`：Tauri 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
 - `prepare-tauri-sidecar.ps1`：为 Tauri local 准备后端 sidecar。
+- `dev-tauri-local.ps1`：本地运行 Tauri local 的入口，会先准备后端 sidecar，并使用 `5181` 作为 Tauri local 开发前端端口。
 - `bundled-env-common.ps1`：预绑定密钥的读取、校验、加密和后缀逻辑。
 - `tauri-build-common.ps1`：Tauri 构建共用工具函数。
 - `electron-builder-config.cjs`：Electron Builder 配置。

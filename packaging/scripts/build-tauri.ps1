@@ -89,7 +89,8 @@ try {
     Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
 
     Remove-TauriBundleOutput -RepoRoot $repoRoot
-    Invoke-External -File $npm -Arguments @("run", "tauri:build:$Flavor") -WorkingDirectory $frontendDir
+    $tauriBuildScript = if ($Flavor -eq "local") { "tauri:build:local:raw" } else { "tauri:build:remote" }
+    Invoke-External -File $npm -Arguments @("run", $tauriBuildScript) -WorkingDirectory $frontendDir
 }
 finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")

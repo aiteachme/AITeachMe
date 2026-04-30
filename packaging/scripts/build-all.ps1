@@ -1,7 +1,7 @@
 param(
     [string]$ApiUrl = "https://aiteachme.onrender.com",
     [switch]$SkipInstall,
-    [string]$BackendPort = "9020",
+    [string]$BackendPort = "19020",
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",

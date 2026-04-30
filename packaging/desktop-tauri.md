@@ -20,6 +20,16 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
 
+## 本地运行
+
+从 `frontend` 目录运行：
+
+```powershell
+npm run tauri:dev:local
+```
+
+该命令会先准备 PyInstaller 后端 sidecar，再启动 Tauri local。Tauri local 开发前端端口固定为 `5181`，和普通 Vite 开发默认端口 `5180` 错开；后端端口仍由 Tauri 启动时自动申请可用本地端口。
+
 ## Remote 包
 
 如果需要同时生成 Tauri remote：

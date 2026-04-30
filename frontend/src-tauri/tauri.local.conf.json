@@ -2,6 +2,9 @@
   "productName": "AiTeachMe Local",
   "identifier": "com.aiteachme.desktop.local",
   "mainBinaryName": "aiteachme-local",
+  "build": {
+    "devUrl": "http://127.0.0.1:5181"
+  },
   "bundle": {
     "resources": {
       "resources/backend/aiteachme-backend.bin": "backend/aiteachme-backend.bin"

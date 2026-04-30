@@ -34,10 +34,10 @@ on:
           - all-local
           - all
       backend_port:
-        description: local 桌面包内置后端端口
+        description: Electron local 桌面包后端端口；Tauri local 会自动分配，不使用此值
         type: string
-        required: true
-        default: "9020"
+        required: false
+        default: "19020"
       api_url:
         description: remote 桌面包使用的后端 API 地址
         type: string
@@ -339,10 +339,14 @@ jobs:
         run: |
           $arguments = @{
             PackageMode = "${{ inputs.desktop_package_mode }}"
-            BackendPort = "${{ inputs.backend_port }}"
             ApiUrl = "${{ inputs.api_url }}"
             SkipInstall = $true
             HideElectronSuffix = $true
+          }
+
+          $backendPort = "${{ inputs.backend_port }}"
+          if (-not [string]::IsNullOrWhiteSpace($backendPort)) {
+            $arguments.BackendPort = $backendPort
           }
 
           if ("${{ inputs.bundle_private_env }}" -eq "true") {
