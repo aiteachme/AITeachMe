@@ -1443,6 +1443,26 @@ function DocEmptyState() {
   );
 }
 
+function DocLoadingState() {
+  return (
+    <section className="mx-auto flex min-h-[360px] w-full max-w-3xl flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-white px-6 py-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+        <FileText className="h-5 w-5" />
+        <Loader2 className="absolute -right-1 -top-1 h-4 w-4 animate-spin text-indigo-500 dark:text-indigo-300" />
+      </div>
+      <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在加载知识文档</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+        正在读取文档状态和最近一次构建进度，稍等一下就会自动切换到文档或生成过程。
+      </p>
+      <div className="mt-6 w-full max-w-md space-y-2" aria-hidden="true">
+        <div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+        <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+        <div className="h-2.5 w-2/3 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+      </div>
+    </section>
+  );
+}
+
 function DocLoadErrorState({
   message,
   onRetry,
@@ -1788,6 +1808,7 @@ export function KnowledgeDocsPage() {
     showDocGeneratingState,
     showDocBuildFailureState,
     showDocEmptyState,
+    showDocLoadingState,
     showDocUpdatingBanner,
     sourceFiles,
     sourceFilesFetching,
@@ -5053,7 +5074,15 @@ export function KnowledgeDocsPage() {
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
-  const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocGeneratingState && !isAssistantOpen);
+  const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen);
+
+  if (!hasRenderedMarkdown && showDocLoadingState) {
+    return (
+      <div className="relative flex h-[100dvh] w-full items-center justify-center overflow-hidden bg-slate-50 px-4 dark:bg-slate-950">
+        <DocLoadingState />
+      </div>
+    );
+  }
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
@@ -5067,6 +5096,7 @@ export function KnowledgeDocsPage() {
           sourceFiles={sourceFiles}
           sourceFilesFetching={sourceFilesFetching}
           buildStage={buildMeta?.stage}
+          buildStatus={buildStatus}
           isDocumentReady={isRequestedBuildReady}
           courseId={courseId}
         />
@@ -5240,6 +5270,8 @@ export function KnowledgeDocsPage() {
                         void docMarkdownQuery.refetch();
                       }}
                     />
+                  ) : showDocLoadingState ? (
+                    <DocLoadingState />
                   ) : showDocGeneratingState ? (
                     <BuildView
                       className="h-[70vh] min-h-[600px] overflow-hidden rounded-xl border border-zinc-100 dark:border-slate-800"
@@ -5251,6 +5283,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      buildStatus={buildStatus}
                       isDocumentReady={isRequestedBuildReady}
                       courseId={courseId}
                     />

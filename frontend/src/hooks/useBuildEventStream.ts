@@ -77,6 +77,7 @@ const resolvePreviewFlushIntervalMs = () => {
 };
 
 const PREVIEW_FLUSH_INTERVAL_MS = resolvePreviewFlushIntervalMs();
+const TERMINAL_PREVIEW_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 
 export function useBuildEventStream({
   courseId,
@@ -117,6 +118,47 @@ export function useBuildEventStream({
     previewFlushTimerRef.current = setTimeout(flushPreviewStreams, PREVIEW_FLUSH_INTERVAL_MS);
   }, [flushPreviewStreams]);
 
+  const mergeSnapshotPreviewStreams = useCallback((data: KnowledgeBuildRuntimeResponse) => {
+    const chapterPreviews = data.docgen_preview?.chapter_previews ?? [];
+    if (chapterPreviews.length === 0) return;
+
+    let changed = false;
+    let nextStreams = previewStreamsRef.current;
+    for (const chapterPreview of chapterPreviews) {
+      const chapterIndex = Number(chapterPreview.chapter_index ?? 0);
+      const text = String(chapterPreview.excerpt ?? "");
+      if (!chapterIndex || !text.trim()) continue;
+
+      const current = nextStreams[chapterIndex];
+      const status = String(chapterPreview.status ?? current?.status ?? "");
+      const shouldReplace =
+        !current ||
+        text.length > current.text.length ||
+        current.status !== status ||
+        (TERMINAL_PREVIEW_STATUSES.has(status) && text !== current.text);
+      if (!shouldReplace) continue;
+
+      nextStreams = {
+        ...nextStreams,
+        [chapterIndex]: {
+          chapterIndex,
+          title: chapterPreview.title ?? current?.title,
+          status,
+          text,
+          fullLength: text.length,
+          updatedAt: chapterPreview.updated_at ?? current?.updatedAt ?? null,
+          revision: (current?.revision ?? 0) + 1,
+        },
+      };
+      changed = true;
+    }
+
+    if (changed) {
+      previewStreamsRef.current = nextStreams;
+      schedulePreviewFlush(true);
+    }
+  }, [schedulePreviewFlush]);
+
   useEffect(() => {
     if (!enabled || !courseId) {
       setSnapshot(null);
@@ -150,6 +192,7 @@ export function useBuildEventStream({
       try {
         const data = JSON.parse(e.data) as KnowledgeBuildRuntimeResponse;
         setSnapshot(data);
+        mergeSnapshotPreviewStreams(data);
         setConnected(true);
       } catch {
         // ignore malformed events
@@ -239,7 +282,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setConnected(false);
     };
-  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush]);
+  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
 
   return { snapshot, connected, previewStreams, buildEvents, graphDeltas };
 }

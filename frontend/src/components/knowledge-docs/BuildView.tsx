@@ -22,6 +22,7 @@ interface Props {
   sourceFiles: FileRecord[];
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
+  buildStatus?: string | null;
   isDocumentReady?: boolean;
   className?: string;
   /** Course ID for SSE streaming — enables live build updates */
@@ -62,6 +63,8 @@ const MERGE_PREVIEW_STAGES = new Set([
   "completed",
 ]);
 
+const TERMINAL_BUILD_STATUSES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
+const TERMINAL_BUILD_STAGES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
 const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
 const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
@@ -118,6 +121,23 @@ function uniqueBuildEvents<T extends BuildEventItem>(items: T[]): T[] {
     seen.add(key);
     return true;
   });
+}
+
+function mergeChapterIndexedItems<T extends { chapter_index?: number | null }>(
+  baseItems: T[],
+  liveItems: T[] | undefined | null,
+): T[] {
+  if (!liveItems || liveItems.length === 0) return baseItems;
+  const byIndex = new Map<number, T>();
+  for (const item of baseItems) {
+    const index = Number(item.chapter_index ?? 0);
+    if (index > 0) byIndex.set(index, item);
+  }
+  for (const item of liveItems) {
+    const index = Number(item.chapter_index ?? 0);
+    if (index > 0) byIndex.set(index, item);
+  }
+  return Array.from(byIndex.values()).sort((a, b) => Number(a.chapter_index ?? 0) - Number(b.chapter_index ?? 0));
 }
 
 interface LiveMarkdownRenderState {
@@ -215,6 +235,7 @@ export function BuildView({
   statusText,
   buildPreview,
   buildStage,
+  buildStatus,
   isDocumentReady = false,
   className,
   courseId,
@@ -222,8 +243,12 @@ export function BuildView({
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(shouldOpenDetailsByDefault);
 
+  const normalizedBuildStatus = (buildStatus ?? "").trim();
+  const normalizedBuildStage = (buildStage ?? "").trim();
   const isBuildActive = Boolean(
-    buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
+    normalizedBuildStatus
+      ? normalizedBuildStatus !== "idle" && !TERMINAL_BUILD_STATUSES.has(normalizedBuildStatus)
+      : normalizedBuildStage && !TERMINAL_BUILD_STAGES.has(normalizedBuildStage)
   );
   const { snapshot: sseSnapshot, connected: sseConnected, previewStreams, buildEvents } = useBuildEventStream({
     courseId: courseId ?? "",
@@ -232,8 +257,7 @@ export function BuildView({
 
   const mergedChapters = useMemo(() => {
     const sseChapters = sseSnapshot?.docgen_preview?.chapter_progress;
-    if (sseChapters && sseChapters.length > 0) return sseChapters;
-    return buildPreview?.chapter_progress ?? [];
+    return mergeChapterIndexedItems(buildPreview?.chapter_progress ?? [], sseChapters);
   }, [sseSnapshot?.docgen_preview?.chapter_progress, buildPreview?.chapter_progress]);
 
   const mergedEvents = useMemo(() => {
@@ -245,8 +269,7 @@ export function BuildView({
 
   const mergedChapterPreviews = useMemo(() => {
     const sseChapterPreviews = sseSnapshot?.docgen_preview?.chapter_previews;
-    if (sseChapterPreviews && sseChapterPreviews.length > 0) return sseChapterPreviews;
-    return buildPreview?.chapter_previews ?? [];
+    return mergeChapterIndexedItems(buildPreview?.chapter_previews ?? [], sseChapterPreviews);
   }, [sseSnapshot?.docgen_preview?.chapter_previews, buildPreview?.chapter_previews]);
 
   const mergePreview = useMemo(() => {
@@ -442,8 +465,10 @@ export function BuildView({
             <div className="max-h-52 overflow-y-auto px-2.5 pb-3 build-scroll lg:max-h-none lg:h-[calc(100%-64px)]">
               {chapters.map((chapter) => {
                 const isSelected = selectedPreviewChapter === chapter.chapter_index;
-                const isStreaming = spotlightChapter?.chapter_index === chapter.chapter_index;
-                const isDone = DONE_CHAPTER_STATUSES.has(chapter.status);
+                const streamStatus = previewStreams[chapter.chapter_index]?.status;
+                const effectiveChapterStatus = streamStatus ?? chapter.status;
+                const isStreaming = ACTIVE_CHAPTER_STATUSES.has(effectiveChapterStatus);
+                const isDone = DONE_CHAPTER_STATUSES.has(effectiveChapterStatus);
 
                 return (
                   <button
@@ -471,7 +496,7 @@ export function BuildView({
                         {String(chapter.chapter_index).padStart(2, "0")}. {chapter.title}
                       </div>
                       <div className={cn("mt-1 text-[10.5px]", isSelected ? "text-indigo-500 dark:text-indigo-300" : "text-zinc-400 dark:text-slate-500")}>
-                        {buildChapterStatusLabel(chapter.status)}
+                        {buildChapterStatusLabel(effectiveChapterStatus)}
                       </div>
                     </div>
                   </button>
@@ -488,10 +513,7 @@ export function BuildView({
               const selChapter = chapters.find((chapter) => chapter.chapter_index === selectedPreviewChapter);
               const preview = selectedChapterPreview;
               const streamPreview = previewStreams[selectedPreviewChapter] ?? null;
-              const selectedStatus =
-                streamPreview?.status === "drafting"
-                  ? streamPreview.status
-                  : preview?.status ?? streamPreview?.status ?? selChapter?.status ?? "planned";
+              const selectedStatus = streamPreview?.status ?? preview?.status ?? selChapter?.status ?? "planned";
               const selectedTitle =
                 preview?.title ??
                 streamPreview?.title ??

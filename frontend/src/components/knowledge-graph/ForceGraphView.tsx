@@ -292,7 +292,6 @@ function graphDataSignature(data: LoadedGraphData): string {
       node.canonical_name,
       node.status,
       node.confidence,
-      node.updated_at,
     ].join(":"))
     .join("|");
   const edges = [...data.edges]
@@ -537,7 +536,7 @@ export function ForceGraphView({
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [showEdgeLabels, setShowEdgeLabels] = useState(true);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
-  const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
+  const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
@@ -547,13 +546,14 @@ export function ForceGraphView({
   const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
   const fitGraphToViewRef = useRef<((duration?: number) => void) | null>(null);
   const hasAutoFittedGraphRef = useRef(false);
+  const graphRefetchTimerRef = useRef<number | null>(null);
   const nodePositionRef = useRef<Map<number, GraphNodePosition>>(new Map());
   const lastGraphSignatureRef = useRef<string | null>(null);
   const lastGraphCountsRef = useRef<{ nodes: number; edges: number } | null>(null);
   const selectedNodeIdRef = useRef<number | null>(null);
   const showEdgeLabelsRef = useRef(true);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(true);
+  const showAllNodeLabelsRef = useRef(false);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
 
@@ -614,9 +614,6 @@ export function ForceGraphView({
       edges: nextGraph.edges.length,
     };
     setGraphData(nextGraph);
-    setExpandedNodeIds(new Set());
-    expandedNodeIdsRef.current = new Set();
-    setSelectedNodeId(null);
   }, [initialGraph, course]);
 
   useEffect(() => {
@@ -634,20 +631,37 @@ export function ForceGraphView({
     return () => window.clearTimeout(timer);
   }, [graphDelta]);
 
+  const scheduleGraphRefresh = useCallback(() => {
+    if (graphRefetchTimerRef.current !== null) return;
+    graphRefetchTimerRef.current = window.setTimeout(() => {
+      graphRefetchTimerRef.current = null;
+      void refetchInitialGraph();
+      void refetchBuildRuntime();
+    }, 900);
+  }, [refetchBuildRuntime, refetchInitialGraph]);
+
+  useEffect(() => {
+    return () => {
+      if (graphRefetchTimerRef.current !== null) {
+        window.clearTimeout(graphRefetchTimerRef.current);
+        graphRefetchTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!graphIsLive) return;
     void refetchInitialGraph();
     const timer = window.setInterval(() => {
       void refetchInitialGraph();
-    }, 2600);
+    }, 4800);
     return () => window.clearInterval(timer);
   }, [graphIsLive, refetchInitialGraph]);
 
   useEffect(() => {
     if (!latestGraphStreamDelta) return;
-    void refetchInitialGraph();
-    void refetchBuildRuntime();
-  }, [latestGraphStreamDelta, refetchBuildRuntime, refetchInitialGraph]);
+    scheduleGraphRefresh();
+  }, [latestGraphStreamDelta, scheduleGraphRefresh]);
 
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
@@ -866,9 +880,9 @@ export function ForceGraphView({
       const rank = node.component_rank;
       const angle = (rank - 1) * 2.399963229728653;
       const spread = Math.min(width, height);
-      const ring = Math.min(spread * 0.42, spread * (0.2 + 0.055 * Math.sqrt(rank)));
-      const aspectX = width > height ? 1.32 : 1;
-      const aspectY = height > width ? 1.2 : 0.82;
+      const ring = Math.min(spread * 0.5, spread * (0.24 + 0.075 * Math.sqrt(rank)));
+      const aspectX = width > height ? 1.42 : 1.08;
+      const aspectY = height > width ? 1.24 : 0.9;
       return {
         x: width / 2 + Math.cos(angle) * ring * aspectX,
         y: height / 2 + Math.sin(angle) * ring * aspectY,
@@ -886,7 +900,7 @@ export function ForceGraphView({
       if (saved) return { ...node, x: saved.x, y: saved.y, fx: saved.fx ?? undefined, fy: saved.fy ?? undefined };
       const center = componentCenter(node);
       const angle = index * 2.399963229728653;
-      const radius = 18 + (index % 7) * 5;
+      const radius = 36 + (index % 9) * 9;
       return {
         ...node,
         x: center.x + Math.cos(angle) * radius,
@@ -1197,33 +1211,33 @@ export function ForceGraphView({
         const targetDegree = typeof d.target === "object" ? d.target.degree : 1;
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        const base = sourceIsCore && targetIsCore ? 138 : sourceIsCore || targetIsCore ? 118 : 150;
-        return Math.max(104, base + Math.max(0, d.pair_total - 1) * 34 - Math.min(sourceDegree + targetDegree, 10) * 2);
+        const base = sourceIsCore && targetIsCore ? 170 : sourceIsCore || targetIsCore ? 154 : 192;
+        return Math.max(132, base + Math.max(0, d.pair_total - 1) * 42 - Math.min(sourceDegree + targetDegree, 10));
       }).strength((d) => {
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        return sourceIsCore || targetIsCore ? 0.46 : 0.32;
+        return sourceIsCore || targetIsCore ? 0.3 : 0.2;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -250 - Math.min(d.degree, 9) * 32 : -160 - Math.min(d.degree, 7) * 22
+        isAssessmentCoreNode(d) ? -420 - Math.min(d.degree, 9) * 46 : -260 - Math.min(d.degree, 7) * 34
       )))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 24 : isAssessmentCoreNode(d) ? 28 : 20)))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 38 : isAssessmentCoreNode(d) ? 32 : 26)))
       .force("radial", d3.forceRadial<GraphNode>(
         (d) => {
-          if (d.component_size <= 2) return Math.min(width, height) * 0.08;
-          return isAssessmentCoreNode(d) ? Math.min(width, height) * 0.16 : Math.min(width, height) * 0.28;
+          if (d.component_size <= 2) return Math.min(width, height) * 0.12;
+          return isAssessmentCoreNode(d) ? Math.min(width, height) * 0.23 : Math.min(width, height) * 0.38;
         },
         width / 2,
         height / 2,
-      ).strength((d) => (d.component_size <= 2 ? 0.01 : isAssessmentCoreNode(d) ? 0.035 : 0.016)))
-      .force("componentX", d3.forceX<GraphNode>((d) => componentCenter(d).x).strength((d) => (d.component_size <= 2 ? 0.12 : 0.045)))
-      .force("componentY", d3.forceY<GraphNode>((d) => componentCenter(d).y).strength((d) => (d.component_size <= 2 ? 0.12 : 0.045)))
-      .force("x", d3.forceX(width / 2).strength(0.006))
-      .force("y", d3.forceY(height / 2).strength(0.006))
-      .alphaDecay(0.05)
-      .velocityDecay(0.5);
-    simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 ? 0.34 : 0.16) : 1);
+      ).strength((d) => (d.component_size <= 2 ? 0.012 : isAssessmentCoreNode(d) ? 0.028 : 0.014)))
+      .force("componentX", d3.forceX<GraphNode>((d) => componentCenter(d).x).strength((d) => (d.component_size <= 2 ? 0.1 : 0.034)))
+      .force("componentY", d3.forceY<GraphNode>((d) => componentCenter(d).y).strength((d) => (d.component_size <= 2 ? 0.1 : 0.034)))
+      .force("x", d3.forceX(width / 2).strength(0.0035))
+      .force("y", d3.forceY(height / 2).strength(0.0035))
+      .alphaDecay(0.06)
+      .velocityDecay(0.58);
+    simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 ? 0.2 : 0.035) : 1);
 
     simulationRef.current = simulation;
     applyGraphInteractiveStyles(
@@ -1308,7 +1322,7 @@ export function ForceGraphView({
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
       const yExtent = d3.extent(simNodes, (d) => d.y) as [number, number];
       if (xExtent[0] == null) return;
-      const pad = 96;
+      const pad = 150;
       const gw = xExtent[1] - xExtent[0] + pad * 2;
       const gh = yExtent[1] - yExtent[0] + pad * 2;
       const scale = Math.min(width / gw, height / gh, 1.5);
@@ -1343,7 +1357,7 @@ export function ForceGraphView({
     applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels, highlightCoreUnits, showAllNodeLabels);
   }, [links, nodes.length, selectedNodeId, showEdgeLabels, highlightCoreUnits, showAllNodeLabels]);
 
-  const graphIsLoading = initialLoading || (initialFetching && !rawData);
+  const graphIsLoading = !rawData && (initialLoading || initialFetching);
   const graphIsComplete = Boolean(rawData) && (!totalNodeCount || nodeCount >= totalNodeCount);
   const selectedNodeExpanded = selectedNodeId !== null && (graphIsComplete || expandedNodeIds.has(selectedNodeId));
   const graphProgressPct = typeof graphLane?.progress_pct === "number"
