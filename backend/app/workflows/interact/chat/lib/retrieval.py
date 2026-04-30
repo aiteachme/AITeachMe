@@ -12,7 +12,6 @@ from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo, profile_repo
 from app.shared.infra.observability.trace import traceable_with_context as traceable
-from app.shared.infra.course import get_course_vector_search_notice
 from app.workflows.interact.chat.lib.types import RetrievedContext
 
 logger = structlog.get_logger(__name__)
@@ -332,20 +331,16 @@ async def _retrieve_vector_context(
     top_k: int,
     similarity_threshold: float,
 ) -> list[RetrievedContext]:
-    search_notice = get_course_vector_search_notice(session, course_id=course_id)
-    if search_notice is not None:
-        logger.info(
-            "interact_vector_retrieval_skipped",
-            course_id=course_id,
-            reason=search_notice,
-        )
-        return []
-
-    from app.shared.infra.search.llamaindex_adapter import build_knowledge_retriever
+    del session
+    from app.shared.infra.search.api import search_knowledge
 
     try:
-        retriever = build_knowledge_retriever(course_id=course_id, top_k=top_k)
-        nodes = await retriever.aretrieve(query)
+        chunks = await search_knowledge(
+            query,
+            course_id,
+            top_k=top_k,
+            enable_rerank=True,
+        )
     except Exception as exc:
         logger.warning(
             "interact_vector_retrieval_soft_failed",
@@ -356,19 +351,17 @@ async def _retrieve_vector_context(
         return []
 
     results: list[RetrievedContext] = []
-    for node_with_score in nodes:
-        node = node_with_score.node
-        score = node_with_score.score or 0.0
-        metadata = node.metadata or {}
+    for chunk in chunks:
+        score = float(chunk.score or 0.0)
         if score < similarity_threshold:
             continue
         results.append(
             RetrievedContext(
-                chunk_id=int(metadata.get("chunk_id", 0)),
-                file_id=str(metadata.get("file_id") or metadata.get("document_id") or ""),
-                title=str(metadata.get("title", "")),
-                header_path=str(metadata.get("header_path", "")),
-                content=node.get_content(),
+                chunk_id=chunk.chunk_id,
+                file_id=chunk.file_id,
+                title=chunk.title,
+                header_path=chunk.header_path,
+                content=chunk.content,
                 score=score,
                 low_relevance=score < similarity_threshold * 1.5,
                 retrieval_source="vector",

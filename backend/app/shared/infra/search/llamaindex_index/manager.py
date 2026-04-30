@@ -437,7 +437,10 @@ def count_indexed_chunks(course_id: str, chunk_ids: list[int]) -> int:
         with get_engine().connect() as connection:
             if not vector_table_exists(connection, vector_ref):
                 return 0
-            params = {f"node_id_{index}": node_id for index, node_id in enumerate(sorted(normalized_ids))}
+            params = {
+                f"node_id_{index}": node_id
+                for index, node_id in enumerate(sorted(normalized_ids))
+            }
             placeholders = ", ".join(f":{name}" for name in params)
             result = connection.execute(
                 sa.text(
@@ -450,6 +453,49 @@ def count_indexed_chunks(course_id: str, chunk_ids: list[int]) -> int:
 
     vector_store = _load_local_store(normalized_course_id)
     return vector_store.count_node_ids(normalized_ids)
+
+
+def list_indexed_chunk_ids(course_id: str, chunk_ids: list[int]) -> set[int]:
+    """Return indexed chunk IDs for targeted consistency checks."""
+
+    normalized_course_id = course_id.strip()
+    normalized_ids = {_node_id(chunk_id) for chunk_id in chunk_ids if chunk_id is not None}
+    if not normalized_course_id or not normalized_ids:
+        return set()
+    if is_cloud_mode():
+        from app.shared.infra.database import get_engine, vector_table_exists
+
+        course_row = _course_record_snapshot(normalized_course_id)
+        if course_row is None:
+            return set()
+        vector_ref = build_course_index_ref_for_course(course_row)
+        data_table = extract_postgres_course_index_data_table_name(vector_ref)
+        if not _postgres_identifier_is_safe(data_table):
+            return set()
+        with get_engine().connect() as connection:
+            if not vector_table_exists(connection, vector_ref):
+                return set()
+            params = {f"node_id_{index}": node_id for index, node_id in enumerate(sorted(normalized_ids))}
+            placeholders = ", ".join(f":{name}" for name in params)
+            rows = connection.execute(
+                sa.text(
+                    f"SELECT node_id FROM public.{data_table} "
+                    f"WHERE node_id IN ({placeholders})"
+                ),
+                params,
+            ).scalars()
+            return {
+                chunk_id
+                for node_id in rows
+                if (chunk_id := _chunk_id_from_node_id(str(node_id))) is not None
+            }
+
+    vector_store = _load_local_store(normalized_course_id)
+    return {
+        chunk_id
+        for node_id in vector_store.list_node_ids(normalized_ids)
+        if (chunk_id := _chunk_id_from_node_id(node_id)) is not None
+    }
 
 
 def query_course_index(
@@ -546,6 +592,7 @@ __all__ = [
     "clear_course_index",
     "count_indexed_chunks",
     "delete_chunks",
+    "list_indexed_chunk_ids",
     "query_course_index",
     "rebuild_course_index",
     "retrieve_course_chunks",
