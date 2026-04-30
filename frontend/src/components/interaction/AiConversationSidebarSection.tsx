@@ -370,7 +370,7 @@ export function AiConversationSidebarSection({
       activeConversationSessionId === sessionId;
     const kind = getSessionKind(session);
     const kindStyle = CONVERSATION_KIND_STYLES[kind];
-    const shouldShowKindBadge = !(isGlobalListScope && kind === "general");
+    const shouldShowKindBadge = kind !== "general";
     const courseLabel = getSessionCourseLabel(session);
 
     return (
