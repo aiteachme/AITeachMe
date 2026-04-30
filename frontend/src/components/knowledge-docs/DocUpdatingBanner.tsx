@@ -39,7 +39,7 @@ export function DocUpdatingBanner({
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.25 }}
         className={cn(
-          "rounded-lg border border-[#D4E5FF] bg-[#F0F4FF] px-3.5 py-2.5 dark:border-sky-500/20 dark:bg-sky-500/10",
+          "rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 dark:border-indigo-500/20 dark:bg-indigo-500/10",
           className,
         )}
       >
@@ -47,14 +47,14 @@ export function DocUpdatingBanner({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {isFetching ? (
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[#3370FF] dark:text-sky-300" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-600 dark:text-indigo-300" />
               ) : (
-                <div className="build-live-dot h-1.5 w-1.5 text-[#3370FF] dark:text-sky-300" />
+                <div className="build-live-dot h-1.5 w-1.5 text-indigo-600 dark:text-indigo-300" />
               )}
               <p className="truncate text-[13px] font-medium text-[#1F2329] dark:text-slate-100">
                 {statusText}
               </p>
-              <span className="shrink-0 text-[12px] font-medium text-[#3370FF] dark:text-sky-300">
+              <span className="shrink-0 text-[12px] font-medium text-indigo-600 dark:text-indigo-300">
                 {Math.round(progress)}%
               </span>
             </div>
@@ -76,7 +76,7 @@ export function DocUpdatingBanner({
                 className={cn(
                   "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-all",
                   viewMode === "live"
-                    ? "bg-[#3370FF] text-white"
+                    ? "bg-indigo-600 text-white"
                     : "text-[#646A73] hover:bg-[#F5F6F7] dark:text-slate-300 dark:hover:bg-slate-800",
                 )}
               >
@@ -89,7 +89,7 @@ export function DocUpdatingBanner({
                 className={cn(
                   "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-all",
                   viewMode === "draft"
-                    ? "bg-[#3370FF] text-white"
+                    ? "bg-indigo-600 text-white"
                     : "text-[#646A73] hover:bg-[#F5F6F7] dark:text-slate-300 dark:hover:bg-slate-800",
                 )}
               >
@@ -100,12 +100,12 @@ export function DocUpdatingBanner({
           ) : null}
         </div>
 
-        <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-[#D4E5FF] dark:bg-slate-800">
+        <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-indigo-200/70 dark:bg-slate-800">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            className="h-full rounded-full bg-[#3370FF] progress-bar-active progress-bar-breathing dark:bg-sky-400"
+            className="h-full rounded-full bg-indigo-600 progress-bar-active progress-bar-breathing dark:bg-indigo-400"
           />
         </div>
       </motion.div>

@@ -39,7 +39,7 @@ export function ExamStageHeader({
                   onClick={() => onStepSelect?.(step)}
                   className={`grid h-7 w-7 place-items-center rounded-lg text-xs font-semibold transition sm:h-8 sm:w-8 sm:text-sm ${
                     isActive
-                      ? "bg-violet-500 text-white shadow-[0_10px_24px_rgba(139,92,246,0.28)]"
+                      ? "bg-indigo-500 text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]"
                       : isCompleted
                         ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
                         : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"

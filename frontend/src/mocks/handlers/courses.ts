@@ -1,4 +1,4 @@
-﻿import { http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { MOCK_DOCUMENT_MARKDOWN } from "../../components/knowledge-docs/mock";
 
 export interface CourseItem {

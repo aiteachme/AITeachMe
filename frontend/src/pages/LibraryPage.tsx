@@ -81,8 +81,8 @@ function fileIcon(file: Pick<FileRecord, "filetype">) {
   const ext = normalizeFileExt(file.filetype);
   if (ext === "pdf") return <FileText className="h-4 w-4 text-red-500" />;
   if (["png", "jpg", "jpeg", "webp"].includes(ext)) return <FileImage className="h-4 w-4 text-emerald-500" />;
-  if (["md", "markdown"].includes(ext)) return <FileCode className="h-4 w-4 text-violet-500" />;
-  if (["docx", "doc"].includes(ext)) return <FileText className="h-4 w-4 text-blue-500" />;
+  if (["md", "markdown"].includes(ext)) return <FileCode className="h-4 w-4 text-indigo-500" />;
+  if (["docx", "doc"].includes(ext)) return <FileText className="h-4 w-4 text-indigo-500" />;
   if (["ppt", "pptx"].includes(ext)) return <FileType className="h-4 w-4 text-orange-500" />;
   return <FileText className="h-4 w-4 text-slate-400" />;
 }
@@ -104,8 +104,8 @@ function statusMeta(file: FileRecord) {
   }
   return {
     label: resolveFileProcessingLabel(file),
-    icon: <Loader2 className="h-4 w-4 animate-spin text-sky-500" />,
-    className: "bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900/60",
+    icon: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
+    className: "bg-indigo-50 text-indigo-700 ring-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-300 dark:ring-indigo-900/60",
   };
 }
 
@@ -156,7 +156,7 @@ export function LibraryPage() {
   const hasFiles = files.length > 0;
 
   return (
-    <div className="min-h-full pb-12">
+    <div className="min-h-full pb-24 sm:pb-12">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur dark:bg-slate-800/85 dark:text-slate-400 dark:ring-slate-700/80">
@@ -242,14 +242,14 @@ export function LibraryPage() {
       ) : null}
 
       {uploadingNames.length > 0 ? (
-        <div className="mt-5 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 dark:border-sky-900/60 dark:bg-sky-950/30">
-          <div className="flex items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
+        <div className="mt-5 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+          <div className="flex items-center gap-2 text-sm font-medium text-indigo-700 dark:text-indigo-300">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在上传 {uploadingNames.length} 份资料
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {uploadingNames.map((name) => (
-              <span key={name} className="max-w-full truncate rounded-full bg-white/80 px-3 py-1 text-xs text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-900/60">
+              <span key={name} className="max-w-full truncate rounded-full bg-white/80 px-3 py-1 text-xs text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 dark:ring-indigo-900/60">
                 {name}
               </span>
             ))}
@@ -258,7 +258,7 @@ export function LibraryPage() {
       ) : null}
 
       {filesQuery.isLoading ? (
-        <div className="mt-12 flex min-h-[180px] items-center justify-center">
+        <div className="mt-10 flex min-h-[180px] items-center justify-center pb-12 sm:mt-12 sm:pb-0">
           <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在加载资料库...
@@ -267,7 +267,7 @@ export function LibraryPage() {
       ) : null}
 
       {!filesQuery.isLoading && !hasFiles ? (
-        <div className="mt-14 flex min-h-[180px] flex-col items-center justify-center px-6 text-center">
+        <div className="mt-10 flex min-h-[180px] flex-col items-center justify-center px-6 pb-12 text-center sm:mt-14 sm:pb-0">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
             <FolderOpen className="h-5 w-5" />
           </div>

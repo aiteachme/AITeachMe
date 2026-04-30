@@ -304,6 +304,25 @@ def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> 
     assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
 
 
+def test_normalize_splits_adjacent_quoted_callouts_without_blank_line() -> None:
+    raw = "\n".join(
+        [
+            "> [!WARNING]",
+            ">",
+            "> ⚠️ 易错边界：忽视字母的取值范围。",
+            "> 例如，十位数字不能为 0。",
+            "> [!NOTE]",
+            ">",
+            "> 🔗 本章定位：这是代数思维的起点。",
+        ]
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "> 例如，十位数字不能为 0。\n\n> [!NOTE]" in fixed
+    assert "> [!NOTE]\n>\n> 🔗 本章定位：这是代数思维的起点。" in fixed
+
+
 def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
     raw = "\n".join(
         [

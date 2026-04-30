@@ -481,10 +481,10 @@ export function ExamPaperSheet({
                                              : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400"
                                         : isReadonly
                                           ? isSelected
-                                             ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)] dark:border-violet-500/45 dark:bg-violet-500/10 dark:text-violet-100 dark:shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                             ? "border-indigo-300 bg-indigo-50 text-indigo-900 shadow-[0_0_0_2px_rgba(99,102,241,0.12)] dark:border-indigo-500/45 dark:bg-indigo-500/10 dark:text-indigo-100 dark:shadow-[0_0_0_2px_rgba(129,140,248,0.16)]"
                                              : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
                                         : isSelected
-                                           ? "border-violet-300 bg-violet-50 text-violet-900 shadow-[0_0_0_2px_rgba(139,92,246,0.12)] dark:border-violet-500/45 dark:bg-violet-500/10 dark:text-violet-100 dark:shadow-[0_0_0_2px_rgba(167,139,250,0.16)]"
+                                           ? "border-indigo-300 bg-indigo-50 text-indigo-900 shadow-[0_0_0_2px_rgba(99,102,241,0.12)] dark:border-indigo-500/45 dark:bg-indigo-500/10 dark:text-indigo-100 dark:shadow-[0_0_0_2px_rgba(129,140,248,0.16)]"
                                            : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
@@ -498,10 +498,10 @@ export function ExamPaperSheet({
                                               : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
                                           : isReadonly
                                             ? isSelected
-                                              ? "border-violet-600 bg-white dark:border-violet-400 dark:bg-slate-950"
+                                              ? "border-indigo-600 bg-white dark:border-indigo-400 dark:bg-slate-950"
                                               : "border-slate-400 bg-white dark:border-slate-600 dark:bg-slate-950"
                                           : isSelected
-                                            ? "border-violet-600 bg-white dark:border-violet-400 dark:bg-slate-950"
+                                            ? "border-indigo-600 bg-white dark:border-indigo-400 dark:bg-slate-950"
                                             : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
                                       }`}
                                     >
@@ -515,10 +515,10 @@ export function ExamPaperSheet({
                                                 : "bg-transparent"
                                             : isReadonly
                                               ? isSelected
-                                                ? "bg-violet-600"
+                                                ? "bg-indigo-600"
                                                 : "bg-transparent"
                                             : isSelected
-                                              ? "bg-violet-600"
+                                              ? "bg-indigo-600"
                                               : "bg-transparent"
                                         }`}
                                       />
@@ -532,10 +532,10 @@ export function ExamPaperSheet({
                                             : "[&_p]:text-slate-500 dark:[&_p]:text-slate-400"
                                         : isReadonly
                                           ? isSelected
-                                            ? "[&_p]:text-violet-900 dark:[&_p]:text-violet-100"
+                                            ? "[&_p]:text-indigo-900 dark:[&_p]:text-indigo-100"
                                             : "[&_p]:text-slate-700 dark:[&_p]:text-slate-300"
                                         : isSelected
-                                          ? "[&_p]:text-violet-900 dark:[&_p]:text-violet-100"
+                                          ? "[&_p]:text-indigo-900 dark:[&_p]:text-indigo-100"
                                           : "[&_p]:text-slate-800 dark:[&_p]:text-slate-200"
                                     }`}>
                                       <div className="flex gap-3">
@@ -561,7 +561,7 @@ export function ExamPaperSheet({
                                       : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
                                     : isReadonly
                                       ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
-                                    : "border-slate-200 bg-white text-slate-900 focus:border-violet-300 focus:ring-2 focus:ring-violet-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-500/60 dark:focus:ring-violet-500/20"
+                                    : "border-slate-200 bg-white text-slate-900 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20"
                                 }`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}

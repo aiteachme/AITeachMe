@@ -702,7 +702,7 @@ export function ForceGraphView({
             ) : (
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: liveLoadEnabled ? "#22c55e" : "#cbd5e1" }}
+                style={{ backgroundColor: liveLoadEnabled ? "#4f46e5" : "#cbd5e1" }}
               />
             )}
             {liveLoadEnabled ? (liveLoadFinished ? "已加载" : "实时加载") : "暂停加载"}
