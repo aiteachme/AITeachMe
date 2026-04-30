@@ -167,15 +167,15 @@ function graphNodePriority(node: Pick<GraphNode, "knowledge_unit_type" | "degree
 
 function graphNodeRadius(node: GraphNode): number {
   const style = nodeStyle(node.knowledge_unit_type);
-  const roleBase = style.role === "assessment_core" ? 10.5 : style.role === "support" ? 8.2 : 7.4;
-  const degreeBoost = Math.sqrt(Math.max(1, node.degree)) * (style.role === "assessment_core" ? 2.15 : 1.65);
-  return Math.min(style.role === "assessment_core" ? 20 : 15.5, roleBase + degreeBoost);
+  const roleBase = style.role === "assessment_core" ? 7.8 : style.role === "support" ? 7.0 : 6.4;
+  const degreeBoost = Math.sqrt(Math.max(1, node.degree)) * (style.role === "assessment_core" ? 1.28 : 0.92);
+  return Math.min(style.role === "assessment_core" ? 14.5 : 11.5, roleBase + degreeBoost);
 }
 
 function graphNodeLabelLimit(node: GraphNode, selectedNodeId: number | null): number {
-  if (node.id === selectedNodeId) return 20;
-  if (isAssessmentCoreNode(node)) return node.degree >= 3 ? 18 : 15;
-  return node.degree >= 4 ? 14 : 10;
+  if (node.id === selectedNodeId) return 24;
+  if (isAssessmentCoreNode(node)) return node.degree >= 3 ? 20 : 17;
+  return node.degree >= 4 ? 17 : 14;
 }
 
 function estimateGraphLabelWidth(label: string, maxChars: number): number {
@@ -241,24 +241,24 @@ function applyGraphInteractiveStyles(
     .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
   nodeG.select<SVGCircleElement>("circle.node-priority-ring")
     .attr("opacity", (d) => {
-      if (d.id === selectedNodeId) return 0.84;
-      if (isAssessmentCoreNode(d) && highlightCoreUnits && d.label_rank <= 10) return 0.14;
+      if (d.id === selectedNodeId) return 0.72;
+      if (isAssessmentCoreNode(d) && highlightCoreUnits && d.label_rank <= 10) return 0.08;
       return 0;
     });
   nodeG.select<SVGCircleElement>("circle.node-circle")
     .attr("stroke", (d) => (d.id === selectedNodeId ? "#0f172a" : "#ffffff"))
-    .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3.4 : isAssessmentCoreNode(d) ? 3 : 2.3))
+    .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : isAssessmentCoreNode(d) ? 2.35 : 2))
     .attr("opacity", (d) => {
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.34;
-      if (highlightCoreUnits && !isAssessmentCoreNode(d)) return 0.68;
+      if (highlightCoreUnits && !isAssessmentCoreNode(d)) return 0.78;
       return 1;
     });
   nodeG.select<SVGRectElement>("rect.node-label-bg")
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
-      if (d.id === selectedNodeId) return 0.96;
-      if (selectedNodeId !== null && selectedNeighbors.has(d.id)) return 0.86;
-      return 0.76;
+      if (d.id === selectedNodeId) return 0.92;
+      if (selectedNodeId !== null && selectedNeighbors.has(d.id)) return 0.68;
+      return 0;
     })
     .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeId)));
   nodeG.select<SVGTextElement>("text.node-role-label")
@@ -267,13 +267,13 @@ function applyGraphInteractiveStyles(
       return 0;
     });
   nodeG.select<SVGTextElement>("text.node-label")
-    .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "12px" : "10.5px"))
-    .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "700" : "520"))
+    .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "11.5px" : "10.5px"))
+    .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "650" : "520"))
     .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#334155"))
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
-      if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.36;
-      return 0.92;
+      if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
+      return 0.96;
     })
     .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, selectedNodeId)));
 }
@@ -535,9 +535,9 @@ export function ForceGraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [showEdgeLabels, setShowEdgeLabels] = useState(true);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
-  const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
+  const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
@@ -551,9 +551,9 @@ export function ForceGraphView({
   const lastGraphSignatureRef = useRef<string | null>(null);
   const lastGraphCountsRef = useRef<{ nodes: number; edges: number } | null>(null);
   const selectedNodeIdRef = useRef<number | null>(null);
-  const showEdgeLabelsRef = useRef(false);
+  const showEdgeLabelsRef = useRef(true);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(false);
+  const showAllNodeLabelsRef = useRef(true);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
 
@@ -1083,17 +1083,17 @@ export function ForceGraphView({
 
     nodeG.append("circle")
       .attr("class", "node-halo")
-      .attr("r", (d) => graphNodeRadius(d) + 6)
+      .attr("r", (d) => graphNodeRadius(d) + 5)
       .attr("fill", (d) => nodeStyle(d.knowledge_unit_type).fill)
       .attr("opacity", 0);
 
     nodeG.append("circle")
       .attr("class", "node-priority-ring")
-      .attr("r", (d) => graphNodeRadius(d) + (isAssessmentCoreNode(d) ? 5 : 3))
+      .attr("r", (d) => graphNodeRadius(d) + (isAssessmentCoreNode(d) ? 3.5 : 2.5))
       .attr("fill", "none")
       .attr("stroke", (d) => nodeStyle(d.knowledge_unit_type).fill)
-      .attr("stroke-width", (d) => (isAssessmentCoreNode(d) ? 2 : 1.2))
-      .attr("stroke-dasharray", (d) => (isAssessmentCoreNode(d) ? "0" : "3 4"))
+      .attr("stroke-width", (d) => (isAssessmentCoreNode(d) ? 1.4 : 1))
+      .attr("stroke-dasharray", (d) => (isAssessmentCoreNode(d) ? "0" : "2 4"))
       .attr("opacity", 0);
 
     nodeG.append("circle")
@@ -1101,32 +1101,32 @@ export function ForceGraphView({
       .attr("r", (d) => graphNodeRadius(d))
       .attr("fill", (d) => nodeStyle(d.knowledge_unit_type).fill)
       .attr("stroke", "#ffffff")
-      .attr("stroke-width", 2.5)
+      .attr("stroke-width", 2)
       .attr("opacity", 1);
 
     nodeG.append("rect")
       .attr("class", "node-label-bg")
-      .attr("x", (d) => graphNodeRadius(d) + 3)
-      .attr("y", -12)
+      .attr("x", (d) => graphNodeRadius(d) + 4)
+      .attr("y", -11)
       .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeIdRef.current)))
-      .attr("height", 22)
-      .attr("rx", 6)
-      .attr("fill", "rgba(255,255,255,0.93)")
-      .attr("stroke", "rgba(226,232,240,0.95)")
-      .attr("stroke-width", 1)
+      .attr("height", 20)
+      .attr("rx", 4)
+      .attr("fill", "rgba(255,255,255,0.86)")
+      .attr("stroke", "rgba(203,213,225,0.8)")
+      .attr("stroke-width", 0.8)
       .attr("opacity", 0)
       .style("pointer-events", "none");
 
     nodeG.append("text")
       .attr("class", "node-label")
-      .attr("dx", (d) => graphNodeRadius(d) + 6)
-      .attr("dy", 4.2)
-      .attr("font-size", (d) => (isAssessmentCoreNode(d) ? "12px" : "10.5px"))
+      .attr("dx", (d) => graphNodeRadius(d) + 7)
+      .attr("dy", 4)
+      .attr("font-size", (d) => (isAssessmentCoreNode(d) ? "11.5px" : "10.5px"))
       .attr("font-family", "system-ui, sans-serif")
-      .attr("font-weight", (d) => (isAssessmentCoreNode(d) ? "700" : "520"))
-      .attr("fill", "#334155")
-      .attr("stroke", "rgba(248,250,252,0.9)")
-      .attr("stroke-width", 3)
+      .attr("font-weight", (d) => (isAssessmentCoreNode(d) ? "650" : "520"))
+      .attr("fill", "#1f2937")
+      .attr("stroke", "rgba(255,255,255,0.96)")
+      .attr("stroke-width", 3.6)
       .attr("paint-order", "stroke")
       .attr("opacity", 1)
       .style("pointer-events", "none")
@@ -1205,10 +1205,10 @@ export function ForceGraphView({
         return sourceIsCore || targetIsCore ? 0.46 : 0.32;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -360 - Math.min(d.degree, 9) * 42 : -210 - Math.min(d.degree, 7) * 28
+        isAssessmentCoreNode(d) ? -250 - Math.min(d.degree, 9) * 32 : -160 - Math.min(d.degree, 7) * 22
       )))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (isAssessmentCoreNode(d) ? 46 : 30)))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 24 : isAssessmentCoreNode(d) ? 28 : 20)))
       .force("radial", d3.forceRadial<GraphNode>(
         (d) => {
           if (d.component_size <= 2) return Math.min(width, height) * 0.08;
@@ -1267,6 +1267,21 @@ export function ForceGraphView({
       };
     };
     let tickFrame: number | null = null;
+    let positionSnapshotTick = 0;
+    const saveNodePositions = () => {
+      for (const node of simNodes) {
+        const x = Number(node.x);
+        const y = Number(node.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          nodePositionRef.current.set(node.id, {
+            x,
+            y,
+            fx: node.fx ?? null,
+            fy: node.fy ?? null,
+          });
+        }
+      }
+    };
     const renderTick = () => {
       tickFrame = null;
       linkLine.attr("d", linkPath);
@@ -1281,18 +1296,8 @@ export function ForceGraphView({
         .attr("y", (d: any) => linkMidpoint(d).y - 15);
 
       nodeG.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
-      for (const node of simNodes) {
-        const x = Number(node.x);
-        const y = Number(node.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-          nodePositionRef.current.set(node.id, {
-            x,
-            y,
-            fx: node.fx ?? null,
-            fy: node.fy ?? null,
-          });
-        }
-      }
+      positionSnapshotTick += 1;
+      if (positionSnapshotTick % 5 === 0) saveNodePositions();
     };
     simulation.on("tick", () => {
       if (tickFrame !== null) return;
@@ -1326,6 +1331,7 @@ export function ForceGraphView({
 
     return () => {
       if (tickFrame !== null) window.cancelAnimationFrame(tickFrame);
+      saveNodePositions();
       simulation.stop();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
     };
