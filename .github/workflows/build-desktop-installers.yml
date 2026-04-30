@@ -1,0 +1,190 @@
+name: Build Desktop Installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_mode:
+        description: Desktop package mode to build.
+        type: choice
+        required: true
+        default: tauri-local
+        options:
+          - tauri-local
+          - tauri-remote
+          - electron-local
+          - electron-remote
+          - all-local
+          - all
+      backend_port:
+        description: Local backend port baked into the desktop package.
+        type: string
+        required: true
+        default: "9020"
+      api_url:
+        description: Remote API URL used by remote desktop packages.
+        type: string
+        required: false
+        default: "https://aiteachme.onrender.com"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PYTHONUTF8: "1"
+
+jobs:
+  build_desktop_installers:
+    name: Build ${{ inputs.package_mode }} installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Enable long paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/pyproject.toml
+            backend/uv.lock
+
+      - name: Use setup-python interpreter for packaging
+        shell: pwsh
+        run: |
+          $python = (Get-Command python).Source
+          "AITEACHME_PYTHON=$python" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          python --version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        if: ${{ contains(inputs.package_mode, 'tauri') || inputs.package_mode == 'all-local' || inputs.package_mode == 'all' }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build output
+        if: ${{ contains(inputs.package_mode, 'tauri') || inputs.package_mode == 'all-local' || inputs.package_mode == 'all' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            frontend/src-tauri/target
+          key: ${{ runner.os }}-cargo-tauri-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tauri-
+
+      - name: Install NSIS
+        if: ${{ contains(inputs.package_mode, 'tauri') || inputs.package_mode == 'all-local' || inputs.package_mode == 'all' }}
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $nsisPath = Join-Path ${env:ProgramFiles(x86)} "NSIS"
+          if (Test-Path $nsisPath) {
+            $env:Path = "$nsisPath;$env:Path"
+            $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          makensis /VERSION
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install backend dependencies
+        if: ${{ contains(inputs.package_mode, 'local') || inputs.package_mode == 'all' }}
+        working-directory: backend
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+
+      - name: Build desktop installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $mode = "${{ inputs.package_mode }}"
+          $backendPort = "${{ inputs.backend_port }}"
+          $apiUrl = "${{ inputs.api_url }}"
+
+          function Invoke-PackagingScript {
+            param(
+              [string]$ScriptPath,
+              [string[]]$Arguments
+            )
+
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+            $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+            if ($exitCode -ne 0) {
+              throw "$ScriptPath failed with exit code $exitCode"
+            }
+          }
+
+          function Build-ElectronLocal {
+            Invoke-PackagingScript `
+              -ScriptPath ".\packaging\scripts\build-electron.ps1" `
+              -Arguments @("-Flavor", "local", "-BackendPort", $backendPort, "-SkipInstall")
+          }
+
+          function Build-ElectronRemote {
+            Invoke-PackagingScript `
+              -ScriptPath ".\packaging\scripts\build-electron.ps1" `
+              -Arguments @("-Flavor", "remote", "-ApiUrl", $apiUrl, "-SkipInstall")
+          }
+
+          function Build-TauriLocal {
+            Invoke-PackagingScript `
+              -ScriptPath ".\packaging\scripts\build-tauri.ps1" `
+              -Arguments @("-Flavor", "local", "-BackendPort", $backendPort, "-SkipInstall")
+          }
+
+          function Build-TauriRemote {
+            Invoke-PackagingScript `
+              -ScriptPath ".\packaging\scripts\build-tauri.ps1" `
+              -Arguments @("-Flavor", "remote", "-ApiUrl", $apiUrl, "-SkipInstall")
+          }
+
+          switch ($mode) {
+            "electron-local" { Build-ElectronLocal }
+            "electron-remote" { Build-ElectronRemote }
+            "tauri-local" { Build-TauriLocal }
+            "tauri-remote" { Build-TauriRemote }
+            "all-local" {
+              Build-ElectronLocal
+              Build-TauriLocal
+            }
+            "all" {
+              Build-ElectronLocal
+              Build-TauriLocal
+              Build-ElectronRemote
+              Build-TauriRemote
+            }
+            default {
+              throw "Unsupported package mode: $mode"
+            }
+          }
+
+      - name: Show release artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path packaging\release -File |
+            Select-Object Name,@{Name='SizeMB';Expression={[math]::Round($_.Length / 1MB, 2)}} |
+            Format-Table -AutoSize
+
+      - name: Upload desktop installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiteachme-${{ inputs.package_mode }}-windows-installers
+          path: packaging/release/AiTeachMe-v*-installer*.exe
+          if-no-files-found: error
+          retention-days: 7

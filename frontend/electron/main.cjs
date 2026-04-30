@@ -76,6 +76,7 @@ function startBundledBackend() {
       APP_MODE: "local",
       AUTH_ENABLED: "false",
       AITEACHME_ENABLE_BUILTIN_PDF: "false",
+      STORAGE_BACKEND: "local",
       AITEACHME_BACKEND_PORT: BACKEND_PORT,
       AITEACHME_DATA_DIR: backendDataDir,
       CORS_ALLOWED_ORIGINS: getCorsAllowedOrigins(),
