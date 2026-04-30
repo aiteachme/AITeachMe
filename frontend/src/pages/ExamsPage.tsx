@@ -555,7 +555,7 @@ export function ExamsPage() {
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
                       ) : (
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] justify-items-center gap-5">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,250px),250px))] justify-start gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
                             const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
 
