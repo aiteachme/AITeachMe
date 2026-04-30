@@ -25,6 +25,7 @@ from app.workflows.support.courses.learning_context import load_course_llm_conte
 logger = structlog.get_logger(__name__)
 
 _PREFETCH_START_DELAY_S = 0.5
+_PREFETCH_CONSUME_GRACE_S = 8.0
 
 
 @dataclass(slots=True)
@@ -221,6 +222,7 @@ async def consume_docgen_kg_prefetch(
     *,
     course_id: str,
     build_session_id: str,
+    wait_timeout_s: float = _PREFETCH_CONSUME_GRACE_S,
 ) -> tuple[list[SectionExtractionRecord], dict[str, int | str]]:
     """Return current prefetch records and stop any unfinished sidecar task."""
 
@@ -230,6 +232,15 @@ async def consume_docgen_kg_prefetch(
     if cache is None:
         return [], {"prefetch_status": "missing"}
     task = cache.task
+    if task is not None and not task.done() and wait_timeout_s > 0:
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=wait_timeout_s)
+        except TimeoutError:
+            pass
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
     if task is not None and not task.done():
         cache.status = "consumed"
         task.cancel()

@@ -75,7 +75,9 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
 | `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `course` 和合并 Markdown |
 | `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
+| `persist_seed_units` | `kg_doc_sync/nodes/persist_seed_units_node.py` | 无 LLM | 无 | 无 | 无 | 只把已命中最终文档的 DocGen LLM 预抽取节点提前写入；没有预抽取时不写非 LLM 种子节点 |
 | `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载课程上下文，按章节并发抽取图谱候选并合并 backbone/结构边 |
+| `persist_units` | `kg_doc_sync/nodes/persist_units_node.py` | 无 LLM | 无 | 无 | 无 | 把本轮 LLM extraction payload 中的 KnowledgeUnit 提前写入，关系和 source_ref 仍由最终 persist 收口 |
 | `stitch_relations` | `kg_doc_sync/nodes/stitch_node.py` | 无 LLM | 无 | 无 | 无 | 在写库前用同小节关系和显式正文引用补少量保守边，并计算孤立率、连通分量等健康指标 |
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
@@ -132,6 +134,11 @@ init_run
   生成 sync_run_context。
   |
   v
+persist_seed_units
+  如果 DocGen sidecar 预抽取缓存命中最终 section hash，则提前写入这些 LLM 产生的 KnowledgeUnit。
+  如果没有预抽取命中，不用 Markdown 标题或锚点生成非 LLM 种子节点。
+  |
+  v
 extract
   如果 course_context 为空，则从课程 LLM context 读取。
   按真实章节切分 Markdown；大章会按子章节继续拆成多个抽取任务。
@@ -155,6 +162,11 @@ fan-in extraction payloads
   做全局 anchor 去重。
   合并 LLM 候选和 DocGen backbone 候选。
   补结构边和跨章节语义边。
+  |
+  v
+persist_units
+  提前写入 extraction_payload 中的 KnowledgeUnit，方便下游考卷预热等能力尽早看到本轮 LLM 节点。
+  不写关系边、source_ref，不废弃旧节点，也不结束同步批次。
   |
   v
 stitch_relations
@@ -188,7 +200,7 @@ trigger_graph_docs_sync_manual_build
   API 路由只负责 course 鉴权和响应包装。
   从当前已发布 KnowledgeDoc 和 manifest 读取输入。
   不读取、不等待、不复用 DocGen 预抽取缓存。
-  后续仍走 prepare -> init_run -> extract -> stitch_relations -> persist -> finalize。
+  后续仍走 prepare -> init_run -> persist_seed_units -> extract -> persist_units -> stitch_relations -> persist -> finalize。
 ```
 
 失败路径：

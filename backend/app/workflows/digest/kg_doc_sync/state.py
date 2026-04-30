@@ -21,6 +21,9 @@ class DocsSyncState(TypedDict, total=False):
     build_session_id: str
     node_metrics: dict[str, dict[str, object]]
     prefetched_sections: list[SectionExtractionRecord]
+    early_units_callback: object | None
+    early_units_callback_requested: bool
+    early_units_seed_complete: bool
     sync_run_context: KnowledgeSyncRunContext | None
     extraction_payload: KnowledgeSyncExtractionPayload | None
     report: KnowledgeSyncReport | None

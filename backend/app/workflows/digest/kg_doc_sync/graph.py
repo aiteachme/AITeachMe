@@ -20,6 +20,8 @@ from app.workflows.digest.kg_doc_sync.nodes.fail_node import fail_node
 from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
 from app.workflows.digest.kg_doc_sync.nodes.init_run_node import init_run_node
 from app.workflows.digest.kg_doc_sync.nodes.persist_node import persist_node
+from app.workflows.digest.kg_doc_sync.nodes.persist_seed_units_node import persist_seed_units_node
+from app.workflows.digest.kg_doc_sync.nodes.persist_units_node import persist_units_node
 from app.workflows.digest.kg_doc_sync.nodes.prepare_node import prepare_node
 from app.workflows.digest.kg_doc_sync.nodes.stitch_node import stitch_node
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
@@ -28,7 +30,9 @@ RUN_NAME_KG_DOC_SYNC = "知识图谱同步：根据知识文档更新图谱"
 
 NODE_PREPARE = "prepare"
 NODE_INIT_RUN = "init_run"
+NODE_PERSIST_SEED_UNITS = "persist_seed_units"
 NODE_EXTRACT = "extract"
+NODE_PERSIST_UNITS = "persist_units"
 NODE_STITCH_RELATIONS = "stitch_relations"
 NODE_PERSIST = "persist"
 NODE_FINALIZE = "finalize"
@@ -37,7 +41,9 @@ NODE_FAIL = "fail"
 NODE_DISPLAY_NAMES = {
     NODE_PREPARE: "校验同步输入",
     NODE_INIT_RUN: "初始化同步批次",
+    NODE_PERSIST_SEED_UNITS: "写入种子知识点",
     NODE_EXTRACT: "抽取图谱候选",
+    NODE_PERSIST_UNITS: "提前写入知识点",
     NODE_STITCH_RELATIONS: "缝合图谱关系",
     NODE_PERSIST: "写入图谱变更",
     NODE_FINALIZE: "收口同步结果",
@@ -72,6 +78,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "input_keys": ["course_id", "markdown", "structured_context", "build_revision_no", "build_session_id"],
         "output_keys": ["sync_run_context", "build_revision_no", "structured_context", "node_metrics", "error"],
     },
+    NODE_PERSIST_SEED_UNITS: {
+        "description": (
+            "在正式 section 抽取前，只把 DocGen LLM 预抽取中已和最终文档匹配的 KnowledgeUnit 写入；"
+            "如果没有可用预抽取，则不写非 LLM 种子节点。"
+            "这样考卷生成可以早于图谱正式抽取完成启动。"
+        ),
+        "reads": ["markdown", "structured_context", "prefetched_sections", "sync_run_context", "knowledge_unit"],
+        "writes": ["knowledge_unit", "node_metrics.persist_seed_units"],
+        "input_keys": ["markdown", "structured_context", "prefetched_sections", "sync_run_context"],
+        "output_keys": ["node_metrics", "early_units_callback_requested", "early_units_seed_complete", "error"],
+    },
     NODE_EXTRACT: {
         "description": (
             "把知识文档切成章节任务，特别长的大章会继续拆成子章节任务，并以配置的并发上限调用结构化 LLM "
@@ -84,6 +101,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "input_keys": ["course_id", "markdown", "course_context", "sync_run_context"],
         "output_keys": ["extraction_payload", "course_context", "node_metrics", "error"],
         "fanout": "节点内部按章节/子章节构造抽取任务，async gather + semaphore 并发执行，完成后 fan-in 为 extraction_payload。",
+    },
+    NODE_PERSIST_UNITS: {
+        "description": (
+            "把本轮 extraction_payload 中的 KnowledgeUnit 提前写入 knowledge_unit 表，"
+            "让考卷等下游链路可以在关系缝合和最终收口前拿到本轮知识点。"
+            "本节点不写关系边和来源引用，不废弃旧节点，也不结束同步批次；最终权威写入仍由 persist 节点完成。"
+        ),
+        "reads": ["extraction_payload", "sync_run_context", "knowledge_unit"],
+        "writes": ["knowledge_unit", "node_metrics.persist_units"],
+        "input_keys": ["sync_run_context", "extraction_payload"],
+        "output_keys": ["node_metrics", "error"],
     },
     NODE_STITCH_RELATIONS: {
         "description": (
@@ -143,13 +171,21 @@ def route_after_prepare(state: DocsSyncState) -> str:
 
 
 def route_after_init_run(state: DocsSyncState) -> str:
+    return "persist_seed_units" if not state.get("error") else "fail"
+
+
+def route_after_persist_seed_units(state: DocsSyncState) -> str:
     return "extract" if not state.get("error") else "fail"
 
 
 def route_after_extract(state: DocsSyncState) -> str:
     if state.get("error"):
         return "fail"
-    return "stitch_relations" if state.get("extraction_payload") is not None else "fail"
+    return "persist_units" if state.get("extraction_payload") is not None else "fail"
+
+
+def route_after_persist_units(state: DocsSyncState) -> str:
+    return "stitch_relations" if not state.get("error") else "fail"
 
 
 def route_after_stitch(state: DocsSyncState) -> str:
@@ -166,7 +202,9 @@ def route_after_finalize(state: DocsSyncState) -> str:
 
 route_after_prepare_for_trace = named_route(route_after_prepare, "检查输入后继续同步")
 route_after_init_run_for_trace = named_route(route_after_init_run, "检查同步批次是否初始化")
+route_after_persist_seed_units_for_trace = named_route(route_after_persist_seed_units, "检查种子知识点是否已提前写入")
 route_after_extract_for_trace = named_route(route_after_extract, "检查图谱候选是否抽取成功")
+route_after_persist_units_for_trace = named_route(route_after_persist_units, "检查知识点是否可提前使用")
 route_after_stitch_for_trace = named_route(route_after_stitch, "检查图谱关系缝合是否成功")
 route_after_persist_for_trace = named_route(route_after_persist, "检查图谱写入是否成功")
 route_after_finalize_for_trace = named_route(route_after_finalize, "检查是否完成")
@@ -205,9 +243,19 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_INIT_RUN),
     )
     workflow.add_node(
+        NODE_PERSIST_SEED_UNITS,
+        _trace_docs_sync_node(trace, NODE_PERSIST_SEED_UNITS, persist_seed_units_node),
+        metadata=_langgraph_node_metadata(NODE_PERSIST_SEED_UNITS),
+    )
+    workflow.add_node(
         NODE_EXTRACT,
         _trace_docs_sync_node(trace, NODE_EXTRACT, extract_node),
         metadata=_langgraph_node_metadata(NODE_EXTRACT),
+    )
+    workflow.add_node(
+        NODE_PERSIST_UNITS,
+        _trace_docs_sync_node(trace, NODE_PERSIST_UNITS, persist_units_node),
+        metadata=_langgraph_node_metadata(NODE_PERSIST_UNITS),
     )
     workflow.add_node(
         NODE_STITCH_RELATIONS,
@@ -239,11 +287,21 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_INIT_RUN,
         route_after_init_run_for_trace,
+        {"persist_seed_units": NODE_PERSIST_SEED_UNITS, "fail": NODE_FAIL},
+    )
+    workflow.add_conditional_edges(
+        NODE_PERSIST_SEED_UNITS,
+        route_after_persist_seed_units_for_trace,
         {"extract": NODE_EXTRACT, "fail": NODE_FAIL},
     )
     workflow.add_conditional_edges(
         NODE_EXTRACT,
         route_after_extract_for_trace,
+        {"persist_units": NODE_PERSIST_UNITS, "fail": NODE_FAIL},
+    )
+    workflow.add_conditional_edges(
+        NODE_PERSIST_UNITS,
+        route_after_persist_units_for_trace,
         {"stitch_relations": NODE_STITCH_RELATIONS, "fail": NODE_FAIL},
     )
     workflow.add_conditional_edges(
@@ -274,6 +332,7 @@ def create_docs_sync_initial_state(
     course_context: str | None = None,
     structured_context: dict[str, object] | None = None,
     prefetched_sections: list[SectionExtractionRecord] | None = None,
+    early_units_callback: object | None = None,
 ) -> DocsSyncState:
     return {
         "course_id": course_id,
@@ -281,6 +340,9 @@ def create_docs_sync_initial_state(
         "course_context": course_context or "",
         "structured_context": dict(structured_context or {}),
         "prefetched_sections": list(prefetched_sections or []),
+        "early_units_callback": early_units_callback,
+        "early_units_callback_requested": False,
+        "early_units_seed_complete": False,
         "build_revision_no": build_revision_no,
         "build_session_id": build_session_id or "",
         "node_metrics": {},
@@ -309,6 +371,7 @@ async def run_graph_docs_sync_workflow(
     course_context: str | None = None,
     structured_context: dict[str, object] | None = None,
     prefetched_sections: list[SectionExtractionRecord] | None = None,
+    early_units_callback: object | None = None,
     trace_metadata: dict[str, object] | None = None,
 ) -> WorkflowResult[KnowledgeSyncReport]:
     error_course_id = str(course_id or "").strip()
@@ -344,6 +407,7 @@ async def run_graph_docs_sync_workflow(
                 course_context=course_context,
                 structured_context=structured_context,
                 prefetched_sections=prefetched_sections,
+                early_units_callback=early_units_callback,
             ),
             context=context,
         )

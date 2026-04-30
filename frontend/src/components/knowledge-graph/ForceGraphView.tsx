@@ -22,29 +22,59 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
 const NODE_COLORS: Record<string, { fill: string; dark: string; label: string }> = {
-  concept:    { fill: "#5dade2", dark: "#2e86c1", label: "概念" },
-  definition: { fill: "#58d68d", dark: "#28b463", label: "定义" },
-  theorem:    { fill: "#48c9b0", dark: "#17a589", label: "定理" },
-  formula:    { fill: "#5d6d7e", dark: "#2c3e50", label: "公式" },
-  example:    { fill: "#af7ac5", dark: "#7d3c98", label: "示例" },
-  exercise:   { fill: "#e74c3c", dark: "#c0392b", label: "练习" },
-  method:     { fill: "#ec7063", dark: "#cb4335", label: "方法" },
-  proof_step: { fill: "#8e44ad", dark: "#6c3483", label: "证明步骤" },
-  remark:     { fill: "#7f8c8d", dark: "#566573", label: "备注" },
+  concept: { fill: "#2563eb", dark: "#1d4ed8", label: "概念" },
+  definition: { fill: "#059669", dark: "#047857", label: "定义" },
+  theorem: { fill: "#7c3aed", dark: "#6d28d9", label: "定理" },
+  formula: { fill: "#475569", dark: "#334155", label: "公式" },
+  example: { fill: "#a855f7", dark: "#9333ea", label: "示例" },
+  exercise: { fill: "#ef4444", dark: "#dc2626", label: "练习" },
+  method: { fill: "#f97316", dark: "#ea580c", label: "方法" },
+  proof_step: { fill: "#0f766e", dark: "#115e59", label: "证明步骤" },
+  remark: { fill: "#64748b", dark: "#475569", label: "备注" },
 };
 
-const DEFAULT_COLOR = { fill: "#aab7b8", dark: "#717d7e", label: "其他" };
+const DEFAULT_COLOR = { fill: "#94a3b8", dark: "#64748b", label: "其他" };
+
+const RELATION_LABELS: Record<string, string> = {
+  prerequisite: "前置",
+  derivation: "推导",
+  application: "应用",
+  example_of: "例子",
+  similar: "相似",
+  contrast: "对比",
+};
+
+const RELATION_COLORS: Record<string, string> = {
+  prerequisite: "#64748b",
+  derivation: "#94a3b8",
+  application: "#60a5fa",
+  example_of: "#a78bfa",
+  similar: "#14b8a6",
+  contrast: "#f97316",
+};
+
+function truncateGraphLabel(value: string, maxChars = 12): string {
+  const text = String(value || "").trim();
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars - 1)}…`;
+}
+
+function relationLabel(edgeType: string): string {
+  return RELATION_LABELS[edgeType] ?? edgeType.replace(/_/g, " ");
+}
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: number;
   canonical_name: string;
   knowledge_unit_type: string;
   confidence: number;
+  degree: number;
 }
 
 interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   id: number;
   edge_type: string;
+  relation_label: string;
   source_node_id: number;
   target_node_id: number;
 }
@@ -262,7 +292,7 @@ export function ForceGraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [showEdgeLabels, setShowEdgeLabels] = useState(true);
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
@@ -338,11 +368,6 @@ export function ForceGraphView({
     const nodeIdSet = new Set((rawData.nodes ?? []).map((n: any) => n.id));
     const typeSet = new Set<string>();
 
-    const nodes: GraphNode[] = (rawData.nodes ?? []).map((n: any) => {
-      typeSet.add(n.knowledge_unit_type);
-      return { id: n.id, canonical_name: n.canonical_name, knowledge_unit_type: n.knowledge_unit_type, confidence: n.confidence };
-    });
-
     const links: GraphLink[] = (rawData.edges ?? [])
       .filter((e: any) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id))
       .map((e: any) => ({
@@ -350,9 +375,26 @@ export function ForceGraphView({
         source: e.source_node_id,
         target: e.target_node_id,
         edge_type: e.edge_type,
+        relation_label: relationLabel(e.edge_type),
         source_node_id: e.source_node_id,
         target_node_id: e.target_node_id,
       }));
+    const degreeByNodeId = new Map<number, number>();
+    for (const link of links) {
+      degreeByNodeId.set(link.source_node_id, (degreeByNodeId.get(link.source_node_id) ?? 0) + 1);
+      degreeByNodeId.set(link.target_node_id, (degreeByNodeId.get(link.target_node_id) ?? 0) + 1);
+    }
+
+    const nodes: GraphNode[] = (rawData.nodes ?? []).map((n: any) => {
+      typeSet.add(n.knowledge_unit_type);
+      return {
+        id: n.id,
+        canonical_name: n.canonical_name,
+        knowledge_unit_type: n.knowledge_unit_type,
+        confidence: n.confidence,
+        degree: degreeByNodeId.get(n.id) ?? 0,
+      };
+    });
 
     const types = Array.from(typeSet)
       .map((t) => ({ type: t, ...(NODE_COLORS[t] ?? DEFAULT_COLOR) }))
@@ -388,6 +430,17 @@ export function ForceGraphView({
     // Clear previous
     d3.select(svg).selectAll("*").remove();
 
+    const selectedNeighbors = new Set<number>();
+    if (selectedNodeId !== null) {
+      for (const link of links) {
+        if (link.source_node_id === selectedNodeId) selectedNeighbors.add(link.target_node_id);
+        if (link.target_node_id === selectedNodeId) selectedNeighbors.add(link.source_node_id);
+      }
+    }
+    const isConnectedToSelected = (link: GraphLink) =>
+      selectedNodeId === null || link.source_node_id === selectedNodeId || link.target_node_id === selectedNodeId;
+    const nodeRadius = (node: GraphNode) => Math.min(18, 8 + Math.sqrt(Math.max(1, node.degree)) * 2.2);
+
     // Deep copy nodes/links so D3 can mutate them
     const simNodes: GraphNode[] = nodes.map((n) => ({ ...n }));
     const simLinks: GraphLink[] = links.map((l) => ({ ...l, source: l.source_node_id, target: l.target_node_id }));
@@ -398,11 +451,29 @@ export function ForceGraphView({
       .attr("height", height)
       .attr("viewBox", [0, 0, width, height].join(" "));
 
-    // Background: clean minimalist flat color
+    const defs = svgSel.append("defs");
+
+    const grid = defs.append("pattern")
+      .attr("id", "knowledge-graph-grid")
+      .attr("width", 32)
+      .attr("height", 32)
+      .attr("patternUnits", "userSpaceOnUse");
+    grid.append("path")
+      .attr("d", "M 32 0 L 0 0 0 32")
+      .attr("fill", "none")
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 0.8)
+      .attr("opacity", 0.45);
+
+    // Background: subtle workspace grid, borrowed from diagram tools without making the graph noisy.
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "#fafaf9");
+      .attr("fill", "#f8fafc");
+    svgSel.append("rect")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "url(#knowledge-graph-grid)");
 
     // Container for zoom/pan
     const g = svgSel.append("g");
@@ -414,8 +485,6 @@ export function ForceGraphView({
         g.attr("transform", event.transform);
       });
     svgSel.call(zoom);
-
-    const defs = svgSel.append("defs");
 
     // Glow filter for hover (simplified)
     const glowFilter = defs.append("filter")
@@ -435,26 +504,35 @@ export function ForceGraphView({
     defs.append("marker")
       .attr("id", "arrowhead")
       .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 28)
+      .attr("refX", 24)
       .attr("refY", 0)
       .attr("markerWidth", 8)
       .attr("markerHeight", 8)
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,-4L8,0L0,4")
-      .attr("fill", "#aaa");
+      .attr("fill", "#94a3b8");
 
     // Links group
     const linkGroup = g.append("g").attr("class", "links");
 
-    // Link lines (straight, clean)
     const linkLine = linkGroup.selectAll<SVGPathElement, GraphLink>("path")
       .data(simLinks)
       .join("path")
       .attr("fill", "none")
-      .attr("stroke", "#C0C0C0")
-      .attr("stroke-width", 1.5)
+      .attr("stroke", (d) => RELATION_COLORS[d.edge_type] ?? "#94a3b8")
+      .attr("stroke-linecap", "round")
+      .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.8 : 1.1))
+      .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.32 : isConnectedToSelected(d) ? 0.74 : 0.1))
       .attr("marker-end", "url(#arrowhead)");
+
+    linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
+      .data(simLinks)
+      .join("path")
+      .attr("class", "hit-area")
+      .attr("fill", "none")
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 12);
 
     // Link labels (clean white background effect using stroke)
     const linkLabel = linkGroup.selectAll<SVGTextElement, GraphLink>("text")
@@ -462,15 +540,15 @@ export function ForceGraphView({
       .join("text")
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
-      .attr("font-size", "9px")
-      .attr("fill", "#666")
-      .attr("stroke", "rgba(255,255,255,0.95)")
-      .attr("stroke-width", 4)
+      .attr("font-size", "10px")
+      .attr("fill", "#64748b")
+      .attr("stroke", "rgba(248,250,252,0.96)")
+      .attr("stroke-width", 5)
       .attr("paint-order", "stroke")
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
-      .attr("display", showEdgeLabels ? null : "none")
-      .text((d) => d.edge_type.toUpperCase());
+      .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 1 : 0))
+      .text((d) => d.relation_label);
 
     // Node group
     const nodeGroup = g.append("g").attr("class", "nodes");
@@ -505,52 +583,113 @@ export function ForceGraphView({
     });
 
     nodeG.append("circle")
-      .attr("r", 10)
+      .attr("class", "node-halo")
+      .attr("r", (d) => nodeRadius(d) + 6)
       .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 2.5);
+      .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
+
+    nodeG.append("circle")
+      .attr("class", "node-circle")
+      .attr("r", (d) => nodeRadius(d))
+      .attr("fill", (d) => (NODE_COLORS[d.knowledge_unit_type] ?? DEFAULT_COLOR).fill)
+      .attr("stroke", (d) => (d.id === selectedNodeId ? "#0f172a" : "#ffffff"))
+      .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : 2.5))
+      .attr("opacity", (d) => (
+        selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.42
+      ));
 
     nodeG.append("text")
-      .attr("dx", 14)
+      .attr("dx", (d) => nodeRadius(d) + 6)
       .attr("dy", 4)
-      .attr("font-size", "11px")
+      .attr("font-size", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "12px" : "11px"))
       .attr("font-family", "system-ui, sans-serif")
-      .attr("font-weight", "500")
-      .attr("fill", "#333")
+      .attr("font-weight", (d) => (d.degree >= 4 || d.id === selectedNodeId ? "650" : "500"))
+      .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#334155"))
+      .attr("stroke", "rgba(248,250,252,0.95)")
+      .attr("stroke-width", 4)
+      .attr("paint-order", "stroke")
+      .attr("opacity", (d) => (
+        selectedNodeId === null || d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.5
+      ))
       .style("pointer-events", "none")
-      .text((d) => d.canonical_name.length > 8 ? `${d.canonical_name.slice(0, 8)}...` : d.canonical_name);
+      .text((d) => truncateGraphLabel(d.canonical_name, d.degree >= 4 || d.id === selectedNodeId ? 16 : 12));
 
     // Hover effects
     nodeG
       .on("mouseenter", function (_event, d) {
-        // Highlight logic
-        if (!selectedNodeId || selectedNodeId !== d.id) {
-          d3.select(this).select("circle").attr("stroke", "#333").attr("stroke-width", 3);
+        const connectedIds = new Set<number>([d.id]);
+        for (const link of simLinks) {
+          if (link.source_node_id === d.id) connectedIds.add(link.target_node_id);
+          if (link.target_node_id === d.id) connectedIds.add(link.source_node_id);
         }
+        nodeG.select<SVGCircleElement>("circle.node-circle")
+          .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0.28));
+        linkLine
+          .attr("stroke-opacity", (link) => (
+            link.source_node_id === d.id || link.target_node_id === d.id ? 0.86 : 0.08
+          ))
+          .attr("stroke-width", (link) => (
+            link.source_node_id === d.id || link.target_node_id === d.id ? 2.3 : 1
+          ));
+        linkLabel.attr("opacity", (link) => (
+          showEdgeLabels && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
+        ));
+        d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
+        d3.select(this).select("circle.node-circle").attr("stroke", "#0f172a").attr("stroke-width", 3);
       })
       .on("mouseleave", function (_event, d) {
-        if (!selectedNodeId || selectedNodeId !== d.id) {
-          d3.select(this).select("circle").attr("stroke", "#fff").attr("stroke-width", 2.5);
-        }
+        nodeG.select<SVGCircleElement>("circle.node-circle")
+          .attr("opacity", (node) => (
+            selectedNodeId === null || node.id === selectedNodeId || selectedNeighbors.has(node.id) ? 1 : 0.42
+          ));
+        linkLine
+          .attr("stroke-opacity", (link) => (
+            selectedNodeId === null ? 0.32 : isConnectedToSelected(link) ? 0.74 : 0.1
+          ))
+          .attr("stroke-width", (link) => (isConnectedToSelected(link) ? 1.8 : 1.1));
+        linkLabel.attr("opacity", (link) => (
+          showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(link)) ? 1 : 0
+        ));
+        d3.select(this).select("circle.node-halo").attr("opacity", d.id === selectedNodeId ? 0.18 : 0);
+        d3.select(this).select("circle.node-circle")
+          .attr("stroke", d.id === selectedNodeId ? "#0f172a" : "#ffffff")
+          .attr("stroke-width", d.id === selectedNodeId ? 3 : 2.5);
       });
 
     const simulation = d3.forceSimulation<GraphNode>(simNodes)
-      .force("link", d3.forceLink<GraphNode, GraphLink>(simLinks).id((d) => d.id).distance(150))
-      .force("charge", d3.forceManyBody().strength(-400))
+      .force("link", d3.forceLink<GraphNode, GraphLink>(simLinks).id((d) => d.id).distance((d) => {
+        const sourceDegree = typeof d.source === "object" ? d.source.degree : 1;
+        const targetDegree = typeof d.target === "object" ? d.target.degree : 1;
+        return Math.max(90, 150 - Math.min(sourceDegree + targetDegree, 10) * 4);
+      }).strength(0.38))
+      .force("charge", d3.forceManyBody<GraphNode>().strength((d) => -260 - Math.min(d.degree, 8) * 34))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(50))
-      .force("x", d3.forceX(width / 2).strength(0.04))
-      .force("y", d3.forceY(height / 2).strength(0.04));
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => nodeRadius(d) + 34))
+      .force("x", d3.forceX(width / 2).strength(0.035))
+      .force("y", d3.forceY(height / 2).strength(0.035));
 
     simulationRef.current = simulation;
 
     simulation.on("tick", () => {
-      // Straight lines
-      linkLine.attr("d", (d: any) => `M${d.source.x},${d.source.y} L${d.target.x},${d.target.y}`);
+      const linkPath = (d: any) => {
+        const sx = d.source.x;
+        const sy = d.source.y;
+        const tx = d.target.x;
+        const ty = d.target.y;
+        const dx = tx - sx;
+        const dy = ty - sy;
+        const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+        const curve = Math.min(28, distance * 0.12) * ((d.id % 2 === 0) ? 1 : -1);
+        const mx = (sx + tx) / 2 - (dy / distance) * curve;
+        const my = (sy + ty) / 2 + (dx / distance) * curve;
+        return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
+      };
+      linkLine.attr("d", linkPath);
+      linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area").attr("d", linkPath);
 
       linkLabel
         .attr("x", (d: any) => (d.source.x + d.target.x) / 2)
-        .attr("y", (d: any) => (d.source.y + d.target.y) / 2)
+        .attr("y", (d: any) => (d.source.y + d.target.y) / 2 - 6)
         .attr("transform", ""); // Explicitly avoid rotation for legibility
 
       nodeG.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
@@ -629,12 +768,14 @@ export function ForceGraphView({
           ) : null}
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
+            aria-pressed={showEdgeLabels}
+            title="切换关系标签显示"
             className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
           >
-            <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#8b5cf6" : "#d1d5db" }}>
+            <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#2563eb" : "#cbd5e1" }}>
               <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
             </span>
-            边标签
+            关系标签
           </button>
         </div>
 

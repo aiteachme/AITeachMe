@@ -455,6 +455,72 @@ async def extract_knowledge_graph_items_async(
     )
 
 
+def build_prefetched_knowledge_graph_units_payload(
+    *,
+    markdown: str,
+    structured_context: dict[str, object] | None = None,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
+) -> KnowledgeSyncExtractionPayload:
+    """把 DocGen 预抽取中已匹配最终文档的 section payload 合成早期知识点。"""
+
+    records = list(prefetched_records or [])
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    if not chapters or not records:
+        diagnostics = _empty_extraction_diagnostics()
+        diagnostics["prefetch_section_count"] = len(records)
+        return KnowledgeSyncExtractionPayload(units=[], extracted_edges=[], diagnostics_totals=diagnostics)
+
+    normalized_context = _structured_context_payload(structured_context)
+    chapter_contexts = _chapter_context_lookup(normalized_context)
+    extraction_tasks, task_metrics = _build_extraction_tasks(chapters, chapter_contexts)
+    prefetch_lookup: dict[tuple[str, str], SectionExtractionRecord] = {}
+    prefetch_hash_lookup: dict[str, SectionExtractionRecord] = {}
+    duplicate_hashes: set[str] = set()
+    failed_prefetch_count = 0
+    for record in records:
+        if record.payload is None:
+            failed_prefetch_count += 1
+            continue
+        record_key = (record.section_key, record.content_hash)
+        prefetch_lookup[record_key] = record
+        if record.content_hash in prefetch_hash_lookup:
+            duplicate_hashes.add(record.content_hash)
+        else:
+            prefetch_hash_lookup[record.content_hash] = record
+    for content_hash in duplicate_hashes:
+        prefetch_hash_lookup.pop(content_hash, None)
+
+    used_prefetch_keys: set[tuple[str, str]] = set()
+    used_anchors: set[str] = set()
+    units: list[MarkdownKnowledgeUnit] = []
+    diagnostics = _empty_extraction_diagnostics()
+    diagnostics["chapter_count"] = len(chapters)
+    diagnostics["section_count"] = len(extraction_tasks)
+    diagnostics.update(task_metrics)
+    for task in extraction_tasks:
+        key = (_section_task_key(task), _section_task_content_hash(task))
+        prefetched = prefetch_lookup.get(key) or prefetch_hash_lookup.get(key[1])
+        if prefetched is None or prefetched.payload is None:
+            continue
+        used_prefetch_keys.add((prefetched.section_key, prefetched.content_hash))
+        payload = _apply_task_context_to_payload(prefetched.payload, task)
+        payload = _make_payload_anchors_unique(payload, used_anchors)
+        units.extend(payload.units)
+        for metric_key in diagnostics:
+            diagnostics[metric_key] += int(payload.diagnostics.get(metric_key, 0) or 0)
+
+    diagnostics["prefetch_section_count"] = len(records)
+    diagnostics["prefetch_reused_section_count"] = len(used_prefetch_keys)
+    diagnostics["prefetch_catchup_section_count"] = max(0, len(extraction_tasks) - len(used_prefetch_keys))
+    diagnostics["prefetch_stale_section_count"] = max(0, len(prefetch_lookup) - len(used_prefetch_keys))
+    diagnostics["prefetch_failed_section_count"] = failed_prefetch_count
+    diagnostics["prefetch_early_unit_count"] = len(units)
+    diagnostics["prefetch_complete_section_coverage"] = (
+        1 if extraction_tasks and len(used_prefetch_keys) == len(extraction_tasks) else 0
+    )
+    return KnowledgeSyncExtractionPayload(units=units, extracted_edges=[], diagnostics_totals=diagnostics)
+
+
 def persist_knowledge_graph_items(
     session: Session,
     *,
@@ -551,6 +617,58 @@ def persist_knowledge_graph_items(
         elapsed_ms=report.elapsed_ms,
     )
     return report
+
+
+def persist_knowledge_graph_units_early(
+    session: Session,
+    *,
+    run_context: KnowledgeSyncRunContext,
+    payload: KnowledgeSyncExtractionPayload,
+    enable_rag_dedup: bool = False,
+) -> dict[str, object]:
+    """只提前写入 KnowledgeUnit 行，让下游链路能更早启动。
+
+    这里刻意不写边、source ref、废弃标记，也不结束 sync run。
+    关系缝合完成后，原本的 persist 节点仍然负责最终权威写入。
+    """
+
+    sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
+    created_unit_ids: list[int] = []
+    updated_unit_ids: list[int] = []
+    for item in payload.units:
+        unit, created = _upsert_unit(
+            session,
+            course_id=run_context.course_id,
+            item=item,
+            build_revision_no=run_context.build_revision_no,
+            enable_rag_dedup=enable_rag_dedup,
+        )
+        if unit.id is None:
+            continue
+        if created:
+            created_unit_ids.append(unit.id)
+        else:
+            updated_unit_ids.append(unit.id)
+
+    session.flush()
+    logger.info(
+        "knowledge_docs_sync_units_early_persisted",
+        course_id=run_context.course_id,
+        build_revision_no=run_context.build_revision_no,
+        sync_run_id=sync_run.id,
+        unit_count=len(created_unit_ids) + len(updated_unit_ids),
+        created_unit_count=len(created_unit_ids),
+        updated_unit_count=len(updated_unit_ids),
+    )
+    return {
+        "sync_run_id": sync_run.id,
+        "build_revision_no": run_context.build_revision_no,
+        "unit_count": len(created_unit_ids) + len(updated_unit_ids),
+        "created_unit_count": len(created_unit_ids),
+        "updated_unit_count": len(updated_unit_ids),
+        "created_unit_ids": created_unit_ids,
+        "updated_unit_ids": updated_unit_ids,
+    }
 
 
 def _apply_extracted_graph_items(
@@ -2393,6 +2511,7 @@ __all__ = [
     "KnowledgeSyncExtractionPayload",
     "KnowledgeSyncReport",
     "KnowledgeSyncRunContext",
+    "build_prefetched_knowledge_graph_units_payload",
     "extract_knowledge_graph_items",
     "extract_knowledge_graph_items_async",
     "extract_knowledge_graph_section_records_async",
@@ -2400,5 +2519,6 @@ __all__ = [
     "initialize_knowledge_graph_sync_run",
     "mark_knowledge_graph_sync_run_failed",
     "persist_knowledge_graph_items",
+    "persist_knowledge_graph_units_early",
     "sync_markdown_knowledge_graph",
 ]

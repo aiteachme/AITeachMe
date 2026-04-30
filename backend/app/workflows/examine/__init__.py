@@ -23,6 +23,7 @@ __all__ = [
     "run_exam_grade_workflow",
     "run_exam_study_guide_workflow",
     "run_question_build_workflow",
+    "trigger_default_exam_prewarm_for_course",
 ]
 
 _ATTR_TO_MODULE = {
@@ -39,6 +40,7 @@ _ATTR_TO_MODULE = {
     "run_exam_grade_workflow": "app.workflows.examine.exam_grade.graph",
     "run_exam_study_guide_workflow": "app.workflows.examine.exam_grade.graph",
     "run_question_build_workflow": "app.workflows.examine.question_build.graph",
+    "trigger_default_exam_prewarm_for_course": "app.workflows.examine.prewarm",
 }
 
 
