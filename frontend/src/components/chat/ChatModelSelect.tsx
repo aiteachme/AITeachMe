@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ChevronDown, Settings } from "lucide-react";
+import { ChevronDown, Settings2 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -64,14 +64,14 @@ export function ChatModelSelect({
     <div
       title={`选择本轮模型：${meta.title}`}
       className={cn(
-        "group relative inline-flex h-9 min-w-[124px] max-w-[148px] shrink-0 items-center gap-2 overflow-hidden rounded-full px-3.5 text-[13px] font-medium transition-all sm:min-w-[144px] sm:max-w-[184px]",
-        "bg-zinc-100/70 text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_1px_2px_rgba(24,24,27,0.04)] hover:bg-zinc-100 hover:text-zinc-700",
+        "group relative inline-flex h-9 min-w-[132px] max-w-full items-center gap-2 overflow-hidden rounded-full px-3.5 text-[13px] font-medium transition-all",
+        "bg-zinc-100/75 text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.84),0_8px_20px_-20px_rgba(24,24,27,0.35)] hover:bg-zinc-100 hover:text-zinc-700",
         "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:bg-slate-800/80 dark:text-slate-300 dark:shadow-none dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
         disabled && "opacity-55",
         className,
       )}
     >
-      <Settings className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
+      <Settings2 className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>

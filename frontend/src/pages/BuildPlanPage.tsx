@@ -1856,8 +1856,8 @@ export function BuildPlanPage() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between gap-2 px-1">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2">
+                <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
                     <input
                       type="file"
                       multiple
@@ -1891,11 +1891,12 @@ export function BuildPlanPage() {
                     )}
                   </div>
 
-                  <div className="flex shrink-0 items-center justify-end gap-2">
+                  <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                     <ChatModelSelect
                       value={chatModel}
                       onChange={setChatModel}
                       disabled={isBuilding || plannerStreaming}
+                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
                     />
                     <button
                       type="button"

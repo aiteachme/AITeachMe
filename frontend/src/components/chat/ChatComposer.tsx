@@ -130,6 +130,7 @@ export function ChatComposer({
                     value={modelValue!}
                     onChange={onModelChange!}
                     disabled={disabled || isStreaming}
+                    className="min-w-0 flex-1"
                   />
                 ) : null}
               </div>
