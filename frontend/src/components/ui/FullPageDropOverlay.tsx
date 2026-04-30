@@ -121,10 +121,10 @@ export function FullPageDropOverlay({
 
   /* 四个浮动小图标的配置 */
   const floatingIcons = [
-    { Icon: FileText, delay: 0, x: -90, y: -70, rotate: -12, color: "text-blue-300" },
+    { Icon: FileText, delay: 0, x: -90, y: -70, rotate: -12, color: "text-indigo-300" },
     { Icon: FileImage, delay: 0.08, x: 85, y: -60, rotate: 10, color: "text-emerald-300" },
     { Icon: FileSpreadsheet, delay: 0.12, x: -80, y: 55, rotate: 8, color: "text-amber-300" },
-    { Icon: FileUp, delay: 0.16, x: 90, y: 65, rotate: -6, color: "text-violet-300" },
+    { Icon: FileUp, delay: 0.16, x: 90, y: 65, rotate: -6, color: "text-indigo-300" },
   ];
 
   const overlayContent = (

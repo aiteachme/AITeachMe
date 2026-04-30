@@ -1,113 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
-from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from pyinstaller_desktop_common import (
+    EXCLUDED_MODULE_PREFIXES,
+    collect_app_hiddenimports,
+    collect_runtime_datas,
+    collect_runtime_hiddenimports,
+    filter_toc_entries,
+)
 
 
 os.environ.setdefault("AITEACHME_ENABLE_BUILTIN_PDF", "false")
 
-_EXCLUDED_MODULES = [
-    "fitz",
-    "pymupdf",
-    "pdfminer",
-    "pdfplumber",
-    "pypdfium2",
-    "pypdfium2_raw",
-    "pypdf",
-    "PyPDF2",
-    "markitdown",
-    "magika",
-    "onnxruntime",
-    "speech_recognition",
-    "speechrecognition",
-    "pydub",
-    "pyaudio",
-    "soundfile",
-    "whisper",
-    "faster_whisper",
-    "pocketsphinx",
-    "pandas",
-    "openpyxl",
-    "xlrd",
-    "xlwt",
-    "tkinter",
-    "_tkinter",
-    "tcl",
-    "tk",
-    "boto3",
-    "botocore",
-    "s3transfer",
-    "asyncpg",
-    "psycopg",
-    "psycopg2",
-    "psycopg_binary",
-    "psycopg2_binary",
-    "pgvector",
-    "llama_index.vector_stores.postgres",
-]
-
-
-def _collect_app_submodules() -> list[str]:
-    return collect_submodules("app")
-
-
-datas = [
-    ("alembic.ini", "."),
-    ("migrations", "migrations"),
-]
-
-_BUNDLED_ENV_PATH = Path("../packaging/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
-if _BUNDLED_ENV_PATH.exists():
-    datas.append((str(_BUNDLED_ENV_PATH), "configs"))
-
-for package_name in (
-    "alembic",
-    "fastapi",
-    "langgraph",
-    "llama_index",
-    "pydantic",
-    "pydantic_settings",
-    "sqlalchemy",
-    "sqlmodel",
-    "uvicorn",
-):
-    datas += collect_data_files(package_name)
-
-datas += collect_data_files(
-    "litellm",
-    includes=[
-        "anthropic_beta_headers_config.json",
-        "cost.json",
-        "model_prices_and_context_window_backup.json",
-        "policy_templates_backup.json",
-        "provider_endpoints_support_backup.json",
-    ],
-)
-datas += collect_data_files("litellm.containers", includes=["endpoints.json"])
-datas += collect_data_files("litellm.litellm_core_utils.tokenizers")
-
-hiddenimports = []
-for package_name in (
-    "app",
-    "migrations",
-    "litellm.litellm_core_utils.tokenizers",
-    "uvicorn",
-    "uvicorn.lifespan",
-    "uvicorn.lifespan.on",
-    "uvicorn.loops",
-    "uvicorn.loops.auto",
-    "uvicorn.protocols",
-    "uvicorn.protocols.http",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.websockets",
-    "uvicorn.protocols.websockets.auto",
-):
-    if package_name == "app":
-        hiddenimports += _collect_app_submodules()
-    else:
-        hiddenimports += collect_submodules(package_name)
+datas = collect_runtime_datas()
+hiddenimports = collect_app_hiddenimports() + ["migrations"] + collect_runtime_hiddenimports()
 
 
 a = Analysis(
@@ -119,10 +26,13 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=_EXCLUDED_MODULES,
+    excludes=list(EXCLUDED_MODULE_PREFIXES),
     noarchive=False,
     optimize=0,
 )
+a.pure = filter_toc_entries(a.pure)
+a.binaries = filter_toc_entries(a.binaries)
+a.datas = filter_toc_entries(a.datas)
 pyz = PYZ(a.pure)
 
 exe = EXE(

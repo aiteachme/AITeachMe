@@ -109,6 +109,7 @@ async def search_knowledge(
 
     settings = get_settings()
     should_rerank = enable_rerank and settings.rerank_configured
+    min_similarity = max(0.0, float(settings.rag.similarity_threshold or 0.0))
 
     try:
         from app.shared.infra.search.llamaindex_index import retrieve_course_chunks
@@ -125,6 +126,8 @@ async def search_knowledge(
     chunks: list[RetrievedChunk] = []
     with Session(get_engine()) as session:
         for hit in hits:
+            if min_similarity and float(hit.score) < min_similarity:
+                continue
             chunk = get_chunk_by_id(session, hit.chunk_id)
             if chunk is None or chunk.course_id != normalized_course_id:
                 continue

@@ -113,7 +113,7 @@ export function ProfilePage() {
                 基于当前 KnowledgeUnit 掌握度、最近答题结果和待复习任务生成个性化画像。
               </p>
             </div>
-            <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 sm:items-center">
+            <div className="flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 sm:items-center">
               <Sparkles className="h-4 w-4" />
               推荐模式 {courseProfile?.recommended_exam_mode ?? "web_practice"}，建议{" "}
               {courseProfile?.recommended_question_count ?? 10} 题

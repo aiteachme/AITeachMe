@@ -1014,7 +1014,7 @@ export const AiConversationPanel = memo(function AiConversationPanel({
                   className={cn(
                     "inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium transition",
                     currentSelectionTarget.kind === "exam_question"
-                      ? "border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200 dark:hover:bg-violet-500/15"
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/15"
                       : "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15",
                   )}
                   title={`${currentSelectionTarget.kind === "exam_question" ? "定位题目" : "定位原文"}：${currentSelectionTarget.selectedText}`}
@@ -1108,14 +1108,14 @@ export const AiConversationPanel = memo(function AiConversationPanel({
               className={cn(
                 "flex items-start gap-2 rounded-2xl border px-3 py-2.5 shadow-sm",
                 pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
-                  ? "border-violet-100 bg-violet-50/80 text-violet-950 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-100"
-                  : "border-sky-100 bg-sky-50/80 text-sky-900 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-100",
+                  ? "border-indigo-100 bg-indigo-50/80 text-indigo-950 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-100"
+                  : "border-indigo-100 bg-indigo-50/80 text-indigo-950 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-100",
               )}
             >
               <MessageSquareText
                 className={cn(
                   "mt-0.5 h-4 w-4 shrink-0",
-                  pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "text-violet-600" : "text-sky-600",
+                  pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION ? "text-indigo-600" : "text-indigo-600",
                 )}
               />
               <div className="min-w-0 flex-1">
@@ -1126,8 +1126,8 @@ export const AiConversationPanel = memo(function AiConversationPanel({
                   className={cn(
                     "mt-0.5 text-[11px] leading-4",
                     pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
-                      ? "text-violet-600 dark:text-violet-200/80"
-                      : "text-sky-600 dark:text-sky-200/80",
+                      ? "text-indigo-600 dark:text-indigo-200/80"
+                      : "text-indigo-600 dark:text-indigo-200/80",
                   )}
                 >
                   {pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
@@ -1141,8 +1141,8 @@ export const AiConversationPanel = memo(function AiConversationPanel({
                   className={cn(
                     "mt-1 text-[12px] leading-5",
                     pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
-                      ? "text-violet-700 dark:text-violet-100/90"
-                      : "text-sky-700 dark:text-sky-100/90",
+                      ? "text-indigo-700 dark:text-indigo-100/90"
+                      : "text-indigo-700 dark:text-indigo-100/90",
                   )}
                 />
               </div>
@@ -1152,8 +1152,8 @@ export const AiConversationPanel = memo(function AiConversationPanel({
                 className={cn(
                   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition",
                   pendingSelectionContext.source === AI_SOURCE_EXAM_QUESTION
-                    ? "text-violet-500 hover:bg-violet-100 hover:text-violet-800"
-                    : "text-sky-500 hover:bg-sky-100 hover:text-sky-800",
+                    ? "text-indigo-500 hover:bg-indigo-100 hover:text-indigo-800"
+                    : "text-indigo-500 hover:bg-indigo-100 hover:text-indigo-800",
                 )}
                 aria-label="移除参考上下文"
                 title="移除参考上下文"

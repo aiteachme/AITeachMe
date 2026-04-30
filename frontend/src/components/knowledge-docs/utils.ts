@@ -1,4 +1,4 @@
-﻿/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 /*  Knowledge Docs — Shared Utility Functions                          */
 /* ------------------------------------------------------------------ */
 
@@ -469,7 +469,7 @@ export function chapterStatusClasses(status: string | undefined): string {
     case "reviewed": return "bg-teal-500";
     case "enhanced":
     case "drafted":
-    case "drafting": return "bg-sky-500";
+    case "drafting": return "bg-indigo-600";
     case "generated":
     case "enhancing":
     case "reviewing":

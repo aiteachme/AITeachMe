@@ -73,6 +73,7 @@ def _append_callout_block(output: list[str], *, kind: str, body_lines: list[str]
     body = _trim_blank_lines(body_lines)
     output.append(f"> [!{kind.upper()}]")
     if not body:
+        output.append("")
         return
     # react-markdown does not implement GitHub's callout extension. Keeping the
     # marker in its own blockquote paragraph lets the frontend recognize it
@@ -80,6 +81,7 @@ def _append_callout_block(output: list[str], *, kind: str, body_lines: list[str]
     output.append(">")
     for body_line in body:
         output.append(f"> {body_line}" if body_line.strip() else ">")
+    output.append("")
 
 
 

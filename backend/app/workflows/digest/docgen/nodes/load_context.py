@@ -17,6 +17,7 @@ from app.workflows.digest.docgen.nodes.common import (
 )
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.common.indexing import materialize_course_inputs_for_retrieval
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
@@ -37,6 +38,11 @@ def build_load_context_node(*, context: WorkflowContext):
                 state.get("file_ids", []),
                 user_prompt=state.get("user_prompt"),
             )
+        await materialize_course_inputs_for_retrieval(
+            course_id=state["course_id"],
+            shared_inputs=shared_inputs,
+            reason="digest.docgen.load_context",
+        )
         
 
         digest_mode = state.get("digest_mode") or shared_inputs.digest_mode_decision.mode.value

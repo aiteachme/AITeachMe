@@ -26,11 +26,11 @@ function displayCourseName(course: { name?: string | null }) {
 function courseTone(name: string) {
   const tones = [
     "from-slate-900 to-slate-700",
-    "from-emerald-600 to-teal-500",
-    "from-rose-600 to-orange-500",
-    "from-indigo-600 to-blue-500",
-    "from-amber-500 to-orange-500",
-    "from-cyan-600 to-sky-500",
+    "from-indigo-600 to-indigo-500",
+    "from-indigo-600 to-indigo-500",
+    "from-fuchsia-600 to-indigo-500",
+    "from-indigo-500 to-purple-500",
+    "from-indigo-500 to-slate-700",
   ];
 
   let hash = 0;
@@ -88,7 +88,7 @@ export function LearningSpacesPage() {
   const courseCount = courses.length;
   return (
     <>
-      <div className="min-h-full px-4 pb-12 pt-20 sm:px-6 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
+      <div className="min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-10 lg:px-12 lg:pt-10 xl:px-16">
         <div className="mx-auto w-full max-w-[1560px]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
@@ -137,7 +137,7 @@ export function LearningSpacesPage() {
           </div>
 
           {isLoading ? (
-            <div className="mt-12 flex min-h-[180px] items-center justify-center">
+            <div className="mt-10 flex min-h-[180px] items-center justify-center pb-12 sm:mt-12 sm:pb-0">
               <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 正在加载学习空间...
@@ -146,7 +146,7 @@ export function LearningSpacesPage() {
           ) : null}
 
           {!isLoading && courses.length === 0 ? (
-            <div className="mt-14 flex min-h-[180px] flex-col items-center justify-center px-6 text-center">
+            <div className="mt-10 flex min-h-[180px] flex-col items-center justify-center px-6 pb-12 text-center sm:mt-14 sm:pb-0">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
                 <LayoutGrid className="h-5 w-5" />
               </div>

@@ -57,11 +57,41 @@ function Assert-RustToolchain {
 function Resolve-PythonCommand {
     param([string]$RepoRoot)
 
+    $configuredPython = [Environment]::GetEnvironmentVariable("AITEACHME_PYTHON", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
+        if (-not (Test-Path $configuredPython)) {
+            throw "AITEACHME_PYTHON points to a missing file: $configuredPython"
+        }
+        return @{
+            File = (Resolve-Path $configuredPython).Path
+            PrefixArgs = @()
+        }
+    }
+
+    $activeCondaPrefix = [Environment]::GetEnvironmentVariable("CONDA_PREFIX", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($activeCondaPrefix)) {
+        $activeCondaPython = Join-Path $activeCondaPrefix "python.exe"
+        if (Test-Path $activeCondaPython) {
+            return @{
+                File = $activeCondaPython
+                PrefixArgs = @()
+            }
+        }
+    }
+
     $repoVenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
     if (Test-Path $repoVenvPython) {
         return @{
             File = $repoVenvPython
             PrefixArgs = @()
+        }
+    }
+
+    $conda = Get-Command "conda.exe", "conda.cmd", "conda" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $conda) {
+        return @{
+            File = $conda.Source
+            PrefixArgs = @("run", "--no-capture-output", "-n", "atm", "python")
         }
     }
 

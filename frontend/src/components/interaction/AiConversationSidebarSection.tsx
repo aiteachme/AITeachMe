@@ -65,19 +65,19 @@ const CONVERSATION_KIND_STYLES: Record<ConversationKind, {
 }> = {
   document: {
     label: "文档",
-    badgeClassName: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
-    selectedClassName: "bg-sky-50 text-sky-950 ring-2 ring-sky-300/70 shadow-[0_0_0_4px_rgba(14,165,233,0.10)] dark:bg-sky-500/14 dark:text-sky-50 dark:ring-sky-400/45 dark:shadow-[0_0_0_4px_rgba(56,189,248,0.10)]",
-    stripClassName: "bg-sky-500 dark:bg-sky-300",
-    pulseClassName: "ring-sky-300/80 dark:ring-sky-300/45",
-    iconClassName: "text-sky-600 dark:text-sky-200",
+    badgeClassName: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
+    selectedClassName: "bg-indigo-50 text-indigo-950 ring-2 ring-indigo-300/70 shadow-[0_0_0_4px_rgba(99,102,241,0.10)] dark:bg-indigo-500/14 dark:text-indigo-50 dark:ring-indigo-400/45 dark:shadow-[0_0_0_4px_rgba(129,140,248,0.10)]",
+    stripClassName: "bg-indigo-500 dark:bg-indigo-300",
+    pulseClassName: "ring-indigo-300/80 dark:ring-indigo-300/45",
+    iconClassName: "text-indigo-600 dark:text-indigo-200",
   },
   question: {
     label: "题目",
-    badgeClassName: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
-    selectedClassName: "bg-violet-50 text-violet-950 ring-2 ring-violet-300/70 shadow-[0_0_0_4px_rgba(139,92,246,0.10)] dark:bg-violet-500/14 dark:text-violet-50 dark:ring-violet-400/45 dark:shadow-[0_0_0_4px_rgba(167,139,250,0.10)]",
-    stripClassName: "bg-violet-500 dark:bg-violet-300",
-    pulseClassName: "ring-violet-300/80 dark:ring-violet-300/45",
-    iconClassName: "text-violet-600 dark:text-violet-200",
+    badgeClassName: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
+    selectedClassName: "bg-indigo-50 text-indigo-950 ring-2 ring-indigo-300/70 shadow-[0_0_0_4px_rgba(99,102,241,0.10)] dark:bg-indigo-500/14 dark:text-indigo-50 dark:ring-indigo-400/45 dark:shadow-[0_0_0_4px_rgba(129,140,248,0.10)]",
+    stripClassName: "bg-indigo-500 dark:bg-indigo-300",
+    pulseClassName: "ring-indigo-300/80 dark:ring-indigo-300/45",
+    iconClassName: "text-indigo-600 dark:text-indigo-200",
   },
   builder: {
     label: "构建",
@@ -389,7 +389,7 @@ export function AiConversationSidebarSection({
         <button
           type="button"
           onClick={openNewConversation}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-indigo-300"
           aria-label="新建 AI 对话"
           title="新建 AI 对话"
         >

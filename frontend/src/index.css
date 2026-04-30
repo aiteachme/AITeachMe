@@ -14,8 +14,8 @@
     --feishu-text: #1F2329;
     --feishu-text-secondary: #646A73;
     --feishu-text-placeholder: #8F959E;
-    --feishu-blue: #3370FF;
-    --feishu-blue-hover: #245BDB;
+    --feishu-blue: #4F46E5;
+    --feishu-blue-hover: #4338CA;
     --feishu-border: #DEE0E3;
     --feishu-bg-secondary: #F5F6F7;
     --feishu-hover: #EFF1F3;
@@ -39,7 +39,7 @@
     --atm-scrollbar-track: rgba(15, 23, 42, 0.24);
     --atm-scrollbar-thumb: rgba(148, 163, 184, 0.32);
     --atm-scrollbar-thumb-hover: rgba(148, 163, 184, 0.52);
-    --atm-scrollbar-thumb-active: rgba(167, 139, 250, 0.68);
+    --atm-scrollbar-thumb-active: rgba(129, 140, 248, 0.68);
   }
 
   * {
@@ -220,12 +220,12 @@
     color: rgb(15 23 42);
   }
   25% {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: rgb(29, 78, 216);
+    background-color: rgba(99, 102, 241, 0.12);
+    color: rgb(109, 40, 217);
   }
   60% {
-    background-color: rgba(59, 130, 246, 0.06);
-    color: rgb(37, 99, 235);
+    background-color: rgba(99, 102, 241, 0.06);
+    color: rgb(124, 58, 237);
   }
   100% {
     background-color: transparent;
@@ -357,12 +357,12 @@
 
   /* ----------- Feishu-style text selection ----------- */
   .feishu-doc-content ::selection {
-    background-color: rgba(51, 112, 255, 0.15);
+    background-color: rgba(99, 102, 241, 0.15);
     color: inherit;
   }
 
   .feishu-doc-content ::-moz-selection {
-    background-color: rgba(51, 112, 255, 0.15);
+    background-color: rgba(99, 102, 241, 0.15);
     color: inherit;
   }
 
@@ -488,22 +488,22 @@
 @keyframes progress-breathing {
   0%, 100% {
     opacity: 0.9;
-    filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0));
+    filter: drop-shadow(0 0 0 rgba(99, 102, 241, 0));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 9px rgba(59, 130, 246, 0.18));
+    filter: drop-shadow(0 0 9px rgba(99, 102, 241, 0.2));
   }
 }
 
 @keyframes build-plan-progress-breathing {
   0%, 100% {
     opacity: 0.82;
-    filter: brightness(0.96) drop-shadow(0 0 0 rgba(51, 112, 255, 0));
+    filter: brightness(0.96) drop-shadow(0 0 0 rgba(99, 102, 241, 0));
   }
   50% {
     opacity: 1;
-    filter: brightness(1.08) drop-shadow(0 0 13px rgba(51, 112, 255, 0.28));
+    filter: brightness(1.08) drop-shadow(0 0 13px rgba(99, 102, 241, 0.3));
   }
 }
 
@@ -512,13 +512,13 @@
     background-color: rgb(244, 244, 245);
     box-shadow:
       inset 0 0 0 1px rgba(24, 24, 27, 0.04),
-      0 0 0 rgba(51, 112, 255, 0);
+      0 0 0 rgba(99, 102, 241, 0);
   }
   50% {
-    background-color: rgb(239, 246, 255);
+    background-color: rgb(238, 242, 255);
     box-shadow:
-      inset 0 0 0 1px rgba(51, 112, 255, 0.15),
-      0 0 18px rgba(51, 112, 255, 0.12);
+      inset 0 0 0 1px rgba(99, 102, 241, 0.16),
+      0 0 18px rgba(99, 102, 241, 0.14);
   }
 }
 
@@ -539,30 +539,30 @@
 @keyframes build-loading-track-pulse {
   0%, 100% {
     box-shadow:
-      inset 0 0 0 1px rgba(51, 112, 255, 0.12),
-      0 0 0 rgba(51, 112, 255, 0);
-    background-color: rgb(239, 246, 255);
+      inset 0 0 0 1px rgba(99, 102, 241, 0.12),
+      0 0 0 rgba(99, 102, 241, 0);
+    background-color: rgb(238, 242, 255);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px rgba(51, 112, 255, 0.25),
-      0 0 24px rgba(51, 112, 255, 0.2);
-    background-color: rgb(219, 234, 254);
+      inset 0 0 0 1px rgba(99, 102, 241, 0.25),
+      0 0 24px rgba(99, 102, 241, 0.22);
+    background-color: rgb(224, 231, 255);
   }
 }
 
 @keyframes build-loading-track-pulse-dark {
   0%, 100% {
     box-shadow:
-      inset 0 0 0 1px rgba(96, 165, 250, 0.16),
-      0 0 0 rgba(96, 165, 250, 0);
+      inset 0 0 0 1px rgba(129, 140, 248, 0.16),
+      0 0 0 rgba(129, 140, 248, 0);
     background-color: rgba(30, 41, 59, 0.92);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px rgba(96, 165, 250, 0.3),
-      0 0 24px rgba(96, 165, 250, 0.18);
-    background-color: rgba(30, 64, 175, 0.34);
+      inset 0 0 0 1px rgba(129, 140, 248, 0.32),
+      0 0 24px rgba(129, 140, 248, 0.2);
+    background-color: rgba(91, 33, 182, 0.32);
   }
 }
 
@@ -588,11 +588,11 @@
 @keyframes build-loading-fill-pulse {
   0%, 100% {
     filter: saturate(1) brightness(0.98);
-    box-shadow: 0 0 10px rgba(51, 112, 255, 0.22);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.24);
   }
   50% {
     filter: saturate(1.22) brightness(1.12);
-    box-shadow: 0 0 22px rgba(51, 112, 255, 0.42);
+    box-shadow: 0 0 22px rgba(99, 102, 241, 0.44);
   }
 }
 
@@ -636,7 +636,7 @@
   background-size: 260% 100%;
   box-shadow:
     0 0 0 1px rgba(24, 24, 27, 0.05),
-    0 0 16px rgba(51, 112, 255, 0.18);
+    0 0 16px rgba(99, 102, 241, 0.2);
   will-change: background-position, filter, opacity;
   animation:
     progress-shimmer 2.7s linear infinite,
@@ -749,9 +749,9 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(96, 165, 250, 0.08) 34%,
-    rgba(147, 197, 253, 0.34) 50%,
-    rgba(96, 165, 250, 0.08) 66%,
+    rgba(129, 140, 248, 0.08) 34%,
+    rgba(165, 180, 252, 0.34) 50%,
+    rgba(129, 140, 248, 0.08) 66%,
     transparent 100%
   );
 }

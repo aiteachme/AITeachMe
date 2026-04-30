@@ -52,7 +52,7 @@ function fallbackLane(
 function toneClasses(state: DerivedBuildState): string {
   if (state.isFailed) return "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10";
   if (state.isCompleted) return "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10";
-  if (state.isActive) return "border-sky-200 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10";
+  if (state.isActive) return "border-indigo-200 bg-indigo-50 dark:border-indigo-500/30 dark:bg-indigo-500/10";
   return "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/80";
 }
 
@@ -69,7 +69,7 @@ function laneBadgeTone(status?: string | null): string {
     case "accepted":
     case "running":
     case "publishing":
-      return "bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300";
+      return "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300";
     default:
       return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
   }
@@ -88,7 +88,7 @@ function laneDotTone(status?: string | null): string {
     case "accepted":
     case "running":
     case "publishing":
-      return "bg-sky-500";
+      return "bg-indigo-600";
     default:
       return "bg-slate-300";
   }
@@ -121,7 +121,7 @@ function laneStatusLabel(status?: string | null): string {
 function statusBadgeTone(state: DerivedBuildState): string {
   if (state.isFailed) return "border-rose-200 bg-rose-50 text-rose-700";
   if (state.isCompleted) return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (state.isActive) return "border-sky-200 bg-sky-50 text-sky-700";
+  if (state.isActive) return "border-indigo-200 bg-indigo-50 text-indigo-700";
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
@@ -135,8 +135,8 @@ function statusBadgeLabel(state: DerivedBuildState): string {
 
 function progressFillTone(state: DerivedBuildState): string {
   if (state.isFailed) return "bg-rose-500";
-  if (state.isCompleted) return "bg-emerald-500";
-  if (state.isActive) return "bg-sky-500";
+  if (state.isCompleted) return "bg-indigo-600";
+  if (state.isActive) return "bg-indigo-600";
   return "bg-slate-400";
 }
 
@@ -330,7 +330,7 @@ export function DigestBuildProgress({
   ) : state.isCompleted ? (
     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
   ) : state.isActive ? (
-    <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+    <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
   ) : (
     <Sparkles className="h-4 w-4 text-slate-500" />
   );
@@ -341,7 +341,7 @@ export function DigestBuildProgress({
       : state.isCompleted
         ? "border-emerald-200 bg-white"
         : state.isActive
-          ? "border-sky-200 bg-white"
+          ? "border-indigo-200 bg-white"
           : "border-slate-200 bg-white";
 
     return (
@@ -539,13 +539,13 @@ export function KnowledgeGraphBuildProgress({
     ? "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10"
     : state.isCompleted
       ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
-      : "border-sky-200 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10";
+      : "border-indigo-200 bg-indigo-50 dark:border-indigo-500/30 dark:bg-indigo-500/10";
   const icon = state.isFailed ? (
     <AlertTriangle className="h-4 w-4 text-rose-600" />
   ) : state.isCompleted ? (
     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
   ) : state.isActive || isFetching ? (
-    <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+    <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
   ) : (
     <Network className="h-4 w-4 text-slate-500" />
   );
@@ -567,7 +567,7 @@ export function KnowledgeGraphBuildProgress({
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/90 dark:bg-slate-900/80">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#0ea5e9_55%,#22c55e_100%)] transition-[width] duration-500"
+          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#4f46e5_58%,#4f46e5_100%)] transition-[width] duration-500"
           style={{ width: `${state.progress}%` }}
         />
       </div>

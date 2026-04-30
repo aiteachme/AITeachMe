@@ -22,7 +22,7 @@ export function PlannerPreviewMarkdown({
           className="flex items-center gap-2 text-xs text-zinc-400 dark:text-slate-500"
         >
           <span className="relative flex h-2 w-2">
-            <span className="build-live-dot h-2 w-2 text-blue-500" />
+            <span className="build-live-dot h-2 w-2 text-indigo-500" />
           </span>
           <span>正在继续规划...</span>
         </div>

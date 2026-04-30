@@ -32,7 +32,7 @@ const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   example: { label: "示例", color: "bg-pink-50 text-pink-600" },
   exercise: { label: "练习", color: "bg-rose-50 text-rose-600" },
   method: { label: "方法", color: "bg-amber-50 text-amber-600" },
-  proof_step: { label: "证明步骤", color: "bg-violet-50 text-violet-600" },
+  proof_step: { label: "证明步骤", color: "bg-indigo-50 text-indigo-600" },
   remark: { label: "备注", color: "bg-slate-100 text-slate-600" },
 };
 

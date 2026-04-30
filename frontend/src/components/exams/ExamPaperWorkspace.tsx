@@ -719,7 +719,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                       onClick={() => setIsQuestionNavOpen((current) => !current)}
                       className={`grid h-10 w-10 place-items-center rounded-xl border shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] ${
                         isQuestionNavOpen
-                          ? "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-200 dark:hover:bg-violet-500/20"
+                          ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/15 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
                           : "border-slate-200/80 bg-white/92 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:hover:bg-slate-900"
                       }`}
                       aria-label={isQuestionNavOpen ? "收起题目导航" : "展开题目导航"}

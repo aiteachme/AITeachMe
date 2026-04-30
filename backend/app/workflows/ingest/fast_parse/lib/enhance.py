@@ -26,6 +26,33 @@ from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_row
 logger = structlog.get_logger()
 
 
+async def _index_file_after_enhance(
+    *,
+    course_id: str,
+    file_id: str,
+    reason: str,
+) -> None:
+    normalized_course_id = str(course_id or "").strip()
+    if not normalized_course_id or not file_id:
+        return
+    try:
+        from app.workflows.digest.common.indexing import index_course_files_for_retrieval
+
+        await index_course_files_for_retrieval(
+            course_id=normalized_course_id,
+            file_ids=[file_id],
+            reason=reason,
+        )
+    except Exception as exc:
+        logger.warning(
+            "deep_enhance_post_index_failed",
+            course_id=normalized_course_id,
+            file_id=file_id,
+            reason=reason,
+            error=str(exc),
+        )
+
+
 def _relative_asset_link_prefix(*, markdown_key: str, asset_dir: str) -> str:
     markdown_parent = posixpath.dirname(markdown_key.rstrip("/")) or "."
     relative = posixpath.relpath(asset_dir.rstrip("/"), markdown_parent)
@@ -157,6 +184,11 @@ async def _run_deep_enhance_background(
                             ingest_status=IngestStatus.ENHANCE_FAILED.value,
                             digest_current_step="ingest.enhance.failed",
                         )
+                await _index_file_after_enhance(
+                    course_id=course_id,
+                    file_id=file_id,
+                    reason="ingest.enhance.failed_missing_markdown",
+                )
                 return
 
             markdown = markdown_path.read_text(encoding="utf-8")
@@ -235,6 +267,11 @@ async def _run_deep_enhance_background(
                 ocr_replacements=enhance_result.asset_ocr_replacements,
                 asset_count=len(asset_rows),
             )
+            await _index_file_after_enhance(
+                course_id=course_id,
+                file_id=file_id,
+                reason="ingest.enhance.completed",
+            )
 
     except Exception as exc:
         enhance_logger.exception("deep_enhance_background_failed", error=str(exc))
@@ -252,3 +289,8 @@ async def _run_deep_enhance_background(
                     )
         except Exception:
             enhance_logger.exception("deep_enhance_failure_update_error")
+        await _index_file_after_enhance(
+            course_id=course_id,
+            file_id=file_id,
+            reason="ingest.enhance.failed_fallback",
+        )

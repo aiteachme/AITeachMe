@@ -70,7 +70,13 @@ interface BuildPreviewDeltaEvent {
   updated_at?: string | null;
 }
 
-const PREVIEW_FLUSH_INTERVAL_MS = 180;
+const resolvePreviewFlushIntervalMs = () => {
+  const parsed = Number(import.meta.env.VITE_BUILD_PREVIEW_FLUSH_INTERVAL_MS);
+  if (!Number.isFinite(parsed)) return 160;
+  return Math.min(500, Math.max(60, parsed));
+};
+
+const PREVIEW_FLUSH_INTERVAL_MS = resolvePreviewFlushIntervalMs();
 
 export function useBuildEventStream({
   courseId,
