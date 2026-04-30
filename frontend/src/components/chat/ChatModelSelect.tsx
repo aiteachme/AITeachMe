@@ -76,13 +76,13 @@ export function ChatModelSelect({
     >
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-sm shadow-indigo-500/25 transition-transform group-hover:scale-[1.03]",
+          "flex shrink-0 items-center justify-center text-indigo-500 transition-colors group-hover:text-indigo-600 dark:text-indigo-300 dark:group-hover:text-indigo-200",
           isUsingOverride
-            ? "h-7 w-7 sm:h-6 sm:w-6"
+            ? "h-7 w-7 sm:h-5 sm:w-5"
             : "h-7 w-7",
         )}
       >
-        <Sparkles className={cn(isUsingOverride ? "h-3.5 w-3.5" : "h-4 w-4")} />
+        <Sparkles className={cn(isUsingOverride ? "h-4 w-4 sm:h-3.5 sm:w-3.5" : "h-[18px] w-[18px]")} />
       </span>
       <label htmlFor={selectId} className="sr-only">
         选择模型
