@@ -637,7 +637,6 @@ export function ForceGraphView({
     nodeG.on("click", (event, d) => {
       event.stopPropagation();
       setSelectedNodeId((prev) => (prev === d.id ? null : d.id));
-      void expandNode(d.id);
     });
 
     nodeG.append("circle")
@@ -763,6 +762,7 @@ export function ForceGraphView({
   }, [links, nodes.length, selectedNodeId, showEdgeLabels]);
 
   const graphIsLoading = initialLoading || (initialFetching && !rawData);
+  const selectedNodeExpanded = selectedNodeId !== null && expandedNodeIds.has(selectedNodeId);
 
   if (graphIsLoading) {
     return (
@@ -785,9 +785,9 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-0 lg:flex-row">
+    <div className="relative h-full min-h-0 overflow-hidden">
       {/* Graph panel */}
-      <div className="relative min-h-0 min-w-0 flex-1">
+      <div className="absolute inset-0 min-h-0 min-w-0">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
@@ -812,6 +812,17 @@ export function ForceGraphView({
               <Loader2 className="h-3 w-3 animate-spin" />
               展开中
             </span>
+          ) : null}
+          {selectedNodeId ? (
+            <button
+              onClick={() => void expandNode(selectedNodeId)}
+              disabled={selectedNodeExpanded || expandingNodeId === selectedNodeId}
+              className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/60 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
+              title={selectedNodeExpanded ? "当前节点已展开" : "展开当前节点的一跳邻居"}
+            >
+              {expandingNodeId === selectedNodeId ? <Loader2 className="h-3 w-3 animate-spin" /> : <NetworkIcon className="h-3 w-3" />}
+              {selectedNodeExpanded ? "已展开" : "展开邻居"}
+            </button>
           ) : null}
           <button
             onClick={() => setShowEdgeLabels((v) => !v)}
@@ -840,7 +851,7 @@ export function ForceGraphView({
       </div>
 
       {selectedNodeId && (
-        <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 lg:max-h-none lg:w-[320px] lg:border-l lg:border-t-0">
+        <div className="absolute inset-x-3 bottom-3 z-20 max-h-[45dvh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/12 dark:border-slate-800 dark:bg-slate-950 lg:inset-x-auto lg:bottom-3 lg:right-3 lg:top-3 lg:w-[340px] lg:max-h-none">
           <div className="p-4">
             <NodeDetailSidebar
               course={course}
