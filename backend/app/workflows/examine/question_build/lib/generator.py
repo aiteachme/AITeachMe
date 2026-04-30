@@ -45,7 +45,7 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
     re.IGNORECASE,
 )
-_QUESTION_GENERATION_CONCURRENCY = 4
+_QUESTION_GENERATION_CONCURRENCY = 12
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
