@@ -18,8 +18,8 @@ RUN npm run build
 # 生产镜像
 FROM nginx:alpine
 
-# Runtime upstream used by the Nginx template. Override this in Sealos when the
-# backend service name is not "backend". Example: http://atm-d:9020
+# Runtime upstream used by the Nginx template. Override this in Sealos with the
+# backend Kubernetes service FQDN, e.g. http://atm-d.ns.svc.cluster.local:9020.
 ENV AITEACHME_API_UPSTREAM=http://backend:9020
 
 # 复制构建产物到 nginx

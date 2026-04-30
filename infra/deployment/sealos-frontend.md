@@ -9,7 +9,7 @@ Cloudflare Pages 入口
   Browser -> https://aiteachme.pages.dev -> https://<backend-public>.sealosbja.site/api
 
 Sealos 前端入口
-  Browser -> https://<frontend>.sealosbja.site -> Nginx /api -> http://<backend-service>:9020
+  Browser -> https://<frontend>.sealosbja.site -> Nginx /api -> http://<backend-service>.<namespace>.svc.cluster.local:9020
 ```
 
 双入口测试阶段不要关闭后端公网访问，因为 Cloudflare Pages 仍然需要直接访问后端公网 API。等最终只保留 Sealos 前端后，才可以关闭后端公网访问。
@@ -41,13 +41,13 @@ CPU：0.25 Core 起步，测试不够再调到 0.5 Core
 内存：256 Mi 起步，测试不够再调到 512 Mi
 公网访问：开启
 环境变量：
-  AITEACHME_API_UPSTREAM=http://atm-d-tgkmhxmhacer.ns-icbq3ltw:9020
+  AITEACHME_API_UPSTREAM=http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
 ```
 
 如果后端 Sealos 内网地址变化，把 `AITEACHME_API_UPSTREAM` 改成新的后端内网地址：
 
 ```text
-AITEACHME_API_UPSTREAM=http://<后端 Service 名>:9020
+AITEACHME_API_UPSTREAM=http://<后端服务名>.<命名空间>.svc.cluster.local:9020
 ```
 
 前端 App 不要配置 `VITE_API_URL`。Sealos 前端应该走同源 `/api`，再由 Nginx 反代到后端内网服务。
@@ -60,7 +60,7 @@ AITEACHME_API_UPSTREAM=http://<后端 Service 名>:9020
 
 ```yaml
 env:
-  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw:9020
+  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
   FRONTEND_PUBLIC_URL: https://ghxbqhziktyi.sealosbja.site
   SEALOS_FRONTEND_DEPLOYMENT: atm-frontend
   SEALOS_NAMESPACE: ns-icbq3ltw
