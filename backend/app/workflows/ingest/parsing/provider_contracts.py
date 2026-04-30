@@ -19,6 +19,16 @@ ProviderName = Literal[
 ]
 
 
+class ExternalProviderTimeoutError(RuntimeError):
+    """Raised when an external parse provider misses the end-to-end time budget."""
+
+    def __init__(self, provider_name: str, timeout_s: float) -> None:
+        self.provider_name = str(provider_name or "external_provider")
+        self.timeout_s = float(timeout_s)
+        timeout_display = int(timeout_s) if float(timeout_s).is_integer() else timeout_s
+        super().__init__(f"{self.provider_name} 解析超时：{timeout_display} 秒内未拿到最终结果")
+
+
 class ProviderCapability(BaseModel):
     """Runtime capability advertised by a parse provider."""
 
@@ -71,6 +81,7 @@ class ParseDecision(BaseModel):
 
 
 __all__ = [
+    "ExternalProviderTimeoutError",
     "ParseDecision",
     "ProviderCapability",
     "ProviderName",

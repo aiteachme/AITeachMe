@@ -30,6 +30,8 @@ from typing import Any
 
 import structlog
 
+from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
+
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
 logger = structlog.get_logger(__name__)
 
@@ -71,6 +73,37 @@ class MinerUExtractedResult:
     file_name: str
 
 
+def _build_deadline(total_timeout_s: float | None) -> float | None:
+    if total_timeout_s is None or total_timeout_s <= 0:
+        return None
+    return time.monotonic() + float(total_timeout_s)
+
+
+def _remaining_timeout_s(
+    *,
+    deadline: float | None,
+    fallback_timeout_s: float,
+    provider_name: str,
+    total_timeout_s: float | None,
+) -> float:
+    if deadline is None:
+        return fallback_timeout_s
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ExternalProviderTimeoutError(provider_name, total_timeout_s or fallback_timeout_s)
+    return max(min(float(fallback_timeout_s), remaining), 0.5)
+
+
+def _raise_timeout_if_deadline_exceeded(
+    *,
+    deadline: float | None,
+    provider_name: str,
+    total_timeout_s: float | None,
+) -> None:
+    if deadline is not None and time.monotonic() >= deadline:
+        raise ExternalProviderTimeoutError(provider_name, total_timeout_s or 0)
+
+
 def parse_file_to_dir(
     *,
     file_path: Path,
@@ -79,7 +112,7 @@ def parse_file_to_dir(
     base_url: str = DEFAULT_MINERU_BASE_URL,
     poll_interval_s: float = 2.0,
     poll_timeout_s: float = 600.0,
-
+    total_timeout_s: float | None = None,
 ) -> MinerUExtractedResult:
     """调用 MinerU Cloud 解析单个文件，并将 zip 解压到 output_dir。
 
@@ -105,6 +138,7 @@ def parse_file_to_dir(
 
     base = base_url.rstrip("/")
     output_dir.mkdir(parents=True, exist_ok=True)
+    deadline = _build_deadline(total_timeout_s)
     logger.info(
         "mineru_cloud_parse_requested",
         file_name=file_path.name,
@@ -119,10 +153,17 @@ def parse_file_to_dir(
         base,
         options=options,
         file_name=file_path.name,
+        deadline=deadline,
+        total_timeout_s=total_timeout_s,
     )
 
     # 2) 上传文件字节到预签名 URL
-    _put_file(upload_url, file_path)
+    _put_file(
+        upload_url,
+        file_path,
+        deadline=deadline,
+        total_timeout_s=total_timeout_s,
+    )
     logger.info("mineru_cloud_upload_completed", batch_id=batch_id, file_name=file_name)
 
     # 3) 轮询直到 done/failed
@@ -133,11 +174,18 @@ def parse_file_to_dir(
         file_name=file_name,
         poll_interval_s=poll_interval_s,
         poll_timeout_s=poll_timeout_s,
+        deadline=deadline,
+        total_timeout_s=total_timeout_s,
     )
 
     # 4) 下载 zip
     zip_path = output_dir / "mineru_result.zip"
-    _download_file(zip_url, zip_path)
+    _download_file(
+        zip_url,
+        zip_path,
+        deadline=deadline,
+        total_timeout_s=total_timeout_s,
+    )
     logger.info("mineru_cloud_result_downloaded", batch_id=batch_id, zip_path=str(zip_path))
 
     # 5) 解压并定位 full.md 与 images/
@@ -171,6 +219,8 @@ def _request_batch_upload_url(
     *,
     options: MinerURequestOptions,
     file_name: str,
+    deadline: float | None,
+    total_timeout_s: float | None,
 ) -> tuple[str, str, str]:
     # 严格对齐 backend/playground/mineru_test.py：requests.post(..., json=payload)
     requests = _get_requests()
@@ -189,8 +239,23 @@ def _request_batch_upload_url(
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=_remaining_timeout_s(
+                deadline=deadline,
+                fallback_timeout_s=60,
+                provider_name="MinerU",
+                total_timeout_s=total_timeout_s,
+            ),
+        )
     except Exception as exc:
+        _raise_timeout_if_deadline_exceeded(
+            deadline=deadline,
+            provider_name="MinerU",
+            total_timeout_s=total_timeout_s,
+        )
         raise RuntimeError(f"MinerU 申请上传链接失败: {exc}") from exc
 
     if resp.status_code != 200:
@@ -240,6 +305,8 @@ def _poll_until_done(
     file_name: str,
     poll_interval_s: float,
     poll_timeout_s: float,
+    deadline: float | None,
+    total_timeout_s: float | None,
 ) -> str:
     # 严格对齐 backend/playground/mineru_test.py：requests.get(..., headers=query_headers)
     requests = _get_requests()
@@ -250,8 +317,22 @@ def _poll_until_done(
     started_at = time.monotonic()
     while True:
         try:
-            resp = requests.get(url, headers=headers, timeout=60)
+            resp = requests.get(
+                url,
+                headers=headers,
+                timeout=_remaining_timeout_s(
+                    deadline=deadline,
+                    fallback_timeout_s=60,
+                    provider_name="MinerU",
+                    total_timeout_s=total_timeout_s,
+                ),
+            )
         except Exception as exc:
+            _raise_timeout_if_deadline_exceeded(
+                deadline=deadline,
+                provider_name="MinerU",
+                total_timeout_s=total_timeout_s,
+            )
             raise RuntimeError(f"MinerU 轮询失败: {exc}") from exc
 
         if resp.status_code != 200:
@@ -306,16 +387,42 @@ def _poll_until_done(
         if elapsed >= poll_timeout_s:
             raise RuntimeError("MinerU 解析超时：等待结果时间过长")
 
-        time.sleep(max(poll_interval_s, 0.5))
+        sleep_budget_s = _remaining_timeout_s(
+            deadline=deadline,
+            fallback_timeout_s=poll_interval_s,
+            provider_name="MinerU",
+            total_timeout_s=total_timeout_s,
+        )
+        time.sleep(max(min(poll_interval_s, sleep_budget_s), 0.5))
 
 
-def _put_file(url: str, file_path: Path) -> None:
+def _put_file(
+    url: str,
+    file_path: Path,
+    *,
+    deadline: float | None,
+    total_timeout_s: float | None,
+) -> None:
     # 严格对齐 backend/playground/mineru_test.py：requests.put(target_url, data=f)
     requests = _get_requests()
     try:
         with file_path.open("rb") as f:
-            resp = requests.put(url, data=f, timeout=120)
+            resp = requests.put(
+                url,
+                data=f,
+                timeout=_remaining_timeout_s(
+                    deadline=deadline,
+                    fallback_timeout_s=120,
+                    provider_name="MinerU",
+                    total_timeout_s=total_timeout_s,
+                ),
+            )
     except Exception as exc:
+        _raise_timeout_if_deadline_exceeded(
+            deadline=deadline,
+            provider_name="MinerU",
+            total_timeout_s=total_timeout_s,
+        )
         raise RuntimeError(f"MinerU 上传失败: {exc}") from exc
 
     # 示例脚本把 200 当成功；但部分对象存储会返回 204。
@@ -324,7 +431,13 @@ def _put_file(url: str, file_path: Path) -> None:
         raise RuntimeError(f"MinerU 上传失败: HTTP {resp.status_code}; resp={snippet}")
 
 
-def _download_file(url: str, dest: Path) -> None:
+def _download_file(
+    url: str,
+    dest: Path,
+    *,
+    deadline: float | None,
+    total_timeout_s: float | None,
+) -> None:
     # 对齐示例：requests.get(zip_url, stream=True)
     requests = _get_requests()
     proxy_modes = (True, False) if requests.utils.get_environ_proxies(url) else (True,)
@@ -336,7 +449,16 @@ def _download_file(url: str, dest: Path) -> None:
                 dest.unlink()
             session = requests.Session()
             session.trust_env = trust_env
-            with session.get(url, stream=True, timeout=240) as resp:
+            with session.get(
+                url,
+                stream=True,
+                timeout=_remaining_timeout_s(
+                    deadline=deadline,
+                    fallback_timeout_s=240,
+                    provider_name="MinerU",
+                    total_timeout_s=total_timeout_s,
+                ),
+            ) as resp:
                 if resp.status_code != 200:
                     snippet = (resp.text or "").strip().replace("\r", " ").replace("\n", " ")[:600]
                     raise RuntimeError(f"MinerU 下载 zip 失败: HTTP {resp.status_code}; resp={snippet}")
@@ -347,6 +469,11 @@ def _download_file(url: str, dest: Path) -> None:
                             f.write(chunk)
                 return
         except Exception as exc:
+            _raise_timeout_if_deadline_exceeded(
+                deadline=deadline,
+                provider_name="MinerU",
+                total_timeout_s=total_timeout_s,
+            )
             last_exc = exc
             if dest.exists():
                 dest.unlink()

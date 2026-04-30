@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.ingest.parsing.defaults import DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
@@ -24,6 +25,7 @@ from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
 )
 from app.workflows.ingest.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
 from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
@@ -176,6 +178,7 @@ async def _run_mineru_external_parse(
             is_ocr=bool(state.get("mineru_is_ocr", False)),
         ),
         output_dir=Path(state["temp_dir"]) / "mineru_output",
+        total_timeout_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
     )
 
     mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
@@ -209,6 +212,7 @@ async def _run_mineru_external_parse(
             "file_name": extracted.file_name,
             "copied_assets": copied_assets,
             "token_source": state.get("mineru_token_source"),
+            "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
         },
     )
 
@@ -227,6 +231,7 @@ async def _run_paddle_ocr_external_parse(
             api_token=state.get("paddle_ocr_token") or "",
         ),
         output_dir=Path(state["temp_dir"]) / "paddle_ocr_output",
+        total_timeout_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
     )
 
     paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
@@ -260,6 +265,7 @@ async def _run_paddle_ocr_external_parse(
             "model": extracted.model,
             "copied_assets": copied_assets,
             "token_source": state.get("paddle_ocr_token_source"),
+            "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
         },
     )
 
@@ -352,6 +358,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                         provider_order.append(provider_name)
 
                 parse_result = None
+                timeout_triggered_provider: str | None = None
                 for provider_name in provider_order:
                     provider_started_at = time.monotonic()
                     try:
@@ -391,6 +398,18 @@ def build_parse_file_node(*, context: WorkflowContext):
                                 **provider_metadata,
                                 "provider_failures": provider_failures,
                             }
+                        break
+                    except ExternalProviderTimeoutError as exc:
+                        attempted_external_parsers.append(provider_name)
+                        provider_failures[provider_name] = str(exc)
+                        timeout_triggered_provider = provider_name
+                        external_elapsed_s[provider_name] = round(time.monotonic() - provider_started_at, 2)
+                        logger.warning(
+                            "ingest_external_provider_attempt_timed_out",
+                            provider=provider_name,
+                            timeout_budget_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+                            error=str(exc),
+                        )
                         break
                     except Exception as exc:
                         attempted_external_parsers.append(provider_name)
@@ -434,11 +453,14 @@ def build_parse_file_node(*, context: WorkflowContext):
                     provider_metadata = {
                         "provider_failures": provider_failures,
                         "fallback_to": "local",
+                        "timeout_provider": timeout_triggered_provider,
+                        "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
                     }
                     logger.info(
                         "ingest_external_provider_fell_back_to_local",
                         attempted_providers=attempted_external_parsers,
                         local_parser=local_parse_result.parser_used,
+                        timeout_provider=timeout_triggered_provider,
                     )
             else:
                 parse_result = await fast_parse_file(
