@@ -1,9 +1,9 @@
 import { MessageSquareText, X } from "lucide-react";
 
-import type { ChatModelChoice } from "../chat/ChatModelSelect";
-import { ChatComposer } from "../chat/ChatComposer";
-import { cn } from "../../lib/utils";
-import { AI_SOURCE_EXAM_QUESTION } from "./types";
+import type { ChatModelChoice } from "../../chat/ChatModelSelect";
+import { ChatComposer } from "../../chat/ChatComposer";
+import { cn } from "../../../lib/utils";
+import { AI_SOURCE_EXAM_QUESTION } from "../types";
 import type { PendingSelectionContext } from "./AiConversationTypes";
 import { AiConversationSelectionTextPreview } from "./AiConversationSelectionTextPreview";
 

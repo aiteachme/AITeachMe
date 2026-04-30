@@ -1,8 +1,8 @@
 import type { MutableRefObject } from "react";
 import { Loader2 } from "lucide-react";
 
-import type { ChatSessionMessage } from "../../hooks/useChatSession";
-import { ChatTranscript } from "../chat/ChatTranscript";
+import type { ChatSessionMessage } from "../../../hooks/useChatSession";
+import { ChatTranscript } from "../../chat/ChatTranscript";
 import { AiConversationDraftHome } from "./AiConversationDraftHome";
 
 interface AiConversationMessageViewProps {

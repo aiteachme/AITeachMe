@@ -1,4 +1,4 @@
-import { HeroAnimation } from "../ui/HeroAnimation";
+import { HeroAnimation } from "../../ui/HeroAnimation";
 
 interface AiConversationDraftHomeProps {
   title: string;

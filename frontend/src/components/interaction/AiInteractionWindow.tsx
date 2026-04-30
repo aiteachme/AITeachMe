@@ -25,7 +25,7 @@ interface AiConversationViewLoaderProps {
 const SIDEBAR_TRANSITION_MS = 220;
 
 const LazyAiConversationView = lazy(() =>
-  import("./AiConversationView").then((module) => ({
+  import("./conversation/AiConversationView").then((module) => ({
     default: module.AiConversationView as ComponentType<AiConversationViewLoaderProps>,
   })),
 );

@@ -1,4 +1,4 @@
-import type { ChatSelectionContext } from "../../api/generated/model";
+import type { ChatSelectionContext } from "../../../api/generated/model";
 
 export interface PendingSelectionContext {
   source: string;

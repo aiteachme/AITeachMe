@@ -1,6 +1,6 @@
 import { ChevronRight, MapPin, Plus, Trash2 } from "lucide-react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../../lib/utils";
 import type { ChatSessionSelectionTarget } from "./AiConversationTypes";
 import { AiConversationSelectionTextPreview } from "./AiConversationSelectionTextPreview";
 

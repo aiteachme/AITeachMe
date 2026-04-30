@@ -2,35 +2,35 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { apiClient, getApiErrorMessage } from "../../api/client";
+import { apiClient, getApiErrorMessage } from "../../../api/client";
 import type {
   ApiResponsePaginatedDataChatSessionItem,
   ChatSendRequest,
   ChatSessionItem,
-} from "../../api/generated/model";
-import { type ChatClientAction, type ChatSessionMessage, useChatSession } from "../../hooks/useChatSession";
-import { buildCoursePath, buildCourseSubPath, isCourseRouteActive } from "../../lib/courseNavigation";
-import { cn } from "../../lib/utils";
-import { ChatCitationModal } from "../chat/ChatCitationModal";
+} from "../../../api/generated/model";
+import { type ChatClientAction, type ChatSessionMessage, useChatSession } from "../../../hooks/useChatSession";
+import { buildCoursePath, buildCourseSubPath, isCourseRouteActive } from "../../../lib/courseNavigation";
+import { cn } from "../../../lib/utils";
+import { ChatCitationModal } from "../../chat/ChatCitationModal";
 import {
   DEFAULT_CHAT_MODEL_CHOICE,
   type ChatModelChoice,
   toChatModelChoice,
   toChatRequestModel,
-} from "../chat/ChatModelSelect";
+} from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationHeader } from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
-import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail } from "./types";
+import { useAiInteraction } from "../AiInteractionProvider";
+import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail } from "../types";
 import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
   getAiConversationBackendCourseId,
   parseExamQuestionAnchorId,
-} from "./types";
+} from "../types";
 
 interface AiConversationViewProps {
   scope: AiConversationScope | null;
