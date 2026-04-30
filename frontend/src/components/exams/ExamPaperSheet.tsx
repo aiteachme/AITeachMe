@@ -299,7 +299,7 @@ export function ExamPaperSheet({
 
   return (
                 <div
-                  className="relative mx-auto max-w-[1080px] pb-12"
+                  className="relative mx-auto max-w-[1240px] pb-12"
                   style={
                     pageScale < 1
                       ? {

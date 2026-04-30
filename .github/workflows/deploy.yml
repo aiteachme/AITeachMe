@@ -13,6 +13,25 @@ on:
 permissions:
   contents: read
 
+env:
+  # Non-secret Sealos/ACR deployment constants. Update these here when the
+  # Sealos app name, public address, internal service address, or registry path changes.
+  AITEACHME_API_UPSTREAM: http://atm-d-tqkmhxmhaeer.ns-icbq3ltw:9020
+  BACKEND_ACR_NAMESPACE: aiteachme
+  BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+  BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
+  BACKEND_IMAGE_NAME: aiteachme-backend
+  BACKEND_ROLLOUT_TIMEOUT_SECONDS: "3600"
+  FRONTEND_ACR_NAMESPACE: aiteachme
+  FRONTEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+  FRONTEND_IMAGE_NAME: aiteachme-frontend
+  FRONTEND_PUBLIC_URL: https://ghxbqhzlktyi.sealosbja.site
+  FRONTEND_ROLLOUT_TIMEOUT_SECONDS: "600"
+  SEALOS_BACKEND_DEPLOYMENT: atm-d
+  SEALOS_FRONTEND_DEPLOYMENT: atm-frontend
+  SEALOS_IMAGE_PULL_SECRET: aliyun-acr-regcred
+  SEALOS_NAMESPACE: ns-icbq3ltw
+
 concurrency:
   group: deploy-main
   # Keep only the newest main deployment; older in-progress runs may appear as canceled.
@@ -94,6 +113,240 @@ jobs:
         run: |
           echo "Frontend: Cloudflare Pages deploy hook triggered." >> "$GITHUB_STEP_SUMMARY"
 
+  deploy-frontend-sealos:
+    name: Deploy frontend to Sealos
+    runs-on: ubuntu-latest
+    needs: verify-latest
+    if: needs.verify-latest.outputs.should_deploy == 'true'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
+      SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+      ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
+      ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+    steps:
+      - name: Check Sealos frontend deployment opt-in
+        id: optin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SEALOS_FRONTEND_DEPLOYMENT}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Sealos frontend deploy skipped."
+              echo
+              echo "Set workflow env SEALOS_FRONTEND_DEPLOYMENT after creating the Sealos frontend app."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.optin.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Validate Sealos frontend deploy configuration
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
+          [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
+          [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("workflow env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_FRONTEND_DEPLOYMENT}" ] || missing+=("workflow env:SEALOS_FRONTEND_DEPLOYMENT")
+          [ -n "${FRONTEND_ACR_REGISTRY}" ] || missing+=("workflow env:FRONTEND_ACR_REGISTRY")
+          [ -n "${FRONTEND_ACR_NAMESPACE}" ] || missing+=("workflow env:FRONTEND_ACR_NAMESPACE")
+          [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("workflow env:FRONTEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("workflow env:SEALOS_IMAGE_PULL_SECRET")
+          [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("workflow env:AITEACHME_API_UPSTREAM")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required Sealos frontend deploy configuration:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "FRONTEND_ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.optin.outputs.enabled == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.optin.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Aliyun ACR
+        if: steps.optin.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.FRONTEND_ACR_REGISTRY }}
+          username: ${{ env.ALIYUN_ACR_USERNAME }}
+          password: ${{ env.ALIYUN_ACR_PASSWORD }}
+
+      - name: Resolve frontend image tags
+        if: steps.optin.outputs.enabled == 'true'
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          ghcr_image="ghcr.io/${owner}/${FRONTEND_IMAGE_NAME}"
+          acr_image="${FRONTEND_ACR_REGISTRY}/${FRONTEND_ACR_NAMESPACE}/${FRONTEND_IMAGE_NAME}"
+          short_sha="${SOURCE_SHA::7}"
+          version_tag="nginx-${short_sha}"
+
+          echo "image=${acr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "ghcr_image=${ghcr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:nginx-latest,${acr_image}:${version_tag},${acr_image}:nginx-latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push frontend image
+        if: steps.optin.outputs.enabled == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/deployment/docker/frontend.Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            VITE_API_URL=
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.title=AITeachMe frontend nginx
+          cache-from: type=gha,scope=frontend-nginx
+          cache-to: type=gha,mode=max,scope=frontend-nginx
+
+      - name: Set up kubectl
+        if: steps.optin.outputs.enabled == 'true'
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure Sealos kubeconfig
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kube_dir="${RUNNER_TEMP}/kube"
+          mkdir -p "${kube_dir}"
+          printf '%s' "${SEALOS_KUBECONFIG_B64}" | base64 -d > "${kube_dir}/config"
+          chmod 600 "${kube_dir}/config"
+          echo "KUBECONFIG=${kube_dir}/config" >> "$GITHUB_ENV"
+
+      - name: Update Sealos frontend deployment
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Deploying frontend image: ${{ steps.image.outputs.image }}"
+          echo "API upstream: ${AITEACHME_API_UPSTREAM}"
+          echo "Rollout timeout: ${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}s"
+
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            --type=merge \
+            -p "{\"spec\":{\"progressDeadlineSeconds\":${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}}}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "secret/${SEALOS_IMAGE_PULL_SECRET}" \
+            >/dev/null
+
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" set env \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" set image \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            "*=${{ steps.image.outputs.image }}"
+
+          kubectl -n "${SEALOS_NAMESPACE}" rollout status \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            --timeout="${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}s"
+
+      - name: Show Sealos frontend rollout diagnostics
+        if: always() && steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set +e
+
+          echo "## Deployment"
+          kubectl -n "${SEALOS_NAMESPACE}" get \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
+            -o wide
+
+          echo
+          echo "## ReplicaSets"
+          kubectl -n "${SEALOS_NAMESPACE}" get rs -o wide \
+            | grep -E "^${SEALOS_FRONTEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Pods"
+          kubectl -n "${SEALOS_NAMESPACE}" get pods -o wide \
+            | grep -E "^${SEALOS_FRONTEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Recent events"
+          kubectl -n "${SEALOS_NAMESPACE}" get events --sort-by=.lastTimestamp \
+            | grep -E "^LAST SEEN|${SEALOS_FRONTEND_DEPLOYMENT}" \
+            | tail -n 80 || true
+
+      - name: Smoke test Sealos frontend
+        if: steps.optin.outputs.enabled == 'true' && env.FRONTEND_PUBLIC_URL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base_url="${FRONTEND_PUBLIC_URL%/}"
+          for attempt in {1..12}; do
+            if curl -fsS "${base_url}/" >/dev/null && curl -fsS "${base_url}/api/health" >/dev/null; then
+              exit 0
+            fi
+            echo "Frontend smoke check failed; retrying (${attempt}/12)..."
+            sleep 10
+          done
+
+          echo "Sealos frontend smoke check did not pass: ${base_url}" >&2
+          exit 1
+
+      - name: Sealos frontend summary
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          {
+            echo "Frontend image: ${{ steps.image.outputs.image }}"
+            echo "Sealos namespace: ${SEALOS_NAMESPACE}"
+            echo "Sealos deployment: ${SEALOS_FRONTEND_DEPLOYMENT}"
+            echo "API upstream: ${AITEACHME_API_UPSTREAM}"
+            if [ -n "${FRONTEND_PUBLIC_URL}" ]; then
+              echo "Public URL: ${FRONTEND_PUBLIC_URL}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy-backend:
     name: Deploy backend to Sealos
     runs-on: ubuntu-latest
@@ -103,16 +356,8 @@ jobs:
       contents: read
       packages: write
     env:
-      BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
-      SEALOS_BACKEND_DEPLOYMENT: atm-d
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
-      SEALOS_NAMESPACE: ns-icbq3ltw
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
-      ROLLOUT_TIMEOUT_SECONDS: "3600"
-      BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
-      BACKEND_ACR_NAMESPACE: aiteachme
-      BACKEND_IMAGE_NAME: aiteachme-backend
-      SEALOS_IMAGE_PULL_SECRET: aliyun-acr-regcred
       ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
       ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
@@ -144,8 +389,8 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${ROLLOUT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
-            echo "ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
+          if ! [[ "${BACKEND_ROLLOUT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "BACKEND_ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
             exit 1
           fi
 
@@ -218,12 +463,12 @@ jobs:
           set -euo pipefail
 
           echo "Deploying backend image: ${{ steps.image.outputs.image }}"
-          echo "Rollout timeout: ${ROLLOUT_TIMEOUT_SECONDS}s"
+          echo "Rollout timeout: ${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
           kubectl -n "${SEALOS_NAMESPACE}" patch \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             --type=merge \
-            -p "{\"spec\":{\"progressDeadlineSeconds\":${ROLLOUT_TIMEOUT_SECONDS}}}"
+            -p "{\"spec\":{\"progressDeadlineSeconds\":${BACKEND_ROLLOUT_TIMEOUT_SECONDS}}}"
 
           kubectl -n "${SEALOS_NAMESPACE}" get \
             "secret/${SEALOS_IMAGE_PULL_SECRET}" \
@@ -239,7 +484,7 @@ jobs:
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            --timeout="${ROLLOUT_TIMEOUT_SECONDS}s"
+            --timeout="${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
       - name: Show Sealos rollout diagnostics
         if: always()

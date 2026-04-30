@@ -131,6 +131,9 @@ interface ExamPrewarmStatusResponse {
   error_message?: string | null;
 }
 
+const EXAM_PAGE_SHELL_CLASS = "min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-10 lg:px-12 lg:pt-10 xl:px-16";
+const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+
 
 async function deleteExamPaper(courseId: string, paperId: number) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamPaperDeleteResponse } }>(
@@ -423,8 +426,8 @@ export function ExamsPage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
-        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className={EXAM_ALERT_CLASS}>
           缺少课程标识，暂时无法加载考试中心。
         </div>
       </div>
@@ -433,76 +436,74 @@ export function ExamsPage() {
 
   return (
     <>
-      <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6">
-          <section className="overflow-hidden px-2 py-4 sm:px-4 lg:px-6">
-            <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 px-3 py-1 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <Sparkles className="h-4 w-4 text-indigo-500" />
-                  Exam Studio
-                </div>
-
-                <h1 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-5xl">
-                  所有考试卷都在这里
-                </h1>
-
-                <p className="mt-4 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-400 sm:text-lg">
-                  一键创建新的练习卷，继续完成未做完的测试，也可以回看已经生成过的考卷与得分记录。
-                </p>
-
-                <div className="mt-8 flex flex-wrap gap-7">
-                  <div className="flex w-full items-center gap-2 sm:w-auto">
-                    <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
-                        onClick={handleCreateExam}
-                        disabled={generateExam.isPending}
-                      >
-                        {generateExam.isPending ? (
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                        ) : (
-                          <Plus className="h-4 w-4 shrink-0" />
-                        )}
-                        <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                        onClick={() => setIsCreateConfigOpen(true)}
-                        aria-label="更多考卷设置"
-                        title="更多设置"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <ExamPrewarmStatusIcon
-                      status={prewarmStatusQuery.data}
-                      isFetching={prewarmStatusQuery.isFetching}
-                      hasError={prewarmStatusQuery.isError}
-                    />
-                  </div>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
-                  >
-                    <BookOpen className="h-4 w-4" />
-                    题库查看
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                    onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
-                  >
-                    <Tags className="h-4 w-4" />
-                    题型查看
-                  </Button>
-                </div>
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className="flex flex-col gap-6">
+          <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
+                <FileText className="h-3.5 w-3.5" />
+                考试中心
               </div>
+              <div>
+                <h1 className="break-words text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
+                  {courseName ?? "当前课程"}
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+                  创建练习卷、继续未完成考试，并回看历史得分与题目沉淀。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
+                    onClick={handleCreateExam}
+                    disabled={generateExam.isPending}
+                  >
+                    {generateExam.isPending ? (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4 shrink-0" />
+                    )}
+                    <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    onClick={() => setIsCreateConfigOpen(true)}
+                    aria-label="更多考卷设置"
+                    title="更多设置"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </div>
+                <ExamPrewarmStatusIcon
+                  status={prewarmStatusQuery.data}
+                  isFetching={prewarmStatusQuery.isFetching}
+                  hasError={prewarmStatusQuery.isError}
+                />
+              </div>
+              <Button
+                size="lg"
+                variant="outline"
+                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
+                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
+              >
+                <BookOpen className="h-4 w-4" />
+                题库查看
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
+                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
+              >
+                <Tags className="h-4 w-4" />
+                题型查看
+              </Button>
             </div>
           </section>
 
@@ -554,7 +555,7 @@ export function ExamsPage() {
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
                       ) : (
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,250px))] justify-start gap-5">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] justify-items-center gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
                             const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
 
@@ -1108,9 +1109,9 @@ function ExamCatalogShell({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="min-h-full px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="px-2 py-4 sm:px-4 lg:px-6">
+    <div className={EXAM_PAGE_SHELL_CLASS}>
+      <div className="flex flex-col gap-6">
+        <header>
           <button
             type="button"
             onClick={() => navigate(buildCoursePath(courseId, "exams"))}
@@ -1121,14 +1122,14 @@ function ExamCatalogShell({
           </button>
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-                <Sparkles className="h-4 w-4 text-indigo-500" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
+                <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                 {eyebrow}
               </div>
-              <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-4xl">
+              <h1 className="mt-4 text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
                 {title}
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400 sm:text-base">
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
                 {description}
               </p>
             </div>
@@ -1233,8 +1234,8 @@ export function QuestionTemplatesPage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
-        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className={EXAM_ALERT_CLASS}>
           缺少课程标识，暂时无法加载题库。
         </div>
       </div>
@@ -1382,8 +1383,8 @@ export function QuestionTypesPage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
-        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className={EXAM_ALERT_CLASS}>
           缺少课程标识，暂时无法加载题型。
         </div>
       </div>
@@ -1455,8 +1456,8 @@ export function ExamPaperPage() {
 
   if (!courseId || !examPaperId || Number.isNaN(Number(examPaperId))) {
     return (
-      <div className="min-h-full px-6 pb-8 pt-20 lg:pt-8">
-        <div className="mx-auto max-w-5xl rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className={EXAM_ALERT_CLASS}>
           缺少考卷信息，暂时无法进入考试页面。
         </div>
       </div>

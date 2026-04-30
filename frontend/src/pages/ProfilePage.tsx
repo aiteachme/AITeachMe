@@ -20,6 +20,7 @@ import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 
 const surfaceClass =
   "rounded-lg border border-slate-200/80 bg-white/85 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80";
+const pageShellClass = "min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-10 lg:px-12 lg:pt-10 xl:px-16";
 
 function formatPercent(value?: number | null): string {
   return value != null && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "--";
@@ -136,7 +137,7 @@ export function ProfilePage() {
 
   if (!courseId) {
     return (
-      <div className="min-h-full pb-24 sm:pb-12">
+      <div className={pageShellClass}>
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           缺少课程标识，暂时无法加载学习画像。
         </div>
@@ -145,7 +146,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="min-h-full pb-24 sm:pb-12">
+    <div className={pageShellClass}>
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl space-y-3">
