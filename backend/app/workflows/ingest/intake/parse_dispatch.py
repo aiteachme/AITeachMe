@@ -17,6 +17,33 @@ from app.workflows.ingest.parsing.defaults import DEFAULT_PARSE_CONCURRENCY
 logger = structlog.get_logger()
 
 
+async def _index_file_after_parse(
+    *,
+    course_id: str | None,
+    file_id: str,
+    reason: str,
+) -> None:
+    normalized_course_id = str(course_id or "").strip()
+    if not normalized_course_id or not file_id:
+        return
+    try:
+        from app.workflows.digest.common.indexing import index_course_files_for_retrieval
+
+        await index_course_files_for_retrieval(
+            course_id=normalized_course_id,
+            file_ids=[file_id],
+            reason=reason,
+        )
+    except Exception as exc:
+        logger.warning(
+            "file_parse_post_index_failed",
+            course_id=normalized_course_id,
+            file_id=file_id,
+            reason=reason,
+            error=str(exc),
+        )
+
+
 def _start_parse_for_files(
     session: Session,
     *,
@@ -145,6 +172,15 @@ async def run_parse_files_background(
                 return
 
             final_state = result.require_value()
+            await _index_file_after_parse(
+                course_id=course_id,
+                file_id=file_id,
+                reason=(
+                    "ingest.parse.completed_pre_enhance"
+                    if bool(final_state.get("needs_enhance"))
+                    else "ingest.parse.completed"
+                ),
+            )
             from app.workflows.ingest.fast_parse.lib.lifecycle import dispatch_enhancement_if_needed
 
             dispatched_enhance = dispatch_enhancement_if_needed(

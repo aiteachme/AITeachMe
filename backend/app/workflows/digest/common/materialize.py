@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.search.llamaindex_index import aembed_texts_for_ingestion
 from app.shared.infra.storage import resolve_course_storage_scope
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
@@ -250,8 +250,9 @@ async def materialize_shared_inputs(
                     embedding_targets.append(chunk)
 
             if embedding_targets:
-                embeddings = await aembed_texts(
+                embeddings = await aembed_texts_for_ingestion(
                     [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets],
+                    model=runtime.embedding_model,
                     soft_fail=True,
                 )
                 if embeddings:
