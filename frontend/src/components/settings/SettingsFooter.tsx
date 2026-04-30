@@ -10,6 +10,7 @@ interface SettingsFooterProps {
   saveState: SaveState;
   saveError: string | null;
   hasChanges: boolean;
+  canResetToDefaults: boolean;
   isLocalRuntime: boolean;
   onReset: () => void;
   onSave: () => void;
@@ -67,6 +68,7 @@ export const SettingsFooter = memo(function SettingsFooter({
   saveState,
   saveError,
   hasChanges,
+  canResetToDefaults,
   isLocalRuntime,
   onReset,
   onSave,
@@ -86,7 +88,7 @@ export const SettingsFooter = memo(function SettingsFooter({
               <button
                 type="button"
                 onClick={() => setIsResetDialogOpen(true)}
-                disabled={!hasChanges || saveState === "saving"}
+                disabled={!canResetToDefaults || saveState === "saving"}
                 className={SETTINGS_STYLES.footer.resetButton}
               >
                 恢复默认
