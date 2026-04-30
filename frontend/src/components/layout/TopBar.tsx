@@ -343,7 +343,7 @@ export function TopBar({ className }: TopBarProps) {
             </div>
             <div className="hidden min-w-0 text-left lg:block">
               <div className="max-w-[120px] truncate font-medium text-slate-700 dark:text-slate-300">{displayName}</div>
-              <div className="max-w-[120px] truncate text-[11px] text-slate-400 dark:text-slate-500">
+              <div className="max-w-[120px] truncate text-[12px] text-slate-400 dark:text-slate-500">
                 {isLoggedIn ? "已登录" : "游客身份"}
               </div>
             </div>
@@ -393,7 +393,7 @@ export function TopBar({ className }: TopBarProps) {
                       <CreditCard className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                       <div className="flex items-center justify-between flex-1">
                         <span>余额</span>
-                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
+                        <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded">
                           ￥100.00
                         </span>
                       </div>
@@ -513,7 +513,7 @@ export function TopBar({ className }: TopBarProps) {
                     <CreditCard className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <div className="flex items-center justify-between flex-1">
                       <span>余额</span>
-                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
+                      <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded">
                         ￥100.00
                       </span>
                     </div>

@@ -21,6 +21,38 @@ on:
           - none
           - alpha
           - beta
+      desktop_package_mode:
+        description: 要打包并附加到 GitHub Release 的桌面端模式
+        type: choice
+        required: true
+        default: electron-local
+        options:
+          - electron-local
+          - electron-remote
+          - tauri-local
+          - tauri-remote
+          - all-local
+          - all
+      backend_port:
+        description: local 桌面包内置后端端口
+        type: string
+        required: true
+        default: "9020"
+      api_url:
+        description: remote 桌面包使用的后端 API 地址
+        type: string
+        required: false
+        default: "https://aiteachme.onrender.com"
+      bundle_private_env:
+        description: 是否把 Secret AITEACHME_BUNDLED_ENV_JSON 里的私有模型配置加密内置进 local 桌面包
+        type: boolean
+        required: true
+        default: false
+      bundled_env_artifact_suffix:
+        description: 内置私有配置时的安装包文件名后缀
+        type: string
+        required: false
+        default: "bundled"
 
 permissions:
   contents: write
@@ -202,8 +234,8 @@ jobs:
 
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-  build_default_installer:
-    name: Build default Windows installer
+  build_desktop_installers:
+    name: Build ${{ inputs.desktop_package_mode }} Windows installer
     runs-on: windows-latest
     needs: release
     env:
@@ -241,15 +273,103 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build default installer
-        shell: pwsh
-        run: .\packaging\release.bat
+      - name: Set up Rust
+        if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Upload installer artifact
+      - name: Cache Rust build output
+        if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            frontend/src-tauri/target
+          key: ${{ runner.os }}-cargo-tauri-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tauri-
+
+      - name: Install NSIS
+        if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $nsisPath = Join-Path ${env:ProgramFiles(x86)} "NSIS"
+          if (Test-Path $nsisPath) {
+            $env:Path = "$nsisPath;$env:Path"
+            $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          makensis /VERSION
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install backend dependencies
+        if: ${{ contains(inputs.desktop_package_mode, 'local') || inputs.desktop_package_mode == 'all' }}
+        working-directory: backend
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+
+      - name: Write bundled env config
+        if: ${{ inputs.bundle_private_env == true }}
+        shell: pwsh
+        env:
+          AITEACHME_BUNDLED_ENV_JSON: ${{ secrets.AITEACHME_BUNDLED_ENV_JSON }}
+        run: |
+          $mode = "${{ inputs.desktop_package_mode }}"
+          if ($mode -notin @("electron-local", "tauri-local", "all-local", "all")) {
+            throw "Bundled env can only be used with local desktop package modes."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:AITEACHME_BUNDLED_ENV_JSON)) {
+            throw "Missing GitHub secret AITEACHME_BUNDLED_ENV_JSON."
+          }
+          $env:AITEACHME_BUNDLED_ENV_JSON | ConvertFrom-Json | Out-Null
+          New-Item -ItemType Directory -Path packaging\private -Force | Out-Null
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) "packaging\private\bundled-env.json"),
+            $env:AITEACHME_BUNDLED_ENV_JSON,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+
+      - name: Build desktop installers
+        shell: pwsh
+        run: |
+          $arguments = @(
+            "-PackageMode",
+            "${{ inputs.desktop_package_mode }}",
+            "-BackendPort",
+            "${{ inputs.backend_port }}",
+            "-ApiUrl",
+            "${{ inputs.api_url }}",
+            "-SkipInstall",
+            "-HideElectronSuffix"
+          )
+
+          if ("${{ inputs.bundle_private_env }}" -eq "true") {
+            $arguments += @(
+              "-ImportBundledEnv",
+              "-BundledEnvArtifactSuffix",
+              "${{ inputs.bundled_env_artifact_suffix }}"
+            )
+          }
+
+          .\packaging\scripts\build-desktop-mode.ps1 @arguments
+
+      - name: Show release artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path packaging\release -File |
+            Select-Object Name,@{Name='SizeMB';Expression={[math]::Round($_.Length / 1MB, 2)}} |
+            Format-Table -AutoSize
+
+      - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aiteachme-default-windows-installer
-          path: packaging/release/AiTeachMe-v${{ needs.release.outputs.version }}-installer.exe
+          name: aiteachme-release-windows-installers
+          path: packaging/release/AiTeachMe-v${{ needs.release.outputs.version }}-installer*.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -258,7 +378,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - release
-      - build_default_installer
+      - build_desktop_installers
 
     steps:
       - name: Checkout release commit
@@ -267,10 +387,10 @@ jobs:
           ref: ${{ needs.release.outputs.commit_sha }}
           fetch-depth: 0
 
-      - name: Download installer artifact
+      - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
-          name: aiteachme-default-windows-installer
+          name: aiteachme-release-windows-installers
           path: release-assets
 
       - name: Create and push release tag
@@ -295,7 +415,7 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Create release with installer
+      - name: Create release with installers
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release.outputs.tag }}
@@ -304,7 +424,7 @@ jobs:
           set -euo pipefail
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release '$TAG' already exists; uploading installer asset."
+            echo "Release '$TAG' already exists; uploading installer assets."
             gh release upload "$TAG" release-assets/* --clobber
             exit 0
           fi

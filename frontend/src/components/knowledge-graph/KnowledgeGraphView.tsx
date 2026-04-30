@@ -11,6 +11,7 @@ import {
   List,
   Share2,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import {
   graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost,
@@ -32,7 +33,7 @@ const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   example: { label: "示例", color: "bg-pink-50 text-pink-600" },
   exercise: { label: "练习", color: "bg-rose-50 text-rose-600" },
   method: { label: "方法", color: "bg-amber-50 text-amber-600" },
-  proof_step: { label: "证明步骤", color: "bg-violet-50 text-violet-600" },
+  proof_step: { label: "证明步骤", color: "bg-indigo-50 text-indigo-600" },
   remark: { label: "备注", color: "bg-slate-100 text-slate-600" },
 };
 
@@ -225,9 +226,15 @@ type ViewMode = "list" | "graph";
 export function KnowledgeGraphView({
   course,
   stats,
+  onBuildGraph,
+  buildGraphPending = false,
+  canBuildGraph = false,
 }: {
   course: string;
   stats: KnowledgeOverviewStats | null;
+  onBuildGraph?: () => void;
+  buildGraphPending?: boolean;
+  canBuildGraph?: boolean;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
@@ -297,6 +304,22 @@ export function KnowledgeGraphView({
             </span>
             <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">暂无知识节点</p>
             <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">构建完成后会在这里展示知识点与关系。</p>
+            {onBuildGraph && canBuildGraph ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onBuildGraph}
+                disabled={buildGraphPending}
+                className="mt-4 h-8 gap-1.5 px-3 text-xs"
+              >
+                {buildGraphPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                构建图谱
+              </Button>
+            ) : null}
           </div>
         </div>
         <EvidenceContextModal

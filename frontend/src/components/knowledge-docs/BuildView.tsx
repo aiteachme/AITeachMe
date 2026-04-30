@@ -22,6 +22,7 @@ interface Props {
   sourceFiles: FileRecord[];
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
+  buildStatus?: string | null;
   isDocumentReady?: boolean;
   className?: string;
   /** Course ID for SSE streaming — enables live build updates */
@@ -62,6 +63,8 @@ const MERGE_PREVIEW_STAGES = new Set([
   "completed",
 ]);
 
+const TERMINAL_BUILD_STATUSES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
+const TERMINAL_BUILD_STAGES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
 const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
 const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
@@ -118,6 +121,23 @@ function uniqueBuildEvents<T extends BuildEventItem>(items: T[]): T[] {
     seen.add(key);
     return true;
   });
+}
+
+function mergeChapterIndexedItems<T extends { chapter_index?: number | null }>(
+  baseItems: T[],
+  liveItems: T[] | undefined | null,
+): T[] {
+  if (!liveItems || liveItems.length === 0) return baseItems;
+  const byIndex = new Map<number, T>();
+  for (const item of baseItems) {
+    const index = Number(item.chapter_index ?? 0);
+    if (index > 0) byIndex.set(index, item);
+  }
+  for (const item of liveItems) {
+    const index = Number(item.chapter_index ?? 0);
+    if (index > 0) byIndex.set(index, item);
+  }
+  return Array.from(byIndex.values()).sort((a, b) => Number(a.chapter_index ?? 0) - Number(b.chapter_index ?? 0));
 }
 
 interface LiveMarkdownRenderState {
@@ -215,6 +235,7 @@ export function BuildView({
   statusText,
   buildPreview,
   buildStage,
+  buildStatus,
   isDocumentReady = false,
   className,
   courseId,
@@ -222,8 +243,12 @@ export function BuildView({
   const [selectedPreviewChapter, setSelectedPreviewChapter] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(shouldOpenDetailsByDefault);
 
+  const normalizedBuildStatus = (buildStatus ?? "").trim();
+  const normalizedBuildStage = (buildStage ?? "").trim();
   const isBuildActive = Boolean(
-    buildStage && !(["completed", "failed", "cancelled"] as string[]).includes(buildStage)
+    normalizedBuildStatus
+      ? normalizedBuildStatus !== "idle" && !TERMINAL_BUILD_STATUSES.has(normalizedBuildStatus)
+      : normalizedBuildStage && !TERMINAL_BUILD_STAGES.has(normalizedBuildStage)
   );
   const { snapshot: sseSnapshot, connected: sseConnected, previewStreams, buildEvents } = useBuildEventStream({
     courseId: courseId ?? "",
@@ -232,8 +257,7 @@ export function BuildView({
 
   const mergedChapters = useMemo(() => {
     const sseChapters = sseSnapshot?.docgen_preview?.chapter_progress;
-    if (sseChapters && sseChapters.length > 0) return sseChapters;
-    return buildPreview?.chapter_progress ?? [];
+    return mergeChapterIndexedItems(buildPreview?.chapter_progress ?? [], sseChapters);
   }, [sseSnapshot?.docgen_preview?.chapter_progress, buildPreview?.chapter_progress]);
 
   const mergedEvents = useMemo(() => {
@@ -245,8 +269,7 @@ export function BuildView({
 
   const mergedChapterPreviews = useMemo(() => {
     const sseChapterPreviews = sseSnapshot?.docgen_preview?.chapter_previews;
-    if (sseChapterPreviews && sseChapterPreviews.length > 0) return sseChapterPreviews;
-    return buildPreview?.chapter_previews ?? [];
+    return mergeChapterIndexedItems(buildPreview?.chapter_previews ?? [], sseChapterPreviews);
   }, [sseSnapshot?.docgen_preview?.chapter_previews, buildPreview?.chapter_previews]);
 
   const mergePreview = useMemo(() => {
@@ -339,8 +362,8 @@ export function BuildView({
                     </span>
                   ) : null}
                   {(sseConnected || isBuildActive) ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-50 px-2 py-0.5 text-indigo-600 ring-1 ring-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot text-indigo-500" : "bg-zinc-300 dark:bg-slate-600")} />
                       {sseConnected ? "实时更新" : "等待实时更新"}
                     </span>
                   ) : null}
@@ -372,10 +395,10 @@ export function BuildView({
                   className={cn(
                     "relative h-full overflow-hidden rounded-full",
                     roundedProgress === 100
-                      ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
+                      ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500"
                       : progressIsActive
-                        ? "bg-blue-500 build-loading-progress-fill"
-                        : "bg-blue-500"
+                        ? "bg-indigo-600 build-loading-progress-fill"
+                        : "bg-indigo-600"
                   )}
                   initial={{ width: 0 }}
                   animate={{
@@ -404,7 +427,7 @@ export function BuildView({
                   className={cn(
                     "group flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors",
                     isActive
-                      ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+                      ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20"
                       : isDone
                         ? "text-emerald-700 dark:text-emerald-300"
                         : "text-zinc-400 dark:text-slate-500",
@@ -415,13 +438,13 @@ export function BuildView({
                     isDone
                       ? "border-emerald-500 bg-emerald-500 text-white"
                       : isActive
-                        ? "border-blue-500 bg-white text-blue-600 dark:bg-slate-900"
+                        ? "border-indigo-500 bg-white text-indigo-600 dark:bg-slate-900"
                         : "border-zinc-200 text-zinc-400 dark:border-slate-700",
                   )}>
                     {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : idx + 1}
                   </span>
                   <span className="whitespace-nowrap font-medium">{step.title}</span>
-                  {isActive ? <span className="hidden text-[11px] text-blue-500/70 md:inline">{step.description}</span> : null}
+                  {isActive ? <span className="hidden text-[11px] text-indigo-500/70 md:inline">{step.description}</span> : null}
                 </div>
               );
             })}
@@ -442,8 +465,10 @@ export function BuildView({
             <div className="max-h-52 overflow-y-auto px-2.5 pb-3 build-scroll lg:max-h-none lg:h-[calc(100%-64px)]">
               {chapters.map((chapter) => {
                 const isSelected = selectedPreviewChapter === chapter.chapter_index;
-                const isStreaming = spotlightChapter?.chapter_index === chapter.chapter_index;
-                const isDone = DONE_CHAPTER_STATUSES.has(chapter.status);
+                const streamStatus = previewStreams[chapter.chapter_index]?.status;
+                const effectiveChapterStatus = streamStatus ?? chapter.status;
+                const isStreaming = ACTIVE_CHAPTER_STATUSES.has(effectiveChapterStatus);
+                const isDone = DONE_CHAPTER_STATUSES.has(effectiveChapterStatus);
 
                 return (
                   <button
@@ -453,13 +478,13 @@ export function BuildView({
                     className={cn(
                       "w-full border-l-2 text-left px-3 py-3 text-[12px] transition-colors flex items-start gap-2.5",
                       isSelected
-                        ? "border-blue-500 bg-white text-zinc-950 shadow-[inset_0_0_0_1px_rgba(228,228,231,0.9)] dark:border-blue-400 dark:bg-slate-900 dark:text-zinc-100 dark:shadow-none"
+                        ? "border-indigo-500 bg-white text-zinc-950 shadow-[inset_0_0_0_1px_rgba(228,228,231,0.9)] dark:border-indigo-400 dark:bg-slate-900 dark:text-zinc-100 dark:shadow-none"
                         : "border-transparent text-zinc-600 hover:border-zinc-200 hover:bg-white dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900/60"
                     )}
                   >
                     <div className="mt-1 relative flex items-center justify-center shrink-0 w-3 h-3">
                       {isStreaming ? (
-                        <span className={cn("build-live-dot h-1.5 w-1.5", isSelected ? "text-blue-300" : "text-blue-500")} />
+                        <span className={cn("build-live-dot h-1.5 w-1.5", isSelected ? "text-indigo-300" : "text-indigo-500")} />
                       ) : isDone ? (
                         <div className={cn("w-1.5 h-1.5 rounded-full", isSelected ? "bg-emerald-300" : "bg-emerald-400")} />
                       ) : (
@@ -470,8 +495,8 @@ export function BuildView({
                       <div className="line-clamp-2 font-medium leading-snug">
                         {String(chapter.chapter_index).padStart(2, "0")}. {chapter.title}
                       </div>
-                      <div className={cn("mt-1 text-[10.5px]", isSelected ? "text-blue-500 dark:text-blue-300" : "text-zinc-400 dark:text-slate-500")}>
-                        {buildChapterStatusLabel(chapter.status)}
+                      <div className={cn("mt-1 text-[10.5px]", isSelected ? "text-indigo-500 dark:text-indigo-300" : "text-zinc-400 dark:text-slate-500")}>
+                        {buildChapterStatusLabel(effectiveChapterStatus)}
                       </div>
                     </div>
                   </button>
@@ -488,10 +513,7 @@ export function BuildView({
               const selChapter = chapters.find((chapter) => chapter.chapter_index === selectedPreviewChapter);
               const preview = selectedChapterPreview;
               const streamPreview = previewStreams[selectedPreviewChapter] ?? null;
-              const selectedStatus =
-                streamPreview?.status === "drafting"
-                  ? streamPreview.status
-                  : preview?.status ?? streamPreview?.status ?? selChapter?.status ?? "planned";
+              const selectedStatus = streamPreview?.status ?? preview?.status ?? selChapter?.status ?? "planned";
               const selectedTitle =
                 preview?.title ??
                 streamPreview?.title ??
@@ -544,11 +566,11 @@ export function BuildView({
                       </div>
                     </div>
                     {(isStreaming || sseConnected) && (
-                      <div className="shrink-0 flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
+                      <div className="shrink-0 flex items-center gap-2 rounded-md bg-indigo-50 px-2.5 py-1 ring-1 ring-indigo-100 dark:bg-indigo-500/10 dark:ring-indigo-500/20">
                         <span className="relative flex h-2 w-2">
-                          <span className="build-live-dot h-2 w-2 text-blue-500 dark:text-blue-400" />
+                          <span className="build-live-dot h-2 w-2 text-indigo-500 dark:text-indigo-400" />
                         </span>
-                        <span className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-300 font-medium">
                           {usingSseDelta ? "实时流" : "进行中"}
                         </span>
                       </div>
@@ -574,12 +596,12 @@ export function BuildView({
                                 </span>
                               ) : null}
                               {usingMergeFallback ? (
-                                <span className="text-blue-600 dark:text-blue-400">
+                                <span className="text-indigo-600 dark:text-indigo-400">
                                   当前显示整本合并预览
                                 </span>
                               ) : null}
                               {usingSseDelta ? (
-                                <span className="text-blue-600 dark:text-blue-400">
+                                <span className="text-indigo-600 dark:text-indigo-400">
                                   实时增量
                                 </span>
                               ) : null}
@@ -608,7 +630,7 @@ export function BuildView({
                     ) : selectedChapterEvents.length > 0 ? (
                       <div className="mx-auto w-full max-w-[1120px] space-y-4 pb-10">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                          <span className="text-blue-600 dark:text-blue-400">
+                          <span className="text-indigo-600 dark:text-indigo-400">
                             正在捕获章节执行事件
                           </span>
                         </div>
@@ -682,7 +704,7 @@ export function BuildView({
                       className="px-1 py-3 text-[11.5px] leading-5 text-zinc-600 dark:text-slate-300"
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate font-medium text-blue-500 dark:text-blue-400">{stageLabel}</span>
+                        <span className="truncate font-medium text-indigo-500 dark:text-indigo-400">{stageLabel}</span>
                         <span className="shrink-0 text-[10px] text-zinc-300 dark:text-slate-600">
                           {event.created_at ? formatBuildEventTime(event.created_at) : ""}
                         </span>
@@ -762,7 +784,7 @@ const LiveTextDocument = memo(function LiveTextDocument({
           className={cn(
             "inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px] font-medium ring-1",
             isStreaming
-              ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+              ? "bg-indigo-50 text-indigo-600 ring-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20"
               : "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
           )}
           aria-live="polite"
@@ -770,7 +792,7 @@ const LiveTextDocument = memo(function LiveTextDocument({
           <span
             className={cn(
               "h-1.5 w-1.5 rounded-full",
-              isStreaming ? "build-live-dot text-blue-500" : "bg-emerald-500",
+              isStreaming ? "build-live-dot text-indigo-500" : "bg-emerald-500",
             )}
           />
           {statusText}
@@ -788,8 +810,8 @@ const LiveTextDocument = memo(function LiveTextDocument({
       ) : null}
 
       {isStreaming ? (
-        <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
-          <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
+        <div className="mt-5 flex items-center gap-2 text-[12px] text-indigo-600 dark:text-indigo-300">
+          <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-indigo-500 align-middle dark:bg-indigo-400" />
           <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
         </div>
       ) : null}

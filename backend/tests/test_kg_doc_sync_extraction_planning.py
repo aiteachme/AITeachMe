@@ -325,7 +325,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
     )
 
     assert len(result.nodes) == 8
-    assert len(result.edges) == 10
+    assert len(result.edges) == 12
 
 
 def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> None:

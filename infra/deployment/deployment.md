@@ -116,6 +116,9 @@ LLM_BASE_URL=<model api base url>
 LLM_CONCURRENCY_LIMIT=8
 SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S=2
 SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S=2
+WORKFLOW_STREAM_POSTGRES_BRIDGE_ENABLED=true
+DOCGEN_STREAM_DIRECT_MIN_INTERVAL_S=0.22
+DOCGEN_STREAM_PERSIST_MIN_INTERVAL_S=3
 ```
 
 数据库连接建议：
@@ -123,7 +126,9 @@ SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S=2
 - 生产优先使用 PgBouncer 或平台提供的 pooled connection string，让后端只维护小连接池。
 - 总连接预算约等于实例数 * worker 数 * (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`)；小规格库先从 `3~5` 常驻连接和 `2~5` 溢出连接开始。
 - SSE、轮询和后台 workflow 不应长期持有 DB session；接口只在读取/写入状态时短暂取连接。
-- `SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S` / `SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S` 默认按实时体感取 `2` 秒；高并发或数据库压力明显时可调到 `3~8`。根治多实例实时事件不稳定的方案仍是把 workflow live stream 外置到 Redis/PostgreSQL 事件通道。
+- `SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S` / `SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S` 默认按实时体感取 `2` 秒；PostgreSQL 实时桥正常时它主要是断流兜底，高并发或数据库压力明显时可调到 `3~8`。
+- 云端 PostgreSQL 模式下 `WORKFLOW_STREAM_POSTGRES_BRIDGE_ENABLED=true` 会让 workflow live stream 通过 `LISTEN/NOTIFY` 跨 worker 传递事件；本地 SQLite 仍走进程内队列。
+- DocGen 章节写作默认按 `48` 字或 `0.22` 秒直推实时增量，按 `900` 字或 `3` 秒持久化预览快照。对象存储较慢时，优先把 `DOCGEN_STREAM_PERSIST_MIN_INTERVAL_S` 调到 `4~6`，而不是降低直推频率。
 
 迁移有两种口径：
 
@@ -188,21 +193,23 @@ Storage: DogeCloud / Sealos Object Storage / 其他 S3-compatible OSS
 Migration: 单独 Job / 临时任务运行 bootstrap_cloud_db.py
 ```
 
-Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并推送到 GHCR，再用 `kubectl set image` 更新 Sealos 后端 Deployment。
+Sealos 更适合使用预构建镜像。当前主线是 GitHub Actions 构建后端镜像并同时推送到 GHCR 与阿里云 ACR，再用阿里云 ACR 镜像地址更新 Sealos 后端 Deployment。GHCR 保留为 GitHub 侧备份产物，Sealos 拉取走北京 ACR，减少跨境拉取超时。
 
 ### Sealos 最简自动部署
 
 仓库提供 `.github/workflows/deploy.yml`，用于在 `CI` 通过后自动部署前端与后端。其中后端发布会：
 
-1. 构建 `backend.Dockerfile` 轻量镜像。
-2. 推送到 GHCR：
+1. 构建 `backend.Dockerfile` 轻量镜像，镜像会安装后端 `cloud` extra 依赖以支持 PostgreSQL、S3 和 pgvector。
+2. 同时推送到 GHCR 和阿里云 ACR：
 
 ```text
 ghcr.io/<github-owner>/aiteachme-backend:slim-<short-sha>
 ghcr.io/<github-owner>/aiteachme-backend:slim-latest
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-<short-sha>
+crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-latest
 ```
 
-3. 使用 `kubectl set image` 更新 Sealos 中已有的后端 Deployment。
+3. 使用 `kubectl set image` 将 Sealos 中已有的后端 Deployment 更新为阿里云 ACR 镜像地址。
 4. 将 Deployment 的 `progressDeadlineSeconds` 调整为 60 分钟，并等待 `kubectl rollout status` 完成。
 5. 打印 Deployment、ReplicaSet、Pod 和相关 Events，便于查看镜像拉取耗时或定位启动失败原因。
 6. 如果配置了健康检查地址，再请求 `/api/health`。
@@ -212,16 +219,22 @@ GitHub Actions Secrets：
 | 名称 | 说明 |
 | --- | --- |
 | `SEALOS_KUBECONFIG_B64` | 完整 Sealos kubeconfig 文件的 base64 内容 |
+| `ALIYUN_ACR_USERNAME` | 阿里云 ACR 登录用户名 |
+| `ALIYUN_ACR_PASSWORD` | 阿里云 ACR 登录密码 |
 | `GHCR_USERNAME` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
 | `GHCR_TOKEN` | 可选；GHCR 私有包或默认 token 权限不足时配置 |
 
-GitHub Actions Variables：
+以下非敏感部署常量直接维护在 `.github/workflows/deploy.yml` 的 `deploy-backend.env` 中，方便在一个地方改：
 
 | 名称 | 示例 | 说明 |
 | --- | --- | --- |
 | `SEALOS_NAMESPACE` | `ns-icbq3ltw` | Sealos namespace |
-| `SEALOS_BACKEND_DEPLOYMENT` | `atm` | 后端 Deployment 名称 |
-| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 可选；后端健康检查地址 |
+| `SEALOS_BACKEND_DEPLOYMENT` | `atm-d` | 后端 Deployment 名称 |
+| `BACKEND_HEALTH_URL` | `https://<backend-domain>/api/health` | 后端健康检查地址；不需要时可置空 |
+| `BACKEND_ACR_REGISTRY` | `crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com` | 阿里云 ACR registry |
+| `BACKEND_ACR_NAMESPACE` | `aiteachme` | 阿里云 ACR 命名空间 |
+| `BACKEND_IMAGE_NAME` | `aiteachme-backend` | 后端镜像仓库名 |
+| `SEALOS_IMAGE_PULL_SECRET` | `aliyun-acr-regcred` | Sealos 里用于拉取 ACR 私有镜像的 imagePullSecret |
 
 生成 `SEALOS_KUBECONFIG_B64`：
 
@@ -236,7 +249,19 @@ $raw = Get-Content -Raw -Encoding UTF8 "C:\Users\L5C\Downloads\kubeconfig.yaml"
 kubectl -n <namespace> get deploy
 ```
 
-如果 GHCR package 是 private，Sealos 侧需要能拉取 `ghcr.io/<github-owner>/aiteachme-backend`，要么把 package visibility 改成 public，要么给 Deployment 配置 registry credential / imagePullSecret。
+GHCR 当前只作为 GitHub 侧备份镜像产物，Sealos 不直接拉取 GHCR 镜像。
+
+当前 Sealos 默认使用阿里云 ACR 镜像地址。如果 ACR 仓库是 private，Sealos 侧需要创建一次 imagePullSecret。部署 workflow 会检查这个 Secret 存在，并确保它绑定到后端 Deployment：
+
+```bash
+kubectl -n ns-icbq3ltw create secret docker-registry aliyun-acr-regcred \
+  --docker-server=crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com \
+  --docker-username=<ALIYUN_ACR_USERNAME> \
+  --docker-password=<ALIYUN_ACR_PASSWORD>
+
+kubectl -n ns-icbq3ltw patch deployment atm-d \
+  -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"aliyun-acr-regcred"}]}}}}'
+```
 
 如果 GitHub Actions 推送 GHCR 报 `403 Forbidden`：
 
@@ -320,7 +345,7 @@ Public Address: 使用 Cloudflare Pages 前端时需要开启并绑定 API 域�
 Health Check: /api/health
 ```
 
-Sealos 首次上线建议后端保持单副本、单 uvicorn worker。当前 workflow live stream 是进程内订阅，多副本会让后台任务和 SSE 连接落到不同进程，只能依赖 snapshot 兜底，体感会变成阶段性刷新。
+Sealos 首次上线仍建议后端保持单副本、单 uvicorn worker，便于排查数据库、对象存储和模型调用链路。PostgreSQL 云端模式会自动启用 workflow live stream 通知桥，多副本时后台任务和 SSE 连接落到不同进程也能收到实时事件；如果通知桥关闭或 PostgreSQL 不可用，则会退回 snapshot 兜底，体感会变成阶段性刷新。
 
 单副本试运行可以继续使用镜像默认 `CMD`。如果后续开多副本，建议把后端启动命令改成：
 

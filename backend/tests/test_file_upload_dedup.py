@@ -8,15 +8,17 @@ from fastapi import UploadFile
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import RawFile, Course, CourseFileLink, TaskStatus, User
+from app.models import RawFile, Course, CourseFileLink, IngestStatus, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
+from app.workflows.ingest.intake.parse_dispatch import ready_file_ids_for_course_indexing
 
 
 class _FakeContentStore:
     def __init__(self) -> None:
         self.writes: list[tuple[str, bytes]] = []
+        self.texts: dict[str, str] = {}
 
     @staticmethod
     def user_file_scope(*, user_id: str):
@@ -26,7 +28,7 @@ class _FakeContentStore:
         self.writes.append((key, local_path.read_bytes()))
 
     async def read_text(self, key: str, *, default: str | None = None) -> str | None:
-        return default
+        return self.texts.get(key, default)
 
     async def list_prefix(self, prefix: str) -> list[str]:
         return []
@@ -85,6 +87,52 @@ def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:
     assert second_data.started_parse_count == 0
     assert second_data.uploaded_items[0].id == first_data.uploaded_items[0].id
     assert raw_files[0].parse_request_signature == "default"
+
+
+def test_storage_only_markdown_marks_file_ready(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    fake_store.texts["users/user_a/files/file_ready/markdown.md"] = "# 已解析内容"
+
+    raw_file = RawFile(
+        id="file_ready",
+        user_id="user_a",
+        filename="notes.pdf",
+        filetype="pdf",
+        file_path="users/user_a/files/file_ready/source.pdf",
+        markdown_path="users/user_a/files/file_ready/markdown.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+
+    record = catalog.build_file_record(raw_file)
+
+    assert record.markdown_ready is True
+    assert record.markdown_content == "# 已解析内容"
+
+
+def test_ready_file_ids_for_course_indexing_includes_completed_markdown_path() -> None:
+    ready_file = RawFile(
+        id="file_ready",
+        user_id="user_a",
+        filename="ready.pdf",
+        filetype="pdf",
+        file_path="raw/ready.pdf",
+        markdown_path="parsed/ready.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+    pending_file = RawFile(
+        id="file_pending",
+        user_id="user_a",
+        filename="pending.pdf",
+        filetype="pdf",
+        file_path="raw/pending.pdf",
+        markdown_path="parsed/pending.md",
+        status=TaskStatus.PENDING.value,
+        ingest_status=IngestStatus.PENDING.value,
+    )
+
+    assert ready_file_ids_for_course_indexing([ready_file, pending_file, ready_file]) == ["file_ready"]
 
 
 def test_duplicate_course_upload_links_once_and_starts_parse_once(monkeypatch) -> None:

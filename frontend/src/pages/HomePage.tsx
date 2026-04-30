@@ -159,8 +159,8 @@ function homeFileIcon(file: Pick<FileRecord, "filetype">) {
   const ext = normalizeFileExt(file.filetype);
   if (ext === "pdf") return <FileText className="h-3.5 w-3.5 text-red-400" />;
   if (["png", "jpg", "jpeg", "webp"].includes(ext)) return <FileImage className="h-3.5 w-3.5 text-emerald-400" />;
-  if (["md", "markdown"].includes(ext)) return <FileCode className="h-3.5 w-3.5 text-violet-400" />;
-  if (["docx", "doc"].includes(ext)) return <FileText className="h-3.5 w-3.5 text-blue-400" />;
+  if (["md", "markdown"].includes(ext)) return <FileCode className="h-3.5 w-3.5 text-indigo-400" />;
+  if (["docx", "doc"].includes(ext)) return <FileText className="h-3.5 w-3.5 text-indigo-400" />;
   if (["ppt", "pptx"].includes(ext)) return <FileType className="h-3.5 w-3.5 text-orange-400" />;
   return <FileUp className="h-3.5 w-3.5 text-zinc-400" />;
 }
@@ -182,8 +182,8 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
   }
   return {
     label: "解析中",
-    icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />,
-    tone: "text-sky-600",
+    icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />,
+    tone: "text-indigo-600",
   };
 }
 
@@ -437,7 +437,7 @@ function ImportModal({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-sm">
               <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -465,7 +465,7 @@ function ImportModal({
             className={cn(
               "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 cursor-pointer transition-all",
               dragOver
-                ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
+                ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/10"
                 : selectedFile
                   ? "border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50"
                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/80"
@@ -473,8 +473,8 @@ function ImportModal({
           >
             {selectedFile ? (
               <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30">
-                  <Package className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30">
+                  <Package className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedFile.name}</p>
@@ -933,7 +933,7 @@ export function HomePage() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 3.0, duration: 0.6 }}
-          className="mb-8 px-4 text-center text-[15px] leading-relaxed text-zinc-500 dark:text-slate-400"
+          className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
         </motion.p>
@@ -948,14 +948,14 @@ export function HomePage() {
           <div className={cn(
             "w-full overflow-hidden rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
             hasEntryFiles
-              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgb(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgb(99,102,241,0.2)]"
+              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgba(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgba(99,102,241,0.2)]"
               : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
-            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgb(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50"
+            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50"
           )}>
             <textarea
               ref={textareaRef}
               placeholder="直接输入学习目标，也可以先上传资料再一起规划"
-              className="w-full min-h-[96px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-[1.8] text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+              className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -999,18 +999,18 @@ export function HomePage() {
                     >
                       <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-slate-500" />
                       <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{filename}</span>
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-500" />
                     </div>
                   ))}
                   </div>
                   {entryFilesStatusText ? (
-                    <p className="px-1 text-[12px] leading-5 text-zinc-500">{entryFilesStatusText}</p>
+                    <p className="px-1 text-xs leading-5 text-zinc-500">{entryFilesStatusText}</p>
                   ) : null}
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
+              <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
                   <input 
                     type="file" 
                     title="选择要上传的文件资料"
@@ -1024,7 +1024,7 @@ export function HomePage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isWorking}
-                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   >
                     {isUploadingFiles ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1037,25 +1037,26 @@ export function HomePage() {
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
                     从资料库选
                   </button>
                   {isWorking && (
-                    <span className="ml-2 flex items-center text-[12px] font-medium text-zinc-500">
+                    <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                       正在上传并解析资料...
                     </span>
                   )}
                 </div>
 
-                <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:ml-2 sm:w-auto">
+                <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                   <ChatModelSelect
                     value={chatModel}
                     onChange={setChatModel}
                     disabled={isWorking}
+                    className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
                   />
                   <button
                     onClick={handleSendHomeMessage}
@@ -1109,7 +1110,7 @@ export function HomePage() {
             <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800 dark:text-slate-500 dark:group-hover:text-slate-300">
               <Package className="h-4 w-4" />
               演示课程
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[12px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -1136,7 +1137,7 @@ export function HomePage() {
                     className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                     title="从文件导入课程包"
                   >
-                    <Upload className="w-4 h-4 text-emerald-500" />
+                    <Upload className="w-4 h-4 text-indigo-500" />
                     上传导入
                   </button>
                 </div>
@@ -1155,10 +1156,10 @@ export function HomePage() {
                               <div className="flex items-start justify-between mb-3">
                                 <div className="flex-1 mr-3">
                                   <h3 className="line-clamp-1 text-lg font-bold text-slate-900 dark:text-slate-100">{course.course_name}</h3>
-                                  <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-300">演示课程</p>
+                                  <p className="mt-1 text-xs font-medium text-indigo-600 dark:text-indigo-300">演示课程</p>
                                 </div>
-                                <div className="rounded-lg border border-emerald-100 bg-gradient-to-br from-emerald-50 to-teal-50 p-2 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-teal-500/10">
-                                  <Package className="w-5 h-5 text-emerald-500" />
+                                <div className="rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-2 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-violet-500/10">
+                                  <Package className="w-5 h-5 text-indigo-500" />
                                 </div>
                               </div>
 

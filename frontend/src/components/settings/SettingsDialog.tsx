@@ -43,6 +43,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     envDraft,
     hasServerChanges,
     hasEnvChanges,
+    canResetToDefaults,
     saveState,
     saveError,
     patchServerSetting,
@@ -186,6 +187,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               saveState={saveState}
               saveError={saveError}
               hasChanges={hasChanges}
+              canResetToDefaults={canResetToDefaults}
               isLocalRuntime={isLocalRuntime}
               onReset={resetServerDrafts}
               onSave={() => void saveAll()}

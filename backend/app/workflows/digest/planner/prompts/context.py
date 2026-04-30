@@ -14,6 +14,7 @@ EMPTY_DIGEST = "暂无资料正文上下文"
 EMPTY_HISTORY = "暂无补充意见"
 EMPTY_LATEST_PLAN = "暂无上一版方案"
 EMPTY_FILES = "暂无已解析文件"
+EMPTY_EXISTING_DOC = "暂无已发布知识文档"
 NO_MATERIAL_NOTE = "资料状态：当前没有可用的上传资料正文，只能基于用户提示生成通用初步计划，不能假装已经读取了具体文件。"
 
 
@@ -64,9 +65,28 @@ def render_latest_plan(latest_plan: dict[str, Any] | None) -> str:
     return "\n".join(lines)
 
 
+def render_existing_doc_context(existing_doc_context: str | None) -> str:
+    return _clean(existing_doc_context) or EMPTY_EXISTING_DOC
+
+
+def render_planner_context_mode(*, planner_context_mode: str, existing_doc_context: str | None) -> str:
+    if planner_context_mode == "rebuild_existing_doc" and _clean(existing_doc_context):
+        return "\n".join(
+            [
+                "当前规划模式：已有知识文档重建/调整",
+                "",
+                "现有文档摘要：",
+                render_existing_doc_context(existing_doc_context),
+            ]
+        )
+    return "当前规划模式：新建知识文档"
+
+
 __all__ = [
+    "render_existing_doc_context",
     "render_latest_plan",
     "render_material_digest",
     "render_material_overview",
     "render_message_history",
+    "render_planner_context_mode",
 ]

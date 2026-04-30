@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 import structlog
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.search.llamaindex_index import aembed_texts_for_ingestion
 from app.shared.infra.storage import resolve_course_storage_scope
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
@@ -229,20 +229,21 @@ async def materialize_shared_inputs(
                 else None
             )
             reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]
-            missing_embedding_rows = False
+            missing_embedding_chunk_ids: set[int] = set()
             if expected_table and reused_chunk_ids:
-                existing_row_count = knowledge_repo.count_embeddings_for_chunk_ids(
+                indexed_chunk_ids = knowledge_repo.list_indexed_embedding_chunk_ids(
                     session,
                     table_name=expected_table,
                     chunk_ids=reused_chunk_ids,
                 )
-                missing_embedding_rows = existing_row_count < len(reused_chunk_ids)
+                missing_embedding_chunk_ids = set(reused_chunk_ids) - indexed_chunk_ids
 
             embedding_targets: list[RetrievalChunk] = list(chunk_rows)
             for chunk in reused_chunks:
                 if chunk.id is None:
                     continue
-                if missing_embedding_rows or _chunk_requires_embedding(
+                chunk_id = int(chunk.id)
+                if chunk_id in missing_embedding_chunk_ids or _chunk_requires_embedding(
                     chunk,
                     runtime_model=runtime.embedding_model,
                     expected_table=expected_table,
@@ -250,8 +251,9 @@ async def materialize_shared_inputs(
                     embedding_targets.append(chunk)
 
             if embedding_targets:
-                embeddings = await aembed_texts(
+                embeddings = await aembed_texts_for_ingestion(
                     [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets],
+                    model=runtime.embedding_model,
                     soft_fail=True,
                 )
                 if embeddings:

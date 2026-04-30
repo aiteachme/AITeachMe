@@ -97,6 +97,7 @@ export interface DocMarkdownState {
   renderedDocSummary: string;
   sourceFiles: FileRecord[];
   sourceFilesFetching: boolean;
+  showDocLoadingState: boolean;
   showDocGeneratingState: boolean;
   showDocBuildFailureState: boolean;
   showDocEmptyState: boolean;
@@ -318,20 +319,28 @@ export function useDocMarkdown(): DocMarkdownState {
     }
   }, [hasDraftDocMarkdown, hasLiveDocMarkdown, isBuildReadyStatus]);
 
+  const showDocLoadingState =
+    !docMarkdownQuery.isError &&
+    !hasLiveDocMarkdown &&
+    !hasDraftDocMarkdown &&
+    (docMarkdownQuery.isLoading || (!runtimeQuery.data && runtimeQuery.isLoading));
   const showDocGeneratingState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
+    !showDocLoadingState &&
     (isBuildActive || isWaitingForRequestedBuild);
   const showDocBuildFailureState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
+    !showDocLoadingState &&
     isBuildFailure;
   const showDocEmptyState =
     !docMarkdownQuery.isError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
+    !showDocLoadingState &&
     !isBuildActive &&
     !isWaitingForRequestedBuild &&
     !isBuildFailure;
@@ -371,6 +380,7 @@ export function useDocMarkdown(): DocMarkdownState {
     renderedDocSummary,
     sourceFiles,
     sourceFilesFetching: sourceFilesQuery.isFetching,
+    showDocLoadingState,
     showDocGeneratingState,
     showDocBuildFailureState,
     showDocEmptyState,

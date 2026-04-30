@@ -309,11 +309,12 @@ def get_full_graph(
     *,
     course_id: str,
 ) -> FullGraphResponse:
-    nodes_raw, _ = knowledge_unit_repo.list_knowledge_units_by_course(
-        session,
-        course_id,
-        limit=5000,
-        offset=0,
+    nodes_raw = list(
+        session.exec(
+            select(KnowledgeUnit)
+            .where(KnowledgeUnit.course_id == course_id, KnowledgeUnit.status == "active")
+            .order_by(KnowledgeUnit.id)
+        ).all()
     )
     edges_raw = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
 
@@ -424,58 +425,12 @@ def get_focus_subgraph(
     hops: int = 1,
     limit: int = 80,
 ) -> KnowledgeSubgraphResponse:
+    node_limit = max(1, limit)
+    edge_limit = max(node_limit * 3, node_limit)
     center_ids: set[int] = set()
     if center_knowledge_unit_id is not None:
         _require_unit(session, course_id, center_knowledge_unit_id)
         center_ids.add(center_knowledge_unit_id)
-
-    if center_ids:
-        selected_ids = set(center_ids)
-        frontier = set(center_ids)
-        degree: dict[int, int] = defaultdict(int)
-
-        for _ in range(max(0, hops)):
-            incident_edges = knowledge_relation_repo.list_edges_for_knowledge_units(
-                session,
-                course_id,
-                frontier,
-                edge_type=edge_type,
-            )
-            next_frontier: set[int] = set()
-            for edge in incident_edges:
-                source_id = int(edge.source_node_id or 0)
-                target_id = int(edge.target_node_id or 0)
-                if source_id <= 0 or target_id <= 0:
-                    continue
-                degree[source_id] += 1
-                degree[target_id] += 1
-                if source_id in frontier and target_id not in selected_ids:
-                    next_frontier.add(target_id)
-                if target_id in frontier and source_id not in selected_ids:
-                    next_frontier.add(source_id)
-            selected_ids.update(next_frontier)
-            frontier = next_frontier
-            if len(selected_ids) >= limit or not frontier:
-                break
-
-        selected_ids = set(sorted(selected_ids, key=lambda item: (-degree.get(item, 0), item))[:limit])
-        unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=selected_ids)
-        sub_edges = [
-            edge
-            for edge in knowledge_relation_repo.list_edges_for_knowledge_units(
-                session,
-                course_id,
-                selected_ids,
-                edge_type=edge_type,
-            )
-            if edge.source_node_id in selected_ids and edge.target_node_id in selected_ids
-        ][:limit]
-        return KnowledgeSubgraphResponse(
-            nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in sorted(unit_by_id)],
-            edges=[_to_relation_response_with_units(edge, unit_by_id) for edge in sub_edges],
-            center_knowledge_unit_id=center_knowledge_unit_id,
-        )
-
     all_edges = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
     if edge_type:
         all_edges = [edge for edge in all_edges if edge.edge_type == edge_type]
@@ -497,7 +452,7 @@ def get_focus_subgraph(
             session,
             course_id,
             status="active",
-            limit=limit,
+            limit=node_limit,
             offset=0,
         )
         center_ids.update(
@@ -510,67 +465,81 @@ def get_focus_subgraph(
                 or topic_text in unit.knowledge_unit_type.casefold()
             )
         )
-    if center_ids:
-        selected_ids = set(center_ids)
-        frontier = set(center_ids)
-        for _ in range(max(0, hops)):
-            next_frontier: set[int] = set()
-            for node_id in frontier:
-                next_frontier.update(adjacency.get(node_id, set()))
-            next_frontier -= selected_ids
-            selected_ids.update(next_frontier)
-            frontier = next_frontier
-            if len(selected_ids) >= limit or not frontier:
+
+    if not center_ids:
+        units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
+            session,
+            course_id,
+            status="active",
+            limit=max(node_limit * 3, node_limit),
+            offset=0,
+        )
+        ordered_units = sorted(
+            units,
+            key=lambda unit: (-degree.get(int(unit.id or 0), 0), int(unit.id or 0)),
+        )
+        selected_order: list[int] = []
+        selected_ids: set[int] = set()
+
+        def _append_selected(unit_id: int) -> None:
+            if unit_id <= 0 or unit_id in selected_ids or len(selected_order) >= node_limit:
+                return
+            selected_ids.add(unit_id)
+            selected_order.append(unit_id)
+
+        for unit in ordered_units:
+            unit_id = int(unit.id or 0)
+            if unit_id <= 0 or len(selected_order) >= node_limit:
+                continue
+            _append_selected(unit_id)
+            for neighbor_id in sorted(adjacency.get(unit_id, set()), key=lambda item: (-degree.get(item, 0), item)):
+                _append_selected(neighbor_id)
+                if len(selected_order) >= node_limit:
+                    break
+            if len(selected_order) >= node_limit:
                 break
-        selected_ids = set(sorted(selected_ids, key=lambda item: (-degree.get(item, 0), item))[:limit])
-        unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=selected_ids)
+        if not selected_ids:
+            selected_order = [int(unit.id) for unit in units[:node_limit] if unit.id is not None]
+            selected_ids = set(selected_order)
+        node_ids = set(selected_order[:node_limit])
+        unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=node_ids)
+        ordered_node_ids = [unit_id for unit_id in selected_order if unit_id in unit_by_id]
+        if not ordered_node_ids:
+            ordered_node_ids = sorted(unit_by_id)
         sub_edges = [
             edge
             for edge in all_edges
-            if edge.source_node_id in selected_ids and edge.target_node_id in selected_ids
-        ][:limit]
+            if edge.source_node_id in node_ids and edge.target_node_id in node_ids
+        ][:edge_limit]
         return KnowledgeSubgraphResponse(
-            nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in sorted(unit_by_id)],
+            nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in ordered_node_ids],
             edges=[_to_relation_response_with_units(edge, unit_by_id) for edge in sub_edges],
             center_knowledge_unit_id=None,
         )
 
-    units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
-        session,
-        course_id,
-        status="active",
-        limit=max(limit * 3, limit),
-        offset=0,
-    )
-    ordered_units = sorted(
-        units,
-        key=lambda unit: (-degree.get(int(unit.id or 0), 0), int(unit.id or 0)),
-    )
-    selected_ids: set[int] = set()
-    for unit in ordered_units:
-        unit_id = int(unit.id or 0)
-        if unit_id <= 0:
-            continue
-        selected_ids.add(unit_id)
-        for neighbor_id in sorted(adjacency.get(unit_id, set()), key=lambda item: (-degree.get(item, 0), item)):
-            selected_ids.add(neighbor_id)
-            if len(selected_ids) >= limit:
-                break
-        if len(selected_ids) >= limit:
+    selected_ids = set(center_ids)
+    frontier = set(center_ids)
+    for _ in range(max(0, hops)):
+        next_frontier: set[int] = set()
+        for node_id in frontier:
+            next_frontier.update(adjacency.get(node_id, set()))
+        next_frontier -= selected_ids
+        selected_ids.update(next_frontier)
+        frontier = next_frontier
+        if len(selected_ids) >= node_limit or not frontier:
             break
-    if not selected_ids:
-        selected_ids = {int(unit.id) for unit in units[:limit] if unit.id is not None}
-    node_ids = set(sorted(selected_ids)[:limit])
-    unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=node_ids)
+    selected_ids = set(sorted(selected_ids, key=lambda item: (-degree.get(item, 0), item))[:node_limit])
+
     sub_edges = [
         edge
         for edge in all_edges
-        if edge.source_node_id in node_ids and edge.target_node_id in node_ids
-    ][:limit]
+        if edge.source_node_id in selected_ids and edge.target_node_id in selected_ids
+    ][:edge_limit]
+    unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=selected_ids)
     return KnowledgeSubgraphResponse(
         nodes=[_to_unit_response(unit_by_id[unit_id]) for unit_id in sorted(unit_by_id)],
         edges=[_to_relation_response_with_units(edge, unit_by_id) for edge in sub_edges],
-        center_knowledge_unit_id=None,
+        center_knowledge_unit_id=center_knowledge_unit_id,
     )
 
 

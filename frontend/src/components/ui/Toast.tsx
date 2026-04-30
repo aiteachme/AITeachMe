@@ -51,14 +51,14 @@ const variantConfig: Record<
 > = {
   info: {
     icon: <Info size={18} />,
-    border: "border-blue-200 dark:border-blue-500/30",
+    border: "border-indigo-200 dark:border-indigo-500/30",
     bg: "bg-white dark:bg-slate-950/95",
     title: "text-slate-800 dark:text-slate-100",
     description: "text-slate-500 dark:text-slate-400",
     close:
       "text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200",
-    iconColor: "text-blue-500",
-    accent: "bg-blue-500",
+    iconColor: "text-indigo-500",
+    accent: "bg-indigo-500",
   },
   success: {
     icon: <CheckCircle2 size={18} />,

@@ -16,7 +16,7 @@ interface ChatComposerProps {
   onModelChange?: (value: ChatModelChoice) => void;
 }
 
-const TEXTAREA_MIN_HEIGHT = 48;
+const TEXTAREA_MIN_HEIGHT = 52;
 const TEXTAREA_MAX_HEIGHT = 160;
 
 export function ChatComposer({
@@ -32,6 +32,7 @@ export function ChatComposer({
   onModelChange,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const shouldShowModelSelect = Boolean(modelValue && onModelChange);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -66,72 +67,79 @@ export function ChatComposer({
     }
   }
 
+  const actionButton = isStreaming ? (
+    <button
+      type="button"
+      onClick={onAbort}
+      aria-label="停止生成"
+      title="停止生成"
+      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 shadow-sm transition-all hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus:ring-slate-100/10"
+    >
+      <Square className="h-3.5 w-3.5 fill-current stroke-0" />
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={onSend}
+      disabled={!value.trim() || disabled}
+      className={cn(
+        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10",
+        value.trim() && !disabled
+          ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",
+      )}
+    >
+      <Send className="ml-0.5 h-4 w-4" />
+    </button>
+  );
+
   return (
     <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
       <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
-          <div className="flex items-end gap-2 px-3 py-2.5 sm:gap-3">
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={disabled}
-              placeholder={placeholder}
-              className="h-12 min-h-12 max-h-40 flex-1 resize-none overflow-y-hidden bg-transparent px-3 py-3 text-[14px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
-              style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
-            />
-
-            {modelValue && onModelChange ? (
-              <ChatModelSelect
-                value={modelValue}
-                onChange={onModelChange}
-                disabled={disabled || isStreaming}
-                className="mb-1 hidden sm:inline-flex"
+          <div className="px-3 py-2.5">
+            <div className="flex items-end gap-2 sm:gap-3">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={disabled}
+                placeholder={placeholder}
+                className="h-[52px] min-h-[52px] max-h-40 flex-1 resize-none overflow-y-hidden bg-transparent px-3 py-3 text-[15px] leading-6 text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
+                style={{ maxHeight: `${TEXTAREA_MAX_HEIGHT}px` }}
               />
-            ) : null}
 
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={onAbort}
-                aria-label="停止生成"
-                title="停止生成"
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 shadow-sm transition-all hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:focus:ring-slate-100/10 sm:h-10 sm:w-10"
-              >
-                <Square className="h-3.5 w-3.5 fill-current stroke-0" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSend}
-                disabled={!value.trim() || disabled}
-                className={cn(
-                  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10 sm:h-10 sm:w-10",
-                  value.trim() && !disabled
-                    ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                    : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",
-                )}
-              >
-                <Send className="h-4 w-4 ml-0.5" />
-              </button>
-            )}
-          </div>
+              {shouldShowModelSelect ? (
+                <ChatModelSelect
+                  value={modelValue!}
+                  onChange={onModelChange!}
+                  disabled={disabled || isStreaming}
+                  className="mb-1 hidden sm:inline-flex"
+                />
+              ) : null}
 
-          {modelValue && onModelChange ? (
-            <div className="flex items-center px-5 pb-3 pt-0 sm:hidden">
-              <ChatModelSelect
-                value={modelValue}
-                onChange={onModelChange}
-                disabled={disabled || isStreaming}
-                className="h-8"
-              />
+              <span className="hidden sm:inline-flex">{actionButton}</span>
             </div>
-          ) : null}
+
+            <div className="mt-1 flex min-h-10 items-center justify-between gap-2 px-1 sm:hidden">
+              <div className="flex min-w-0 flex-1 items-center">
+                {shouldShowModelSelect ? (
+                  <ChatModelSelect
+                    value={modelValue!}
+                    onChange={onModelChange!}
+                    disabled={disabled || isStreaming}
+                    className="min-w-0 flex-1"
+                  />
+                ) : null}
+              </div>
+              {actionButton}
+            </div>
+          </div>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-3 px-2 text-[11px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
+        <div className="mt-2.5 flex items-center justify-between gap-3 px-2 text-[12px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
           <span className="hidden sm:inline-block">Enter 发送，Shift + Enter 换行</span>
           <span className="inline-flex items-center gap-1.5 ml-auto">
             {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}

@@ -24,7 +24,7 @@ export function CourseVectorNotice({
         "rounded-2xl border px-4 py-3",
         isDisabled
           ? "border-amber-200 bg-amber-50 text-amber-800"
-          : "border-sky-200 bg-sky-50 text-sky-800",
+          : "border-indigo-200 bg-indigo-50 text-indigo-800",
         className,
       )}
     >

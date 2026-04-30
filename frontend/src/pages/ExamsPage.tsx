@@ -218,7 +218,7 @@ function ExamPrewarmStatusIcon({
     effectiveStatus === "ready"
       ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
       : effectiveStatus === "preparing"
-        ? "border-sky-200 bg-sky-50 text-sky-600 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300"
+        ? "border-indigo-200 bg-indigo-50 text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-300"
         : effectiveStatus === "failed" || effectiveStatus === "stale"
           ? "border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
           : "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500";
@@ -439,7 +439,7 @@ export function ExamsPage() {
             <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
                 <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 px-3 py-1 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <Sparkles className="h-4 w-4 text-sky-500" />
+                  <Sparkles className="h-4 w-4 text-indigo-500" />
                   Exam Studio
                 </div>
 
@@ -748,13 +748,13 @@ function QuestionTemplateCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
+      className="group relative h-[360px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-500/25"
       aria-label={`查看题目模板 ${item.id}`}
     >
-      <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+      <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-indigo-300/30" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-indigo-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(99,102,241,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-indigo-500/40">
         <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
-        <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
+        <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-indigo-50 blur-2xl" />
         {item.is_marked ? (
           <span className="pointer-events-none absolute left-4 top-0 z-20 h-[72px] w-5 drop-shadow-[0_8px_10px_rgba(127,29,29,0.28)]">
             <span
@@ -768,7 +768,7 @@ function QuestionTemplateCard({
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
           <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-600 dark:text-slate-300">
-            <FileText className="h-4 w-4 shrink-0 text-sky-600" />
+            <FileText className="h-4 w-4 shrink-0 text-indigo-600" />
             <span className="truncate">{questionTypeLabel}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
@@ -973,17 +973,17 @@ function QuestionTypeCard({ item, onOpen }: { item: QuestionTypeRegistryItem; on
     <button
       type="button"
       onClick={onOpen}
-      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-sky-200 dark:focus-visible:ring-sky-500/25"
+      className="group relative h-[340px] rounded-[26px] text-left outline-none transition duration-200 hover:-translate-y-1 focus-visible:ring-4 focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-500/25"
       aria-label={`查看题型 ${item.display_name || item.type_key}`}
     >
-      <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-sky-300/30" />
-      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-sky-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(14,165,233,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-sky-500/40">
+      <span className="absolute inset-x-4 bottom-[-10px] h-8 rounded-[24px] bg-slate-300/35 blur-xl transition group-hover:bg-indigo-300/30" />
+      <span className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(15,23,42,0.03),0_18px_38px_-24px_rgba(15,23,42,0.45)] transition group-hover:border-indigo-200 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-10px_24px_rgba(99,102,241,0.04),0_24px_42px_-24px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.9)] dark:group-hover:border-indigo-500/40">
         <span className="pointer-events-none absolute inset-y-0 left-0 w-8 border-r border-slate-200/90 bg-[repeating-linear-gradient(180deg,rgba(148,163,184,0.22)_0px,rgba(148,163,184,0.22)_1px,transparent_1px,transparent_24px)] dark:border-slate-800 dark:bg-[repeating-linear-gradient(180deg,rgba(71,85,105,0.32)_0px,rgba(71,85,105,0.32)_1px,transparent_1px,transparent_24px)]" />
-        <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-sky-50 blur-2xl" />
+        <span className="pointer-events-none absolute right-4 top-4 h-12 w-12 rounded-full bg-indigo-50 blur-2xl" />
 
         <span className="relative flex items-center justify-between gap-3 pl-8">
           <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-slate-700 dark:text-slate-300">
-            <Tags className="h-4 w-4 shrink-0 text-sky-600" />
+            <Tags className="h-4 w-4 shrink-0 text-indigo-600" />
             <span className="truncate">{item.display_name || item.type_key}</span>
           </span>
           <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold">
@@ -1041,7 +1041,7 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
             <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
               {getQuestionTypeScopeLabel(item.scope)}
             </span>
-            <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
               {getQuestionTypeSourceLabel(item.source)}
             </span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -1122,7 +1122,7 @@ function ExamCatalogShell({
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-                <Sparkles className="h-4 w-4 text-sky-500" />
+                <Sparkles className="h-4 w-4 text-indigo-500" />
                 {eyebrow}
               </div>
               <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-slate-100 sm:text-4xl">
@@ -1278,7 +1278,7 @@ export function QuestionTemplatesPage() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="搜索题干、题型、难度、ID"
-                  className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-10 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                  className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-10 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                 />
                 {searchQuery ? (
                   <button

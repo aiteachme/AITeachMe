@@ -330,5 +330,34 @@ class SQLiteVecVectorStore(BasePydanticVectorStore):
                 total += int(count or 0)
         return total
 
+    def list_node_ids(self, node_ids: Iterable[str]) -> set[str]:
+        normalized_course_id = self.course_id.strip()
+        chunk_ids = {
+            chunk_id
+            for node_id in node_ids
+            if (chunk_id := _chunk_id_from_node_id(node_id)) is not None
+        }
+        if not normalized_course_id or not chunk_ids:
+            return set()
+
+        found: set[str] = set()
+        with get_engine().connect() as connection:
+            _load_sqlite_vec(connection)
+            params = {
+                f"chunk_id_{index}": chunk_id
+                for index, chunk_id in enumerate(sorted(chunk_ids))
+            }
+            placeholders = ", ".join(f":{name}" for name in params)
+            for table_name in _list_vector_tables(connection):
+                rows = connection.execute(
+                    sa.text(
+                        f"SELECT chunk_id FROM {quote_sqlite_identifier(table_name)} "
+                        f"WHERE course = :course AND chunk_id IN ({placeholders})"
+                    ),
+                    {"course": normalized_course_id, **params},
+                ).scalars()
+                found.update(str(int(chunk_id)) for chunk_id in rows if chunk_id is not None)
+        return found
+
 
 __all__ = ["SQLiteVecVectorStore"]

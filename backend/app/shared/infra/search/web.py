@@ -23,6 +23,7 @@ from app.shared.infra.search.defaults import (
     DEFAULT_SEARCH_PROVIDER_TIMEOUT_S,
     DEFAULT_SEARCH_TOTAL_TIMEOUT_S,
 )
+from app.shared.infra.search.local_sufficiency import effective_local_result_count
 from app.shared.infra.search.types import SearchResult
 
 logger = structlog.get_logger(__name__)
@@ -260,7 +261,8 @@ async def dispatch_web_search(
             timeout_s=min(provider_budget, remaining),
         )
         provider_outputs.append((retriever.name, local_results))
-        if len(local_results) >= top_k:
+        effective_local_count = effective_local_result_count(local_results)
+        if effective_local_count >= top_k:
             fused = _fuse_provider_results(
                 provider_outputs,
                 top_k=top_k,
@@ -271,6 +273,7 @@ async def dispatch_web_search(
                 query=query,
                 provider=retriever.name,
                 result_count=len(fused),
+                effective_local_count=effective_local_count,
                 elapsed_ms=int((time.monotonic() - started_at) * 1000),
                 dispatch_mode="local_sufficient",
             )

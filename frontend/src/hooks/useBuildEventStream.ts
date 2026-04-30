@@ -43,6 +43,21 @@ export interface BuildStreamRecentEvent {
   [key: string]: unknown;
 }
 
+export interface BuildStreamGraphDeltaEvent {
+  stage?: string | null;
+  build_revision_no?: number | null;
+  unit_count?: number | null;
+  edge_count?: number | null;
+  created_unit_count?: number | null;
+  updated_unit_count?: number | null;
+  deprecated_unit_count?: number | null;
+  created_edge_count?: number | null;
+  updated_edge_count?: number | null;
+  deprecated_edge_count?: number | null;
+  emitted_at?: string | null;
+  [key: string]: unknown;
+}
+
 interface BuildPreviewDeltaEvent {
   kind?: string;
   chapter_index?: number;
@@ -55,7 +70,14 @@ interface BuildPreviewDeltaEvent {
   updated_at?: string | null;
 }
 
-const PREVIEW_FLUSH_INTERVAL_MS = 180;
+const resolvePreviewFlushIntervalMs = () => {
+  const parsed = Number(import.meta.env.VITE_BUILD_PREVIEW_FLUSH_INTERVAL_MS);
+  if (!Number.isFinite(parsed)) return 160;
+  return Math.min(500, Math.max(60, parsed));
+};
+
+const PREVIEW_FLUSH_INTERVAL_MS = resolvePreviewFlushIntervalMs();
+const TERMINAL_PREVIEW_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 
 export function useBuildEventStream({
   courseId,
@@ -66,6 +88,7 @@ export function useBuildEventStream({
   const [connected, setConnected] = useState(false);
   const [previewStreams, setPreviewStreams] = useState<Record<number, BuildPreviewStreamState>>({});
   const [buildEvents, setBuildEvents] = useState<BuildStreamRecentEvent[]>([]);
+  const [graphDeltas, setGraphDeltas] = useState<BuildStreamGraphDeltaEvent[]>([]);
   const onDoneRef = useRef(onDone);
   const previewStreamsRef = useRef<Record<number, BuildPreviewStreamState>>({});
   const previewFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,6 +118,47 @@ export function useBuildEventStream({
     previewFlushTimerRef.current = setTimeout(flushPreviewStreams, PREVIEW_FLUSH_INTERVAL_MS);
   }, [flushPreviewStreams]);
 
+  const mergeSnapshotPreviewStreams = useCallback((data: KnowledgeBuildRuntimeResponse) => {
+    const chapterPreviews = data.docgen_preview?.chapter_previews ?? [];
+    if (chapterPreviews.length === 0) return;
+
+    let changed = false;
+    let nextStreams = previewStreamsRef.current;
+    for (const chapterPreview of chapterPreviews) {
+      const chapterIndex = Number(chapterPreview.chapter_index ?? 0);
+      const text = String(chapterPreview.excerpt ?? "");
+      if (!chapterIndex || !text.trim()) continue;
+
+      const current = nextStreams[chapterIndex];
+      const status = String(chapterPreview.status ?? current?.status ?? "");
+      const shouldReplace =
+        !current ||
+        text.length > current.text.length ||
+        current.status !== status ||
+        (TERMINAL_PREVIEW_STATUSES.has(status) && text !== current.text);
+      if (!shouldReplace) continue;
+
+      nextStreams = {
+        ...nextStreams,
+        [chapterIndex]: {
+          chapterIndex,
+          title: chapterPreview.title ?? current?.title,
+          status,
+          text,
+          fullLength: text.length,
+          updatedAt: chapterPreview.updated_at ?? current?.updatedAt ?? null,
+          revision: (current?.revision ?? 0) + 1,
+        },
+      };
+      changed = true;
+    }
+
+    if (changed) {
+      previewStreamsRef.current = nextStreams;
+      schedulePreviewFlush(true);
+    }
+  }, [schedulePreviewFlush]);
+
   useEffect(() => {
     if (!enabled || !courseId) {
       setSnapshot(null);
@@ -103,6 +167,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setPreviewStreams({});
       setBuildEvents([]);
+      setGraphDeltas([]);
       return;
     }
 
@@ -111,6 +176,7 @@ export function useBuildEventStream({
     clearPreviewFlushTimer();
     setPreviewStreams({});
     setBuildEvents([]);
+    setGraphDeltas([]);
     const es = new EventSource(url, { withCredentials: true });
     const unregisterEventSource = registerBackendEventSource(es);
 
@@ -126,6 +192,7 @@ export function useBuildEventStream({
       try {
         const data = JSON.parse(e.data) as KnowledgeBuildRuntimeResponse;
         setSnapshot(data);
+        mergeSnapshotPreviewStreams(data);
         setConnected(true);
       } catch {
         // ignore malformed events
@@ -181,6 +248,16 @@ export function useBuildEventStream({
       }
     });
 
+    es.addEventListener("graph_delta", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as BuildStreamGraphDeltaEvent;
+        setGraphDeltas((prev) => [data, ...prev].slice(0, 24));
+        setConnected(true);
+      } catch {
+        // ignore malformed graph delta events
+      }
+    });
+
     es.addEventListener("done", (e: MessageEvent) => {
       flushPreviewStreams();
       try {
@@ -205,7 +282,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setConnected(false);
     };
-  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush]);
+  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
 
-  return { snapshot, connected, previewStreams, buildEvents };
+  return { snapshot, connected, previewStreams, buildEvents, graphDeltas };
 }

@@ -34,6 +34,8 @@ const KnowledgeGraphView = lazy(() =>
 
 const ACTIVE_BUILD_STATUSES = new Set(["accepted", "running", "publishing"]);
 const GRAPH_TERMINAL_BUILD_STATUSES = new Set(["completed", "partial_failed", "failed", "cancelled", "skipped"]);
+const GRAPH_AUTO_BUILD_STATUSES = new Set(["", "idle", "skipped"]);
+const AUTO_GRAPH_BUILD_ATTEMPTS = new Set<string>();
 
 function TabFallback({ message }: { message: string }) {
   return (
@@ -82,8 +84,12 @@ export function KnowledgeGraphSidePanel({
   });
 
   const { data: buildRuntime } = useKnowledgeDocsBuildState(courseId);
+  const docgenStatus = String(buildRuntime?.docgen?.status ?? "").trim();
   const graphStatus = String(buildRuntime?.graph?.status ?? "").trim();
   const graphIsActive = ACTIVE_BUILD_STATUSES.has(graphStatus);
+  const graphCanAutoBuild = GRAPH_AUTO_BUILD_STATUSES.has(graphStatus);
+  const graphNodeCount = Number(overview?.stats?.node_count ?? 0);
+  const graphEdgeCount = Number(overview?.stats?.edge_count ?? 0);
   const previousGraphStatusRef = useRef(graphStatus);
 
   useEffect(() => {
@@ -109,6 +115,34 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
     },
   });
+
+  useEffect(() => {
+    const docgenRunKey =
+      buildRuntime?.docgen?.build_group_id ??
+      buildRuntime?.docgen?.finished_at ??
+      buildRuntime?.docgen?.requested_at ??
+      "latest";
+    const attemptKey = `${courseId}:${docgenRunKey}`;
+    if (!courseId || overviewLoading || overviewIsError || graphBuildMutation.isPending) return;
+    if (docgenStatus !== "completed" || !graphCanAutoBuild) return;
+    if (graphNodeCount > 0 || graphEdgeCount > 0) return;
+    if (AUTO_GRAPH_BUILD_ATTEMPTS.has(attemptKey)) return;
+    AUTO_GRAPH_BUILD_ATTEMPTS.add(attemptKey);
+    graphBuildMutation.mutate();
+  }, [
+    buildRuntime?.docgen?.build_group_id,
+    buildRuntime?.docgen?.finished_at,
+    buildRuntime?.docgen?.requested_at,
+    courseId,
+    docgenStatus,
+    graphCanAutoBuild,
+    graphBuildMutation,
+    graphBuildMutation.isPending,
+    graphEdgeCount,
+    graphNodeCount,
+    overviewIsError,
+    overviewLoading,
+  ]);
 
   const cancelBuildMutation = useMutation({
     mutationFn: () => cancelKnowledgeBuild(courseId),
@@ -236,7 +270,13 @@ export function KnowledgeGraphSidePanel({
 
         {!overviewLoading && !overviewIsError ? (
           <Suspense fallback={<TabFallback message="正在加载知识图谱..." />}>
-            <KnowledgeGraphView course={courseId} stats={overview?.stats ?? null} />
+            <KnowledgeGraphView
+              course={courseId}
+              stats={overview?.stats ?? null}
+              canBuildGraph={!graphIsActive && !graphBuildMutation.isPending}
+              buildGraphPending={graphBuildMutation.isPending}
+              onBuildGraph={() => graphBuildMutation.mutate()}
+            />
           </Suspense>
         ) : null}
       </div>

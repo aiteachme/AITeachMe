@@ -76,7 +76,7 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
           height: "140%",
           left: "-20%",
           top: "-20%",
-          background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(139,92,246,0.08) 50%, transparent 70%)",
+          background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0.08) 50%, transparent 70%)",
         }}
         animate={{
           scale: [1, 1.25, 1],

@@ -6,6 +6,7 @@ import hashlib
 import re
 from pathlib import Path
 
+from app.shared.infra.search.llamaindex_index import split_text_for_ingestion
 from app.workflows.digest.common.models import SectionPacket
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -184,6 +185,18 @@ def _split_large_content(content: str) -> list[str]:
     if len(normalized) <= MAX_SECTION_CHARS:
         return [normalized]
 
+    try:
+        chunks = split_text_for_ingestion(normalized)
+        if chunks:
+            return chunks
+    except Exception:
+        pass
+
+    return _split_large_content_legacy(normalized)
+
+
+def _split_large_content_legacy(content: str) -> list[str]:
+    normalized = content.strip()
     paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", normalized) if paragraph.strip()]
     if len(paragraphs) <= 1:
         return _split_plain_text(normalized)

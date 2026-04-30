@@ -1220,7 +1220,6 @@ export const AiConversationView = memo(function AiConversationView({
             {historyError ?? sessionsError}
           </div>
         ) : null}
-
         <AiConversationMessageView
           scrollRef={messageScrollRef}
           onScroll={handleMessageScroll}

@@ -421,7 +421,7 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <BookOpen className="h-4 w-4" />
             进入文档
@@ -435,17 +435,15 @@ function PlannerOutlineCard({
         >
           调整
         </button>
-        {!publishedDocReady ? (
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isDisabled}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-          >
-            {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            开始构建
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isDisabled}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        >
+          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {publishedDocReady ? "重新构建" : "开始构建"}
+        </button>
       </div>
     </div>
   );
@@ -474,7 +472,7 @@ function BuildInProgressBubble({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-slate-100">
-                {isActive ? <span className="build-live-dot h-2 w-2 text-blue-500" aria-hidden="true" /> : null}
+                {isActive ? <span className="build-live-dot h-2 w-2 text-indigo-500" aria-hidden="true" /> : null}
                 {isActive ? "知识库正在构建" : "知识库构建状态"}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
@@ -494,7 +492,7 @@ function BuildInProgressBubble({
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isActive ? "build-loading-progress-fill" : ""
-              } ${isActive ? "bg-blue-500" : "bg-zinc-950 dark:bg-slate-100"}`}
+              } ${isActive ? "bg-indigo-600" : "bg-zinc-950 dark:bg-slate-100"}`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -531,7 +529,7 @@ function fileMeta(file: FileRecord) {
   }
   return { 
     label: "正在解析文件...", 
-    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-sky-500" /> 
+    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-indigo-500" />
   };
 }
 
@@ -539,8 +537,8 @@ function fileIcon(file: FileRecord) {
   const ext = file.filetype?.toLowerCase();
   if (ext === "pdf") return <FileText className="h-3.5 w-3.5 text-red-400" />;
   if (["png", "jpg", "jpeg", "webp"].includes(ext ?? "")) return <FileImage className="h-3.5 w-3.5 text-emerald-400" />;
-  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-violet-400" />;
-  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-blue-400" />;
+  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-indigo-400" />;
+  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-indigo-400" />;
   if (["ppt", "pptx"].includes(ext ?? "")) return <FileType className="h-3.5 w-3.5 text-orange-400" />;
   return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
 }
@@ -1421,16 +1419,22 @@ export function BuildPlanPage() {
         return;
       }
 
-      const response = await revisePlannerSessionStream(courseId, plannerSessionId, text, toChatRequestModel(chatModel), {
-        signal: controller.signal,
-        onStatus: (payload) => {
-          setPlannerStreamingStatus(resolvePlannerStatusText(payload));
+      const response = await revisePlannerSessionStream(
+        courseId,
+        plannerSessionId,
+        text,
+        toChatRequestModel(chatModel),
+        {
+          signal: controller.signal,
+          onStatus: (payload) => {
+            setPlannerStreamingStatus(resolvePlannerStatusText(payload));
+          },
+          onToken: (token) => {
+            plannerStreamingRawRef.current += token;
+            setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+          },
         },
-        onToken: (token) => {
-          plannerStreamingRawRef.current += token;
-          setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
-        },
-      });
+      );
       logPlannerDebug("revise_planner_response", {
         courseId,
         plannerSessionId: response.session_id,
@@ -1775,7 +1779,7 @@ export function BuildPlanPage() {
         <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
             {isRevisingPlan ? (
-              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
                 <div className="flex items-center gap-2">
                   <RefreshCw className="h-4 w-4" />
                   <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或重点。</span>
@@ -1783,7 +1787,7 @@ export function BuildPlanPage() {
                 <button
                   type="button"
                   onClick={() => setIsRevisingPlan(false)}
-                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-100"
+                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
                 >
                   取消
                 </button>
@@ -1850,8 +1854,8 @@ export function BuildPlanPage() {
                   </div>
                 )}
 
-                <div className="flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
+                <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
                     <input
                       type="file"
                       multiple
@@ -1885,11 +1889,12 @@ export function BuildPlanPage() {
                     )}
                   </div>
 
-                  <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:ml-2 sm:w-auto">
+                  <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                     <ChatModelSelect
                       value={chatModel}
                       onChange={setChatModel}
                       disabled={isBuilding || plannerStreaming}
+                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
                     />
                     <button
                       type="button"

@@ -32,7 +32,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                 transition={{ delay: index * 0.05, duration: 0.26, ease: "easeOut" }}
                 className={cn(
                   "relative flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors leading-[1.2]",
-                  isActive ? "bg-sky-50/50 dark:bg-sky-500/10" : "hover:bg-zinc-50/80 dark:hover:bg-slate-800/50",
+                  isActive ? "bg-indigo-50/60 dark:bg-indigo-500/10" : "hover:bg-zinc-50/80 dark:hover:bg-slate-800/50",
                 )}
               >
                 <div className="relative z-10 mt-0.5 shrink-0">
@@ -42,7 +42,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                     </div>
                   ) : isActive ? (
                     <div className="relative">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-sky-200 bg-sky-100 text-sky-500 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-indigo-200 bg-indigo-100 text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
                         <Loader2 className="h-3 w-3 animate-spin" strokeWidth={3} />
                       </div>
                     </div>
@@ -60,7 +60,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                         isDone
                           ? "font-medium text-zinc-700 dark:text-slate-300"
                           : isActive
-                            ? "font-semibold text-sky-600 dark:text-sky-300"
+                            ? "font-semibold text-indigo-700 dark:text-indigo-300"
                             : "text-zinc-400 dark:text-slate-500",
                       )}
                     >
@@ -70,7 +70,7 @@ export function BuildProcessTimeline({ steps, className }: Props) {
                   <p
                     className={cn(
                       "mt-1 text-[11px] leading-5",
-                      isActive ? "text-sky-600 dark:text-sky-300" : isDone ? "text-zinc-400 dark:text-slate-500" : "text-zinc-300 dark:text-slate-600",
+                      isActive ? "text-indigo-600 dark:text-indigo-300" : isDone ? "text-zinc-400 dark:text-slate-500" : "text-zinc-300 dark:text-slate-600",
                     )}
                   >
                     {step.description}

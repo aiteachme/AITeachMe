@@ -45,6 +45,7 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
     re.IGNORECASE,
 )
+_QUESTION_GENERATION_CONCURRENCY = 12
 
 
 def _escape_text_underscore_placeholders(value: str) -> str:
@@ -1191,17 +1192,30 @@ async def generate_exam_questions_for_units(
     if missing_units:
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
+    parent_task = asyncio.current_task()
+    concurrency = max(1, min(_QUESTION_GENERATION_CONCURRENCY, len(specs) or 1))
+    semaphore = asyncio.Semaphore(concurrency)
+
     async def generate_for_spec(
         spec: ExamQuestionGenerationSpec,
     ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
         try:
-            question = await _generate_one_exam_question(
-                unit_by_id=unit_by_id,
-                spec=spec,
-                course_profile=course_profile,
-                system_constraints=system_constraints,
-            )
+            async with semaphore:
+                question = await _generate_one_exam_question(
+                    unit_by_id=unit_by_id,
+                    spec=spec,
+                    course_profile=course_profile,
+                    system_constraints=system_constraints,
+                )
             return spec, question
+        except asyncio.CancelledError as exc:
+            if parent_task is not None and parent_task.cancelling():
+                raise
+            cancelled_error = RuntimeError(
+                f"LLM question generation was cancelled for item_order={spec.item_order}."
+            )
+            cancelled_error.__cause__ = exc
+            return spec, cancelled_error
         except Exception as exc:
             return spec, exc
 
@@ -1210,30 +1224,42 @@ async def generate_exam_questions_for_units(
     failures: list[str] = []
     failed_orders: list[int] = []
     tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
-    for completed_task in asyncio.as_completed(tasks):
-        spec, result = await completed_task
-        if isinstance(result, Exception):
-            failed_orders.append(spec.item_order)
-            failures.append(f"item_order={spec.item_order}: {result}")
-            failure = ExamQuestionGenerationFailure(
-                item_order=spec.item_order,
-                question_type=spec.question_type,
-                difficulty=spec.difficulty,
-                knowledge_unit_ids=spec.knowledge_unit_ids,
-                error_message=str(result),
-            )
-            failed.append(failure)
-            if on_question_failed is not None:
-                await on_question_failed(failure)
-            continue
-        generated.append(result)
-        if on_question_generated is not None:
-            await on_question_generated(result)
+    try:
+        for completed_task in asyncio.as_completed(tasks):
+            spec, result = await completed_task
+            if isinstance(result, Exception):
+                failed_orders.append(spec.item_order)
+                failures.append(f"item_order={spec.item_order}: {result}")
+                failure = ExamQuestionGenerationFailure(
+                    item_order=spec.item_order,
+                    question_type=spec.question_type,
+                    difficulty=spec.difficulty,
+                    knowledge_unit_ids=spec.knowledge_unit_ids,
+                    error_message=str(result),
+                )
+                failed.append(failure)
+                if on_question_failed is not None:
+                    await on_question_failed(failure)
+                continue
+            generated.append(result)
+            if on_question_generated is not None:
+                await on_question_generated(result)
+    except asyncio.CancelledError:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
     if failures and not allow_partial:
         raise ValueError(
             "Exam question generation failed for "
             f"item_order values={failed_orders}; " + "; ".join(failures)
+        )
+    if failures and not generated:
+        raise ValueError(
+            "Exam question generation failed for all requested items; "
+            + "; ".join(failures)
         )
 
     requested_orders = {spec.item_order for spec in specs}

@@ -39,11 +39,11 @@ export const SETTINGS_STYLES = {
     runtimeIndicatorWrap: "relative flex h-2 w-2",
     runtimeIndicatorPulse:
       "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-    runtimeIndicatorPulseLocal: "bg-emerald-400",
-    runtimeIndicatorPulseCloud: "bg-sky-400",
+    runtimeIndicatorPulseLocal: "bg-indigo-400",
+    runtimeIndicatorPulseCloud: "bg-indigo-400",
     runtimeIndicatorDot: "relative inline-flex h-2 w-2 rounded-full",
-    runtimeIndicatorDotLocal: "bg-emerald-500",
-    runtimeIndicatorDotCloud: "bg-sky-500",
+    runtimeIndicatorDotLocal: "bg-indigo-500",
+    runtimeIndicatorDotCloud: "bg-indigo-500",
   },
   footer: {
     root: "z-10 flex flex-col gap-3 border-t border-zinc-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:px-10 sm:py-5",
@@ -91,7 +91,7 @@ export const SETTINGS_STYLES = {
     readonlyValue:
       "w-full max-w-full break-all rounded-md border border-zinc-200 dark:border-slate-800 bg-zinc-50 dark:bg-slate-900 px-3 py-2 font-mono text-[13px] text-zinc-600 dark:text-zinc-400",
     control:
-      "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus:outline-none focus:border-sky-500 dark:focus:border-sky-400 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
+      "min-h-11 w-full rounded-md border border-zinc-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[14px] text-zinc-900 dark:text-zinc-100 transition-colors placeholder:text-zinc-400 hover:border-zinc-400 dark:hover:border-slate-600 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-zinc-50 dark:disabled:bg-slate-900",
     select:
       "appearance-none items-center justify-between whitespace-nowrap cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%2371717A%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[position:right_10px_center] bg-no-repeat pr-10",
     selectTrigger:
@@ -118,7 +118,7 @@ export const SETTINGS_STYLES = {
     switchDescription: "text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400",
     switchButton:
       "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:ring-offset-2",
-    switchButtonEnabled: "bg-emerald-500 dark:bg-emerald-600",
+    switchButtonEnabled: "bg-zinc-900 dark:bg-indigo-500",
     switchButtonDisabled: "bg-zinc-200 dark:bg-slate-700",
     switchThumb:
       "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.15)] ring-0 transition-transform",

@@ -59,7 +59,7 @@ export function ChatCitationModal({
               </div>
               <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
                 <div className="flex items-start gap-2">
-                  <BookOpen className="mt-0.5 h-4 w-4 text-sky-600" />
+                  <BookOpen className="mt-0.5 h-4 w-4 text-indigo-600" />
                   <span>{data.document_title}</span>
                 </div>
                 <div className="pl-6 text-slate-500 dark:text-slate-400">

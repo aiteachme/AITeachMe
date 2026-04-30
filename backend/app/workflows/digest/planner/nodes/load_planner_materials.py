@@ -17,8 +17,10 @@ from app.workflows.digest.common.prepare import prepare_material_context as buil
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.store import prepare_planner_run
 from app.workflows.digest.planner.state import BuildPlannerState
+from app.workflows.support.courses.learning_context import load_course_llm_context
 
 _COURSE_ID_RE = re.compile(r"^(?:course|subj)_[a-z0-9]+$", re.IGNORECASE)
+_EXISTING_DOC_CONTEXT_MAX_CHARS = 2600
 logger = structlog.get_logger(__name__)
 
 
@@ -90,6 +92,47 @@ def _build_seed_material_context(*, course_id: str, file_ids: list[str], user_pr
             key_topics=seed_titles,
         ),
     )
+
+
+def _truncate_existing_doc_context(context: str) -> str:
+    text = str(context or "").strip()
+    if len(text) <= _EXISTING_DOC_CONTEXT_MAX_CHARS:
+        return text
+    return text[: _EXISTING_DOC_CONTEXT_MAX_CHARS - 3].rstrip() + "..."
+
+
+def _read_existing_doc_structured_context(*, course_id: str) -> str:
+    try:
+        with managed_session() as session:
+            context = load_course_llm_context(
+                session,
+                course_id=course_id,
+                max_chars=_EXISTING_DOC_CONTEXT_MAX_CHARS,
+            )
+    except Exception as exc:
+        logger.warning(
+            "planner_existing_doc_structured_context_read_failed",
+            course_id=course_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return ""
+    context = str(context or "").strip()
+    if not context:
+        return ""
+    return _truncate_existing_doc_context(
+        "\n".join(
+            [
+                "现有知识文档结构化摘要（来自课程的 document_summary_json / llm_context_text，重建时优先参考）：",
+                context,
+                "重建提示：如果用户要求重新写、调整或重建，请先判断现有文档中哪些主线应保留、压缩、拆分或新增，再生成新的计划大纲。",
+            ]
+        )
+    )
+
+
+def _load_existing_doc_context(*, course_id: str) -> str:
+    return _read_existing_doc_structured_context(course_id=course_id)
 
 
 def build_load_planner_materials_node(*, context: WorkflowContext):
@@ -188,6 +231,29 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 },
             )
 
+        existing_doc_context = _load_existing_doc_context(course_id=working_state["course_id"])
+        has_existing_doc_context = bool(existing_doc_context)
+        planner_context_mode = "rebuild_existing_doc" if has_existing_doc_context else "fresh_build"
+        if existing_doc_context:
+            await emit_planner_event(
+                working_state,
+                event="planner.existing_doc.ready",
+                detail="已读取当前知识文档摘要，规划模式切换为已有文档重建。",
+                payload={
+                    "source": "course_learning_context",
+                    "context_chars": len(existing_doc_context),
+                    "planner_context_mode": planner_context_mode,
+                },
+            )
+            logger.info(
+                "planner_existing_doc_context_attached",
+                planner_session_id=working_state.get("planner_session_id", ""),
+                course_id=working_state.get("course_id", ""),
+                source="course_learning_context",
+                context_chars=len(existing_doc_context),
+                planner_context_mode=planner_context_mode,
+            )
+
         await emit_planner_event(
             working_state,
             event="planner.material.ready",
@@ -204,6 +270,8 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             **session_update,
             "material_context": material_context,
             "digest_mode": digest_mode,
+            "existing_doc_context": existing_doc_context,
+            "planner_context_mode": planner_context_mode,
         }
         logger.info(
             "planner_load_materials_completed",

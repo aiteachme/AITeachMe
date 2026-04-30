@@ -236,6 +236,21 @@ def count_embeddings_for_chunk_ids(
     return count_indexed_chunks(course_id, chunk_ids)
 
 
+def list_indexed_embedding_chunk_ids(
+    session: Session,
+    *,
+    table_name: str,
+    chunk_ids: list[int],
+) -> set[int]:
+    from app.shared.infra.search.llamaindex_index import list_indexed_chunk_ids
+
+    del table_name
+    course_id = _course_for_chunk_ids(session, chunk_ids)
+    if course_id is None:
+        return set()
+    return list_indexed_chunk_ids(course_id, chunk_ids)
+
+
 def _course_for_chunk_ids(session: Session, chunk_ids: list[int]) -> str | None:
     if not chunk_ids:
         return None

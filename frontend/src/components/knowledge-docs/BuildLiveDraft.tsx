@@ -51,7 +51,7 @@ export function BuildLiveDraft({ excerpt, chapterTitles, className }: Props) {
         >
           <pre className="whitespace-pre-wrap text-[12.5px] leading-[1.8] text-stone-600 font-[var(--font-serif,'Georgia',serif)] max-h-48 overflow-y-auto">
             {excerpt}
-            <span className="inline-block w-[2px] h-[14px] bg-sky-500 ml-0.5 align-middle animate-blink" />
+            <span className="inline-block w-[2px] h-[14px] bg-indigo-500 ml-0.5 align-middle animate-blink" />
           </pre>
         </motion.div>
       )}

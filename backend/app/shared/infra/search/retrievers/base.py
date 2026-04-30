@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
 from app.shared.infra.search.cache import get_retriever_runtime_cache
+from app.shared.infra.search.local_sufficiency import effective_local_result_count
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.observability.trace import (
     sanitize_langsmith_input,
@@ -56,6 +57,7 @@ def _search_result_preview(results: list[SearchResult], *, limit: int = 3) -> li
                 "url": item.url,
                 "snippet": item.snippet,
                 "source": item.source,
+                "score": round(float(item.score or 0.0), 4),
             }
         )
     return preview
@@ -197,6 +199,7 @@ class BaseRetriever(ABC):
                 "result_count": len(results),
                 "unique_url_count": len({item.url for item in results if item.url}),
                 "local_result_count": sum(1 for item in results if item.url.startswith("local://")),
+                "effective_local_result_count": effective_local_result_count(results),
                 "cache_status": cache_status,
                 "cache_hit": cache_status in {"hit", "shared"},
                 "results_preview": sanitize_langsmith_output(

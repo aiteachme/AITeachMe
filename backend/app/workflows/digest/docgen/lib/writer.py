@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable, Mapping
+from time import perf_counter
 from typing import Any
 
+from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
@@ -53,6 +55,20 @@ _GENERIC_REQUIREMENT_TOKENS = {
     "讲清",
     "分析",
 }
+
+
+STREAM_CALLBACK_MIN_DELTA_CHARS = get_env_bounded_int(
+    "DOCGEN_WRITER_STREAM_CALLBACK_MIN_DELTA_CHARS",
+    32,
+    min_value=8,
+    max_value=200,
+)
+STREAM_CALLBACK_MIN_INTERVAL_S = get_env_bounded_float(
+    "DOCGEN_WRITER_STREAM_CALLBACK_MIN_INTERVAL_S",
+    0.12,
+    min_value=0.03,
+    max_value=1.0,
+)
 
 
 class DocGenWriterRuntime(BaseTracedExecution):
@@ -109,20 +125,34 @@ class DocGenWriterRuntime(BaseTracedExecution):
         markdown = ""
         if on_stream_update is not None and self.context.llm_caller is None:
             chunks: list[str] = []
+            streamed_chars = 0
+            stream_callback_last_at = perf_counter()
+            stream_callback_last_len = 0
             try:
                 async for chunk in acompletion_stream(
                     messages,
                     **writer_model_kwargs,
                 ):
-                    chunks.append(str(chunk))
-                    await self._safe_stream_update(on_stream_update, "".join(chunks))
+                    chunk_text = str(chunk)
+                    if not chunk_text:
+                        continue
+                    chunks.append(chunk_text)
+                    streamed_chars += len(chunk_text)
+                    now = perf_counter()
+                    if (
+                        streamed_chars - stream_callback_last_len >= STREAM_CALLBACK_MIN_DELTA_CHARS
+                        or now - stream_callback_last_at >= STREAM_CALLBACK_MIN_INTERVAL_S
+                    ):
+                        stream_callback_last_at = now
+                        stream_callback_last_len = streamed_chars
+                        await self._safe_stream_update(on_stream_update, "".join(chunks))
                 markdown = "".join(chunks)
                 await self._safe_stream_update(on_stream_update, markdown)
             except Exception as exc:
                 self.logger.warning(
                     "docgen_writer_stream_failed_falling_back",
                     chapter_index=chapter_index,
-                    streamed_chars=sum(len(item) for item in chunks),
+                    streamed_chars=streamed_chars,
                     error=str(exc),
                 )
 

@@ -204,6 +204,8 @@ async def _stream_composer_response(
                 plan_intent=plan_intent,
                 message_history=list(state.get("message_history", [])),
                 latest_plan=state.get("latest_plan"),
+                existing_doc_context=state.get("existing_doc_context"),
+                planner_context_mode=state.get("planner_context_mode") or "fresh_build",
             ),
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.COMPOSE_PLAN,
@@ -288,6 +290,8 @@ async def _repair_outline_sketch_with_llm(
             parse_error=str(parse_error),
             message_history=list(state.get("message_history", [])),
             latest_plan=state.get("latest_plan"),
+            existing_doc_context=state.get("existing_doc_context"),
+            planner_context_mode=state.get("planner_context_mode") or "fresh_build",
         ),
         **planner_completion_kwargs_with_metadata(
             PlannerModelStep.COMPOSE_PLAN,

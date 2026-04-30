@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -14,6 +15,7 @@ from app.models.course import Course
 from app.schemas.knowledge import KnowledgeGraphBuildData
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.knowledge.build_store import (
+    KnowledgeBuildRuntimeStatus,
     read_knowledge_build_runtime,
     read_knowledge_manifest,
     sanitize_knowledge_build_error_message,
@@ -25,7 +27,7 @@ from app.shared.infra.llm_support.common import (
     use_llm_runtime_snapshot,
 )
 from app.shared.infra.storage import CourseStorageScope, build_course_storage_scope
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.build_lifecycle import (
     ACTIVE_KNOWLEDGE_BUILD_STATUSES,
 )
@@ -38,6 +40,9 @@ from app.workflows.digest.kg_doc_sync.inputs import (
 from app.workflows.digest.kg_doc_sync.lib.prefetch import consume_docgen_kg_prefetch
 
 logger = structlog.get_logger(__name__)
+
+_STALE_ACCEPTED_GRAPH_STATUS_AFTER = timedelta(minutes=5)
+_STALE_ACCEPTED_GRAPH_STAGES = {"queued_after_docgen", "manual_graph_requested"}
 
 
 def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[str]:
@@ -65,6 +70,17 @@ def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> lis
 
 def _is_active_build_status(status: str | None) -> bool:
     return str(status or "").strip() in ACTIVE_KNOWLEDGE_BUILD_STATUSES
+
+
+def _is_stale_accepted_graph_status(status: KnowledgeBuildRuntimeStatus) -> bool:
+    if str(status.status or "").strip() != "accepted":
+        return False
+    if str(status.stage or "").strip() not in _STALE_ACCEPTED_GRAPH_STAGES:
+        return False
+    requested_at = ensure_utc_datetime(status.requested_at or status.started_at)
+    if requested_at is None:
+        return False
+    return utcnow() - requested_at >= _STALE_ACCEPTED_GRAPH_STATUS_AFTER
 
 
 def _spawn_graph_build_task(
@@ -262,11 +278,20 @@ def trigger_graph_docs_sync_manual_build(
             status_code=409,
         )
     if graph_status is not None and _is_active_build_status(graph_status.status):
-        raise AITeachMeError(
-            detail="知识图谱正在构建中。",
-            error_code="GRAPH_BUILD_IN_PROGRESS",
-            status_code=409,
-        )
+        if _is_stale_accepted_graph_status(graph_status):
+            logger.warning(
+                "knowledge_graph_stale_accepted_status_overridden",
+                course_id=course.id,
+                status=graph_status.status,
+                stage=graph_status.stage,
+                requested_at=graph_status.requested_at.isoformat(),
+            )
+        else:
+            raise AITeachMeError(
+                detail="知识图谱正在构建中。",
+                error_code="GRAPH_BUILD_IN_PROGRESS",
+                status_code=409,
+            )
 
     sync_input = load_knowledge_doc_sync_input(
         course.id,
@@ -356,6 +381,7 @@ async def run_graph_docs_sync_after_doc_build(
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
+    early_units_callback: object | None = None,
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -418,6 +444,7 @@ async def run_graph_docs_sync_after_doc_build(
             build_session_id=build_session_id,
             structured_context=sync_input.structured_context,
             prefetched_sections=prefetched_sections,
+            early_units_callback=early_units_callback,
             trace_metadata={
                 "build_group_id": build_group_id,
                 "doc_version_no": doc_version_no,
@@ -488,20 +515,54 @@ async def run_graph_docs_sync_auto_build(
 ) -> None:
     """Run an automatic graph sync after DocGen without blocking the doc lane."""
 
-    await _run_graph_docs_sync_build(
-        course_id=course_id,
-        requested_at=requested_at,
-        build_group_id=build_group_id,
-        build_session_id=build_session_id,
-        file_ids=file_ids,
-        prompt=prompt,
-        llm_snapshot=llm_snapshot,
-        docgen_state=docgen_state,
-        completed_description="知识图谱已自动同步完成。",
-        cancelled_description="自动图谱同步已停止。",
-        failure_log_event="knowledge_graph_auto_build_failed",
-        course_scope=course_scope,
-    )
+    exam_prewarm_tasks: list[asyncio.Task[None]] = []
+
+    def _schedule_exam_prewarm_after_units(
+        *,
+        course_id: str,
+        build_revision_no: int,
+        metrics: dict[str, object],
+    ) -> None:
+        del metrics
+        task = asyncio.create_task(
+            _trigger_default_exam_prewarm_when_units_ready(
+                course_id=course_id,
+                min_build_revision_no=build_revision_no,
+                wait_for_units_timeout_s=0.0,
+                llm_snapshot=llm_snapshot,
+            ),
+            name=f"exam.prewarm.ready_units:{course_id}:{build_revision_no}",
+            context=contextvars.Context(),
+        )
+        exam_prewarm_tasks.append(task)
+
+    try:
+        graph_status = await _run_graph_docs_sync_build(
+            course_id=course_id,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            file_ids=file_ids,
+            prompt=prompt,
+            llm_snapshot=llm_snapshot,
+            docgen_state=docgen_state,
+            completed_description="知识图谱已自动同步完成。",
+            cancelled_description="自动图谱同步已停止。",
+            failure_log_event="knowledge_graph_auto_build_failed",
+            course_scope=course_scope,
+            early_units_callback=_schedule_exam_prewarm_after_units,
+        )
+        if graph_status == "failed":
+            for task in exam_prewarm_tasks:
+                task.cancel()
+        if exam_prewarm_tasks:
+            await asyncio.gather(*exam_prewarm_tasks, return_exceptions=True)
+    except asyncio.CancelledError:
+        for task in exam_prewarm_tasks:
+            task.cancel()
+        if exam_prewarm_tasks:
+            await asyncio.gather(*exam_prewarm_tasks, return_exceptions=True)
+        raise
 
 
 async def _run_graph_docs_sync_build(
@@ -518,7 +579,8 @@ async def _run_graph_docs_sync_build(
     cancelled_description: str,
     failure_log_event: str,
     course_scope: CourseStorageScope | None = None,
-) -> None:
+    early_units_callback: object | None = None,
+) -> str:
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
         chapter_count=0,
@@ -535,6 +597,7 @@ async def _run_graph_docs_sync_build(
             llm_snapshot=llm_snapshot,
             docgen_state=docgen_state,
             course_scope=course_scope,
+            early_units_callback=early_units_callback,
         )
         failed_section_count = int(doc_sync_metrics.get("doc_sync_failed_section_count") or 0)
         completion_status = "partial_failed" if failed_section_count > 0 else "completed"
@@ -556,6 +619,7 @@ async def _run_graph_docs_sync_build(
             current_stage_description=completion_description,
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
+        return completion_status
     except asyncio.CancelledError:
         _write_graph_status(
             course_id,
@@ -585,6 +649,42 @@ async def _run_graph_docs_sync_build(
             metrics={"processed_chunks": 0, **doc_sync_metrics},
         )
         logger.warning(failure_log_event, course_id=course_id, error=str(exc))
+        return "failed"
+
+
+async def _trigger_default_exam_prewarm_when_units_ready(
+    *,
+    course_id: str,
+    min_build_revision_no: int,
+    wait_for_units_timeout_s: float = 1800.0,
+    llm_snapshot: LLMRuntimeSnapshot | None = None,
+) -> None:
+    """本轮知识点一可见，就请求默认隐藏考卷生成。"""
+
+    try:
+        from app.workflows.examine.prewarm import trigger_default_exam_prewarm_for_course
+
+        with use_llm_runtime_snapshot(llm_snapshot):
+            result = await trigger_default_exam_prewarm_for_course(
+                course_id=course_id,
+                min_build_revision_no=min_build_revision_no,
+                wait_for_units_timeout_s=wait_for_units_timeout_s,
+                poll_interval_s=1.0,
+            )
+        logger.info(
+            "knowledge_graph_auto_exam_prewarm_result",
+            course_id=course_id,
+            status=result.status,
+            reason=result.reason,
+            exam_mode=result.exam_mode,
+            num_questions=result.num_questions,
+        )
+    except Exception as exc:
+        logger.warning(
+            "knowledge_graph_auto_exam_prewarm_failed",
+            course_id=course_id,
+            error=str(exc),
+        )
 
 
 __all__ = [

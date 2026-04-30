@@ -156,6 +156,11 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
   const editableServerEntries = collectEditableServerEntries(overview?.sections ?? []);
   const hasServerChanges = !sameDraft(settingsDraft, savedSettingsDraft);
   const hasEnvChanges = !sameDraft(envDraft, savedEnvDraft);
+  const canResetToDefaults =
+    hasServerChanges ||
+    hasEnvChanges ||
+    !sameDraft(savedSettingsDraft, defaultSettingsDraft) ||
+    !sameDraft(savedEnvDraft, defaultEnvDraft);
 
   const patchServerSetting = useCallback(
     (key: string, value: DraftRecord[string]) => {
@@ -235,6 +240,7 @@ export function useSettingsOverview({ isOpen }: UseSettingsOverviewOptions) {
     savedEnvDraft,
     hasServerChanges,
     hasEnvChanges,
+    canResetToDefaults,
     saveState,
     saveError,
     patchServerSetting,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from typing import Any
 import re
 import structlog
@@ -61,34 +62,38 @@ class LocalRAGRetriever(BaseRetriever):
         if not normalized_query:
             return []
         count = clamp_max_results(max_results, upper=50)
-        results: list[SearchResult] = []
-        if self.local_sections:
-            results.extend(self._section_fallback(normalized_query, max_results=count))
-            if results:
-                return results[:count]
 
         should_try_vector = bool(self.course_id)
         if should_try_vector and self.local_sections:
             should_try_vector = await self._refresh_vector_search_availability()
+        vector_results: list[SearchResult] = []
         if should_try_vector and self.course_id:
             try:
-                vector_results = await search_knowledge(normalized_query, self.course_id, top_k=count)
-            except Exception:
-                vector_results = []
-            results.extend(self._from_chunks(vector_results))
+                vector_chunks = await search_knowledge(
+                    normalized_query,
+                    self.course_id,
+                    top_k=count * 2,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "local_rag_vector_search_failed",
+                    course_id=self.course_id,
+                    query_len=len(normalized_query),
+                    error=str(exc),
+                )
+                vector_chunks = []
+            vector_results = self._from_chunks(vector_chunks)
 
-        if len(results) >= count or not self.local_sections:
-            return results[:count]
-
-        seen_urls = {item.url for item in results}
-        for item in self._section_fallback(normalized_query, max_results=count * 2):
-            if item.url in seen_urls:
-                continue
-            seen_urls.add(item.url)
-            results.append(item)
-            if len(results) >= count:
-                break
-        return results[:count]
+        section_results = (
+            self._section_fallback(normalized_query, max_results=count * 2)
+            if self.local_sections
+            else []
+        )
+        return self._fuse_ranked_results(
+            vector_results=vector_results,
+            section_results=section_results,
+            max_results=count,
+        )
 
     async def _refresh_vector_search_availability(self) -> bool:
         if self._vector_search_available is not None:
@@ -125,6 +130,8 @@ class LocalRAGRetriever(BaseRetriever):
 
     def _section_fallback(self, query: str, *, max_results: int) -> list[SearchResult]:
         query_tokens = Counter(_tokenize(query))
+        if not query_tokens:
+            return []
         scored: list[tuple[float, SearchResult]] = []
         for index, section in enumerate(self.local_sections):
             title = str(getattr(section, "title", "") or section.get("title", ""))
@@ -155,6 +162,61 @@ class LocalRAGRetriever(BaseRetriever):
             )
         scored.sort(key=lambda item: (-item[0], item[1].title))
         return [item for _, item in scored[:max_results]]
+
+    def _dedupe_key(self, item: SearchResult) -> str:
+        local_text_key = re.sub(
+            r"\s+",
+            "",
+            f"{item.title.strip()}::{item.snippet.strip()[:180]}",
+        ).casefold()
+        if item.url.startswith("local://") and local_text_key:
+            return local_text_key
+        return item.url.strip() or local_text_key
+
+    def _fuse_ranked_results(
+        self,
+        *,
+        vector_results: list[SearchResult],
+        section_results: list[SearchResult],
+        max_results: int,
+    ) -> list[SearchResult]:
+        fused: dict[str, tuple[SearchResult, float, set[str]]] = {}
+
+        def _add(results: list[SearchResult], *, source_name: str, weight: float) -> None:
+            for rank, item in enumerate(results):
+                key = self._dedupe_key(item)
+                if not key:
+                    continue
+                raw_score = max(0.0, float(item.score or 0.0))
+                score = min(raw_score, 1.0) * weight + weight / (60.0 + rank + 1.0)
+                candidate = replace(item, score=score, source=self.name)
+                existing = fused.get(key)
+                if existing is None:
+                    fused[key] = (candidate, score, {source_name})
+                    continue
+
+                existing_item, existing_score, sources = existing
+                sources.add(source_name)
+                merged_score = existing_score + score
+                better_item = (
+                    candidate
+                    if len(candidate.snippet or "") > len(existing_item.snippet or "")
+                    else existing_item
+                )
+                fused[key] = (replace(better_item, score=merged_score, source=self.name), merged_score, sources)
+
+        _add(vector_results, source_name="vector", weight=1.25)
+        _add(section_results, source_name="section", weight=0.85)
+
+        ranked = sorted(
+            (item for item, _score, _sources in fused.values()),
+            key=lambda item: (
+                -float(item.score or 0.0),
+                0 if item.url.startswith("local://chunk/") else 1,
+                item.title.lower().strip(),
+            ),
+        )
+        return ranked[:max_results]
 
 
 __all__ = ["LocalRAGRetriever"]

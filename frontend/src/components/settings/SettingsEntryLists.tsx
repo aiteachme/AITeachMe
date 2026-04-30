@@ -42,7 +42,7 @@ function renderEntryHelper(entryKey: string) {
         href="https://mineru.net/apiManage/token"
         target="_blank"
         rel="noreferrer"
-        className="text-xs font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-700"
+        className="text-xs font-medium text-indigo-600 underline underline-offset-4 transition-colors hover:text-indigo-700"
       >
         去 MinerU 获取 API Token
       </a>
@@ -54,7 +54,7 @@ function renderEntryHelper(entryKey: string) {
         href="https://aistudio.baidu.com/account/accessToken"
         target="_blank"
         rel="noreferrer"
-        className="text-xs font-medium text-sky-600 underline underline-offset-4 transition-colors hover:text-sky-700"
+        className="text-xs font-medium text-indigo-600 underline underline-offset-4 transition-colors hover:text-indigo-700"
       >
         去 PaddleOCR 获取 API Token
       </a>

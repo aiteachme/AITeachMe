@@ -545,14 +545,19 @@ async def knowledge_build_stream(
             if not text:
                 return False
             previous = last_preview_text_by_chapter.get(chapter_index, "")
-            full_length = int(payload.get("full_length") or 0)
-            if full_length > 0 and len(previous) >= full_length:
-                return False
             mode = str(payload.get("mode") or "replace")
             base_length = int(payload.get("base_length") or -1)
-            if mode == "append" and base_length >= 0 and base_length != len(previous):
-                return False
-            next_text = f"{previous}{text}" if mode == "append" and previous else text
+            if mode == "append":
+                full_length = int(payload.get("full_length") or 0)
+                if full_length > 0 and len(previous) >= full_length:
+                    return False
+                if base_length >= 0 and base_length != len(previous):
+                    return False
+                next_text = f"{previous}{text}"
+            else:
+                if text == previous:
+                    return False
+                next_text = text
             last_preview_text_by_chapter[chapter_index] = next_text
             return True
 
@@ -569,12 +574,15 @@ async def knowledge_build_stream(
                 previous = last_preview_text_by_chapter.get(chapter_index, "")
                 if not text or text == previous:
                     continue
+                status = str(chapter_preview.status or "").strip()
+                if status in {"generating", "drafting"} and previous and len(text) < len(previous):
+                    continue
                 mode = "append" if previous and text.startswith(previous) else "replace"
                 payload = {
                     "kind": "chapter_preview",
                     "chapter_index": chapter_index,
                     "title": chapter_preview.title,
-                    "status": chapter_preview.status,
+                    "status": status,
                     "mode": mode,
                     "base_length": len(previous),
                     "text": text[len(previous):] if mode == "append" else text,
