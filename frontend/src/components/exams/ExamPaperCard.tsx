@@ -586,7 +586,7 @@ export function ExamPaperCard({
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={handleCardKeyDown}
-      className="group cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+      className="group w-full max-w-[250px] cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
     >
       <div
         className={`relative mx-auto aspect-[210/297] w-full max-w-[250px] transition ${
