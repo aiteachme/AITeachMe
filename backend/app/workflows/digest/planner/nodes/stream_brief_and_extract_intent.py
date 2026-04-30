@@ -48,6 +48,8 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
         message_history=list(state.get("message_history", [])),
+        existing_doc_context=state.get("existing_doc_context"),
+        planner_context_mode=state.get("planner_context_mode") or "fresh_build",
     )
     logger.info(
         "planner_brief_llm_starting",
@@ -129,6 +131,8 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
+                existing_doc_context=state.get("existing_doc_context"),
+                planner_context_mode=state.get("planner_context_mode") or "fresh_build",
             ),
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.EXTRACT_INTENT,

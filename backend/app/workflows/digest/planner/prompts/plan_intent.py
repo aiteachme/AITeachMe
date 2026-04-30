@@ -8,6 +8,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
     render_material_overview,
     render_message_history,
+    render_planner_context_mode,
 )
 from app.workflows.digest.planner.prompts.examples import render_plan_intent_examples
 from app.workflows.digest.planner.lib.plans import planner_mode_label
@@ -23,10 +24,16 @@ def build_plan_intent_messages(
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
+    existing_doc_context: str | None = None,
+    planner_context_mode: str = "fresh_build",
 ) -> list[dict[str, str]]:
     # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助计划合成器
     # 确定“用户想怎么学”和“该按什么问题去整理资料”。
     mode_label = planner_mode_label(digest_mode)
+    context_mode_block = render_planner_context_mode(
+        planner_context_mode=planner_context_mode,
+        existing_doc_context=existing_doc_context,
+    )
     system_prompt = """
 你是 AITeachMe 的学习规划意图分析器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
@@ -45,6 +52,8 @@ def build_plan_intent_messages(
 
 资料上下文：
 {render_material_digest(material_context)}
+
+{context_mode_block}
 
 最近对话：
 {render_message_history(message_history)}
@@ -65,7 +74,8 @@ def build_plan_intent_messages(
 4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
 6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
-7. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
+7. 若当前规划模式为已有文档重建/调整，plan_intent 和 plan_queries 必须围绕已有版本如何改造。
+8. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
 
 示例：
 {render_plan_intent_examples()}
@@ -84,6 +94,8 @@ def build_plan_intent_messages(
             "material_digest_chars": len(material_context.material_digest or ""),
             "plan_query_min": PLAN_QUERY_MIN,
             "plan_query_max": PLAN_QUERY_MAX,
+            "planner_context_mode": planner_context_mode,
+            "existing_doc_context_chars": len(existing_doc_context or ""),
         },
         output=messages,
     )

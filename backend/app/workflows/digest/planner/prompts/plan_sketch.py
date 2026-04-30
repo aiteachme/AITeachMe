@@ -9,6 +9,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
     render_material_overview,
     render_message_history,
+    render_planner_context_mode,
 )
 from app.workflows.digest.planner.lib.plans import planner_mode_label
 
@@ -20,10 +21,16 @@ def build_plan_sketch_prompt(
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
+    existing_doc_context: str | None = None,
+    planner_context_mode: str = "fresh_build",
 ) -> str:
     # sketch 是流式展示的“正在理解中”，不是最终计划。最终卡片只使用
     # 计划合成器生成的计划说明和初步大纲。
     mode_label = planner_mode_label(digest_mode)
+    context_mode_block = render_planner_context_mode(
+        planner_context_mode=planner_context_mode,
+        existing_doc_context=existing_doc_context,
+    )
     prompt = f"""
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。
 不要输出正式计划，不要输出初步大纲，也不要写知识文档正文。
@@ -37,6 +44,8 @@ def build_plan_sketch_prompt(
 
 资料上下文：
 {render_material_digest(material_context)}
+
+{context_mode_block}
 
 最近对话：
 {render_message_history(message_history)}
@@ -54,6 +63,7 @@ def build_plan_sketch_prompt(
 4. 不要列正式章节目录；最终计划和初步大纲会在下一步单独生成。
 5. 全文控制在 260-520 字以内，宁可把判断原因讲清楚，不要铺陈。
 6. 如果没有上传资料，只能基于用户提示和课程常识判断，不要写“这批资料显示/资料里包含”。
+7. 若当前规划模式为已有知识文档重建/调整，必须围绕已有文档摘要和用户修改意见说明调整思路。
 
 请参考下面这些示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 
@@ -67,6 +77,8 @@ def build_plan_sketch_prompt(
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),
             "material_digest_chars": len(material_context.material_digest or ""),
+            "planner_context_mode": planner_context_mode,
+            "existing_doc_context_chars": len(existing_doc_context or ""),
         },
         output=prompt,
     )

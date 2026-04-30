@@ -421,7 +421,7 @@ function PlannerOutlineCard({
           <button
             type="button"
             onClick={onOpenKnowledgeDocs}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <BookOpen className="h-4 w-4" />
             进入文档
@@ -435,17 +435,15 @@ function PlannerOutlineCard({
         >
           调整
         </button>
-        {!publishedDocReady ? (
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isDisabled}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-          >
-            {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            开始构建
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isDisabled}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        >
+          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {publishedDocReady ? "重新构建" : "开始构建"}
+        </button>
       </div>
     </div>
   );

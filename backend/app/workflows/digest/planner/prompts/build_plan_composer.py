@@ -17,6 +17,7 @@ from app.workflows.digest.planner.prompts.context import (
     render_material_digest,
     render_material_overview,
     render_message_history,
+    render_planner_context_mode,
 )
 from app.workflows.digest.planner.prompts.examples import render_composer_examples
 
@@ -50,6 +51,8 @@ def build_plan_composer_messages(
     plan_intent: PlanIntent,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
+    existing_doc_context: str | None = None,
+    planner_context_mode: str = "fresh_build",
 ) -> list[dict[str, str]]:
     """构造规划器最终大纲合成提示词。
 
@@ -63,6 +66,10 @@ def build_plan_composer_messages(
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_label = planner_mode_label(digest_mode)
     chapter_contract = render_planner_chapter_contract(digest_mode)
+    context_mode_block = render_planner_context_mode(
+        planner_context_mode=planner_context_mode,
+        existing_doc_context=existing_doc_context,
+    )
     # 第一段是用户会看到的 plan_text；JSON 是机器合同。这里允许写
     # “拟查询/对照/搜集”的研究动作，但不能写成已经完成检索。
     system_prompt = f"""
@@ -92,6 +99,8 @@ def build_plan_composer_messages(
 
 资料上下文：
 {render_material_digest(material_context)}
+
+{context_mode_block}
 
 最近对话与修改意见：
 {render_message_history(message_history)}
@@ -140,6 +149,7 @@ JSON 形状：
 - chapters 只写高度概括的章节方向和 key_points，不要放来源、媒体计划、构建约束或后端字段。
 - chapters 数量必须符合上面的章节数量要求；每章标题要体现学习任务，不要只写“核心模块”“复盘安排”这类过泛标题。
 - 章节标题要自然像真实课程目录，避免口号化、过度对仗或统一句式。
+- 若当前规划模式为已有文档重建/调整，JSON 必须体现对已有版本的改造，而不是新建文档的泛化规划。
 
 内容边界：
 - plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。
@@ -166,6 +176,8 @@ JSON 形状：
             "plan_intent_chars": len(plan_intent_text),
             "plan_query_count": len(plan_intent.plan_queries),
             "has_latest_plan": latest_plan is not None,
+            "planner_context_mode": planner_context_mode,
+            "existing_doc_context_chars": len(existing_doc_context or ""),
         },
         output=messages,
     )
@@ -183,6 +195,8 @@ def build_plan_outline_repair_messages(
     parse_error: str,
     message_history: list[str] | None = None,
     latest_plan: dict[str, Any] | None = None,
+    existing_doc_context: str | None = None,
+    planner_context_mode: str = "fresh_build",
 ) -> list[dict[str, str]]:
     """为格式异常的计划合成结果构造结构修复提示词。
 
@@ -197,6 +211,10 @@ def build_plan_outline_repair_messages(
     mode_config = get_planner_mode_runtime_config(digest_mode)
     mode_label = planner_mode_label(digest_mode)
     chapter_contract = render_planner_chapter_contract(digest_mode)
+    context_mode_block = render_planner_context_mode(
+        planner_context_mode=planner_context_mode,
+        existing_doc_context=existing_doc_context,
+    )
     system_prompt = f"""
 你是 AITeachMe 的计划大纲结构修复器。
 你只输出合法 JSON 对象，不输出 Markdown、解释、注释、代码块或额外文本。
@@ -221,6 +239,8 @@ def build_plan_outline_repair_messages(
 
 资料上下文：
 {render_material_digest(material_context)}
+
+{context_mode_block}
 
 最近对话与修改意见：
 {render_message_history(message_history)}
@@ -258,7 +278,8 @@ def build_plan_outline_repair_messages(
 3. chapters 数量必须在 {mode_config.min_chapters}-{mode_config.max_chapters} 章之间。
 4. 每章 key_points 输出 2-4 条，服务后续知识文档生成器继续过大模型写正文。
 5. 没有上传资料时，只能基于用户提示生成通用初步计划，不要声称读过具体文件。
-6. 不要输出来源名单、网站名、论文名、后端字段、Markdown 代码块或 {PLAN_JSON_MARKER} 标记。
+6. 若当前规划模式为已有文档重建/调整，必须围绕已有版本如何改造来修复大纲。
+7. 不要输出来源名单、网站名、论文名、后端字段、Markdown 代码块或 {PLAN_JSON_MARKER} 标记。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -278,6 +299,8 @@ def build_plan_outline_repair_messages(
             "raw_response_chars": len(raw_response or ""),
             "parse_error_chars": len(parse_error or ""),
             "has_latest_plan": latest_plan is not None,
+            "planner_context_mode": planner_context_mode,
+            "existing_doc_context_chars": len(existing_doc_context or ""),
         },
         output=messages,
     )

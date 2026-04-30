@@ -29,6 +29,8 @@ class BuildPlannerState(TypedDict, total=False):
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
+    existing_doc_context: str
+    planner_context_mode: str
 
     # Planner working artifacts
     material_context: DigestMaterialContext
