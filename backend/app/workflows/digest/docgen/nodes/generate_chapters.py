@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 from urllib.parse import urlparse
+
+import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
@@ -46,6 +49,9 @@ from app.workflows.digest.docgen.nodes.common import (
 from app.workflows.digest.docgen.state import DocGenState
 
 
+logger = structlog.get_logger(__name__)
+
+
 CHAPTER_LIVE_PREVIEW_MAX_CHARS = get_env_bounded_int(
     "DOCGEN_CHAPTER_LIVE_PREVIEW_MAX_CHARS",
     60000,
@@ -76,6 +82,92 @@ STREAM_PERSIST_MIN_INTERVAL_S = get_env_bounded_float(
     min_value=1.0,
     max_value=15.0,
 )
+
+
+class _ChapterPreviewPersistBuffer:
+    """Coalesce draft preview persistence without backpressuring SSE."""
+
+    def __init__(self, *, course_id: str, requested_at, chapter_index: int) -> None:
+        self.course_id = course_id
+        self.requested_at = requested_at
+        self.chapter_index = chapter_index
+        self._pending_progress: dict[str, object] | None = None
+        self._pending_preview: dict[str, object] | None = None
+        self._task: asyncio.Task[None] | None = None
+        self._closed = False
+
+    def schedule(
+        self,
+        *,
+        chapter_preview: dict[str, object],
+        chapter_progress: dict[str, object] | None = None,
+    ) -> None:
+        if self._closed:
+            return
+        if chapter_progress is not None:
+            self._pending_progress = dict(chapter_progress)
+        self._pending_preview = dict(chapter_preview)
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(
+                self._drain(),
+                name=f"docgen.preview.persist:{self.course_id}:{self.chapter_index}",
+            )
+
+    async def flush(self) -> None:
+        while True:
+            task = self._task
+            if task is None or task.done():
+                if self._pending_progress is None and self._pending_preview is None:
+                    return
+                self._task = asyncio.create_task(
+                    self._drain(),
+                    name=f"docgen.preview.persist:{self.course_id}:{self.chapter_index}",
+                )
+                task = self._task
+            await task
+
+    async def close(self) -> None:
+        self._closed = True
+        await self.flush()
+
+    async def _drain(self) -> None:
+        while self._pending_progress is not None or self._pending_preview is not None:
+            chapter_progress = self._pending_progress
+            chapter_preview = self._pending_preview
+            self._pending_progress = None
+            self._pending_preview = None
+            try:
+                await asyncio.to_thread(
+                    self._persist_once,
+                    chapter_progress=chapter_progress,
+                    chapter_preview=chapter_preview,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "docgen_stream_preview_persist_failed",
+                    course_id=self.course_id,
+                    chapter_index=self.chapter_index,
+                    error=str(exc),
+                )
+
+    def _persist_once(
+        self,
+        *,
+        chapter_progress: dict[str, object] | None,
+        chapter_preview: dict[str, object] | None,
+    ) -> None:
+        if chapter_progress is not None:
+            upsert_knowledge_build_chapter_progress(
+                self.course_id,
+                requested_at=self.requested_at,
+                chapter_progress=chapter_progress,
+            )
+        if chapter_preview is not None:
+            upsert_knowledge_build_chapter_preview(
+                self.course_id,
+                requested_at=self.requested_at,
+                chapter_preview=chapter_preview,
+            )
 
 
 def _unique_strings(values: list[str]) -> list[str]:
@@ -611,6 +703,11 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         stream_persist_last_at = perf_counter()
         stream_persist_last_len = 0
         stream_progress_marked = False
+        preview_persist_buffer = _ChapterPreviewPersistBuffer(
+            course_id=state["course_id"],
+            requested_at=state["requested_at"],
+            chapter_index=task.chapter_index,
+        )
 
         async def _publish_writer_stream_preview(accumulated_markdown: str) -> None:
             nonlocal stream_direct_last_at, stream_direct_last_len
@@ -637,24 +734,20 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             # cloud object storage writes can backpressure the upstream stream.
             stream_persist_last_at = now
             stream_persist_last_len = current_len
+            chapter_progress = None
             if not stream_progress_marked:
                 stream_progress_marked = True
-                upsert_knowledge_build_chapter_progress(
-                    state["course_id"],
-                    requested_at=state["requested_at"],
-                    chapter_progress={
-                        "chapter_index": task.chapter_index,
-                        "title": title,
-                        "status": "drafting",
-                        "source_count": len(source_details),
-                        "local_hits": local_hit_count,
-                        "web_hits": web_hit_count,
-                        "query_count": len(research_trace.executed_queries),
-                    },
-                )
-            upsert_knowledge_build_chapter_preview(
-                state["course_id"],
-                requested_at=state["requested_at"],
+                chapter_progress = {
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "drafting",
+                    "source_count": len(source_details),
+                    "local_hits": local_hit_count,
+                    "web_hits": web_hit_count,
+                    "query_count": len(research_trace.executed_queries),
+                }
+            preview_persist_buffer.schedule(
+                chapter_progress=chapter_progress,
                 chapter_preview={
                     "chapter_index": task.chapter_index,
                     "title": title,
@@ -682,6 +775,9 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 on_stream_update=_publish_writer_stream_preview,
             )
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
+        except asyncio.CancelledError:
+            await preview_persist_buffer.close()
+            raise
         except Exception as exc:
             fallback_used = True
             writer_markdown = build_fallback_chapter_markdown(
@@ -745,6 +841,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         )
         word_count = count_words(writer_markdown)
         final_preview = _chapter_live_preview_markdown(writer_markdown, title=title)
+        await preview_persist_buffer.close()
         _publish_preview_delta(final_preview, status="generated")
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
