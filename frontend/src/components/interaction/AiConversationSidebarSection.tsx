@@ -331,16 +331,14 @@ export function AiConversationSidebarSection({
   }, [isGlobalListScope, listScope, listScopeKey, maxItems, sessionListVersion, shouldLoadSessions]);
 
   const openNewConversation = useCallback(() => {
-    updateExpanded(true);
-    onExpandSidebar();
     openAiInteraction({
-      mode: isAssistantPage ? "fullscreen" : "sidebar",
+      mode: "fullscreen",
       scope: newConversationScope,
       sessionId: null,
       newSession: true,
     });
     onNavigate?.();
-  }, [isAssistantPage, newConversationScope, onExpandSidebar, onNavigate, openAiInteraction, updateExpanded]);
+  }, [newConversationScope, onNavigate, openAiInteraction]);
 
   const openSession = useCallback((session: ChatSessionItem) => {
     const sessionId = getSessionId(session);

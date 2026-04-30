@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   BarChart3,
-  Bot,
   BookOpen,
   ChevronRight,
   Download,
@@ -236,7 +235,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     activeScope,
     fullscreenScope,
     closeAiInteraction,
-    openAiInteraction,
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
@@ -245,7 +243,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
-  const isGlobalAssistantActive = isAssistantPage && assistantScope?.type === "global";
   const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
   const sidebarConversationScope = useMemo<AiConversationScope>(() => {
     if (isAssistantPage && assistantScope) {
@@ -400,16 +397,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     });
   }, []);
 
-  const openGlobalAssistant = useCallback(() => {
-    setCourseActionError(undefined);
-    setOpenMenuId(null);
-    setIsMobileOpen(false);
-    openAiInteraction({
-      mode: "fullscreen",
-      scope: { type: "global" },
-    });
-  }, [openAiInteraction]);
-
   const openDeleteModal = (course: CourseItem) => {
     setDeleteTarget(course);
     setDeletePreview(null);
@@ -488,20 +475,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             <div className="flex flex-col items-center gap-1">
               <button
                 type="button"
-                onClick={openGlobalAssistant}
-                title="全局对话"
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-                  isGlobalAssistantActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <Bot className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} />
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
                   setCourseActionError(undefined);
                   setOpenMenuId(null);
@@ -564,37 +537,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                className={cn(
-                  "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
-                  isGlobalAssistantActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
-                )}
-                onClick={openGlobalAssistant}
-              >
-                <Bot
-                  className={cn(
-                    "h-4 w-4 shrink-0 transition-colors",
-                    isGlobalAssistantActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
-                  )}
-                  strokeWidth={2.2}
-                />
-                <span
-                  className={cn(
-                    "whitespace-nowrap text-xs tracking-[0.01em]",
-                    isGlobalAssistantActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
-                  )}
-                >
-                  全局对话
-                </span>
-              </button>
-
               <button
                 type="button"
                 className={cn(
