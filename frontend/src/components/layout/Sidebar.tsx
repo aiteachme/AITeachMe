@@ -43,7 +43,7 @@ import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
-import { useAiInteraction } from "../interaction";
+import { useAiInteraction, type AiConversationScope } from "../interaction";
 
 import { Button } from "../ui/Button";
 
@@ -234,6 +234,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const queryClient = useQueryClient();
   const {
     activeScope,
+    fullscreenScope,
     closeAiInteraction,
     openAiInteraction,
     notifyConversationSessionsChanged,
@@ -243,7 +244,19 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
-  const isGlobalAssistantActive = isAssistantPage && activeScope?.type === "global";
+  const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
+  const isGlobalAssistantActive = isAssistantPage && assistantScope?.type === "global";
+  const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
+  const sidebarConversationScope = useMemo<AiConversationScope>(() => {
+    if (isAssistantPage && assistantScope) {
+      return assistantScope;
+    }
+    if (routeCourseId) {
+      return { type: "course", courseId: routeCourseId };
+    }
+    return { type: "global" };
+  }, [assistantScope, isAssistantPage, routeCourseId]);
+  const isCourseConversationScope = sidebarConversationScope.type === "course";
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses"],
@@ -291,14 +304,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }, [updateCourseSectionExpanded]);
 
   useEffect(() => {
-    const activeCourseId = getCourseIdFromPathname(location.pathname);
-    if (!activeCourseId) {
+    if (!routeCourseId) {
       return;
     }
-    setExpandedCourses((prev) => new Set([...prev, activeCourseId]));
+    setExpandedCourses((prev) => new Set([...prev, routeCourseId]));
     updateCourseSectionExpanded(true);
     setIsCollapsed(false);
-  }, [location.pathname, updateCourseSectionExpanded]);
+  }, [routeCourseId, updateCourseSectionExpanded]);
 
   const deletePreviewMutation = useMutation({
     mutationFn: async (courseId: string) =>
@@ -964,10 +976,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             collapsed={effectiveCollapsed}
             onExpandSidebar={expandNavigationSidebar}
             onNavigate={closeMobileNavigation}
-            targetScope={{ type: "global" }}
-            title="全局最近"
+            targetScope={sidebarConversationScope}
+            title={isCourseConversationScope ? "课程最近" : "全局最近"}
             showCourseBadge={false}
-            emptyText="暂无全局对话"
+            emptyText={isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />
         </div>
 

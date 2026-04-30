@@ -512,6 +512,7 @@ export const AiConversationView = memo(function AiConversationView({
   );
   const isPlannerConversation = selectedSession?.source === "build_planner";
   const isFullscreen = presentation === "fullscreen";
+  const shouldShowFullscreenHistory = false;
   const currentMessagesSessionId = selectedSessionId ?? null;
   const hasLocalStreamingMessages = isStreaming && messages.length > 0;
   const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId || hasLocalStreamingMessages;
@@ -550,7 +551,7 @@ export const AiConversationView = memo(function AiConversationView({
       }))
       .filter((group) => group.sessions.length > 0),
   [sessions]);
-  const historyTitle = scope?.type === "course" ? "课程历史" : "全局历史";
+  const historyTitle = "课程历史";
 
   useEffect(() => {
     if (presentation !== "sidebar") {
@@ -1113,7 +1114,7 @@ export const AiConversationView = memo(function AiConversationView({
         className,
       )}
     >
-      {isFullscreen ? (
+      {shouldShowFullscreenHistory ? (
         <aside className="hidden w-[280px] shrink-0 flex-col border-r border-zinc-200/70 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/35 lg:flex">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
