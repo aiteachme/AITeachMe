@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -15,6 +15,7 @@ from app.models.course import Course
 from app.schemas.knowledge import KnowledgeGraphBuildData
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.knowledge.build_store import (
+    KnowledgeBuildRuntimeStatus,
     read_knowledge_build_runtime,
     read_knowledge_manifest,
     sanitize_knowledge_build_error_message,
@@ -26,7 +27,7 @@ from app.shared.infra.llm_support.common import (
     use_llm_runtime_snapshot,
 )
 from app.shared.infra.storage import CourseStorageScope, build_course_storage_scope
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.build_lifecycle import (
     ACTIVE_KNOWLEDGE_BUILD_STATUSES,
 )
@@ -39,6 +40,9 @@ from app.workflows.digest.kg_doc_sync.inputs import (
 from app.workflows.digest.kg_doc_sync.lib.prefetch import consume_docgen_kg_prefetch
 
 logger = structlog.get_logger(__name__)
+
+_STALE_ACCEPTED_GRAPH_STATUS_AFTER = timedelta(minutes=5)
+_STALE_ACCEPTED_GRAPH_STAGES = {"queued_after_docgen", "manual_graph_requested"}
 
 
 def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> list[str]:
@@ -66,6 +70,17 @@ def _collect_graph_source_file_ids(structured_context: dict[str, object]) -> lis
 
 def _is_active_build_status(status: str | None) -> bool:
     return str(status or "").strip() in ACTIVE_KNOWLEDGE_BUILD_STATUSES
+
+
+def _is_stale_accepted_graph_status(status: KnowledgeBuildRuntimeStatus) -> bool:
+    if str(status.status or "").strip() != "accepted":
+        return False
+    if str(status.stage or "").strip() not in _STALE_ACCEPTED_GRAPH_STAGES:
+        return False
+    requested_at = ensure_utc_datetime(status.requested_at or status.started_at)
+    if requested_at is None:
+        return False
+    return utcnow() - requested_at >= _STALE_ACCEPTED_GRAPH_STATUS_AFTER
 
 
 def _spawn_graph_build_task(
@@ -263,11 +278,20 @@ def trigger_graph_docs_sync_manual_build(
             status_code=409,
         )
     if graph_status is not None and _is_active_build_status(graph_status.status):
-        raise AITeachMeError(
-            detail="知识图谱正在构建中。",
-            error_code="GRAPH_BUILD_IN_PROGRESS",
-            status_code=409,
-        )
+        if _is_stale_accepted_graph_status(graph_status):
+            logger.warning(
+                "knowledge_graph_stale_accepted_status_overridden",
+                course_id=course.id,
+                status=graph_status.status,
+                stage=graph_status.stage,
+                requested_at=graph_status.requested_at.isoformat(),
+            )
+        else:
+            raise AITeachMeError(
+                detail="知识图谱正在构建中。",
+                error_code="GRAPH_BUILD_IN_PROGRESS",
+                status_code=409,
+            )
 
     sync_input = load_knowledge_doc_sync_input(
         course.id,
