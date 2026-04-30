@@ -10,6 +10,7 @@ const BACKEND_READY_TIMEOUT_MS = 6000;
 const LOCAL_DESKTOP_BACKEND_READY_TIMEOUT_MS = 60000;
 const BACKEND_READY_POLL_INTERVAL_MS = 300;
 const BACKEND_READY_REQUEST_TIMEOUT_MS = 1200;
+const DEFAULT_LOCAL_DESKTOP_API_BASE_URL = "http://127.0.0.1:9020";
 const STARTUP_MESSAGES = {
   startingLocalService: "\u6b63\u5728\u542f\u52a8\u672c\u5730\u670d\u52a1...",
   connectingService: "\u6b63\u5728\u8fde\u63a5\u670d\u52a1...",
@@ -57,11 +58,21 @@ function setStartupStatus(message: string) {
 }
 
 function resolveConfiguredApiBaseUrl(): string {
+  const buildTimeBase = (import.meta.env.VITE_API_URL ?? "").trim();
   const desktopBase =
     window.location.protocol === "file:"
-      ? window.aiteachmeDesktop?.apiBaseUrl ?? "http://127.0.0.1:9020"
+      ? window.aiteachmeDesktop?.apiBaseUrl ?? (buildTimeBase || DEFAULT_LOCAL_DESKTOP_API_BASE_URL)
       : "";
-  return desktopBase || (import.meta.env.VITE_API_URL ?? "").trim();
+
+  if (desktopBase || buildTimeBase) {
+    return desktopBase || buildTimeBase;
+  }
+
+  if (window.location.hostname === "tauri.localhost") {
+    return DEFAULT_LOCAL_DESKTOP_API_BASE_URL;
+  }
+
+  return "";
 }
 
 function isLoopbackApiBase(apiBaseUrl: string): boolean {
