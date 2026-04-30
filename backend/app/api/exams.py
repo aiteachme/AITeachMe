@@ -2027,6 +2027,7 @@ def _question_template_response(
     template: QuestionTemplate,
     *,
     knowledge_unit_refs: list[dict[str, object]],
+    has_wrong_attempt: bool = False,
 ) -> QuestionTemplateItemResponse:
     options_payload = None
     if template.options_json:
@@ -2051,6 +2052,7 @@ def _question_template_response(
         template_version=template.template_version,
         status=template.status,
         is_marked=template.is_marked,
+        has_wrong_attempt=has_wrong_attempt,
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -2780,11 +2782,19 @@ async def question_templates(
             .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
         ).all()
     )
-    links_by_template_id = exams_repo.list_links_for_templates(session, [int(item.id or 0) for item in rows])
+    template_ids = [int(item.id or 0) for item in rows]
+    links_by_template_id = exams_repo.list_links_for_templates(session, template_ids)
+    wrong_template_ids = exams_repo.list_wrong_question_template_ids(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+        template_ids=template_ids,
+    )
     return ok_response([
         _question_template_response(
             item,
             knowledge_unit_refs=links_by_template_id.get(int(item.id or 0), []),
+            has_wrong_attempt=int(item.id or 0) in wrong_template_ids,
         )
         for item in rows
     ])

@@ -56,6 +56,32 @@ def list_marked_question_template_ids(session: Session, template_ids: list[int])
     return {int(item) for item in rows if item is not None}
 
 
+def list_wrong_question_template_ids(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    template_ids: list[int],
+) -> set[int]:
+    ids = [int(item) for item in template_ids if int(item or 0) > 0]
+    if not ids:
+        return set()
+
+    rows = session.exec(
+        select(ExamPaperItem.question_template_id)
+        .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
+        .where(
+            ExamPaperItem.question_template_id.in_(ids),
+            ExamPaperItem.is_correct.is_(False),
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility != "hidden",
+        )
+        .distinct()
+    ).all()
+    return {int(item) for item in rows if item is not None}
+
+
 def list_question_template_answer_history(
     session: Session,
     *,
