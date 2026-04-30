@@ -6,6 +6,7 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -44,11 +45,37 @@ from app.workflows.digest.docgen.nodes.common import (
 )
 from app.workflows.digest.docgen.state import DocGenState
 
-CHAPTER_LIVE_PREVIEW_MAX_CHARS = 60000
-STREAM_DIRECT_MIN_DELTA_CHARS = 48
-STREAM_DIRECT_MIN_INTERVAL_S = 0.22
-STREAM_PREVIEW_MIN_DELTA_CHARS = 180
-STREAM_PREVIEW_MIN_INTERVAL_S = 0.8
+
+CHAPTER_LIVE_PREVIEW_MAX_CHARS = get_env_bounded_int(
+    "DOCGEN_CHAPTER_LIVE_PREVIEW_MAX_CHARS",
+    60000,
+    min_value=8000,
+    max_value=120000,
+)
+STREAM_DIRECT_MIN_DELTA_CHARS = get_env_bounded_int(
+    "DOCGEN_STREAM_DIRECT_MIN_DELTA_CHARS",
+    48,
+    min_value=12,
+    max_value=300,
+)
+STREAM_DIRECT_MIN_INTERVAL_S = get_env_bounded_float(
+    "DOCGEN_STREAM_DIRECT_MIN_INTERVAL_S",
+    0.22,
+    min_value=0.05,
+    max_value=2.0,
+)
+STREAM_PERSIST_MIN_DELTA_CHARS = get_env_bounded_int(
+    "DOCGEN_STREAM_PERSIST_MIN_DELTA_CHARS",
+    900,
+    min_value=200,
+    max_value=5000,
+)
+STREAM_PERSIST_MIN_INTERVAL_S = get_env_bounded_float(
+    "DOCGEN_STREAM_PERSIST_MIN_INTERVAL_S",
+    3.0,
+    min_value=1.0,
+    max_value=15.0,
+)
 
 
 def _unique_strings(values: list[str]) -> list[str]:
@@ -581,13 +608,13 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         writer_markdown = ""
         stream_direct_last_at = 0.0
         stream_direct_last_len = 0
-        stream_preview_last_at = 0.0
-        stream_preview_last_len = 0
+        stream_persist_last_at = perf_counter()
+        stream_persist_last_len = 0
         stream_progress_marked = False
 
         async def _publish_writer_stream_preview(accumulated_markdown: str) -> None:
             nonlocal stream_direct_last_at, stream_direct_last_len
-            nonlocal stream_preview_last_at, stream_preview_last_len, stream_progress_marked
+            nonlocal stream_persist_last_at, stream_persist_last_len, stream_progress_marked
             raw_markdown = str(accumulated_markdown or "").strip()
             if not raw_markdown:
                 return
@@ -602,12 +629,14 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 stream_direct_last_len = current_len
                 _publish_preview_delta(preview_markdown, status="drafting")
             if (
-                current_len - stream_preview_last_len < STREAM_PREVIEW_MIN_DELTA_CHARS
-                and now - stream_preview_last_at < STREAM_PREVIEW_MIN_INTERVAL_S
+                current_len - stream_persist_last_len < STREAM_PERSIST_MIN_DELTA_CHARS
+                and now - stream_persist_last_at < STREAM_PERSIST_MIN_INTERVAL_S
             ):
                 return
-            stream_preview_last_at = now
-            stream_preview_last_len = current_len
+            # Persisted snapshots are coarser than direct SSE deltas because
+            # cloud object storage writes can backpressure the upstream stream.
+            stream_persist_last_at = now
+            stream_persist_last_len = current_len
             if not stream_progress_marked:
                 stream_progress_marked = True
                 upsert_knowledge_build_chapter_progress(

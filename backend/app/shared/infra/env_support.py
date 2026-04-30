@@ -13,6 +13,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import sys
@@ -302,6 +303,21 @@ def get_env_float(name: str, default: float) -> float:
         return default
 
 
+def get_env_bounded_int(name: str, default: int, *, min_value: int, max_value: int) -> int:
+    """Read an integer env var and clamp it to a safe inclusive range."""
+
+    return max(min_value, min(max_value, get_env_int(name, default)))
+
+
+def get_env_bounded_float(name: str, default: float, *, min_value: float, max_value: float) -> float:
+    """Read a float env var and clamp it to a safe inclusive range."""
+
+    value = get_env_float(name, default)
+    if not math.isfinite(value):
+        return default
+    return max(min_value, min(max_value, value))
+
+
 def get_project_root() -> Path:
     return _PROJECT_ROOT
 
@@ -328,6 +344,8 @@ def describe_project_settings_source() -> str:
 __all__ = [
     "get_env",
     "get_env_bool",
+    "get_env_bounded_float",
+    "get_env_bounded_int",
     "get_env_choice",
     "get_env_float",
     "get_env_int",
