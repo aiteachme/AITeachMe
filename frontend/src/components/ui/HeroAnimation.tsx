@@ -54,9 +54,10 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
   const [isDrawn, setIsDrawn] = useState(false);
   const id = useId().replace(/:/g, "");
   const strokeGradientId = `${id}-hero-stroke-grad`;
+  const fillGradientId = `${id}-hero-fill-grad`;
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsDrawn(true), 700);
+    const timer = setTimeout(() => setIsDrawn(true), 2800);
     return () => clearTimeout(timer);
   }, []);
 
@@ -84,6 +85,31 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
         transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
       />
 
+      {/* Sparkle particles around logo */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <motion.div
+          key={`sparkle-${i}`}
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: i % 2 === 0 ? 3 : 2,
+            height: i % 2 === 0 ? 3 : 2,
+            background: i % 3 === 0 ? "#818cf8" : i % 3 === 1 ? "#a78bfa" : "#c4b5fd",
+          }}
+          animate={{
+            x: [0, Math.cos((i * 72 * Math.PI) / 180) * 55, 0],
+            y: [0, Math.sin((i * 72 * Math.PI) / 180) * 55, 0],
+            opacity: [0, 0.9, 0],
+            scale: [0, 1.2, 0],
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: 2.5 + i * 0.3,
+            delay: i * 0.5,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+
       {/* SVG Logo with stroke draw-on animation */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -97,6 +123,12 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
             <stop offset="0%" stopColor="#6366f1" />
             <stop offset="50%" stopColor="#8b5cf6" />
             <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+          {/* Gradient for filled state */}
+          <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#1e1b4b" />
+            <stop offset="40%" stopColor="#0f172a" />
+            <stop offset="100%" stopColor="#1e1b4b" />
           </linearGradient>
         </defs>
 
@@ -113,8 +145,8 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
             initial={{ pathLength: 0, opacity: 0 }}
             animate={{ pathLength: 1, opacity: 1 }}
             transition={{
-              pathLength: { duration: 0.75, delay: i * 0.045, ease: "easeInOut" },
-              opacity: { duration: 0.2, delay: i * 0.045 },
+              pathLength: { duration: 1.8, delay: i * 0.15, ease: "easeInOut" },
+              opacity: { duration: 0.3, delay: i * 0.15 },
             }}
           />
         ))}
