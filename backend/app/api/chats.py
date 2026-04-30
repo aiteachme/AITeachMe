@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
+from app.api.sse import sse_headers
 from app.schemas.chats import (
     ChatClearData,
     ChatClearRequest,
@@ -90,11 +91,7 @@ async def _send_chat_response(
             source_chunk_id=body.source_chunk_id,
         ),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers=sse_headers(),
     )
     set_guest_cookie_for_user(stream_response, user_id=user.user_id)
     return stream_response

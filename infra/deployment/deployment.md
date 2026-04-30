@@ -114,6 +114,8 @@ AUTH_ENABLED=true
 LLM_API_KEY=<model api key>
 LLM_BASE_URL=<model api base url>
 LLM_CONCURRENCY_LIMIT=8
+SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S=2
+SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S=2
 ```
 
 数据库连接建议：
@@ -121,6 +123,7 @@ LLM_CONCURRENCY_LIMIT=8
 - 生产优先使用 PgBouncer 或平台提供的 pooled connection string，让后端只维护小连接池。
 - 总连接预算约等于实例数 * worker 数 * (`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`)；小规格库先从 `3~5` 常驻连接和 `2~5` 溢出连接开始。
 - SSE、轮询和后台 workflow 不应长期持有 DB session；接口只在读取/写入状态时短暂取连接。
+- `SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S` / `SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S` 默认按实时体感取 `2` 秒；高并发或数据库压力明显时可调到 `3~8`。根治多实例实时事件不稳定的方案仍是把 workflow live stream 外置到 Redis/PostgreSQL 事件通道。
 
 迁移有两种口径：
 
@@ -289,6 +292,8 @@ Public Address: 使用 Cloudflare Pages 前端时需要开启并绑定 API 域�
 Health Check: /api/health
 ```
 
+Sealos 首次上线建议后端保持单副本、单 uvicorn worker。当前 workflow live stream 是进程内订阅，多副本会让后台任务和 SSE 连接落到不同进程，只能依赖 snapshot 兜底，体感会变成阶段性刷新。
+
 单副本试运行可以继续使用镜像默认 `CMD`。如果后续开多副本，建议把后端启动命令改成：
 
 ```bash
@@ -312,6 +317,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
 - 首次接入新 OSS 时临时打开 `S3_STARTUP_SMOKE_TEST=true`，确认启动日志里没有 bucket 读写/权限错误；稳定后可关闭。
 - PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 Alembic migration、运行时对象准备和 schema 检查。
 - 多副本部署时只让独立 Job 执行 `bootstrap_cloud_db.py`；Web 容器启动命令保持为 `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`。
+- 后端公网网关或自建 Nginx 需关闭 SSE 响应缓冲和压缩；自建 Nginx 可参考 `infra/deployment/nginx/default.conf` 的 `proxy_buffering off`、`proxy_request_buffering off`、`gzip off`。
 - 前端环境变量 `VITE_API_URL` 指向后端公网地址，且后端 `CORS_ALLOWED_ORIGINS` 包含前端域名。
 
 ## 参考文档

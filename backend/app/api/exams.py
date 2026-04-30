@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
+from app.api.sse import get_sse_interval, sse_headers
 from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.course import Course
@@ -2911,7 +2912,11 @@ async def exam_generation_stream(
             _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
 
     async def event_generator():
-        heartbeat_interval_s = 8.0
+        snapshot_fallback_interval_s = get_sse_interval(
+            "SSE_EXAM_SNAPSHOT_FALLBACK_INTERVAL_S",
+            default=2.0,
+        )
+        last_snapshot_hash: str | None = None
 
         def snapshot_payload() -> dict[str, object]:
             with managed_session() as stream_session:
@@ -2924,8 +2929,18 @@ async def exam_generation_stream(
                     }
                 return _paper_generation_event_payload(current)
 
+        def should_emit_snapshot(snapshot: dict[str, object], *, force: bool = False) -> bool:
+            nonlocal last_snapshot_hash
+            snapshot_json = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, default=str)
+            current_hash = hashlib.md5(snapshot_json.encode()).hexdigest()
+            if not force and current_hash == last_snapshot_hash:
+                return False
+            last_snapshot_hash = current_hash
+            return True
+
         initial = snapshot_payload()
-        yield format_sse_event("snapshot", initial)
+        if should_emit_snapshot(initial, force=True):
+            yield format_sse_event("snapshot", initial)
         if str(initial.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
             yield format_sse_event("done", initial)
             return
@@ -2935,12 +2950,21 @@ async def exam_generation_stream(
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval_s)
+                    event = await asyncio.wait_for(queue.get(), timeout=snapshot_fallback_interval_s)
                 except asyncio.TimeoutError:
-                    yield format_sse_event("ping", {})
+                    snapshot = snapshot_payload()
+                    if should_emit_snapshot(snapshot):
+                        yield format_sse_event("snapshot", snapshot)
+                    else:
+                        yield format_sse_event("ping", {})
+                    if str(snapshot.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
+                        yield format_sse_event("done", snapshot)
+                        break
                     continue
                 except Exception:
                     break
+                if event.event == "snapshot":
+                    should_emit_snapshot(event.data, force=True)
                 yield format_sse_event(event.event, event.data)
                 if event.event == "done":
                     break
@@ -2948,11 +2972,7 @@ async def exam_generation_stream(
     stream_response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers=sse_headers(),
     )
     set_guest_cookie_for_user(stream_response, user_id=user.user_id)
     return stream_response
