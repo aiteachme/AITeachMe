@@ -157,7 +157,11 @@ def collect_app_hiddenimports() -> list[str]:
 
 def collect_runtime_hiddenimports() -> list[str]:
     hiddenimports: list[str] = []
-    for package_name in ("litellm.litellm_core_utils.tokenizers", *UVICORN_HIDDENIMPORT_PACKAGES):
+    for package_name in (
+        "litellm.litellm_core_utils.tokenizers",
+        "tiktoken_ext",
+        *UVICORN_HIDDENIMPORT_PACKAGES,
+    ):
         hiddenimports += collect_submodules(package_name, filter=include_runtime_submodule)
     return filter_hiddenimports(hiddenimports)
 
