@@ -337,23 +337,17 @@ jobs:
       - name: Build desktop installers
         shell: pwsh
         run: |
-          $arguments = @(
-            "-PackageMode",
-            "${{ inputs.desktop_package_mode }}",
-            "-BackendPort",
-            "${{ inputs.backend_port }}",
-            "-ApiUrl",
-            "${{ inputs.api_url }}",
-            "-SkipInstall",
-            "-HideElectronSuffix"
-          )
+          $arguments = @{
+            PackageMode = "${{ inputs.desktop_package_mode }}"
+            BackendPort = "${{ inputs.backend_port }}"
+            ApiUrl = "${{ inputs.api_url }}"
+            SkipInstall = $true
+            HideElectronSuffix = $true
+          }
 
           if ("${{ inputs.bundle_private_env }}" -eq "true") {
-            $arguments += @(
-              "-ImportBundledEnv",
-              "-BundledEnvArtifactSuffix",
-              "${{ inputs.bundled_env_artifact_suffix }}"
-            )
+            $arguments.ImportBundledEnv = $true
+            $arguments.BundledEnvArtifactSuffix = "${{ inputs.bundled_env_artifact_suffix }}"
           }
 
           .\packaging\scripts\build-desktop-mode.ps1 @arguments
