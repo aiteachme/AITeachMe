@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Settings } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -64,20 +64,19 @@ export function ChatModelSelect({
     <div
       title={`选择本轮模型：${meta.title}`}
       className={cn(
-        "group relative inline-flex h-9 min-w-[132px] max-w-[176px] shrink-0 items-center gap-1.5 overflow-hidden rounded-full border px-3 text-[13px] font-medium transition-all",
-        "border-zinc-200/70 bg-gradient-to-b from-white to-zinc-50/95 text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_8px_20px_-18px_rgba(24,24,27,0.5)]",
-        "hover:border-zinc-300/80 hover:from-white hover:to-zinc-100 hover:text-zinc-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.98),0_10px_22px_-18px_rgba(24,24,27,0.6)]",
-        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:border-slate-700/70 dark:from-slate-800 dark:to-slate-900/90 dark:text-slate-300 dark:shadow-none dark:hover:border-slate-600 dark:hover:from-slate-800 dark:hover:to-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
+        "group relative inline-flex h-9 min-w-[124px] max-w-[148px] shrink-0 items-center gap-2 overflow-hidden rounded-full px-3.5 text-[13px] font-medium transition-all sm:min-w-[144px] sm:max-w-[184px]",
+        "bg-zinc-100/70 text-zinc-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_1px_2px_rgba(24,24,27,0.04)] hover:bg-zinc-100 hover:text-zinc-700",
+        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:bg-slate-800/80 dark:text-slate-300 dark:shadow-none dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-within:ring-slate-100/10",
         disabled && "opacity-55",
         className,
       )}
     >
-      <SlidersHorizontal className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
+      <Settings className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
       <span className="min-w-0 truncate leading-none">{meta.displayLabel}</span>
-      <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-70" />
+      <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover:opacity-70" />
       <select
         id={selectId}
         value={value}
