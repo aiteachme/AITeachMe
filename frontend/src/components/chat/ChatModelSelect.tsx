@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { ChevronDown, Settings2 } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -72,7 +72,7 @@ export function ChatModelSelect({
         className,
       )}
     >
-      <Settings2 className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
+      <SlidersHorizontal className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200" />
       <label htmlFor={selectId} className="sr-only">
         选择模型
       </label>
