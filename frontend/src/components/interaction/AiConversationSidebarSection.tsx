@@ -250,12 +250,15 @@ export function AiConversationSidebarSection({
   const isActiveViewForListScope = currentViewScopeKey === listScopeKey;
   const [isExpanded, setIsExpanded] = useState(() => readSectionExpanded(storageKey, initialExpanded));
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [sessionsScopeKey, setSessionsScopeKey] = useState(listScopeKey);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isConversationViewActive = isAssistantPage || isSidebarOpen;
   const isListExpanded = hideHeader || isExpanded;
   const shouldLoadSessions = isListExpanded || (isConversationViewActive && isActiveViewForListScope);
+  const hasCurrentScopeSessions = sessionsScopeKey === listScopeKey;
+  const isListLoading = isLoading || (shouldLoadSessions && !hasCurrentScopeSessions);
   const hasActiveEmptyConversation =
     isConversationViewActive &&
     isActiveViewForListScope &&
@@ -263,7 +266,10 @@ export function AiConversationSidebarSection({
     !isPendingAnchoredRequest(currentRequest);
   const activeEmptyKind = getRequestKind(currentRequest);
   const activeEmptyStyle = CONVERSATION_KIND_STYLES[activeEmptyKind];
-  const visibleSessions = useMemo(() => sessions.slice(0, maxItems), [maxItems, sessions]);
+  const visibleSessions = useMemo(
+    () => (hasCurrentScopeSessions ? sessions : []).slice(0, maxItems),
+    [hasCurrentScopeSessions, maxItems, sessions],
+  );
   const updateExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
     setIsExpanded((current) => {
       const value = typeof next === "function" ? next(current) : next;
@@ -304,8 +310,11 @@ export function AiConversationSidebarSection({
         setSessions(isGlobalListScope
           ? items.filter((item) => getSessionCourseId(item) === GLOBAL_COURSE_ID)
           : items);
+        setSessionsScopeKey(listScopeKey);
       } catch (requestError: unknown) {
         if (!cancelled) {
+          setSessions([]);
+          setSessionsScopeKey(listScopeKey);
           setError(getApiErrorMessage(requestError, "加载对话失败"));
         }
       } finally {
@@ -380,13 +389,82 @@ export function AiConversationSidebarSection({
     setActiveConversationSessionId,
   ]);
 
+  const renderSessionItem = (session: ChatSessionItem) => {
+    const sessionId = getSessionId(session);
+    const isSelected =
+      isConversationViewActive &&
+      isActiveViewForListScope &&
+      sessionId !== null &&
+      activeConversationSessionId === sessionId;
+    const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
+    const courseLabel = getSessionCourseLabel(session);
+
+    return (
+      <motion.div
+        key={sessionId ?? `${getSessionCourseId(session)}-${session.title}-${session.last_message_at}`}
+        variants={conversationItemMotion}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        whileTap={{ scale: 0.985 }}
+        className={cn(
+          "group relative h-7 overflow-hidden rounded-md transition-colors",
+          isSelected
+            ? CONVERSATION_SELECTED_CLASS_NAME
+            : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => openSession(session)}
+          className={cn(
+            "flex h-7 w-full items-center gap-1.5 px-2 pr-7 text-left focus-visible:outline-none",
+            CONVERSATION_FOCUS_CLASS_NAME,
+          )}
+          title={session.title || "未命名对话"}
+        >
+          <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
+            {kindStyle.label}
+          </span>
+          {showCourseBadge ? (
+            <span
+              className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+              title={courseLabel}
+            >
+              {courseLabel}
+            </span>
+          ) : null}
+          <span className="min-w-0 flex-1 truncate text-xs leading-7">
+            {session.title || "未命名对话"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void deleteSession(session);
+          }}
+          className={cn(
+            "absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 dark:text-slate-500 dark:hover:bg-red-500/10 dark:hover:text-red-300",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+          aria-label="删除对话"
+          title="删除对话"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </motion.div>
+    );
+  };
+
   if (collapsed) {
     return (
       <section className="space-y-0.5">
         <div className="flex h-6 items-center px-1">
           <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
         </div>
-        {isLoading && visibleSessions.length === 0 ? (
+        {isListLoading && visibleSessions.length === 0 ? (
           <div className="flex h-7 w-full items-center justify-center rounded-md text-slate-400 dark:text-slate-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           </div>
@@ -454,7 +532,7 @@ export function AiConversationSidebarSection({
                 isExpanded && "rotate-90",
               )}
             />
-            {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
+            {isListLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
           </button>
           <button
             type="button"
@@ -507,76 +585,12 @@ export function AiConversationSidebarSection({
             </motion.button>
           ) : null}
 
-          <AnimatePresence initial={false}>
-            {visibleSessions.map((session) => {
-              const sessionId = getSessionId(session);
-              const isSelected =
-                isConversationViewActive &&
-                isActiveViewForListScope &&
-                sessionId !== null &&
-                activeConversationSessionId === sessionId;
-              const kindStyle = CONVERSATION_KIND_STYLES[getSessionKind(session)];
-              const courseLabel = getSessionCourseLabel(session);
-              return (
-                <motion.div
-                  key={sessionId ?? `${getSessionCourseId(session)}-${session.title}-${session.last_message_at}`}
-                  variants={conversationItemMotion}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  whileTap={{ scale: 0.985 }}
-                  className={cn(
-                    "group relative h-7 overflow-hidden rounded-md transition-colors",
-                    isSelected
-                      ? CONVERSATION_SELECTED_CLASS_NAME
-                      : "text-slate-700 hover:bg-[#eef3f8] hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                  )}
-                >
-                <button
-                  type="button"
-                  onClick={() => openSession(session)}
-                  className={cn(
-                    "flex h-7 w-full items-center gap-1.5 px-2 pr-7 text-left focus-visible:outline-none",
-                    CONVERSATION_FOCUS_CLASS_NAME,
-                  )}
-                  title={session.title || "未命名对话"}
-                >
-                  <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
-                    {kindStyle.label}
-                  </span>
-                  {showCourseBadge ? (
-                    <span
-                      className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
-                      title={courseLabel}
-                    >
-                      {courseLabel}
-                    </span>
-                  ) : null}
-                  <span className="min-w-0 flex-1 truncate text-xs leading-7">
-                    {session.title || "未命名对话"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void deleteSession(session);
-                  }}
-                  className={cn(
-                    "absolute right-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-all hover:bg-red-50 hover:text-red-500 dark:text-slate-500 dark:hover:bg-red-500/10 dark:hover:text-red-300",
-                    isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                  )}
-                  aria-label="删除对话"
-                  title="删除对话"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-          {!isLoading && !error && !hasActiveEmptyConversation && visibleSessions.length === 0 ? (
+          {hasCurrentScopeSessions ? (
+            <AnimatePresence initial={false}>
+              {visibleSessions.map(renderSessionItem)}
+            </AnimatePresence>
+          ) : null}
+          {!isListLoading && !error && !hasActiveEmptyConversation && visibleSessions.length === 0 ? (
             <p className="px-2 py-1 text-[11px] text-slate-300 dark:text-slate-600">{emptyText}</p>
           ) : null}
           </motion.div>
