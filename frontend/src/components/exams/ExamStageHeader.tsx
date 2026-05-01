@@ -1,4 +1,12 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, GraduationCap, ListChecks } from "lucide-react";
+
+import { cn } from "../../lib/utils";
+
+const EXAM_STAGE_STEPS = [
+  { step: 1, label: "答题", icon: FileText },
+  { step: 2, label: "讲评", icon: ListChecks },
+  { step: 3, label: "复习", icon: GraduationCap },
+] as const;
 
 export function ExamStageHeader({
   currentStep,
@@ -11,8 +19,6 @@ export function ExamStageHeader({
   onStepSelect?: (step: 1 | 2 | 3) => void;
   isStepEnabled?: (step: 1 | 2 | 3) => boolean;
 }) {
-  const steps = [1, 2, 3] as const;
-
   return (
     <div className="bg-transparent">
       <div className="flex flex-col gap-3 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-4 sm:px-8 sm:py-4">
@@ -25,40 +31,63 @@ export function ExamStageHeader({
           返回考卷列表
         </button>
 
-        <div className="flex items-center justify-center gap-1.5 sm:col-start-2 sm:gap-2.5">
-          {steps.map((step, index) => {
-            const isActive = step === currentStep;
-            const isCompleted = step < currentStep;
-            const isEnabled = isStepEnabled?.(step) ?? true;
+        <div className="flex max-w-full items-center justify-center sm:col-start-2">
+          <div className="inline-flex min-w-max items-center">
+            {EXAM_STAGE_STEPS.map(({ step, label, icon: StepIcon }, index) => {
+              const isActive = step === currentStep;
+              const isCompleted = step < currentStep;
+              const isEnabled = isStepEnabled?.(step) ?? true;
+              const Icon = isCompleted ? CheckCircle2 : StepIcon;
+              const statusLabel = isActive ? "当前步骤" : isCompleted ? "已完成" : isEnabled ? "可切换" : "暂不可用";
 
-            return (
-              <div key={step} className="flex items-center gap-1.5 sm:gap-2.5">
-                <button
-                  type="button"
-                  disabled={!isEnabled}
-                  onClick={() => onStepSelect?.(step)}
-                  className={`grid h-7 w-7 place-items-center rounded-lg text-xs font-semibold transition sm:h-8 sm:w-8 sm:text-sm ${
-                    isActive
-                      ? "bg-indigo-500 text-white shadow-[0_10px_24px_rgba(99,102,241,0.28)]"
-                      : isCompleted
-                        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                        : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                  } ${isEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-45"}`}
-                >
-                  {step}
-                </button>
-                {index < steps.length - 1 && (
-                  <div
-                    className="h-px w-8 sm:w-16"
-                    style={{
-                      backgroundImage:
-                        "repeating-linear-gradient(to right, rgb(203 213 225 / 1) 0 8px, transparent 8px 13px)",
-                    }}
-                  />
-                )}
-              </div>
-            );
-          })}
+              return (
+                <div key={step} className="flex items-center">
+                  <button
+                    type="button"
+                    disabled={!isEnabled}
+                    onClick={() => onStepSelect?.(step)}
+                    aria-current={isActive ? "step" : undefined}
+                    aria-label={`${label}，${statusLabel}`}
+                    className={cn(
+                      "inline-flex h-9 min-w-[4.25rem] items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold transition sm:h-10 sm:min-w-[5.25rem] sm:gap-2 sm:px-3",
+                      isActive &&
+                        "bg-indigo-500 text-white shadow-[0_10px_24px_rgba(99,102,241,0.25)]",
+                      isCompleted &&
+                        !isActive &&
+                        "text-slate-900 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-900",
+                      !isActive &&
+                        !isCompleted &&
+                        "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200",
+                      isEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-45",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid h-5 w-5 shrink-0 place-items-center rounded-md transition sm:h-6 sm:w-6",
+                        isActive && "bg-white/15 text-white",
+                        isCompleted && !isActive && "text-emerald-600 dark:text-emerald-400",
+                        !isActive && !isCompleted && "text-inherit",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </span>
+                    <span>{label}</span>
+                  </button>
+                  {index < EXAM_STAGE_STEPS.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "mx-1 h-px w-4 rounded-full sm:w-6",
+                        isCompleted
+                          ? "bg-indigo-300 dark:bg-indigo-400/70"
+                          : "bg-slate-200 dark:bg-slate-800",
+                      )}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="justify-self-end" />
