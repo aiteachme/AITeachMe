@@ -131,7 +131,7 @@ interface ExamPrewarmStatusResponse {
   error_message?: string | null;
 }
 
-const EXAM_PAGE_SHELL_CLASS = "mx-auto max-w-7xl min-h-full px-4 pb-24 pt-8 sm:px-6 lg:px-8 lg:pt-10";
+const EXAM_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-8 sm:px-6 lg:px-8 xl:px-10 lg:pt-10";
 const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
 
 
