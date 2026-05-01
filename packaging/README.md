@@ -72,11 +72,11 @@ Electron local 安装包内置 PyInstaller 生成的 FastAPI 后端，安装后�
 
 `-IncludeTauri` 表示“在默认 Electron local 之外额外生成 Tauri local”，所以会看到 Electron 和 Tauri 两个安装包；只需要 Tauri 时请用 `-TauriOnly`。
 
-Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller 生成的 FastAPI 后端运行件。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\` 下，由 Tauri 主程序自动启动，因此安装目录中不会额外出现后端 `.exe`。
+Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller `onedir` 生成的 FastAPI 后端目录。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会作为内部资源放在 `backend\` 下，由 Tauri 主程序自动启动。
 
 NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记为隐藏文件，避免普通文件夹视图里出现多个 `.exe`。不要删除它，否则系统卸载入口会失效。
 
-Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
+Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite 和课程文件都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
 
 Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
 
