@@ -1,5 +1,14 @@
-import { useId } from "react";
-import { Bot, ChevronDown } from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
+import { createPortal } from "react-dom";
+import { Bot, Check, ChevronDown } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -13,26 +22,30 @@ const CHAT_MODEL_VALUES = new Set<string>(CHAT_MODEL_OPTIONS);
 
 const CHAT_MODEL_META: Record<ChatModelChoice, {
   optionLabel: string;
-  displayLabel: string;
+  triggerLabel: string;
+  menuLabel: string;
   caption: string;
   title: string;
 }> = {
   settings: {
     optionLabel: "默认",
-    displayLabel: "默认",
-    caption: "跟随系统",
+    triggerLabel: "默认",
+    menuLabel: "默认模型",
+    caption: "跟随系统设置",
     title: "使用系统设置中的默认模型",
   },
   "deepseek-v4-flash": {
     optionLabel: "deepseek-v4-flash",
-    displayLabel: "deepseek-v4-flash",
-    caption: "极速推理",
+    triggerLabel: "DeepSeek",
+    menuLabel: "DeepSeek V4 Flash",
+    caption: "deepseek-v4-flash · 极速推理",
     title: "切换到 deepseek-v4-flash",
   },
   "qwen-flash": {
     optionLabel: "qwen-flash",
-    displayLabel: "qwen-flash",
-    caption: "均衡快答",
+    triggerLabel: "Qwen",
+    menuLabel: "Qwen Flash",
+    caption: "qwen-flash · 均衡快答",
     title: "切换到 qwen-flash",
   },
 };
@@ -61,53 +74,244 @@ export function ChatModelSelect({
   disabled = false,
   className,
 }: ChatModelSelectProps) {
-  const selectId = useId();
-  const descriptionId = `${selectId}-description`;
+  const generatedId = useId();
+  const triggerId = `chat-model-select-${generatedId}`;
+  const listboxId = `${triggerId}-listbox`;
+  const descriptionId = `${triggerId}-description`;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [highlightedValue, setHighlightedValue] = useState<ChatModelChoice>(value);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const meta = CHAT_MODEL_META[value];
 
-  return (
+  const updateMenuPosition = () => {
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+
+    const viewportMargin = 12;
+    const gap = 8;
+    const preferredWidth = 236;
+    const preferredMaxHeight = 260;
+    const minHeight = 128;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - triggerRect.bottom - viewportMargin;
+    const spaceAbove = triggerRect.top - viewportMargin;
+    const openAbove = spaceBelow < minHeight && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(minHeight, openAbove ? spaceAbove : spaceBelow);
+    const maxHeight = Math.min(preferredMaxHeight, Math.max(minHeight, availableHeight - gap));
+    const width = Math.min(
+      Math.max(preferredWidth, triggerRect.width),
+      viewportWidth - viewportMargin * 2,
+    );
+    const left = Math.min(
+      Math.max(viewportMargin, triggerRect.right - width),
+      viewportWidth - viewportMargin - width,
+    );
+    const top = openAbove
+      ? Math.max(viewportMargin, triggerRect.top - maxHeight - gap)
+      : Math.min(triggerRect.bottom + gap, viewportHeight - viewportMargin - maxHeight);
+
+    setMenuStyle({
+      left,
+      maxHeight,
+      position: "fixed",
+      top,
+      width,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setHighlightedValue(value);
+    }
+  }, [open, value]);
+
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+    }
+  }, [disabled]);
+
+  const selectValue = (nextValue: ChatModelChoice) => {
+    onChange(nextValue);
+    setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+  };
+
+  const moveHighlight = (direction: 1 | -1) => {
+    const currentIndex = Math.max(
+      0,
+      CHAT_MODEL_OPTIONS.findIndex((option) => option === highlightedValue),
+    );
+    const nextIndex = (currentIndex + direction + CHAT_MODEL_OPTIONS.length) % CHAT_MODEL_OPTIONS.length;
+    setHighlightedValue(CHAT_MODEL_OPTIONS[nextIndex]);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (disabled) return;
+
+    if (event.key === "Escape") {
+      setOpen(false);
+      triggerRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setHighlightedValue(value);
+        return;
+      }
+      moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setHighlightedValue(value);
+        return;
+      }
+      selectValue(highlightedValue);
+    }
+  };
+
+  const menu = open ? (
     <div
-      title={`选择本轮模型：${meta.title}`}
-      className={cn(
-        "group relative inline-flex h-11 max-w-full items-center gap-2.5 overflow-hidden rounded-2xl border px-3 text-left transition-all",
-        "border-zinc-200/80 bg-white/92 text-zinc-700 shadow-[0_1px_2px_rgba(24,24,27,0.04),inset_0_1px_0_rgba(255,255,255,0.88)] hover:border-zinc-300 hover:bg-white hover:text-zinc-950",
-        "focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:border-slate-700/75 dark:bg-slate-900/86 dark:text-slate-200 dark:shadow-none dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:hover:text-slate-50 dark:focus-within:ring-slate-100/10",
-        disabled && "cursor-not-allowed opacity-55",
-        className,
-        "min-w-[172px]",
-      )}
+      ref={menuRef}
+      id={listboxId}
+      role="listbox"
+      aria-labelledby={triggerId}
+      className="z-[140] max-h-64 overflow-y-auto rounded-2xl border border-zinc-200/90 bg-white/95 p-1.5 shadow-[0_18px_48px_-22px_rgba(24,24,27,0.35),0_8px_18px_-12px_rgba(24,24,27,0.24)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-black/40"
+      style={menuStyle}
     >
-      <Bot className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-100" />
-      <label htmlFor={selectId} className="sr-only">
-        选择模型
-      </label>
-      <span className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="truncate text-[13px] font-semibold leading-4">{meta.displayLabel}</span>
-        <span id={descriptionId} className="mt-0.5 hidden truncate text-[11px] font-medium leading-3 text-zinc-400 dark:text-slate-500 md:block">
-          {meta.caption}
-        </span>
-      </span>
-      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
-      <select
-        id={selectId}
-        value={value}
-        onChange={(event) => onChange(toChatModelChoice(event.target.value))}
-        disabled={disabled}
-        aria-label="选择本轮模型"
-        aria-describedby={descriptionId}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
-      >
-        {CHAT_MODEL_OPTIONS.map((option) => (
-          <option
+      {CHAT_MODEL_OPTIONS.map((option) => {
+        const optionMeta = CHAT_MODEL_META[option];
+        const selected = option === value;
+        const highlighted = option === highlightedValue;
+        return (
+          <button
             key={option}
-            value={option}
-            className="bg-white text-zinc-900 dark:bg-slate-950 dark:text-slate-100"
-            style={{ backgroundColor: "#ffffff", color: "#18181b" }}
+            type="button"
+            id={`${listboxId}-${option}`}
+            role="option"
+            aria-selected={selected}
+            onMouseEnter={() => setHighlightedValue(option)}
+            onClick={() => selectValue(option)}
+            className={cn(
+              "group/option flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+              highlighted
+                ? "bg-zinc-100 text-zinc-950 dark:bg-slate-800 dark:text-slate-50"
+                : "text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950 dark:text-slate-200 dark:hover:bg-slate-800/80 dark:hover:text-slate-50",
+              selected && "font-semibold",
+            )}
           >
-            {CHAT_MODEL_META[option].optionLabel}
-          </option>
-        ))}
-      </select>
+            <span
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors",
+                selected
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                  : "border-zinc-200 bg-white text-zinc-500 group-hover/option:border-zinc-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:group-hover/option:border-slate-600",
+              )}
+              aria-hidden="true"
+            >
+              <Bot className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] leading-4">{optionMeta.menuLabel}</span>
+              <span className="mt-0.5 block truncate text-[11px] font-medium leading-4 text-zinc-500 dark:text-slate-400">
+                {optionMeta.caption}
+              </span>
+            </span>
+            {selected ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+          </button>
+        );
+      })}
     </div>
+  ) : null;
+
+  return (
+    <>
+      <div
+        ref={rootRef}
+        title={`选择本轮模型：${meta.title}`}
+        onKeyDown={handleKeyDown}
+        className={cn(
+          "relative inline-flex h-9 min-w-[118px] max-w-full",
+          disabled && "cursor-not-allowed opacity-55",
+          className,
+        )}
+      >
+        <button
+          ref={triggerRef}
+          id={triggerId}
+          type="button"
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-describedby={descriptionId}
+          aria-label={`选择本轮模型，当前为${meta.optionLabel}`}
+          onClick={() => {
+            if (!disabled) {
+              setOpen((current) => !current);
+            }
+          }}
+          className={cn(
+            "group inline-flex h-full w-full items-center gap-2 rounded-xl border px-2.5 text-left transition-all active:scale-[0.98]",
+            "border-zinc-200/80 bg-white/92 text-zinc-700 shadow-[0_1px_2px_rgba(24,24,27,0.04),inset_0_1px_0_rgba(255,255,255,0.88)] hover:border-zinc-300 hover:bg-white hover:text-zinc-950",
+            "focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:border-slate-700/75 dark:bg-slate-900/86 dark:text-slate-200 dark:shadow-none dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:hover:text-slate-50 dark:focus:ring-slate-100/10",
+            open && "border-zinc-400 bg-white text-zinc-950 ring-4 ring-zinc-900/10 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-100/10",
+            disabled && "cursor-not-allowed active:scale-100",
+          )}
+        >
+          <Bot className="h-4 w-4 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-100" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold leading-none">{meta.triggerLabel}</span>
+            <span id={descriptionId} className="sr-only">
+              {meta.caption}
+            </span>
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-zinc-400 transition-all group-hover:text-zinc-700 dark:text-slate-500 dark:group-hover:text-slate-200",
+              open && "rotate-180 text-zinc-700 dark:text-slate-200",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      {menu && typeof document !== "undefined" ? createPortal(menu, document.body) : null}
+    </>
   );
 }
