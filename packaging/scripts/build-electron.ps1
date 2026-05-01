@@ -3,7 +3,7 @@ param(
     [ValidateSet("local", "remote")]
     [string]$Flavor,
     [switch]$SkipInstall,
-    [string]$BackendPort = "19020",
+    [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
@@ -298,7 +298,12 @@ if ($Flavor -eq "remote") {
     }
 }
 
-$apiBaseUrl = if ($Flavor -eq "local") { "http://127.0.0.1:$BackendPort" } else { $ApiUrl.TrimEnd("/") }
+$normalizedBackendPort = if ($null -eq $BackendPort) { "" } else { $BackendPort.Trim() }
+$apiBaseUrl = if ($Flavor -eq "local") {
+    if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) { "" } else { "http://127.0.0.1:$normalizedBackendPort" }
+} else {
+    $ApiUrl.TrimEnd("/")
+}
 
 $python = Resolve-PythonCommand $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
@@ -333,7 +338,12 @@ Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
 Write-Host "API base URL: $apiBaseUrl"
 if ($Flavor -eq "local") {
-    Write-Host "Backend port: $BackendPort"
+    if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) {
+        Write-Host "Backend port: auto"
+    }
+    else {
+        Write-Host "Backend port: $normalizedBackendPort"
+    }
     if ($bundledEnvConfigPath) {
         Write-Host "Bundled env: $bundledEnvConfigPath"
         Write-Host "Release suffix: $releaseSuffix"
@@ -368,7 +378,7 @@ Write-ElectronBuildConfig `
     -FrontendDir $frontendDir `
     -BackendMode $Flavor `
     -ApiBaseUrl $apiBaseUrl `
-    -BackendPort $BackendPort `
+    -BackendPort $normalizedBackendPort `
     -AppId $appId `
     -ProductName $productName
 

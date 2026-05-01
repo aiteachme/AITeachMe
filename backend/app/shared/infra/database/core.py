@@ -954,6 +954,23 @@ def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
         column["name"]
         for column in inspector.get_columns("raw_file")
     }
+    required_columns = {
+        "id",
+        "user_id",
+        "content_hash",
+        "file_size_bytes",
+        "filetype",
+        "status",
+        "created_at",
+        "parse_request_signature",
+    }
+    missing_columns = required_columns - existing_columns
+    if missing_columns:
+        logger.warning(
+            "sqlite_raw_file_parse_signature_backfill_skipped",
+            missing_columns=sorted(missing_columns),
+        )
+        return
     if "parse_request_signature" not in existing_columns:
         return
 
@@ -1002,12 +1019,25 @@ def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
         for table_name, indexes in _SQLITE_ADDITIVE_INDEXES.items():
             if table_name not in existing_tables:
                 continue
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
             existing_index_names = {
                 str(index.get("name") or "")
                 for index in inspector.get_indexes(table_name)
             }
             for index_name, column_names, unique, where_clause in indexes:
                 if index_name in existing_index_names:
+                    continue
+                missing_columns = set(column_names) - existing_columns
+                if missing_columns:
+                    logger.warning(
+                        "sqlite_additive_index_skipped_missing_columns",
+                        table_name=table_name,
+                        index_name=index_name,
+                        missing_columns=sorted(missing_columns),
+                    )
                     continue
                 columns_sql = ", ".join(
                     quote_sqlite_identifier(column_name)

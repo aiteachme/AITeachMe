@@ -34,10 +34,10 @@ on:
           - all-local
           - all
       backend_port:
-        description: Electron local 桌面包后端端口；Tauri local 会自动分配，不使用此值
+        description: local 桌面包后端端口；留空则自动分配可用端口
         type: string
         required: false
-        default: "19020"
+        default: ""
       api_url:
         description: remote 桌面包使用的后端 API 地址
         type: string

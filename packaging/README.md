@@ -42,7 +42,7 @@
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
-- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `19020`，用于避开开发后端默认端口 `9020`；Tauri local 启动时会自动申请可用本地端口，不使用此参数。
+- `-BackendPort <port>`：local 桌面包的本地后端端口；默认留空，由 Electron local / Tauri local 启动时自动申请可用端口。仅在需要固定端口调试时传入。
 - `-SkipInstall`：跳过依赖安装步骤。
 
 ## 产物命名
@@ -61,6 +61,12 @@
 - `AiTeachMe-v<version>-installer-tauri-remote.exe`：Tauri remote。
 
 中间产物会保留在 `packaging\artifacts`。
+
+## Electron local 的后端与数据目录
+
+Electron local 安装包内置 PyInstaller 生成的 FastAPI 后端，安装后由 Electron 主进程自动启动。默认不再固定占用 `9020` 或 `19020`，启动时会自动向系统申请可用本地端口，并把真实 API 地址注入前端；传入 `-BackendPort <port>` 时才会固定使用指定端口。
+
+安装目录可写时，Electron local 的后端日志、SQLite 和课程文件会写入安装目录下的 `data`；安装目录不可写时，才回退到 Electron app data 目录下的 `backend-data`。旧版本写在 app data 里的 `aiteachme.db` 和 `users` 会在首次启动时迁移到安装目录 `data`。
 
 ## Tauri local 的 exe 结构
 

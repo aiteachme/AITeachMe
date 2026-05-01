@@ -10,6 +10,8 @@ Electron 打包通过统一入口执行：
 
 - `packaging\release\AiTeachMe-v<version>-installer.exe`
 
+Electron local 默认启动时自动申请可用本地端口，并把真实 API 地址注入前端，不再固定占用 `9020` 或 `19020`。安装目录可写时，后端日志、SQLite 和课程文件会写入安装目录下的 `data`；安装目录不可写时，才回退到 Electron app data 目录下的 `backend-data`。如果需要调试固定端口，可以给底层脚本传 `-BackendPort <port>`。
+
 ## Remote 包
 
 如果需要额外生成只连接远程后端的 Electron remote 安装包：
