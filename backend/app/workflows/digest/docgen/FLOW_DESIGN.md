@@ -215,7 +215,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
   |
   v
 repair_or_route
-  当前实现：对 surface_patch / section_patch 执行局部 Markdown patch；对 evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone 等重动作结构化记录。
+  当前实现：对 surface_patch / section_patch / evidence_patch 执行安全局部 Markdown patch；对 regenerate_chapter / re_dispatch / rebuild_backbone 等重动作结构化记录。
   当前流水线：review_content -> repair_or_route -> merge_review。
   |
   v
@@ -294,7 +294,7 @@ prepare_global_seed
     - source_packets / section_packets：文件级正文包和切片级正文包。
     - docgen_history_brief：和文档生成有关的历史修改摘要。
   输出：intent_core / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
-    - intent_core：文档级短意图，只包含 document style、深度、例子偏好、考试导向和 avoid_list。
+    - intent_core：文档级泛化学习意图，包含 learning_goal_text、audience_profile_text、content_strategy_text、example_practice_policy、source_usage_policy、例题/练习比例和证据/复核严格度；旧的 style/depth 字段只做兼容派生。
     - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度和 `chapter_slices`。
     - chapter_slices：文件摘要 LLM 根据切片目录做“章节 -> 原文片段”路由，记录 section_ref、行号、用途、原因和片段摘要。
     - source_affinity_by_chapter：每章优先使用哪些文件、切片和 LLM 预选 source_slices。
@@ -341,7 +341,7 @@ confirm_and_seed_backbone
 build_document_backbone
   输入：ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
   输出：DocumentBackbone / backbone_conflict_warnings
-    - DocumentBackbone：整本文档的全局知识骨架。
+    - DocumentBackbone：DocGen 写作骨架和候选知识线索，不是正式 Knowledge Graph。
     - backbone_conflict_warnings：全局术语、定义、符号或来源冲突 warning。
   作用：在 seed 基础上做全局证据采样和统一建模，但不在这里直接组装最终 ChapterGenerationTask。
   DocumentBackbone 包含：
@@ -388,7 +388,7 @@ assemble_chapter_tasks
     - 当前无 LLM 调用；纯规则装配和 backbone 回填。
 
 generate_chapters
-  输入：单章 ChapterGenerationTask / shared_inputs / DocumentBackbone / DocGenContext / retrieval_profile
+  输入：单章 ChapterGenerationTask / shared_inputs / DocumentBackbone / DocGenContext / retrieval_policy/internal retrieval_profile
   输出：ChapterDraft[] / ChapterResearchTrace[] / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[]
     - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
     - ChapterResearchTrace：检索轮次、执行 query、打开上下文、覆盖率。
@@ -515,24 +515,24 @@ repair_or_route
   回流级别：
     - surface_patch：标题微调、语句不通顺、小过渡、小引用补齐。
     - section_patch：小节逻辑弱、例题不好、易混点没讲清、定义需要局部改写。
-    - evidence_patch：证据不足、来源支撑弱，需要补检索、补阅读、补 evidence binding。
+    - evidence_patch：证据不足、来源支撑弱；当前先做安全局部补证据说明、收窄断言或补不确定性提示，不编造外部来源。
     - regenerate_chapter：claim coverage 不够、关键证据缺失、核心定义冲突、章节边界偏移。
     - re_dispatch：单章任务合同本身不清楚，需要重新生成 ChapterGenerationTask。
     - rebuild_backbone：跨章术语漂移、概念顺序错、整本结构断裂。
   当前实现：
-    - 已支持 surface_patch / section_patch 的局部 Markdown patch。
-    - evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
+    - 已支持 surface_patch / section_patch / evidence_patch 的局部 Markdown patch。
+    - regenerate_chapter / re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
     - repair 执行策略已经收口为“按章节并行、章内顺序 patch”：
       - 不同章节的 patch 会并行执行。
       - 同一章节内部仍保持顺序，避免多个 patch 同时改同一份 Markdown。
       - 一旦某章已应用一次实质性 patch，同轮后续 patch 默认跳过；只有 `Markdown 渲染结构异常` 这类确定性表层修补不会锁死该章。
   当前模型方案：
-    - `surface_patch / section_patch`
+    - `surface_patch / section_patch / evidence_patch`
       - `call_purpose=DOCGEN`
       - `model="primary"`
       - 默认映射到 `qwen-flash`
-    - `evidence_patch / regenerate_chapter / re_dispatch / rebuild_backbone`
+    - `regenerate_chapter / re_dispatch / rebuild_backbone`
       - 当前只记录，不自动发起新的大模型调用
   目标实现：
     - 支持最多两轮有限回流：review_content <-> repair_or_route。
@@ -824,8 +824,8 @@ publish_document
   - `manifest_json`
   - `source_scope_json`
 - 更新课程 learning context：
-  - `Course.document_summary_json`
-  - `llm_context_text` 等供后续 Planner / KG / Interact / Examine 复用的课程上下文。
+  - `Course.document_summary_json` 是结构化真源，当前 schema_version=2，包含 intent_profile_v2、retrieval_policy、course/material signals、文件摘要、章节-资料分配、docgen_learning_backbone、kg_candidate_hints 和 quality_summary。
+  - `llm_context_text` 只是从结构化摘要渲染出来的 prompt 缓存，供 Planner / KG / Interact / Examine 直接塞上下文时使用，不承载独立事实。
 - 写 build runtime：
   - `stage="doc_lane_staged"`
   - `stage="completed"`

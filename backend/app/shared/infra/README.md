@@ -66,7 +66,7 @@ from app.shared.infra.search import web_search, search_knowledge
 - workflow 默认调用 `web_search()` 或 `search_knowledge()`。
 - 只有 search 层内部、调试工具或特殊 workflow 才直接调用 `dispatch_web_search()`。
 - retriever 名是稳定配置名，统一用小写 snake_case。
-- profile 名表达场景，不表达底层实现，例如 `docgen_zh_edu`、`docgen_zh_math`、`docgen_sprint`。
+- profile 名是内部检索 preset，不表达教学意图；对外应展示 `retrieval_policy`（本地优先、是否联网、来源优先级和选择原因），不要把 `docgen_*` 名称当业务语义。
 - 不提供泛化抓站入口。新增外部网站必须是明确站点适配器，放入 `search/retrievers/sites/` 并说明使用边界。
 
 ## workflow / observability 公开接口

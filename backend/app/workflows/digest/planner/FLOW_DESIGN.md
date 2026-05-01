@@ -321,7 +321,7 @@ light   -> settings.models.light
 - material context：
   - 读 `RawFile`、解析 Markdown 路径、资料切片和材料画像。
   - 可能读取本地/对象存储中的 parsed markdown。
-  - 读取 `Course.document_summary_json / llm_context_text` 作为已有知识文档摘要。
+  - 优先读取 `Course.document_summary_json` 的结构化摘要作为已有知识文档真源；`llm_context_text` 只是由该摘要渲染出的 prompt 缓存。
 - 本节点不写 confirmed plan，不写 KnowledgeDoc。
 
 ### 2.5 `stream_brief_and_extract_intent`

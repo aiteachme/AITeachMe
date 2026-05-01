@@ -78,7 +78,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "不调用 LLM，也不静默改写用户确认过的章节语义。"
         ),
         "reads": ["confirmed_plan", "shared_inputs", "planner_context", "build_session"],
-        "writes": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile"],
+        "writes": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "retrieval_policy"],
         "input_keys": [
             "course_id",
             "course_name",
@@ -91,7 +91,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "digest_mode",
             "model_override",
         ],
-        "output_keys": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "error"],
+        "output_keys": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "retrieval_policy", "error"],
     },
     NODE_PREPARE_GLOBAL_SEED: {
         "description": (
@@ -646,6 +646,7 @@ def create_docgen_initial_state(
             user_prompt=user_prompt,
             course_name=course_name,
         ),
+        "retrieval_policy": {},
         "teaching_action": "docgen_build",
         "document_context": None,
         "docgen_context": {},
@@ -675,6 +676,7 @@ def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, 
         "digest_mode": state.get("digest_mode", ""),
         "model_override": state.get("model_override"),
         "retrieval_profile": state.get("retrieval_profile", ""),
+        "retrieval_policy": state.get("retrieval_policy", {}),
         "teaching_action": teaching_action,
     }
 

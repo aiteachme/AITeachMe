@@ -47,6 +47,17 @@ def build_publish_document_node(*, context: WorkflowContext):
         )
         chapter_assignments = list(state.get("chapter_assignments", []))
         document_context = dict(state.get("document_context") or {})
+        shared_inputs = state.get("shared_inputs")
+        course_profile = (
+            shared_inputs.course_profile.model_dump(mode="json")
+            if shared_inputs is not None and hasattr(shared_inputs, "course_profile")
+            else dict(state.get("course_profile") or {})
+        )
+        material_stats_profile = (
+            shared_inputs.material_stats_profile.model_dump(mode="json")
+            if shared_inputs is not None and hasattr(shared_inputs, "material_stats_profile")
+            else {}
+        )
         cover_artifact = dict(state.get("cover_artifact") or {})
         cover_markdown = str(state.get("cover_markdown") or "").strip()
         # 这份快照给后续调试、问答/出题复用和失败追踪用；不要只因为前端暂时不用就删。
@@ -54,6 +65,9 @@ def build_publish_document_node(*, context: WorkflowContext):
             "confirmed_plan": dict(state.get("confirmed_plan") or {}),
             "docgen_context": dict(state.get("docgen_context") or {}),
             "intent_profile": dict(state.get("intent_profile") or {}),
+            "retrieval_policy": dict(state.get("retrieval_policy") or document_context.get("retrieval_policy") or {}),
+            "course_profile": course_profile,
+            "material_stats_profile": material_stats_profile,
             "file_summaries": list(state.get("file_summaries") or []),
             "source_affinity_by_chapter": list(state.get("source_affinity_by_chapter") or []),
             "high_confidence_evidence_units": list(state.get("high_confidence_evidence_units") or []),

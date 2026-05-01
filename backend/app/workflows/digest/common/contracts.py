@@ -325,23 +325,51 @@ def resolve_digest_retrieval_profile(
 ) -> str:
     """Resolve the retrieval profile that should be used for doc generation.
 
-    The primary selector is still ``digest_mode`` (sprint vs systematic). On
-    top of that we route explicit OI/algorithm-contest topics to the OI
-    profile so OI Wiki is only consulted when the user actually asked for
-    that domain. Math topics use a tighter Chinese math profile. Other topics
-    stay on the default DocGen profiles and never see OI Wiki as a source,
-    even as a ranking boost.
+    This is an internal retriever preset, not a teaching-mode label. Sprint
+    and systematic affect writing rhythm elsewhere; they should not leak as
+    meaningful retrieval semantics.
     """
 
     if _looks_like_oi_topic(user_prompt=user_prompt, course_name=course_name):
         return "docgen_oi"
     if _looks_like_math_topic(user_prompt=user_prompt, course_name=course_name):
         return "docgen_zh_math"
+    return "docgen_balanced"
 
-    normalized_mode = normalize_digest_mode(digest_mode)
-    if normalized_mode == SPRINT_DIGEST_MODE:
-        return "docgen_sprint"
-    return "docgen_systematic"
+
+def build_digest_retrieval_policy(
+    internal_profile: str | None,
+    *,
+    has_local_materials: bool,
+    digest_mode: str | None = None,
+    user_prompt: str | None = None,
+    course_name: str | None = None,
+) -> dict[str, Any]:
+    """Build the user-facing retrieval policy from the internal preset."""
+
+    profile = str(internal_profile or "").strip() or resolve_digest_retrieval_profile(
+        digest_mode,
+        user_prompt=user_prompt,
+        course_name=course_name,
+    )
+    if profile == "docgen_oi":
+        focus = "algorithm_contest_sources"
+        reason = "用户请求明确指向信息学竞赛/算法竞赛，允许使用对应垂直来源补充。"
+    elif profile == "docgen_zh_math":
+        focus = "math_learning_sources"
+        reason = "用户请求明确指向数学学习主题，优先使用数学学习资料补充。"
+    else:
+        focus = "general_learning_sources"
+        reason = "未识别到需要专门检索域的强信号，使用通用学习资料检索策略。"
+    return {
+        "schema_version": 1,
+        "local_first": bool(has_local_materials),
+        "allow_web": True,
+        "source_priority": ["local_materials", focus, "general_web"],
+        "external_focus": focus,
+        "reason": reason,
+        "internal_profile": profile,
+    }
 
 
 def resolve_planner_retrieval_profile() -> str:
@@ -367,6 +395,7 @@ __all__ = [
     "normalize_digest_confirmed_plan_payload",
     "parse_digest_confirmed_plan_contract",
     "normalize_digest_mode",
+    "build_digest_retrieval_policy",
     "resolve_digest_retrieval_profile",
     "resolve_planner_retrieval_profile",
     "resolve_teaching_action",

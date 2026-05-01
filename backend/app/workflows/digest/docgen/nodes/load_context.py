@@ -17,6 +17,7 @@ from app.workflows.digest.docgen.nodes.common import (
 )
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.state import DocGenState
+from app.workflows.digest.common.contracts import build_digest_retrieval_policy
 from app.workflows.digest.common.indexing import materialize_course_inputs_for_retrieval
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
@@ -80,11 +81,19 @@ def build_load_context_node(*, context: WorkflowContext):
 
         has_local_materials = bool(shared_inputs.source_packets)
         plan_course_label = str(plan_contract.course_name or plan_contract.user_prompt or "").strip()
+        retrieval_policy = build_digest_retrieval_policy(
+            retrieval_profile,
+            has_local_materials=has_local_materials,
+            digest_mode=digest_mode,
+            user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
+            course_name=plan_course_label,
+        )
         document_context = {
             "course_id": state["course_id"],
             "course_name": plan_course_label,
             "digest_mode": digest_mode,
             "retrieval_profile": retrieval_profile,
+            "retrieval_policy": retrieval_policy,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "user_prompt": str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             "plan_summary": str(plan_contract.plan_summary or ""),
@@ -165,7 +174,7 @@ def build_load_context_node(*, context: WorkflowContext):
             stage="plan_ready",
             payload={
                 "digest_mode": digest_mode,
-                "retrieval_profile": retrieval_profile,
+                "retrieval_policy": retrieval_policy,
                 "chapter_count": len(assignments),
                 "planner_session_id": state.get("planner_session_id", ""),
                 "confirmed_plan_id": state.get("confirmed_plan_id", ""),
@@ -182,6 +191,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "docgen_context": docgen_context.model_dump(mode="json"),
             "digest_mode": digest_mode,
             "retrieval_profile": retrieval_profile,
+            "retrieval_policy": retrieval_policy,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "document_context": document_context,
             "planner_ms": 0,

@@ -16,7 +16,6 @@ from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messa
 
 
 _ACTION_REQUIRES_FUTURE_REPAIR = {
-    "evidence_patch",
     "regenerate_chapter",
     "re_dispatch",
     "rebuild_backbone",
@@ -186,7 +185,7 @@ async def repair_or_route_review_actions(
     reviewed_chapters: list[ReviewedChapterDraft],
     review_actions: list[ReviewAction],
 ) -> tuple[list[ReviewedChapterDraft], list[ReviewAction], list[str], list[RepairTraceItem]]:
-    """Apply safe patches and route heavier actions for later repair loops."""
+    """Apply safe local patches and route heavier actions for later repair loops."""
 
     chapters_by_index = {chapter.chapter_index: chapter for chapter in reviewed_chapters}
     updated_actions_by_index: dict[int, ReviewAction] = {}
@@ -235,7 +234,7 @@ async def repair_or_route_review_actions(
         return current_chapter, results
 
     for action_index, action in enumerate(review_actions, start=1):
-        if action.action_type in {"surface_patch", "section_patch"}:
+        if action.action_type in {"surface_patch", "section_patch", "evidence_patch"}:
             chapter = chapters_by_index.get(int(action.chapter_index or 0))
             if chapter is None:
                 updated_action = action.model_copy(update={"status": "skipped"})

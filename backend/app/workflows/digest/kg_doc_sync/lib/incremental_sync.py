@@ -212,6 +212,7 @@ def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> 
             lookup.setdefault(chapter_index, []).append(payload)
 
     _add_items(summary.get("chapters"))
+    _add_items(summary.get("kg_candidate_hints"))
     _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapter_plan"))
     _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapter_plan"))
     _add_items(_as_mapping(manifest.get("chapter_generation_plan_seed")).get("chapters"))
@@ -266,6 +267,7 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
         "required_elements",
         "key_points",
         "knowledge_points",
+        "candidate_terms",
         limit=8,
         max_chars=90,
     )
@@ -277,6 +279,9 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
     example_targets = _merged_context_values(payloads, "example_targets", "pitfall_targets", limit=6, max_chars=110)
     if example_targets:
         hints.append("例题/易错线索：" + "、".join(example_targets))
+    candidate_claims = _merged_context_values(payloads, "candidate_claims", limit=5, max_chars=140)
+    if candidate_claims:
+        hints.append("候选主张线索：" + "；".join(candidate_claims))
     outline = _merged_context_values(payloads, "teaching_outline", limit=4, max_chars=120)
     if outline:
         hints.append("讲解路径：" + "；".join(outline))
@@ -317,7 +322,7 @@ def _document_backbone_payload(structured_context: dict[str, object]) -> dict[st
     if backbone:
         return backbone
     summary = _as_mapping(structured_context.get("document_summary_json"))
-    return _as_mapping(summary.get("document_backbone"))
+    return _as_mapping(summary.get("docgen_learning_backbone") or summary.get("document_backbone"))
 
 
 def sync_markdown_knowledge_graph(

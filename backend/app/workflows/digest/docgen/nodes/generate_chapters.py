@@ -205,6 +205,14 @@ def _conflict_warnings_for_writer(conflict_report: ConflictReport | None) -> lis
     ]
 
 
+def _unit_float(value: object, *, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(1.0, parsed))
+
+
 def _execution_contract_for_writer(
     task: ChapterGenerationTask,
     *,
@@ -215,7 +223,12 @@ def _execution_contract_for_writer(
     conflict_report: ConflictReport | None,
 ) -> dict:
     practice_style = str((task.practice_seed_policy or {}).get("style") or "").strip().lower()
+    example_ratio = _unit_float((task.practice_seed_policy or {}).get("example_ratio"))
+    practice_ratio = _unit_float((task.practice_seed_policy or {}).get("practice_ratio"))
     worked_example_target = 3 if practice_style == "exam" else 1
+    if example_ratio >= 0.42:
+        worked_example_target = max(worked_example_target, 2)
+    self_check_target = 1 if practice_ratio >= 0.25 else 0
     return {
         "target_word_count": task.target_word_count,
         "min_word_count": task.min_word_count,
@@ -229,9 +242,10 @@ def _execution_contract_for_writer(
         "practice_quota": {
             "worked_examples": worked_example_target,
             "short_answer": 0,
-            "self_check": 0,
+            "self_check": self_check_target,
             "reasoning": 1 if practice_style != "exam" else 0,
             "application": 1 if practice_style != "exam" else 0,
+            "policy": str((task.practice_seed_policy or {}).get("policy") or ""),
         },
         "media_quota": {
             "mermaid": len(media_hints["mermaid"]),

@@ -122,6 +122,16 @@ class DocGenContext(DocGenBaseModel):
 
 
 class DocGenIntentProfile(DocGenBaseModel):
+    learning_goal_text: str = ""
+    audience_profile_text: str = ""
+    content_strategy_text: str = ""
+    example_practice_policy: str = ""
+    source_usage_policy: str = ""
+    teaching_intent: str = ""
+    example_ratio: float = 0.35
+    practice_ratio: float = 0.25
+    evidence_strictness: float = 0.65
+    review_strictness: float = 0.55
     document_style: str = "teaching_notes"
     depth_level: str = "standard"
     explanation_depth: str = "detailed"
@@ -133,7 +143,21 @@ class DocGenIntentProfile(DocGenBaseModel):
     avoid_list: list[str] = Field(default_factory=list)
     fallback_used: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_legacy_compat(cls, value: Any) -> Any:
+        if isinstance(value, dict) and isinstance(value.get("legacy_compat"), dict):
+            legacy = dict(value.get("legacy_compat") or {})
+            return {**legacy, **value}
+        return value
+
     @field_validator(
+        "learning_goal_text",
+        "audience_profile_text",
+        "content_strategy_text",
+        "example_practice_policy",
+        "source_usage_policy",
+        "teaching_intent",
         "document_style",
         "depth_level",
         "explanation_depth",
@@ -150,7 +174,15 @@ class DocGenIntentProfile(DocGenBaseModel):
     def _avoid_list(cls, value: Any) -> list[str]:
         return clean_string_list(value, limit=12)
 
-    @field_validator("exam_orientation", "review_orientation", mode="before")
+    @field_validator(
+        "example_ratio",
+        "practice_ratio",
+        "evidence_strictness",
+        "review_strictness",
+        "exam_orientation",
+        "review_orientation",
+        mode="before",
+    )
     @classmethod
     def _unit_float(cls, value: Any) -> float:
         return clean_unit_float(value, default=0.5)
@@ -170,6 +202,29 @@ class DocGenIntentProfile(DocGenBaseModel):
             if index > 0 and text:
                 hints[index] = text
         return hints
+
+    @model_validator(mode="after")
+    def _derive_legacy_fields(self) -> "DocGenIntentProfile":
+        """Keep old DocGen call sites stable while v2 intent fields become canonical."""
+
+        if not self.teaching_intent:
+            self.teaching_intent = self.content_strategy_text or self.learning_goal_text
+        if self.example_preference not in {"few", "balanced", "many"}:
+            if self.example_ratio >= 0.45 or self.practice_ratio >= 0.35:
+                self.example_preference = "many"
+            elif self.example_ratio <= 0.18 and self.practice_ratio <= 0.15:
+                self.example_preference = "few"
+            else:
+                self.example_preference = "balanced"
+        if self.depth_level not in {"compact", "standard", "deep"}:
+            self.depth_level = "deep" if self.evidence_strictness >= 0.75 else "standard"
+        if self.explanation_depth not in {"compact", "standard", "detailed"}:
+            self.explanation_depth = "detailed" if self.evidence_strictness >= 0.55 else "standard"
+        if self.definition_depth not in {"minimal", "standard", "strict"}:
+            self.definition_depth = "strict" if self.evidence_strictness >= 0.78 else "standard"
+        self.exam_orientation = max(self.exam_orientation, min(1.0, (self.practice_ratio * 0.7) + 0.15))
+        self.review_orientation = max(self.review_orientation, self.review_strictness)
+        return self
 
 
 class ChapterSourceSlice(DocGenBaseModel):

@@ -28,6 +28,7 @@ class DocGenState(TypedDict, total=False):
     digest_mode: str
     model_override: str | None
     retrieval_profile: str
+    retrieval_policy: dict[str, Any]
     teaching_action: str
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]

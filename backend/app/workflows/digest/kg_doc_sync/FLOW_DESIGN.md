@@ -67,7 +67,7 @@ LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱�
 输入内容：
 
 - 增强后的章节 Markdown。
-- DocGen 阶段已经形成的 `document_backbone`、`docgen_manifest`、章节摘要、章节模式和来源文件 ID。
+- DocGen 阶段已经形成的 `docgen_learning_backbone` / `document_backbone_snapshot`、`kg_candidate_hints`、`docgen_manifest`、章节摘要、章节模式和来源文件 ID。
 - 课程 LLM context。
 - DocGen 构建开始时捕获的 LLM runtime snapshot，避免长任务中途设置变更导致同一轮构建前后模型配置漂移。
 
@@ -106,7 +106,7 @@ LangGraph 链路，避免 Trace 列表被 anchor 校验、候选抽取和图谱�
 输入内容：
 
 - 数据库中已发布的 `KnowledgeDoc` Markdown。
-- `docgen_manifest`、`document_backbone_snapshot`、`Course.document_summary_json`。
+- `docgen_manifest`、`document_backbone_snapshot`、`Course.document_summary_json`，其中 `kg_candidate_hints` 只作为候选提示，落库前必须由发布 Markdown 或 evidence ledger 支撑。
 - 章节来源映射、知识文档版本号、来源文件 ID。
 - 自动同步时可选携带同一 `build_session_id` 下的预抽取缓存；手动重建不依赖预抽取缓存。
 
@@ -212,7 +212,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
 | `_extract_chapter_graph_items` 主抽取 | `kg_doc_sync/lib/incremental_sync.py` -> `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 从单章 Markdown 抽取候选 KnowledgeUnit 和关系 |
 | `_repair_docs_extraction_after_empty` | `kg_doc_sync/lib/extraction.py` | 结构化 | `EXTRACT` | `light` | `qwen-flash` | 当 docs-sync 主抽取为空时做一次极短修复抽取 |
-| `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 只用 DocGen `document_backbone` 给已抽取节点补关系，不创建保底节点 |
+| `_build_backbone_graph_items` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 只用 DocGen 写作骨架给已抽取节点补关系，不创建保底节点 |
 | `_build_structural_heading_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 用标题层级补结构边 |
 | `_build_cross_section_semantic_edges` | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 基于节点上下文补跨章节语义边 |
 | upsert / source ref / deprecate | `kg_doc_sync/lib/incremental_sync.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、同步批次、来源引用和过期标记 |
