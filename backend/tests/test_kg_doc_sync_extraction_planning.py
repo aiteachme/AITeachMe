@@ -24,7 +24,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             MarkdownKnowledgeUnit(
                 anchor=anchor,
                 name=name,
-                knowledge_unit_type="concept",
+                knowledge_unit_type="core_knowledge",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=0,
@@ -39,7 +39,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
         node_contexts_by_anchor={
             anchor: {
                 "name": name,
-                "knowledge_unit_type": "concept",
+                "knowledge_unit_type": "core_knowledge",
                 "section_index": 0,
                 "knowledge_document_id": None,
                 "source_file_ids": [],
@@ -52,7 +52,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             body_markdown="body",
             primary_anchor=anchor,
             primary_name=name,
-            primary_type="concept",
+            primary_type="core_knowledge",
         ),
         diagnostics={
             "section_count": 0,
@@ -82,7 +82,7 @@ def _edge_payload(
             MarkdownKnowledgeUnit(
                 anchor=source_anchor,
                 name=source_name,
-                knowledge_unit_type="concept",
+                knowledge_unit_type="core_knowledge",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=1,
@@ -92,7 +92,7 @@ def _edge_payload(
             MarkdownKnowledgeUnit(
                 anchor=target_anchor,
                 name=target_name,
-                knowledge_unit_type="concept",
+                knowledge_unit_type="core_knowledge",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=1,
@@ -126,7 +126,7 @@ def _edge_payload(
             body_markdown="body",
             primary_anchor=source_anchor,
             primary_name=source_name,
-            primary_type="concept",
+            primary_type="core_knowledge",
         ),
         diagnostics={
             "section_count": 0,
@@ -259,7 +259,7 @@ def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> Non
     assert metrics["subsection_task_count"] == len(tasks)
 
 
-def test_invalid_remark_edge_type_is_normalized_before_validation() -> None:
+def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> None:
     result = ChunkExtractionResult.model_validate(
         {
             "nodes": [
@@ -282,14 +282,16 @@ def test_invalid_remark_edge_type_is_normalized_before_validation() -> None:
                     "target_name": "主成分分析前需标准化数据提醒",
                     "source_candidate_id": "method",
                     "target_candidate_id": "remark",
-                    "edge_type": "remark",
+                    "edge_type": "support",
                     "description": "提醒是方法实施的补充。",
                 }
             ],
         }
     )
 
-    assert result.edges[0].edge_type == "application"
+    assert result.nodes[0].knowledge_unit_type == "method_demo"
+    assert result.nodes[1].knowledge_unit_type == "explanation_support"
+    assert result.edges[0].edge_type == "explanation"
 
 
 def test_prefetched_section_payload_is_reused_and_context_is_finalized() -> None:
@@ -402,7 +404,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                 {
                     "candidate_id": f"n{index}",
                     "name": f"Node {index}",
-                    "knowledge_unit_type": "concept",
+                    "knowledge_unit_type": "core_knowledge",
                     "local_summary": "summary",
                 }
                 for index in range(12)

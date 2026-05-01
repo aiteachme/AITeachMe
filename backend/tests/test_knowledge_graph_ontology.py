@@ -13,6 +13,8 @@ from app.models.knowledge_taxonomy import (
     SECONDARY_KNOWLEDGE_UNIT_TYPES,
     STANDARD_KNOWLEDGE_UNIT_TYPES,
     STANDARD_RELATION_TYPES,
+    normalize_knowledge_unit_type,
+    normalize_relation_type,
     validate_relation_direction,
 )
 from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
@@ -23,7 +25,7 @@ def test_learning_graph_ontology_matches_enum_values():
     assert STANDARD_RELATION_TYPES == {item.value for item in KnowledgeRelationType}
     assert PRIMARY_KNOWLEDGE_UNIT_TYPES | SECONDARY_KNOWLEDGE_UNIT_TYPES == STANDARD_KNOWLEDGE_UNIT_TYPES
     assert PRIMARY_KNOWLEDGE_UNIT_TYPES.isdisjoint(SECONDARY_KNOWLEDGE_UNIT_TYPES)
-    assert PARENT_KNOWLEDGE_UNIT_TYPES == PRIMARY_KNOWLEDGE_UNIT_TYPES | {KnowledgeUnitType.DEFINITION.value}
+    assert PARENT_KNOWLEDGE_UNIT_TYPES == PRIMARY_KNOWLEDGE_UNIT_TYPES
     assert set(LEARNING_GRAPH_ONTOLOGY.unit_type_values) == STANDARD_KNOWLEDGE_UNIT_TYPES
     assert set(LEARNING_GRAPH_ONTOLOGY.relation_type_values) == STANDARD_RELATION_TYPES
     assert set(LEARNING_GRAPH_ONTOLOGY.primary_unit_type_values) == PRIMARY_KNOWLEDGE_UNIT_TYPES
@@ -46,27 +48,74 @@ def test_section_graph_prompt_uses_canonical_ontology_bullets():
 
 
 def test_relation_direction_rules_match_kg_doc_sync_ontology():
-    assert validate_relation_direction(edge_type="example_of", source_type="example", target_type="concept")
-    assert validate_relation_direction(edge_type="example_of", source_type="exercise", target_type="method")
-    assert not validate_relation_direction(edge_type="example_of", source_type="concept", target_type="method")
-    assert not validate_relation_direction(edge_type="prerequisite", source_type="example", target_type="concept")
-    assert not validate_relation_direction(edge_type="prerequisite", source_type="concept", target_type="example")
-    assert not validate_relation_direction(edge_type="similar", source_type="example", target_type="concept")
-    assert not validate_relation_direction(edge_type="contrast", source_type="concept", target_type="example")
+    assert validate_relation_direction(
+        edge_type="training",
+        source_type="core_knowledge",
+        target_type="practice_assessment",
+    )
+    assert validate_relation_direction(
+        edge_type="explanation",
+        source_type="core_knowledge",
+        target_type="explanation_support",
+    )
+    assert validate_relation_direction(
+        edge_type="application",
+        source_type="method_demo",
+        target_type="application_extension",
+    )
+    assert not validate_relation_direction(
+        edge_type="training",
+        source_type="practice_assessment",
+        target_type="core_knowledge",
+    )
+    assert not validate_relation_direction(
+        edge_type="explanation",
+        source_type="explanation_support",
+        target_type="core_knowledge",
+    )
+    assert not validate_relation_direction(
+        edge_type="prerequisite",
+        source_type="practice_assessment",
+        target_type="core_knowledge",
+    )
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
-        assert spec.allows(source_type="concept", target_type="method") == validate_relation_direction(
+        assert spec.allows(source_type="core_knowledge", target_type="method_demo") == validate_relation_direction(
             edge_type=spec.value,
-            source_type="concept",
-            target_type="method",
+            source_type="core_knowledge",
+            target_type="method_demo",
         )
-        for source_type in relation_endpoint_type_preferences(spec.value, "source"):
-            assert validate_relation_direction(edge_type=spec.value, source_type=source_type, target_type="concept")
+        preferred_sources = relation_endpoint_type_preferences(spec.value, "source")
+        preferred_targets = relation_endpoint_type_preferences(spec.value, "target")
+        if preferred_sources and preferred_targets:
+            assert validate_relation_direction(
+                edge_type=spec.value,
+                source_type=preferred_sources[0],
+                target_type=preferred_targets[0],
+            )
 
 
 def test_ontology_supplies_extraction_relation_preferences():
-    assert relation_endpoint_type_preferences("example_of", "source") == ("example", "exercise")
-    assert "concept" in relation_endpoint_type_preferences("derivation", "target")
-    assert default_relation_for_unit_type("example") == "example_of"
-    assert default_relation_for_unit_type("exercise") == "example_of"
-    assert default_relation_for_unit_type("remark") == "application"
-    assert default_relation_for_unit_type("concept") == "derivation"
+    assert relation_endpoint_type_preferences("training", "target") == ("practice_assessment",)
+    assert "core_knowledge" in relation_endpoint_type_preferences("reasoning", "target")
+    assert default_relation_for_unit_type("method_demo") == "application"
+    assert default_relation_for_unit_type("practice_assessment") == "training"
+    assert default_relation_for_unit_type("explanation_support") == "explanation"
+    assert default_relation_for_unit_type("principle_reasoning") == "reasoning"
+    assert default_relation_for_unit_type("core_knowledge") == "contains"
+
+
+def test_legacy_knowledge_graph_types_are_normalized_for_compatibility():
+    assert normalize_knowledge_unit_type("concept") == "core_knowledge"
+    assert normalize_knowledge_unit_type("definition") == "core_knowledge"
+    assert normalize_knowledge_unit_type("formula") == "core_knowledge"
+    assert normalize_knowledge_unit_type("method") == "method_demo"
+    assert normalize_knowledge_unit_type("example") == "method_demo"
+    assert normalize_knowledge_unit_type("exercise") == "practice_assessment"
+    assert normalize_knowledge_unit_type("proof_step") == "principle_reasoning"
+    assert normalize_knowledge_unit_type("remark") == "explanation_support"
+    assert normalize_relation_type("derivation") == "reasoning"
+    assert normalize_relation_type("example_of") == "training"
+    assert normalize_relation_type("support") == "explanation"
+    assert normalize_relation_type("related") == "application"
+    assert normalize_relation_type("remark") == "explanation"
+    assert normalize_relation_type("practice_assessment") == "training"

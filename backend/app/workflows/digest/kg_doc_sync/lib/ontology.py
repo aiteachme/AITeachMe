@@ -101,122 +101,117 @@ class LearningGraphOntology:
         raise ValueError(f"unknown relation type in ontology: {value}")
 
 
-_RELATION_ENDPOINT_PRIMARY_TYPES = (
-    KnowledgeUnitType.CONCEPT.value,
-    KnowledgeUnitType.METHOD.value,
-    KnowledgeUnitType.DEFINITION.value,
-    KnowledgeUnitType.THEOREM.value,
-    KnowledgeUnitType.FORMULA.value,
-    KnowledgeUnitType.EXERCISE.value,
-    KnowledgeUnitType.PROOF_STEP.value,
-    KnowledgeUnitType.REMARK.value,
+_PRIMARY_ENDPOINT_TYPES = (
+    KnowledgeUnitType.CORE_KNOWLEDGE.value,
+    KnowledgeUnitType.METHOD_DEMO.value,
+    KnowledgeUnitType.PRINCIPLE_REASONING.value,
+    KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value,
+    KnowledgeUnitType.APPLICATION_EXTENSION.value,
 )
-_RELATION_PARENT_TARGET_TYPES = (
-    KnowledgeUnitType.CONCEPT.value,
-    KnowledgeUnitType.METHOD.value,
-    KnowledgeUnitType.THEOREM.value,
-    KnowledgeUnitType.FORMULA.value,
-    KnowledgeUnitType.PROOF_STEP.value,
-)
-_RELATION_EXAMPLE_SOURCE_TYPES = (
-    KnowledgeUnitType.EXAMPLE.value,
-    KnowledgeUnitType.EXERCISE.value,
+_SUPPORT_ENDPOINT_TYPES = (
+    KnowledgeUnitType.EXPLANATION_SUPPORT.value,
+    KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
 )
 
 
 LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
-    name="kg_doc_sync_learning_graph",
-    purpose="表达学习材料中可复用的知识单元，以及它们之间的教学关系。",
+    name="kg_doc_sync_learning_graph_v2",
+    purpose="表达广义学习材料中的知识内容角色，以及它们之间的教学关系。",
     unit_types=(
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.CONCEPT.value,
-            "可独立复用的原子概念，适合作为一个 Knowledge Unit 展示",
+            KnowledgeUnitType.CORE_KNOWLEDGE.value,
+            "核心知识：概念、定义、定理、性质、公式、结论、规则、事实、原则、标准、术语，回答必须知道什么",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.DEFINITION.value,
-            "明确的定义、含义解释或概念解释",
+            KnowledgeUnitType.METHOD_DEMO.value,
+            "方法示范：例题、方法、步骤、流程、解题思路、操作范例、演示过程，回答怎么做",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.THEOREM.value,
-            "定理、性质、引理、命题或公理",
+            KnowledgeUnitType.EXPLANATION_SUPPORT.value,
+            "解释辅助：背景、直观解释、例子、备注、类比、易错点、概念辨析、常见误区，帮助理解",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.FORMULA.value,
-            "公式、方程、规则、恒等式或计算关系",
+            KnowledgeUnitType.PRINCIPLE_REASONING.value,
+            "原理推理：证明、推导、命题、机制解释、因果分析、验证过程、适用条件，回答为什么成立或有效",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.EXAMPLE.value,
-            "例题、示例或说明性案例",
+            KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
+            "练习评估：练习、解析、自测题、纠错任务、评分标准、操作检查、错题分析、复盘任务",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.EXERCISE.value,
-            "练习题、训练题或需要作答的实践项",
+            KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value,
+            "知识组织：学习目标、重点难点、学习路径、知识框架、模块划分、先修知识、总结",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.METHOD.value,
-            "方法、策略、技巧、步骤或算法",
-        ),
-        KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.PROOF_STEP.value,
-            "证明步骤、推导步骤或关键论证环节",
-        ),
-        KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.REMARK.value,
-            "注意事项、边界条件、常见错误或补充说明",
+            KnowledgeUnitType.APPLICATION_EXTENSION.value,
+            "应用拓展：案例、实验、应用场景、项目任务、真实问题、综合任务、迁移训练、开放任务",
         ),
     ),
     relation_types=(
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.PREREQUISITE.value,
-            "source 是学习 target 前需要先掌握的前置知识",
-            source_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
-            target_type_preferences=_RELATION_ENDPOINT_PRIMARY_TYPES,
+            "前置：source 是理解、学习或掌握 target 的先修内容",
+            source_type_preferences=_PRIMARY_ENDPOINT_TYPES,
+            target_type_preferences=_PRIMARY_ENDPOINT_TYPES,
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.DERIVATION.value,
-            "source 定义、推导、支撑 target，或从属于 target",
+            KnowledgeRelationType.CONTAINS.value,
+            "包含：source 在结构上包含 target，或者 target 属于 source",
+            source_type_preferences=(KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value, *(_PRIMARY_ENDPOINT_TYPES)),
+            target_type_preferences=(*_PRIMARY_ENDPOINT_TYPES, *_SUPPORT_ENDPOINT_TYPES),
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.REASONING.value,
+            "推理：source 可以推出 target，或者 target 基于 source 的证明、推导、机制或因果解释得到",
             source_type_preferences=(
-                KnowledgeUnitType.DEFINITION.value,
-                KnowledgeUnitType.THEOREM.value,
-                KnowledgeUnitType.FORMULA.value,
-                KnowledgeUnitType.PROOF_STEP.value,
-                KnowledgeUnitType.CONCEPT.value,
-                KnowledgeUnitType.METHOD.value,
+                KnowledgeUnitType.CORE_KNOWLEDGE.value,
+                KnowledgeUnitType.PRINCIPLE_REASONING.value,
+                KnowledgeUnitType.METHOD_DEMO.value,
             ),
-            target_type_preferences=_RELATION_PARENT_TARGET_TYPES,
+            target_type_preferences=(
+                KnowledgeUnitType.CORE_KNOWLEDGE.value,
+                KnowledgeUnitType.METHOD_DEMO.value,
+                KnowledgeUnitType.APPLICATION_EXTENSION.value,
+            ),
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.APPLICATION.value,
-            "source 会被用于理解、解决或应用 target",
+            "应用：source 被用于解决 target，或者 source 在 target 场景中使用",
             source_type_preferences=(
-                KnowledgeUnitType.CONCEPT.value,
-                KnowledgeUnitType.METHOD.value,
-                KnowledgeUnitType.DEFINITION.value,
-                KnowledgeUnitType.FORMULA.value,
-                KnowledgeUnitType.THEOREM.value,
-                KnowledgeUnitType.EXERCISE.value,
-                KnowledgeUnitType.REMARK.value,
+                KnowledgeUnitType.CORE_KNOWLEDGE.value,
+                KnowledgeUnitType.METHOD_DEMO.value,
+                KnowledgeUnitType.PRINCIPLE_REASONING.value,
             ),
-            target_type_preferences=(KnowledgeUnitType.CONCEPT.value,),
-        ),
-        KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.EXAMPLE_OF.value,
-            "source 是 target 的例题、练习或说明性案例",
-            source_type_preferences=_RELATION_EXAMPLE_SOURCE_TYPES,
             target_type_preferences=(
-                KnowledgeUnitType.CONCEPT.value,
-                KnowledgeUnitType.METHOD.value,
-                KnowledgeUnitType.THEOREM.value,
-                KnowledgeUnitType.FORMULA.value,
+                KnowledgeUnitType.METHOD_DEMO.value,
+                KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
+                KnowledgeUnitType.APPLICATION_EXTENSION.value,
             ),
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.SIMILAR.value,
-            "source 与 target 相似，容易互相迁移或类比",
+            KnowledgeRelationType.EXPLANATION.value,
+            "说明：target 对 source 做解释、补充、备注、直观化、例子化或易错提醒",
+            source_type_preferences=_PRIMARY_ENDPOINT_TYPES,
+            target_type_preferences=(KnowledgeUnitType.EXPLANATION_SUPPORT.value,),
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.TRAINING.value,
+            "训练：target 用来训练、考察、巩固或评估 source",
+            source_type_preferences=(
+                KnowledgeUnitType.CORE_KNOWLEDGE.value,
+                KnowledgeUnitType.METHOD_DEMO.value,
+                KnowledgeUnitType.PRINCIPLE_REASONING.value,
+                KnowledgeUnitType.APPLICATION_EXTENSION.value,
+            ),
+            target_type_preferences=(KnowledgeUnitType.PRACTICE_ASSESSMENT.value,),
         ),
         KnowledgeRelationTypeSpec(
             KnowledgeRelationType.CONTRAST.value,
-            "source 与 target 构成对比、区分或易混关系",
+            "对比：source 和 target 需要区分差异、容易混淆或适合通过差异比较来学习",
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.SIMILAR.value,
+            "相似：source 和 target 有相近结构、方法、原理，或者可以类比理解",
         ),
     ),
 )
@@ -233,8 +228,8 @@ def format_ontology_relation_type_bullets() -> str:
 def format_ontology_relation_direction_bullets() -> str:
     lines: list[str] = []
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
-        source_types = ", ".join(f"`{value}`" for value in spec.source_type_preferences) or "任意合法且未被拦截的类型"
-        target_types = ", ".join(f"`{value}`" for value in spec.target_type_preferences) or "任意合法且未被拦截的类型"
+        source_types = ", ".join(f"`{value}`" for value in spec.source_type_preferences) or "任意合法类型"
+        target_types = ", ".join(f"`{value}`" for value in spec.target_type_preferences) or "任意合法类型"
         lines.append(f"- `{spec.value}`：source 优先使用 {source_types}；target 优先使用 {target_types}。")
     return "\n".join(lines)
 
@@ -248,11 +243,17 @@ def relation_endpoint_type_preferences(
 
 def default_relation_for_unit_type(unit_type: str) -> str:
     normalized = normalize_knowledge_unit_type(unit_type)
-    if normalized in _RELATION_EXAMPLE_SOURCE_TYPES:
-        return KnowledgeRelationType.EXAMPLE_OF.value
-    if normalized == KnowledgeUnitType.REMARK.value:
+    if normalized == KnowledgeUnitType.METHOD_DEMO.value:
         return KnowledgeRelationType.APPLICATION.value
-    return KnowledgeRelationType.DERIVATION.value
+    if normalized == KnowledgeUnitType.PRINCIPLE_REASONING.value:
+        return KnowledgeRelationType.REASONING.value
+    if normalized == KnowledgeUnitType.PRACTICE_ASSESSMENT.value:
+        return KnowledgeRelationType.TRAINING.value
+    if normalized == KnowledgeUnitType.EXPLANATION_SUPPORT.value:
+        return KnowledgeRelationType.EXPLANATION.value
+    if normalized == KnowledgeUnitType.APPLICATION_EXTENSION.value:
+        return KnowledgeRelationType.APPLICATION.value
+    return KnowledgeRelationType.CONTAINS.value
 
 
 __all__ = [

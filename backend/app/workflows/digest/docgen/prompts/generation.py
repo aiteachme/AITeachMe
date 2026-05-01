@@ -92,6 +92,15 @@ def build_docgen_writer_messages(
     execution_contract = dict(execution_contract or {})
     media_quota = dict(execution_contract.get("media_quota") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
+    content_role_targets = dict(execution_contract.get("content_role_targets") or {})
+    example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
+    content_mix_policy = dict(execution_contract.get("content_mix_policy") or {})
+    coverage_policy = [
+        str(item).strip()
+        for item in list(execution_contract.get("coverage_policy") or [])
+        if str(item).strip()
+    ]
+    example_density_policy = dict(execution_contract.get("example_density_policy") or {})
     claim_targets = [
         str(item).strip()
         for item in list(execution_contract.get("claim_targets") or [])
@@ -110,6 +119,10 @@ def build_docgen_writer_messages(
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
         f"- 练习配额：例题解析 {practice_quota.get('worked_examples', 0)} / 简答 {practice_quota.get('short_answer', 0)} / 快速检测 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
+        f"- 例题密度策略：{example_density_policy.get('policy_text') or '例题、案例和任务必须服务当前知识点。'}\n"
+        f"- 内容角色目标：{content_role_targets}\n"
+        f"- 例题覆盖计划：{example_coverage_plan}\n"
+        f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按章节合同覆盖核心知识和例题。'}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按章节合同覆盖'}\n"
         f"- 需谨慎处理的冲突/低证据点：{'；'.join(conflict_warnings) if conflict_warnings else '无'}"
     )
@@ -144,6 +157,8 @@ def build_docgen_writer_messages(
 版式口径：
 {_presentation_contract()}
 练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
+例题优先级：例题、案例、操作示例、变式训练和自测是核心内容，不是附录。速成型要明显提高例题/任务密度，围绕高频题型、关键方法、识别信号、易错陷阱组织；系统型要保证每个核心知识点都有例题、案例或练习支撑。
+学习内容角色：正文需要自然覆盖核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织和应用拓展中的本章必要部分；这些是写作检查维度，不要求作为固定标题原样出现。
 
 参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
@@ -158,9 +173,11 @@ def build_docgen_writer_messages(
 7. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
 8. 先讲清概念、条件和判断依据，再讲任务/题型、例子或应用，避免一上来堆技巧。
 9. 例题、练习、案例、任务、类比和应用必须来自本章课程语境，不要跨课程凑例子。
-10. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
-11. 不输出原始来源列表、内部课程标识、研究笔记标题或草稿修补痕迹。
-12. 不在章节正文里插入参考资料附录；来源调试信息由系统单独保存和清理。
+10. 速成型章节不能长时间只讲理论；每个重要方法后尽快接例题、案例、变式任务或错误诊断。
+11. 系统型章节不能只有理论覆盖；每个核心知识点都要能在正文里找到对应例题、案例、操作示例或练习任务。
+12. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
+13. 不输出原始来源列表、内部课程标识、研究笔记标题或草稿修补痕迹。
+14. 不在章节正文里插入参考资料附录；来源调试信息由系统单独保存和清理。
 
 研究材料：
 {dense_context}

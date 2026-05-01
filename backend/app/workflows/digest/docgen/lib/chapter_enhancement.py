@@ -137,6 +137,23 @@ def _build_practice_questions(
                     "pitfall": "综合题不是把公式堆在一起，而是要先确定使用顺序。",
                 }
             )
+        while len(examples) < 4:
+            focus = focus_terms[min(len(examples) - 1, len(focus_terms) - 1)] if focus_terms else title
+            examples.append(
+                {
+                    "practice_id": f"ch{draft.chapter_index:02d}_p{len(examples) + 1:02d}",
+                    "chapter_index": draft.chapter_index,
+                    "type": "worked_example",
+                    "label": choose_heading_focus([focus], fallback=title),
+                    "stem": f"围绕“{focus}”设计一道速成训练：给出条件、识别信号，并说明最短处理路径。",
+                    "analysis_steps": [
+                        "先判断任务属于哪类高频场景或常见题型。",
+                        "再写出触发该方法的条件或关键词。",
+                        "最后按模板完成步骤，并做一次易错检查。",
+                    ],
+                    "pitfall": "速成训练的关键是识别信号和方法边界，不能只背答案。",
+                }
+            )
         return examples
     first_claim = claim_prompts[0] if claim_prompts else "核心概念"
     questions = [
@@ -191,6 +208,24 @@ def _build_practice_questions(
                     "最后总结区分它们的一句话标准。",
                 ],
                 "pitfall": "边界题的关键不是背定义，而是抓住不能混用的条件。",
+            }
+        )
+    for claim in claim_prompts[1:4]:
+        if len(questions) >= 5:
+            break
+        questions.append(
+            {
+                "practice_id": f"ch{draft.chapter_index:02d}_p{len(questions) + 1:02d}",
+                "chapter_index": draft.chapter_index,
+                "type": "worked_example",
+                "label": choose_heading_focus([claim], fallback=title),
+                "stem": f"围绕“{claim}”补一个覆盖例题或应用案例，说明它如何落到具体任务中。",
+                "analysis_steps": [
+                    "先回到该知识点的定义、条件或结构。",
+                    "再构造一个能使用它的具体任务。",
+                    "最后说明例题中的哪一步体现了这个知识点。",
+                ],
+                "pitfall": "系统课的例题必须回扣知识点，不能只给一个孤立答案。",
             }
         )
     return questions

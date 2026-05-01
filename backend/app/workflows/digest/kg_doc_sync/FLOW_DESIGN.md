@@ -528,7 +528,12 @@ stitch_relations
     - error
   作用：
     - 用纯本地规则补充 conservative edges，减少“有节点但无关系”的散点。
-    - 同一小节中存在主概念时，把 definition / formula / theorem / example / exercise / method / remark 连接到主概念。
+    - 同一小节中存在主知识点时，按统一学习本体补边：
+      - method_demo / application_extension 使用 application。
+      - explanation_support 使用 explanation。
+      - practice_assessment 使用 training。
+      - principle_reasoning 使用 reasoning。
+      - 结构包含关系使用 contains。
     - 对仍然孤立的节点，如果其正文明确提到其它唯一节点名，补少量 mention_stitch 边。
     - 计算 graph_isolated_unit_count / graph_component_count / graph_largest_component_unit_count / graph_avg_degree / graph_isolated_unit_pct。
   失败：
@@ -674,7 +679,7 @@ payload fan-in
        - `docgen_manifest.document_backbone_snapshot`
        - `document_summary_json.document_backbone`
     5. `canonical_glossary` 只记录和已存在节点的章节映射，不创建缺失 term；纯 confirmed plan / required_elements 词条不会直接入图。
-    6. `concept_dependency_graph` 只在 source/target 两端都已经由正文抽取存在时生成关系：
+    6. `concept_dependency_graph` 是 DocGen 写作骨架里的候选依赖线索，只在 source/target 两端都已经由正文抽取存在时生成关系：
        - `chapter_order` -> `prerequisite`
        - 其它 relation 走 normalize_relation_type。
        - 单个章节/子章节 LLM 抽取失败不会让整条图谱链路失败；失败分片会记录为 `failed_section_count` / `llm_error_count`，其它成功分片继续合并并落库。

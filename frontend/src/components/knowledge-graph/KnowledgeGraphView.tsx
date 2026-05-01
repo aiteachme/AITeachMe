@@ -22,28 +22,24 @@ import { KnowledgeGraphNodeDetailPanel } from "./KnowledgeGraphNodeDetailPanel";
 import { KnowledgeGraphInsightsView } from "./KnowledgeGraphInsightsView";
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
-  concept: { label: "概念", color: "bg-purple-50 text-purple-600" },
-  definition: { label: "定义", color: "bg-emerald-50 text-emerald-600" },
-  theorem: { label: "定理", color: "bg-indigo-50 text-indigo-600" },
-  formula: { label: "公式", color: "bg-cyan-50 text-cyan-600" },
-  example: { label: "示例", color: "bg-pink-50 text-pink-600" },
-  exercise: { label: "练习", color: "bg-rose-50 text-rose-600" },
-  method: { label: "方法", color: "bg-amber-50 text-amber-600" },
-  proof_step: { label: "证明步骤", color: "bg-indigo-50 text-indigo-600" },
-  remark: { label: "备注", color: "bg-slate-100 text-slate-600" },
+  core_knowledge: { label: "核心知识", color: "bg-blue-50 text-blue-600" },
+  method_demo: { label: "方法示范", color: "bg-amber-50 text-amber-600" },
+  explanation_support: { label: "解释辅助", color: "bg-slate-100 text-slate-600" },
+  principle_reasoning: { label: "原理推理", color: "bg-teal-50 text-teal-600" },
+  practice_assessment: { label: "练习评估", color: "bg-rose-50 text-rose-600" },
+  knowledge_organization: { label: "知识组织", color: "bg-indigo-50 text-indigo-600" },
+  application_extension: { label: "应用拓展", color: "bg-pink-50 text-pink-600" },
 };
 
 const NODE_TYPES = [
   { value: undefined, label: "全部" },
-  { value: "concept", label: "概念" },
-  { value: "definition", label: "定义" },
-  { value: "theorem", label: "定理" },
-  { value: "formula", label: "公式" },
-  { value: "example", label: "示例" },
-  { value: "exercise", label: "练习" },
-  { value: "method", label: "方法" },
-  { value: "proof_step", label: "推导" },
-  { value: "remark", label: "补充" },
+  { value: "core_knowledge", label: "核心知识" },
+  { value: "method_demo", label: "方法示范" },
+  { value: "explanation_support", label: "解释辅助" },
+  { value: "principle_reasoning", label: "原理推理" },
+  { value: "practice_assessment", label: "练习评估" },
+  { value: "knowledge_organization", label: "知识组织" },
+  { value: "application_extension", label: "应用拓展" },
 ];
 
 type ViewMode = "list" | "graph" | "insights";

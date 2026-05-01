@@ -148,7 +148,7 @@ class TopicAnchor(BaseModel):
     """Knowledge-graph topic anchor produced during graph finalization."""
 
     topic_name: str
-    knowledge_unit_type: str = "concept"
+    knowledge_unit_type: str = "core_knowledge"
     confidence: float = 1.0
     chunk_uids: list[str] = Field(default_factory=list)
 

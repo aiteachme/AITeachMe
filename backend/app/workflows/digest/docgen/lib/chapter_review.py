@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.tools.builtin.markdown_processing import count_words, find_markdown_rendering_issues
@@ -22,6 +23,10 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.lib.quality import evidence_support_score
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 
+_LEARNING_ACTIVITY_RE = re.compile(
+    r"(?:例题|案例|示例|练习|自测|实践任务|实践案例|操作案例|操作示例|变式|错误诊断|任务场景|复盘任务)"
+)
+
 
 def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
     if not targets:
@@ -36,6 +41,40 @@ def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
         else:
             missing.append(target)
     return round(hits / max(1, len(targets)), 4), missing
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _learning_activity_count(markdown: str) -> int:
+    return len(_LEARNING_ACTIVITY_RE.findall(str(markdown or "")))
+
+
+def _planned_example_count(task: ChapterGenerationTask) -> int:
+    total = 0
+    for item in task.example_coverage_plan or []:
+        if isinstance(item, dict):
+            total += max(1, _safe_int(item.get("min_examples"), default=1))
+    return total
+
+
+def _missing_example_targets(markdown: str, task: ChapterGenerationTask, *, limit: int = 8) -> list[str]:
+    normalized = "".join(str(markdown or "").split()).casefold()
+    missing: list[str] = []
+    for item in task.example_coverage_plan or []:
+        if not isinstance(item, dict):
+            continue
+        target = str(item.get("target") or "").strip()
+        needle = "".join(target.split()).casefold()
+        if needle and needle not in normalized:
+            missing.append(target)
+        if len(missing) >= limit:
+            break
+    return missing
 
 
 def _chapter_anchor(draft: EnhancedChapterDraft) -> str:
@@ -66,6 +105,7 @@ def _rule_review_chapter(
     claim_ledger: ClaimLedger | None,
     claim_evidence_map: ClaimEvidenceMap | None,
     conflict_report: ConflictReport | None,
+    digest_mode: str = "",
 ) -> tuple[ReviewedChapterDraft, ChapterReviewReport, list[ReviewAction]]:
     """执行无需 LLM 的章节复核兜底。
 
@@ -120,6 +160,67 @@ def _rule_review_chapter(
                 expected_effect="章节正文能覆盖执行合同中的关键点，且不改变章节边界。",
             )
         )
+    activity_count = _learning_activity_count(draft.markdown)
+    planned_examples = _planned_example_count(task)
+    density_policy = dict(task.practice_seed_policy.get("example_density_policy") or {})
+    if str(digest_mode or task.practice_seed_policy.get("digest_mode") or "").strip().lower() == "sprint":
+        expected_activity_count = max(
+            3,
+            min(
+                8,
+                planned_examples
+                or _safe_int(density_policy.get("worked_examples_per_chapter"), default=4)
+                + _safe_int(density_policy.get("practice_tasks_per_chapter"), default=4),
+            ),
+        )
+        if activity_count < expected_activity_count:
+            warnings.append("速成课例题、案例、训练或实践任务密度不足。")
+            actions.append(
+                ReviewAction(
+                    action_id=f"review_ch{draft.chapter_index:02d}_sprint_examples",
+                    action_type="section_patch",
+                    chapter_index=draft.chapter_index,
+                    severity="warning",
+                    reason=f"速成课学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
+                    target_anchor=_chapter_anchor(draft),
+                    instruction=(
+                        "补充高价值例题、操作案例、变式训练、自测或错误诊断；每个重要方法要有识别信号、"
+                        "步骤过程、答案/结果和易错复盘。"
+                    ),
+                    constraints=[
+                        "不把非考试主题硬改成试卷题。",
+                        "优先补本章已有知识点、方法或场景的例子，不新增无来源的新主题。",
+                        "理论说明必须服务会做题、会操作、会判断、会避坑。",
+                    ],
+                    expected_effect="速成章形成题型/场景/任务驱动的例题和训练密度。",
+                )
+            )
+    else:
+        missing_example_targets = _missing_example_targets(draft.markdown, task, limit=6)
+        expected_activity_count = min(6, max(2, len(task.example_coverage_plan or [])))
+        if task.example_coverage_plan and (missing_example_targets or activity_count < expected_activity_count):
+            warnings.append("系统课核心知识点缺少足够例题、案例或练习覆盖。")
+            detail = "、".join(missing_example_targets[:5]) if missing_example_targets else "部分核心知识点"
+            actions.append(
+                ReviewAction(
+                    action_id=f"review_ch{draft.chapter_index:02d}_systematic_examples",
+                    action_type="section_patch",
+                    chapter_index=draft.chapter_index,
+                    severity="warning",
+                    reason="系统课例题覆盖不足：" + detail,
+                    target_anchor=_chapter_anchor(draft),
+                    instruction=(
+                        "为缺少覆盖的核心知识点补充例题、案例、操作示例或练习任务；重要、易错或核心方法优先"
+                        "提供两个不同角度的例子或任务。"
+                    ),
+                    constraints=[
+                        "不得只追加题目答案，必须说明思路、过程、易错点和知识点回扣。",
+                        "不得改变 confirmed plan 的章节边界。",
+                        "新增例题或案例必须围绕本章已有知识点。",
+                    ],
+                    expected_effect="系统章做到知识细讲并由例题/案例支撑核心知识点。",
+                )
+            )
     if support_score < task.evidence_support_threshold and list((claim_ledger or ClaimLedger()).items or []):
         warnings.append("部分主张证据支撑偏弱。")
         actions.append(
@@ -230,6 +331,7 @@ async def review_chapter(
         claim_ledger=claim_ledger,
         claim_evidence_map=claim_evidence_map,
         conflict_report=conflict_report,
+        digest_mode=digest_mode,
     )
     task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
     try:

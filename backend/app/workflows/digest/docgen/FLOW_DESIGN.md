@@ -358,9 +358,15 @@ build_chapter_execution_briefs
   输出：ChapterExecutionBrief[]
     - ChapterExecutionBrief：单章最小执行脚手架。
   作用：把原来整本 outline enhance 中“每章怎么讲”的部分拆出来，改成收在单节点里的章节级并行小任务。
+  学习分类合同：
+    - 统一使用 7 类内容角色：core_knowledge / method_demo / explanation_support / principle_reasoning / practice_assessment / knowledge_organization / application_extension。
+    - 输出 content_role_targets，明确本章各角色要覆盖什么。
+    - 输出 example_coverage_plan，明确哪些核心知识、方法或任务必须由例题、案例、操作示例或练习覆盖。
+    - sprint 侧重 method_demo / practice_assessment / application_extension，例题、案例、变式、自测或实践任务目标占比默认不低于 50%。
+    - systematic 侧重 core_knowledge / principle_reasoning / explanation_support，但每个核心知识点必须有例题、案例、操作示例或练习支撑。
   约束：
     - teaching_outline 最多 3 条。
-    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 各最多 2 条。
+    - content_role_targets 和 example_coverage_plan 是主要输出；concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 只做兼容字段，各最多 2 条。
     - retrieval_queries 最多 2 条。
     - 不允许顺带改标题。
     - 不输出 media_requests。
@@ -381,8 +387,10 @@ assemble_chapter_tasks
     - chapter_index / confirmed_title / enhanced_title / objective
     - required_elements / forbidden_scope
     - retrieval_queries / priority_section_refs / source_slices / preferred_sources / fallback_policy
-    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets
+    - content_role_targets / example_coverage_plan
+    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets（兼容旧字段，不再作为主合同）
     - allowed_assets / practice_seed_policy（由规则装配阶段派生，不再由 chapter brief 直接产出）
+    - practice_seed_policy 中包含 content_mix_policy / example_density_policy / coverage_policy，作为 writer 和 review 的质量约束。
     - dependency_refs / forward_refs / claim_targets / confusion_targets
   当前模型方案：
     - 当前无 LLM 调用；纯规则装配和 backbone 回填。
@@ -490,6 +498,10 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     2. 主张支撑：claim 是否有足够 evidence 支撑。
     3. 结构风格：长度、节奏、模式、用词是否符合。
     4. 风险信号：定义模糊、低支撑断言、unresolved conflict。
+    5. 学习分类覆盖：7 类内容角色是否服务于本章目标，是否出现只有理论没有例题落地。
+    6. 例题驱动质量：
+       - sprint：例题、案例、训练、实践任务密度不足时给 section_patch，重点检查高频方法、识别信号、变式和易错陷阱。
+       - systematic：核心知识点缺少例题、案例、操作示例或练习覆盖时给 section_patch，重要/易错/核心方法优先要求两个角度的例题或任务。
   document_consistency_review 检查：
     1. 跨章术语和符号是否一致。
     2. 定义是否冲突。

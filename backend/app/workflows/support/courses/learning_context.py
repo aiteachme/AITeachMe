@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.course import Course
 from app.utils.time import utcnow
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _MAX_INTENT_TEXT_CHARS = 4000
 _MAX_INTRO_TEXT_CHARS = 1200
@@ -28,6 +29,25 @@ _CHAPTER_LIST_FIELDS = (
     ("example_targets", 8, 120),
     ("pitfall_targets", 8, 140),
 )
+_LEARNING_NODE_TYPES = {
+    "core_knowledge": "核心知识",
+    "method_demo": "方法示范",
+    "explanation_support": "解释辅助",
+    "principle_reasoning": "原理推理",
+    "practice_assessment": "练习评估",
+    "knowledge_organization": "知识组织",
+    "application_extension": "应用拓展",
+}
+_LEARNING_EDGE_TYPES = {
+    "prerequisite": "前置",
+    "contains": "包含",
+    "reasoning": "推理",
+    "application": "应用",
+    "explanation": "说明",
+    "training": "训练",
+    "contrast": "对比",
+    "similar": "相似",
+}
 
 
 def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
@@ -219,6 +239,92 @@ def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str
             if _clean_text(item.get("topic"))
         ],
     }
+
+
+def _learning_taxonomy_snapshot() -> dict[str, Any]:
+    return {
+        "node_types": [
+            {"value": value, "label": label}
+            for value, label in _LEARNING_NODE_TYPES.items()
+        ],
+        "relation_types": [
+            {"value": value, "label": label}
+            for value, label in _LEARNING_EDGE_TYPES.items()
+        ],
+    }
+
+
+def _content_mix_policy_snapshot(*, digest_mode: str, docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
+    for chapter in _mapping_items(_as_mapping(docgen_artifacts.get("chapter_generation_plan")).get("chapters"), limit=1):
+        policy = _as_mapping(_as_mapping(chapter.get("practice_seed_policy")).get("content_mix_policy"))
+        density = _as_mapping(_as_mapping(chapter.get("practice_seed_policy")).get("example_density_policy"))
+        coverage = _clean_string_list(_as_mapping(chapter.get("practice_seed_policy")).get("coverage_policy"), limit=8)
+        if policy or density or coverage:
+            return {
+                "digest_mode": digest_mode,
+                "content_mix_policy": policy,
+                "example_density_policy": density,
+                "coverage_policy": coverage,
+            }
+    profile = get_docgen_mode_profile(digest_mode)
+    return {
+        "digest_mode": profile.mode,
+        "content_mix_policy": dict(profile.content_mix_policy),
+        "example_density_policy": dict(profile.example_density_policy),
+        "coverage_policy": list(profile.coverage_policy),
+    }
+
+
+def _role_coverage_snapshot(chapters: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_index = _safe_int(chapter.get("chapter_index"), default=0)
+        targets = _as_mapping(chapter.get("content_role_targets"))
+        role_targets = {
+            role: _clean_string_list(targets.get(role), limit=12, max_chars=120)
+            for role in _LEARNING_NODE_TYPES
+        }
+        role_targets = {role: values for role, values in role_targets.items() if values}
+        if not role_targets:
+            continue
+        items.append(
+            {
+                "chapter_index": chapter_index,
+                "title": _clean_text(chapter.get("title"), max_chars=160),
+                "role_targets": role_targets,
+                "role_target_counts": {role: len(values) for role, values in role_targets.items()},
+            }
+        )
+    return items
+
+
+def _example_coverage_snapshot(chapters: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_index = _safe_int(chapter.get("chapter_index"), default=0)
+        plans: list[dict[str, Any]] = []
+        for item in _mapping_items(chapter.get("example_coverage_plan"), limit=24):
+            target = _clean_text(item.get("target"), max_chars=160)
+            if not target:
+                continue
+            plans.append(
+                {
+                    "target": target,
+                    "example_type": _clean_text(item.get("example_type") or item.get("type"), max_chars=80),
+                    "purpose": _clean_text(item.get("purpose"), max_chars=220),
+                    "min_examples": _safe_int(item.get("min_examples"), default=1),
+                }
+            )
+        if plans:
+            items.append(
+                {
+                    "chapter_index": chapter_index,
+                    "title": _clean_text(chapter.get("title"), max_chars=160),
+                    "plans": plans,
+                    "planned_example_count": sum(max(1, _safe_int(item.get("min_examples"), default=1)) for item in plans),
+                }
+            )
+    return items
 
 
 def _intent_profile_v2_snapshot(intent_profile: Mapping[str, Any], *, learning_goal: str) -> dict[str, Any]:
@@ -433,6 +539,22 @@ def _build_chapter_snapshots(
         }
         for field_name, limit, max_chars in _CHAPTER_LIST_FIELDS:
             chapter_payload[field_name] = _clean_string_list(plan.get(field_name), limit=limit, max_chars=max_chars)
+        role_targets = _as_mapping(plan.get("content_role_targets"))
+        chapter_payload["content_role_targets"] = {
+            role: _clean_string_list(role_targets.get(role), limit=12, max_chars=120)
+            for role in _LEARNING_NODE_TYPES
+            if _clean_string_list(role_targets.get(role), limit=12, max_chars=120)
+        }
+        chapter_payload["example_coverage_plan"] = [
+            {
+                "target": _clean_text(item.get("target"), max_chars=160),
+                "example_type": _clean_text(item.get("example_type") or item.get("type"), max_chars=80),
+                "purpose": _clean_text(item.get("purpose"), max_chars=220),
+                "min_examples": _safe_int(item.get("min_examples"), default=1),
+            }
+            for item in _mapping_items(plan.get("example_coverage_plan"), limit=24)
+            if _clean_text(item.get("target"))
+        ]
         source_file_ids = _source_file_ids_for_chapter(chapter=chapter, assignment=assignment, doc=doc)
         chapter_payload.update(
             {
@@ -511,7 +633,49 @@ def _kg_candidate_hints_snapshot(
             limit=18,
             max_chars=180,
         )
-        if not concept_candidates and not task_candidates:
+        role_targets = _as_mapping(chapter.get("content_role_targets"))
+        candidate_nodes = [
+            {
+                "node_type": role,
+                "label": _LEARNING_NODE_TYPES[role],
+                "names": _clean_string_list(role_targets.get(role), limit=10, max_chars=120),
+            }
+            for role in _LEARNING_NODE_TYPES
+            if _clean_string_list(role_targets.get(role), limit=10, max_chars=120)
+        ]
+        existing_node_types = {str(item.get("node_type") or "") for item in candidate_nodes}
+        if concept_candidates and "core_knowledge" not in existing_node_types:
+            candidate_nodes.append(
+                {
+                    "node_type": "core_knowledge",
+                    "label": _LEARNING_NODE_TYPES["core_knowledge"],
+                    "names": _clean_string_list(concept_candidates, limit=10, max_chars=120),
+                }
+            )
+        if task_candidates and "method_demo" not in existing_node_types:
+            candidate_nodes.append(
+                {
+                    "node_type": "method_demo",
+                    "label": _LEARNING_NODE_TYPES["method_demo"],
+                    "names": _clean_string_list(task_candidates, limit=8, max_chars=120),
+                }
+            )
+        example_targets = [
+            _clean_text(item.get("target"), max_chars=160)
+            for item in _mapping_items(chapter.get("example_coverage_plan"), limit=12)
+            if _clean_text(item.get("target"))
+        ]
+        candidate_edges: list[dict[str, Any]] = []
+        for target in _clean_string_list([*concept_candidates, *example_targets], limit=10, max_chars=140):
+            candidate_edges.append(
+                {
+                    "source_hint": target,
+                    "edge_type": "training",
+                    "target_type": "practice_assessment",
+                    "reason": "例题、练习或任务应训练并验证该知识点。",
+                }
+            )
+        if not concept_candidates and not task_candidates and not candidate_nodes:
             continue
         hints.append(
             {
@@ -519,6 +683,9 @@ def _kg_candidate_hints_snapshot(
                 "title": _clean_text(chapter.get("title"), max_chars=160),
                 "candidate_terms": concept_candidates,
                 "candidate_claims": task_candidates,
+                "candidate_nodes": candidate_nodes,
+                "candidate_edges": candidate_edges[:12],
+                "example_coverage_targets": _clean_string_list(example_targets, limit=12, max_chars=160),
                 "source_file_ids": _clean_string_list(chapter.get("source_file_ids"), limit=30, max_chars=120),
                 "source_slices": _source_slices_snapshot(chapter.get("source_slices"), limit=8),
                 "evidence_policy": "hint_only_require_markdown_or_evidence_ledger_match",
@@ -642,9 +809,13 @@ def build_course_learning_context_payload(
     course_intro_text = _clean_text("，".join(intro_bits) + "。", max_chars=_MAX_INTRO_TEXT_CHARS)
     source_file_ids = sorted({file_id for chapter in chapters for file_id in chapter.get("source_file_ids", [])})
     kg_candidate_hints = _kg_candidate_hints_snapshot(chapters=chapters, backbone=backbone)
+    learning_taxonomy = _learning_taxonomy_snapshot()
+    content_mix_policy = _content_mix_policy_snapshot(digest_mode=digest_mode, docgen_artifacts=docgen_artifacts)
+    role_coverage_by_chapter = _role_coverage_snapshot(chapters)
+    example_coverage_by_chapter = _example_coverage_snapshot(chapters)
 
     summary_payload: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "source": "docgen.publish",
         "generated_at": utcnow().isoformat(),
         "requested_at": requested_at.isoformat() if requested_at is not None else None,
@@ -659,6 +830,8 @@ def build_course_learning_context_payload(
         "confirmed_plan_id": _clean_text(build_metadata.get("confirmed_plan_id")),
         "digest_mode": digest_mode,
         "retrieval_policy": retrieval_policy,
+        "learning_taxonomy": learning_taxonomy,
+        "content_mix_policy": content_mix_policy,
         "user_prompt": user_prompt,
         "docgen_user_prompt": user_prompt,
         "plan_summary": plan_summary,
@@ -676,6 +849,8 @@ def build_course_learning_context_payload(
         "chapters": chapters,
         "file_summaries": file_summaries,
         "source_affinity_by_chapter": source_affinity,
+        "role_coverage_by_chapter": role_coverage_by_chapter,
+        "example_coverage_by_chapter": example_coverage_by_chapter,
         "document_backbone": backbone,
         "docgen_learning_backbone": backbone,
         "kg_candidate_hints": kg_candidate_hints,
@@ -702,6 +877,9 @@ def render_course_llm_context(
     intent_profile = _as_mapping(document_summary_json.get("intent_profile_v2"))
     quality_summary = _as_mapping(document_summary_json.get("quality_summary"))
     kg_candidate_hints = _as_list(document_summary_json.get("kg_candidate_hints"))
+    content_mix_policy = _as_mapping(document_summary_json.get("content_mix_policy"))
+    role_coverage = _as_list(document_summary_json.get("role_coverage_by_chapter"))
+    example_coverage = _as_list(document_summary_json.get("example_coverage_by_chapter"))
 
     lines: list[str] = []
     if course_intro_text:
@@ -732,6 +910,16 @@ def render_course_llm_context(
                 lines.append(f"- 例子与练习：{example_policy}")
             if source_policy:
                 lines.append(f"- 来源策略：{source_policy}")
+    if content_mix_policy:
+        density = _as_mapping(content_mix_policy.get("example_density_policy"))
+        coverage = _clean_string_list(content_mix_policy.get("coverage_policy"), limit=4, max_chars=180)
+        lines.extend(["", "## 学习内容分类与例题策略"])
+        lines.append("- 节点分类：核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织、应用拓展。")
+        lines.append("- 关系分类：前置、包含、推理、应用、说明、训练、对比、相似。")
+        if density:
+            lines.append(f"- 例题策略：{_clean_text(density.get('policy_text'), max_chars=420)}")
+        if coverage:
+            lines.append("- 覆盖要求：" + "；".join(coverage))
 
     if file_summaries:
         lines.extend(["", "## 资料摘要"])
@@ -758,6 +946,31 @@ def render_course_llm_context(
             )
             point_text = f"；重点：{'、'.join(points)}" if points else ""
             lines.append(f"{_safe_int(item.get('chapter_index'))}. {title}：{summary}{point_text}".rstrip("："))
+
+    if example_coverage:
+        lines.extend(["", "## 例题覆盖计划"])
+        for item in example_coverage[:12]:
+            if not isinstance(item, Mapping):
+                continue
+            title = _clean_text(item.get("title"), max_chars=120)
+            plans = _mapping_items(item.get("plans"), limit=5)
+            targets = "、".join(_clean_text(plan.get("target"), max_chars=80) for plan in plans if _clean_text(plan.get("target")))
+            if targets:
+                lines.append(f"- {title}：{targets}")
+    if role_coverage:
+        lines.extend(["", "## 内容角色覆盖"])
+        for item in role_coverage[:8]:
+            if not isinstance(item, Mapping):
+                continue
+            title = _clean_text(item.get("title"), max_chars=120)
+            counts = _as_mapping(item.get("role_target_counts"))
+            count_text = "、".join(
+                f"{_LEARNING_NODE_TYPES.get(role, role)} {_safe_int(count)}"
+                for role, count in counts.items()
+                if _safe_int(count) > 0
+            )
+            if count_text:
+                lines.append(f"- {title}：{count_text}")
 
     glossary = [
         item

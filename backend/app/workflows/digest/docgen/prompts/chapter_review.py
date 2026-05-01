@@ -56,8 +56,11 @@ def build_chapter_review_messages(
 2. 判断主张是否有足够证据支撑。
 3. 判断是否越过章节边界或推翻已确认计划。
 4. 判断是否适合学生学习，不要只看格式。
-5. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`。
-6. 只做复核判断，不输出修补后的正文。
+5. 检查 7 类学习内容角色是否按章节合同合理覆盖：核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织、应用拓展。
+6. 如果是冲刺/速成型，重点检查例题、案例、变式、自测或实践任务是否足够支撑“会做题/会操作/会判断/会避坑”；例题密度不足时输出 `section_patch`。
+7. 如果是系统型，重点检查核心知识点是否都有例题、案例、操作示例或练习任务覆盖；知识点缺少例题覆盖时输出 `section_patch`。
+8. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`。
+9. 只做复核判断，不输出修补后的正文。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

@@ -35,15 +35,13 @@ class Difficulty(str, Enum):
 
 
 class KnowledgeUnitType(str, Enum):
-    CONCEPT = "concept"
-    DEFINITION = "definition"
-    THEOREM = "theorem"
-    FORMULA = "formula"
-    EXAMPLE = "example"
-    EXERCISE = "exercise"
-    METHOD = "method"
-    PROOF_STEP = "proof_step"
-    REMARK = "remark"
+    CORE_KNOWLEDGE = "core_knowledge"
+    METHOD_DEMO = "method_demo"
+    EXPLANATION_SUPPORT = "explanation_support"
+    PRINCIPLE_REASONING = "principle_reasoning"
+    PRACTICE_ASSESSMENT = "practice_assessment"
+    KNOWLEDGE_ORGANIZATION = "knowledge_organization"
+    APPLICATION_EXTENSION = "application_extension"
 
 
 class KnowledgeUnitTypeSource(str, Enum):
@@ -54,9 +52,11 @@ class KnowledgeUnitTypeSource(str, Enum):
 
 class KnowledgeRelationType(str, Enum):
     PREREQUISITE = "prerequisite"
-    DERIVATION = "derivation"
+    CONTAINS = "contains"
+    REASONING = "reasoning"
     APPLICATION = "application"
-    EXAMPLE_OF = "example_of"
+    EXPLANATION = "explanation"
+    TRAINING = "training"
     SIMILAR = "similar"
     CONTRAST = "contrast"
 

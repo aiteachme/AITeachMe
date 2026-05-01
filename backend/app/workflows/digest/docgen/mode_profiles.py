@@ -64,6 +64,9 @@ class DocGenModeProfile:
     chapter_format: tuple[str, ...]
     course_flow_hints: tuple[str, ...]
     practice_focuses: tuple[str, ...]
+    content_mix_policy: dict[str, float]
+    example_density_policy: dict[str, float | int | str]
+    coverage_policy: tuple[str, ...]
     mode_writing_rule: str
     prompt_label: str
     prompt_priority: str
@@ -170,6 +173,27 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "变式训练",
         "易错辨析",
     ),
+    content_mix_policy={
+        "core_knowledge": 0.22,
+        "method_demo": 0.28,
+        "explanation_support": 0.10,
+        "principle_reasoning": 0.08,
+        "practice_assessment": 0.26,
+        "knowledge_organization": 0.06,
+        "application_extension": 0.16,
+    },
+    example_density_policy={
+        "minimum_practice_share": 0.5,
+        "worked_examples_per_chapter": 4,
+        "practice_tasks_per_chapter": 4,
+        "important_method_min_examples": 2,
+        "policy_text": "速成课必须高密度使用例题、案例、变式、自测或实践任务；理论只服务会做题、会操作、会判断、会避坑。",
+    },
+    coverage_policy=(
+        "优先覆盖高频题型、常见任务、关键方法和易错陷阱。",
+        "每个重要方法至少安排一个标准例题/案例和一个变式或错误诊断。",
+        "非考试主题把例题表达为操作案例、任务场景、错误诊断和检查标准。",
+    ),
     mode_writing_rule="冲刺模式要突出重点、快速抓手、典型任务/题型解析和易错辨析。",
     prompt_label="冲刺型",
     prompt_priority="抓重点、抓常见任务/题型、抓易错点",
@@ -217,6 +241,27 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
         "推理复述",
         "条件辨析",
         "迁移应用",
+    ),
+    content_mix_policy={
+        "core_knowledge": 0.30,
+        "method_demo": 0.16,
+        "explanation_support": 0.14,
+        "principle_reasoning": 0.18,
+        "practice_assessment": 0.14,
+        "knowledge_organization": 0.10,
+        "application_extension": 0.10,
+    },
+    example_density_policy={
+        "minimum_practice_share": 0.3,
+        "worked_examples_per_chapter": 3,
+        "practice_tasks_per_chapter": 3,
+        "important_method_min_examples": 2,
+        "policy_text": "系统课必须细讲核心知识，同时每个核心知识点都要有例题、案例、操作示例或练习任务支撑。",
+    },
+    coverage_policy=(
+        "每个核心知识点至少被一个例题、案例、操作示例或练习任务覆盖。",
+        "重要、易错或核心方法至少安排两个不同角度的例题或任务。",
+        "章节复核时检查知识点是否有例题覆盖，不允许只有理论没有落地。",
     ),
     mode_writing_rule="系统模式要突出定义、结构、推理、例子和迁移。",
     prompt_label="系统型",

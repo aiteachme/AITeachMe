@@ -298,7 +298,7 @@ def _build_preview_sample_nodes(build_status) -> list[BuildPreviewNodeResponse]:
         nodes.append(
             BuildPreviewNodeResponse(
                 name=name,
-                knowledge_unit_type=str(item.get("type", "concept")).strip() or "concept",
+                knowledge_unit_type=str(item.get("type", "core_knowledge")).strip() or "core_knowledge",
             )
         )
         if len(nodes) >= 6:

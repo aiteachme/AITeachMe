@@ -314,7 +314,7 @@ def _build_sample_cards(
 
     for sample in sample_nodes[:3]:
         name = str(sample.get("name", "")).strip()
-        knowledge_unit_type = str(sample.get("type", "concept")).strip() or "concept"
+        knowledge_unit_type = str(sample.get("type", "core_knowledge")).strip() or "core_knowledge"
         if not name:
             continue
         cards.append(

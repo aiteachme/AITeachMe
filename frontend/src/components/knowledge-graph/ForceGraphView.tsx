@@ -165,18 +165,16 @@ type LoadedGraphData = {
   edges: GraphEdgeResponse[];
 };
 
-const DETAIL_NODE_TYPES = new Set(["example", "remark"]);
-const BACKBONE_RELATION_TYPES = new Set(["prerequisite", "derivation", "application"]);
+const DETAIL_NODE_TYPES = new Set(["explanation_support", "practice_assessment", "application_extension"]);
+const BACKBONE_RELATION_TYPES = new Set(["prerequisite", "contains", "reasoning", "application", "training"]);
 const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxColumns: number }> = {
-  definition: { xBias: -0.34, yRatio: 0.3, maxColumns: 3 },
-  concept: { xBias: -0.32, yRatio: 0.69, maxColumns: 4 },
-  formula: { xBias: -0.12, yRatio: 0.18, maxColumns: 3 },
-  theorem: { xBias: 0.06, yRatio: 0.42, maxColumns: 3 },
-  proof_step: { xBias: 0.1, yRatio: 0.7, maxColumns: 4 },
-  method: { xBias: 0.2, yRatio: 0.82, maxColumns: 5 },
-  example: { xBias: 0.34, yRatio: 0.89, maxColumns: 4 },
-  exercise: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
-  remark: { xBias: 0.48, yRatio: 0.3, maxColumns: 5 },
+  knowledge_organization: { xBias: -0.42, yRatio: 0.38, maxColumns: 3 },
+  core_knowledge: { xBias: -0.24, yRatio: 0.48, maxColumns: 4 },
+  principle_reasoning: { xBias: -0.02, yRatio: 0.34, maxColumns: 4 },
+  method_demo: { xBias: 0.18, yRatio: 0.64, maxColumns: 5 },
+  explanation_support: { xBias: 0.36, yRatio: 0.3, maxColumns: 5 },
+  practice_assessment: { xBias: 0.38, yRatio: 0.78, maxColumns: 4 },
+  application_extension: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
 };
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {

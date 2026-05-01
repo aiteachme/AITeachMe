@@ -22,9 +22,29 @@ def fallback_chapter_execution_brief(
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
     required = clean_string_list(chapter.get("required_elements", []), limit=4)
     mode_profile = get_docgen_mode_profile(digest_mode)
+    content_role_targets = {
+        "core_knowledge": required[:2],
+        "method_demo": required[:2],
+        "practice_assessment": required[:2],
+        "explanation_support": ["易错点", "边界条件"],
+    }
+    if not mode_profile.is_sprint:
+        content_role_targets["principle_reasoning"] = required[:2]
+        content_role_targets["application_extension"] = required[:2]
     return ChapterExecutionBrief(
         chapter_index=chapter_index,
         teaching_outline=list(mode_profile.fallback_teaching_outline),
+        content_role_targets=content_role_targets,
+        example_coverage_plan=[
+            {
+                "target": item,
+                "example_type": "worked_example_or_case",
+                "purpose": "用例题、案例或实践任务验证这个重点能被使用。",
+                "min_examples": 2 if mode_profile.is_sprint else 1,
+            }
+            for item in (required[:4] or [clean_text(chapter.get("title") or chapter.get("resolved_title"))])
+            if item
+        ],
         concept_targets=required[:2],
         definition_targets=required[:2],
         formula_targets=[item for item in required if any(marker in item for marker in ("公式", "定理", "性质"))][:2],
@@ -89,6 +109,10 @@ async def build_chapter_execution_brief(
     brief.example_targets = clean_string_list(brief.example_targets, limit=2)
     brief.pitfall_targets = clean_string_list(brief.pitfall_targets, limit=2)
     brief.retrieval_queries = clean_string_list(brief.retrieval_queries, limit=2)
+    if not brief.content_role_targets:
+        brief.content_role_targets = fallback.content_role_targets
+    if not brief.example_coverage_plan:
+        brief.example_coverage_plan = fallback.example_coverage_plan
     brief.fallback_used = False
     if not brief.teaching_outline:
         brief.teaching_outline = fallback.teaching_outline

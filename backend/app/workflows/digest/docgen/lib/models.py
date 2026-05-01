@@ -34,6 +34,60 @@ def clean_string_list(value: Any, *, limit: int | None = None) -> list[str]:
     return cleaned
 
 
+LEARNING_CONTENT_ROLE_TYPES: tuple[str, ...] = (
+    "core_knowledge",
+    "method_demo",
+    "explanation_support",
+    "principle_reasoning",
+    "practice_assessment",
+    "knowledge_organization",
+    "application_extension",
+)
+
+
+def clean_content_role_targets(value: Any, *, item_limit: int = 8) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, list[str]] = {}
+    for role in LEARNING_CONTENT_ROLE_TYPES:
+        items = clean_string_list(value.get(role), limit=item_limit)
+        if items:
+            cleaned[role] = items
+    return cleaned
+
+
+def clean_example_coverage_plan(value: Any, *, limit: int = 16) -> list[dict[str, Any]]:
+    items = value if isinstance(value, list) else ([] if value is None else [value])
+    cleaned: list[dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, dict):
+            target = clean_text(item.get("target"))
+            example_type = clean_text(item.get("example_type") or item.get("type"))
+            purpose = clean_text(item.get("purpose"))
+            try:
+                min_examples = int(item.get("min_examples", 1) or 1)
+            except (TypeError, ValueError):
+                min_examples = 1
+        else:
+            target = clean_text(item)
+            example_type = ""
+            purpose = ""
+            min_examples = 1
+        if not target:
+            continue
+        cleaned.append(
+            {
+                "target": target,
+                "example_type": example_type or "worked_example_or_case",
+                "purpose": purpose or "用例题、案例或任务验证这个知识点能被实际使用。",
+                "min_examples": max(1, min(4, min_examples)),
+            }
+        )
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
 def clean_int_list(value: Any, *, limit: int | None = None) -> list[int]:
     items = value if isinstance(value, list) else ([] if value is None else [value])
     cleaned: list[int] = []
@@ -411,6 +465,8 @@ class LockedChapterTitle(DocGenBaseModel):
 class ChapterExecutionBrief(DocGenBaseModel):
     chapter_index: int = 1
     teaching_outline: list[str] = Field(default_factory=list)
+    content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
+    example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
     formula_targets: list[str] = Field(default_factory=list)
@@ -434,6 +490,16 @@ class ChapterExecutionBrief(DocGenBaseModel):
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
         return clean_string_list(value)
+
+    @field_validator("content_role_targets", mode="before")
+    @classmethod
+    def _content_role_targets(cls, value: Any) -> dict[str, list[str]]:
+        return clean_content_role_targets(value, item_limit=6)
+
+    @field_validator("example_coverage_plan", mode="before")
+    @classmethod
+    def _example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_example_coverage_plan(value, limit=12)
 
 
 class ChapterBudgetPolicy(DocGenBaseModel):
@@ -558,6 +624,8 @@ class ChapterGenerationTask(DocGenBaseModel):
     enhanced_title: str = ""
     objective: str = ""
     teaching_outline: list[str] = Field(default_factory=list)
+    content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
+    example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     content_points: list[str] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
@@ -622,6 +690,16 @@ class ChapterGenerationTask(DocGenBaseModel):
     def _lists(cls, value: Any) -> list[str]:
         return clean_string_list(value)
 
+    @field_validator("content_role_targets", mode="before")
+    @classmethod
+    def _task_content_role_targets(cls, value: Any) -> dict[str, list[str]]:
+        return clean_content_role_targets(value, item_limit=10)
+
+    @field_validator("example_coverage_plan", mode="before")
+    @classmethod
+    def _task_example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_example_coverage_plan(value, limit=24)
+
     @field_validator("fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
     @classmethod
     def _policy_text(cls, value: Any) -> str:
@@ -671,6 +749,36 @@ class ChapterGenerationTask(DocGenBaseModel):
                     *self.pitfall_targets,
                 ],
             )
+        if not self.content_role_targets:
+            role_targets: dict[str, list[str]] = {}
+            core_items = clean_string_list(
+                [
+                    *self.content_points,
+                    *self.concept_targets,
+                    *self.definition_targets,
+                    *self.formula_targets,
+                ],
+                limit=10,
+            )
+            if core_items:
+                role_targets["core_knowledge"] = core_items
+            method_items = clean_string_list(self.example_targets, limit=8)
+            if method_items:
+                role_targets["method_demo"] = method_items
+            support_items = clean_string_list(self.pitfall_targets, limit=8)
+            if support_items:
+                role_targets["explanation_support"] = support_items
+            self.content_role_targets = role_targets
+        if not self.example_coverage_plan:
+            example_targets = clean_string_list(
+                [
+                    *self.example_targets,
+                    *self.concept_targets[:3],
+                    *self.required_elements[:3],
+                ],
+                limit=8,
+            )
+            self.example_coverage_plan = clean_example_coverage_plan(example_targets, limit=8)
         if not self.style_rules:
             self.style_rules = list(self.writing_rules)
         if not self.claim_targets:
@@ -1200,6 +1308,7 @@ __all__ = [
     "FileMaterialSummaryBatch",
     "HighConfidenceEvidenceUnit",
     "LLMChapterReviewResult",
+    "LEARNING_CONTENT_ROLE_TYPES",
     "MergeReviewIssue",
     "MergeReviewReport",
     "NotationItem",
@@ -1209,6 +1318,8 @@ __all__ = [
     "ReviewedChapterDraft",
     "SourceAffinityByChapter",
     "clean_int_list",
+    "clean_content_role_targets",
+    "clean_example_coverage_plan",
     "clean_string_list",
     "clean_text",
     "clean_unit_float",

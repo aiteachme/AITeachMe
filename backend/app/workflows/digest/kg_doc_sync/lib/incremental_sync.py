@@ -272,13 +272,35 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
         max_chars=90,
     )
     if concept_targets:
-        hints.append("候选概念线索：" + "、".join(concept_targets))
+        hints.append("核心知识线索：" + "、".join(concept_targets))
+    role_targets: list[str] = []
+    for payload in payloads:
+        role_payload = _as_mapping(payload.get("content_role_targets"))
+        for role_name in (
+            "core_knowledge",
+            "method_demo",
+            "principle_reasoning",
+            "explanation_support",
+            "practice_assessment",
+            "knowledge_organization",
+            "application_extension",
+        ):
+            role_targets.extend(_clean_context_list(role_payload.get(role_name), limit=4, max_chars=90))
+    role_targets = _clean_context_list(role_targets, limit=10, max_chars=90)
+    if role_targets:
+        hints.append("学习内容角色线索：" + "、".join(role_targets))
     formula_targets = _merged_context_values(payloads, "formula_targets", "definition_targets", limit=6, max_chars=90)
     if formula_targets:
-        hints.append("定义/公式线索：" + "、".join(formula_targets))
+        hints.append("核心知识细节线索：" + "、".join(formula_targets))
     example_targets = _merged_context_values(payloads, "example_targets", "pitfall_targets", limit=6, max_chars=110)
+    for payload in payloads:
+        for item in _as_list(payload.get("example_coverage_plan")):
+            target = _source_quote(str(_as_mapping(item).get("target") or ""), max_chars=110)
+            if target:
+                example_targets.append(target)
+    example_targets = _clean_context_list(example_targets, limit=8, max_chars=110)
     if example_targets:
-        hints.append("例题/易错线索：" + "、".join(example_targets))
+        hints.append("例题覆盖线索：" + "、".join(example_targets))
     candidate_claims = _merged_context_values(payloads, "candidate_claims", limit=5, max_chars=140)
     if candidate_claims:
         hints.append("候选主张线索：" + "；".join(candidate_claims))
@@ -1771,7 +1793,7 @@ def _build_structural_heading_edges(
         if not source_anchor or not parent_anchor or source_anchor == parent_anchor:
             continue
 
-        key = (source_anchor, parent_anchor, "derivation")
+        key = (parent_anchor, source_anchor, "contains")
         if key in seen:
             continue
         seen.add(key)
@@ -1779,9 +1801,9 @@ def _build_structural_heading_edges(
             PendingMarkdownExtractedEdge(
                 source_candidate_id=None,
                 target_candidate_id=None,
-                source_name=section.title,
-                target_name=parent_title,
-                edge_type="derivation",
+                source_name=parent_title,
+                target_name=section.title,
+                edge_type="contains",
                 description=f"{section.title} 属于主题 {parent_title}。",
                 source_kind="structural_heading",
                 quote_text=section.header_path,
@@ -1795,18 +1817,21 @@ def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) 
     text = normalize_name(body_markdown or "")
     if not text:
         return None
+    normalized_primary_type = normalize_knowledge_unit_type(primary_type)
+    if normalized_primary_type == "practice_assessment":
+        return "training"
+    if normalized_primary_type == "explanation_support":
+        return "explanation"
     if any(token in text for token in ("前提", "基础", "先学", "先掌握", "依赖")):
         return "prerequisite"
     if any(token in text for token in ("由", "推出", "推得", "可得", "基于", "建立在")):
-        return "derivation"
+        return "reasoning"
     if any(token in text for token in ("利用", "应用", "借助", "结合", "使用")):
         return "application"
     if any(token in text for token in ("区别", "对比", "比较", "不同于", "相反")):
         return "contrast"
     if any(token in text for token in ("类似", "相似", "同理")):
         return "similar"
-    if normalize_knowledge_unit_type(primary_type) in {"example", "exercise"}:
-        return "example_of"
     return None
 
 
@@ -1854,7 +1879,7 @@ def _build_cross_section_semantic_edges(
 
     for source_anchor, context in node_contexts_by_anchor.items():
         source_name = str(context.get("name") or "").strip()
-        source_type = str(context.get("knowledge_unit_type") or "concept").strip()
+        source_type = str(context.get("knowledge_unit_type") or "core_knowledge").strip()
         source_section_index = int(context.get("section_index", -1) or -1)
         for hint_field in ("parent_entity_name", "taxonomy_hint"):
             hint_name = str(context.get(hint_field) or "").strip()
@@ -1872,10 +1897,16 @@ def _build_cross_section_semantic_edges(
             target_context = node_contexts_by_anchor.get(target_anchor, {})
             if int(target_context.get("section_index", -1) or -1) == source_section_index:
                 continue
+            relation = default_relation_for_unit_type(source_type)
+            target_name = str(target_context.get("name") or hint_name)
+            if relation in {"contains", "application", "explanation", "training"}:
+                edge_source, edge_target = target_name, source_name
+            else:
+                edge_source, edge_target = source_name, target_name
             _push_edge(
-                source_name,
-                str(target_context.get("name") or hint_name),
-                default_relation_for_unit_type(source_type),
+                edge_source,
+                edge_target,
+                relation,
                 f"{source_name} 通过 {hint_field} 指向跨小节主题 {hint_name}。",
                 source_context=context,
             )
@@ -1895,12 +1926,12 @@ def _build_cross_section_semantic_edges(
             normalized_other_name = normalize_name(other.primary_name)
             if not normalized_other_name or normalized_other_name not in body_text:
                 continue
-            if relation == "example_of":
+            if relation == "training":
                 _push_edge(
-                    context.primary_name,
                     other.primary_name,
+                    context.primary_name,
                     relation,
-                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的例证出现。",
+                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的训练或评估任务出现。",
                     source_context={
                         "knowledge_document_id": context.knowledge_document_id,
                         "section_index": context.section_index,

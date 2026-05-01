@@ -248,7 +248,7 @@ class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 
     title: str
-    card_type: str = Field(description="mode / topic / concept / method")
+    card_type: str = Field(description="mode / topic / core_knowledge / method_demo / practice_assessment")
     summary: str
 
 
