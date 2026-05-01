@@ -134,6 +134,17 @@ _CALLOUT_EMOJI_KIND = {
     "🔗": "NOTE",
     "📚": "NOTE",
 }
+_CALLOUT_LEADING_ICON_RE = re.compile(
+    r"^\s*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️?|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+"
+)
+_GENERIC_VISIBLE_FOCUS_TITLES = {
+    "未命名章节",
+    "未命名",
+    "本章",
+    "本章内容",
+    "当前章节",
+    "Untitled Chapter",
+}
 
 
 def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
@@ -168,6 +179,30 @@ def choose_heading_focus(items: Iterable[str], *, fallback: str = "", max_chars:
     return fallback_focus
 
 
+def _looks_like_generic_visible_focus(value: str) -> bool:
+    cleaned = clean_heading_focus(value, max_chars=80)
+    if not cleaned:
+        return False
+    if cleaned in _GENERIC_VISIBLE_FOCUS_TITLES:
+        return True
+    return bool(re.fullmatch(r"第\s*[\d一二三四五六七八九十百千万]+\s*章", cleaned))
+
+
+def _strip_generic_visible_heading_prefix(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    for generic in sorted(_GENERIC_VISIBLE_FOCUS_TITLES, key=len, reverse=True):
+        for connector in ("的", "：", ":", " "):
+            prefix = f"{generic}{connector}"
+            if cleaned.startswith(prefix):
+                return cleaned[len(prefix):].strip(" ：:，,。；;|-")
+    match = re.match(r"^第\s*[\d一二三四五六七八九十百千万]+\s*章\s*的?\s*(.+)$", cleaned)
+    if match is not None:
+        return match.group(1).strip(" ：:，,。；;|-")
+    return cleaned
+
+
 def build_textbook_heading(
     kind: str,
     *,
@@ -181,6 +216,8 @@ def build_textbook_heading(
     prefix = "#" * max(2, min(6, int(level or 2)))
     normalized_mode = str(digest_mode or "systematic").strip().lower()
     resolved_focus = clean_heading_focus(focus) or clean_heading_focus(fallback_title)
+    if _looks_like_generic_visible_focus(resolved_focus):
+        resolved_focus = ""
     suffix = _KIND_SUFFIX.get(kind, "核心内容")
     if kind == "examples":
         suffix = "典型例题解析" if normalized_mode == "sprint" else "例题与迁移"
@@ -211,6 +248,8 @@ def strip_heading_number_prefix(value: str) -> str:
 def _numberless_fallback_title(fallback_title: str, *, default: str) -> str:
     cleaned = strip_heading_number_prefix(fallback_title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip("：:，,。；; ")
+    if _looks_like_generic_visible_focus(cleaned):
+        return default
     return cleaned or default
 
 
@@ -233,10 +272,10 @@ def rewrite_textbook_heading_line(
         if numberless_title and numberless_title != raw_title:
             return f"{match.group('prefix')} {numberless_title}"
         if not numberless_title and fallback_title:
-            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='未命名章节')}"
+            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
         return line
 
-    heading_title = clean_heading_focus(numberless_title, max_chars=80)
+    heading_title = _strip_generic_visible_heading_prefix(clean_heading_focus(numberless_title, max_chars=80))
     if not heading_title:
         if numberless_title != raw_title:
             return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
@@ -360,6 +399,21 @@ def _infer_callout_kind(body_lines: Iterable[str]) -> str:
     return ""
 
 
+def _strip_callout_leading_icons(line: str) -> str:
+    return _CALLOUT_LEADING_ICON_RE.sub("", str(line or ""), count=1).lstrip()
+
+
+def _strip_first_callout_body_icon(body_lines: list[str]) -> list[str]:
+    normalized = list(body_lines)
+    for index, line in enumerate(normalized):
+        stripped = line.strip()
+        if not stripped or _CALLOUT_MARKER_RE.match(stripped):
+            continue
+        normalized[index] = _strip_callout_leading_icons(line)
+        break
+    return normalized
+
+
 def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
     body_lines: list[str] = []
     for line in block_lines:
@@ -369,13 +423,19 @@ def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
         body_lines.append(str(match.group("body") or "").rstrip())
 
     first_nonempty = next((line.strip() for line in body_lines if line.strip()), "")
-    if not first_nonempty or _CALLOUT_MARKER_RE.match(first_nonempty):
+    if not first_nonempty:
         return block_lines
+    if _CALLOUT_MARKER_RE.match(first_nonempty):
+        stripped_body = _strip_first_callout_body_icon(body_lines)
+        if stripped_body == body_lines:
+            return block_lines
+        return [f"> {line}" if line.strip() else ">" for line in stripped_body]
 
     kind = _infer_callout_kind(body_lines)
     if not kind:
         return block_lines
 
+    body_lines = _strip_first_callout_body_icon(body_lines)
     normalized = [f"> [!{kind}]", ">"]
     normalized.extend(f"> {line}" if line.strip() else ">" for line in body_lines)
     return normalized
@@ -387,8 +447,8 @@ def normalize_educational_callouts(markdown: str) -> str:
     Writer models often produce useful learner-facing blocks such as
     ``> ✅ **速判技巧**`` or ``> ⚠️ **易错点**``. The frontend only renders
     first-class callouts for ``> [!TIP]`` / ``> [!WARNING]`` markers, so this
-    deterministic pass preserves the original emoji text while adding the
-    stable marker expected by the renderer.
+    deterministic pass adds the stable marker expected by the renderer and
+    removes redundant leading icons from the visible body.
     """
 
     text = str(markdown or "")
@@ -425,7 +485,7 @@ def normalize_educational_callouts(markdown: str) -> str:
 def has_worked_example_section(markdown: str) -> bool:
     return bool(
         re.search(
-            r"(?m)^##\s+.*(?:例题|题型|解析|练习|迁移).*$",
+            r"(?m)^#{2,4}\s+.*(?:例题|题型|解析|练习|迁移).*$",
             str(markdown or ""),
         )
     )
@@ -452,8 +512,14 @@ def format_worked_example_section(
         ),
         "",
     ]
+    seen_labels: set[str] = set()
     for index, item in enumerate(examples, start=1):
         label = clean_heading_focus(str(item.get("label") or item.get("type") or ""), max_chars=24)
+        label_key = label.casefold()
+        if label_key and label_key in seen_labels:
+            label = ""
+        elif label_key:
+            seen_labels.add(label_key)
         stem = str(item.get("stem") or item.get("question") or "").strip()
         analysis_steps = [
             str(step).strip()

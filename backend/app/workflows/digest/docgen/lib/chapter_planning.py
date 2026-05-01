@@ -348,7 +348,24 @@ def build_fallback_chapter_markdown(
     digest_mode: str,
     reason: str,
 ) -> str:
-    title = task.enhanced_title or task.confirmed_title or f"第 {task.chapter_index} 章"
+    title = resolve_effective_chapter_title(
+        {
+            "chapter_index": task.chapter_index,
+            "title": task.enhanced_title,
+            "resolved_title": task.enhanced_title,
+            "objective": task.objective,
+            "required_elements": [
+                *task.content_points,
+                *task.required_elements,
+                *task.concept_targets,
+                *task.formula_targets,
+                *task.example_targets,
+                *task.pitfall_targets,
+            ],
+        },
+        chapter_index=task.chapter_index,
+        fallback_title=task.confirmed_title,
+    )
     points = task.content_points or task.concept_targets or [task.objective or title]
     mode_profile = get_docgen_mode_profile(digest_mode)
     structure_heading = _fallback_heading(

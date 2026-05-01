@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from typing import Any, Iterable, Sequence
 
 from llama_index.core.schema import BaseNode
@@ -15,6 +16,7 @@ import sqlalchemy as sa
 import structlog
 
 from app.shared.infra.database import get_engine, quote_sqlite_identifier
+from app.shared.infra.exceptions import VectorExtensionUnavailableError
 
 logger = structlog.get_logger(__name__)
 
@@ -38,7 +40,10 @@ def _load_sqlite_vec(connection: sa.Connection) -> None:
 
     raw_connection.enable_load_extension(True)
     try:
-        sqlite_vec.load(raw_connection)
+        try:
+            sqlite_vec.load(raw_connection)
+        except (OSError, sqlite3.Error) as exc:
+            raise VectorExtensionUnavailableError("无法加载 sqlite-vec 原生扩展，向量索引暂不可用。") from exc
     finally:
         raw_connection.enable_load_extension(False)
 

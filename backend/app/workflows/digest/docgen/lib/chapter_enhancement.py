@@ -12,6 +12,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     normalize_markdown_rendering,
     normalize_mermaid_blocks,
 )
+from app.workflows.digest.common.pedagogy import is_usable_resolved_chapter_title
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.asset_rendering import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.interactive_html import maybe_generate_interactive_html_asset
@@ -60,7 +61,7 @@ def _build_practice_questions(
     claim_ledger: ClaimLedger | None = None,
     document_backbone: DocumentBackbone | None = None,
 ) -> list[dict]:
-    title = draft.title
+    raw_title = draft.title
     mode_profile = get_docgen_mode_profile(digest_mode)
     claim_items = list((claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).items or [])
     claim_prompts = [item.claim_text for item in claim_items if item.claim_text][:3]
@@ -69,6 +70,9 @@ def _build_practice_questions(
         for item in list((document_backbone or DocumentBackbone()).confusion_map or [])
         if (not item.target_chapters or draft.chapter_index in item.target_chapters)
     ][:2]
+    title = raw_title if is_usable_resolved_chapter_title(raw_title) else (
+        choose_heading_focus([*claim_prompts, *confusion_items], fallback="本章核心内容") or "本章核心内容"
+    )
     if mode_profile.is_sprint:
         focus_terms = [*claim_prompts, title]
         first_claim = claim_prompts[0] if claim_prompts else title or "核心考点"
@@ -192,7 +196,7 @@ def _build_practice_questions(
     return questions
 
 
-_PRACTICE_HEADING_RE = re.compile(r"^##\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
+_PRACTICE_HEADING_RE = re.compile(r"^#{2,4}\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
 
 
 def _append_practice_section(markdown: str, questions: list[dict], *, digest_mode: str, title: str = "") -> str:

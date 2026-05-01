@@ -56,7 +56,7 @@ import {
 } from "../components/profile";
 
 const surfaceClass = PROFILE_SURFACE_CLASS;
-const pageShellClass = "min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-8 lg:pt-10";
+const pageShellClass = "mx-auto min-h-full w-full max-w-7xl px-4 pb-24 pt-8 sm:px-6 lg:px-8 lg:pt-10";
 
 export function ProfilePage() {
   const { courseId } = useParams();
@@ -145,7 +145,7 @@ export function ProfilePage() {
 
   return (
     <div className={pageShellClass}>
-      <div className="mx-auto flex w-full max-w-[1560px] flex-col gap-6">
+      <div className="flex w-full flex-col gap-6">
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className={cn(surfaceClass, "p-5 sm:p-6")}>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">

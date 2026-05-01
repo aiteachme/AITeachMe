@@ -39,6 +39,8 @@
     ],
     "windows": {
       "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser",
         "installerIcon": "../../docs/brand/app-icon.ico",
         "installerHooks": "windows/nsis-hooks.nsh"
       },

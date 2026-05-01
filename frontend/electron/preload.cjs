@@ -16,7 +16,15 @@ function loadBuildConfig() {
 }
 
 const buildConfig = loadBuildConfig();
-const apiBaseUrl = (buildConfig.apiBaseUrl || devPorts.backendUrl).replace(/\/$/, "");
+
+function readAdditionalArgument(name) {
+  const prefix = `--${name}=`;
+  const argument = process.argv.find((value) => value.startsWith(prefix));
+  return argument ? argument.slice(prefix.length).trim() : "";
+}
+
+const runtimeApiBaseUrl = readAdditionalArgument("aiteachme-api-base-url");
+const apiBaseUrl = (runtimeApiBaseUrl || buildConfig.apiBaseUrl || devPorts.backendUrl).replace(/\/$/, "");
 
 contextBridge.exposeInMainWorld("aiteachmeDesktop", {
   apiBaseUrl,

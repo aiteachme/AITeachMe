@@ -12,13 +12,17 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_merge_preview,
     update_knowledge_build_status,
 )
-from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
+from app.workflows.digest.common.pedagogy import (
+    clean_generated_chapter_title,
+    is_usable_resolved_chapter_title,
+    resolve_effective_chapter_title,
+)
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
-_GENERIC_TITLE_RE = re.compile(r"^第\s*\d+\s*章$|^untitled|^未命名章节$", re.IGNORECASE)
+_GENERIC_TITLE_RE = re.compile(r"^第\s*\d+\s*章$|^untitled(?:\s+chapter)?$|^未命名章节$|^本章内容$", re.IGNORECASE)
 
 
 def _clean_title(title: str) -> str:
@@ -30,9 +34,12 @@ def _clean_title(title: str) -> str:
 
 def _locked_title(*, chapter: dict, chapter_index: int) -> str:
     current = _clean_title(str(chapter.get("resolved_title") or chapter.get("title") or ""))
-    if current and not _GENERIC_TITLE_RE.match(current):
+    if current and not _GENERIC_TITLE_RE.match(current) and is_usable_resolved_chapter_title(current):
         return current
-    return "未命名章节"
+    derived = resolve_effective_chapter_title(chapter, chapter_index=chapter_index, fallback_title=current)
+    if is_usable_resolved_chapter_title(derived):
+        return derived
+    return f"第 {chapter_index} 章"
 
 
 def _replace_first_h1(markdown: str, title: str) -> str:

@@ -1073,24 +1073,27 @@ export function HomePage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isWorking}
-                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "添加资料"}
+                    title={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "添加资料"}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
                   >
                     {isUploadingFiles ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Paperclip className="h-3.5 w-3.5" />
                     )}
-                    {hasEntryFiles ? "添加资料" : "添加资料"}
+                    <span className="sr-only">添加资料</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                    aria-label="从资料库选择"
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
-                    从资料库选
+                    <span className="sr-only">从资料库选</span>
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
@@ -1105,7 +1108,7 @@ export function HomePage() {
                     value={chatModel}
                     onChange={setChatModel}
                     disabled={isWorking}
-                    className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                    className="flex-1 sm:flex-none sm:w-[128px]"
                   />
                   <button
                     onClick={() => void handleGenerate()}

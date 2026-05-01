@@ -28,6 +28,12 @@ enum BackendStartupStatus {
   TimedOut,
 }
 
+#[cfg(windows)]
+const BACKEND_EXECUTABLE_CANDIDATES: &[&str] = &["aiteachme-backend.exe", "aiteachme-backend.bin"];
+
+#[cfg(not(windows))]
+const BACKEND_EXECUTABLE_CANDIDATES: &[&str] = &["aiteachme-backend"];
+
 fn configured_backend_port() -> Option<u16> {
   std::env::var("AITEACHME_BACKEND_PORT")
     .ok()
@@ -94,39 +100,34 @@ fn wait_for_backend_ready(child: &mut Child, port: u16, timeout: Duration) -> Ba
   BackendStartupStatus::TimedOut
 }
 
-#[cfg(feature = "local-backend")]
-fn backend_executable_name() -> &'static str {
-  if cfg!(windows) {
-    "aiteachme-backend.bin"
-  } else {
-    "aiteachme-backend"
-  }
+fn stop_backend_child(child: &mut Child) {
+  let _ = child.kill();
+  let _ = child.wait();
 }
 
 #[cfg(feature = "local-backend")]
 fn resolve_backend_executable(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
-  let resource_path = app
-    .path()
-    .resource_dir()?
-    .join("backend")
-    .join(backend_executable_name());
-  if resource_path.exists() {
-    return Ok(resource_path);
+  let resource_backend_dir = app.path().resource_dir()?.join("backend");
+  for executable_name in BACKEND_EXECUTABLE_CANDIDATES {
+    let resource_path = resource_backend_dir.join(executable_name);
+    if resource_path.exists() {
+      return Ok(resource_path);
+    }
   }
 
   if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
-    let dev_path = Path::new(manifest_dir)
-      .join("resources")
-      .join("backend")
-      .join(backend_executable_name());
-    if dev_path.exists() {
-      return Ok(dev_path);
+    let dev_backend_dir = Path::new(manifest_dir).join("resources").join("backend");
+    for executable_name in BACKEND_EXECUTABLE_CANDIDATES {
+      let dev_path = dev_backend_dir.join(executable_name);
+      if dev_path.exists() {
+        return Ok(dev_path);
+      }
     }
   }
 
   Err(format!(
-    "AiTeachMe backend executable was not found at {}",
-    resource_path.display()
+    "AiTeachMe backend executable was not found under {}",
+    resource_backend_dir.display()
   )
   .into())
 }
@@ -141,19 +142,90 @@ fn cleanup_legacy_install_root_files() {
     return;
   };
 
-  for file_name in ["aiteachme-backend.exe", "backend.log"] {
+  for file_name in ["aiteachme-backend.exe", "aiteachme-backend.bin", "backend.log"] {
     let path = install_dir.join(file_name);
     if path != current_exe {
       let _ = fs::remove_file(path);
     }
   }
 
-  let _ = fs::remove_file(
-    install_dir
-      .join("resources")
-      .join("backend")
-      .join("aiteachme-backend.exe"),
-  );
+  for file_name in ["aiteachme-backend.exe", "aiteachme-backend.bin"] {
+    let _ = fs::remove_file(install_dir.join("resources").join("backend").join(file_name));
+  }
+}
+
+#[cfg(feature = "local-backend")]
+fn directory_is_writable(path: &Path) -> bool {
+  if fs::create_dir_all(path).is_err() {
+    return false;
+  }
+
+  let probe = path.join(format!(".aiteachme-write-test-{}", std::process::id()));
+  match OpenOptions::new().write(true).create_new(true).open(&probe) {
+    Ok(_) => {
+      let _ = fs::remove_file(probe);
+      true
+    }
+    Err(_) => false,
+  }
+}
+
+#[cfg(feature = "local-backend")]
+fn copy_directory_if_missing(source: &Path, target: &Path) -> std::io::Result<()> {
+  if !source.exists() || target.exists() {
+    return Ok(());
+  }
+
+  fs::create_dir_all(target)?;
+  for entry in fs::read_dir(source)? {
+    let entry = entry?;
+    let source_path = entry.path();
+    let target_path = target.join(entry.file_name());
+    if source_path.is_dir() {
+      copy_directory_if_missing(&source_path, &target_path)?;
+    } else if source_path.is_file() && !target_path.exists() {
+      fs::copy(&source_path, &target_path)?;
+    }
+  }
+  Ok(())
+}
+
+#[cfg(feature = "local-backend")]
+fn migrate_legacy_backend_data(source: &Path, target: &Path) -> std::io::Result<()> {
+  if !source.exists() || source == target {
+    return Ok(());
+  }
+
+  fs::create_dir_all(target)?;
+  for file_name in ["aiteachme.db", "aiteachme.db-wal", "aiteachme.db-shm"] {
+    let source_file = source.join(file_name);
+    let target_file = target.join(file_name);
+    if source_file.exists() && !target_file.exists() {
+      fs::copy(source_file, target_file)?;
+    }
+  }
+  copy_directory_if_missing(&source.join("users"), &target.join("users"))?;
+  Ok(())
+}
+
+#[cfg(feature = "local-backend")]
+fn resolve_backend_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+  let app_data_backend_dir = app.path().app_data_dir()?.join("backend-data");
+
+  if !cfg!(debug_assertions) {
+    if let Ok(current_exe) = std::env::current_exe() {
+      if let Some(install_dir) = current_exe.parent() {
+        let install_data_dir = install_dir.join("data");
+        if directory_is_writable(&install_data_dir) {
+          let _ = migrate_legacy_backend_data(&app_data_backend_dir, &install_data_dir);
+          return Ok(install_data_dir);
+        }
+      }
+    }
+  }
+
+  fs::create_dir_all(&app_data_backend_dir)?;
+  Ok(app_data_backend_dir)
 }
 
 #[cfg(feature = "local-backend")]
@@ -163,7 +235,7 @@ fn spawn_local_backend_on_port(
 ) -> Result<(Child, PathBuf), Box<dyn std::error::Error>> {
   let port_string = port.to_string();
   let dev_frontend_port = frontend_port();
-  let backend_data_dir = app.path().app_data_dir()?.join("backend-data");
+  let backend_data_dir = resolve_backend_data_dir(app)?;
   fs::create_dir_all(&backend_data_dir)?;
   let backend_log_file = backend_data_dir.join("backend.log");
   let backend_executable = resolve_backend_executable(app)?;
@@ -237,8 +309,7 @@ fn start_local_backend(app: &mut tauri::App) -> Result<DesktopRuntime, Box<dyn s
         );
       }
       BackendStartupStatus::TimedOut => {
-        let _ = child.kill();
-        let _ = child.wait();
+        stop_backend_child(&mut child);
         return Err(format!(
           "AiTeachMe backend did not become ready within {} seconds on port {port}. log={}",
           startup_timeout.as_secs(),
@@ -248,8 +319,7 @@ fn start_local_backend(app: &mut tauri::App) -> Result<DesktopRuntime, Box<dyn s
       }
     }
 
-    let _ = child.kill();
-    let _ = child.wait();
+    stop_backend_child(&mut child);
     if attempt < max_attempts {
       thread::sleep(Duration::from_millis(150));
     }
@@ -319,8 +389,7 @@ fn stop_local_backend(app: &tauri::AppHandle) {
 
   if let Some(child) = child {
     let mut child = child;
-    let _ = child.kill();
-    let _ = child.wait();
+    stop_backend_child(&mut child);
   }
 }
 
@@ -337,6 +406,14 @@ fn main() {
         stop_local_backend(window.app_handle());
       }
     })
-    .run(tauri::generate_context!())
-    .expect("error while running AiTeachMe Tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building AiTeachMe Tauri application")
+    .run(|app_handle, event| {
+      if matches!(
+        event,
+        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+      ) {
+        stop_local_backend(app_handle);
+      }
+    });
 }

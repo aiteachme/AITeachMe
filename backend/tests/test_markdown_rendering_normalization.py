@@ -4,11 +4,12 @@ from app.shared.infra.tools.builtin.latex_processing import normalize_math_delim
 from app.shared.infra.tools.builtin.markdown_processing import (
     find_markdown_rendering_issues,
     normalize_markdown_rendering,
+    normalize_mermaid_blocks,
 )
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
-from app.workflows.digest.docgen.lib.textbook_style import normalize_educational_callouts
+from app.workflows.digest.docgen.lib.textbook_style import normalize_educational_callouts, normalize_textbook_headings
 
 
 def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
@@ -162,6 +163,44 @@ def test_normalize_trims_inline_math_padding_inside_callout() -> None:
     assert fixed.startswith("> [!WARNING]\n>\n> **易错点")
     assert "$35 \\times 86 = 3010$" in fixed
     assert "$ 35 \\times 86 = 3010 $" not in fixed
+
+
+def test_normalize_restores_overescaped_long_inline_math() -> None:
+    raw = (
+        r"- 计算：\$b = \lim_{x \to \infty}(f(x)-x)"
+        r" = \lim_{x \to \infty}\left(\frac{x^2+1}{x-1}-x\right)"
+        r" = \lim_{x \to \infty}\frac{x^2+1-x(x-1)}{x-1}"
+        r" = \lim_{x \to \infty}\frac{x+1}{x-1}=1\$，所以斜渐近线为 $y=x+1$。"
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert r"\$b =" not in fixed
+    assert r"$b = \lim_{x \to \infty}" in fixed
+    assert r"$y=x+1$" in fixed
+    assert "内联公式疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
+
+
+def test_normalize_mermaid_quotes_flowchart_labels_with_comparison_symbols() -> None:
+    raw = "\n".join(
+        [
+            "```mermaid",
+            "flowchart LR",
+            "A[导数应用] --> B1[一阶导数正负]",
+            "B1 --> B2[递增: f'(x) > 0]",
+            "B1 -->|f'(x) < 0| B3[递减]",
+            "classDef core fill:#f9f,stroke:#333,stroke-width:1px;",
+            "class A,B1 core",
+            "```",
+        ]
+    )
+
+    fixed = normalize_mermaid_blocks(raw)
+
+    assert 'A["导数应用"] --> B1["一阶导数正负"]' in fixed
+    assert 'B1 --> B2["递增: f\'(x) 大于 0"]' in fixed
+    assert "B1 -->|f'(x) 小于 0| B3[\"递减\"]" in fixed
+    assert "classDef core fill:#f9f,stroke:#333,stroke-width:1px;" in fixed
 
 
 def test_normalize_ignores_dollars_inside_inline_code() -> None:
@@ -342,14 +381,36 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
 
     fixed = normalize_educational_callouts(raw)
 
-    assert "> [!TIP]\n>\n> 💡 **速判技巧**：看到平方差就先想共轭或因式分解。" in fixed
-    assert "> [!IMPORTANT]\n>\n> ✅ **高频考点**：先抓题目条件，再选公式。" in fixed
-    assert "> [!WARNING]\n>\n> ⚠️ **易错点**：不要把定义域限制漏掉。" in fixed
+    assert "> [!TIP]\n>\n> **速判技巧**：看到平方差就先想共轭或因式分解。" in fixed
+    assert "> [!IMPORTANT]\n>\n> **高频考点**：先抓题目条件，再选公式。" in fixed
+    assert "> [!WARNING]\n>\n> **易错点**：不要把定义域限制漏掉。" in fixed
     assert "> ✅ **答案**：5" in fixed
     assert "> [!IMPORTANT]\n>\n> ✅ **答案**：5" not in fixed
     assert "> 这是一段普通引用，后面会提醒注意事项。" in fixed
     assert "> [!WARNING]\n>\n> 这是一段普通引用" not in fixed
     assert "> 普通引用不应变化。" in fixed
+
+
+def test_textbook_headings_remove_generic_untitled_example_prefix() -> None:
+    raw = "\n".join(
+        [
+            "# 未命名章节",
+            "",
+            "### 未命名章节的典型例题解析",
+            "",
+            "正文。",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="未命名章节",
+        focus_items=[],
+    )
+
+    assert "### 典型例题解析" in fixed
+    assert "未命名章节的典型例题解析" not in fixed
 
 
 def test_normalize_keeps_loose_display_math_inside_callout() -> None:

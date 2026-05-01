@@ -90,7 +90,7 @@ def _prepare_chapter_markdown(
         focus_items=focus_items or [],
     )
     cleaned = normalize_educational_callouts(cleaned)
-    return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned))
+    return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned, title=title))
 
 
 def _finalize_markdown_rendering(markdown: str) -> str:
@@ -103,12 +103,13 @@ def _finalize_markdown_rendering(markdown: str) -> str:
     return repaired if repaired else markdown
 
 
-def _ensure_chapter_structure(markdown: str) -> str:
+def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     """Keep published docs readable: one h1, at least one h2."""
 
     cleaned = str(markdown or "").strip()
     if not cleaned:
         return ""
+    fallback_title = resolve_effective_chapter_title({"title": title, "resolved_title": title}, fallback_title=title)
 
     lines = cleaned.splitlines()
     first_heading_index = next(
@@ -116,10 +117,10 @@ def _ensure_chapter_structure(markdown: str) -> str:
         None,
     )
     if first_heading_index is None:
-        lines.insert(0, "# 本章内容")
+        lines.insert(0, f"# {fallback_title}")
     elif not lines[first_heading_index].lstrip().startswith("# "):
-        title = lines[first_heading_index].lstrip("#").strip() or "本章内容"
-        lines[first_heading_index] = f"# {title}"
+        visible_title = lines[first_heading_index].lstrip("#").strip() or fallback_title
+        lines[first_heading_index] = f"# {visible_title}"
 
     if not any(line.startswith("## ") for line in lines):
         insert_at = 1

@@ -1,6 +1,6 @@
 import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 
-const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:9020";
+const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:19020";
 
 function resolveDesktopApiBaseUrl(): string {
   if (typeof window === "undefined") {

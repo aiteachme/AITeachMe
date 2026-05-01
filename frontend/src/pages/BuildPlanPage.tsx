@@ -1872,14 +1872,16 @@ export function BuildPlanPage() {
                     />
                     <label
                       htmlFor="files-page-upload"
-                    className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      aria-label={uploadMutation.isPending ? "上传中" : "添加资料"}
+                      title={uploadMutation.isPending ? "上传中" : "添加资料"}
+                      className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-within:ring-slate-100/10"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Paperclip className="h-4 w-4" />
                       )}
-                      {uploadMutation.isPending ? "上传中" : "添加资料"}
+                      <span className="sr-only">{uploadMutation.isPending ? "上传中" : "添加资料"}</span>
                     </label>
 
                     {plannerNeedsRefresh && (
@@ -1894,7 +1896,7 @@ export function BuildPlanPage() {
                       value={chatModel}
                       onChange={setChatModel}
                       disabled={isBuilding || plannerStreaming}
-                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                      className="flex-1 sm:flex-none sm:w-[128px]"
                     />
                     <button
                       type="button"

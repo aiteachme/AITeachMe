@@ -42,7 +42,7 @@
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
-- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `9020`；Tauri local 启动时会自动申请可用本地端口。
+- `-BackendPort <port>`：local 桌面包的本地后端端口；默认留空，由 Electron local / Tauri local 启动时自动申请可用端口。仅在需要固定端口调试时传入。
 - `-SkipInstall`：跳过依赖安装步骤。
 
 ## 产物命名
@@ -62,15 +62,23 @@
 
 中间产物会保留在 `packaging\artifacts`。
 
+## Electron local 的后端与数据目录
+
+Electron local 安装包内置 PyInstaller 生成的 FastAPI 后端，安装后由 Electron 主进程自动启动。默认不再固定占用 `9020` 或 `19020`，启动时会自动向系统申请可用本地端口，并把真实 API 地址注入前端；传入 `-BackendPort <port>` 时才会固定使用指定端口。
+
+安装目录可写时，Electron local 的后端日志、SQLite 和课程文件会写入安装目录下的 `data`；安装目录不可写时，才回退到 Electron app data 目录下的 `backend-data`。旧版本写在 app data 里的 `aiteachme.db` 和 `users` 会在首次启动时迁移到安装目录 `data`。
+
 ## Tauri local 的 exe 结构
 
 `-IncludeTauri` 表示“在默认 Electron local 之外额外生成 Tauri local”，所以会看到 Electron 和 Tauri 两个安装包；只需要 Tauri 时请用 `-TauriOnly`。
 
-Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller 生成的 FastAPI 后端运行件。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\` 下，由 Tauri 主程序自动启动，因此安装目录中不会额外出现后端 `.exe`。
+Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller `onedir` 生成的 FastAPI 后端目录。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会作为内部资源放在 `backend\` 下，由 Tauri 主程序自动启动。
 
 NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记为隐藏文件，避免普通文件夹视图里出现多个 `.exe`。不要删除它，否则系统卸载入口会失效。
 
-Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都写入 Tauri app data 目录下的 `backend-data`，不写入安装目录根部。
+Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite 和课程文件都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
+
+Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
 
 ## 预绑定本地大模型配置
 
@@ -129,6 +137,7 @@ GitHub Actions 不能读取你本机的 `packaging\private\bundled-env.json`。�
 - `build-electron.ps1`：Electron 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
 - `build-tauri.ps1`：Tauri 实际构建脚本，通过 `-Flavor local|remote` 区分模式。
 - `prepare-tauri-sidecar.ps1`：为 Tauri local 准备后端 sidecar。
+- `dev-tauri-local.ps1`：本地运行 Tauri local 的入口，会先准备后端 sidecar，并使用 `5181` 作为 Tauri local 开发前端端口。
 - `bundled-env-common.ps1`：预绑定密钥的读取、校验、加密和后缀逻辑。
 - `tauri-build-common.ps1`：Tauri 构建共用工具函数。
 - `electron-builder-config.cjs`：Electron Builder 配置。
