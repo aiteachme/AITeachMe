@@ -106,8 +106,8 @@ function applyGraphInteractiveStyles(
   const root = d3.select(svg);
   root.selectAll<SVGPathElement, GraphLink>("path.graph-link")
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
-    .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.65 : 1.15))
-    .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.46 : isConnectedToSelected(d) ? 0.84 : 0.12));
+    .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.75 : 1.08))
+    .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.34 : isConnectedToSelected(d) ? 0.82 : 0.1));
   root.selectAll<SVGPathElement, GraphLink>("path.hit-area")
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"));
 
@@ -167,19 +167,30 @@ type LoadedGraphData = {
 
 const DETAIL_NODE_TYPES = new Set(["example", "remark"]);
 const BACKBONE_RELATION_TYPES = new Set(["prerequisite", "derivation", "application"]);
+const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxColumns: number }> = {
+  definition: { xBias: -0.34, yRatio: 0.3, maxColumns: 3 },
+  concept: { xBias: -0.32, yRatio: 0.69, maxColumns: 4 },
+  formula: { xBias: -0.12, yRatio: 0.18, maxColumns: 3 },
+  theorem: { xBias: 0.06, yRatio: 0.42, maxColumns: 3 },
+  proof_step: { xBias: 0.1, yRatio: 0.7, maxColumns: 4 },
+  method: { xBias: 0.2, yRatio: 0.82, maxColumns: 5 },
+  example: { xBias: 0.34, yRatio: 0.89, maxColumns: 4 },
+  exercise: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
+  remark: { xBias: 0.48, yRatio: 0.3, maxColumns: 5 },
+};
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
   return DETAIL_NODE_TYPES.has(node.knowledge_unit_type);
 }
 
 function getStructuredGraphMetrics(nodeCount: number, width: number, height: number) {
-  const canvasWidth = Math.max(width, Math.min(1680, Math.max(820, nodeCount * 6.2 + 360)));
+  const canvasWidth = Math.max(width, Math.min(2200, Math.max(980, nodeCount * 8.6 + 520)));
   const leftPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
   const rightPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
   const topPad = Math.min(88, Math.max(58, height * 0.072));
   const bottomPad = Math.min(88, Math.max(60, height * 0.072));
   const usableWidth = Math.max(420, canvasWidth - leftPad - rightPad);
-  const usableHeight = Math.max(560, height - topPad - bottomPad);
+  const usableHeight = Math.max(680, height - topPad - bottomPad);
   const layerStep = usableWidth / Math.max(1, GRAPH_LAYERS.length - 1);
 
   return {
@@ -198,8 +209,8 @@ function selectBackboneEdgeIds(links: GraphLink[], visibleNodeCount: number, sho
   const selected = new Set<number>();
   const nodeUseCount = new Map<number, number>();
   const maxEdges = Math.max(
-    24,
-    Math.min(showDetailNodes ? 82 : 46, Math.round(visibleNodeCount * (showDetailNodes ? 0.62 : 0.58))),
+    22,
+    Math.min(showDetailNodes ? 66 : 42, Math.round(visibleNodeCount * (showDetailNodes ? 0.5 : 0.54))),
   );
   const add = (link: GraphLink, relaxed = false) => {
     if (selected.has(link.id) || selected.size >= maxEdges) return;
@@ -285,71 +296,47 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
   if (!nodes.length) return positions;
 
   const metrics = getStructuredGraphMetrics(nodes.length, width, height);
+  const groupedByType = new Map<string, GraphNode[]>();
+  for (const node of nodes) {
+    const group = groupedByType.get(node.knowledge_unit_type) ?? [];
+    group.push(node);
+    groupedByType.set(node.knowledge_unit_type, group);
+  }
 
-  for (let layer = 0; layer < GRAPH_LAYERS.length; layer += 1) {
-    const layerNodes = nodes
-      .filter((node) => node.layout_layer === layer)
-      .sort((left, right) =>
-        left.component_rank - right.component_rank ||
+  const groups = Array.from(groupedByType.entries())
+    .map(([type, groupNodes]) => {
+      const sortedNodes = groupNodes.sort((left, right) =>
         graphNodePriority(right) - graphNodePriority(left) ||
+        left.layout_layer - right.layout_layer ||
+        left.component_rank - right.component_rank ||
         left.id - right.id,
       );
-    if (!layerNodes.length) continue;
+      const averageLayer = sortedNodes.reduce((sum, node) => sum + node.layout_layer, 0) / Math.max(1, sortedNodes.length);
+      return { type, nodes: sortedNodes, averageLayer };
+    })
+    .sort((left, right) => left.averageLayer - right.averageLayer || left.type.localeCompare(right.type));
 
-    const laneCenterX = metrics.leftPad + metrics.layerStep * layer;
-    const groupedByType = new Map<string, GraphNode[]>();
-    for (const node of layerNodes) {
-      const group = groupedByType.get(node.knowledge_unit_type) ?? [];
-      group.push(node);
-      groupedByType.set(node.knowledge_unit_type, group);
-    }
-    const typeGroups = Array.from(groupedByType.entries())
-      .map(([type, groupNodes]) => ({
-        type,
-        nodes: groupNodes.sort((left, right) =>
-          graphNodePriority(right) - graphNodePriority(left) ||
-          left.component_rank - right.component_rank ||
-          left.id - right.id,
-        ),
-        weight: Math.max(1, Math.sqrt(groupNodes.length)),
-      }))
-      .sort((left, right) =>
-        graphNodePriority(right.nodes[0]) - graphNodePriority(left.nodes[0]) ||
-        left.type.localeCompare(right.type),
-      );
-    const totalWeight = typeGroups.reduce((sum, group) => sum + group.weight, 0);
-    const groupGap = typeGroups.length > 1 ? Math.min(34, Math.max(20, metrics.usableHeight * 0.035)) : 0;
-    const availableHeight = Math.max(160, metrics.usableHeight - groupGap * Math.max(0, typeGroups.length - 1));
-    let yCursor = metrics.topPad;
-
-    typeGroups.forEach((group, groupIndex) => {
-      const groupHeight = availableHeight * (group.weight / totalWeight);
-      const groupCenterY = yCursor + groupHeight / 2;
-      const typeOffset = typeGroups.length > 1
-        ? (groupIndex - (typeGroups.length - 1) / 2) * Math.min(72, metrics.layerStep * 0.18)
-        : 0;
-      const maxRowsInGroup = Math.max(2, Math.floor(groupHeight / 64));
-      const columns = Math.max(1, Math.min(4, Math.ceil(group.nodes.length / maxRowsInGroup)));
-      const rows = Math.ceil(group.nodes.length / columns);
-      const rowGap = rows > 1 ? Math.min(82, Math.max(48, groupHeight / Math.max(1, rows - 1))) : 0;
-      const columnGap = columns > 1 ? Math.max(54, Math.min(92, metrics.layerStep * 0.18)) : 0;
-      const yStart = groupCenterY - (rows - 1) * rowGap / 2;
-
-      group.nodes.forEach((node, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        const rowNudge = columns > 1 ? ((column % 2) - 0.5) * Math.min(18, rowGap * 0.18) : 0;
-        const componentNudge = Math.min(18, node.component_rank * 3) * (row % 2 === 0 ? 1 : -1);
-        const xJitter = ((node.id % 5) - 2) * 2.4;
-        positions.set(node.id, {
-          x: laneCenterX + typeOffset + (column - (columns - 1) / 2) * columnGap + xJitter,
-          y: yStart + rowGap * row + rowNudge + componentNudge,
-        });
+  groups.forEach((group, groupIndex) => {
+    const preset = TYPE_CLUSTER_LAYOUT[group.type] ?? {
+      xBias: ((groupIndex % 3) - 1) * 0.1,
+      yRatio: 0.26 + ((groupIndex * 0.19) % 0.58),
+      maxColumns: 4,
+    };
+    const centerLayer = Math.max(0, Math.min(GRAPH_LAYERS.length - 1, group.averageLayer));
+    const centerX = metrics.leftPad + metrics.layerStep * centerLayer + preset.xBias * metrics.layerStep;
+    const centerY = metrics.topPad + metrics.usableHeight * preset.yRatio;
+    group.nodes.forEach((node, index) => {
+      const angle = index * 2.399963229728653 + groupIndex * 0.38;
+      const radius = index === 0 ? 0 : 42 + Math.sqrt(index) * 43;
+      const layerPull = (node.layout_layer - group.averageLayer) * metrics.layerStep * 0.16;
+      const localX = ((node.id % 7) - 3) * 2.6;
+      const localY = (((node.id * 3) % 7) - 3) * 2.1;
+      positions.set(node.id, {
+        x: centerX + Math.cos(angle) * radius * 1.28 + layerPull + localX,
+        y: centerY + Math.sin(angle) * radius * 0.86 + localY,
       });
-
-      yCursor += groupHeight + groupGap;
     });
-  }
+  });
 
   return positions;
 }
@@ -1231,6 +1218,34 @@ export function ForceGraphView({
       .attr("viewBox", [0, 0, width, height].join(" "));
 
     const defs = svgSel.append("defs");
+    svgSel.append("style").text(`
+      @keyframes atm-node-breathe {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.065); }
+      }
+      @keyframes atm-node-halo {
+        0%, 100% { transform: scale(0.92); opacity: 0.05; }
+        50% { transform: scale(1.28); opacity: 0.18; }
+      }
+      .graph-node .node-circle {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: atm-node-breathe 5.8s ease-in-out infinite;
+        animation-delay: var(--atm-delay, 0s);
+      }
+      .graph-node .node-halo {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: atm-node-halo 6.6s ease-in-out infinite;
+        animation-delay: var(--atm-delay, 0s);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .graph-node .node-circle,
+        .graph-node .node-halo {
+          animation: none;
+        }
+      }
+    `);
 
     const grid = defs.append("pattern")
       .attr("id", "knowledge-graph-grid")
@@ -1325,8 +1340,9 @@ export function ForceGraphView({
       .attr("fill", "none")
       .attr("stroke", (d) => RELATION_COLORS[d.edge_type] ?? "#94a3b8")
       .attr("stroke-linecap", "round")
-      .attr("stroke-width", 1.15)
-      .attr("stroke-opacity", 0.46)
+      .attr("stroke-linejoin", "round")
+      .attr("stroke-width", 1.08)
+      .attr("stroke-opacity", 0.34)
       .attr("marker-end", "url(#arrowhead)");
 
     linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
@@ -1377,6 +1393,7 @@ export function ForceGraphView({
       .join("g")
       .attr("class", "graph-node")
       .attr("cursor", "pointer")
+      .style("--atm-delay", (d) => `${-(d.id % 17) * 0.19}s`)
       .call(
         d3.drag<SVGGElement, GraphNode>()
           .on("start", (event, d) => {
@@ -1559,22 +1576,22 @@ export function ForceGraphView({
         const sourceLayer = typeof d.source === "object" ? d.source.layout_layer : 2;
         const targetLayer = typeof d.target === "object" ? d.target.layout_layer : 2;
         const layerGap = Math.abs(sourceLayer - targetLayer);
-        const base = layerGap === 0 ? 210 : 178 + layerGap * 46;
-        return Math.max(150, base + Math.max(0, d.pair_total - 1) * 34 - Math.min(sourceDegree + targetDegree, 10) * 0.8 + (sourceIsCore || targetIsCore ? 8 : 28));
+        const base = layerGap === 0 ? 260 : 232 + layerGap * 64;
+        return Math.max(188, base + Math.max(0, d.pair_total - 1) * 44 - Math.min(sourceDegree + targetDegree, 10) * 0.5 + (sourceIsCore || targetIsCore ? 18 : 42));
       }).strength((d) => {
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        return d.is_backbone ? (sourceIsCore || targetIsCore ? 0.034 : 0.026) : 0.006;
+        return d.is_backbone ? (sourceIsCore || targetIsCore ? 0.018 : 0.014) : 0.0026;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -155 - Math.min(d.degree, 9) * 13 : -104 - Math.min(d.degree, 7) * 10
+        isAssessmentCoreNode(d) ? -230 - Math.min(d.degree, 9) * 18 : -162 - Math.min(d.degree, 7) * 14
       )))
       .force("center", d3.forceCenter(layoutMetrics.canvasWidth / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 54 : isAssessmentCoreNode(d) ? 42 : 36)).iterations(3))
-      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.08))
-      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.02))
-      .alphaDecay(0.092)
-      .velocityDecay(0.8);
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 70 : isAssessmentCoreNode(d) ? 54 : 46)).iterations(4))
+      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.34))
+      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.28))
+      .alphaDecay(0.088)
+      .velocityDecay(0.82);
     simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 || showAllEdges || showAllNodeLabels ? 0.22 : 0.035) : 1);
 
     simulationRef.current = simulation;
@@ -1588,49 +1605,99 @@ export function ForceGraphView({
       showAllNodeLabelsRef.current,
     );
 
-    const linkPath = (d: any) => {
-      const sx = d.source.x;
-      const sy = d.source.y;
-      const tx = d.target.x;
-      const ty = d.target.y;
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const floatingOffset = (node: GraphNode, now: number) => {
+      if (prefersReducedMotion || node.fx != null || node.fy != null) return { x: 0, y: 0 };
+      const seconds = now / 1000;
+      const seed = (node.id % 997) * 0.173;
+      const amplitude = isAssessmentCoreNode(node) ? 3.8 : 2.9;
+      return {
+        x: Math.sin(seconds * 0.48 + seed) * amplitude + Math.sin(seconds * 0.19 + seed * 1.7) * amplitude * 0.42,
+        y: Math.cos(seconds * 0.42 + seed * 1.3) * amplitude * 0.78,
+      };
+    };
+    const displayPoint = (node: GraphNode, now: number) => {
+      const offset = floatingOffset(node, now);
+      return {
+        x: Number(node.x ?? 0) + offset.x,
+        y: Number(node.y ?? 0) + offset.y,
+      };
+    };
+    const buildCurvedLinkRoute = (d: any, now: number) => {
+      const sourcePoint = displayPoint(d.source, now);
+      const targetPoint = displayPoint(d.target, now);
+      const rawSx = sourcePoint.x;
+      const rawSy = sourcePoint.y;
+      const rawTx = targetPoint.x;
+      const rawTy = targetPoint.y;
+      const rawDx = rawTx - rawSx;
+      const rawDy = rawTy - rawSy;
+      const rawDistance = Math.max(1, Math.sqrt(rawDx * rawDx + rawDy * rawDy));
+      const sourceInset = graphNodeRadius(d.source) + 5;
+      const targetInset = graphNodeRadius(d.target) + 12;
+      const sx = rawSx + (rawDx / rawDistance) * sourceInset;
+      const sy = rawSy + (rawDy / rawDistance) * sourceInset;
+      const tx = rawTx - (rawDx / rawDistance) * targetInset;
+      const ty = rawTy - (rawDy / rawDistance) * targetInset;
       const dx = tx - sx;
       const dy = ty - sy;
       const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
       const sourceLayer = d.source.layout_layer ?? 2;
       const targetLayer = d.target.layout_layer ?? 2;
+      const sameLayer = sourceLayer === targetLayer;
+      const relationLane = ((EDGE_TYPE_PRIORITY[d.edge_type] ?? 3) - 3.5) * 10;
+      const pairLane = (d.pair_index - (d.pair_total - 1) / 2) * 20;
+      const sign = d.curvature >= 0 ? 1 : -1;
+      const baseBend = sameLayer
+        ? Math.min(168, Math.max(62, distance * 0.34))
+        : Math.min(126, Math.max(42, distance * 0.18));
+      let bend = sign * baseBend + relationLane + pairLane;
+      const minBend = sameLayer ? 52 : 34;
+      if (Math.abs(bend) < minBend) bend = sign * minBend;
+
       if (sourceLayer === targetLayer) {
-        const curve = Math.min(90, Math.max(28, distance * 0.22)) * d.curvature;
-        const c1x = sx + dx * 0.38 - (dy / distance) * curve;
-        const c1y = sy + dy * 0.38 + (dx / distance) * curve;
-        const c2x = sx + dx * 0.62 - (dy / distance) * curve;
-        const c2y = sy + dy * 0.62 + (dx / distance) * curve;
-        return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
+        return {
+          sx,
+          sy,
+          tx,
+          ty,
+          c1x: sx + dx * 0.28 - (dy / distance) * bend,
+          c1y: sy + dy * 0.28 + (dx / distance) * bend,
+          c2x: sx + dx * 0.72 - (dy / distance) * bend,
+          c2y: sy + dy * 0.72 + (dx / distance) * bend,
+        };
       }
-      const handle = Math.max(56, Math.min(180, Math.abs(dx) * 0.48));
       const direction = dx >= 0 ? 1 : -1;
-      const c1x = sx + handle * direction;
-      const c1y = sy;
-      const c2x = tx - handle * direction;
-      const c2y = ty;
-      return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
-    };
-    const linkMidpoint = (d: any) => {
-      const sx = d.source.x;
-      const sy = d.source.y;
-      const tx = d.target.x;
-      const ty = d.target.y;
-      const dx = tx - sx;
-      const dy = ty - sy;
-      const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const curve = Math.min(110, Math.max(32, distance * 0.26)) * d.curvature;
-      const cx = (sx + tx) / 2 - (dy / distance) * curve;
-      const cy = (sy + ty) / 2 + (dx / distance) * curve;
+      const handle = Math.max(82, Math.min(260, Math.abs(dx) * 0.52));
       return {
-        x: 0.25 * sx + 0.5 * cx + 0.25 * tx,
-        y: 0.25 * sy + 0.5 * cy + 0.25 * ty,
+        sx,
+        sy,
+        tx,
+        ty,
+        c1x: sx + handle * direction,
+        c1y: sy + bend,
+        c2x: tx - handle * direction,
+        c2y: ty + bend,
+      };
+    };
+
+    const linkPath = (d: any, now: number) => {
+      const route = buildCurvedLinkRoute(d, now);
+      return `M${route.sx},${route.sy} C${route.c1x},${route.c1y} ${route.c2x},${route.c2y} ${route.tx},${route.ty}`;
+    };
+
+    const linkMidpoint = (d: any, now: number) => {
+      const route = buildCurvedLinkRoute(d, now);
+      const t = 0.5;
+      const mt = 1 - t;
+      return {
+        x: mt * mt * mt * route.sx + 3 * mt * mt * t * route.c1x + 3 * mt * t * t * route.c2x + t * t * t * route.tx,
+        y: mt * mt * mt * route.sy + 3 * mt * mt * t * route.c1y + 3 * mt * t * t * route.c2y + t * t * t * route.ty,
       };
     };
     let tickFrame: number | null = null;
+    let breathingFrame: number | null = null;
+    let lastBreathingRender = 0;
     let positionSnapshotTick = 0;
     const saveNodePositions = () => {
       for (const node of simNodes) {
@@ -1646,27 +1713,40 @@ export function ForceGraphView({
         }
       }
     };
-    const renderTick = () => {
+    const renderTick = (now = performance.now()) => {
       tickFrame = null;
-      linkLine.attr("d", linkPath);
-      linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area").attr("d", linkPath);
+      linkLine.attr("d", (d: any) => linkPath(d, now));
+      linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area").attr("d", (d: any) => linkPath(d, now));
 
       linkLabel
-        .attr("x", (d: any) => linkMidpoint(d).x)
-        .attr("y", (d: any) => linkMidpoint(d).y - 6)
+        .attr("x", (d: any) => linkMidpoint(d, now).x)
+        .attr("y", (d: any) => linkMidpoint(d, now).y - 6)
         .attr("transform", ""); // Explicitly avoid rotation for legibility
       linkLabelBg
-        .attr("x", (d: any) => linkMidpoint(d).x - d.label_width / 2)
-        .attr("y", (d: any) => linkMidpoint(d).y - 15);
+        .attr("x", (d: any) => linkMidpoint(d, now).x - d.label_width / 2)
+        .attr("y", (d: any) => linkMidpoint(d, now).y - 15);
 
-      nodeG.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+      nodeG.attr("transform", (d: any) => {
+        const point = displayPoint(d, now);
+        return `translate(${point.x},${point.y})`;
+      });
       positionSnapshotTick += 1;
       if (positionSnapshotTick % 5 === 0) saveNodePositions();
     };
+    const renderBreathingFrame = (now: number) => {
+      if (now - lastBreathingRender >= 42) {
+        lastBreathingRender = now;
+        renderTick(now);
+      }
+      breathingFrame = window.requestAnimationFrame(renderBreathingFrame);
+    };
     simulation.on("tick", () => {
       if (tickFrame !== null) return;
-      tickFrame = window.requestAnimationFrame(renderTick);
+      tickFrame = window.requestAnimationFrame((now) => renderTick(now));
     });
+    if (!prefersReducedMotion) {
+      breathingFrame = window.requestAnimationFrame(renderBreathingFrame);
+    }
 
     const fitCurrentGraphToView = (duration = 600) => {
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
@@ -1712,6 +1792,7 @@ export function ForceGraphView({
     return () => {
       window.clearTimeout(autoFitTimer);
       if (tickFrame !== null) window.cancelAnimationFrame(tickFrame);
+      if (breathingFrame !== null) window.cancelAnimationFrame(breathingFrame);
       saveNodePositions();
       simulation.stop();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;

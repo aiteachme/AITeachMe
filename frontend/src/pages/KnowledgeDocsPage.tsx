@@ -246,6 +246,7 @@ const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
+const KNOWLEDGE_GRAPH_DRAWER_EVENT = "aiteachme:knowledge-graph-drawer";
 const SELECTION_SELECTED_TEXT_LIMIT = 1200;
 const SELECTION_LOCAL_CONTEXT_CHARS = 900;
 const SELECTION_SECTION_CONTEXT_CHARS = 3200;
@@ -2178,6 +2179,19 @@ export function KnowledgeDocsPage() {
   const closeGraphPanel = useCallback(() => {
     setIsGraphDrawerOpen(false);
   }, []);
+
+  useEffect(() => {
+    document.body.dataset.knowledgeGraphDrawerOpen = isGraphDrawerOpen ? "true" : "false";
+    window.dispatchEvent(new CustomEvent(KNOWLEDGE_GRAPH_DRAWER_EVENT, {
+      detail: { open: isGraphDrawerOpen },
+    }));
+    return () => {
+      document.body.dataset.knowledgeGraphDrawerOpen = "false";
+      window.dispatchEvent(new CustomEvent(KNOWLEDGE_GRAPH_DRAWER_EVENT, {
+        detail: { open: false },
+      }));
+    };
+  }, [isGraphDrawerOpen]);
 
   // Build hierarchical tree from flat TOC (Feishu-style)
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
@@ -5077,7 +5091,7 @@ export function KnowledgeDocsPage() {
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
-  const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen);
+  const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
   if (!hasRenderedMarkdown && showDocLoadingState) {
     return (

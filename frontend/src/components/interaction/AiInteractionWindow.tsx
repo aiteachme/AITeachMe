@@ -23,6 +23,7 @@ interface AiConversationViewLoaderProps {
 }
 
 const SIDEBAR_TRANSITION_MS = 220;
+const KNOWLEDGE_GRAPH_DRAWER_EVENT = "aiteachme:knowledge-graph-drawer";
 
 const LazyAiConversationView = lazy(() =>
   import("./conversation/AiConversationView").then((module) => ({
@@ -45,6 +46,9 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const outsidePointerRef = useRef<{ x: number; y: number; selectedText: string } | null>(null);
   const [isSidebarMounted, setIsSidebarMounted] = useState(false);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [isKnowledgeGraphDrawerOpen, setIsKnowledgeGraphDrawerOpen] = useState(() => (
+    typeof document !== "undefined" && document.body.dataset.knowledgeGraphDrawerOpen === "true"
+  ));
   const {
     activeScope,
     sidebarScope,
@@ -73,7 +77,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   const shouldReserveSidebarWidth = shouldShowSidebarPanel || isSidebarMounted;
   const shouldRenderSidebarPanel = canShowSidebar && (shouldReserveSidebarWidth || isSidebarStreaming);
   const isSidebarVisuallyOpen = shouldShowSidebarPanel && isSidebarVisible;
-  const shouldShowFloatingTrigger = canShowSidebar && !shouldReserveSidebarWidth && !isSidebarStreaming;
+  const shouldShowFloatingTrigger = canShowSidebar && !shouldReserveSidebarWidth && !isSidebarStreaming && !isKnowledgeGraphDrawerOpen;
   const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
     defaultWidth: defaultSidebarWidth,
     minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
@@ -101,6 +105,24 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     }, SIDEBAR_TRANSITION_MS);
     return () => window.clearTimeout(timeoutId);
   }, [canShowSidebar, shouldShowSidebarPanel]);
+
+  useEffect(() => {
+    const syncFromBody = () => {
+      setIsKnowledgeGraphDrawerOpen(document.body.dataset.knowledgeGraphDrawerOpen === "true");
+    };
+    const handleGraphDrawerEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ open?: boolean }>).detail;
+      if (typeof detail?.open === "boolean") {
+        setIsKnowledgeGraphDrawerOpen(detail.open);
+        return;
+      }
+      syncFromBody();
+    };
+
+    syncFromBody();
+    window.addEventListener(KNOWLEDGE_GRAPH_DRAWER_EVENT, handleGraphDrawerEvent);
+    return () => window.removeEventListener(KNOWLEDGE_GRAPH_DRAWER_EVENT, handleGraphDrawerEvent);
+  }, []);
 
   const handleOpenSidebar = useCallback(() => {
     openAiInteraction({ mode: "sidebar" });
