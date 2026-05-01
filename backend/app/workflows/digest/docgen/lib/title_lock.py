@@ -10,7 +10,11 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
+from app.workflows.digest.common.pedagogy import (
+    clean_generated_chapter_title,
+    is_usable_resolved_chapter_title,
+    resolve_effective_chapter_title,
+)
 from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle, clean_text
@@ -68,7 +72,9 @@ def _resolve_locked_title(
     plan_summary: str,
 ) -> tuple[str, str | None]:
     candidate = clean_generated_chapter_title(clean_text(candidate_title))
-    confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "未命名章节"
+    confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "本章内容"
+    if candidate and not is_usable_resolved_chapter_title(candidate):
+        return confirmed, f"标题 `{candidate}` 不是可发布语义标题，已回退到 `{confirmed}`。"
     if not candidate:
         return confirmed, None
     if len(candidate) > 32:
@@ -90,10 +96,7 @@ def fallback_locked_title(
     chapter: Mapping[str, Any],
 ) -> LockedChapterTitle:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
-    confirmed_title = (
-        clean_generated_chapter_title(clean_text(chapter.get("title") or chapter.get("resolved_title") or ""))
-        or "未命名章节"
-    )
+    confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     return LockedChapterTitle(
         chapter_index=chapter_index,
         confirmed_title=confirmed_title,

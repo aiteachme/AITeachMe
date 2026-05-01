@@ -6,6 +6,11 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.workflows.digest.common.pedagogy import (
+    is_usable_resolved_chapter_title,
+    resolve_effective_chapter_title,
+)
+
 
 def clean_text(value: Any) -> str:
     return str(value or "").strip()
@@ -53,6 +58,33 @@ def clean_unit_float(value: Any, *, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
     return max(0.0, min(1.0, parsed))
+
+
+def _resolve_task_title(
+    *,
+    chapter_index: int,
+    confirmed_title: str,
+    enhanced_title: str,
+    objective: str = "",
+    required_elements: list[str] | None = None,
+    fallback_title: str = "",
+) -> str:
+    title = resolve_effective_chapter_title(
+        {
+            "chapter_index": chapter_index,
+            "title": enhanced_title,
+            "resolved_title": enhanced_title,
+            "objective": objective,
+            "chapter_goal": objective,
+            "required_elements": list(required_elements or []),
+        },
+        chapter_index=chapter_index,
+        fallback_title=confirmed_title or fallback_title,
+    )
+    if is_usable_resolved_chapter_title(title):
+        return title
+    cleaned_fallback = clean_text(confirmed_title or fallback_title)
+    return cleaned_fallback or f"第 {chapter_index} 章"
 
 
 class DocGenBaseModel(BaseModel):
@@ -404,9 +436,16 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTaskSeed":
-        if not self.enhanced_title:
-            self.enhanced_title = self.confirmed_title or f"第 {self.chapter_index} 章"
-        if not self.confirmed_title:
+        resolved_title = _resolve_task_title(
+            chapter_index=self.chapter_index,
+            confirmed_title=self.confirmed_title,
+            enhanced_title=self.enhanced_title,
+            objective=self.chapter_goal,
+            required_elements=self.required_elements,
+        )
+        if not is_usable_resolved_chapter_title(self.enhanced_title):
+            self.enhanced_title = resolved_title
+        if not is_usable_resolved_chapter_title(self.confirmed_title):
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
             self.retrieval_queries = clean_string_list([self.enhanced_title, *self.required_elements])
@@ -545,9 +584,24 @@ class ChapterGenerationTask(DocGenBaseModel):
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":
-        if not self.enhanced_title:
-            self.enhanced_title = self.confirmed_title or f"第 {self.chapter_index} 章"
-        if not self.confirmed_title:
+        resolved_title = _resolve_task_title(
+            chapter_index=self.chapter_index,
+            confirmed_title=self.confirmed_title,
+            enhanced_title=self.enhanced_title,
+            objective=self.objective,
+            required_elements=[
+                *self.required_elements,
+                *self.content_points,
+                *self.concept_targets,
+                *self.definition_targets,
+                *self.formula_targets,
+                *self.example_targets,
+                *self.pitfall_targets,
+            ],
+        )
+        if not is_usable_resolved_chapter_title(self.enhanced_title):
+            self.enhanced_title = resolved_title
+        if not is_usable_resolved_chapter_title(self.confirmed_title):
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
             self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points])

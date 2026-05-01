@@ -4,7 +4,15 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
-import { ChevronRight } from "lucide-react";
+import {
+  BadgeCheck,
+  ChevronRight,
+  Info,
+  Lightbulb,
+  OctagonAlert,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 
 import { runTrackedApiFetch } from "../../api/client";
 import { cn } from "../../lib/utils";
@@ -34,6 +42,8 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   rightarrow: "→",
   leftarrow: "←",
 };
+const CALLOUT_LEADING_ICON_RE =
+  /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 
 type MarkdownAstNode = {
   type?: string;
@@ -96,12 +106,12 @@ type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
   node?: unknown;
 };
 
-const CALLOUT_LABELS: Record<CalloutKind, string> = {
-  note: "📌 提示",
-  tip: "💡 诀窍",
-  important: "🎯 重点",
-  warning: "⚠️ 注意",
-  caution: "⛔ 警告",
+const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
+  note: { label: "提示", Icon: Info },
+  tip: { label: "诀窍", Icon: Lightbulb },
+  important: { label: "重点", Icon: BadgeCheck },
+  warning: { label: "注意", Icon: TriangleAlert },
+  caution: { label: "警告", Icon: OctagonAlert },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
@@ -440,8 +450,21 @@ function trimBlankLines(lines: string[]): string[] {
   return next;
 }
 
+function stripLeadingCalloutIcon(line: string): string {
+  return String(line || "").replace(CALLOUT_LEADING_ICON_RE, "").replace(/^\s+/, "");
+}
+
+function normalizeCalloutBodyLines(lines: string[]): string[] {
+  const body = trimBlankLines(lines);
+  const firstContentIndex = body.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex >= 0) {
+    body[firstContentIndex] = stripLeadingCalloutIcon(body[firstContentIndex]);
+  }
+  return body;
+}
+
 function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[]) {
-  const body = trimBlankLines(bodyLines);
+  const body = normalizeCalloutBodyLines(bodyLines);
   target.push(`> [!${kind.toUpperCase()}]`);
   if (body.length === 0) {
     target.push("");
@@ -883,8 +906,18 @@ function unescapedSingleDollarPositions(line: string): number[] {
   return positions;
 }
 
+function inlineMathBodyHasSignal(body: string): boolean {
+  const trimmed = body.trim();
+  return (
+    /\\(?:frac|dfrac|tfrac|lim|sum|prod|int|sqrt|left|right|to|infty|text|cdot|times|leq?|geq?|neq|approx|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|omega)\b/.test(trimmed) ||
+    /[_^{}∞∑∫√≤≥≈≠]|[A-Za-z0-9]\s*[=+\-*/<>]\s*[A-Za-z0-9\\]/.test(trimmed)
+  );
+}
+
 function inlineMathBodyLooksUnsafe(body: string): boolean {
-  if (body.length > 240) return true;
+  const trimmed = body.trim();
+  if (!trimmed) return true;
+  if (trimmed.length > 800 && !inlineMathBodyHasSignal(trimmed)) return true;
   if (/[`]|<\/?[a-z][\s>]/i.test(body)) return true;
   if (body.includes("**") || body.includes("[!") || body.includes("```")) return true;
   return new RegExp(
@@ -893,8 +926,18 @@ function inlineMathBodyLooksUnsafe(body: string): boolean {
   ).test(body);
 }
 
+function restoreEscapedInlineMathLineForRender(line: string): string {
+  return line.replace(/\\\$([^\n]*?)\\\$/g, (match, body: string) => {
+    const trimmed = String(body || "").trim();
+    if (!trimmed || !inlineMathBodyHasSignal(trimmed) || inlineMathBodyLooksUnsafe(trimmed)) {
+      return match;
+    }
+    return `$${trimmed}$`;
+  });
+}
+
 function repairInlineMathLineForRender(line: string): string {
-  let working = line;
+  let working = restoreEscapedInlineMathLineForRender(line);
   let positions = unescapedSingleDollarPositions(working);
   if (positions.length % 2 !== 0) {
     const dangling = positions[positions.length - 1];
@@ -914,6 +957,9 @@ function repairInlineMathLineForRender(line: string): string {
     output.push(working.slice(cursor, left));
     if (inlineMathBodyLooksUnsafe(body)) {
       output.push("\\$", body, "\\$");
+      changed = true;
+    } else if (body !== body.trim()) {
+      output.push("$", body.trim(), "$");
       changed = true;
     } else {
       output.push(working.slice(left, right + 1));
@@ -1995,11 +2041,14 @@ export function MarkdownViewer({
           }
 
           const tone = CALLOUT_STYLES[variant][callout.kind];
+          const calloutMeta = CALLOUT_META[callout.kind];
+          const CalloutIcon = calloutMeta.Icon;
           return (
             <aside className={tone.shell}>
               <div className="mb-3 flex items-center gap-2">
-                <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]", tone.badge)}>
-                  {CALLOUT_LABELS[callout.kind]}
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em]", tone.badge)}>
+                  <CalloutIcon className="h-3.5 w-3.5" />
+                  {calloutMeta.label}
                 </span>
               </div>
               <div className="[&>*:last-child]:mb-0">{callout.body}</div>
