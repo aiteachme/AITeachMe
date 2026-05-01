@@ -131,7 +131,7 @@ interface ExamPrewarmStatusResponse {
   error_message?: string | null;
 }
 
-const EXAM_PAGE_SHELL_CLASS = "min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-10 lg:px-12 lg:pt-10 xl:px-16";
+const EXAM_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1360px] px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-8 lg:pt-10";
 const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
 
 
@@ -537,7 +537,7 @@ export function ExamsPage() {
                     }
                     className="flex w-full items-center gap-5 px-1 py-2 text-left"
                   >
-                    <h3 className="shrink-0 text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
+                    <h3 className="shrink-0 text-lg font-semibold text-slate-950 dark:text-slate-100">
                       {group.title}({group.items.length})
                     </h3>
                     <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -1422,7 +1422,7 @@ export function QuestionTypesPage() {
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
+                <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-slate-950 dark:text-slate-100">
                   {group.icon}
                   {group.title}
                 </h2>

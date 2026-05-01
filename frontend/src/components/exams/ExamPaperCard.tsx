@@ -603,7 +603,7 @@ export function ExamPaperCard({
         >
 
         <div className="relative z-10 px-3 pt-2 text-center">
-          <h3 className="mx-auto line-clamp-2 max-w-[180px] text-base font-semibold leading-snug tracking-[-0.02em] text-slate-950 dark:text-slate-100">
+          <h3 className="mx-auto line-clamp-2 max-w-[180px] text-base font-semibold leading-snug text-slate-950 dark:text-slate-100">
             {buildExamTitle(item)}
           </h3>
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />

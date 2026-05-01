@@ -3,8 +3,12 @@ import { chatHandlers } from "./handlers/chat";
 import { examHandlers } from "./handlers/exam";
 import { profileHandlers } from "./handlers/profile";
 import { courseHandlers } from "./handlers/courses";
+import { systemHandlers } from "./handlers/system";
+import { knowledgeGraphHandlers } from "./handlers/knowledgeGraph";
 
 export const handlers = [
+  ...systemHandlers,
+  ...knowledgeGraphHandlers,
   ...courseHandlers,
   ...fileHandlers,
   ...chatHandlers,

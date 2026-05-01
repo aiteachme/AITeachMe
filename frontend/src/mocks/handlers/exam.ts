@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw";
 
-type ExamMode = "diagnostic" | "practice" | "weakpoint_boost" | "review" | "mock_final";
+type ExamMode = "diagnostic" | "practice" | "web_practice" | "weakpoint_boost" | "review" | "mock_final";
 type QuestionType = "single_choice" | "fill_blank" | "short_answer";
 
 type QuestionTemplateSeed = {
@@ -168,7 +168,7 @@ function extractRequestedCount(prompt: string | undefined): number | null {
 
 function defaultCountByMode(mode: ExamMode): number {
   if (mode === "diagnostic") return 12;
-  if (mode === "practice") return 10;
+  if (mode === "practice" || mode === "web_practice") return 10;
   if (mode === "weakpoint_boost") return 10;
   if (mode === "review") return 8;
   return 20;
@@ -190,7 +190,7 @@ function chooseQuestionTypes(mode: ExamMode, prompt: string | undefined): Questi
   if (picked.length > 0) return [...new Set(picked)];
 
   if (mode === "review") return ["single_choice"];
-  if (mode === "practice") return ["single_choice", "fill_blank"];
+  if (mode === "practice" || mode === "web_practice") return ["single_choice", "fill_blank"];
   if (mode === "weakpoint_boost") return ["single_choice", "short_answer"];
   return ["single_choice", "fill_blank", "short_answer"];
 }
@@ -436,8 +436,126 @@ const seededPaper: InternalPaper = {
   ],
 };
 papers.set(seededPaper.id, seededPaper);
+papers.set(2, {
+  ...seededPaper,
+  id: 2,
+  course: "mock",
+  items: seededPaper.items.map((item, index) => ({
+    ...item,
+    id: 201 + index,
+  })),
+});
+
+function buildQuestionTemplates(course: string): Array<Record<string, unknown>> {
+  return Object.values(QUESTION_BANK)
+    .flat()
+    .map((template) => ({
+      id: template.id,
+      course,
+      question_type: template.question_type,
+      difficulty: template.difficulty,
+      stem: template.stem,
+      options: template.options,
+      answer: template.answer,
+      explanation: template.explanation,
+      knowledge_unit_refs: [
+        {
+          knowledge_unit_id: template.knowledge_unit_id,
+          knowledge_unit_name: `KU-${template.knowledge_unit_id}`,
+          coverage_weight: 1,
+        },
+      ],
+      selection_hints: {},
+      template_version: 1,
+      status: "active",
+      is_marked: markedQuestionTemplateIds.has(template.id),
+      has_wrong_attempt: template.id === 3001,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    }));
+}
+
+function buildQuestionTypes(course: string): Array<Record<string, unknown>> {
+  return [
+    {
+      id: 1,
+      type_key: "single_choice",
+      display_name: "单选题",
+      scope: "system",
+      course,
+      description: "从多个选项中选出唯一正确答案。",
+      answer_format: "choice",
+      grading_method: "exact_match",
+      option_schema: {},
+      rubric: {},
+      source: "mock",
+      confidence: 1,
+      is_system: true,
+      is_active: true,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    },
+    {
+      id: 2,
+      type_key: "fill_blank",
+      display_name: "填空题",
+      scope: "system",
+      course,
+      description: "补全关键结论或计算结果。",
+      answer_format: "text",
+      grading_method: "normalized_match",
+      option_schema: {},
+      rubric: {},
+      source: "mock",
+      confidence: 1,
+      is_system: true,
+      is_active: true,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    },
+    {
+      id: 3,
+      type_key: "short_answer",
+      display_name: "简答题",
+      scope: "system",
+      course,
+      description: "给出简短推导、结论或解释。",
+      answer_format: "text",
+      grading_method: "rubric",
+      option_schema: {},
+      rubric: {},
+      source: "mock",
+      confidence: 1,
+      is_system: true,
+      is_active: true,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    },
+  ];
+}
 
 export const examHandlers = [
+  http.get("/api/v1/courses/:course/exams/prewarm-status", ({ params, request }) => {
+    const url = new URL(request.url);
+    const examMode = (url.searchParams.get("exam_mode") || "web_practice") as ExamMode;
+    const numQuestions = Math.max(1, Number(url.searchParams.get("num_questions") ?? defaultCountByMode(examMode)));
+    const now = nowIso();
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        status: "ready",
+        exam_mode: examMode,
+        num_questions: numQuestions,
+        prepared_at: now,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        updated_at: now,
+        background_requested: false,
+        error_message: null,
+        course: String(params.course),
+      },
+    });
+  }),
+
   http.post("/api/v1/courses/:course/exams/generate", async ({ params, request }) => {
     const course = String(params.course);
     if (activeGenerateCourse.has(course)) {
@@ -493,7 +611,7 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: job });
   }),
 
-  http.post("/api/v1/courses/:course/exams/history", ({ params, request }) => {
+  http.get("/api/v1/courses/:course/exams/history", ({ params, request }) => {
     const course = String(params.course);
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
@@ -520,6 +638,14 @@ export const examHandlers = [
     const start = (page - 1) * size;
     const items = all.slice(start, start + size);
     return HttpResponse.json({ code: 0, data: { items, total: all.length, page, size } });
+  }),
+
+  http.get("/api/v1/courses/:course/exams/question-templates", ({ params }) => {
+    return HttpResponse.json({ code: 0, data: buildQuestionTemplates(String(params.course)) });
+  }),
+
+  http.get("/api/v1/courses/:course/exams/question-types", ({ params }) => {
+    return HttpResponse.json({ code: 0, data: buildQuestionTypes(String(params.course)) });
   }),
 
   http.post("/api/v1/courses/:course/exams/question-bank", ({ params }) => {
@@ -586,13 +712,22 @@ export const examHandlers = [
     });
   }),
 
-  http.post("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {
+  http.get("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
     const paper = papers.get(paperId);
     if (!paper) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
     }
     return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
+  }),
+
+  http.delete("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {
+    const paperId = Number(params.examPaperId);
+    if (!papers.has(paperId)) {
+      return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
+    }
+    papers.delete(paperId);
+    return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });
   }),
 
   http.post("/api/v1/courses/:course/exams/:examPaperId/delete", ({ params }) => {

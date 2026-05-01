@@ -181,7 +181,7 @@ export const profileHandlers = [
     return HttpResponse.json({ code: 0, data: mockMasteryOverview });
   }),
 
-  http.get("/api/v1/courses/:course/profile/review/tasks", () => {
+  http.get("/api/v1/courses/:course/profile/reviews", () => {
     return HttpResponse.json({ code: 0, data: mockReviewTasks });
   }),
 

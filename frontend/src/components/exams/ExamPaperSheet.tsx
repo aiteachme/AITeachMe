@@ -299,7 +299,7 @@ export function ExamPaperSheet({
 
   return (
                 <div
-                  className="relative mx-auto max-w-[1240px] pb-12"
+                  className="relative mx-auto max-w-[1040px] pb-12"
                   style={
                     pageScale < 1
                       ? {
@@ -328,7 +328,7 @@ export function ExamPaperSheet({
                       <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
                         <p className="font-bold text-slate-800 dark:text-slate-200">注意事项：</p>
                         <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
-                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查左侧题号状态。</p>
+                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查题号导航状态。</p>
                       </div>
                     </header>
 

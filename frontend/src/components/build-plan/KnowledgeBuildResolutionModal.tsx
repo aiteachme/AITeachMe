@@ -10,12 +10,12 @@ import { Modal } from "../ui/Modal";
 const PRECHECK_REASON_TITLES: Record<string, string> = {
   embedding_not_configured: "当前后端还没有可用的 embedding 配置",
   embedding_api_key_missing: "当前后端缺少 embedding 调用凭证",
-  vector_extension_unavailable: "当前环境暂时不可用本地向量能力",
-  course_not_bound: "当前课程还没有绑定专属的向量模型",
+  vector_extension_unavailable: "当前环境暂时不可用语义检索索引",
+  course_not_bound: "当前课程还没有绑定专属的语义检索模型",
   embedding_model_mismatch: "当前运行时模型与课程已绑定模型不一致",
-  embedding_dimension_mismatch: "当前运行时向量维度与课程绑定维度不一致",
-  vector_table_missing: "当前课程缺少可用的向量索引",
-  vector_table_dimension_mismatch: "当前课程向量索引维度与绑定配置不一致",
+  embedding_dimension_mismatch: "当前运行时 embedding 维度与课程绑定维度不一致",
+  vector_table_missing: "当前课程缺少可用的语义检索索引",
+  vector_table_dimension_mismatch: "当前课程语义检索索引维度与绑定配置不一致",
 };
 
 function formatModelSummary(model?: string | null, dim?: number | null) {
@@ -47,14 +47,14 @@ export function KnowledgeBuildResolutionModal({
   onResolve,
 }: KnowledgeBuildResolutionModalProps) {
   const title = conflict
-    ? PRECHECK_REASON_TITLES[conflict.reason] ?? "当前课程的向量配置需要先确认处理方式"
-    : "向量配置确认";
+    ? PRECHECK_REASON_TITLES[conflict.reason] ?? "当前课程的语义检索配置需要先确认处理方式"
+    : "语义检索配置确认";
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="确认当前课程的向量处理方式"
+      title="确认当前课程的语义检索处理方式"
       className="max-w-2xl"
     >
       {!conflict ? null : (
@@ -65,7 +65,10 @@ export function KnowledgeBuildResolutionModal({
               <div className="space-y-1.5">
                 <p className="font-semibold text-amber-900 dark:text-amber-100">{title}</p>
                 <p>
-                  为了避免把不同模型、不同维度的向量混进同一个课程，这次构建需要你先确认处理策略。
+                  为了避免把不同 embedding 模型生成的检索索引混进同一个课程，这次构建需要你先确认处理策略。
+                </p>
+                <p className="text-amber-700 dark:text-amber-200/90">
+                  这里的“向量”不是线代知识点，而是 AI 检索资料时使用的语义坐标。
                 </p>
               </div>
             </div>
@@ -97,15 +100,15 @@ export function KnowledgeBuildResolutionModal({
             <p className="font-medium text-slate-800 dark:text-slate-100">你可以这样处理：</p>
             <div className="mt-3 space-y-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
-                <p className="font-medium text-slate-800 dark:text-slate-100">1. 全量重建当前课程向量</p>
+                <p className="font-medium text-slate-800 dark:text-slate-100">1. 全量重建当前课程语义索引</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">
-                  系统会忽略这次勾选范围，改为读取当前课程全部已就绪资料，并按当前运行时模型重建向量索引。
+                  系统会忽略这次勾选范围，改为读取当前课程全部已就绪资料，并按当前运行时模型重建检索索引。
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
-                <p className="font-medium text-slate-800 dark:text-slate-100">2. 继续构建，但关闭当前课程向量能力</p>
+                <p className="font-medium text-slate-800 dark:text-slate-100">2. 继续构建，但关闭当前课程语义检索</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">
-                  知识文档、图谱和课程结构会继续生成，但向量写入、向量检索与依赖向量的能力会先暂停。
+                  知识文档、图谱和课程结构会继续生成，但语义索引写入、语义检索与依赖检索的能力会先暂停。
                 </p>
               </div>
             </div>
@@ -121,7 +124,7 @@ export function KnowledgeBuildResolutionModal({
               disabled={isSubmitting}
               className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
             >
-              继续构建并关闭向量
+              继续构建并关闭检索
             </Button>
             <Button onClick={() => onResolve("rebuild")} disabled={isSubmitting}>
               {isSubmitting ? (
@@ -130,7 +133,7 @@ export function KnowledgeBuildResolutionModal({
                   正在提交...
                 </>
               ) : (
-                "全量重建当前课程向量"
+                "全量重建语义索引"
               )}
             </Button>
           </div>

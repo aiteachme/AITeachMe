@@ -22,7 +22,7 @@ function AnalysisBlock({ title, content }: { title: string; content: string }) {
 export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetProps) {
   if (!item) {
     return (
-      <aside className="relative min-h-[560px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-8 py-8 shadow-[0_26px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-34px_rgba(0,0,0,0.9)]">
+      <aside className="relative min-h-[480px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-8 py-8 shadow-[0_26px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-34px_rgba(0,0,0,0.9)]">
         <h2 className="font-serif text-2xl font-bold text-slate-950 dark:text-slate-100">题目解析</h2>
         <div className="mt-8 rounded-xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
           请选择左侧题目查看解析。
@@ -34,7 +34,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
   const isCorrect = item.is_correct === true;
 
   return (
-    <aside className="relative min-h-[720px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-6 py-7 shadow-[0_26px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-34px_rgba(0,0,0,0.9)] sm:px-8 lg:sticky lg:top-24">
+    <aside className="relative min-h-[520px] w-full min-w-0 overflow-hidden border border-slate-200 bg-white px-6 py-7 shadow-[0_26px_70px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-34px_rgba(0,0,0,0.9)] sm:px-8 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
       <header className="border-b border-slate-200 pb-5 dark:border-slate-800">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

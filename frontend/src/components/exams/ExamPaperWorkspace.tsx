@@ -596,12 +596,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         }}
       />
 
-      <div className="px-4 py-6 sm:px-6 md:px-10 lg:px-12 xl:px-16">
+      <div className="px-4 py-6 sm:px-6 md:px-8 lg:px-10 xl:px-12">
         <div
           className={`mx-auto space-y-6 ${
             isReviewLayout
-              ? "max-w-none lg:mr-16 xl:mr-20 2xl:mr-24"
-              : "max-w-none"
+              ? "max-w-[1380px]"
+              : "max-w-[1180px]"
           }`}
         >
           {examDetailQuery.isLoading && (
@@ -761,25 +761,25 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               >
                 {isReviewLayout ? (
                   <div className="pb-4">
-                    <div className="grid w-full grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.62fr)] 2xl:grid-cols-[minmax(820px,1fr)_minmax(520px,0.72fr)] 2xl:gap-8">
-                    <ExamPaperSheet
-                      paper={paper}
-                      answers={answers}
-                      activeStage={activeStage}
-                      pageScale={1}
-                      highlightedQuestionOrder={highlightedQuestionOrder}
-                      setAnswers={setAnswers}
-                      selectedItemId={selectedReviewItem?.id ?? null}
-                      showInlineReviewDetails={false}
-                      onSelectQuestion={(item) => {
-                        setSelectedReviewItemId(item.id);
-                        keepQuestionHighlight(item.item_order);
-                      }}
-                      onQuestionAi={openQuestionAi}
-                      onQuestionMarkToggle={toggleQuestionMark}
-                      markingQuestionTemplateId={markingQuestionTemplateId}
-                    />
-                    <ExamQuestionAnalysisSheet item={selectedReviewItem} />
+                    <div className="grid w-full grid-cols-1 items-start justify-center gap-6 xl:grid-cols-[minmax(0,900px)_minmax(360px,420px)] 2xl:gap-8">
+                      <ExamPaperSheet
+                        paper={paper}
+                        answers={answers}
+                        activeStage={activeStage}
+                        pageScale={1}
+                        highlightedQuestionOrder={highlightedQuestionOrder}
+                        setAnswers={setAnswers}
+                        selectedItemId={selectedReviewItem?.id ?? null}
+                        showInlineReviewDetails={false}
+                        onSelectQuestion={(item) => {
+                          setSelectedReviewItemId(item.id);
+                          keepQuestionHighlight(item.item_order);
+                        }}
+                        onQuestionAi={openQuestionAi}
+                        onQuestionMarkToggle={toggleQuestionMark}
+                        markingQuestionTemplateId={markingQuestionTemplateId}
+                      />
+                      <ExamQuestionAnalysisSheet item={selectedReviewItem} />
                     </div>
                   </div>
                 ) : (
