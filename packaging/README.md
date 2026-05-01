@@ -78,6 +78,8 @@ NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记�
 
 Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
 
+Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
+
 ## 预绑定本地大模型配置
 
 本地版安装包可以显式选择把 `packaging\private\bundled-env.json` 中的大模型接入配置加密后打进后端包里。该私有文件不会提交到仓库；仓库只保留 `packaging\private\bundled-env.json.example` 模板。

@@ -14,6 +14,8 @@ Tauri 作为可选桌面端包，通过统一入口显式启用：
 
 Tauri local 会打包 Vite 前端、Tauri 壳，以及 PyInstaller 生成的本地后端运行件。后端运行件会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\`，由 Tauri 主程序自动启动；默认启动时自动申请可用本地端口并注入前端，避免固定占用 `9020`。安装目录可写时，后端日志、本地数据和 PyInstaller onefile 临时解包目录写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
 
+Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
+
 NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` 标记为隐藏文件，普通文件夹视图里只保留用户启动的主程序 `.exe`。
 
 产物写入：
