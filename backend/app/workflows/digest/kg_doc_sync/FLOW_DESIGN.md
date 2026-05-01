@@ -1,8 +1,10 @@
-# kg_doc_sync Flow Design
+# KG Doc Sync 流程设计
 
-最后更新：2026-04-30
+最后更新：2026-05-02
 
 `kg_doc_sync` 是知识文档到知识图谱的正式同步链路。它不再直接解析用户上传的原始文件；正式落库输入仍然只有当前课程已经发布的 `KnowledgeDoc`、DocGen 结构化产物、章节来源映射和 `Course.document_summary_json`。自动同步可以复用 DocGen 期间产生的内存预抽取缓存，但发布前不会写 `knowledge_unit / knowledge_edge`。除 DocGen 发布后的自动同步外，前端知识图谱面板可以调用 `/api/v1/courses/{course}/knowledge/build/graph` 手动重建图谱；该入口仍然只从已入库的知识文档和 manifest 读取输入，不依赖预抽取缓存，也不接收前端临时 Markdown。
+
+这份文档是 `backend/app/workflows/digest/kg_doc_sync/` 当前唯一的文档文件。后续如果流程、节点、输入输出或持久化边界变化，必须同步更新短流程总览和长流程执行合同。
 
 当前写入的核心表：
 
@@ -147,7 +149,7 @@ prepare
 
 | 层级 | 配置 / 常量 | 当前默认 | 作用 |
 | --- | --- | --- | --- |
-| 全局 LLM limiter | `settings.llm.concurrency_limit` | `32` | 所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 模型调用共享的进程级并发上限 |
+| 全局 LLM limiter | `settings.llm.concurrency_limit` | `16` | 所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 模型调用共享的进程级并发上限 |
 | 阶段 A 预抽取 | `settings.knowledge_graph.prefetch_concurrency` | `2` | DocGen 仍在运行时，KG sidecar 最多占用的 section 抽取并发 |
 | 阶段 B 正式同步 | `settings.knowledge_graph.max_parallel_extractions` | `16` | 发布后正式图谱同步的章节/子章节抽取规划上限和默认执行上限 |
 
@@ -666,18 +668,19 @@ payload fan-in
     - diagnostics_totals
   步骤：
     1. `_make_payload_anchors_unique` 做全局 anchor 去重。
-    2. 合并 anchors_by_name / anchors_by_normalized_name。
-    3. `_build_backbone_graph_items` 消费 DocGen backbone：
+    2. `_namespace_payload_candidate_ids` 给每个分片的 LLM 局部 candidate id 加命名空间，避免不同分片都使用 `n1/n2` 时把 pending edge 解析到错误章节。
+    3. 合并 anchors_by_name / anchors_by_normalized_name。
+    4. `_build_backbone_graph_items` 消费 DocGen backbone：
        - `docgen_manifest.document_backbone_snapshot`
        - `document_summary_json.document_backbone`
-    4. `canonical_glossary` 只记录和已存在节点的章节映射，不创建缺失 term；纯 confirmed plan / required_elements 词条不会直接入图。
-    5. `concept_dependency_graph` 只在 source/target 两端都已经由正文抽取存在时生成关系：
+    5. `canonical_glossary` 只记录和已存在节点的章节映射，不创建缺失 term；纯 confirmed plan / required_elements 词条不会直接入图。
+    6. `concept_dependency_graph` 只在 source/target 两端都已经由正文抽取存在时生成关系：
        - `chapter_order` -> `prerequisite`
        - 其它 relation 走 normalize_relation_type。
        - 单个章节/子章节 LLM 抽取失败不会让整条图谱链路失败；失败分片会记录为 `failed_section_count` / `llm_error_count`，其它成功分片继续合并并落库。
-    6. `_build_structural_heading_edges` 补标题结构边。
-    7. `_build_cross_section_semantic_edges` 补保守跨章节语义边。
-    8. 解析 pending edge endpoints，不能解析或自环则跳过。
+    7. `_build_structural_heading_edges` 补标题结构边。
+    8. `_build_cross_section_semantic_edges` 补保守跨章节语义边。
+    9. 解析 pending edge endpoints，不能解析或自环则跳过。
   当前模型方案：
     - 无 LLM。
 
@@ -734,6 +737,431 @@ fail
   当前模型方案：
     - 无 LLM。
 ```
+
+### 1.3 持久化与数据库读写合同
+
+这一节只描述当前代码真实发生的数据库和存储读写。KG docs-sync 的原则是：正式图谱落库只从已发布知识文档、DocGen manifest、课程摘要和同轮预抽取缓存中取输入；不再直接从原始上传文件构建图谱。
+
+#### 1.3.1 手动入口：`trigger_graph_docs_sync_manual_build`
+
+输入：
+
+- `course`：API 鉴权后的课程。
+- `background_task_registry`：可选后台任务注册器。
+
+输出：
+
+- `KnowledgeGraphBuildData`
+  - `course_id`
+  - `status="accepted"`
+  - `requested_at`
+  - `build_group_id`
+  - `build_session_id`
+  - `source_file_ids`
+
+读：
+
+- build runtime：
+  - 如果 docgen lane 仍在 active 状态，拒绝构建。
+  - 如果 graph lane active 且不是陈旧 accepted，拒绝重复构建。
+- `KnowledgeDoc(is_current=True, status="published")`：读取当前已发布章节 Markdown。
+- `KnowledgeDocsManifest`：读取 doc version、source_file_ids、prompt、docgen_manifest_key。
+- `Course.document_summary_json`：作为 structured context 的一部分。
+
+写：
+
+- graph lane runtime：
+  - `status="accepted"`
+  - `stage="manual_graph_requested"`
+  - `build_session_id`
+  - `source_file_ids`
+  - `prompt`
+  - `metrics.knowledge_doc_source`
+  - `metrics.knowledge_doc_chapter_count`
+  - `metrics.last_synced_doc_version_no`
+  - `metrics.graph_input_paths`
+- 捕获当前 LLM runtime snapshot。
+- 注册 `run_graph_docs_sync_manual_build` 后台任务。
+
+不写：
+
+- 不创建 `knowledge_graph_sync_run`。
+- 不写 `knowledge_unit / knowledge_edge / knowledge_graph_source_ref`。
+- 不读取 DocGen prefetch cache。
+
+#### 1.3.2 自动入口：`run_graph_docs_sync_auto_build`
+
+输入：
+
+- DocGen 成功发布后的 `docgen_state`。
+- `build_group_id / build_session_id / requested_at`。
+- `file_ids / prompt`。
+- DocGen 构建开始时固化的 `llm_snapshot`。
+
+输出：
+
+- 无直接 API 返回；通过 graph lane runtime 和图谱表供前端读取。
+
+读：
+
+- 优先从 `docgen_state` 构造 `KnowledgeDocSyncInput`：
+  - `merged_markdown`
+  - `chapter_metadatas`
+  - `doc_ids`
+  - 最新 `docgen_manifest`
+- 如果 state 不完整，兜底读取数据库中当前发布 `KnowledgeDoc`。
+- 读取 `KnowledgeDocsManifest` 和 `Course.document_summary_json`。
+- 消费并停止同 `course_id + build_session_id` 下的 DocGen KG prefetch cache。
+
+写：
+
+- graph lane runtime：
+  - `running / graph_docs_sync`
+  - `completed / partial_failed / failed / cancelled`
+  - doc sync metrics
+  - prefetch metrics
+- 如果自动同步提前写入 KnowledgeUnit，则可能触发默认考卷预热任务。
+
+模型配置：
+
+- 自动入口使用 DocGen 传入的 `llm_snapshot`，确保首页模型选择在 Planner -> DocGen -> KG 自动同步中不漂移。
+- 手动入口使用手动触发时的当前 settings snapshot。
+
+#### 1.3.3 输入装配：`load_knowledge_doc_sync_input`
+
+输入：
+
+- `course_id`
+- 可选 DB `session`
+- 可选 `course_scope`
+
+输出：
+
+- `KnowledgeDocSyncInput`
+  - `markdown`
+  - `source`
+  - `structured_context`
+
+读：
+
+- `KnowledgeDoc`：
+  - `markdown_content / content_markdown`
+  - `chapter_index`
+  - `title`
+  - `summary`
+  - `source_file_ids`
+  - `source_scope_json`
+  - `manifest_json`
+  - `version_no`
+- `KnowledgeDocsManifest`：
+  - `version_no`
+  - `docgen_manifest_key`
+- `docgen_manifest.json`：
+  - `document_backbone_snapshot`
+  - `chapter_task_seeds`
+  - `chapter_execution_briefs`
+  - `chapter_generation_plan`
+  - review / repair / source artifacts
+- `Course.document_summary_json`
+
+写：
+
+- 无写入。
+
+structured_context 核心结构：
+
+```text
+structured_context
+  doc_version_no
+  docgen_manifest
+  document_summary_json
+  chapters[]
+    knowledge_document_id
+    chapter_index
+    title
+    summary
+    source_file_ids
+    source_scope
+    manifest
+```
+
+#### 1.3.4 `prepare`
+
+输入：
+
+- `course_id`
+- `markdown`
+- `structured_context`
+
+输出：
+
+- 原 state 或 `error`。
+- `node_metrics.prepare`。
+
+读写：
+
+- 不访问数据库。
+- 只校验课程与 Markdown 是否为空。
+
+#### 1.3.5 `init_run`
+
+输入：
+
+- `course_id`
+- `markdown`
+- `build_revision_no`
+- `build_session_id`
+- `structured_context`
+
+输出：
+
+- `sync_run_context`
+- `build_revision_no`
+- `structured_context`
+- `node_metrics.init_run`
+
+读：
+
+- 校验 Markdown anchors。
+- 如果没有显式 `build_revision_no`，读取当前课程下 `KnowledgeUnit / KnowledgeEdge` 的最大 `build_revision_no`，生成下一版 graph revision。
+
+写：
+
+- 创建 `KnowledgeGraphSyncRun`：
+  - `course_id`
+  - `build_session_id`
+  - `doc_version_no`
+  - `graph_revision_no`
+  - `status="running"`
+  - `started_at`
+- 该节点不写 unit / edge / source_ref。
+
+#### 1.3.6 `persist_seed_units`
+
+输入：
+
+- `markdown`
+- `structured_context`
+- `prefetched_sections`
+- `sync_run_context`
+- `early_units_callback`
+
+输出：
+
+- `node_metrics.persist_seed_units`
+- `early_units_callback_requested`
+- `early_units_seed_complete`
+
+读：
+
+- 读取最终 Markdown section 切分结果。
+- 读取 DocGen prefetch records：
+  - `section_key`
+  - `content_hash`
+  - `SectionExtractionPayload`
+- 按最终文档 section_key + content_hash 匹配预抽取 payload；hash 唯一命中时允许复用。
+
+写：
+
+- 仅当预抽取命中最终文档时，提前 upsert `KnowledgeUnit`：
+  - 按 anchor / normalized_name / type 复用旧节点。
+  - 写 `status="active"`
+  - 写 `build_revision_no`
+  - 写 `aliases_json` 中的 markdown anchor alias。
+- 不写 `KnowledgeEdge`。
+- 不写 `KnowledgeGraphSourceRef`。
+- 不标记旧节点 deprecated。
+- 不结束 `KnowledgeGraphSyncRun`。
+- 发布 live stream `graph_delta`。
+
+失败策略：
+
+- 本节点是非阻塞；写入失败只记录 `node_metrics.persist_seed_units.ok=false`，不让整条同步失败。
+
+#### 1.3.7 `extract`
+
+输入：
+
+- `markdown`
+- `course_context`
+- `sync_run_context`
+- `structured_context`
+- `prefetched_sections`
+
+输出：
+
+- `extraction_payload`
+- `course_context`
+- `node_metrics.extract`
+
+读：
+
+- 如果 state 中没有 `course_context`，读取课程 LLM context：
+  - `Course.document_summary_json`
+  - `llm_context_text`
+- 按正式切章规则切 Markdown：
+  - 多 H1 按 H1。
+  - 单 H1 + 多 H2 时按 H2。
+  - 没有 H1 时按 heading-scoped section。
+- 根据章节长度和子标题数量规划章节/子章节抽取任务。
+- 对每个 section：
+  - 优先复用命中最终 content hash 的 prefetch payload。
+  - 未命中则调用结构化 LLM 抽取。
+  - 空结果且章节有知识信号时调用 empty repair。
+
+写：
+
+- 不写数据库。
+- 只产出内存中的 `KnowledgeSyncExtractionPayload`：
+  - `units`
+  - `extracted_edges`
+  - `diagnostics_totals`
+- 单个 section 失败会记录为 failed diagnostics，并返回空 payload；其他 section 继续 fan-in。
+
+#### 1.3.8 `persist_units`
+
+输入：
+
+- `sync_run_context`
+- `extraction_payload`
+- `early_units_callback`
+
+输出：
+
+- `node_metrics.persist_units`
+
+写：
+
+- upsert 本轮 `extraction_payload.units` 到 `KnowledgeUnit`：
+  - 新建或复用稳定节点。
+  - 设置 `canonical_name / normalized_name / summary / body_markdown / status / build_revision_no`。
+  - 写入 anchor alias。
+- 发布 live stream `graph_delta`。
+- 如果提前知识点可用且 seed 阶段没有覆盖最终文档，触发 `early_units_callback`。
+
+不写：
+
+- 不写 `KnowledgeEdge`。
+- 不写 `KnowledgeGraphSourceRef`。
+- 不标记 deprecated。
+- 不结束 sync run。
+
+失败策略：
+
+- 当前为非阻塞；失败写 metrics，不阻断后续 `stitch_relations -> persist`。
+
+#### 1.3.9 `stitch_relations`
+
+输入：
+
+- `extraction_payload`
+
+输出：
+
+- 更新后的 `extraction_payload`
+- `node_metrics.stitch_relations`
+
+读写：
+
+- 不访问数据库。
+- 不调用 LLM。
+- 只在内存 payload 中补保守边：
+  - section local stitch edge
+  - mention stitch edge
+  - 图健康度指标
+
+#### 1.3.10 `persist`
+
+输入：
+
+- `sync_run_context`
+- `extraction_payload`
+
+输出：
+
+- `KnowledgeSyncReport`
+- `node_metrics.persist`
+
+读：
+
+- 读取 `KnowledgeGraphSyncRun`。
+- upsert 时读取已有 `KnowledgeUnit / KnowledgeEdge`：
+  - anchor alias 命中。
+  - exact normalized name + type 命中。
+  - 可选 RAG dedup 命中。
+- 读取当前 active sync units / sync edges，用于 deprecated 标记。
+
+写：
+
+- `KnowledgeUnit`：
+  - 新建或更新本轮 active nodes。
+  - 写 `build_revision_no`。
+  - 写 anchor alias。
+- `KnowledgeGraphSourceRef` for unit：
+  - `entity_type="unit"`
+  - `entity_id`
+  - `sync_run_id`
+  - `knowledge_document_id`
+  - `chapter_index`
+  - `anchor`
+  - `source_kind`
+  - `source_file_ids_json`
+  - `quote_text`
+  - `confidence`
+- `KnowledgeEdge`：
+  - endpoint 必须能解析到本轮 unit。
+  - 写入前通过 `validate_relation_direction`。
+  - 按 source/target/type upsert。
+  - `description` 带 sync marker。
+  - `status="active"`
+  - `build_revision_no`
+- `KnowledgeGraphSourceRef` for edge：
+  - `entity_type="edge"`
+  - `entity_id`
+  - `sync_run_id`
+  - `knowledge_document_id`
+  - `chapter_index`
+  - `anchor=source->target`
+  - `source_kind`
+  - `quote_text`
+- `deprecated`：
+  - 只有当本轮没有 failed section 时，才标记本轮消失的旧 sync unit / sync edge 为 `deprecated`。
+  - 如果有失败 section，跳过 deprecated，避免局部抽取失败误删旧图。
+- `KnowledgeGraphSyncRun`：
+  - 成功：`status="completed"`，写 `metrics_json / finished_at`。
+  - 写入异常：`status="failed"`，写 error。
+
+#### 1.3.11 `finalize / fail`
+
+`finalize`：
+
+- 只检查 `report` 是否存在。
+- 不访问数据库。
+
+`fail`：
+
+- 如果已有 `sync_run_context`，best-effort 标记 `KnowledgeGraphSyncRun.status="failed"`。
+- 保留 `error` 在 state 中，供 graph runtime 和 LangSmith 展示。
+
+#### 1.3.12 graph lane runtime 写入
+
+`builds.py` 负责把 sync report 转换成 graph lane runtime metrics：
+
+- `doc_sync_unit_changes`
+- `doc_sync_edge_changes`
+- `revision_no`
+- `last_synced_doc_version_no`
+- `doc_sync_section_count`
+- `doc_sync_successful_section_count`
+- `doc_sync_failed_section_count`
+- `doc_sync_llm_section_count`
+- `source_ref_count`
+- `backbone_edge_count`
+- `stitched_edge_count`
+- `graph_isolated_unit_pct`
+- `prefetch_*`
+
+这些 runtime 指标服务前端轮询和调试展示，不替代权威图谱表。
 
 ## 2. 输出与 Runtime Metrics
 
@@ -827,3 +1255,4 @@ none           -> 没有可同步输入
 2. docs-sync 的 LLM 主抽取默认走 `call_purpose=EXTRACT + model="light"`，速度可控，但复杂课程的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
 3. 当前不再用语义词表过滤候选节点；如果持续出现某类坏节点，优先修 extractor prompt、DocGen 辅助上下文或增加 LLM 审稿/归并步骤。
 4. `aliases_json/evidence_refs_json` 仍是兼容字段。新查询应优先使用 `knowledge_graph_source_ref`，等图谱查询稳定后再考虑数据规模化优化。
+5. 历史 run 曾出现 LLM 局部 candidate id 跨分片覆盖，导致 `llm_relation` 端点错配；当前合并阶段已给 candidate id 加分片命名空间，重新同步后才能刷新旧错误边。

@@ -1325,8 +1325,9 @@ def _combine_section_payloads(
     diagnostics_totals.update(dict(prefetch_stats or {}))
     used_anchors: set[str] = set()
 
-    for payload in section_payloads:
+    for payload_index, payload in enumerate(section_payloads):
         payload = _make_payload_anchors_unique(payload, used_anchors)
+        payload = _namespace_payload_candidate_ids(payload, namespace=f"s{payload_index}")
         units.extend(payload.units)
         pending_edges.extend(payload.pending_edges)
         candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
@@ -1626,6 +1627,41 @@ def _make_payload_anchors_unique(
         anchors_by_normalized_name=anchors_by_normalized_name,
         node_contexts_by_anchor=node_contexts_by_anchor,
         section_context=section_context,
+        diagnostics=payload.diagnostics,
+    )
+
+
+def _namespace_payload_candidate_ids(
+    payload: SectionExtractionPayload,
+    *,
+    namespace: str,
+) -> SectionExtractionPayload:
+    if not payload.candidate_id_to_anchor:
+        return payload
+
+    def _remap_candidate_id(candidate_id: str | None) -> str | None:
+        if not candidate_id:
+            return candidate_id
+        return f"{namespace}:{candidate_id}"
+
+    return SectionExtractionPayload(
+        units=payload.units,
+        pending_edges=[
+            replace(
+                edge,
+                source_candidate_id=_remap_candidate_id(edge.source_candidate_id),
+                target_candidate_id=_remap_candidate_id(edge.target_candidate_id),
+            )
+            for edge in payload.pending_edges
+        ],
+        candidate_id_to_anchor={
+            _remap_candidate_id(candidate_id) or candidate_id: anchor
+            for candidate_id, anchor in payload.candidate_id_to_anchor.items()
+        },
+        anchors_by_name=payload.anchors_by_name,
+        anchors_by_normalized_name=payload.anchors_by_normalized_name,
+        node_contexts_by_anchor=payload.node_contexts_by_anchor,
+        section_context=payload.section_context,
         diagnostics=payload.diagnostics,
     )
 

@@ -86,14 +86,14 @@ backend/app/api/knowledge_docs.py
 读代码顺序：
 
 1. `backend/app/api/knowledge_docs.py`
-2. `backend/app/workflows/digest/planner/README.md`
+2. `backend/app/workflows/digest/planner/FLOW_DESIGN.md`
 3. `backend/app/workflows/digest/planner/graph.py`
 4. `backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 5. `backend/app/workflows/digest/docgen/graph.py`
 6. `backend/app/workflows/digest/docgen/state.py`
 7. `backend/app/workflows/digest/docgen/lib/models.py`
 
-其中 `docgen/` 目录当前只保留 `FLOW_DESIGN.md` 这一份主文档；入口说明和流程判断都以它为准。
+其中 `planner/`、`docgen/`、`kg_doc_sync/` 三条 digest 链路目录当前都只保留 `FLOW_DESIGN.md` 这一份主文档；入口说明和流程判断都以各自 `FLOW_DESIGN.md` 为准。
 
 ## 5. 运行时文件
 
@@ -208,4 +208,4 @@ frontend/dist/
 4. `docs/designs/09_ai_stack_and_infra_guide.md`
 5. `backend/app/workflows/README.md`
 6. `backend/app/shared/infra/README.md`
-7. 进入具体 engine 或 support README
+7. 进入具体 engine 或 support README / FLOW_DESIGN

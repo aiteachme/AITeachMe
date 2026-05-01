@@ -1,6 +1,6 @@
 # Digest 模块说明
 
-最后更新：2026-04-30
+最后更新：2026-05-02
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -19,11 +19,11 @@ digest/
 ## 各目录做什么
 
 - `planner/`
-  负责根据文件内容和历史对话生成 confirmed plan
+  负责根据文件内容和历史对话生成可确认 plan，权威文档见 `planner/FLOW_DESIGN.md`
 - `docgen/`
-  负责根据 confirmed plan 生成知识文档
+  负责根据 confirmed plan 生成知识文档，权威文档见 `docgen/FLOW_DESIGN.md`
 - `kg_doc_sync/`
-  负责知识文档和知识图谱的正式同步链路
+  负责知识文档和知识图谱的正式同步链路，权威文档见 `kg_doc_sync/FLOW_DESIGN.md`
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 course 级知识产物清理 `cleanup.py`
@@ -128,7 +128,7 @@ prefetch_extract（可选，DocGen sidecar，发布前不落库）
 
 当前并发口径：
 
-- 全局 LLM 并发只由 `settings.llm.concurrency_limit` 控制，默认 `32`，所有 LLM 调用共享。
+- 全局 LLM 并发只由 `settings.llm.concurrency_limit` 控制，默认 `16`，所有 LLM 调用共享。
 - 预抽取阶段由 `settings.knowledge_graph.prefetch_concurrency` 控制，默认 `2`，实际执行仍受全局 LLM limiter 限制。
 - 正式同步阶段由 `settings.knowledge_graph.max_parallel_extractions` 控制任务规划和默认执行上限，默认 `16`；章节少但大章很长时会拆成子章节任务，最多扩展到该上限。
 - 正式同步执行并发默认等于任务规划上限，并会被全局 LLM limiter 进一步约束。

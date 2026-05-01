@@ -1,6 +1,6 @@
 # 05. Digest 织网引擎
 
-最后更新：2026-04-28
+最后更新：2026-05-02
 
 Digest 负责把 Ingest 产出的材料组织成可教学、可追踪、可复用的知识资产。
 
@@ -51,11 +51,11 @@ Planner 不做：
 ```text
 load_planner_materials
   -> stream_brief_and_extract_intent
-  -> stream_and_parse_plan_draft
+  -> stream_and_parse_plan_draft + generate_course_name
   -> normalize_and_persist_plan
 ```
 
-权威文档：`backend/app/workflows/digest/planner/README.md`
+权威文档：`backend/app/workflows/digest/planner/FLOW_DESIGN.md`
 
 ## 3. confirmed plan
 
@@ -90,22 +90,26 @@ DocGen 消费 confirmed plan，生成可发布的知识文档和 manifest。
 
 ```text
 load_context
-  -> prepare_parallel_inputs
-  -> confirm_and_dispatch
+  -> prepare_global_seed
+  -> generate_cover
+  -> lock_titles_for_chapters
+  -> confirm_and_seed_backbone
   -> build_document_backbone
+  -> build_chapter_execution_briefs
+  -> assemble_chapter_tasks
   -> generate_chapters (Send x N)
   -> enhance_chapters
   -> review_chapter (Send x N)
   -> document_consistency_review
   -> repair_or_route
   -> merge_review
-  -> finalize_titles
+  -> sync_locked_titles
   -> publish_document
 ```
 
 权威文档：`backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
 
-唯一文档文件：`backend/app/workflows/digest/docgen/FLOW_DESIGN.md`
+唯一文档文件：三条 digest 主链路分别使用各自目录下的 `FLOW_DESIGN.md`。
 
 ## 5. DocGen 产物
 
@@ -173,7 +177,7 @@ API-facing 的图谱查询、总览、来源解释和手动重建入口都通过
 1. `repair_or_route` 还不是完整双轮闭环。
 2. `evidence_patch` / `regenerate_chapter` 仍待接成真实动作。
 3. 文生图已有后端占位处理，但前端展示和重试策略仍可增强。
-4. 发布前整本 patch 仍主要依赖 `merge_review` / `finalize_titles` 间接收口。
+4. 发布前整本 patch 仍主要依赖 `merge_review` / `sync_locked_titles` 间接收口。
 
 ## 10. 一句话
 
