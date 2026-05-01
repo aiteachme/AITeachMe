@@ -57,8 +57,8 @@ export function toChatModelChoice(value: string | null | undefined): ChatModelCh
   return DEFAULT_CHAT_MODEL_CHOICE;
 }
 
-export function toChatRequestModel(value: ChatModelChoice): string | undefined {
-  return value === DEFAULT_CHAT_MODEL_CHOICE ? undefined : value;
+export function toChatRequestModel(value: ChatModelChoice): string {
+  return value;
 }
 
 interface ChatModelSelectProps {

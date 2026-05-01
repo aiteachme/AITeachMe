@@ -26,6 +26,7 @@ class DocGenState(TypedDict, total=False):
     confirmed_plan_id: str
     confirmed_plan: dict[str, Any] | None
     digest_mode: str
+    model_override: str | None
     retrieval_profile: str
     teaching_action: str
     shared_inputs: Any

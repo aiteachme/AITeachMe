@@ -216,6 +216,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     discovered_node_count: int = 0
     discovered_node_types: dict[str, int] = Field(default_factory=dict)
     digest_mode: str | None = None
+    model_override: str | None = None
     sample_nodes: list[dict[str, str]] = Field(default_factory=list)
     estimated_remaining_seconds: int | None = None
     current_stage_description: str | None = None

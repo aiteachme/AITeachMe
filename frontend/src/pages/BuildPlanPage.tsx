@@ -85,6 +85,7 @@ interface PersistedPlannerState {
   currentPlan: BuildPlannerPlanResponse | null;
   inputValue: string;
   plannerNeedsRefresh: boolean;
+  chatModel?: ChatModelChoice;
 }
 
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
@@ -137,6 +138,7 @@ interface PlannerOutlineItem {
 
 type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
   runtime_stats?: PlannerRuntimeStats | null;
+  model_override?: string | null;
 };
 
 function createMessage(
@@ -254,6 +256,7 @@ function readPersistedPlannerState(courseId: string): PersistedPlannerState | nu
     return {
       ...parsed,
       messages: sanitizePlannerMessages(parsed.messages ?? []),
+      chatModel: toChatModelChoice(parsed.chatModel),
     };
   } catch {
     logPlannerDebug("read_persisted_state_failed", { courseId });
@@ -279,6 +282,7 @@ function persistPlannerState(courseId: string, value: PersistedPlannerState) {
     plannerSessionId: value.plannerSessionId,
     hasCurrentPlan: Boolean(value.currentPlan),
     plannerNeedsRefresh: value.plannerNeedsRefresh,
+    chatModel: value.chatModel,
   });
 }
 
@@ -910,6 +914,7 @@ export function BuildPlanPage() {
       setPlannerSessionId(persisted.plannerSessionId);
       setCurrentPlan(persisted.currentPlan ?? null);
       setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
+      setChatModel(toChatModelChoice(persisted.chatModel));
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       setIsRevisingPlan(false);
@@ -963,6 +968,7 @@ export function BuildPlanPage() {
 
         setPlannerSessionId(session.session_id);
         setCurrentPlan(session.latest_plan);
+        setChatModel(toChatModelChoice((session as PlannerSessionWithRuntime).model_override));
         setMessages(sanitizePlannerMessages(restored));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
@@ -1004,8 +1010,9 @@ export function BuildPlanPage() {
       currentPlan,
       inputValue,
       plannerNeedsRefresh,
+      chatModel,
     });
-  }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
+  }, [chatModel, currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
 
   useEffect(() => {
     if (hydratedCourseRef.current !== courseId || !currentPlan) {
@@ -1057,7 +1064,7 @@ export function BuildPlanPage() {
 
     void (async () => {
       try {
-        const selectedModel = toChatRequestModel(chatModel);
+        const selectedModel = navState.model?.trim() || toChatRequestModel(chatModel);
         const response = await createPlannerSessionStream(
           courseId,
           { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
@@ -1287,6 +1294,7 @@ export function BuildPlanPage() {
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
       setCurrentPlan(response.latest_plan);
+      setChatModel(toChatModelChoice((response as PlannerSessionWithRuntime).model_override));
       setPlannerNeedsRefresh(false);
       setIsRevisingPlan(false);
       void queryClient.invalidateQueries({ queryKey: ["courses"] });

@@ -31,6 +31,7 @@ from app.repositories.chats_repo import (
 )
 from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerPlanResponse,
@@ -125,6 +126,10 @@ def _planner_selected_file_ids(session_item: ChatSession) -> list[str]:
     return result
 
 
+def _planner_model_override(session_item: ChatSession) -> str | None:
+    return normalize_runtime_model_override(_planner_meta(session_item).get("model_override"))
+
+
 def _planner_session_meta(
     *,
     session_id: str,
@@ -132,6 +137,7 @@ def _planner_session_meta(
     user_prompt: str,
     digest_mode: str,
     selected_file_ids: list[str],
+    model_override: str | None = None,
     latest_plan: dict[str, Any] | None = None,
     latest_summary: str = "",
     confirmed_plan_id: str | None = None,
@@ -143,6 +149,7 @@ def _planner_session_meta(
         "user_prompt": user_prompt,
         "digest_mode": digest_mode,
         "selected_file_ids": list(selected_file_ids),
+        "model_override": normalize_runtime_model_override(model_override),
         "latest_plan": dict(latest_plan or {}),
         "latest_summary": latest_summary,
         "confirmed_plan_id": confirmed_plan_id,
@@ -336,6 +343,7 @@ def _plan_response(
     confirmed_plan_id: str | None,
     status: str,
     plan: dict[str, Any],
+    model_override: str | None = None,
 ) -> BuildPlannerPlanResponse:
     return BuildPlannerPlanResponse(
         course_id=course_id,
@@ -348,6 +356,7 @@ def _plan_response(
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
+        model_override=normalize_runtime_model_override(model_override),
     )
 
 
@@ -380,6 +389,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
     course_id = str(record.get("course_id") or final_state.get("course_id") or "")
     session_id = str(record.get("id") or final_state.get("planner_session_id") or "")
     status = str(record.get("status") or "draft")
+    model_override = normalize_runtime_model_override(final_state.get("model_override") or record.get("model_override"))
     logger.info(
         "planner_response_from_state",
         planner_session_id=session_id,
@@ -394,6 +404,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
         title=str(record.get("title") or ""),
         status=status,
         revision=len(turns),
+        model_override=model_override,
         latest_plan=_plan_response(
             course_id=course_id,
             selected_file_ids=list(final_state.get("selected_file_ids") or []),
@@ -401,6 +412,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
             confirmed_plan_id=record.get("confirmed_plan_id"),
             status=status,
             plan=plan,
+            model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(turn) for turn in turns],
         runtime_stats=_runtime_stats_response(final_state),
@@ -418,12 +430,14 @@ def _planner_session_response(
     turns: list[ChatMessage],
 ) -> BuildPlannerSessionResponse:
     meta = _planner_meta(record)
+    model_override = _planner_model_override(record)
     return BuildPlannerSessionResponse(
         session_id=record.id,
         course_id=course_id,
         title=record.title,
         status=_planner_status(record),
         revision=len(turns),
+        model_override=model_override,
         latest_plan=_plan_response(
             course_id=course_id,
             selected_file_ids=selected_file_ids,
@@ -431,6 +445,7 @@ def _planner_session_response(
             confirmed_plan_id=meta.get("confirmed_plan_id"),
             status=_planner_status(record),
             plan=plan,
+            model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(_turn_snapshot(turn)) for turn in turns],
         runtime_stats=None,
@@ -511,6 +526,7 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
         "latest_plan_json": _planner_plan(record),
         "latest_summary": str(meta.get("latest_summary") or ""),
         "confirmed_plan_id": meta.get("confirmed_plan_id"),
+        "model_override": _planner_model_override(record),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
@@ -672,6 +688,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     user_prompt=user_prompt,
                     digest_mode=digest_mode,
                     selected_file_ids=selected_file_ids,
+                    model_override=state.get("model_override"),
                 ),
             )
             user_turn = _create_planner_message(
@@ -725,6 +742,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 session,
                 record,
                 planner_status="planning",
+                model_override=normalize_runtime_model_override(state.get("model_override")),
                 confirmed_plan_id=None,
                 confirmed_plan=None,
             )
@@ -821,6 +839,7 @@ def save_planner_result(
             latest_plan=persisted_plan,
             latest_summary=str(persisted_plan.get("plan_summary") or state.get("plan_summary") or ""),
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
+            model_override=normalize_runtime_model_override(state.get("model_override")),
             planner_status="draft",
             confirmed_plan_id=None,
             confirmed_plan=None,
@@ -851,6 +870,7 @@ def save_planner_result(
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
+            "model_override": _planner_model_override(record),
             "selected_file_ids": selected_file_ids,
             "planner_record": _record_snapshot(record),
             "planner_turns": [_turn_snapshot(turn) for turn in turns],
@@ -879,6 +899,7 @@ def _normalized_plan_payload(
         "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
         "plan_steps": [str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
+        "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
     if context_payload:
@@ -1089,10 +1110,12 @@ def confirm_planner_session(
         turns=turns,
         plan=latest_plan,
     )
+    model_override = _planner_model_override(record)
     plan_payload = _normalized_plan_payload(
         latest_plan,
         planner_context=planner_context,
     )
+    plan_payload["model_override"] = model_override or ""
     current_confirmed = None
     if meta.get("confirmed_plan_id"):
         current_confirmed = get_confirmed_plan(
@@ -1131,6 +1154,7 @@ def confirm_planner_session(
         latest_plan=plan_payload,
         latest_summary=str(plan_payload.get("plan_summary") or ""),
         confirmed_plan_id=confirmed.id,
+        model_override=model_override,
         planner_status="confirmed",
     )
     selected_file_ids = _planner_selected_file_ids(record)
@@ -1140,6 +1164,7 @@ def confirm_planner_session(
         course_id=course.id,
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
+        model_override=model_override,
         selected_file_ids=list(confirmed.selected_file_ids_json),
         user_prompt=confirmed.user_prompt,
         plan_summary=confirmed.plan_summary,

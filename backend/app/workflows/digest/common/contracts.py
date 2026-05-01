@@ -148,6 +148,7 @@ class DigestConfirmedPlanContract(BaseModel):
     selected_file_ids: list[str] = Field(default_factory=list)
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
+    model_override: str = ""
     mode_reason: str = ""
 
     @field_validator(
@@ -157,6 +158,7 @@ class DigestConfirmedPlanContract(BaseModel):
         "plan_summary",
         "planner_session_id",
         "confirmed_plan_id",
+        "model_override",
         "mode_reason",
         mode="before",
     )

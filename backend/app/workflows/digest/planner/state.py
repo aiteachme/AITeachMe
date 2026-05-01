@@ -91,6 +91,7 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan",
         "plan_summary",
         "digest_mode",
+        "model_override",
         "selected_file_ids",
         "planner_record",
         "planner_turns",

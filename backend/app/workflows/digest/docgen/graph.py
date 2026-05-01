@@ -13,6 +13,7 @@ from typing import Any, Literal
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -88,6 +89,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
             "confirmed_plan_id",
             "digest_mode",
+            "model_override",
         ],
         "output_keys": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "error"],
     },
@@ -621,6 +623,7 @@ def create_docgen_initial_state(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
+    model_override: str | None = None,
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
 
@@ -637,6 +640,7 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
+        "model_override": normalize_runtime_model_override(model_override),
         "retrieval_profile": resolve_docgen_retrieval_profile(
             digest_mode,
             user_prompt=user_prompt,
@@ -669,6 +673,7 @@ def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, 
         "planner_session_id": state.get("planner_session_id", ""),
         "confirmed_plan_id": state.get("confirmed_plan_id", ""),
         "digest_mode": state.get("digest_mode", ""),
+        "model_override": state.get("model_override"),
         "retrieval_profile": state.get("retrieval_profile", ""),
         "teaching_action": teaching_action,
     }
@@ -763,6 +768,7 @@ async def run_docgen_workflow(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
+    model_override: str | None = None,
 ) -> WorkflowResult[DocGenState]:
     """运行一次 DocGen LangGraph。
 
@@ -772,6 +778,7 @@ async def run_docgen_workflow(
     """
 
     bus = event_bus or InProcessEventBus()
+    resolved_model_override = normalize_runtime_model_override(model_override)
     await bus.publish(DocGenRequestedEvent(course_id=course_id, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
@@ -786,28 +793,31 @@ async def run_docgen_workflow(
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
+            "model_override": resolved_model_override,
             "max_concurrency": get_llm_concurrency_limit(),
         },
     )
-    result = await run_state_graph(
-        workflow_name="digest.docgen",
-        graph_builder=lambda: build_docgen_graph(context=context),
-        initial_state=create_docgen_initial_state(
-            course_id=course_id,
-            course_name=course_name,
-            user_id=user_id,
-            file_ids=file_ids,
-            user_prompt=user_prompt,
-            requested_at=requested_at,
-            build_session_id=build_session_id,
-            shared_inputs=shared_inputs,
-            confirmed_plan=confirmed_plan,
-            planner_session_id=planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            digest_mode=digest_mode,
-        ),
-        context=context,
-    )
+    with use_runtime_model_override(resolved_model_override):
+        result = await run_state_graph(
+            workflow_name="digest.docgen",
+            graph_builder=lambda: build_docgen_graph(context=context),
+            initial_state=create_docgen_initial_state(
+                course_id=course_id,
+                course_name=course_name,
+                user_id=user_id,
+                file_ids=file_ids,
+                user_prompt=user_prompt,
+                requested_at=requested_at,
+                build_session_id=build_session_id,
+                shared_inputs=shared_inputs,
+                confirmed_plan=confirmed_plan,
+                planner_session_id=planner_session_id,
+                confirmed_plan_id=confirmed_plan_id,
+                digest_mode=digest_mode,
+                model_override=resolved_model_override,
+            ),
+            context=context,
+        )
     if result.failed:
         token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docgen")
         context.get_logger().bind(node="runtime").info(

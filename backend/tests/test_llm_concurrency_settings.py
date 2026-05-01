@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from app.shared.infra.llm_support import get_llm_concurrency_limit, get_llm_concurrency_limiter
+from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.settings import (
     get_settings,
     reset_project_settings_cache,
@@ -27,8 +28,8 @@ def reset_settings_after_test():
 
 
 def test_llm_concurrency_uses_code_default() -> None:
-    assert get_settings().llm.concurrency_limit == 32
-    assert get_llm_concurrency_limit() == 32
+    assert get_settings().llm.concurrency_limit == DEFAULT_LLM_CONCURRENCY_LIMIT
+    assert get_llm_concurrency_limit() == DEFAULT_LLM_CONCURRENCY_LIMIT
 
 
 def test_llm_concurrency_runtime_settings_override_default() -> None:
@@ -53,7 +54,7 @@ def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:
     assert entry.ui_group == "统一模型接入"
     assert entry.source == "settings"
     assert entry.editable is True
-    assert entry.value == 32
+    assert entry.value == DEFAULT_LLM_CONCURRENCY_LIMIT
 
 
 @pytest.mark.anyio

@@ -56,6 +56,10 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_lane_status,
 )
 from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
+from app.shared.infra.llm_support.model_choices import (
+    build_runtime_model_override_snapshot,
+    normalize_runtime_model_override,
+)
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import (
     CourseStorageScope,
@@ -545,7 +549,12 @@ def _build_confirmed_plan_payload(
     payload["selected_file_ids"] = list(plan.selected_file_ids_json)
     payload["planner_session_id"] = plan.planner_session_id
     payload["confirmed_plan_id"] = plan.id
+    payload["model_override"] = normalize_runtime_model_override(payload.get("model_override")) or ""
     return normalize_digest_confirmed_plan_payload(payload)
+
+
+def _confirmed_plan_model_override(plan_payload: dict[str, Any] | None) -> str | None:
+    return normalize_runtime_model_override((plan_payload or {}).get("model_override"))
 
 
 def _load_confirmed_plan_payload(
@@ -599,6 +608,7 @@ def trigger_docgen_build(
     planner_session_id = None
     digest_mode = None
     plan_summary = None
+    model_override = None
     chapter_progress: list[dict[str, object]] = []
     recent_events: list[dict[str, object]] = []
     cleaned_prompt = _clean_prompt(prompt)
@@ -616,6 +626,7 @@ def trigger_docgen_build(
     planner_session_id = plan.planner_session_id
     digest_mode = plan.digest_mode
     plan_summary = plan.plan_summary
+    model_override = _confirmed_plan_model_override(plan.plan_json)
     chapter_progress = _build_initial_chapter_progress(plan)
     recent_events = [
         {
@@ -688,6 +699,7 @@ def trigger_docgen_build(
         planner_session_id=planner_session_id,
         confirmed_plan_id=confirmed_plan_id,
         digest_mode=digest_mode,
+        model_override=model_override,
         plan_summary=plan_summary,
         chapter_progress=chapter_progress,
         recent_events=recent_events,
@@ -708,6 +720,7 @@ def trigger_docgen_build(
         confirmed_plan_id=confirmed_plan_id,
         search_only_mode=search_only_mode,
         build_group_id=build_group_id,
+        model_override=model_override,
     )
     build_data = DocGenBuildData(
         accepted_file_ids=accepted_file_ids,
@@ -718,6 +731,7 @@ def trigger_docgen_build(
         planner_session_id=planner_session_id,
         confirmed_plan_id=confirmed_plan_id,
         digest_mode=digest_mode,
+        model_override=model_override,
     )
     return build_data, accepted_file_ids, build_group_id
 
@@ -732,6 +746,7 @@ async def run_docgen_background(
     build_group_id: str,
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
+    model_override: str | None = None,
     user_id: str | None = None,
     background_task_registry: Any | None = None,
 ) -> None:
@@ -750,8 +765,9 @@ async def run_docgen_background(
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
+    resolved_model_override = normalize_runtime_model_override(model_override)
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
-    graph_llm_snapshot = capture_llm_runtime_snapshot() if sync_graph_after_docgen else None
+    graph_llm_snapshot = None
     docgen_published = False
     logger.info(
         "knowledge_build_background_started",
@@ -760,6 +776,7 @@ async def run_docgen_background(
         file_count=len(file_ids),
         planner_session_id=planner_session_id,
         confirmed_plan_id=confirmed_plan_id,
+        model_override=resolved_model_override,
         user_id=user_id,
         build_group_id=build_group_id,
     )
@@ -774,6 +791,7 @@ async def run_docgen_background(
             planner_session_id=planner_session_id,
             confirmed_plan_id=confirmed_plan_id,
             digest_mode=resolved_digest_mode,
+            model_override=resolved_model_override,
             error_message="confirmed_plan_required",
             draft_available=False,
         )
@@ -791,6 +809,12 @@ async def run_docgen_background(
         )
         planner_session_id = planner_session_id or plan.planner_session_id
         resolved_digest_mode = plan.digest_mode
+        resolved_model_override = _confirmed_plan_model_override(confirmed_plan_payload) or resolved_model_override
+        if sync_graph_after_docgen:
+            graph_llm_snapshot = (
+                build_runtime_model_override_snapshot(resolved_model_override)
+                or capture_llm_runtime_snapshot()
+            )
         _mark_confirmed_plan_status(
             course_id=course_id,
             user_id=user_id,
@@ -809,6 +833,7 @@ async def run_docgen_background(
             planner_session_id=planner_session_id,
             confirmed_plan_id=confirmed_plan_id,
             digest_mode=resolved_digest_mode,
+            model_override=resolved_model_override,
             error_message=None,
             draft_available=False,
             source_file_ids=file_ids,
@@ -824,6 +849,7 @@ async def run_docgen_background(
                 stage="queued_after_docgen",
                 source_file_ids=file_ids,
                 prompt=prompt,
+                model_override=resolved_model_override,
                 current_stage_description="知识文档发布后将自动开始图谱同步。",
             )
         else:
@@ -836,6 +862,7 @@ async def run_docgen_background(
                 stage="disabled",
                 source_file_ids=file_ids,
                 prompt=prompt,
+                model_override=resolved_model_override,
                 current_stage_description="已关闭文档构建后自动图谱同步。",
             )
         result = await run_docgen_workflow(
@@ -850,6 +877,7 @@ async def run_docgen_background(
             planner_session_id=planner_session_id,
             confirmed_plan_id=confirmed_plan_id,
             digest_mode=resolved_digest_mode,
+            model_override=resolved_model_override,
         )
         if result.failed:
             cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
