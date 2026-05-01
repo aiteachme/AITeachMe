@@ -6,12 +6,13 @@ import asyncio
 import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tools.builtin.markdown_processing import (
-    find_markdown_rendering_issues,
-    normalize_markdown_rendering,
-)
+from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
+from app.workflows.digest.docgen.lib.presentation_policy import (
+    find_docgen_presentation_issues,
+    normalize_docgen_presentation,
+)
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
 
 
@@ -49,9 +50,13 @@ async def _apply_patch_action(
     """
 
     if action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason:
-        before_issues = find_markdown_rendering_issues(chapter.markdown)
-        patched = normalize_markdown_rendering(chapter.markdown)
-        after_issues = find_markdown_rendering_issues(patched)
+        before_issues = find_docgen_presentation_issues(chapter.markdown)
+        patched = normalize_docgen_presentation(
+            chapter.markdown,
+            title=chapter.title,
+            focus_items=[],
+        )
+        after_issues = find_docgen_presentation_issues(patched)
         improved = patched and patched != chapter.markdown and len(after_issues) < len(before_issues)
         if improved:
             updated = chapter.model_copy(

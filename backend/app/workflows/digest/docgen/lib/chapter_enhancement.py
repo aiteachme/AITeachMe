@@ -9,8 +9,6 @@ from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_draft_excerpt,
-    normalize_markdown_rendering,
-    normalize_mermaid_blocks,
 )
 from app.workflows.digest.common.pedagogy import is_usable_resolved_chapter_title
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
@@ -24,12 +22,11 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     PracticeManifest,
 )
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
-    normalize_educational_callouts,
-    normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
@@ -316,18 +313,15 @@ async def enhance_chapter_draft(
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
-    markdown = normalize_markdown_rendering(markdown)
-    markdown = normalize_mermaid_blocks(markdown)
-    markdown = normalize_textbook_headings(
+    markdown = normalize_docgen_presentation(
         markdown,
         digest_mode=digest_mode,
-        fallback_title=draft.title,
+        title=draft.title,
         focus_items=[
             *(item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text),
             draft.title,
         ],
     )
-    markdown = normalize_educational_callouts(markdown)
 
     interactive_asset: dict[str, object] | None = None
     if settings.docgen.generate_interactive_html:
@@ -357,7 +351,7 @@ async def enhance_chapter_draft(
         else []
     )
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
-    markdown = normalize_educational_callouts(markdown)
+    markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

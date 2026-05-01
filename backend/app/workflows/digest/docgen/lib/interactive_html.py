@@ -9,6 +9,7 @@ from typing import Literal
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
+from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
@@ -207,6 +208,7 @@ async def maybe_generate_interactive_html_asset(
         ),
     )
     cleaned_html = _sanitize_generated_html(str(html), title=draft.title)
+    validation_issues = validate_single_file_html(cleaned_html)
     cs = get_content_store()
     course_scope = resolve_course_storage_scope(traced_context.course_id)
     filename = f"docgen_interactive_{traced_context.build_session_id}_ch{draft.chapter_index:02d}_{sanitize_doc_title(draft.title)}.html"
@@ -226,6 +228,7 @@ async def maybe_generate_interactive_html_asset(
         "preview_url": preview_url,
         "open_mode": "new_tab",
         "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=f"{draft.title} 交互演示"),
+        "validation_issues": validation_issues,
     }
 
 

@@ -6,8 +6,9 @@ from collections.abc import Sequence
 import re
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.tools.builtin.markdown_processing import count_words, find_markdown_rendering_issues
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
+from app.workflows.digest.docgen.lib.presentation_policy import find_docgen_presentation_issues
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ChapterReviewReport,
@@ -121,7 +122,7 @@ def _rule_review_chapter(
     word_count = count_words(draft.markdown)
     warnings: list[str] = []
     actions: list[ReviewAction] = []
-    rendering_issues = find_markdown_rendering_issues(draft.markdown)
+    rendering_issues = find_docgen_presentation_issues(draft.markdown)
     if rendering_issues:
         warnings.extend(rendering_issues)
         actions.append(
@@ -132,13 +133,13 @@ def _rule_review_chapter(
                 severity="warning",
                 reason="Markdown 渲染结构异常：" + "；".join(rendering_issues),
                 target_anchor=_chapter_anchor(draft),
-                instruction="只修复 Markdown 结构，包括 blockquote、代码块和 display math 的分隔，不改正文知识内容。",
+                instruction="只修复 Markdown 展示结构，包括标题层级、加粗/高亮闭合、表格、callout、代码块、公式和 Mermaid，不改正文知识内容。",
                 constraints=[
                     "不得新增或删除知识点。",
                     "不得改变章节标题和章节顺序。",
-                    "只允许调整 Markdown 标记、空行和 fenced block 边界。",
+                    "只允许调整 Markdown 标记、空行、fenced block 边界和安全高亮表达。",
                 ],
-                expected_effect="章节 Markdown 可以稳定渲染，代码块和公式不被引用块污染。",
+                expected_effect="章节 Markdown 可以稳定渲染，重点、提示块、表格、代码块、公式和 Mermaid 都能正常显示。",
             )
         )
     if missing:
