@@ -91,6 +91,7 @@ DATA_PACKAGES = (
     "pydantic",
     "pydantic_settings",
     "sqlalchemy",
+    "sqlite_vec",
     "sqlmodel",
     "uvicorn",
 )

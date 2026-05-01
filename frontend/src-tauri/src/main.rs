@@ -157,13 +157,87 @@ fn cleanup_legacy_install_root_files() {
 }
 
 #[cfg(feature = "local-backend")]
+fn directory_is_writable(path: &Path) -> bool {
+  if fs::create_dir_all(path).is_err() {
+    return false;
+  }
+
+  let probe = path.join(format!(".aiteachme-write-test-{}", std::process::id()));
+  match OpenOptions::new().write(true).create_new(true).open(&probe) {
+    Ok(_) => {
+      let _ = fs::remove_file(probe);
+      true
+    }
+    Err(_) => false,
+  }
+}
+
+#[cfg(feature = "local-backend")]
+fn copy_directory_if_missing(source: &Path, target: &Path) -> std::io::Result<()> {
+  if !source.exists() || target.exists() {
+    return Ok(());
+  }
+
+  fs::create_dir_all(target)?;
+  for entry in fs::read_dir(source)? {
+    let entry = entry?;
+    let source_path = entry.path();
+    let target_path = target.join(entry.file_name());
+    if source_path.is_dir() {
+      copy_directory_if_missing(&source_path, &target_path)?;
+    } else if source_path.is_file() && !target_path.exists() {
+      fs::copy(&source_path, &target_path)?;
+    }
+  }
+  Ok(())
+}
+
+#[cfg(feature = "local-backend")]
+fn migrate_legacy_backend_data(source: &Path, target: &Path) -> std::io::Result<()> {
+  if !source.exists() || source == target {
+    return Ok(());
+  }
+
+  fs::create_dir_all(target)?;
+  for file_name in ["aiteachme.db", "aiteachme.db-wal", "aiteachme.db-shm"] {
+    let source_file = source.join(file_name);
+    let target_file = target.join(file_name);
+    if source_file.exists() && !target_file.exists() {
+      fs::copy(source_file, target_file)?;
+    }
+  }
+  copy_directory_if_missing(&source.join("users"), &target.join("users"))?;
+  Ok(())
+}
+
+#[cfg(feature = "local-backend")]
+fn resolve_backend_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+  let app_data_backend_dir = app.path().app_data_dir()?.join("backend-data");
+
+  if !cfg!(debug_assertions) {
+    if let Ok(current_exe) = std::env::current_exe() {
+      if let Some(install_dir) = current_exe.parent() {
+        let install_data_dir = install_dir.join("data");
+        if directory_is_writable(&install_data_dir) {
+          let _ = migrate_legacy_backend_data(&app_data_backend_dir, &install_data_dir);
+          return Ok(install_data_dir);
+        }
+      }
+    }
+  }
+
+  fs::create_dir_all(&app_data_backend_dir)?;
+  Ok(app_data_backend_dir)
+}
+
+#[cfg(feature = "local-backend")]
 fn spawn_local_backend_on_port(
   app: &mut tauri::App,
   port: u16,
 ) -> Result<(Child, PathBuf), Box<dyn std::error::Error>> {
   let port_string = port.to_string();
   let dev_frontend_port = frontend_port();
-  let backend_data_dir = app.path().app_data_dir()?.join("backend-data");
+  let backend_data_dir = resolve_backend_data_dir(app)?;
   fs::create_dir_all(&backend_data_dir)?;
   let backend_log_file = backend_data_dir.join("backend.log");
   let backend_executable = resolve_backend_executable(app)?;

@@ -70,7 +70,7 @@ Tauri local 安装后会有一个用户直接启动的主程序，同时内置�
 
 NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记为隐藏文件，避免普通文件夹视图里出现多个 `.exe`。不要删除它，否则系统卸载入口会失效。
 
-Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都写入 Tauri app data 目录下的 `backend-data`，不写入安装目录根部。
+Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
 
 ## 预绑定本地大模型配置
 
