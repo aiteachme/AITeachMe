@@ -106,6 +106,15 @@ _GENERIC_TEMPLATE_TITLES = {
     "考前速查",
 }
 _STATIC_TITLES = {"练习与自检", "知识文档总览"}
+_UNUSABLE_CHAPTER_TITLES = {
+    "未命名",
+    "未命名章节",
+    "本章",
+    "本章内容",
+    "当前章节",
+    "Untitled",
+    "Untitled Chapter",
+}
 _TITLE_SPECIFICITY_KEYWORDS = (
     "高频",
     "题型",
@@ -131,6 +140,13 @@ _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _KU_ANCHOR_RE = re.compile(r"(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)")
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
 _COURSE_SLUG_RE = re.compile(r"^(?:course|subj)_[a-z0-9_-]+$", re.IGNORECASE)
+_TITLE_DERIVE_ACTION_PREFIX_RE = re.compile(
+    r"^(?:学习目标|本章目标|章节目标|学习要求|围绕|通过|基于|根据|掌握|理解|了解|熟悉|说明|分析|完成|学会|能够|能|会|请|把|如何)+"
+)
+_TITLE_DERIVE_TRAILING_RE = re.compile(
+    r"(?:这一章|本章|相关知识点|基础判断|典型例题解析|例题解析|完成一个基础判断)$"
+)
+_TITLE_DERIVE_GENERIC_RE = re.compile(r"(?:最核心的知识主线|核心概念|核心内容|学习路径|讲清楚)")
 _GENERIC_FOCUS_TERMS = {
     "核心概念",
     "高频考点",
@@ -212,6 +228,8 @@ def is_usable_resolved_chapter_title(title: str) -> bool:
     cleaned = clean_generated_chapter_title(title)
     if cleaned in _STATIC_TITLES:
         return True
+    if cleaned in _UNUSABLE_CHAPTER_TITLES:
+        return False
     if len(cleaned) < 3 or len(cleaned) > 28:
         return False
     if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
@@ -223,6 +241,52 @@ def is_usable_resolved_chapter_title(title: str) -> bool:
     if re.fullmatch(r"(?i)chapter\s*\d+", cleaned):
         return False
     return True
+
+
+def _shorten_title_candidate(value: str) -> str:
+    cleaned = clean_generated_chapter_title(value)
+    if len(cleaned) <= 28:
+        return cleaned
+    parts = [
+        part.strip()
+        for part in re.split(r"[：:；;，,。！？!?\n]|(?:中的)|(?:关于)", cleaned)
+        if part.strip()
+    ]
+    for part in parts:
+        candidate = clean_generated_chapter_title(part)
+        if 3 <= len(candidate) <= 28:
+            return candidate
+    return cleaned[:24].rstrip("：:，,。；; ")
+
+
+def _derive_title_from_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = _CODE_FENCE_RE.sub(" ", text)
+    text = _KU_ANCHOR_RE.sub(" ", text)
+    text = _HTML_COMMENT_RE.sub(" ", text)
+    text = re.sub(r"[*_`>#\[\]\|]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;|-")
+    quoted = re.search(r"《([^》]{3,60})》", text)
+    candidates: list[str] = []
+    if quoted is not None:
+        candidates.append(quoted.group(1))
+    candidates.extend(
+        part
+        for part in re.split(r"[。；;\n]", text)
+        if str(part).strip()
+    )
+    for raw_candidate in candidates:
+        candidate = clean_generated_chapter_title(raw_candidate)
+        candidate = _TITLE_DERIVE_ACTION_PREFIX_RE.sub("", candidate).strip(" ：:，,。；;|-")
+        candidate = _TITLE_DERIVE_TRAILING_RE.sub("", candidate).strip(" ：:，,。；;|-")
+        candidate = _shorten_title_candidate(candidate)
+        if _TITLE_DERIVE_GENERIC_RE.search(candidate):
+            continue
+        if is_usable_resolved_chapter_title(candidate):
+            return candidate
+    return ""
 
 
 def _title_specificity_score(title: str) -> int:
@@ -265,9 +329,26 @@ def resolve_effective_chapter_title(
     if is_usable_resolved_chapter_title(cleaned_fallback):
         return cleaned_fallback
 
+    derived_candidates: list[object] = []
+    required_elements = chapter_data.get("required_elements")
+    if isinstance(required_elements, list):
+        derived_candidates.extend(required_elements[:4])
+    derived_candidates.extend(
+        [
+            chapter_data.get("objective"),
+            chapter_data.get("chapter_goal"),
+            chapter_data.get("summary"),
+            chapter_data.get("description"),
+        ]
+    )
+    for candidate_source in derived_candidates:
+        candidate = _derive_title_from_text(candidate_source)
+        if candidate:
+            return candidate
+
     if chapter_index is None:
         chapter_index = int(chapter_data.get("chapter_index", 0) or 0) or None
-    return "未命名章节"
+    return f"第 {chapter_index} 章" if chapter_index else "本章内容"
 
 
 def coerce_resolved_chapter_title(

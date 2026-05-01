@@ -1894,7 +1894,7 @@ export function BuildPlanPage() {
                       value={chatModel}
                       onChange={setChatModel}
                       disabled={isBuilding || plannerStreaming}
-                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                      className="flex-1 sm:flex-none sm:w-[172px]"
                     />
                     <button
                       type="button"

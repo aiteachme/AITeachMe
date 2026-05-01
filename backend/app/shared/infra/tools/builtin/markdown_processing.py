@@ -28,6 +28,14 @@ MERMAID_INFO_PATTERN = re.compile(
     r"^(mermaid|mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
     re.IGNORECASE,
 )
+FLOWCHART_HEADER_PATTERN = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
+FLOWCHART_NODE_LABEL_PATTERN = re.compile(r"(^|[^\w\"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]")
+FLOWCHART_EDGE_LABEL_PATTERN = re.compile(r"\|([^|\n]+)\|")
+MINDMAP_ROOT_PATTERN = re.compile(r"^root\(\((.+)\)\)$", re.IGNORECASE)
+MINDMAP_MIXED_SYNTAX_PATTERN = re.compile(
+    r"-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b",
+    re.IGNORECASE,
+)
 RAW_MERMAID_FENCE_PATTERN = re.compile(
     r"(?m)^\s{0,3}```\s*(?:mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b",
     re.IGNORECASE,
@@ -129,6 +137,161 @@ def _looks_like_mermaid_garbage(line: str) -> bool:
     return any(token in stripped for token in ("-->", "[", "]", "classDef", "subgraph"))
 
 
+def _sanitize_mermaid_label(value: str, *, max_length: int = 44) -> str:
+    cleaned = str(value or "").strip().strip("\"'")
+    cleaned = cleaned.replace("\\n", " ")
+    cleaned = re.sub(r"[`$#]+", " ", cleaned)
+    cleaned = re.sub(r"[{}]+", " ", cleaned)
+    cleaned = cleaned.replace("|", " ")
+    cleaned = cleaned.replace(">", "大于").replace("<", "小于").replace("=", "等于")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned[:max_length].strip() or "节点").rstrip("：:，,。；; ")
+
+
+def _quote_flowchart_labels(line: str) -> str:
+    if re.match(r"^\s*(?:classDef|class|style|linkStyle|click)\b", line, re.IGNORECASE):
+        return line
+
+    def replace_node_label(match: re.Match[str]) -> str:
+        label = _sanitize_mermaid_label(match.group(3)).replace('"', "'")
+        return f'{match.group(1)}{match.group(2)}["{label}"]'
+
+    def replace_edge_label(match: re.Match[str]) -> str:
+        label = _sanitize_mermaid_label(match.group(1), max_length=32).replace('"', "'")
+        return f"|{label}|"
+
+    quoted = FLOWCHART_NODE_LABEL_PATTERN.sub(replace_node_label, line)
+    return FLOWCHART_EDGE_LABEL_PATTERN.sub(replace_edge_label, quoted)
+
+
+def _sanitize_flowchart_source(source: str) -> str:
+    lines = [line.rstrip() for line in str(source or "").splitlines() if line.strip()]
+    if not lines:
+        return "flowchart TD"
+    if not FLOWCHART_HEADER_PATTERN.match(lines[0].strip()):
+        lines.insert(0, "flowchart TD")
+    return "\n".join(_quote_flowchart_labels(line) for line in lines).strip()
+
+
+def _sanitize_mindmap_label(value: str, *, max_length: int = 28) -> str:
+    cleaned = re.sub(
+        r"\b(?:mindmap|root|graph|flowchart|subgraph|classDef|class|style|click|section|title|LR|RL|TB|BT)\b",
+        " ",
+        str(value or ""),
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"[`$#<>{}\[\]]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:max_length].rstrip("：:，,。；; ")
+
+
+def _extract_mindmap_labels(source: str, *, limit: int = 6) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def push(value: str) -> None:
+        cleaned = _sanitize_mindmap_label(value)
+        if not cleaned:
+            return
+        key = cleaned.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        labels.append(cleaned)
+
+    for match in re.finditer(r"root\(\((.+?)\)\)", source, re.IGNORECASE):
+        push(match.group(1))
+    for match in re.finditer(r"\[([^\]]+)\]", source):
+        push(match.group(1))
+
+    for raw_line in str(source or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.lower() == "mindmap" or line.startswith("```"):
+            continue
+        root_match = MINDMAP_ROOT_PATTERN.match(line)
+        if root_match is not None:
+            push(root_match.group(1))
+            continue
+        if MINDMAP_MIXED_SYNTAX_PATTERN.search(line):
+            arrow_labels = re.findall(r"\[([^\]]+)\]", line)
+            if arrow_labels:
+                for item in arrow_labels:
+                    push(item)
+            else:
+                push(line.split("-->")[-1].split("==>")[-1])
+            continue
+        push(re.sub(r"^[-*+]\s+", "", line))
+        if len(labels) >= limit:
+            break
+    return labels[:limit]
+
+
+def _build_simplified_mindmap(source: str) -> str:
+    labels = _extract_mindmap_labels(source, limit=6)
+    root = labels[0] if labels else "核心主题"
+    lines = ["mindmap", f"  root(({root}))"]
+    for label in labels[1:]:
+        lines.append(f"    {label}")
+    return "\n".join(lines)
+
+
+def _sanitize_mindmap_source(source: str) -> str:
+    raw_lines = [line.rstrip() for line in str(source or "").splitlines() if line.strip()]
+    if not raw_lines or not raw_lines[0].strip().lower().startswith("mindmap"):
+        return _build_simplified_mindmap(source)
+    body_lines = raw_lines[1:]
+    if any(MINDMAP_MIXED_SYNTAX_PATTERN.search(line) for line in body_lines):
+        return _build_simplified_mindmap(source)
+
+    output = ["mindmap"]
+    has_root = False
+    child_count = 0
+    for raw_line in body_lines:
+        expanded = raw_line.replace("\t", "  ")
+        indent_chars = len(re.match(r"^\s*", expanded).group(0))
+        indent_level = max(1, indent_chars // 2)
+        stripped = re.sub(r"^[-*+]\s+", "", expanded.strip())
+        if not stripped:
+            continue
+        root_match = MINDMAP_ROOT_PATTERN.match(stripped)
+        if root_match is not None:
+            root_label = _sanitize_mindmap_label(root_match.group(1))
+            if root_label:
+                output.append(f"  root(({root_label}))")
+                has_root = True
+            continue
+        label = _sanitize_mindmap_label(stripped)
+        if not label:
+            continue
+        if not has_root and indent_level <= 1:
+            output.append(f"  root(({label}))")
+            has_root = True
+            continue
+        output.append(f"{'  ' * max(2, indent_level)}{label}")
+        child_count += 1
+        if child_count >= 8:
+            break
+    if not has_root:
+        return _build_simplified_mindmap(source)
+    return "\n".join(output)
+
+
+def sanitize_mermaid_source(source: str) -> str:
+    """Normalize Mermaid body text without changing surrounding Markdown."""
+
+    normalized = str(source or "").replace("\ufeff", "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    lines = [line.rstrip() for line in normalized.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    first_line = lines[0].strip()
+    joined = "\n".join(lines)
+    if first_line.lower().startswith("mindmap"):
+        return _sanitize_mindmap_source(joined)
+    if FLOWCHART_HEADER_PATTERN.match(first_line) or any(token in joined for token in ("-->", "==>")):
+        return _sanitize_flowchart_source(joined)
+    return joined
+
+
 def _is_indented_context_echo(line: str) -> bool:
     if not line.startswith(("    ", "\t")):
         return False
@@ -160,13 +323,11 @@ def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> No
         body_lines.pop()
     if not body_lines:
         return
-    first_line = body_lines[0].strip()
-    if not MERMAID_KEYWORD_PATTERN.match(first_line) and any(
-        token in "\n".join(body_lines) for token in ("-->", "==>")
-    ):
-        body_lines.insert(0, "flowchart TD")
+    body = sanitize_mermaid_source("\n".join(body_lines))
+    if not body.strip():
+        return
     output_lines.append("```mermaid")
-    output_lines.extend(body_lines)
+    output_lines.extend(body.splitlines())
     output_lines.append("```")
 
 
@@ -592,14 +753,63 @@ def _unescaped_single_dollar_positions(line: str) -> list[int]:
     return positions
 
 
+def _inline_math_body_has_math_signal(body: str) -> bool:
+    trimmed = str(body or "").strip()
+    return bool(
+        re.search(
+            r"\\(?:frac|dfrac|tfrac|lim|sum|prod|int|sqrt|left|right|to|infty|text|cdot|times|leq?|geq?|neq|approx|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|omega)\b",
+            trimmed,
+        )
+        or re.search(r"[_^{}∞∑∫√≤≥≈≠]|[A-Za-z0-9]\s*[=+\-*/<>]\s*[A-Za-z0-9\\]", trimmed)
+    )
+
+
 def _inline_math_body_is_unsafe(body: str) -> bool:
+    trimmed = str(body or "").strip()
+    if not trimmed:
+        return True
     if "\n" in body:
         return True
-    if len(body) > 240:
+    if len(trimmed) > 800 and not _inline_math_body_has_math_signal(trimmed):
         return True
     if INLINE_MATH_MARKDOWN_PATTERN.search(body):
         return True
     return any(marker in body for marker in ("```", "`", "**", "[!", "<div", "</", "<table"))
+
+
+def _restore_escaped_inline_math_spans(markdown: str) -> str:
+    r"""Recover likely math spans previously over-escaped as ``\$...\$``."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+
+    def replace(match: re.Match[str]) -> str:
+        body = str(match.group(1) or "").strip()
+        if not body or not _inline_math_body_has_math_signal(body) or _inline_math_body_is_unsafe(body):
+            return match.group(0)
+        return f"${body}$"
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append(_normalize_math_fence_line(line))
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+        fixed.append(re.sub(r"\\\$([^\n]*?)\\\$", replace, line))
+    return "\n".join(fixed)
 
 
 def _find_unsafe_inline_math_spans(markdown: str) -> list[str]:
@@ -890,6 +1100,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
     text = _repair_split_inline_code_math_literals(text)
     text = _repair_display_math_boundaries(text)
+    text = _restore_escaped_inline_math_spans(text)
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
     text = _trim_inline_math_padding(text)
@@ -1214,6 +1425,7 @@ __all__ = [
     "normalize_markdown_rendering",
     "normalize_source_details",
     "normalize_mermaid_blocks",
+    "sanitize_mermaid_source",
     "prepend_table_of_contents",
     "slugify_markdown_anchor",
 ]

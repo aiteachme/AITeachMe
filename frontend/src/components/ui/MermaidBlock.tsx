@@ -16,6 +16,9 @@ let mermaidModulePromise: Promise<MermaidApi> | null = null;
 const MINDMAP_ROOT_RE = /^root\(\((.+)\)\)$/i;
 const MINDMAP_MIXED_SYNTAX_RE =
   /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
+const FLOWCHART_HEADER_RE = /^(?:flowchart|graph)\b/i;
+const FLOWCHART_NODE_LABEL_RE = /(^|[^\w"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]/g;
+const FLOWCHART_EDGE_LABEL_RE = /\|([^|\n]+)\|/g;
 
 function loadMermaid() {
   mermaidModulePromise ??= import("mermaid").then((module) => module.default);
@@ -85,6 +88,53 @@ function sanitizeMindmapLabel(label: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 32);
+}
+
+function sanitizeFlowchartLabel(label: string): string {
+  const normalized = String(label ?? "")
+    .normalize("NFKC")
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/[`$#]/g, " ")
+    .replace(/[{}]/g, " ")
+    .replace(/[|]/g, " ")
+    .replace(/>/g, "大于")
+    .replace(/</g, "小于")
+    .replace(/=/g, "等于")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 44)
+    .trim();
+  return normalized || "节点";
+}
+
+function quoteFlowchartLabels(line: string): string {
+  if (/^\s*(?:classDef|class|style|linkStyle|click)\b/i.test(line)) {
+    return line;
+  }
+
+  return line.replace(FLOWCHART_NODE_LABEL_RE, (_match, prefix: string, nodeId: string, label: string) => {
+    const cleaned = sanitizeFlowchartLabel(label).replace(/"/g, "'");
+    return `${prefix}${nodeId}["${cleaned}"]`;
+  }).replace(FLOWCHART_EDGE_LABEL_RE, (_match, label: string) => {
+    const cleaned = sanitizeFlowchartLabel(label).replace(/"/g, "'").slice(0, 32);
+    return `|${cleaned}|`;
+  });
+}
+
+function normalizeFlowchartChart(chart: string): string {
+  const normalized = normalizeMermaidSource(chart);
+  const rawLines = normalized.split("\n").filter((line) => line.trim().length > 0);
+  if (rawLines.length === 0) {
+    return normalized;
+  }
+
+  const output = [...rawLines];
+  if (!FLOWCHART_HEADER_RE.test(output[0]?.trim() ?? "") && output.some((line) => /-->|==>/.test(line))) {
+    output.unshift("flowchart TD");
+  }
+
+  return output.map(quoteFlowchartLabels).join("\n");
 }
 
 function extractMindmapLabels(chart: string, maxCount = 6): string[] {
@@ -200,7 +250,10 @@ function buildChartCandidates(chart: string): string[] {
     return [normalized];
   }
   if (!normalized.toLowerCase().startsWith("mindmap")) {
-    return [normalized];
+    const flowchartCandidate = normalizeFlowchartChart(normalized);
+    return [normalized, flowchartCandidate].filter(
+      (candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index,
+    );
   }
 
   const candidates = [

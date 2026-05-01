@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionContext, TracedExecutionResult
+from app.shared.infra.tools.builtin.markdown_processing import sanitize_mermaid_source
 from app.workflows.digest.docgen.lib.asset_requests import (
     AssetRequest,
     replace_asset_requests_with_results,
@@ -31,6 +32,7 @@ _MINDMAP_MIXED_SYNTAX_RE = re.compile(
     r"(-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b)",
     re.IGNORECASE,
 )
+_FLOWCHART_HEADER_RE = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
 
 
 def _normalize_mermaid_text(value: str) -> str:
@@ -99,8 +101,8 @@ def _sanitize_mermaid_body(body: str, *, topic: str) -> str:
     first_line = lines[0].strip()
     if first_line.lower().startswith("mindmap"):
         return _sanitize_mindmap_body("\n".join(lines), topic=topic)
-    if not _MERMAID_KEYWORD_RE.match(first_line) and any(token in "\n".join(lines) for token in ("-->", "==>")):
-        lines.insert(0, "flowchart TD")
+    if _FLOWCHART_HEADER_RE.match(first_line) or any(token in "\n".join(lines) for token in ("-->", "==>")):
+        return _sanitize_flowchart_body("\n".join(lines), topic=topic)
     return "\n".join(lines).strip()
 
 
@@ -214,6 +216,13 @@ def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
     if not has_root:
         return _build_simple_mindmap(topic, normalized)
     return "\n".join(output)
+
+
+def _sanitize_flowchart_body(body: str, *, topic: str) -> str:
+    del topic
+    normalized = _extract_mermaid_body(body)
+    sanitized = sanitize_mermaid_source(normalized)
+    return sanitized.strip() or "flowchart TD"
 
 
 class _MermaidPlaceholderRuntime(BaseTracedExecution):

@@ -1107,7 +1107,7 @@ export function HomePage() {
                     value={chatModel}
                     onChange={setChatModel}
                     disabled={isWorking}
-                    className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                    className="flex-1 sm:flex-none sm:w-[172px]"
                   />
                   <button
                     onClick={handleGenerate}

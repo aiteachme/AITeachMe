@@ -113,9 +113,15 @@
   }
 
   .katex-display {
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0.35rem 0;
+    padding: 0.35rem 0 0.45rem;
+  }
+
+  .katex-display > .katex {
+    display: inline-block;
+    max-width: 100%;
   }
 }
 
@@ -136,6 +142,10 @@
 
 .katex annotation {
   display: none !important;
+}
+
+.build-live-markdown .katex-display {
+  margin: 0.85rem 0;
 }
 
 .electron-window-frame {
