@@ -3,18 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import * as d3 from "d3";
 import {
   Activity,
-  Eye,
   Loader2,
   Maximize2,
   Network as NetworkIcon,
   RefreshCw,
-  Target,
-  X,
-  Tag,
-  Link2,
-  FileText,
-  ChevronRight,
-  ExternalLink,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -22,84 +14,41 @@ import {
 import {
   graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost,
   graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost,
-  graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost,
 } from "../../api/generated/knowledge";
 import type { FullGraphResponse, GraphEdgeResponse, KnowledgeSubgraphResponse, KnowledgeUnitResponse } from "../../api/generated/model";
 import { useBuildEventStream } from "../../hooks/useBuildEventStream";
 import { fetchKnowledgeBuildRuntime, type KnowledgeBuildLaneRuntime } from "../../lib/knowledgeBuildRuntime";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { MarkdownViewer } from "../ui/MarkdownViewer";
-
-type NodeVisualRole = "assessment_core" | "support" | "context";
-
-type NodeVisualStyle = {
-  fill: string;
-  dark: string;
-  soft: string;
-  label: string;
-  role: NodeVisualRole;
-  roleLabel: string;
-};
-
-const NODE_COLORS: Record<string, NodeVisualStyle> = {
-  concept: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "概念", role: "assessment_core", roleLabel: "考点主干" },
-  definition: { fill: "#059669", dark: "#047857", soft: "#d1fae5", label: "定义", role: "assessment_core", roleLabel: "定义锚点" },
-  theorem: { fill: "#7c3aed", dark: "#6d28d9", soft: "#ede9fe", label: "定理", role: "assessment_core", roleLabel: "考点主干" },
-  formula: { fill: "#475569", dark: "#334155", soft: "#e2e8f0", label: "公式", role: "assessment_core", roleLabel: "考点主干" },
-  example: { fill: "#a855f7", dark: "#9333ea", soft: "#f3e8ff", label: "示例", role: "support", roleLabel: "例题支撑" },
-  exercise: { fill: "#ef4444", dark: "#dc2626", soft: "#fee2e2", label: "练习", role: "assessment_core", roleLabel: "训练锚点" },
-  method: { fill: "#f97316", dark: "#ea580c", soft: "#ffedd5", label: "方法", role: "assessment_core", roleLabel: "考点主干" },
-  proof_step: { fill: "#0f766e", dark: "#115e59", soft: "#ccfbf1", label: "证明步骤", role: "assessment_core", roleLabel: "推导锚点" },
-  remark: { fill: "#64748b", dark: "#475569", soft: "#f1f5f9", label: "备注", role: "support", roleLabel: "易错提醒" },
-};
-
-const DEFAULT_COLOR: NodeVisualStyle = {
-  fill: "#94a3b8",
-  dark: "#64748b",
-  soft: "#f1f5f9",
-  label: "其他",
-  role: "context",
-  roleLabel: "补充信息",
-};
-
-const RELATION_LABELS: Record<string, string> = {
-  prerequisite: "前置",
-  derivation: "推导",
-  application: "应用",
-  example_of: "例子",
-  similar: "相似",
-  contrast: "对比",
-};
-
-const RELATION_COLORS: Record<string, string> = {
-  prerequisite: "#64748b",
-  derivation: "#94a3b8",
-  application: "#60a5fa",
-  example_of: "#a78bfa",
-  similar: "#14b8a6",
-  contrast: "#f97316",
-};
-
-function truncateGraphLabel(value: string, maxChars = 12): string {
-  const text = String(value || "").trim();
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars - 1)}…`;
-}
-
-function relationLabel(edgeType: string): string {
-  return RELATION_LABELS[edgeType] ?? edgeType.replace(/_/g, " ");
-}
-
-function deterministicEdgeBend(edge: Pick<GraphEdgeResponse, "id" | "source_node_id" | "target_node_id" | "edge_type">): number {
-  const seed = `${edge.id}:${edge.source_node_id}:${edge.target_node_id}:${edge.edge_type}`;
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = Math.imul(31, hash) + seed.charCodeAt(index);
-  }
-  const sign = hash % 2 === 0 ? 1 : -1;
-  const magnitude = 0.22 + (Math.abs(hash) % 4) * 0.035;
-  return sign * magnitude;
-}
+import { KnowledgeGraphNodeDetailPanel } from "./KnowledgeGraphNodeDetailPanel";
+import {
+  DEFAULT_COLOR,
+  EDGE_TYPE_PRIORITY,
+  GRAPH_LAYERS,
+  NODE_COLORS,
+  RELATION_COLORS,
+  clampGraphLayer,
+  deterministicEdgeBend,
+  edgePriority,
+  estimateGraphLabelWidth,
+  estimateRelationLabelWidth,
+  getLearningEdgeDirection,
+  graphNodeLabelLimit,
+  graphNodePriority,
+  graphNodeRadius,
+  isAssessmentCoreNode,
+  isBackboneEdge,
+  isDirectionalLearningEdge,
+  nodeBaseLayer,
+  nodeStyle,
+  relationLabel,
+  relationTone,
+  shouldShowSmartNodeLabel,
+  truncateGraphLabel,
+  type GraphLink,
+  type GraphNode,
+  type NodeVisualRole,
+  type RelationFilterItem,
+} from "./knowledgeGraphVisual";
 
 function isLiveBuildLane(lane: KnowledgeBuildLaneRuntime | null | undefined): boolean {
   const status = String(lane?.status || "").toLowerCase();
@@ -112,30 +61,6 @@ function isAnyLiveBuildLane(runtime: {
   graph?: KnowledgeBuildLaneRuntime | null;
 } | null | undefined): boolean {
   return isLiveBuildLane(runtime?.aggregate) || isLiveBuildLane(runtime?.docgen) || isLiveBuildLane(runtime?.graph);
-}
-
-interface GraphNode extends d3.SimulationNodeDatum {
-  id: number;
-  canonical_name: string;
-  knowledge_unit_type: string;
-  confidence: number;
-  degree: number;
-  label_rank: number;
-  component_id: number;
-  component_size: number;
-  component_rank: number;
-}
-
-interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
-  id: number;
-  edge_type: string;
-  relation_label: string;
-  label_width: number;
-  source_node_id: number;
-  target_node_id: number;
-  pair_index: number;
-  pair_total: number;
-  curvature: number;
 }
 
 type DraggableGraphNode = GraphNode & {
@@ -157,73 +82,12 @@ type GraphDeltaState = {
   at: number;
 } | null;
 
-function nodeStyle(unitType: string): NodeVisualStyle {
-  return NODE_COLORS[unitType] ?? DEFAULT_COLOR;
-}
-
-function isAssessmentCoreNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
-  return nodeStyle(node.knowledge_unit_type).role === "assessment_core";
-}
-
-function graphNodePriority(node: Pick<GraphNode, "knowledge_unit_type" | "degree" | "confidence">): number {
-  const roleScore = nodeStyle(node.knowledge_unit_type).role === "assessment_core"
-    ? 1.45
-    : nodeStyle(node.knowledge_unit_type).role === "support"
-      ? 1.08
-      : 0.9;
-  const degreeScore = Math.min(0.42, Math.sqrt(Math.max(0, node.degree)) * 0.11);
-  const confidenceScore = Math.max(0, Math.min(1, node.confidence || 0)) * 0.12;
-  return roleScore + degreeScore + confidenceScore;
-}
-
-function graphNodeRadius(node: GraphNode): number {
-  const style = nodeStyle(node.knowledge_unit_type);
-  const roleBase = style.role === "assessment_core" ? 7.8 : style.role === "support" ? 7.0 : 6.4;
-  const degreeBoost = Math.sqrt(Math.max(1, node.degree)) * (style.role === "assessment_core" ? 1.28 : 0.92);
-  return Math.min(style.role === "assessment_core" ? 14.5 : 11.5, roleBase + degreeBoost);
-}
-
-function graphNodeLabelLimit(node: GraphNode, selectedNodeId: number | null): number {
-  if (node.id === selectedNodeId) return 24;
-  if (isAssessmentCoreNode(node)) return node.degree >= 3 ? 20 : 17;
-  return node.degree >= 4 ? 17 : 14;
-}
-
-function estimateGraphLabelWidth(label: string, maxChars: number): number {
-  const text = truncateGraphLabel(label, maxChars);
-  let width = 0;
-  for (const char of text) {
-    width += /[\u4e00-\u9fff]/.test(char) ? 12 : 6.8;
-  }
-  return Math.min(170, Math.max(34, width + 18));
-}
-
-function estimateRelationLabelWidth(label: string): number {
-  let width = 0;
-  for (const char of label) {
-    width += /[\u4e00-\u9fff]/.test(char) ? 10 : 6;
-  }
-  return Math.min(74, Math.max(30, width + 14));
-}
-
-function shouldShowSmartNodeLabel(
-  node: GraphNode,
-  selectedNodeId: number | null,
-  selectedNeighbors: Set<number>,
-  showAllNodeLabels: boolean,
-): boolean {
-  if (showAllNodeLabels) return true;
-  if (node.id === selectedNodeId || selectedNeighbors.has(node.id)) return true;
-  if (!isAssessmentCoreNode(node)) return false;
-  if (node.label_rank <= 18) return true;
-  return node.degree >= 4 && node.label_rank <= 28;
-}
-
 function applyGraphInteractiveStyles(
   svg: SVGSVGElement,
   links: GraphLink[],
   selectedNodeId: number | null,
   showEdgeLabels: boolean,
+  showAllEdges: boolean,
   highlightCoreUnits: boolean,
   showAllNodeLabels: boolean,
 ) {
@@ -236,15 +100,22 @@ function applyGraphInteractiveStyles(
   }
   const isConnectedToSelected = (link: GraphLink) =>
     selectedNodeId === null || link.source_node_id === selectedNodeId || link.target_node_id === selectedNodeId;
+  const isVisibleLink = (link: GraphLink) =>
+    showAllEdges || link.is_backbone || (selectedNodeId !== null && isConnectedToSelected(link));
 
   const root = d3.select(svg);
   root.selectAll<SVGPathElement, GraphLink>("path.graph-link")
+    .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
     .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.65 : 1.15))
     .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.46 : isConnectedToSelected(d) ? 0.84 : 0.12));
+  root.selectAll<SVGPathElement, GraphLink>("path.hit-area")
+    .attr("display", (d) => (isVisibleLink(d) ? null : "none"));
 
   root.selectAll<SVGTextElement, GraphLink>("text.graph-link-label")
+    .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
     .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 1 : 0));
   root.selectAll<SVGRectElement, GraphLink>("rect.graph-link-label-bg")
+    .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
     .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 0.96 : 0));
 
   const nodeG = root.selectAll<SVGGElement, GraphNode>("g.graph-node");
@@ -269,7 +140,7 @@ function applyGraphInteractiveStyles(
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
       if (d.id === selectedNodeId) return 0.92;
       if (selectedNodeId !== null && selectedNeighbors.has(d.id)) return 0.68;
-      return 0;
+      return isAssessmentCoreNode(d) ? 0.76 : 0.62;
     })
     .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeId)));
   nodeG.select<SVGTextElement>("text.node-role-label")
@@ -293,6 +164,64 @@ type LoadedGraphData = {
   nodes: KnowledgeUnitResponse[];
   edges: GraphEdgeResponse[];
 };
+
+const DETAIL_NODE_TYPES = new Set(["example", "remark"]);
+const BACKBONE_RELATION_TYPES = new Set(["prerequisite", "derivation", "application"]);
+
+function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
+  return DETAIL_NODE_TYPES.has(node.knowledge_unit_type);
+}
+
+function getStructuredGraphMetrics(nodeCount: number, width: number, height: number) {
+  const canvasWidth = Math.max(width, Math.min(1680, Math.max(820, nodeCount * 6.2 + 360)));
+  const leftPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
+  const rightPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
+  const topPad = Math.min(88, Math.max(58, height * 0.072));
+  const bottomPad = Math.min(88, Math.max(60, height * 0.072));
+  const usableWidth = Math.max(420, canvasWidth - leftPad - rightPad);
+  const usableHeight = Math.max(560, height - topPad - bottomPad);
+  const layerStep = usableWidth / Math.max(1, GRAPH_LAYERS.length - 1);
+
+  return {
+    canvasWidth,
+    leftPad,
+    rightPad,
+    topPad,
+    bottomPad,
+    usableWidth,
+    usableHeight,
+    layerStep,
+  };
+}
+
+function selectBackboneEdgeIds(links: GraphLink[], visibleNodeCount: number, showDetailNodes: boolean): Set<number> {
+  const selected = new Set<number>();
+  const nodeUseCount = new Map<number, number>();
+  const maxEdges = Math.max(
+    24,
+    Math.min(showDetailNodes ? 82 : 46, Math.round(visibleNodeCount * (showDetailNodes ? 0.62 : 0.58))),
+  );
+  const add = (link: GraphLink, relaxed = false) => {
+    if (selected.has(link.id) || selected.size >= maxEdges) return;
+    const sourceUse = nodeUseCount.get(link.source_node_id) ?? 0;
+    const targetUse = nodeUseCount.get(link.target_node_id) ?? 0;
+    if (!relaxed && (sourceUse >= 1 || targetUse >= 1)) return;
+    if (relaxed && (sourceUse >= 3 || targetUse >= 3)) return;
+    selected.add(link.id);
+    nodeUseCount.set(link.source_node_id, sourceUse + 1);
+    nodeUseCount.set(link.target_node_id, targetUse + 1);
+  };
+
+  const learningLinks = [...links]
+    .filter((link) => BACKBONE_RELATION_TYPES.has(link.edge_type))
+    .sort((left, right) => edgePriority(right) - edgePriority(left) || left.id - right.id);
+
+  for (const link of learningLinks.filter((item) => item.edge_type === "prerequisite")) add(link, true);
+  for (const link of learningLinks.filter((item) => item.edge_type !== "prerequisite")) add(link);
+  for (const link of learningLinks) add(link, true);
+
+  return selected;
+}
 
 function graphDataSignature(data: LoadedGraphData): string {
   const nodes = [...data.nodes]
@@ -351,183 +280,404 @@ function mergeGraphData(current: LoadedGraphData | null, incoming: FullGraphResp
   };
 }
 
-function NodeDetailSidebar({
-  course,
-  nodeId,
-  onClose,
-  onNavigate,
-  onEvidenceClick,
-}: {
-  course: string;
-  nodeId: number;
-  onClose: () => void;
-  onNavigate: (id: number) => void;
-  onEvidenceClick?: (chunkId: number, quoteText: string) => void;
-}) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["graph-node-detail", course, nodeId],
-    queryFn: async () =>
-      unwrapOrvalResponse(
-        await graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost(course, {
-          knowledge_unit_id: nodeId,
-        }),
-      ) ?? null,
-    enabled: !!nodeId,
-  });
+function buildStructuredNodePositions(nodes: GraphNode[], width: number, height: number): Map<number, { x: number; y: number }> {
+  const positions = new Map<number, { x: number; y: number }>();
+  if (!nodes.length) return positions;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-slate-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中...
-      </div>
-    );
+  const metrics = getStructuredGraphMetrics(nodes.length, width, height);
+
+  for (let layer = 0; layer < GRAPH_LAYERS.length; layer += 1) {
+    const layerNodes = nodes
+      .filter((node) => node.layout_layer === layer)
+      .sort((left, right) =>
+        left.component_rank - right.component_rank ||
+        graphNodePriority(right) - graphNodePriority(left) ||
+        left.id - right.id,
+      );
+    if (!layerNodes.length) continue;
+
+    const laneCenterX = metrics.leftPad + metrics.layerStep * layer;
+    const groupedByType = new Map<string, GraphNode[]>();
+    for (const node of layerNodes) {
+      const group = groupedByType.get(node.knowledge_unit_type) ?? [];
+      group.push(node);
+      groupedByType.set(node.knowledge_unit_type, group);
+    }
+    const typeGroups = Array.from(groupedByType.entries())
+      .map(([type, groupNodes]) => ({
+        type,
+        nodes: groupNodes.sort((left, right) =>
+          graphNodePriority(right) - graphNodePriority(left) ||
+          left.component_rank - right.component_rank ||
+          left.id - right.id,
+        ),
+        weight: Math.max(1, Math.sqrt(groupNodes.length)),
+      }))
+      .sort((left, right) =>
+        graphNodePriority(right.nodes[0]) - graphNodePriority(left.nodes[0]) ||
+        left.type.localeCompare(right.type),
+      );
+    const totalWeight = typeGroups.reduce((sum, group) => sum + group.weight, 0);
+    const groupGap = typeGroups.length > 1 ? Math.min(34, Math.max(20, metrics.usableHeight * 0.035)) : 0;
+    const availableHeight = Math.max(160, metrics.usableHeight - groupGap * Math.max(0, typeGroups.length - 1));
+    let yCursor = metrics.topPad;
+
+    typeGroups.forEach((group, groupIndex) => {
+      const groupHeight = availableHeight * (group.weight / totalWeight);
+      const groupCenterY = yCursor + groupHeight / 2;
+      const typeOffset = typeGroups.length > 1
+        ? (groupIndex - (typeGroups.length - 1) / 2) * Math.min(72, metrics.layerStep * 0.18)
+        : 0;
+      const maxRowsInGroup = Math.max(2, Math.floor(groupHeight / 64));
+      const columns = Math.max(1, Math.min(4, Math.ceil(group.nodes.length / maxRowsInGroup)));
+      const rows = Math.ceil(group.nodes.length / columns);
+      const rowGap = rows > 1 ? Math.min(82, Math.max(48, groupHeight / Math.max(1, rows - 1))) : 0;
+      const columnGap = columns > 1 ? Math.max(54, Math.min(92, metrics.layerStep * 0.18)) : 0;
+      const yStart = groupCenterY - (rows - 1) * rowGap / 2;
+
+      group.nodes.forEach((node, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const rowNudge = columns > 1 ? ((column % 2) - 0.5) * Math.min(18, rowGap * 0.18) : 0;
+        const componentNudge = Math.min(18, node.component_rank * 3) * (row % 2 === 0 ? 1 : -1);
+        const xJitter = ((node.id % 5) - 2) * 2.4;
+        positions.set(node.id, {
+          x: laneCenterX + typeOffset + (column - (columns - 1) / 2) * columnGap + xJitter,
+          y: yStart + rowGap * row + rowNudge + componentNudge,
+        });
+      });
+
+      yCursor += groupHeight + groupGap;
+    });
   }
 
-  if (!data) return null;
+  return positions;
+}
 
-  const color = NODE_COLORS[data.knowledge_unit_type] ?? DEFAULT_COLOR;
-  const isCoreNode = color.role === "assessment_core";
-  const aliases = data.aliases ?? [];
-  const incidentEdges = data.incident_edges ?? [];
-  const evidenceList = data.evidence ?? [];
-  const sourceRefs = data.source_refs ?? [];
+type GraphSettingsSidebarProps = {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  presentTypes: { type: string; fill: string; label: string; role: NodeVisualRole }[];
+  presentRelationTypes: RelationFilterItem[];
+  nodeCount: number;
+  edgeCount: number;
+  activeEdgeCount: number;
+  backboneEdgeCount: number;
+  coreNodeCount: number;
+  visibleSmartLabelCount: number;
+  totalLoadedNodeCount: number;
+  totalNodeCount?: number;
+  totalEdgeCount?: number;
+  showDetailNodes: boolean;
+  showAllEdges: boolean;
+  showAllNodeLabels: boolean;
+  showEdgeLabels: boolean;
+  highlightCoreUnits: boolean;
+  hiddenRelationTypes: Set<string>;
+  initialFetching: boolean;
+  onToggleDetailNodes: () => void;
+  onToggleAllEdges: () => void;
+  onToggleAllNodeLabels: () => void;
+  onToggleEdgeLabels: () => void;
+  onToggleCoreUnits: () => void;
+  onToggleRelationType: (type: string) => void;
+  onClearRelationFilters: () => void;
+  onResetGraph: () => void;
+  onFitGraph: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+};
+
+function GraphSettingsSidebar({
+  nodes,
+  links,
+  presentTypes,
+  presentRelationTypes,
+  nodeCount,
+  edgeCount,
+  activeEdgeCount,
+  backboneEdgeCount,
+  coreNodeCount,
+  visibleSmartLabelCount,
+  totalLoadedNodeCount,
+  totalNodeCount,
+  totalEdgeCount,
+  showDetailNodes,
+  showAllEdges,
+  showAllNodeLabels,
+  showEdgeLabels,
+  highlightCoreUnits,
+  hiddenRelationTypes,
+  initialFetching,
+  onToggleDetailNodes,
+  onToggleAllEdges,
+  onToggleAllNodeLabels,
+  onToggleEdgeLabels,
+  onToggleCoreUnits,
+  onToggleRelationType,
+  onClearRelationFilters,
+  onResetGraph,
+  onFitGraph,
+  onZoomIn,
+  onZoomOut,
+}: GraphSettingsSidebarProps) {
+  const layerItems = GRAPH_LAYERS.map((layer, index) => {
+    const layerNodes = nodes
+      .filter((node) => node.layout_layer === index)
+      .sort((left, right) => graphNodePriority(right) - graphNodePriority(left) || left.id - right.id);
+    return {
+      ...layer,
+      count: layerNodes.length,
+      nodes: layerNodes.slice(0, 3),
+    };
+  });
+  const directedCount = links.filter((link) => isDirectionalLearningEdge(link.edge_type)).length;
+  const lateralCount = Math.max(0, links.length - directedCount);
+  const resolvedTotalNodeCount = totalLoadedNodeCount || totalNodeCount || nodeCount;
+  const resolvedTotalEdgeCount = totalEdgeCount ?? edgeCount;
+  const visibleEdgeCount = showAllEdges ? activeEdgeCount : backboneEdgeCount;
+  const segmentClass = (active: boolean) =>
+    `flex min-h-10 flex-1 items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
+      active
+        ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
+        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+    }`;
+  const switchClass = (active: boolean) =>
+    `relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+      active ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-700"
+    }`;
 
   return (
-    <div className="animate-in slide-in-from-right-4 space-y-4 duration-200">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-slate-800">
-              <MarkdownViewer content={data.canonical_name} />
-            </h3>
-            <span
-              className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-              style={{ backgroundColor: color.fill }}
+    <aside className="flex h-full w-full flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">图谱视图</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {showDetailNodes ? "完整图谱" : "精简主图"} · {visibleEdgeCount}/{resolvedTotalEdgeCount} 关系
+            </p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+            {nodeCount}/{resolvedTotalNodeCount}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            ["节点", nodeCount],
+            ["关系", visibleEdgeCount],
+            ["考点", coreNodeCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/70">
+              <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">{label}</p>
+              <p className="mt-0.5 text-sm font-semibold tabular-nums">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">显示范围</p>
+            <span className="text-[11px] text-slate-400">{visibleSmartLabelCount} 个智能标签</span>
+          </div>
+          <div className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
+            <button
+              type="button"
+              aria-pressed={showDetailNodes}
+              onClick={() => {
+                if (!showDetailNodes) onToggleDetailNodes();
+              }}
+              className={segmentClass(showDetailNodes)}
             >
-              {color.label}
-            </span>
+              <span>完整</span>
+              <span className="font-semibold tabular-nums">{resolvedTotalNodeCount}</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={!showDetailNodes}
+              onClick={() => {
+                if (showDetailNodes) onToggleDetailNodes();
+              }}
+              className={segmentClass(!showDetailNodes)}
+            >
+              <span>精简</span>
+              <span className="font-semibold tabular-nums">{nodeCount}</span>
+            </button>
           </div>
-          <p className="text-xs text-slate-400">置信度：{Math.round(data.confidence * 100)}%</p>
-        </div>
-        <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+        </section>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            <Target className="h-3.5 w-3.5" />
-            教学角色
+        <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+          <p className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">关系密度</p>
+          <div className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
+            <button
+              type="button"
+              aria-pressed={!showAllEdges}
+              onClick={() => {
+                if (showAllEdges) onToggleAllEdges();
+              }}
+              className={segmentClass(!showAllEdges)}
+            >
+              <span>主干</span>
+              <span className="font-semibold tabular-nums">{backboneEdgeCount}</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={showAllEdges}
+              onClick={() => {
+                if (!showAllEdges) onToggleAllEdges();
+              }}
+              className={segmentClass(showAllEdges)}
+            >
+              <span>全部</span>
+              <span className="font-semibold tabular-nums">{activeEdgeCount}</span>
+            </button>
           </div>
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{color.roleLabel}</p>
-        </div>
-        <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            <Eye className="h-3.5 w-3.5" />
-            出题权重
-          </div>
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{isCoreNode ? "优先锚点" : "辅助材料"}</p>
-        </div>
-      </div>
+        </section>
 
-      {data.current_revision && (
-        <div className="space-y-2">
-          {data.current_revision.summary && (
-            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-              <MarkdownViewer content={data.current_revision.summary} />
-            </div>
-          )}
-          {data.current_revision.body && (
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-100 p-3 text-sm dark:border-slate-800 dark:text-slate-300">
-              <MarkdownViewer content={data.current_revision.body} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {aliases.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Tag className="h-3 w-3" />别名
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {aliases.map((a: { id: number; is_primary: boolean; alias: string }) => (
-              <span key={a.id} className={`rounded-full px-2 py-0.5 text-xs ${a.is_primary ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                {a.alias}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {incidentEdges.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Link2 className="h-3 w-3" />关联边 ({incidentEdges.length})
-          </div>
-          <div className="max-h-40 space-y-1 overflow-y-auto">
-            {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
-              <button key={edge.id} onClick={() => onNavigate(edge.other_node_id)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
-                <span className="text-slate-400">{edge.direction === "outgoing" ? "->" : "<-"}</span>
-                <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{edge.other_node_name}</span>
-                <span className="text-[10px] text-slate-400">{edge.edge_type}</span>
-                <ChevronRight className="h-3 w-3 text-slate-300" />
+        <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+          <p className="mb-3 text-xs font-semibold text-slate-700 dark:text-slate-200">标签与高亮</p>
+          <div className="space-y-3">
+            {[
+              { label: "全部节点标签", active: showAllNodeLabels, onClick: onToggleAllNodeLabels },
+              { label: "关系名称", active: showEdgeLabels, onClick: onToggleEdgeLabels },
+              { label: "考点高亮", active: highlightCoreUnits, onClick: onToggleCoreUnits },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                aria-pressed={item.active}
+                onClick={item.onClick}
+                className="flex min-h-10 w-full items-center justify-between rounded-md px-2 text-left text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                <span>{item.label}</span>
+                <span className={switchClass(item.active)}>
+                  <span
+                    className="h-4 w-4 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: item.active ? "translateX(18px)" : "translateX(2px)" }}
+                  />
+                </span>
               </button>
             ))}
           </div>
-        </div>
-      )}
+        </section>
 
-      {sourceRefs.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <FileText className="h-3 w-3" />图谱来源 ({sourceRefs.length})
+        <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">学习层级</p>
+            <span className="text-[11px] text-slate-400">{directedCount} 主线 · {lateralCount} 横向</span>
           </div>
-          <div className="max-h-40 space-y-1.5 overflow-y-auto">
-            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: string[]; quote_text?: string }) => (
-              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium text-slate-700 dark:text-slate-200">
-                    {ref.chapter_title || (ref.chapter_index ? `第 ${ref.chapter_index} 章` : "知识文档")}
-                  </span>
-                  {ref.doc_version_no ? <span className="shrink-0 text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
+          <div className="space-y-2">
+            {layerItems.map((layer) => (
+              <div key={layer.label} className="flex items-center gap-3">
+                <div className="w-12 shrink-0 text-xs font-semibold text-slate-700 dark:text-slate-200">{layer.label}</div>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-blue-500"
+                    style={{ width: `${Math.max(6, Math.min(100, (layer.count / Math.max(1, nodeCount)) * 100))}%` }}
+                  />
                 </div>
-                <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
-                  {ref.source_kind ? <span>{ref.source_kind}</span> : null}
-                  {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
-                </div>
-                {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{ref.quote_text}</p> : null}
+                <div className="w-9 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">{layer.count}</div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        </section>
 
-      {evidenceList.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <FileText className="h-3 w-3" />来源证据 ({evidenceList.length})
+        <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+          <p className="mb-3 text-xs font-semibold text-slate-700 dark:text-slate-200">节点类型</p>
+          <div className="flex flex-wrap gap-1.5">
+            {presentTypes.map(({ type, fill, label }) => (
+              <span
+                key={type}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+              >
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: fill }} />
+                {label}
+              </span>
+            ))}
           </div>
-          <div className="max-h-40 space-y-1.5 overflow-y-auto">
-            {evidenceList.map((ev: { id: number; chunk_id: number; quote_text: string; evidence_role: string; confidence: number }) => (
-              <button key={ev.id} onClick={() => onEvidenceClick?.(ev.chunk_id, ev.quote_text)}
-                className="group w-full cursor-pointer rounded border-l-2 border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-amber-400/70 dark:hover:bg-amber-500/10">
-                <p className="line-clamp-3">{ev.quote_text}</p>
-                <div className="mt-1 flex items-center justify-between">
-                  <p className="text-[10px] text-slate-400">{ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%</p>
-                  <ExternalLink className="h-3 w-3 text-slate-300 transition-colors group-hover:text-amber-500" />
-                </div>
+        </section>
+
+        <section className="px-4 py-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">关系筛选</p>
+            {hiddenRelationTypes.size ? (
+              <button
+                type="button"
+                onClick={onClearRelationFilters}
+                className="text-[11px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-300"
+              >
+                重置
+              </button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {presentRelationTypes.map((relation) => (
+              <button
+                key={relation.type}
+                type="button"
+                aria-pressed={relation.active}
+                onClick={() => onToggleRelationType(relation.type)}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition-colors ${
+                  relation.active
+                    ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    : "border-slate-200 bg-slate-100 text-slate-400 opacity-75 hover:opacity-100 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-500"
+                }`}
+                title={`${relation.label}，${relation.count} 条关系`}
+              >
+                <span className="h-1.5 w-4 rounded-full" style={{ backgroundColor: relation.active ? relation.color : "#cbd5e1" }} />
+                <span>{relation.label}</span>
+                <span className="text-slate-400">{relation.count}</span>
               </button>
             ))}
           </div>
+        </section>
+      </div>
+
+      <div className="border-t border-slate-200 p-3 dark:border-slate-800">
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={onResetGraph}
+            disabled={initialFetching}
+            className="flex h-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+            title="刷新图谱"
+            aria-label="刷新图谱"
+          >
+            {initialFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onFitGraph}
+            className="flex h-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+            title="适配视图"
+            aria-label="适配视图"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onZoomIn}
+            className="flex h-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+            title="放大"
+            aria-label="放大"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onZoomOut}
+            className="flex h-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-slate-100"
+            title="缩小"
+            aria-label="缩小"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
         </div>
-      )}
-    </div>
+      </div>
+    </aside>
   );
 }
-
 
 export function ForceGraphView({
   course,
@@ -545,9 +695,12 @@ export function ForceGraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [showEdgeLabels, setShowEdgeLabels] = useState(true);
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [showAllEdges, setShowAllEdges] = useState(false);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
   const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
+  const [showDetailNodes, setShowDetailNodes] = useState(true);
+  const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(new Set());
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
@@ -562,7 +715,8 @@ export function ForceGraphView({
   const lastGraphSignatureRef = useRef<string | null>(null);
   const lastGraphCountsRef = useRef<{ nodes: number; edges: number } | null>(null);
   const selectedNodeIdRef = useRef<number | null>(null);
-  const showEdgeLabelsRef = useRef(true);
+  const showEdgeLabelsRef = useRef(false);
+  const showAllEdgesRef = useRef(false);
   const highlightCoreUnitsRef = useRef(true);
   const showAllNodeLabelsRef = useRef(false);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
@@ -633,8 +787,16 @@ export function ForceGraphView({
     hasAutoFittedGraphRef.current = false;
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
+    setHiddenRelationTypes(new Set());
+    setShowDetailNodes(true);
     setGraphDelta(null);
   }, [course]);
+
+  useEffect(() => {
+    nodePositionRef.current.clear();
+    zoomTransformRef.current = null;
+    hasAutoFittedGraphRef.current = false;
+  }, [showDetailNodes, hiddenRelationTypes]);
 
   useEffect(() => {
     if (!graphDelta) return;
@@ -681,6 +843,10 @@ export function ForceGraphView({
   useEffect(() => {
     showEdgeLabelsRef.current = showEdgeLabels;
   }, [showEdgeLabels]);
+
+  useEffect(() => {
+    showAllEdgesRef.current = showAllEdges;
+  }, [showAllEdges]);
 
   useEffect(() => {
     highlightCoreUnitsRef.current = highlightCoreUnits;
@@ -750,26 +916,55 @@ export function ForceGraphView({
       .call(zoom.scaleBy, scaleFactor);
   }, []);
 
+  const toggleRelationType = useCallback((type: string) => {
+    setHiddenRelationTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  }, []);
+
   const rawData = graphData;
 
   // Parse graph data
-  const { nodes, links, presentTypes, nodeCount, edgeCount, coreNodeCount, visibleSmartLabelCount } = useMemo(() => {
-    if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentTypes: [] as { type: string; fill: string; label: string; role: NodeVisualRole }[], nodeCount: 0, edgeCount: 0, coreNodeCount: 0, visibleSmartLabelCount: 0 };
+  const {
+    nodes,
+    links,
+    presentTypes,
+    presentRelationTypes,
+    nodeCount,
+    edgeCount,
+    activeEdgeCount,
+    coreNodeCount,
+    backboneEdgeCount,
+    visibleSmartLabelCount,
+    totalLoadedNodeCount,
+  } = useMemo(() => {
+    if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentTypes: [] as { type: string; fill: string; label: string; role: NodeVisualRole }[], presentRelationTypes: [] as RelationFilterItem[], nodeCount: 0, edgeCount: 0, activeEdgeCount: 0, coreNodeCount: 0, backboneEdgeCount: 0, visibleSmartLabelCount: 0, totalLoadedNodeCount: 0 };
 
     const nodeIdSet = new Set((rawData.nodes ?? []).map((n: any) => n.id));
     const typeSet = new Set<string>();
+    const relationCountByType = new Map<string, number>();
 
     const validEdges = (rawData.edges ?? [])
       .filter((e: any) => nodeIdSet.has(e.source_node_id) && nodeIdSet.has(e.target_node_id));
+    for (const edge of validEdges) {
+      relationCountByType.set(edge.edge_type, (relationCountByType.get(edge.edge_type) ?? 0) + 1);
+    }
+    const activeEdges = validEdges.filter((edge: any) => !hiddenRelationTypes.has(edge.edge_type));
     const pairTotals = new Map<string, number>();
     const pairIndexes = new Map<string, number>();
     const pairKeyOf = (e: any) => [e.source_node_id, e.target_node_id].sort((a, b) => Number(a) - Number(b)).join(":");
-    for (const edge of validEdges) {
+    for (const edge of activeEdges) {
       const key = pairKeyOf(edge);
       pairTotals.set(key, (pairTotals.get(key) ?? 0) + 1);
     }
 
-    const links: GraphLink[] = validEdges
+    const baseLinks = activeEdges
       .map((e: any) => {
         const pairKey = pairKeyOf(e);
         const pairTotal = pairTotals.get(pairKey) ?? 1;
@@ -787,6 +982,8 @@ export function ForceGraphView({
           label_width: estimateRelationLabelWidth(relationLabel(e.edge_type)),
           source_node_id: e.source_node_id,
           target_node_id: e.target_node_id,
+          weight: Number(e.weight ?? 1),
+          confidence: Number(e.confidence ?? 0),
           pair_index: pairIndex,
           pair_total: pairTotal,
           curvature: pairTotal > 1
@@ -795,10 +992,40 @@ export function ForceGraphView({
         };
       });
     const degreeByNodeId = new Map<number, number>();
-    for (const link of links) {
+    for (const link of baseLinks) {
       degreeByNodeId.set(link.source_node_id, (degreeByNodeId.get(link.source_node_id) ?? 0) + 1);
       degreeByNodeId.set(link.target_node_id, (degreeByNodeId.get(link.target_node_id) ?? 0) + 1);
     }
+    const incidentLinksByNodeId = new Map<number, typeof baseLinks>();
+    for (const link of baseLinks) {
+      const sourceList = incidentLinksByNodeId.get(link.source_node_id) ?? [];
+      sourceList.push(link);
+      incidentLinksByNodeId.set(link.source_node_id, sourceList);
+      const targetList = incidentLinksByNodeId.get(link.target_node_id) ?? [];
+      targetList.push(link);
+      incidentLinksByNodeId.set(link.target_node_id, targetList);
+    }
+    const strongestIncidentEdgeIds = new Set<number>();
+    for (const [nodeId, incidentLinks] of incidentLinksByNodeId.entries()) {
+      const allowance = Math.max(2, Math.min(5, Math.ceil(Math.sqrt(degreeByNodeId.get(nodeId) ?? 1)) + 1));
+      [...incidentLinks]
+        .sort((left, right) => edgePriority(right) - edgePriority(left))
+        .slice(0, allowance)
+        .forEach((link) => strongestIncidentEdgeIds.add(link.id));
+    }
+    const allLinks: GraphLink[] = baseLinks.map((link) => {
+      const sourceDegree = degreeByNodeId.get(link.source_node_id) ?? 0;
+      const targetDegree = degreeByNodeId.get(link.target_node_id) ?? 0;
+      const linkWithDegree = {
+        ...link,
+        source_degree: sourceDegree,
+        target_degree: targetDegree,
+      };
+      return {
+        ...linkWithDegree,
+        is_backbone: strongestIncidentEdgeIds.has(link.id) && isBackboneEdge(linkWithDegree),
+      };
+    });
 
     const componentParent = new Map<number, number>();
     for (const id of nodeIdSet) componentParent.set(Number(id), Number(id));
@@ -815,7 +1042,7 @@ export function ForceGraphView({
       if (rootA === rootB) return;
       componentParent.set(Math.max(rootA, rootB), Math.min(rootA, rootB));
     };
-    for (const link of links) unionComponents(link.source_node_id, link.target_node_id);
+    for (const link of allLinks) unionComponents(link.source_node_id, link.target_node_id);
     const componentSizeByRoot = new Map<number, number>();
     for (const id of nodeIdSet) {
       const root = findComponentRoot(Number(id));
@@ -826,7 +1053,34 @@ export function ForceGraphView({
       .sort((a, b) => b[1] - a[1] || a[0] - b[0])
       .forEach(([root], index) => componentRankByRoot.set(root, index));
 
-    const baseNodes: Omit<GraphNode, "label_rank">[] = (rawData.nodes ?? []).map((n: any) => {
+    const baseLayerByNodeId = new Map<number, number>();
+    const layerByNodeId = new Map<number, number>();
+    for (const n of rawData.nodes ?? []) {
+      const baseLayer = nodeBaseLayer(String(n.knowledge_unit_type || ""));
+      baseLayerByNodeId.set(Number(n.id), baseLayer);
+      layerByNodeId.set(Number(n.id), baseLayer);
+    }
+    for (let iteration = 0; iteration < Math.min(24, Math.max(4, allLinks.length)); iteration += 1) {
+      let changed = false;
+      for (const edge of allLinks) {
+        const direction = getLearningEdgeDirection(edge);
+        if (!direction) continue;
+        const fromLayer = layerByNodeId.get(direction.from);
+        const toLayer = layerByNodeId.get(direction.to);
+        if (fromLayer == null || toLayer == null) continue;
+        const baseToLayer = baseLayerByNodeId.get(direction.to) ?? toLayer;
+        const promotionAllowance = edge.edge_type === "prerequisite" ? 2 : 1;
+        const maxPromotedLayer = clampGraphLayer(baseToLayer + promotionAllowance);
+        const nextLayer = Math.min(maxPromotedLayer, clampGraphLayer(fromLayer + 1));
+        if (nextLayer > toLayer) {
+          layerByNodeId.set(direction.to, nextLayer);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+
+    const baseNodes: Omit<GraphNode, "label_rank" | "layout_rank">[] = (rawData.nodes ?? []).map((n: any) => {
       typeSet.add(n.knowledge_unit_type);
       const componentRoot = findComponentRoot(Number(n.id));
       return {
@@ -838,15 +1092,52 @@ export function ForceGraphView({
         component_id: componentRoot,
         component_size: componentSizeByRoot.get(componentRoot) ?? 1,
         component_rank: componentRankByRoot.get(componentRoot) ?? 0,
+        layout_layer: clampGraphLayer(layerByNodeId.get(Number(n.id)) ?? nodeBaseLayer(String(n.knowledge_unit_type || ""))),
       };
     });
     const labelRankByNodeId = new Map<number, number>();
     [...baseNodes]
       .sort((a, b) => graphNodePriority(b) - graphNodePriority(a))
       .forEach((node, index) => labelRankByNodeId.set(node.id, index + 1));
+    const layoutRankByNodeId = new Map<number, number>();
+    [...baseNodes]
+      .sort((a, b) => a.layout_layer - b.layout_layer || a.component_rank - b.component_rank || graphNodePriority(b) - graphNodePriority(a) || a.id - b.id)
+      .forEach((node, index) => layoutRankByNodeId.set(node.id, index));
     const nodes: GraphNode[] = baseNodes
-      .map((node) => ({ ...node, label_rank: labelRankByNodeId.get(node.id) ?? 999 }))
+      .map((node) => ({
+        ...node,
+        label_rank: labelRankByNodeId.get(node.id) ?? 999,
+        layout_rank: layoutRankByNodeId.get(node.id) ?? 999,
+      }))
       .sort((a, b) => graphNodePriority(a) - graphNodePriority(b));
+
+    const totalLoadedNodeCount = nodes.length;
+    const visibleNodeIds = showDetailNodes
+      ? new Set(nodes.map((node) => node.id))
+      : new Set(
+          [...nodes]
+            .filter((node) => !isDetailGraphNode(node))
+            .sort((left, right) => graphNodePriority(right) - graphNodePriority(left) || left.layout_rank - right.layout_rank)
+            .map((node) => node.id),
+        );
+    if (selectedNodeId !== null) {
+      visibleNodeIds.add(selectedNodeId);
+      for (const link of allLinks) {
+        if (link.source_node_id === selectedNodeId) visibleNodeIds.add(link.target_node_id);
+        if (link.target_node_id === selectedNodeId) visibleNodeIds.add(link.source_node_id);
+      }
+    }
+    const visibleNodes = nodes
+      .filter((node) => visibleNodeIds.has(node.id))
+      .sort((left, right) => left.layout_layer - right.layout_layer || left.layout_rank - right.layout_rank);
+    const visibleLinks = allLinks.filter((link) => (
+      visibleNodeIds.has(link.source_node_id) && visibleNodeIds.has(link.target_node_id)
+    ));
+    const backboneEdgeIds = selectBackboneEdgeIds(visibleLinks, visibleNodes.length, showDetailNodes);
+    const links = visibleLinks.map((link) => ({
+      ...link,
+      is_backbone: backboneEdgeIds.has(link.id),
+    }));
 
     const types = Array.from(typeSet)
       .map((t) => ({ type: t, ...(NODE_COLORS[t] ?? DEFAULT_COLOR) }))
@@ -854,12 +1145,22 @@ export function ForceGraphView({
         if (a.role !== b.role) return a.role === "assessment_core" ? -1 : b.role === "assessment_core" ? 1 : 0;
         return a.label.localeCompare(b.label);
       });
-    const coreNodeCount = nodes.filter((node) => isAssessmentCoreNode(node)).length;
+    const relationTypes = Array.from(relationCountByType.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        label: relationLabel(type),
+        color: relationTone(type),
+        active: !hiddenRelationTypes.has(type),
+      }))
+      .sort((left, right) => (EDGE_TYPE_PRIORITY[right.type] ?? 0) - (EDGE_TYPE_PRIORITY[left.type] ?? 0) || left.label.localeCompare(right.label));
+    const coreNodeCount = visibleNodes.filter((node) => isAssessmentCoreNode(node)).length;
+    const backboneEdgeCount = links.filter((link) => link.is_backbone).length;
     const emptyNeighbors = new Set<number>();
-    const visibleSmartLabelCount = nodes.filter((node) => shouldShowSmartNodeLabel(node, null, emptyNeighbors, false)).length;
+    const visibleSmartLabelCount = visibleNodes.filter((node) => shouldShowSmartNodeLabel(node, null, emptyNeighbors, false)).length;
 
-    return { nodes, links, presentTypes: types, nodeCount: nodes.length, edgeCount: links.length, coreNodeCount, visibleSmartLabelCount };
-  }, [rawData]);
+    return { nodes: visibleNodes, links, presentTypes: types, presentRelationTypes: relationTypes, nodeCount: visibleNodes.length, edgeCount: validEdges.length, activeEdgeCount: links.length, coreNodeCount, backboneEdgeCount, visibleSmartLabelCount, totalLoadedNodeCount };
+  }, [hiddenRelationTypes, rawData, selectedNodeId, showDetailNodes]);
 
   // Measure container
   useEffect(() => {
@@ -888,20 +1189,8 @@ export function ForceGraphView({
     // Clear previous
     d3.select(svg).selectAll("*").remove();
 
-    const componentCount = new Set(nodes.map((node) => node.component_id)).size;
-    const componentCenter = (node: GraphNode) => {
-      if (componentCount <= 1 || node.component_rank === 0) return { x: width / 2, y: height / 2 };
-      const rank = node.component_rank;
-      const angle = (rank - 1) * 2.399963229728653;
-      const spread = Math.min(width, height);
-      const ring = Math.min(spread * 0.64, spread * (0.32 + 0.098 * Math.sqrt(rank)));
-      const aspectX = width > height ? 1.58 : 1.16;
-      const aspectY = height > width ? 1.34 : 1.02;
-      return {
-        x: width / 2 + Math.cos(angle) * ring * aspectX,
-        y: height / 2 + Math.sin(angle) * ring * aspectY,
-      };
-    };
+    const structuredPositions = buildStructuredNodePositions(nodes, width, height);
+    const layoutMetrics = getStructuredGraphMetrics(nodes.length, width, height);
 
     const savedPositionCount = nodes.reduce((count, node) => (
       nodePositionRef.current.has(node.id) ? count + 1 : count
@@ -912,16 +1201,28 @@ export function ForceGraphView({
     const simNodes: GraphNode[] = nodes.map((node, index) => {
       const saved = nodePositionRef.current.get(node.id);
       if (saved) return { ...node, x: saved.x, y: saved.y, fx: saved.fx ?? undefined, fy: saved.fy ?? undefined };
-      const center = componentCenter(node);
+      const center = structuredPositions.get(node.id) ?? { x: width / 2, y: height / 2 };
       const angle = index * 2.399963229728653;
-      const radius = 56 + (index % 11) * 13;
+      const radius = 12 + (index % 5) * 4;
       return {
         ...node,
         x: center.x + Math.cos(angle) * radius,
         y: center.y + Math.sin(angle) * radius,
       };
     });
-    const simLinks: GraphLink[] = links.map((l) => ({ ...l, source: l.source_node_id, target: l.target_node_id }));
+    const nodeById = new Map(simNodes.map((node) => [node.id, node]));
+    const simLinks: GraphLink[] = links.flatMap((link) => {
+      const source = nodeById.get(link.source_node_id);
+      const target = nodeById.get(link.target_node_id);
+      if (!source || !target) return [];
+      return [{ ...link, source, target }];
+    });
+    const forceLinks = simLinks.filter((link) => (
+      showAllEdges ||
+      link.is_backbone ||
+      (selectedNodeIdRef.current !== null &&
+        (link.source_node_id === selectedNodeIdRef.current || link.target_node_id === selectedNodeIdRef.current))
+    ));
 
     // SVG structure
     const svgSel = d3.select(svg)
@@ -941,13 +1242,13 @@ export function ForceGraphView({
       .attr("cy", 1)
       .attr("r", 0.68)
       .attr("fill", "#94a3b8")
-      .attr("opacity", 0.24);
+      .attr("opacity", 0.12);
 
     // Background: subtle workspace grid, borrowed from diagram tools without making the graph noisy.
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "#fbfcff");
+      .attr("fill", "#f8fafc");
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
@@ -955,11 +1256,25 @@ export function ForceGraphView({
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "rgba(255,255,255,0.52)");
+      .attr("fill", "rgba(255,255,255,0.66)");
 
     // Container for zoom/pan
     const g = svgSel.append("g");
 
+    const layerBand = g.append("g").attr("class", "graph-layer-guides").attr("pointer-events", "none");
+    const guideTop = Math.max(24, layoutMetrics.topPad - 56);
+    const guideBottom = layoutMetrics.topPad + layoutMetrics.usableHeight + 38;
+    GRAPH_LAYERS.forEach((_, index) => {
+      const x = layoutMetrics.leftPad + layoutMetrics.layerStep * index;
+      layerBand.append("line")
+        .attr("x1", x)
+        .attr("x2", x)
+        .attr("y1", guideTop)
+        .attr("y2", guideBottom)
+        .attr("stroke", "rgba(203,213,225,0.30)")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "4 14");
+    });
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.15, 5])
@@ -1190,18 +1505,33 @@ export function ForceGraphView({
         nodeG.select<SVGTextElement>("text.node-label")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0));
         linkLine
+          .attr("display", (link) => (
+            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+          ))
           .attr("stroke-opacity", (link) => (
             link.source_node_id === d.id || link.target_node_id === d.id ? 0.86 : 0.08
           ))
           .attr("stroke-width", (link) => (
             link.source_node_id === d.id || link.target_node_id === d.id ? 2.3 : 1
           ));
-        linkLabel.attr("opacity", (link) => (
-          showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
-        ));
-        linkLabelBg.attr("opacity", (link) => (
-          showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 0.96 : 0
-        ));
+        linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
+          .attr("display", (link) => (
+            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+          ));
+        linkLabel
+          .attr("display", (link) => (
+            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+          ))
+          .attr("opacity", (link) => (
+            showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
+          ));
+        linkLabelBg
+          .attr("display", (link) => (
+            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+          ))
+          .attr("opacity", (link) => (
+            showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 0.96 : 0
+          ));
         d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
         d3.select(this).select("circle.node-priority-ring").attr("opacity", 0.92);
         d3.select(this).select("rect.node-label-bg").attr("opacity", 0.96);
@@ -1214,44 +1544,38 @@ export function ForceGraphView({
           simLinks,
           selectedNodeIdRef.current,
           showEdgeLabelsRef.current,
+          showAllEdgesRef.current,
           highlightCoreUnitsRef.current,
           showAllNodeLabelsRef.current,
         );
       });
 
     const simulation = d3.forceSimulation<GraphNode>(simNodes)
-      .force("link", d3.forceLink<GraphNode, GraphLink>(simLinks).id((d) => d.id).distance((d) => {
+      .force("link", d3.forceLink<GraphNode, GraphLink>(forceLinks).id((d) => d.id).distance((d) => {
         const sourceDegree = typeof d.source === "object" ? d.source.degree : 1;
         const targetDegree = typeof d.target === "object" ? d.target.degree : 1;
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        const base = sourceIsCore && targetIsCore ? 226 : sourceIsCore || targetIsCore ? 212 : 252;
-        return Math.max(176, base + Math.max(0, d.pair_total - 1) * 52 - Math.min(sourceDegree + targetDegree, 10) * 1.2);
+        const sourceLayer = typeof d.source === "object" ? d.source.layout_layer : 2;
+        const targetLayer = typeof d.target === "object" ? d.target.layout_layer : 2;
+        const layerGap = Math.abs(sourceLayer - targetLayer);
+        const base = layerGap === 0 ? 210 : 178 + layerGap * 46;
+        return Math.max(150, base + Math.max(0, d.pair_total - 1) * 34 - Math.min(sourceDegree + targetDegree, 10) * 0.8 + (sourceIsCore || targetIsCore ? 8 : 28));
       }).strength((d) => {
         const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
         const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        return sourceIsCore || targetIsCore ? 0.24 : 0.16;
+        return d.is_backbone ? (sourceIsCore || targetIsCore ? 0.034 : 0.026) : 0.006;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -660 - Math.min(d.degree, 9) * 62 : -420 - Math.min(d.degree, 7) * 46
+        isAssessmentCoreNode(d) ? -155 - Math.min(d.degree, 9) * 13 : -104 - Math.min(d.degree, 7) * 10
       )))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 54 : isAssessmentCoreNode(d) ? 46 : 36)).iterations(2))
-      .force("radial", d3.forceRadial<GraphNode>(
-        (d) => {
-          if (d.component_size <= 2) return Math.min(width, height) * 0.18;
-          return isAssessmentCoreNode(d) ? Math.min(width, height) * 0.3 : Math.min(width, height) * 0.5;
-        },
-        width / 2,
-        height / 2,
-      ).strength((d) => (d.component_size <= 2 ? 0.01 : isAssessmentCoreNode(d) ? 0.022 : 0.01)))
-      .force("componentX", d3.forceX<GraphNode>((d) => componentCenter(d).x).strength((d) => (d.component_size <= 2 ? 0.08 : 0.026)))
-      .force("componentY", d3.forceY<GraphNode>((d) => componentCenter(d).y).strength((d) => (d.component_size <= 2 ? 0.08 : 0.026)))
-      .force("x", d3.forceX(width / 2).strength(0.0024))
-      .force("y", d3.forceY(height / 2).strength(0.0024))
-      .alphaDecay(0.048)
-      .velocityDecay(0.54);
-    simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 ? 0.2 : 0.035) : 1);
+      .force("center", d3.forceCenter(layoutMetrics.canvasWidth / 2, height / 2))
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 54 : isAssessmentCoreNode(d) ? 42 : 36)).iterations(3))
+      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.08))
+      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.02))
+      .alphaDecay(0.092)
+      .velocityDecay(0.8);
+    simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 || showAllEdges || showAllNodeLabels ? 0.22 : 0.035) : 1);
 
     simulationRef.current = simulation;
     applyGraphInteractiveStyles(
@@ -1259,6 +1583,7 @@ export function ForceGraphView({
       simLinks,
       selectedNodeIdRef.current,
       showEdgeLabelsRef.current,
+      showAllEdgesRef.current,
       highlightCoreUnitsRef.current,
       showAllNodeLabelsRef.current,
     );
@@ -1271,11 +1596,22 @@ export function ForceGraphView({
       const dx = tx - sx;
       const dy = ty - sy;
       const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const curve = Math.min(110, Math.max(32, distance * 0.26)) * d.curvature;
-      const c1x = sx + dx * 0.34 - (dy / distance) * curve;
-      const c1y = sy + dy * 0.34 + (dx / distance) * curve;
-      const c2x = sx + dx * 0.66 - (dy / distance) * curve;
-      const c2y = sy + dy * 0.66 + (dx / distance) * curve;
+      const sourceLayer = d.source.layout_layer ?? 2;
+      const targetLayer = d.target.layout_layer ?? 2;
+      if (sourceLayer === targetLayer) {
+        const curve = Math.min(90, Math.max(28, distance * 0.22)) * d.curvature;
+        const c1x = sx + dx * 0.38 - (dy / distance) * curve;
+        const c1y = sy + dy * 0.38 + (dx / distance) * curve;
+        const c2x = sx + dx * 0.62 - (dy / distance) * curve;
+        const c2y = sy + dy * 0.62 + (dx / distance) * curve;
+        return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
+      }
+      const handle = Math.max(56, Math.min(180, Math.abs(dx) * 0.48));
+      const direction = dx >= 0 ? 1 : -1;
+      const c1x = sx + handle * direction;
+      const c1y = sy;
+      const c2x = tx - handle * direction;
+      const c2y = ty;
       return `M${sx},${sy} C${c1x},${c1y} ${c2x},${c2y} ${tx},${ty}`;
     };
     const linkMidpoint = (d: any) => {
@@ -1336,12 +1672,23 @@ export function ForceGraphView({
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
       const yExtent = d3.extent(simNodes, (d) => d.y) as [number, number];
       if (xExtent[0] == null) return;
-      const pad = 220;
-      const gw = xExtent[1] - xExtent[0] + pad * 2;
-      const gh = yExtent[1] - yExtent[0] + pad * 2;
-      const scale = Math.min(width / gw, height / gh, 1.5);
-      const tx = width / 2 - ((xExtent[0] + xExtent[1]) / 2) * scale;
-      const ty = height / 2 - ((yExtent[0] + yExtent[1]) / 2) * scale;
+      const pad = showDetailNodes ? 52 : 48;
+      const visualXMin = Math.min(xExtent[0], layoutMetrics.leftPad - 96);
+      const visualXMax = Math.max(xExtent[1], layoutMetrics.leftPad + layoutMetrics.layerStep * (GRAPH_LAYERS.length - 1) + 96);
+      const visualYMin = Math.min(yExtent[0], layoutMetrics.topPad - 104);
+      const visualYMax = Math.max(yExtent[1], layoutMetrics.topPad + layoutMetrics.usableHeight + 36);
+      const gw = visualXMax - visualXMin + pad * 2;
+      const gh = visualYMax - visualYMin + pad * 2;
+      const topReserve = 68;
+      const bottomReserve = 52;
+      const availableWidth = Math.max(320, width - 24);
+      const availableHeight = Math.max(320, height - topReserve - bottomReserve);
+      const scale = Math.min(availableWidth / gw, availableHeight / gh, 1.28);
+      const graphWidth = (visualXMax - visualXMin) * scale;
+      const graphHeight = (visualYMax - visualYMin) * scale;
+      const leftInset = Math.max(18, (availableWidth - graphWidth) * 0.5);
+      const tx = leftInset - visualXMin * scale;
+      const ty = topReserve + Math.max(0, availableHeight - graphHeight) * 0.12 - visualYMin * scale;
       hasAutoFittedGraphRef.current = true;
       svgSel.transition().duration(duration)
         .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
@@ -1356,23 +1703,29 @@ export function ForceGraphView({
       hasAutoFittedGraphRef.current = true;
       fitCurrentGraphToView(600);
     });
+    const autoFitTimer = window.setTimeout(() => {
+      if (hasAutoFitted || hasAutoFittedGraphRef.current) return;
+      hasAutoFitted = true;
+      fitCurrentGraphToView(520);
+    }, 520);
 
     return () => {
+      window.clearTimeout(autoFitTimer);
       if (tickFrame !== null) window.cancelAnimationFrame(tickFrame);
       saveNodePositions();
       simulation.stop();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
     };
-  }, [nodes, links, dimensions]);
+  }, [nodes, links, dimensions, showAllEdges, showAllNodeLabels]);
 
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || nodes.length === 0) return;
-    applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels, highlightCoreUnits, showAllNodeLabels);
-  }, [links, nodes.length, selectedNodeId, showEdgeLabels, highlightCoreUnits, showAllNodeLabels]);
+    applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels, showAllEdges, highlightCoreUnits, showAllNodeLabels);
+  }, [links, nodes.length, selectedNodeId, showEdgeLabels, showAllEdges, highlightCoreUnits, showAllNodeLabels]);
 
   const graphIsLoading = !rawData && (initialLoading || initialFetching);
-  const graphIsComplete = Boolean(rawData) && (!totalNodeCount || nodeCount >= totalNodeCount);
+  const graphIsComplete = Boolean(rawData) && (!totalNodeCount || (rawData?.nodes?.length ?? 0) >= totalNodeCount);
   const selectedNodeExpanded = selectedNodeId !== null && (graphIsComplete || expandedNodeIds.has(selectedNodeId));
   const graphProgressPct = typeof graphLane?.progress_pct === "number"
     ? Math.max(0, Math.min(100, Math.round(graphLane.progress_pct)))
@@ -1415,32 +1768,19 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden">
+    <div className="relative h-full min-h-0 overflow-hidden bg-slate-50/60 dark:bg-slate-950">
       {/* Graph panel */}
-      <div className="absolute inset-0 min-h-0 min-w-0">
+      <div className="absolute inset-0 min-h-0 min-w-0 lg:right-[360px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
 
-        {/* Top-left: toolbar + stats + edge label toggle */}
-        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 lg:pr-40">
+        {/* Top-left: mode switch + compact status */}
+        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 lg:right-3 lg:max-w-none lg:pr-0">
           {toolbar}
           <span className="inline-flex h-8 items-center rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
-            {nodeCount}{totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {edgeCount}{totalEdgeCount ? `/${totalEdgeCount}` : ""} 边
+            {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount ?? edgeCount} 关系
           </span>
-          <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-200 dark:ring-slate-700/80">
-            <Target className="h-3.5 w-3.5 text-blue-600" />
-            {coreNodeCount} 个考点锚点
-          </span>
-          <button
-            onClick={resetGraph}
-            disabled={initialFetching}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
-            title="重新加载初始子图"
-          >
-            {initialFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            刷新
-          </button>
           {expandingNodeId ? (
             <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1451,45 +1791,16 @@ export function ForceGraphView({
             <button
               onClick={() => void expandNode(selectedNodeId)}
               disabled={selectedNodeExpanded || expandingNodeId === selectedNodeId}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900 lg:hidden"
               title={selectedNodeExpanded ? "当前节点已展开" : "展开当前节点的一跳邻居"}
             >
               {expandingNodeId === selectedNodeId ? <Loader2 className="h-3 w-3 animate-spin" /> : <NetworkIcon className="h-3 w-3" />}
               {selectedNodeExpanded ? "已展开" : "展开邻居"}
             </button>
           ) : null}
-          <button
-            onClick={() => setHighlightCoreUnits((v) => !v)}
-            aria-pressed={highlightCoreUnits}
-            title="切换考点主干高亮"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
-          >
-            <Target className={`h-3.5 w-3.5 ${highlightCoreUnits ? "text-blue-600" : "text-slate-400"}`} />
-            考点高亮
-          </button>
-          <button
-            onClick={() => setShowAllNodeLabels((v) => !v)}
-            aria-pressed={showAllNodeLabels}
-            title={showAllNodeLabels ? "切回智能标签，只保留关键考点标签" : `显示全部节点标签。当前智能显示 ${visibleSmartLabelCount} 个标签`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
-          >
-            <Eye className={`h-3.5 w-3.5 ${showAllNodeLabels ? "text-blue-600" : "text-slate-400"}`} />
-            {showAllNodeLabels ? "全部标签" : "智能标签"}
-          </button>
-          <button
-            onClick={() => setShowEdgeLabels((v) => !v)}
-            aria-pressed={showEdgeLabels}
-            title="切换关系标签显示"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 transition-colors hover:bg-white dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80 dark:hover:bg-slate-900"
-          >
-            <span className="inline-block h-3.5 w-7 rounded-full p-0.5 transition-colors" style={{ backgroundColor: showEdgeLabels ? "#2563eb" : "#cbd5e1" }}>
-              <span className="block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform" style={{ transform: showEdgeLabels ? "translateX(14px)" : "translateX(0)" }} />
-            </span>
-            关系标签
-          </button>
         </div>
 
-        <div className={`pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 transition-[right] duration-200 dark:bg-slate-950/90 dark:ring-slate-700/80 ${selectedNodeId ? "lg:right-[360px]" : ""}`}>
+        <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80 lg:hidden">
           <button
             type="button"
             onClick={fitGraphToView}
@@ -1537,23 +1848,75 @@ export function ForceGraphView({
           </div>
         ) : null}
 
-        {/* Bottom-left: Legend */}
-        <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-10">
-          <div className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/90 px-3 py-2 shadow-sm ring-1 ring-slate-200/60 dark:bg-slate-950/90 dark:ring-slate-700/70">
-            {presentTypes.map(({ type, fill, label }) => (
-              <div key={type} className="flex items-center gap-1">
-                <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: fill }} />
-                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-300">{label}</span>
+      </div>
+
+      <div className="absolute bottom-0 right-0 top-0 z-20 hidden w-[360px] border-l border-slate-200 bg-white shadow-[-18px_0_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 lg:flex">
+        {selectedNodeId ? (
+          <div className="flex h-full w-full flex-col">
+            {!graphIsComplete ? (
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => void expandNode(selectedNodeId)}
+                  disabled={selectedNodeExpanded || expandingNodeId === selectedNodeId}
+                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+                >
+                  {expandingNodeId === selectedNodeId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <NetworkIcon className="h-3.5 w-3.5" />}
+                  {selectedNodeExpanded ? "已展开邻居" : "展开邻居"}
+                </button>
               </div>
-            ))}
+            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <KnowledgeGraphNodeDetailPanel
+                course={course}
+                nodeId={selectedNodeId}
+                onClose={() => setSelectedNodeId(null)}
+                onNavigate={(id) => setSelectedNodeId(id)}
+                onEvidenceClick={onEvidenceClick}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <GraphSettingsSidebar
+            nodes={nodes}
+            links={links}
+            presentTypes={presentTypes}
+            presentRelationTypes={presentRelationTypes}
+            nodeCount={nodeCount}
+            edgeCount={edgeCount}
+            activeEdgeCount={activeEdgeCount}
+            backboneEdgeCount={backboneEdgeCount}
+            coreNodeCount={coreNodeCount}
+            visibleSmartLabelCount={visibleSmartLabelCount}
+            totalLoadedNodeCount={totalLoadedNodeCount}
+            totalNodeCount={totalNodeCount}
+            totalEdgeCount={totalEdgeCount}
+            showDetailNodes={showDetailNodes}
+            showAllEdges={showAllEdges}
+            showAllNodeLabels={showAllNodeLabels}
+            showEdgeLabels={showEdgeLabels}
+            highlightCoreUnits={highlightCoreUnits}
+            hiddenRelationTypes={hiddenRelationTypes}
+            initialFetching={initialFetching}
+            onToggleDetailNodes={() => setShowDetailNodes((v) => !v)}
+            onToggleAllEdges={() => setShowAllEdges((v) => !v)}
+            onToggleAllNodeLabels={() => setShowAllNodeLabels((v) => !v)}
+            onToggleEdgeLabels={() => setShowEdgeLabels((v) => !v)}
+            onToggleCoreUnits={() => setHighlightCoreUnits((v) => !v)}
+            onToggleRelationType={toggleRelationType}
+            onClearRelationFilters={() => setHiddenRelationTypes(new Set())}
+            onResetGraph={resetGraph}
+            onFitGraph={fitGraphToView}
+            onZoomIn={() => zoomGraphBy(1.22)}
+            onZoomOut={() => zoomGraphBy(0.82)}
+          />
+        )}
       </div>
 
       {selectedNodeId && (
-        <div className="absolute inset-x-3 bottom-3 z-20 max-h-[45dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/12 dark:border-slate-800 dark:bg-slate-950 lg:inset-x-auto lg:bottom-3 lg:right-3 lg:top-3 lg:w-[340px] lg:max-h-none">
+        <div className="absolute inset-x-3 bottom-3 z-20 max-h-[45dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/12 dark:border-slate-800 dark:bg-slate-950 lg:hidden">
           <div className="p-4">
-            <NodeDetailSidebar
+            <KnowledgeGraphNodeDetailPanel
               course={course}
               nodeId={selectedNodeId}
               onClose={() => setSelectedNodeId(null)}

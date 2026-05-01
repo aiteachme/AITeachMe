@@ -1863,10 +1863,13 @@ export function KnowledgeDocsPage() {
   const graphDrawerRef = useRef<HTMLDivElement>(null);
   const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const isNarrowInitialViewport = initialViewportWidth < 640;
+  const graphDesktopMaxWidth = Math.max(400, initialViewportWidth * 0.94);
+  const graphDesktopDefaultWidth = Math.min(graphDesktopMaxWidth, Math.max(760, initialViewportWidth * 0.82));
+  const graphDesktopMinWidth = Math.min(graphDesktopMaxWidth, Math.max(560, initialViewportWidth * 0.52));
   const { width: graphPanelWidth, isDragging: isGraphDragging, handleMouseDown: handleGraphMouseDown } = useResizablePanel({
-    defaultWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.6,
-    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
-    maxWidth: isNarrowInitialViewport ? initialViewportWidth : initialViewportWidth * 0.8,
+    defaultWidth: isNarrowInitialViewport ? initialViewportWidth : graphDesktopDefaultWidth,
+    minWidth: isNarrowInitialViewport ? initialViewportWidth : graphDesktopMinWidth,
+    maxWidth: isNarrowInitialViewport ? initialViewportWidth : graphDesktopMaxWidth,
     liveResizeRef: graphDrawerRef,
   });
 
