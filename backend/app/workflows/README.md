@@ -320,6 +320,7 @@ workflow.add_node(
     trace.node(
         build_load_context_node(context=context),
         name="load_context",
+        display_name="读取上下文",
         timing_field="load_ms",
     ),
 )

@@ -23,6 +23,50 @@ RUN_NAME_EXAM_GRADE = "考试引擎：判题工作流"
 RUN_NAME_EXAM_STUDY_GUIDE = "考试引擎：学习指南"
 _UNKNOWN_COURSE_NAME = "未命名课程"
 
+NODE_GRADE_EXAM = "grade_exam"
+NODE_GENERATE_STUDY_GUIDE = "generate_study_guide"
+
+NODE_DISPLAY_NAMES = {
+    NODE_GRADE_EXAM: "批改试卷",
+    NODE_GENERATE_STUDY_GUIDE: "生成学习指南",
+}
+
+NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
+    NODE_GRADE_EXAM: {
+        "description": (
+            "批改整张试卷：客观题先用规则判定，再调用 LLM 生成个性化反馈；"
+            "主观题调用结构化判分模型，并保留兜底评分路径。"
+        ),
+        "reads": ["ExamPaperItem snapshots", "answer_content", "LLM provider"],
+        "writes": ["grade_decisions"],
+        "emits": ["progress:grade_exam"],
+        "input_keys": ["mode", "course_id", "course_name", "items"],
+        "output_keys": ["grade_decisions", "grade_exam_ms", "error"],
+    },
+    NODE_GENERATE_STUDY_GUIDE: {
+        "description": (
+            "根据已评分试卷的错题摘要、薄弱知识点和待复习项生成学习指南；"
+            "该节点不重新判卷，只把诊断结果转成下一步学习建议。"
+        ),
+        "reads": ["exam score summary", "wrong_question_summaries", "weak_points", "pending_reviews", "LLM provider"],
+        "writes": ["study_guide"],
+        "emits": ["progress:study_guide"],
+        "input_keys": [
+            "mode",
+            "exam_paper_id",
+            "course_id",
+            "course_name",
+            "exam_title",
+            "score_summary",
+            "wrong_question_summaries",
+            "weak_points",
+            "pending_reviews",
+            "generated_at",
+        ],
+        "output_keys": ["study_guide", "study_guide_ms", "error"],
+    },
+}
+
 
 class ExamGradeState(TypedDict, total=False):
     mode: Literal["grade_exam", "study_guide"]
@@ -47,28 +91,64 @@ def build_exam_grade_graph(*, context: WorkflowContext | None = None) -> StateGr
     workflow = StateGraph(ExamGradeState)
     trace = workflow_tracer(context=context, workflow=workflow_name, lane="exam_grade")
     workflow.add_node(
-        "grade_exam",
-        trace.node(_grade_exam_node, name="grade_exam", timing_field="grade_exam_ms"),
+        NODE_GRADE_EXAM,
+        _trace_exam_grade_node(
+            trace,
+            NODE_GRADE_EXAM,
+            _grade_exam_node,
+            timing_field="grade_exam_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_GRADE_EXAM),
     )
     workflow.add_node(
-        "generate_study_guide",
-        trace.node(
+        NODE_GENERATE_STUDY_GUIDE,
+        _trace_exam_grade_node(
+            trace,
+            NODE_GENERATE_STUDY_GUIDE,
             _generate_study_guide_node,
-            name="generate_study_guide",
             timing_field="study_guide_ms",
         ),
+        metadata=_langgraph_node_metadata(NODE_GENERATE_STUDY_GUIDE),
     )
     workflow.add_conditional_edges(
         START,
-        _route_by_mode,
+        ROUTE_BY_MODE,
         {
-            "grade_exam": "grade_exam",
-            "study_guide": "generate_study_guide",
+            "grade_exam": NODE_GRADE_EXAM,
+            "study_guide": NODE_GENERATE_STUDY_GUIDE,
         },
     )
-    workflow.add_edge("grade_exam", END)
-    workflow.add_edge("generate_study_guide", END)
+    workflow.add_edge(NODE_GRADE_EXAM, END)
+    workflow.add_edge(NODE_GENERATE_STUDY_GUIDE, END)
     return workflow
+
+
+def _trace_exam_grade_node(trace, node_key: str, handler, *, timing_field: str):
+    details = NODE_TRACE_DETAILS[node_key]
+    return trace.node(
+        handler,
+        name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
+        description=str(details["description"]),
+        timing_field=timing_field,
+        input_keys=list(details["input_keys"]),
+        output_keys=list(details["output_keys"]),
+        metadata=_langgraph_node_metadata(node_key),
+    )
+
+
+def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
+    details = NODE_TRACE_DETAILS[node_key]
+    return {
+        "node_key": node_key,
+        "node_display_name": NODE_DISPLAY_NAMES[node_key],
+        "node_description": details["description"],
+        "reads": list(details["reads"]),
+        "writes": list(details["writes"]),
+        "emits": list(details["emits"]),
+        "state_inputs": list(details["input_keys"]),
+        "state_outputs": list(details["output_keys"]),
+    }
 
 
 def _route_by_mode(state: ExamGradeState) -> str:
@@ -76,6 +156,15 @@ def _route_by_mode(state: ExamGradeState) -> str:
     if mode == "study_guide":
         return "study_guide"
     return "grade_exam"
+
+
+def _named_route(fn, name: str):
+    fn.__name__ = name
+    fn.__qualname__ = name
+    return fn
+
+
+ROUTE_BY_MODE = _named_route(_route_by_mode, "按模式选择判题或学习指南")
 
 
 def _state_course_name(state: ExamGradeState) -> str:

@@ -56,7 +56,8 @@ def traced_digest_node(
     output_keys = list(details.get("output_keys") or [])
     return trace.node(
         handler,
-        name=display_name,
+        name=node_key,
+        display_name=display_name,
         description=str(details.get("description") or ""),
         timing_field=timing_field,
         input_keys=input_keys,

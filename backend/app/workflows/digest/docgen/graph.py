@@ -52,23 +52,42 @@ from app.workflows.digest.docgen.nodes.sync_locked_titles import build_sync_lock
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
-NODE_LOAD_CONTEXT = "读取确认方案"
-NODE_PREPARE_GLOBAL_SEED = "准备全局种子"
-NODE_GENERATE_COVER = "生成封面"
-NODE_LOCK_TITLES = "锁定章节标题"
-NODE_CONFIRM_BACKBONE_SEED = "确认骨架种子"
-NODE_BUILD_BACKBONE = "构建文档知识骨架"
-NODE_BUILD_CHAPTER_BRIEFS = "生成章节执行简报"
-NODE_ASSEMBLE_CHAPTER_TASKS = "组装最终章节任务"
-NODE_GENERATE_CHAPTERS = "生成章节草稿"
-NODE_ENHANCE_CHAPTERS = "增强章节内容"
-NODE_REVIEW_CHAPTERS = "复核章节内容"
-NODE_DOCUMENT_CONSISTENCY_REVIEW = "复核整本一致性"
-NODE_REPAIR_OR_ROUTE = "记录复核回流动作"
-NODE_MERGE_REVIEW = "合并检查整本文档"
-NODE_SYNC_LOCKED_TITLES = "同步锁定标题"
-NODE_PUBLISH = "发布知识文档"
+NODE_LOAD_CONTEXT = "load_context"
+NODE_PREPARE_GLOBAL_SEED = "prepare_global_seed"
+NODE_GENERATE_COVER = "generate_cover"
+NODE_LOCK_TITLES = "lock_titles_for_chapters"
+NODE_CONFIRM_BACKBONE_SEED = "confirm_backbone_seed"
+NODE_BUILD_BACKBONE = "build_document_backbone"
+NODE_BUILD_CHAPTER_BRIEFS = "build_chapter_execution_briefs"
+NODE_ASSEMBLE_CHAPTER_TASKS = "assemble_chapter_tasks"
+NODE_GENERATE_CHAPTERS = "generate_chapters"
+NODE_ENHANCE_CHAPTERS = "enhance_chapters"
+NODE_REVIEW_CHAPTERS = "review_chapters"
+NODE_DOCUMENT_CONSISTENCY_REVIEW = "document_consistency_review"
+NODE_REPAIR_OR_ROUTE = "repair_or_route"
+NODE_MERGE_REVIEW = "merge_review"
+NODE_SYNC_LOCKED_TITLES = "sync_locked_titles"
+NODE_PUBLISH = "publish_document"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
+
+NODE_DISPLAY_NAMES = {
+    NODE_LOAD_CONTEXT: "读取确认方案",
+    NODE_PREPARE_GLOBAL_SEED: "准备全局种子",
+    NODE_GENERATE_COVER: "生成封面",
+    NODE_LOCK_TITLES: "锁定章节标题",
+    NODE_CONFIRM_BACKBONE_SEED: "确认骨架种子",
+    NODE_BUILD_BACKBONE: "构建文档知识骨架",
+    NODE_BUILD_CHAPTER_BRIEFS: "生成章节执行简报",
+    NODE_ASSEMBLE_CHAPTER_TASKS: "组装最终章节任务",
+    NODE_GENERATE_CHAPTERS: "生成章节草稿",
+    NODE_ENHANCE_CHAPTERS: "增强章节内容",
+    NODE_REVIEW_CHAPTERS: "复核章节内容",
+    NODE_DOCUMENT_CONSISTENCY_REVIEW: "复核整本一致性",
+    NODE_REPAIR_OR_ROUTE: "记录复核回流动作",
+    NODE_MERGE_REVIEW: "合并检查整本文档",
+    NODE_SYNC_LOCKED_TITLES: "同步锁定标题",
+    NODE_PUBLISH: "发布知识文档",
+}
 
 NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_LOAD_CONTEXT: {
@@ -371,7 +390,7 @@ def _trace_docgen_node(trace, node_key: str, handler, *, timing_field: str | Non
     return traced_digest_node(
         trace,
         node_key=node_key,
-        display_name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
         details=details,
         handler=handler,
         timing_field=timing_field,
@@ -381,7 +400,7 @@ def _trace_docgen_node(trace, node_key: str, handler, *, timing_field: str | Non
 def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
     return node_metadata(
         node_key=node_key,
-        display_name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
         details=NODE_TRACE_DETAILS[node_key],
     )
 
