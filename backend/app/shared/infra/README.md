@@ -181,6 +181,11 @@ await acompletion_with_fallback(messages, model="light")
 
 这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`call_purpose` 可用于默认温度、超时、重试和观测归类，但不应作为业务代码选择模型的主要方式。旧参数名 `task_type` 仅保留给存量调用兼容使用。
 
+### LLM 全局并发
+
+所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 调用都共享 `app.shared.infra.llm_support` 内的进程级 limiter。
+运行时上限只由 `settings.llm.concurrency_limit` 控制，默认 `32`。workflow 内部可以继续设置本链路自己的 fan-out 上限，但实际发给上游的请求数仍会被全局 limiter 压住。
+
 ### LLM call purpose 与业务 model policy
 
 `call_purpose` 和 workflow 自己的 `model_policy.py` 分工必须保持清楚：

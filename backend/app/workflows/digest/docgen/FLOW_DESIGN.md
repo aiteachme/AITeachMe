@@ -206,7 +206,7 @@ enhance_chapters
   处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构，以及按构建约束追加例题/练习。
   如果图谱预抽取开启，则在本阶段完成后启动非阻塞 kg_prefetch sidecar：
     - 使用增强后的章节 Markdown 预抽取 section payload。
-    - 默认最多 6 路 LLM 并发，并先让后续 DocGen review 调度。
+    - 默认最多 2 路 LLM 并发，并先让后续 DocGen review 调度。
     - 不等待、不落库、不影响后续 review_content。
   |
   v

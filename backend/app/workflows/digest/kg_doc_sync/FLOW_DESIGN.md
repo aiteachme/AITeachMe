@@ -147,16 +147,16 @@ prepare
 
 | 层级 | 配置 / 常量 | 当前默认 | 作用 |
 | --- | --- | --- | --- |
-| 全局 LLM semaphore | `LLM_CONCURRENCY_LIMIT` | `32` | 所有文本、结构化 LLM 调用共享的进程级并发上限 |
-| 阶段 A 预抽取 | `settings.knowledge_graph.prefetch_concurrency` | `6` | DocGen 仍在运行时，KG sidecar 最多占用的 section 抽取并发 |
-| 阶段 B 正式同步 | `settings.knowledge_graph.max_parallel_extractions` | `32` | 发布后正式图谱同步的章节/子章节抽取规划上限和默认执行上限 |
+| 全局 LLM limiter | `settings.llm.concurrency_limit` | `32` | 所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 模型调用共享的进程级并发上限 |
+| 阶段 A 预抽取 | `settings.knowledge_graph.prefetch_concurrency` | `2` | DocGen 仍在运行时，KG sidecar 最多占用的 section 抽取并发 |
+| 阶段 B 正式同步 | `settings.knowledge_graph.max_parallel_extractions` | `16` | 发布后正式图谱同步的章节/子章节抽取规划上限和默认执行上限 |
 
 实际生效规则：
 
-- 阶段 A 的 section 抽取执行并发是 `min(任务数, prefetch_concurrency)`，同时仍受全局 `LLM_CONCURRENCY_LIMIT` 限制。
+- 阶段 A 的 section 抽取执行并发是 `min(任务数, prefetch_concurrency)`，同时仍受全局 `settings.llm.concurrency_limit` 限制。
 - 阶段 B 的任务规划上限是 `max_parallel_extractions`；章节很少但内容很长时，会把大章拆成子章节任务，最多扩展到该上限。
-- 阶段 B 的执行并发默认是 `min(任务数, max_parallel_extractions)`；底层还兼容 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT`，它只能进一步压低执行并发，不能超过 `max_parallel_extractions`。
-- 阶段 A 与 DocGen review / repair 共享同一个 LLM semaphore，所以默认 6 路是为了让图谱预热提速，但不抢满 DocGen 的后半段复核资源。
+- 阶段 B 的执行并发默认是 `min(任务数, max_parallel_extractions)`，并由全局 LLM limiter 进一步约束。
+- 阶段 A 与 DocGen review / repair 共享同一个 LLM limiter，所以默认 2 路是为了让图谱预热提速，但不抢满 DocGen 的后半段复核资源。
 - 阶段 B 如果大部分 section 命中预抽取缓存，真正需要 catch-up 的 LLM 调用数会明显低于任务数；runtime 中的 `prefetch_reused_section_count` / `prefetch_catchup_section_count` 用于判断复用效果。
 
 ## 1. 流程总览与执行合同
@@ -222,7 +222,7 @@ DocGen enhance_chapters
   如果 sync_after_docgen + prefetch_during_docgen 开启，启动 kg_prefetch sidecar。
   sidecar 读取增强章节 Markdown、document_backbone、intent_profile、chapter_task_seeds、chapter_execution_briefs 和 chapter_generation_plan。
   sidecar 只缓存 section_key + content_hash + SectionExtractionPayload，不写图谱表。
-  默认 prefetch_concurrency = 2，仍受全局 LLM semaphore 限制，并先让后续 DocGen review 调度。
+  默认 prefetch_concurrency = 2，仍受全局 LLM limiter 限制，并先让后续 DocGen review 调度。
   |
   v
 DocGen review / repair / merge / publish
@@ -593,7 +593,7 @@ _build_extraction_tasks
     - 章节正文长度达到 `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400` 且至少有 2 个可抽取子章节时，按子章节拆分。
     - 即使章节未达到 2400 字，只要存在 4 个以上可抽取子章节，也按小节拆分，避免大章只触发一次超大块 LLM 抽取。
     - 不满足拆分条件时，保持整章作为一个 LLM 抽取任务。
-    - 总任务规划上限来自 `settings.knowledge_graph.max_parallel_extractions`，默认 16；旧 `KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS` 只作为低层兜底。
+    - 总任务规划上限来自 `settings.knowledge_graph.max_parallel_extractions`，默认 16。
     - 任务规划会先以章节为基线；章节少而大章很长时，再按子章节和字符预算自适应拆分，最多扩展到配置上限。
   设计目的：
     - 章节少但单章较长或结构清晰时，仍然可以并行抽取，减少大块结构化输出失败和长章卡住整条链路的情况。

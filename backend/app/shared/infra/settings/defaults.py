@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
+from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+
 from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
 
 SPRINT_MODE_DEFAULTS: dict[str, Any] = {
@@ -32,6 +34,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "video_generation": None,
     },
     "llm": {
+        "concurrency_limit": DEFAULT_LLM_CONCURRENCY_LIMIT,
         "enforce_request_timeout": True,
     },
     "interact": {

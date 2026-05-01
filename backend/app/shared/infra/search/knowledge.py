@@ -21,7 +21,10 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
+from app.shared.infra.llm_support.common import (
+    build_litellm_provider_kwargs,
+    get_llm_concurrency_limiter,
+)
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_choice
 
@@ -122,15 +125,16 @@ async def rerank_chunks(
         litellm = load_litellm()
 
         documents = [chunk.content[:2000] for chunk in chunks]
-        response = await litellm.arerank(
-            model=model,
-            query=query,
-            documents=documents,
-            top_n=min(final_top_k, len(documents)),
-            api_key=api_key,
-            api_base=base_url,
-            **build_litellm_provider_kwargs(model),
-        )
+        async with get_llm_concurrency_limiter():
+            response = await litellm.arerank(
+                model=model,
+                query=query,
+                documents=documents,
+                top_n=min(final_top_k, len(documents)),
+                api_key=api_key,
+                api_base=base_url,
+                **build_litellm_provider_kwargs(model),
+            )
 
         reranked: list[RetrievedChunk] = []
         for result in response.results:

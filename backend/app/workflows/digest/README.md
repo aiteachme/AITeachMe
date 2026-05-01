@@ -128,10 +128,10 @@ prefetch_extract（可选，DocGen sidecar，发布前不落库）
 
 当前并发口径：
 
-- 全局 LLM 并发由 `LLM_CONCURRENCY_LIMIT` 控制，默认 `32`，所有 LLM 调用共享。
-- 预抽取阶段由 `settings.knowledge_graph.prefetch_concurrency` 控制，默认 `6`，实际执行仍受全局 LLM semaphore 限制。
-- 正式同步阶段由 `settings.knowledge_graph.max_parallel_extractions` 控制任务规划和默认执行上限，默认 `32`；章节少但大章很长时会拆成子章节任务，最多扩展到该上限。
-- 底层兼容 `KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT` 作为执行并发兜底，只能压低正式同步并发，不能超过 `max_parallel_extractions`。
+- 全局 LLM 并发只由 `settings.llm.concurrency_limit` 控制，默认 `32`，所有 LLM 调用共享。
+- 预抽取阶段由 `settings.knowledge_graph.prefetch_concurrency` 控制，默认 `2`，实际执行仍受全局 LLM limiter 限制。
+- 正式同步阶段由 `settings.knowledge_graph.max_parallel_extractions` 控制任务规划和默认执行上限，默认 `16`；章节少但大章很长时会拆成子章节任务，最多扩展到该上限。
+- 正式同步执行并发默认等于任务规划上限，并会被全局 LLM limiter 进一步约束。
 - KG docs-sync 的模型槽位、`call_purpose`、`max_tokens`、`timeout_s`、正文片段和课程上下文截断预算都集中在 `kg_doc_sync/lib/model_policy.py`。
 - KnowledgeUnit 不再由标题、题干或关键词本地生成；语义节点来自结构化 LLM 主抽取、LLM 空结果修复，或发布后 hash 命中的 LLM 预抽取 payload。DocGen backbone、标题结构和本地关系缝合只补关系。
 

@@ -2,29 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping, Sequence
 
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_CHAPTER_BRIEF_PARALLELISM
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list, clean_text
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
 
 logger = structlog.get_logger(__name__)
-
-_CHAPTER_BRIEF_SEMAPHORE: asyncio.Semaphore | None = None
-
-
-def get_chapter_brief_semaphore() -> asyncio.Semaphore:
-    global _CHAPTER_BRIEF_SEMAPHORE
-    if _CHAPTER_BRIEF_SEMAPHORE is None:
-        _CHAPTER_BRIEF_SEMAPHORE = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_CHAPTER_BRIEF_PARALLELISM)))
-    return _CHAPTER_BRIEF_SEMAPHORE
-
 
 def fallback_chapter_execution_brief(
     chapter: Mapping[str, object],
@@ -67,26 +55,25 @@ async def build_chapter_execution_brief(
 ) -> ChapterExecutionBrief:
     fallback = fallback_chapter_execution_brief(chapter, digest_mode=digest_mode)
     try:
-        async with get_chapter_brief_semaphore():
-            response = await acompletion_with_fallback(
-                build_chapter_execution_brief_messages(
-                    course_name=course_name,
-                    digest_mode=digest_mode,
-                    chapter=chapter,
-                    locked_title=locked_title,
-                    intent_core=intent_core,
-                    glossary_terms=glossary_terms,
-                    claim_targets=claim_targets,
-                    confusion_targets=confusion_targets,
-                ),
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
-                    digest_mode=digest_mode,
-                    extra_metadata=extra_metadata,
-                    docgen_stage="build_chapter_execution_brief",
-                ),
-                response_model=ChapterExecutionBrief,
-            )
+        response = await acompletion_with_fallback(
+            build_chapter_execution_brief_messages(
+                course_name=course_name,
+                digest_mode=digest_mode,
+                chapter=chapter,
+                locked_title=locked_title,
+                intent_core=intent_core,
+                glossary_terms=glossary_terms,
+                claim_targets=claim_targets,
+                confusion_targets=confusion_targets,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                docgen_stage="build_chapter_execution_brief",
+            ),
+            response_model=ChapterExecutionBrief,
+        )
     except Exception as exc:
         logger.warning("docgen_chapter_brief_failed", chapter_index=fallback.chapter_index, error=str(exc))
         return fallback

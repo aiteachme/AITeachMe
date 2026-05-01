@@ -36,10 +36,10 @@ system_runtime_settings.__env_overrides__
 
 | 层 | 负责什么 | 典型例子 | 写入者 |
 | --- | --- | --- | --- |
-| deployment env / `.env` | 部署、密钥、连接串、首次启动默认值 | `APP_MODE`、`DATABASE_URL`、`AUTH_*`、`S3_*`、`LLM_API_KEY`、`LLM_BASE_URL`、搜索 provider key | 部署平台或本地用户 |
-| code defaults | 项目级默认行为 | 模型路由默认值、上传限制、Planner/DocGen 策略、RAG、搜索画像、图谱同步、观测开关 | 代码 |
+| deployment env / `.env` | 部署、密钥、连接串 | `APP_MODE`、`DATABASE_URL`、`AUTH_*`、`S3_*`、`LLM_API_KEY`、`LLM_BASE_URL`、搜索 provider key | 部署平台或本地用户 |
+| code defaults | 项目级默认行为 | 模型路由默认值、上传限制、Planner/DocGen 策略、RAG、搜索画像、LLM 并发默认值、图谱同步、观测开关 | 代码 |
 | `PROJECT_SETTINGS_PATH` | 可选外部项目 override | 线上部署侧覆盖非敏感项目策略；Render 可指向 Secret File，本地默认不需要；私有 YAML 应写全当前 `Settings` schema | 显式配置者 |
-| `system_runtime_settings` | 本地设置页全局覆盖与有效配置快照 | `models.*`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.*`、粗粒度 observability、`settings_hash` | 设置页/API |
+| `system_runtime_settings` | 本地设置页全局覆盖与有效配置快照 | `models.*`、`llm.concurrency_limit`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.*`、粗粒度 observability、`settings_hash` | 设置页/API |
 | module constants | 模块内部执行细节 | timeout、并发、cache/fusion、parser chain 常量、LLM token budget、embedding batch | 对应模块代码 |
 
 代码默认值集中在：
@@ -58,7 +58,7 @@ system_runtime_settings.__env_overrides__
 - workflow/lane 私有执行预算
 - parser chain 内部常量
 - search cache、timeout、fusion、并发细节
-- LLM 并发和默认 token budget
+- LLM 默认 token budget
 - embedding 分批参数
 - LangSmith 输入/输出截断细节
 

@@ -165,6 +165,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_group="统一模型接入",
                 ui_order=25,
             ),
+            setting(
+                "llm.concurrency_limit",
+                "全局 LLM 并发上限",
+                description="限制本进程同时发起的文本、结构化、流式、工具调用、文生图、embedding 和 rerank 模型请求数。可先按上游 RPM/TPM 额度保守设置，触发 429 时下调。",
+                ui_group="统一模型接入",
+                ui_order=30,
+            ),
         ),
     ),
     SettingsCatalogSection(

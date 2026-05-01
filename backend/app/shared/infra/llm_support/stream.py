@@ -16,7 +16,7 @@ from .common import (
     build_completion_context,
     effective_call_timeout_s,
     extract_usage,
-    get_semaphore,
+    get_llm_concurrency_limiter,
     logger,
     log_attempt_cancelled,
     log_attempt_failed,
@@ -95,7 +95,7 @@ async def acompletion_stream(
         override_kwargs={"stream": True},
     )
 
-    async with get_semaphore():
+    async with get_llm_concurrency_limiter():
         try:
             tracked_model = prepared.tracked_model
             log_attempt_started(

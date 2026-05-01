@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -24,7 +25,6 @@ from app.workflows.digest.common.events import (
 )
 from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
-from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes.assemble_chapter_tasks import (
     build_assemble_chapter_tasks_node,
@@ -786,7 +786,7 @@ async def run_docgen_workflow(
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
-            "max_concurrency": max(1, int(DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS)),
+            "max_concurrency": get_llm_concurrency_limit(),
         },
     )
     result = await run_state_graph(

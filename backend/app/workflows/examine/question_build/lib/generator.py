@@ -45,9 +45,6 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
     re.IGNORECASE,
 )
-_QUESTION_GENERATION_CONCURRENCY = 12
-
-
 def _escape_text_underscore_placeholders(value: str) -> str:
     """Keep blank placeholders valid inside KaTeX/LaTeX text blocks."""
 
@@ -1193,20 +1190,16 @@ async def generate_exam_questions_for_units(
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
     parent_task = asyncio.current_task()
-    concurrency = max(1, min(_QUESTION_GENERATION_CONCURRENCY, len(specs) or 1))
-    semaphore = asyncio.Semaphore(concurrency)
-
     async def generate_for_spec(
         spec: ExamQuestionGenerationSpec,
     ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
         try:
-            async with semaphore:
-                question = await _generate_one_exam_question(
-                    unit_by_id=unit_by_id,
-                    spec=spec,
-                    course_profile=course_profile,
-                    system_constraints=system_constraints,
-                )
+            question = await _generate_one_exam_question(
+                unit_by_id=unit_by_id,
+                spec=spec,
+                course_profile=course_profile,
+                system_constraints=system_constraints,
+            )
             return spec, question
         except asyncio.CancelledError as exc:
             if parent_task is not None and parent_task.cancelling():

@@ -24,7 +24,7 @@ from app.shared.infra.settings.support import (
 from .common import (
     build_completion_context,
     context_request_timeout_s,
-    get_semaphore,
+    get_llm_concurrency_limiter,
     logger,
     raise_last_error,
     should_enforce_request_timeout,
@@ -413,7 +413,7 @@ async def agenerate_image(
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = str(call_kwargs["model"])
-    async with get_semaphore():
+    async with get_llm_concurrency_limiter():
         for attempt in range(1, context.profile.max_retries + 1):
             start = time.monotonic()
             logger.info(

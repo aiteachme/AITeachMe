@@ -22,9 +22,8 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
-from app.shared.infra.env_support import get_env_int
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
@@ -70,7 +69,6 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 16
 _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 16
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
 _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400
@@ -888,24 +886,19 @@ def _max_parallel_extractions() -> int:
         )
         or _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS
     )
-    if configured <= 0:
-        configured = get_env_int("KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS", _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS)
-    return max(1, min(int(configured), _graph_llm_concurrency_cap()))
+    return max(1, min(max(1, int(configured)), _graph_llm_concurrency_cap()))
 
 
 def _graph_llm_concurrency_cap() -> int:
     """Keep graph extraction from occupying all shared LLM call slots."""
 
-    llm_limit = get_env_int("LLM_CONCURRENCY_LIMIT", DEFAULT_LLM_CONCURRENCY_LIMIT)
-    normalized_limit = max(1, int(llm_limit or DEFAULT_LLM_CONCURRENCY_LIMIT))
+    normalized_limit = get_llm_concurrency_limit()
     reserved_slots = max(1, min(4, normalized_limit // 4))
     return max(1, normalized_limit - reserved_slots)
 
 
 def _chapter_concurrency_limit() -> int:
-    max_parallel = _max_parallel_extractions()
-    configured = get_env_int("KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT", max_parallel)
-    return max(1, min(max_parallel, int(configured or max_parallel)))
+    return _max_parallel_extractions()
 
 
 def _effective_concurrency_limit(task_count: int, *, override: int | None = None) -> int:

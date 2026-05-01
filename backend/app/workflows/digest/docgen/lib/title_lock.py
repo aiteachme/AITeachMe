@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 import re
 from typing import Any
@@ -15,7 +14,6 @@ from app.workflows.digest.common.pedagogy import (
     is_usable_resolved_chapter_title,
     resolve_effective_chapter_title,
 )
-from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle, clean_text
 from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
@@ -38,14 +36,6 @@ _TITLE_STOPWORDS = {
     "讲解",
     "解析",
 }
-_TITLE_LOCK_SEMAPHORE: asyncio.Semaphore | None = None
-
-
-def get_title_lock_semaphore() -> asyncio.Semaphore:
-    global _TITLE_LOCK_SEMAPHORE
-    if _TITLE_LOCK_SEMAPHORE is None:
-        _TITLE_LOCK_SEMAPHORE = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM)))
-    return _TITLE_LOCK_SEMAPHORE
 
 
 def _title_terms(value: str) -> set[str]:
@@ -117,24 +107,23 @@ async def lock_title_for_chapter(
 ) -> LockedChapterTitle:
     fallback = fallback_locked_title(chapter)
     try:
-        async with get_title_lock_semaphore():
-            response = await acompletion_with_fallback(
-                build_title_lock_messages(
-                    course_name=course_name,
-                    digest_mode=digest_mode,
-                    user_prompt=user_prompt,
-                    plan_summary=plan_summary,
-                    chapter=chapter,
-                    docgen_history_brief=docgen_history_brief,
-                ),
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.TITLE_LOCK,
-                    digest_mode=digest_mode,
-                    extra_metadata=extra_metadata,
-                    docgen_stage="lock_title_for_chapter",
-                ),
-                response_model=LockedChapterTitle,
-            )
+        response = await acompletion_with_fallback(
+            build_title_lock_messages(
+                course_name=course_name,
+                digest_mode=digest_mode,
+                user_prompt=user_prompt,
+                plan_summary=plan_summary,
+                chapter=chapter,
+                docgen_history_brief=docgen_history_brief,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.TITLE_LOCK,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                docgen_stage="lock_title_for_chapter",
+            ),
+            response_model=LockedChapterTitle,
+        )
     except Exception as exc:
         logger.warning("docgen_title_lock_failed", chapter_index=fallback.chapter_index, error=str(exc))
         return fallback

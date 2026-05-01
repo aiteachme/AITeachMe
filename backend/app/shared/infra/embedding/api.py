@@ -18,6 +18,8 @@ from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
     build_litellm_provider_kwargs,
+    get_llm_concurrency_limit,
+    get_llm_concurrency_limiter,
     get_llm_runtime_snapshot,
 )
 from app.shared.infra.llm_support.litellm_loader import load_litellm
@@ -51,9 +53,10 @@ async def _call_embedding(
         }
         if api_key is not None:
             request_kwargs["api_key"] = api_key
-        response = await litellm.aembedding(
-            **request_kwargs,
-        )
+        async with get_llm_concurrency_limiter():
+            response = await litellm.aembedding(
+                **request_kwargs,
+            )
         return [item["embedding"] for item in response.data]
     except litellm.exceptions.BadRequestError as exc:
         error_text = str(exc)
@@ -71,7 +74,8 @@ async def _call_embedding(
             }
             if api_key is not None:
                 fallback_kwargs["api_key"] = api_key
-            response = await litellm.aembedding(**fallback_kwargs)
+            async with get_llm_concurrency_limiter():
+                response = await litellm.aembedding(**fallback_kwargs)
             return [item["embedding"] for item in response.data]
         if (
             "Incorrect model ID" in error_text
@@ -131,8 +135,8 @@ async def aembed_texts(
     all_vectors: list[list[float]] = []
     total_batches = (len(texts) + batch_size - 1) // batch_size
 
-    # Run batches concurrently (up to 4 at a time) for better throughput
-    max_concurrent = min(total_batches, 4)
+    # Run batches concurrently for throughput; each upstream call still goes through the global LLM limiter.
+    max_concurrent = min(total_batches, get_llm_concurrency_limit())
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _embed_batch(batch_idx: int) -> tuple[int, list[list[float]]]:
