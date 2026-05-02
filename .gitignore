@@ -1,5 +1,5 @@
 # IDE
-#.vscode/
+.vscode/
 .idea/
 *.swp
 *.swo

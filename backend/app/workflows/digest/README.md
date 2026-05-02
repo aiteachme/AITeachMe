@@ -21,9 +21,9 @@ digest/
 - `planner/`
   负责根据文件内容和历史对话生成可确认 plan，权威文档见 `planner/FLOW_DESIGN.md`
 - `docgen/`
-  负责根据 confirmed plan 生成知识文档，权威文档见 `docgen/FLOW_DESIGN.md`
+  负责根据 confirmed plan 生成知识文档，权威文档见 `docgen/README.md`
 - `kg_doc_sync/`
-  负责知识文档和知识图谱的正式同步链路，权威文档见 `kg_doc_sync/FLOW_DESIGN.md`
+  负责知识文档和知识图谱的正式同步链路，权威文档见 `kg_doc_sync/README.md`
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 course 级知识产物清理 `cleanup.py`

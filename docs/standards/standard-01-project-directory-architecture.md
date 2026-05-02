@@ -11,7 +11,7 @@
 
 > 2026-04-16 当前仓库补充口径：后端源码已完成 workflows 单层化，当前真实依赖方向是
 > `api -> workflows -> repositories / shared.infra / models / schemas`。
-> 本文档中关于通用 `services/` 的正式版平台化示例仍可作为长期多服务拆分参考，但当前 `backend/app/services` 与 `backend/app/teaching` 不再作为源码层存在。
+> 本文档中关于通用 `services/` 的正式版平台化示例仍可作为长期多服务拆分参考，但当前后端不再保留旧 services 源层与旧 teaching 源层。
 
 ---
 
@@ -200,7 +200,7 @@ frontend
     ↓ HTTP/API
 backend/app/api
     ↓
-backend/app/services
+backend 服务编排层
     ↓
 backend/app/domain
     ↓

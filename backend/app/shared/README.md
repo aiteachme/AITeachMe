@@ -70,7 +70,7 @@ infra  = 已经接上外部系统的共享能力
 
 更细的目录导航见：
 
-- [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)
+- [infra/README.md](./infra/README.md)
 
 ## 5. 哪些内容不要放进 `shared`
 
@@ -139,8 +139,8 @@ infra  = 已经接上外部系统的共享能力
 第一次接手后端，建议按这个顺序读：
 
 1. 本文件，先建立 `kernel / infra` 的边界。
-2. [infra/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/shared/infra/README.md)，看共享基础设施怎么分层。
-3. [workflows/README.md](/c:/Project/Project0GIT/aiteachme/AiTeachMe-main/backend/app/workflows/README.md)，看业务层如何分区、怎么编排、怎么接 LangSmith。
+2. [infra/README.md](./infra/README.md)，看共享基础设施怎么分层。
+3. [workflows/README.md](../workflows/README.md)，看业务层如何分区、怎么编排、怎么接 LangSmith。
 
 ## 9. 一句话总结
 
