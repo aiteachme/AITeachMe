@@ -43,9 +43,8 @@ import { CourseExportModal } from "../components/course/CourseExportModal";
 import { useToast } from "../components/ui/Toast";
 import {
   ChatModelSelect,
-  DEFAULT_CHAT_MODEL_CHOICE,
-  type ChatModelChoice,
   toChatRequestModel,
+  useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -650,7 +649,7 @@ export function HomePage() {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
-  const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
+  const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

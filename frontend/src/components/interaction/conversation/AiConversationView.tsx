@@ -16,10 +16,9 @@ import { cn } from "../../../lib/utils";
 import type { FileRecord } from "../../../types/files";
 import { ChatCitationModal } from "../../chat/ChatCitationModal";
 import {
-  DEFAULT_CHAT_MODEL_CHOICE,
-  type ChatModelChoice,
   toChatModelChoice,
   toChatRequestModel,
+  useGlobalChatModelChoice,
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationFullscreenDraft } from "./AiConversationFullscreenDraft";
@@ -274,7 +273,7 @@ export const AiConversationView = memo(function AiConversationView({
   const [draftAttachedFileIds, setDraftAttachedFileIds] = useState<string[]>([]);
   const [draftAttachedFiles, setDraftAttachedFiles] = useState<FileRecord[]>([]);
   const [isDraftUploadingFiles, setIsDraftUploadingFiles] = useState(false);
-  const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
+  const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -1049,7 +1048,7 @@ export const AiConversationView = memo(function AiConversationView({
     autoSentRequestKeysRef.current.add(autoRequest.key);
     setDraft("");
     const requestModel =
-      autoRequest.model && autoRequest.model !== DEFAULT_CHAT_MODEL_CHOICE
+      autoRequest.model?.trim()
         ? autoRequest.model
         : toChatRequestModel(chatModel);
     const result = await sendMessage({

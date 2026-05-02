@@ -1,9 +1,11 @@
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
@@ -19,6 +21,8 @@ export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 export const DEFAULT_CHAT_MODEL_CHOICE: ChatModelChoice = "settings";
 
 const CHAT_MODEL_VALUES = new Set<string>(CHAT_MODEL_OPTIONS);
+const CHAT_MODEL_STORAGE_KEY = "aiteachme:global-chat-model";
+const CHAT_MODEL_CHANGED_EVENT = "aiteachme:global-chat-model-changed";
 
 const CHAT_MODEL_META: Record<ChatModelChoice, {
   optionLabel: string;
@@ -59,6 +63,47 @@ export function toChatModelChoice(value: string | null | undefined): ChatModelCh
 
 export function toChatRequestModel(value: ChatModelChoice): string {
   return value;
+}
+
+function readStoredChatModelChoice(): ChatModelChoice {
+  if (typeof window === "undefined") {
+    return DEFAULT_CHAT_MODEL_CHOICE;
+  }
+  return toChatModelChoice(window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY));
+}
+
+function subscribeChatModelChoice(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === CHAT_MODEL_STORAGE_KEY) {
+      onStoreChange();
+    }
+  };
+  window.addEventListener(CHAT_MODEL_CHANGED_EVENT, onStoreChange);
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    window.removeEventListener(CHAT_MODEL_CHANGED_EVENT, onStoreChange);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
+export function useGlobalChatModelChoice(): [ChatModelChoice, (value: ChatModelChoice) => void] {
+  const value = useSyncExternalStore(
+    subscribeChatModelChoice,
+    readStoredChatModelChoice,
+    () => DEFAULT_CHAT_MODEL_CHOICE,
+  );
+  const setValue = useCallback((nextValue: ChatModelChoice) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, nextValue);
+    window.dispatchEvent(new Event(CHAT_MODEL_CHANGED_EVENT));
+  }, []);
+  return [value, setValue];
 }
 
 interface ChatModelSelectProps {
@@ -275,7 +320,7 @@ export function ChatModelSelect({
     <>
       <div
         ref={rootRef}
-        title={`选择本轮模型：${meta.title}`}
+        title={`选择全局模型：${meta.title}`}
         onKeyDown={handleKeyDown}
         className={cn(
           "relative inline-flex h-9 min-w-[118px] max-w-full",
@@ -292,7 +337,7 @@ export function ChatModelSelect({
           aria-expanded={open}
           aria-controls={listboxId}
           aria-describedby={descriptionId}
-          aria-label={`选择本轮模型，当前为${meta.optionLabel}`}
+          aria-label={`选择全局模型，当前为${meta.optionLabel}`}
           onClick={() => {
             if (!disabled) {
               setOpen((current) => !current);

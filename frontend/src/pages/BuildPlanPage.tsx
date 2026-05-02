@@ -44,10 +44,9 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import {
   ChatModelSelect,
-  DEFAULT_CHAT_MODEL_CHOICE,
-  type ChatModelChoice,
   toChatModelChoice,
   toChatRequestModel,
+  useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import {
@@ -85,7 +84,6 @@ interface PersistedPlannerState {
   currentPlan: BuildPlannerPlanResponse | null;
   inputValue: string;
   plannerNeedsRefresh: boolean;
-  chatModel?: ChatModelChoice;
 }
 
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
@@ -264,7 +262,6 @@ function readPersistedPlannerState(courseId: string): PersistedPlannerState | nu
     return {
       ...parsed,
       messages: sanitizePlannerMessages(parsed.messages ?? []),
-      chatModel: toChatModelChoice(parsed.chatModel),
     };
   } catch {
     logPlannerDebug("read_persisted_state_failed", { courseId });
@@ -290,7 +287,6 @@ function persistPlannerState(courseId: string, value: PersistedPlannerState) {
     plannerSessionId: value.plannerSessionId,
     hasCurrentPlan: Boolean(value.currentPlan),
     plannerNeedsRefresh: value.plannerNeedsRefresh,
-    chatModel: value.chatModel,
   });
 }
 
@@ -795,12 +791,18 @@ export function BuildPlanPage() {
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
-  const [chatModel, setChatModel] = useState<ChatModelChoice>(() => toChatModelChoice(navState?.model ?? DEFAULT_CHAT_MODEL_CHOICE));
+  const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [plannerNeedsRefresh, setPlannerNeedsRefresh] = useState(false);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
+
+  useEffect(() => {
+    if (navState?.model !== undefined) {
+      setChatModel(toChatModelChoice(navState.model));
+    }
+  }, [navState?.model, setChatModel]);
 
   const filesQuery = useQuery({
     queryKey: ["files", courseId],
@@ -967,7 +969,6 @@ export function BuildPlanPage() {
       setPlannerSessionId(persisted.plannerSessionId);
       setCurrentPlan(persisted.currentPlan ?? null);
       setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
-      setChatModel(toChatModelChoice(persisted.chatModel));
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
       hydratedCourseRef.current = courseId;
@@ -1028,7 +1029,6 @@ export function BuildPlanPage() {
 
         setPlannerSessionId(session.session_id);
         setCurrentPlan(session.latest_plan);
-        setChatModel(toChatModelChoice((session as PlannerSessionWithRuntime).model_override));
         setMessages(sanitizePlannerMessages(restored));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
@@ -1068,9 +1068,8 @@ export function BuildPlanPage() {
       currentPlan,
       inputValue,
       plannerNeedsRefresh,
-      chatModel,
     });
-  }, [chatModel, currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
+  }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
 
   useEffect(() => {
     if (hydratedCourseRef.current !== courseId || !currentPlan) {
@@ -1353,7 +1352,6 @@ export function BuildPlanPage() {
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
       setCurrentPlan(response.latest_plan);
-      setChatModel(toChatModelChoice((response as PlannerSessionWithRuntime).model_override));
       setPlannerNeedsRefresh(false);
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {

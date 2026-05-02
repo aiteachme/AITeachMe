@@ -332,6 +332,7 @@ def build_digest_retrieval_policy(
     internal_profile: str | None,
     *,
     has_local_materials: bool,
+    allow_external_search: bool = True,
     digest_mode: str | None = None,
     user_prompt: str | None = None,
     course_name: str | None = None,
@@ -355,7 +356,7 @@ def build_digest_retrieval_policy(
     return {
         "schema_version": 1,
         "local_first": bool(has_local_materials),
-        "allow_web": True,
+        "allow_web": bool(allow_external_search),
         "source_priority": ["local_materials", focus, "general_web"],
         "external_focus": focus,
         "reason": reason,

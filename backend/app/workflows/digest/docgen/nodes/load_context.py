@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from pydantic import ValidationError
 
+from app.shared.infra.settings import get_settings
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
@@ -81,9 +82,11 @@ def build_load_context_node(*, context: WorkflowContext):
 
         has_local_materials = bool(shared_inputs.source_packets)
         plan_course_label = str(plan_contract.course_name or plan_contract.user_prompt or "").strip()
+        settings = get_settings()
         retrieval_policy = build_digest_retrieval_policy(
             retrieval_profile,
             has_local_materials=has_local_materials,
+            allow_external_search=bool(settings.docgen.allow_external_search),
             digest_mode=digest_mode,
             user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             course_name=plan_course_label,
