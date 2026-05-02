@@ -466,6 +466,7 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
             return matches[0]
         return None
 
+    resolved_edges: list[CandidateEdge] = []
     for edge in result.edges:
         source_node = _select_local_candidate(
             edge.source_name,
@@ -477,12 +478,20 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
             endpoint_side="target",
             edge_type=edge.edge_type,
         )
-        if source_node is not None:
-            edge.source_candidate_id = source_node.candidate_id
-            edge.source_node_type = source_node.knowledge_unit_type
-        if target_node is not None:
-            edge.target_candidate_id = target_node.candidate_id
-            edge.target_node_type = target_node.knowledge_unit_type
+        if source_node is None or target_node is None:
+            logger.info(
+                "knowledge_candidate_edge_dropped_unmatched_local_endpoint",
+                edge_type=edge.edge_type,
+                source_name=edge.source_name,
+                target_name=edge.target_name,
+            )
+            continue
+        edge.source_candidate_id = source_node.candidate_id
+        edge.source_node_type = source_node.knowledge_unit_type
+        edge.target_candidate_id = target_node.candidate_id
+        edge.target_node_type = target_node.knowledge_unit_type
+        resolved_edges.append(edge)
+    result.edges = resolved_edges
     return result
 
 
