@@ -43,7 +43,7 @@
 - `question_knowledge_unit_link`：题目模板或试卷题目与 `knowledge_unit` 的加权覆盖关系，供出题、判题和掌握度回写使用。
 - `exam_study_guide_cache`：试卷判分后生成的学习指南缓存，避免重复生成并支持异步返回。
 - `user_knowledge_state`：用户对某个 `knowledge_unit` 的掌握度状态。
-- `chat_session`、`chat_message`：伴读对话会话与消息；Planner 已确认构建方案内联在对应 `chat_session.meta_json.confirmed_plan` 中。
+- `chat_session`、`chat_message`：伴读对话会话与消息；Planner 已确认构建方案内联在对应 `chat_session.meta_json.confirmed_plan` 中，轻量历史保存在 `chat_session.meta_json.confirmed_plan_history`。
 
 ## 已移除或未来演进
 

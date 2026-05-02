@@ -189,14 +189,10 @@ def _reconcile_imported_planner_metadata(
                     remapped_ids.append(new_id)
             meta["selected_file_ids"] = remapped_ids
 
-        confirmed_plan_id = meta.get("confirmed_plan_id")
-        if confirmed_plan_id is not None and plan_id_map:
-            meta["confirmed_plan_id"] = _lookup_imported_or_existing_id(confirmed_plan_id, plan_id_map)
-
-        confirmed_plan = meta.get("confirmed_plan")
-        if isinstance(confirmed_plan, dict) and file_id_map:
+        def reconcile_confirmed_plan(confirmed_plan: dict[str, Any]) -> dict[str, Any]:
+            confirmed_plan = dict(confirmed_plan)
             selected_file_ids = confirmed_plan.get("selected_file_ids_json")
-            if isinstance(selected_file_ids, list):
+            if isinstance(selected_file_ids, list) and file_id_map:
                 confirmed_plan["selected_file_ids_json"] = [
                     new_id
                     for old_id in selected_file_ids
@@ -204,8 +200,26 @@ def _reconcile_imported_planner_metadata(
                 ]
             plan_json = confirmed_plan.get("plan_json")
             if isinstance(plan_json, dict):
+                plan_json = dict(plan_json)
                 plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
-            meta["confirmed_plan"] = confirmed_plan
+                confirmed_plan["plan_json"] = plan_json
+            return confirmed_plan
+
+        confirmed_plan_id = meta.get("confirmed_plan_id")
+        if confirmed_plan_id is not None and plan_id_map:
+            meta["confirmed_plan_id"] = _lookup_imported_or_existing_id(confirmed_plan_id, plan_id_map)
+
+        confirmed_plan = meta.get("confirmed_plan")
+        if isinstance(confirmed_plan, dict):
+            meta["confirmed_plan"] = reconcile_confirmed_plan(confirmed_plan)
+
+        confirmed_plan_history = meta.get("confirmed_plan_history")
+        if isinstance(confirmed_plan_history, list):
+            meta["confirmed_plan_history"] = [
+                reconcile_confirmed_plan(item)
+                for item in confirmed_plan_history
+                if isinstance(item, dict)
+            ]
 
         item.meta_json = meta
         session.add(item)
@@ -270,6 +284,7 @@ def _import_legacy_confirmed_build_plans(
         meta["confirmed_plan_id"] = new_plan_id
         meta["confirmed_plan"] = {
             "id": new_plan_id,
+            "version_no": int(record.get("version_no") or 1),
             "course_id": course_id,
             "planner_session_id": str(new_session_id),
             "user_id": user_id,
@@ -284,6 +299,7 @@ def _import_legacy_confirmed_build_plans(
             "created_at": record.get("created_at"),
             "updated_at": record.get("updated_at"),
         }
+        meta["confirmed_plan_history"] = [dict(meta["confirmed_plan"])]
         session_item.meta_json = meta
         session.add(session_item)
         imported_count += 1

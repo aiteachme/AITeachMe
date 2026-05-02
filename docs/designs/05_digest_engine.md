@@ -60,6 +60,9 @@ load_planner_materials
 ## 3. confirmed plan
 
 用户确认后，Planner 的 plan 冻结为 `confirmed_plan`。
+同一课程后续调整或重建时，新的确认方案会递增 `version_no`，并在
+`chat_session.meta_json.confirmed_plan_history` 中保留轻量历史；DocGen
+仍通过本次请求传入的 `confirmed_plan_id` 读取对应版本。
 
 DocGen 消费的关键字段：
 

@@ -462,7 +462,7 @@ extract_plan_intent
 内部步骤：
 
 1. 调用 `normalize_planner_draft`：
-   - 补齐课程名、模式、章节数、章节索引。
+   - 补齐课程名、模式、章节索引，并冻结模型生成的章节数。
    - 规范化 `chapter_plan / build_constraints / plan_steps / plan_summary`。
    - append 时吸收 `latest_plan`，保留用户修订语义。
 2. 如果有生成课程名，覆盖 draft course_name。
@@ -530,7 +530,7 @@ extract_plan_intent
 4. 构建冻结 `plan_payload`。
 5. 把 `model_override` 写进 `plan_payload.model_override`。
 6. 如果已有 confirmed plan 且内容未变，复用原 `ConfirmedBuildPlan`。
-7. 否则新建 `ConfirmedBuildPlan(status="confirmed")`。
+7. 否则新建 `ConfirmedBuildPlan(status="confirmed")`，递增 `version_no`，并写入 `confirmed_plan_history`。
 8. 更新 planner session meta 为 `planner_status="confirmed"`。
 
 数据库读写：
@@ -554,6 +554,8 @@ extract_plan_intent
   - `latest_plan=plan_payload`
   - `latest_summary`
   - `confirmed_plan_id`
+  - `confirmed_plan`
+  - `confirmed_plan_history`
   - `model_override`
   - `planner_status="confirmed"`
 
@@ -633,6 +635,7 @@ confirmed_plan
 | --- | --- |
 | `model_override` 贯通 | 必须继续经过 workflow boundary、session meta、confirmed plan 交给 DocGen / KG |
 | confirmed plan 冻结 | append 可以改 latest_plan；确认后 DocGen 只消费 confirmed plan |
+| confirmed plan 版本 | 当前在 `chat_session.meta_json.confirmed_plan_history` 里保留轻量历史，避免重建/再确认覆盖旧方案 |
 | 不下沉为 DocGen | 不加入 RAG、网页检索、证据绑定和章节写作 |
 | JSON repair | 保持 composer + 结构化修复；失败明确返回，不本地猜大纲 |
 | 会话表 | 继续使用 `chat_session / chat_message` 的 `source="build_planner"`，不新建第二套 |

@@ -113,8 +113,9 @@ def render_planner_chapter_contract(value: Any) -> str:
             "章节规划合同：",
             f"- 模式：{planner_mode_label(mode)}。",
             (
-                f"- 章节数量：必须在 {config.min_chapters}-{config.max_chapters} 章之间；"
-                f"少于 {config.min_chapters} 章通常会过粗，超过 {config.max_chapters} 章通常会过碎。"
+                f"- 章节数量：由用户目标、资料复杂度和学习路径决定；"
+                f"默认参考 {config.min_chapters}-{config.max_chapters} 章，"
+                "不要为了凑默认数量额外加空心章节，也不要拆得过碎。"
             ),
             (
                 f"- 目标成稿长度：{config.target_length}。这是整份知识文档的预算，"
@@ -264,12 +265,12 @@ def _cap_chapters_to_maximum(
     digest_mode: str,
 ) -> list[PlannerChapterPlan]:
     config = get_planner_mode_runtime_config(digest_mode)
-    max_chapters = max(config.min_chapters, config.max_chapters)
-    if len(chapters) <= max_chapters:
+    chapter_limit = max(config.min_chapters, config.max_chapters)
+    if len(chapters) <= chapter_limit:
         return _reindex_chapters(chapters)
 
-    kept = list(chapters[:max_chapters])
-    overflow = chapters[max_chapters:]
+    kept = list(chapters[:chapter_limit])
+    overflow = chapters[chapter_limit:]
     if not kept:
         return []
     for extra in overflow:
@@ -285,19 +286,9 @@ def _normalize_chapter_count(
     chapters: list[PlannerChapterPlan],
     *,
     digest_mode: str,
-    shared_inputs: SharedInputs,
-    user_prompt: str,
-    course_name: str,
 ) -> list[PlannerChapterPlan]:
     chapters = _dedupe_chapters_by_title(chapters)
     chapters = _cap_chapters_to_maximum(chapters, digest_mode=digest_mode)
-    chapters = _pad_chapters_to_minimum(
-        chapters,
-        digest_mode=digest_mode,
-        shared_inputs=shared_inputs,
-        user_prompt=user_prompt,
-        course_name=course_name,
-    )
     return _reindex_chapters(chapters)
 
 
@@ -377,13 +368,19 @@ def _pad_chapters_to_minimum(
     return padded
 
 
-def _build_constraints(*, digest_mode: str, chapter_count: int, shared_inputs: SharedInputs) -> dict[str, Any]:
+def _build_constraints(
+    *,
+    digest_mode: str,
+    chapter_count: int,
+    shared_inputs: SharedInputs,
+) -> dict[str, Any]:
     config = get_planner_mode_runtime_config(digest_mode)
-    target_count = min(config.max_chapters, max(config.min_chapters, chapter_count))
     return {
-        "min_chapters": config.min_chapters,
-        "max_chapters": config.max_chapters,
-        "target_chapter_count": target_count,
+        "min_chapters": chapter_count,
+        "max_chapters": chapter_count,
+        "target_chapter_count": chapter_count,
+        "recommended_min_chapters": config.min_chapters,
+        "recommended_max_chapters": config.max_chapters,
         "target_length": config.target_length,
         "include_exercises": True,
         "include_sources": False,
@@ -402,8 +399,8 @@ def normalize_planner_draft(
 ) -> BuildPlannerDraft:
     """把模型草稿规范化成稳定 Planner 合同。
 
-    这里会校验章节、补齐最少章节数、统一 course 展示名、生成 media plan
-    和 build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
+    这里会校验章节、统一 course 展示名，并把模型生成的章节数冻结进
+    build constraints。输出会被保存为 latest_plan，并最终冻结给 DocGen。
     """
 
     shared = shared_inputs or _minimal_shared_inputs(course_id)
@@ -423,9 +420,6 @@ def normalize_planner_draft(
     chapters = _normalize_chapter_count(
         chapters,
         digest_mode=mode,
-        shared_inputs=shared,
-        user_prompt=resolved_user_prompt,
-        course_name=display_course,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
@@ -437,7 +431,11 @@ def normalize_planner_draft(
         user_prompt=resolved_user_prompt,
         digest_mode=mode,
         chapter_plan=chapters,
-        build_constraints=_build_constraints(digest_mode=mode, chapter_count=len(chapters), shared_inputs=shared),
+        build_constraints=_build_constraints(
+            digest_mode=mode,
+            chapter_count=len(chapters),
+            shared_inputs=shared,
+        ),
         plan_summary=plan_summary,
         plan_steps=plan_steps,
     )

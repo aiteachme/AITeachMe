@@ -694,6 +694,7 @@ class BuildPlannerTurnResponse(BaseModel):
     id: int | None = None
     role: str
     content: str
+    plan_json: dict[str, object] | None = None
     created_at: datetime
 
 
@@ -747,6 +748,7 @@ class BuildPlannerSessionResponse(BaseModel):
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
     confirmed_plan_id: str
+    version_no: int = 1
     course_id: str
     status: str
     digest_mode: str

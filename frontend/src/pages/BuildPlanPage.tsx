@@ -141,6 +141,14 @@ type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
   model_override?: string | null;
 };
 
+type PlannerTurnWithPlan = NonNullable<BuildPlannerSessionResponse["turns"]>[number] & {
+  plan_json?: Record<string, unknown> | null;
+};
+
+type ConfirmResponseWithVersion = BuildPlannerConfirmResponse & {
+  version_no?: number | null;
+};
+
 function createMessage(
   role: ChatRole,
   content: string,
@@ -324,6 +332,40 @@ function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): Planne
   return candidate ?? null;
 }
 
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
+}
+
+function planFromTurn(
+  session: BuildPlannerSessionResponse,
+  turn: PlannerTurnWithPlan,
+): BuildPlannerPlanResponse | null {
+  const raw = turn.plan_json;
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const latest = session.latest_plan;
+  const buildConstraints = isRecord(raw.build_constraints) ? raw.build_constraints : {};
+  return {
+    course_id: String(raw.course_id ?? raw.course ?? latest?.course_id ?? session.course_id ?? ""),
+    selected_file_ids: asStringList(raw.selected_file_ids).length
+      ? asStringList(raw.selected_file_ids)
+      : [...(latest?.selected_file_ids ?? [])],
+    user_prompt: String(raw.user_prompt ?? latest?.user_prompt ?? ""),
+    digest_mode: String(raw.digest_mode ?? latest?.digest_mode ?? "systematic"),
+    chapter_plan: Array.isArray(raw.chapter_plan)
+      ? raw.chapter_plan as NonNullable<BuildPlannerPlanResponse["chapter_plan"]>
+      : [],
+    build_constraints: buildConstraints,
+    plan_summary: String(raw.plan_summary ?? ""),
+    status: typeof raw.status === "string" ? raw.status : session.status,
+    planner_session_id: String(raw.planner_session_id ?? session.session_id ?? ""),
+    confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
+  };
+}
+
 function formatPlannerNodeLabel(stepName: string): string {
   switch (stepName) {
     case "load_planner_materials":
@@ -420,6 +462,11 @@ function PlannerOutlineCard({
             资料已变化
           </span>
         ) : null}
+        {publishedDocReady ? (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+            将生成新版本
+          </span>
+        ) : null}
         <div className="flex-1" />
         {publishedDocReady ? (
           <button
@@ -435,8 +482,9 @@ function PlannerOutlineCard({
           type="button"
           onClick={onAdjust}
           disabled={isDisabled}
-          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
+          <RefreshCw className="h-4 w-4" />
           调整
         </button>
         <button
@@ -445,7 +493,13 @@ function PlannerOutlineCard({
           disabled={isDisabled}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
         >
-          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {isBuilding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : publishedDocReady ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
           {publishedDocReady ? "重新构建" : "开始构建"}
         </button>
       </div>
@@ -958,11 +1012,20 @@ export function BuildPlanPage() {
           chapterCount: session.latest_plan?.chapter_plan?.length ?? 0,
         });
         const restored: ChatMessage[] = [];
-        for (const turn of session.turns) {
+        const lastAssistantIndex = session.turns
+          .map((turn, index) => ({ turn, index }))
+          .reverse()
+          .find(({ turn }) => turn.role === "assistant")?.index;
+        for (const [index, turn] of session.turns.entries()) {
+          const turnPlan =
+            turn.role === "assistant"
+              ? planFromTurn(session, turn as PlannerTurnWithPlan)
+                ?? (index === lastAssistantIndex ? session.latest_plan : null)
+              : null;
           restored.push(createMessage(
             turn.role as ChatRole,
             turn.content,
-            turn.role === "assistant" ? session.latest_plan : null,
+            turnPlan,
           ));
         }
 
@@ -1193,9 +1256,11 @@ export function BuildPlanPage() {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(courseId) });
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
       toast({
-        title: "已开始构建知识文档",
+        title: hasLiveDocMarkdown ? "已开始重新构建知识文档" : "已开始构建知识文档",
         description:
-          readyFileIds.length > 0
+          hasLiveDocMarkdown
+            ? "会基于当前确认方案生成新的文档版本，正在跳转到知识文档页查看进度。"
+            : readyFileIds.length > 0
             ? "正在跳转到知识文档页查看真实构建进度。"
             : "当前将直接进入联网研究模式，正在跳转到知识文档页查看构建进度。",
         variant: "success",
@@ -1539,8 +1604,17 @@ export function BuildPlanPage() {
         courseId,
         plannerSessionId,
         confirmedPlanId: response.confirmed_plan_id,
+        versionNo: (response as ConfirmResponseWithVersion).version_no,
       });
-      setCurrentPlan(currentPlanRef.current);
+      const confirmedCurrentPlan = currentPlanRef.current
+        ? {
+            ...currentPlanRef.current,
+            confirmed_plan_id: response.confirmed_plan_id,
+            status: response.status || currentPlanRef.current.status,
+          }
+        : currentPlanRef.current;
+      setCurrentPlan(confirmedCurrentPlan);
+      currentPlanRef.current = confirmedCurrentPlan;
       setIsRevisingPlan(false);
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,

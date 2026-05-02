@@ -549,6 +549,7 @@ def _build_confirmed_plan_payload(
     payload["selected_file_ids"] = list(plan.selected_file_ids_json)
     payload["planner_session_id"] = plan.planner_session_id
     payload["confirmed_plan_id"] = plan.id
+    payload["confirmed_plan_version_no"] = int(plan.version_no or 1)
     payload["model_override"] = normalize_runtime_model_override(payload.get("model_override")) or ""
     return normalize_digest_confirmed_plan_payload(payload)
 

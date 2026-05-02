@@ -21,6 +21,7 @@ from app.models.course import Course
 from app.repositories.confirmed_plan_repo import (
     create_confirmed_plan,
     get_confirmed_plan,
+    next_confirmed_plan_version_no,
     update_confirmed_plan,
 )
 from app.repositories.chats_repo import (
@@ -93,10 +94,12 @@ def _file_ids(raw_files: list[RawFile]) -> list[str]:
 
 
 def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnResponse:
+    raw_plan = turn.get("plan_json")
     return BuildPlannerTurnResponse(
         id=turn.get("id"),
         role=str(turn.get("role") or ""),
         content=str(turn.get("content") or ""),
+        plan_json=dict(raw_plan) if isinstance(raw_plan, Mapping) and raw_plan else None,
         created_at=turn["created_at"],
     )
 
@@ -1130,10 +1133,12 @@ def confirm_planner_session(
     ):
         confirmed = current_confirmed
     else:
+        version_no = next_confirmed_plan_version_no(session, course_id=course.id, user_id=user_id)
         confirmed = create_confirmed_plan(
             session,
             ConfirmedBuildPlan(
                 id=uuid.uuid4().hex,
+                version_no=version_no,
                 course_id=course.id,
                 planner_session_id=session_id,
                 user_id=user_id,
@@ -1161,6 +1166,7 @@ def confirm_planner_session(
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
+        version_no=int(confirmed.version_no or 1),
         course_id=course.id,
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,

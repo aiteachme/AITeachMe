@@ -797,35 +797,63 @@ def _remap_planner_meta(
     if "selected_file_ids" in meta:
         _remap_id_list_field(meta, "selected_file_ids", "raw_file", id_map, "chat_session.meta_json", warnings)
 
+    plan_id_map: dict[str, str] = {}
+
+    def remap_confirmed_plan(confirmed_plan: dict[str, Any]) -> dict[str, Any]:
+        confirmed_plan = dict(confirmed_plan)
+        old_plan_id = str(confirmed_plan.get("id") or uuid.uuid4().hex)
+        confirmed_plan["id"] = plan_id_map.setdefault(old_plan_id, str(uuid.uuid4().hex))
+        confirmed_plan["course_id"] = new_course_id
+        confirmed_plan["course"] = new_course_id
+        confirmed_plan["user_id"] = user_id
+        confirmed_plan["planner_session_id"] = str(record.get("id") or "")
+        _remap_id_list_field(
+            confirmed_plan,
+            "selected_file_ids_json",
+            "raw_file",
+            id_map,
+            "chat_session.meta_json.confirmed_plan",
+            warnings,
+        )
+        plan_json = confirmed_plan.get("plan_json")
+        if isinstance(plan_json, dict):
+            plan_json = dict(plan_json)
+            plan_json["course_id"] = new_course_id
+            plan_json["course"] = new_course_id
+            plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
+            plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
+            plan_json["confirmed_plan_id"] = confirmed_plan["id"]
+            confirmed_plan["plan_json"] = plan_json
+        return confirmed_plan
+
+    history = meta.get("confirmed_plan_history")
+    if isinstance(history, list):
+        remapped_history = [
+            remap_confirmed_plan(item)
+            for item in history
+            if isinstance(item, dict)
+        ]
+        if remapped_history:
+            meta["confirmed_plan_history"] = remapped_history
+
     confirmed_plan = meta.get("confirmed_plan")
     if not isinstance(confirmed_plan, dict):
         record["meta_json"] = meta
         return
 
-    confirmed_plan = dict(confirmed_plan)
-    confirmed_plan["id"] = str(uuid.uuid4().hex)
-    confirmed_plan["course"] = new_course_id
-    confirmed_plan["user_id"] = user_id
-    confirmed_plan["planner_session_id"] = str(record.get("id") or "")
-    _remap_id_list_field(
-        confirmed_plan,
-        "selected_file_ids_json",
-        "raw_file",
-        id_map,
-        "chat_session.meta_json.confirmed_plan",
-        warnings,
-    )
-    plan_json = confirmed_plan.get("plan_json")
-    if isinstance(plan_json, dict):
-        plan_json = dict(plan_json)
-        plan_json["course"] = new_course_id
-        plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
-        plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
-        plan_json["confirmed_plan_id"] = confirmed_plan["id"]
-        confirmed_plan["plan_json"] = plan_json
-
+    confirmed_plan = remap_confirmed_plan(confirmed_plan)
     meta["confirmed_plan_id"] = confirmed_plan["id"]
     meta["confirmed_plan"] = confirmed_plan
+    if isinstance(meta.get("confirmed_plan_history"), list):
+        history_ids = {
+            str(item.get("id") or "")
+            for item in meta["confirmed_plan_history"]
+            if isinstance(item, dict)
+        }
+        if confirmed_plan["id"] not in history_ids:
+            meta["confirmed_plan_history"].append(confirmed_plan)
+    else:
+        meta["confirmed_plan_history"] = [confirmed_plan]
     record["meta_json"] = meta
 
 
