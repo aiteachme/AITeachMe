@@ -581,6 +581,66 @@ def _build_docgen_history_brief(turns: list[ChatMessage]) -> str:
     return "\n".join(lines)
 
 
+def _recent_planner_turns(turns: list[ChatMessage], *, history_turns: int) -> list[ChatMessage]:
+    if history_turns <= 0:
+        return list(turns)
+
+    selected: list[ChatMessage] = []
+    user_turns = 0
+    for turn in reversed(turns):
+        selected.append(turn)
+        if turn.role == "user":
+            user_turns += 1
+        if user_turns >= history_turns:
+            break
+    return list(reversed(selected))
+
+
+def _planner_history_turns() -> int:
+    try:
+        return max(1, int(get_teaching_runtime_config().planner.history_turns or 10))
+    except Exception:
+        return 10
+
+
+def _build_planner_message_history(turns: list[ChatMessage]) -> list[str]:
+    lines: list[str] = []
+    recent_turns = _recent_planner_turns(turns, history_turns=_planner_history_turns())
+    for turn in recent_turns:
+        role = "用户" if turn.role == "user" else "规划器"
+        content = str(turn.content or "").strip()
+        if content:
+            lines.append(f"{role}: {content}")
+    return lines
+
+
+def _planner_plan_chapter_count(plan: Mapping[str, Any] | None) -> int:
+    if not plan:
+        return 0
+    chapters = plan.get("chapter_plan") or plan.get("chapters") or []
+    if isinstance(chapters, list):
+        return len(chapters)
+    return 0
+
+
+def _build_planner_context_stats(
+    *,
+    turns: list[ChatMessage],
+    message_history: list[str],
+    latest_plan: Mapping[str, Any] | None,
+    feedback_message: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    return {
+        "stored_turn_count": len(turns),
+        "prompt_message_count": len(message_history),
+        "history_turn_limit": _planner_history_turns(),
+        "latest_plan_chapter_count": _planner_plan_chapter_count(latest_plan),
+        "latest_feedback_chars": len(feedback_message or ""),
+        "user_prompt_chars": len(user_prompt or ""),
+    }
+
+
 def _build_planner_context_payload(
     record: ChatSession,
     *,
@@ -708,12 +768,20 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 workflow_file_count=len(workflow_file_ids),
                 selected_file_ids=selected_file_ids,
             )
+            message_history = _build_planner_message_history([user_turn])
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "user_prompt": user_prompt,
                 "digest_mode": digest_mode,
-                "message_history": [user_prompt],
+                "message_history": message_history,
+                "planner_context_stats": _build_planner_context_stats(
+                    turns=[user_turn],
+                    message_history=message_history,
+                    latest_plan=None,
+                    feedback_message="",
+                    user_prompt=user_prompt,
+                ),
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(user_turn)],
             }
@@ -756,6 +824,8 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 content=feedback,
             )
             turns = _list_planner_turns(session, session_id=record.id, course_id=course_id, user_id=user_id)
+            message_history = _build_planner_message_history(turns)
+            latest_plan = _planner_plan(record)
             selected_file_ids = _planner_selected_file_ids(record)
             raw_files = list_raw_files_by_ids(session, course_id, selected_file_ids)
             workflow_files = _select_planner_workflow_files(raw_files)
@@ -763,13 +833,29 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             if selected_file_ids and not workflow_file_ids:
                 raise PlannerMaterialsNotReadyError(course_id)
             selected_file_ids = _file_ids(raw_files)
+            logger.info(
+                "planner_prepare_run_history_ready",
+                course_id=course_id,
+                planner_session_id=record.id,
+                stored_turn_count=len(turns),
+                prompt_message_count=len(message_history),
+                history_turn_limit=_planner_history_turns(),
+                latest_plan_chapter_count=len(list(latest_plan.get("chapter_plan") or [])),
+            )
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "user_prompt": str(meta.get("user_prompt") or ""),
                 "digest_mode": str(meta.get("digest_mode") or ""),
-                "message_history": [turn.content for turn in turns if turn.content.strip()],
-                "latest_plan": _planner_plan(record),
+                "message_history": message_history,
+                "latest_plan": latest_plan,
+                "planner_context_stats": _build_planner_context_stats(
+                    turns=turns,
+                    message_history=message_history,
+                    latest_plan=latest_plan,
+                    feedback_message=feedback,
+                    user_prompt=str(meta.get("user_prompt") or ""),
+                ),
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(turn) for turn in turns],
             }

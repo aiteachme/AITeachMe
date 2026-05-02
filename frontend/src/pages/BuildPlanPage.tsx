@@ -801,7 +801,6 @@ export function BuildPlanPage() {
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
-  const [isRevisingPlan, setIsRevisingPlan] = useState(false);
 
   const filesQuery = useQuery({
     queryKey: ["files", courseId],
@@ -971,7 +970,6 @@ export function BuildPlanPage() {
       setChatModel(toChatModelChoice(persisted.chatModel));
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
-      setIsRevisingPlan(false);
       hydratedCourseRef.current = courseId;
       return;
     }
@@ -998,7 +996,6 @@ export function BuildPlanPage() {
           setInputValue(navState?.initialPrompt ?? "");
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
-          setIsRevisingPlan(false);
           hydratedCourseRef.current = courseId;
           return;
         }
@@ -1036,7 +1033,6 @@ export function BuildPlanPage() {
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
-        setIsRevisingPlan(false);
         hydratedCourseRef.current = courseId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
@@ -1048,7 +1044,6 @@ export function BuildPlanPage() {
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
-        setIsRevisingPlan(false);
         hydratedCourseRef.current = courseId;
       }
     }
@@ -1339,7 +1334,6 @@ export function BuildPlanPage() {
         });
       });
     }
-    setIsRevisingPlan(true);
     setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
     focusComposer();
   }, [currentPlan, focusComposer, plannerSessionId, courseId]);
@@ -1361,7 +1355,6 @@ export function BuildPlanPage() {
       setCurrentPlan(response.latest_plan);
       setChatModel(toChatModelChoice((response as PlannerSessionWithRuntime).model_override));
       setPlannerNeedsRefresh(false);
-      setIsRevisingPlan(false);
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {
         if (pendingId) {
@@ -1445,7 +1438,6 @@ export function BuildPlanPage() {
       createStreamingAssistantMessage(pendingAssistantId),
     ]);
     setInputValue("");
-    setIsRevisingPlan(false);
     setPlannerStreaming(true);
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
@@ -1615,7 +1607,6 @@ export function BuildPlanPage() {
         : currentPlanRef.current;
       setCurrentPlan(confirmedCurrentPlan);
       currentPlanRef.current = confirmedCurrentPlan;
-      setIsRevisingPlan(false);
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
         file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
@@ -1663,9 +1654,7 @@ export function BuildPlanPage() {
   ]);
 
   const inputPlaceholder = currentPlan
-    ? isRevisingPlan
-      ? "例如：压缩为 4 章，强化真题变式，并增加公式推导和图示"
-      : "继续补充你想调整的章节、风格、重点或题型"
+    ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
@@ -1860,22 +1849,6 @@ export function BuildPlanPage() {
 
         <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
-            {isRevisingPlan ? (
-              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或重点。</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsRevisingPlan(false)}
-                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
-                >
-                  取消
-                </button>
-              </div>
-            ) : null}
-
             <div className="w-full rounded-2xl border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
               <textarea
                 ref={inputRef}

@@ -80,6 +80,7 @@ class PlannerModeSettings(_SettingsModel):
 
 class PlannerSettings(_SettingsModel):
     default_digest_mode: str
+    history_turns: int = Field(ge=1, le=50)
     sprint: PlannerModeSettings
     systematic: PlannerModeSettings
 

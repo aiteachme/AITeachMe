@@ -68,7 +68,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "保证 Planner 能先产出可继续修改的临时方案。"
         ),
         "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
-        "writes": ["selected_file_ids", "material_context", "digest_mode"],
+        "writes": ["selected_file_ids", "material_context", "digest_mode", "planner_context_stats"],
         "input_keys": [
             "course_id",
             "user_id",
@@ -86,6 +86,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ],
         "output_keys": [
             "selected_file_ids",
+            "planner_context_stats",
             "material_context",
             "digest_mode",
             "prepare_ms",
@@ -97,9 +98,19 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "并行执行两个轻规划动作：一边流式生成用户可见的资料边界/学习目标判断，一边抽取内部 PlanIntent。"
             "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终章节合同。"
         ),
-        "reads": ["material_context", "user_prompt", "digest_mode", "message_history"],
+        "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
         "writes": ["planner_brief", "plan_intent"],
-        "input_keys": ["course_id", "material_context", "user_prompt", "digest_mode", "message_history", "planner_session_id", "model_override"],
+        "input_keys": [
+            "course_id",
+            "material_context",
+            "user_prompt",
+            "digest_mode",
+            "message_history",
+            "latest_plan",
+            "feedback_message",
+            "planner_session_id",
+            "model_override",
+        ],
         "output_keys": ["planner_brief", "plan_intent", "bootstrap_ms", "error"],
         "fanout": "internal_async_brief_and_intent",
         "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",

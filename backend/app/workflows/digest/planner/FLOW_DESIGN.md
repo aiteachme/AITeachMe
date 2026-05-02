@@ -271,6 +271,7 @@ light   -> settings.models.light
 - `selected_file_ids`
 - `message_history`
 - `latest_plan`
+- `planner_context_stats`
 - `planner_record`
 - `planner_turns`
 - `material_context`
@@ -311,7 +312,7 @@ light   -> settings.models.light
     - `message_kind="planner_user_request"`
 - append 分支：
   - 读 `ChatSession`：必须存在且 `source="build_planner"`。
-  - 读 `ChatMessage[]`：作为 message history。
+  - 读 `ChatMessage[]`：按 `planner.history_turns` 截取最近对话，作为 message history。
   - 更新 `ChatSession.meta_json`：
     - `planner_status="planning"`
     - `model_override`
@@ -332,6 +333,8 @@ light   -> settings.models.light
 - `user_prompt`
 - `digest_mode`
 - `message_history`
+- `latest_plan`
+- `feedback_message`
 - `existing_doc_context`
 - `planner_context_mode`
 - `model_override`
@@ -345,7 +348,7 @@ light   -> settings.models.light
 
 ```text
 stream_planner_brief
-  输入：资料 digest、用户目标、历史消息、已有文档摘要。
+  输入：资料 digest、用户目标、最近历史消息、上一版方案、本轮反馈、已有文档摘要。
   输出：PlannerBrief.markdown。
   行为：流式 token 透出给前端；失败时返回 empty brief，不直接失败整轮。
 
@@ -575,6 +578,7 @@ extract_plan_intent
 | `planner_session_id` | Planner 会话 ID |
 | `message_history` | 本轮 prompt 可见的历史消息 |
 | `latest_plan` | append 时上一版方案 |
+| `planner_context_stats` | 本轮从会话补齐的历史/上一版方案统计，仅用于观测与排查 |
 
 核心中间产物：
 

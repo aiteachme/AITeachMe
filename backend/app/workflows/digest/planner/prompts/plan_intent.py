@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
+    render_latest_feedback,
+    render_latest_plan,
     render_material_digest,
     render_material_overview,
     render_message_history,
@@ -24,6 +28,8 @@ def build_plan_intent_messages(
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
+    latest_feedback: str | None = None,
+    latest_plan: dict[str, Any] | None = None,
     existing_doc_context: str | None = None,
     planner_context_mode: str = "fresh_build",
 ) -> list[dict[str, str]]:
@@ -55,6 +61,12 @@ def build_plan_intent_messages(
 
 {context_mode_block}
 
+本轮最新输入/修改意见：
+{render_latest_feedback(latest_feedback)}
+
+上一版方案：
+{render_latest_plan(latest_plan)}
+
 最近对话：
 {render_message_history(message_history)}
 
@@ -75,7 +87,8 @@ def build_plan_intent_messages(
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
 6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
 7. 若当前规划模式为已有文档重建/调整，plan_intent 和 plan_queries 必须围绕已有版本如何改造。
-8. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
+8. 如果本轮最新输入是在修改已有方案，必须判断这是对上一版的局部编辑还是整体重建；局部编辑只围绕被点名的章节或要求思考。
+9. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
 
 示例：
 {render_plan_intent_examples()}
@@ -91,6 +104,8 @@ def build_plan_intent_messages(
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),
+            "latest_feedback_chars": len(latest_feedback or ""),
+            "has_latest_plan": latest_plan is not None,
             "material_digest_chars": len(material_context.material_digest or ""),
             "plan_query_min": PLAN_QUERY_MIN,
             "plan_query_max": PLAN_QUERY_MAX,

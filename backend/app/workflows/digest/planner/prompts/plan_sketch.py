@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.planner.prompts.examples import render_plan_sketch_examples
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
+    render_latest_feedback,
+    render_latest_plan,
     render_material_digest,
     render_material_overview,
     render_message_history,
@@ -21,6 +25,8 @@ def build_plan_sketch_prompt(
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
+    latest_feedback: str | None = None,
+    latest_plan: dict[str, Any] | None = None,
     existing_doc_context: str | None = None,
     planner_context_mode: str = "fresh_build",
 ) -> str:
@@ -47,6 +53,12 @@ def build_plan_sketch_prompt(
 
 {context_mode_block}
 
+本轮最新输入/修改意见：
+{render_latest_feedback(latest_feedback)}
+
+上一版方案：
+{render_latest_plan(latest_plan)}
+
 最近对话：
 {render_message_history(message_history)}
 
@@ -64,6 +76,7 @@ def build_plan_sketch_prompt(
 5. 全文控制在 260-520 字以内，宁可把判断原因讲清楚，不要铺陈。
 6. 如果没有上传资料，只能基于用户提示和课程常识判断，不要写“这批资料显示/资料里包含”。
 7. 若当前规划模式为已有知识文档重建/调整，必须围绕已有文档摘要和用户修改意见说明调整思路。
+8. 如果本轮最新输入是在修改已有方案，必须优先解释将如何响应这条最新修改，而不是重复上一版方案。
 
 请参考下面这些示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
 
@@ -76,6 +89,8 @@ def build_plan_sketch_prompt(
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),
+            "latest_feedback_chars": len(latest_feedback or ""),
+            "has_latest_plan": latest_plan is not None,
             "material_digest_chars": len(material_context.material_digest or ""),
             "planner_context_mode": planner_context_mode,
             "existing_doc_context_chars": len(existing_doc_context or ""),

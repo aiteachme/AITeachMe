@@ -317,6 +317,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=70,
             ),
             setting(
+                "planner.history_turns",
+                "规划历史轮数",
+                description="Planner 调整方案时带入的最近对话轮数，用于理解连续修改要求。",
+                ui_group="学习规划",
+                ui_order=75,
+            ),
+            setting(
                 "planner.sprint.min_chapters",
                 "速成课最少章节",
                 ui_group="速成课模式",

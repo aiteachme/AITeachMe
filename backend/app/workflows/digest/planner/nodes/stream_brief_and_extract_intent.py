@@ -48,6 +48,8 @@ async def _stream_planner_brief(state: BuildPlannerState, empty_brief: PlannerBr
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
         message_history=list(state.get("message_history", [])),
+        latest_feedback=state.get("feedback_message") or "",
+        latest_plan=state.get("latest_plan"),
         existing_doc_context=state.get("existing_doc_context"),
         planner_context_mode=state.get("planner_context_mode") or "fresh_build",
     )
@@ -131,6 +133,8 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
                 digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
                 material_context=material_context,
                 message_history=list(state.get("message_history", [])),
+                latest_feedback=state.get("feedback_message") or "",
+                latest_plan=state.get("latest_plan"),
                 existing_doc_context=state.get("existing_doc_context"),
                 planner_context_mode=state.get("planner_context_mode") or "fresh_build",
             ),
