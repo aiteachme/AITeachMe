@@ -19,7 +19,7 @@ RUN npm run build
 FROM nginx:alpine
 
 # Runtime upstream used by the Nginx template. Override this in Sealos with the
-# backend Kubernetes service FQDN, e.g. http://atm-d.ns.svc.cluster.local:9020.
+# backend internal service URL, e.g. http://<backend-internal-upstream>.
 ENV AITEACHME_API_UPSTREAM=http://backend:9020
 
 # 复制构建产物到 nginx

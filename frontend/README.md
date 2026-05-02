@@ -1,120 +1,105 @@
-# AITeachMe 前端
+# AITeachMe Frontend
 
-基于 AI 的现代化个性化学习平台。
+本目录是 AITeachMe 前端应用，基于 React + TypeScript + Vite，同时承接 Electron / Tauri 桌面端入口。
+
+## 快速启动
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+默认访问：
+
+```text
+http://127.0.0.1:5180
+```
+
+开发模式默认通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:9020`。
 
 ## 技术栈
 
-- React 18
+- React
 - TypeScript
 - Vite
 - TailwindCSS
 - React Router
+- TanStack Query
 - Lucide Icons
 
-## 功能特性
+## 当前页面
 
-- 📚 课程管理 - 创建和管理多个课程
-- 📤 资料上传 - 上传课程材料和笔记
-- 📝 知识总结 - AI 生成摘要和思维导图
-- 💬 AI 对话 - 交互式学习助手
-- 📋 模拟考试 - AI 出题练习
-- 📊 学习分析 - 追踪学习进度和表现
-
-## 快速开始
-
-### 前置条件
-
-确保已安装 Node.js（推荐 v18 或更高版本）。
-
-### 安装
-
-1. 安装依赖：
-
-```bash
-npm install
+```text
+frontend/src/pages/
+├── HomePage.tsx
+├── LearningSpacesPage.tsx
+├── LibraryPage.tsx
+├── BuildPlanPage.tsx
+├── KnowledgeDocsPage.tsx
+├── KnowledgeInteractivePage.tsx
+├── ExamsPage.tsx
+├── ProfilePage.tsx
+├── GlobalAssistantPage.tsx
+└── FeatureOfflinePages.tsx
 ```
 
-2. 启动开发服务器：
+## 生成代码约束
 
-```bash
-npm run dev
+后端 OpenAPI 变化后，通过 Orval 重新生成前端客户端；不要手改：
+
+```text
+frontend/src/api/generated/
 ```
 
-3. 打开浏览器访问 `http://localhost:5180`
+手写 API 代码位于：
 
-### 生产构建
+```text
+frontend/src/api/client.ts
+frontend/src/api/types.ts
+```
 
-```bash
+## 构建
+
+```powershell
 npm run build
 ```
 
-构建产物位于 `dist` 目录。
+构建产物位于：
 
-## 项目结构
-
+```text
+frontend/dist/
 ```
-src/
-├── pages/           # 路由页面组件
-│   ├── HomePage.tsx
-│   ├── UploadPage.tsx
-│   ├── SummaryPage.tsx
-│   ├── ChatPage.tsx
-│   ├── ExamPage.tsx
-│   └── AnalysisPage.tsx
-├── components/
-│   ├── layout/      # 布局组件
-│   │   ├── Layout.tsx
-│   │   ├── Sidebar.tsx
-│   │   └── TopBar.tsx
-│   └── ui/          # 可复用 UI 原子组件
-│       ├── Button.tsx
-│       └── Card.tsx
-├── api/             # API 客户端与生成代码
-│   ├── client.ts
-│   └── generated/
-├── lib/
-│   └── utils.ts     # 工具函数
-├── App.tsx          # 主应用（含路由）
-├── main.tsx         # 入口文件
-└── index.css        # 全局样式
-```
-
-## 设计理念
-
-UI 遵循现代 SaaS 设计原则：
-
-- 简洁布局，留白充足
-- 柔和阴影与圆角
-- 响应式设计（移动端友好）
-- 设计灵感来自 Linear、Notion 和 ChatGPT
-
-## 前端启动说明
-
-开发模式默认通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:9020`。
-默认前端端口是 `5180`，后端端口是 `9020`；需要改端口时，参考根目录 `.env.developer.sample` 中的可选变量。
 
 ## 部署
 
-### Cloudflare Pages
+### 静态站点
 
-前端可部署至 Cloudflare Pages：
+前端可以部署到任意 Vite 静态站点平台。若没有同源网关把 `/api/*` 转发到后端，需要配置：
 
-1. 连接 GitHub 仓库
-2. 框架预设选择 Vite
-3. 在控制台配置环境变量。若没有网关把 `/api/*` 转发到后端，需要配置 `VITE_API_URL`
-4. 部署
+```env
+VITE_API_URL=<backend-public-api-origin>
+```
 
 ### Sealos Nginx
 
-前端也可以构建为 Nginx 容器部署到 Sealos，用同源 `/api` 反代后端内网服务：
+前端也可以构建为 Nginx 容器部署，用同源 `/api` 反代后端内网服务：
 
-1. 使用 `infra/deployment/docker/frontend.Dockerfile` 构建镜像
-2. Sealos 前端 App 暴露 `80` 端口并开启公网访问
-3. 不配置 `VITE_API_URL`
-4. 配置运行时环境变量 `AITEACHME_API_UPSTREAM=http://<后端服务名>.<命名空间>.svc.cluster.local:9020`
+```text
+infra/deployment/docker/frontend.Dockerfile
+```
 
-完整步骤见 `infra/deployment/sealos-frontend.md`。
+运行时配置：
 
-## 许可证
+```env
+AITEACHME_API_UPSTREAM=<backend-internal-upstream>
+```
 
-私有项目
+完整说明见 [Sealos 前端 Nginx 部署](../docs/deployment/sealos-frontend.md)。
+
+## 文档
+
+- [项目文档导航](../docs/README.md)
+- [本地开发](../docs/development/local-development.md)
+- [API 契约与开发流程](../docs/development/api-contracts-and-dev-workflow.md)
+- [桌面端打包](../packaging/README.md)

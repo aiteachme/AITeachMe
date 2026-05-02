@@ -8,8 +8,8 @@
 
 ## 先看什么
 
-- 调试方式：[DEBUGGING.md](./DEBUGGING.md)
-- 进度事件约定：[PROGRESS.md](./PROGRESS.md)
+- 调试方式：[Workflows 调试指南](../../../docs/workflows/debugging.md)
+- 进度事件约定：[进度事件规范](../../../docs/workflows/progress-events.md)
 
 ## 当前分区
 
@@ -91,7 +91,7 @@ lane_name/
   nodes/               # 顶层 LangGraph 节点
   lib/                 # 节点内部复用逻辑、运行时、模型转换、持久化辅助
   prompts/             # prompt builder / template
-  README.md / FLOW_DESIGN.md   # 本 lane 的主文档
+  README.md          # 本 lane 的主文档
 ```
 
 可选文件：
@@ -138,7 +138,7 @@ lane_name/
 - 一个文件对应一个节点或一组强相关节点。
 - 节点负责组装 state、调用 `lib/`、写进度事件、返回 state patch。
 - 节点里不要堆复杂算法、prompt 拼接、数据库查询细节。
-- 节点名要能直接映射 README / FLOW_DESIGN 里的流程名。
+- 节点名要能直接映射 README 里的流程名。
 
 ### `lib/`
 
@@ -160,11 +160,11 @@ lane_name/
 
 ### 主文档 / 设计文档
 
-每个核心 lane 必须至少保留一份主文档。默认是 `README.md`；复杂 lane 也可以直接用 `FLOW_DESIGN.md` 兼任入口说明和流程权威文档：
+每个核心 lane 必须至少保留一份 `README.md` 主文档，让 GitHub 目录页可以直接渲染当前入口说明：
 
 - 主文档写当前真实主线、目录边界、公开入口和阅读顺序。
-- 如果存在独立流程设计文档，它负责短流程和长合同。
-- 如果 `FLOW_DESIGN.md` 已经兼任主文档，就不要再维护第二份平行 README。
+- 复杂 lane 的 `README.md` 可以同时承担短流程总览和长流程执行合同。
+- 不再新增独立流程设计文档作为平行文档；已有复杂流程已收敛为目录 `README.md`。
 - 改 graph 时同步改 lane 的主文档。
 - 文档不得描述已经移除的主线为当前实现。
 
@@ -224,7 +224,7 @@ teaching tool 不是新的独立教学层。当前通用实现是内置 tool，�
 - 通用内置教学工具实现放在 `app.shared.infra.tools.builtin.teaching_tools`。
 - 只服务单条链路的教学逻辑，放在对应 lane 的 `nodes/` 或 `lib/`。
 - 只服务 Digest 文档生成的教学表达块，放在 `workflows/digest/common/pedagogy.py`。
-- 禁止为了“教学语义”重新创建 `app/teaching` 层。
+- 禁止为了“教学语义”重新创建旧 teaching 源层。
 
 ## 文件头说明
 
@@ -352,7 +352,7 @@ def build_planner_prompt(...):
 workflow root   -> run_state_graph / invoke_state_graph
 workflow node   -> workflow_tracer().node(handler, ...)
 prompt/helper   -> traceable_with_context / lane prompt tracing helper
-frontend 进度   -> 看 PROGRESS.md
+frontend 进度   -> 看 docs/workflows/progress-events.md
 ```
 
 ## 依赖方向
@@ -369,7 +369,7 @@ api -> workflows -> repositories / shared.infra / models / schemas
 - repositories 不反向依赖 workflows。
 - shared.infra 不依赖具体 workflow lane。
 - workflow lane 之间不要互相深层 import；跨 lane 共用能力放对应 `common/`。
-- `app/services` 和 `app/teaching` 不是代码落点。
+- 旧 services 层和旧 teaching 层不是代码落点。
 
 ## 兼容规则
 
@@ -403,7 +403,7 @@ planner -> docgen -> kg_doc_sync
 - `graph.py` 定义图、Send 分发、单次 `run_docgen_workflow`。
 - `lib/build_lifecycle.py` 只处理 API 触发后的构建锁、后台任务、状态和结果组装。
 - `__init__.py` 只导出稳定入口。
-- `FLOW_DESIGN.md` 是 DocGen 当前唯一文档文件，兼任入口说明和流程权威文档。
+- `README.md` 是 DocGen 当前唯一文档文件，兼任入口说明和流程权威文档。
 - 不新增 `workflow.py` 作为默认入口。
 - 复杂质量逻辑优先收口到同责文件，例如 `lib/quality.py`。
 
@@ -451,7 +451,7 @@ planner -> docgen -> kg_doc_sync
 5. 复杂逻辑是否已经从 node 下沉到 `lib/`？
 6. prompt 是否只在 `prompts/`，且有 trace？
 7. 是否需要 `Send` fan-out 才能在 LangSmith 看到并行？
-8. lane 主文档 / FLOW_DESIGN 是否同步更新？
+8. lane 主文档 README 是否同步更新？
 9. 新文件是否有清晰文件头说明？
 
 这份 README 是 workflow 层唯一结构规范入口；不要再把结构或 LangSmith 规则拆到新文档里。
