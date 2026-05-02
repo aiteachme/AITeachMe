@@ -11,7 +11,7 @@
  */
 export interface BuildSampleCardResponse {
   title: string;
-  /** mode / topic / concept / method */
+  /** mode / topic / core_knowledge / method_demo / practice_assessment */
   card_type: string;
   summary: string;
 }

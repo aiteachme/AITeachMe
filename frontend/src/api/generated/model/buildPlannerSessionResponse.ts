@@ -16,6 +16,7 @@ export interface BuildPlannerSessionResponse {
   status: string;
   revision: number;
   latest_plan: BuildPlannerPlanResponse;
+  model_override?: string | null;
   turns?: BuildPlannerTurnResponse[];
   runtime_stats?: BuildPlannerRuntimeStatsResponse | null;
   created_at: string;

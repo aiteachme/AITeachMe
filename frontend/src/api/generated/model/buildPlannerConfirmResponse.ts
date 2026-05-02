@@ -12,9 +12,11 @@ import type { BuildPlannerConfirmResponsePlanJson } from './buildPlannerConfirmR
 export interface BuildPlannerConfirmResponse {
   planner_session_id: string;
   confirmed_plan_id: string;
+  version_no?: number;
   course_id: string;
   status: string;
   digest_mode: string;
+  model_override?: string | null;
   selected_file_ids?: string[];
   user_prompt: string;
   plan_summary: string;

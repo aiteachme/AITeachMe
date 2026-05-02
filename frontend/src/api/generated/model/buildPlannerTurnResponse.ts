@@ -5,10 +5,12 @@
  * 本地优先的 AI 助教后端服务。
  * OpenAPI spec version: 0.0.1
  */
+import type { BuildPlannerTurnResponsePlanJson } from './buildPlannerTurnResponsePlanJson';
 
 export interface BuildPlannerTurnResponse {
   id?: number | null;
   role: string;
   content: string;
+  plan_json?: BuildPlannerTurnResponsePlanJson;
   created_at: string;
 }

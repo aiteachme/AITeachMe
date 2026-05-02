@@ -8782,6 +8782,11 @@
             "type": "string",
             "title": "Confirmed Plan Id"
           },
+          "version_no": {
+            "type": "integer",
+            "title": "Version No",
+            "default": 1
+          },
           "course_id": {
             "type": "string",
             "title": "Course Id"
@@ -8793,6 +8798,17 @@
           "digest_mode": {
             "type": "string",
             "title": "Digest Mode"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "selected_file_ids": {
             "items": {
@@ -9019,6 +9035,17 @@
               }
             ],
             "title": "Confirmed Plan Id"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           }
         },
         "type": "object",
@@ -9071,6 +9098,17 @@
           },
           "latest_plan": {
             "$ref": "#/components/schemas/BuildPlannerPlanResponse"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "turns": {
             "items": {
@@ -9156,6 +9194,18 @@
           "content": {
             "type": "string",
             "title": "Content"
+          },
+          "plan_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Json"
           },
           "created_at": {
             "type": "string",
@@ -9428,7 +9478,7 @@
           "card_type": {
             "type": "string",
             "title": "Card Type",
-            "description": "mode / topic / concept / method"
+            "description": "mode / topic / core_knowledge / method_demo / practice_assessment"
           },
           "summary": {
             "type": "string",
@@ -11075,6 +11125,18 @@
             ],
             "title": "Digest Mode",
             "description": "Digest mode frozen in the confirmed build plan."
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override",
+            "description": "Concrete runtime model selected for this build, if any."
           }
         },
         "type": "object",

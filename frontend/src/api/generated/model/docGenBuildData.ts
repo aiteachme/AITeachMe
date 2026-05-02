@@ -27,4 +27,6 @@ export interface DocGenBuildData {
   confirmed_plan_id?: string | null;
   /** Digest mode frozen in the confirmed build plan. */
   digest_mode?: string | null;
+  /** Concrete runtime model selected for this build, if any. */
+  model_override?: string | null;
 }

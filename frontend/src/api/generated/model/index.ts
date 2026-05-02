@@ -82,6 +82,7 @@ export * from './buildPlannerRuntimeStatsResponse';
 export * from './buildPlannerSessionResponse';
 export * from './buildPlannerStepStatsResponse';
 export * from './buildPlannerTurnResponse';
+export * from './buildPlannerTurnResponsePlanJson';
 export * from './buildPreviewChapterPreviewResponse';
 export * from './buildPreviewChapterProgressResponse';
 export * from './buildPreviewMergePreviewResponse';

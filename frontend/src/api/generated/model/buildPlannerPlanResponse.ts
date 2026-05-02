@@ -19,4 +19,5 @@ export interface BuildPlannerPlanResponse {
   status?: string;
   planner_session_id?: string | null;
   confirmed_plan_id?: string | null;
+  model_override?: string | null;
 }
