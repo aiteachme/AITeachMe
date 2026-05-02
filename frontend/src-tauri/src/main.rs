@@ -20,6 +20,7 @@ struct BackendState(Mutex<Option<Child>>);
 #[derive(Default)]
 struct DesktopRuntime {
   api_base_url: Option<String>,
+  desktop_flavor: &'static str,
 }
 
 enum BackendStartupStatus {
@@ -300,6 +301,7 @@ fn start_local_backend(app: &mut tauri::App) -> Result<DesktopRuntime, Box<dyn s
         *app.state::<BackendState>().0.lock().expect("backend state poisoned") = Some(child);
         return Ok(DesktopRuntime {
           api_base_url: Some(format!("http://127.0.0.1:{port}")),
+          desktop_flavor: "local",
         });
       }
       BackendStartupStatus::Exited(status) => {
@@ -333,7 +335,10 @@ fn start_local_backend(app: &mut tauri::App) -> Result<DesktopRuntime, Box<dyn s
 
 #[cfg(not(feature = "local-backend"))]
 fn start_local_backend(_app: &mut tauri::App) -> Result<DesktopRuntime, Box<dyn std::error::Error>> {
-  Ok(DesktopRuntime::default())
+  Ok(DesktopRuntime {
+    api_base_url: None,
+    desktop_flavor: "remote",
+  })
 }
 
 fn js_string_literal(value: &str) -> String {
@@ -357,9 +362,11 @@ fn js_string_literal(value: &str) -> String {
 
 fn build_runtime_init_script(runtime: &DesktopRuntime) -> String {
   let api_base_url = runtime.api_base_url.as_deref().unwrap_or("");
+  let desktop_flavor = runtime.desktop_flavor;
   format!(
-    "window.aiteachmeDesktop = Object.assign({{}}, window.aiteachmeDesktop || {{}}, {{ apiBaseUrl: {} }});",
-    js_string_literal(api_base_url)
+    "window.aiteachmeDesktop = Object.assign({{}}, window.aiteachmeDesktop || {{}}, {{ apiBaseUrl: {}, desktopFlavor: {} }});",
+    js_string_literal(api_base_url),
+    js_string_literal(desktop_flavor)
   )
 }
 
@@ -395,8 +402,12 @@ fn stop_local_backend(app: &tauri::AppHandle) {
 
 fn main() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_process::init())
     .manage(BackendState::default())
     .setup(|app| {
+      #[cfg(feature = "local-backend")]
+      app.handle()
+        .plugin(tauri_plugin_updater::Builder::new().build())?;
       let runtime = start_local_backend(app)?;
       create_main_window(app, &runtime)?;
       Ok(())

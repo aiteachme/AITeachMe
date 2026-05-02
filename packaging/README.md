@@ -80,6 +80,46 @@ Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请�
 
 Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
 
+## Tauri local 在线更新
+
+Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
+
+```text
+https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
+```
+
+有新版时前端会提示用户确认；确认后下载已签名的 NSIS updater 包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+
+没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
+
+如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、`*.nsis.zip`、`*.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
+
+- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：客户端检查的 `latest-tauri-local.json` 公开地址。
+- `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
+
+生成 Tauri local 发布包前必须配置：
+
+- `TAURI_UPDATER_PUBKEY`：Tauri updater 公钥，写入最终 Tauri 配置。
+- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容或私钥文件路径。
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码，可选。
+
+密钥生成示例：
+
+```powershell
+cd frontend
+npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
+```
+
+把命令输出的 public key 配到 GitHub Variables 或 Secrets 的 `TAURI_UPDATER_PUBKEY`，把 `packaging\private\tauri-updater.key` 的内容配置到 GitHub Secrets 的 `TAURI_SIGNING_PRIVATE_KEY`。私钥不要提交到仓库。
+
+GitHub Release 会额外上传：
+
+- `AiTeachMe-v<version>-updater-tauri.nsis.zip`
+- `AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- `latest-tauri-local.json`
+
+`tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。
+
 ## 预绑定本地大模型配置
 
 本地版安装包可以显式选择把 `packaging\private\bundled-env.json` 中的大模型接入配置加密后打进后端包里。该私有文件不会提交到仓库；仓库只保留 `packaging\private\bundled-env.json.example` 模板。

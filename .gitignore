@@ -33,6 +33,8 @@ Thumbs.db
 !/packaging/scripts/*.cjs
 /packaging/artifacts/
 /packaging/private/*.json
+/packaging/private/*.key
+/packaging/private/*.pem
 /packaging/release/
 /packaging/electron/
 /packaging/electron-local/
@@ -40,6 +42,7 @@ Thumbs.db
 /packaging/tauri-local/
 /packaging/tauri-remote/
 /build/
+/frontend/src-tauri/tauri.local.release.conf.json
 
 # Tooling caches
 .langgraph_api/
