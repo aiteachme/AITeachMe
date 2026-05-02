@@ -15,6 +15,50 @@ param(
 $repoRoot = Resolve-RepoRoot
 $frontendDir = Join-Path $repoRoot "frontend"
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
+$defaultTauriLocalUpdaterEndpoint = "https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json"
+$configuredTauriLocalUpdaterEndpoint = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT", "Process")
+$tauriLocalUpdaterEndpoint = if ([string]::IsNullOrWhiteSpace($configuredTauriLocalUpdaterEndpoint)) {
+    $defaultTauriLocalUpdaterEndpoint
+}
+else {
+    $configuredTauriLocalUpdaterEndpoint.Trim()
+}
+
+function New-TauriLocalReleaseConfig {
+    param(
+        [string]$FrontendDir,
+        [string]$UpdaterPubkey,
+        [string]$Endpoint
+    )
+
+    $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
+    $config = [ordered]@{
+        productName = "AiTeachMe Local"
+        identifier = "com.aiteachme.desktop.local"
+        mainBinaryName = "aiteachme-local"
+        build = [ordered]@{
+            devUrl = "http://127.0.0.1:5181"
+        }
+        bundle = [ordered]@{
+            createUpdaterArtifacts = $true
+            resources = [ordered]@{
+                "resources/backend/" = "backend"
+            }
+        }
+        plugins = [ordered]@{
+            updater = [ordered]@{
+                pubkey = $UpdaterPubkey
+                endpoints = @($Endpoint)
+                windows = [ordered]@{
+                    installMode = "passive"
+                }
+            }
+        }
+    } | ConvertTo-Json -Depth 8
+
+    Write-Utf8NoBomFile -Path $configPath -Content ($config + [Environment]::NewLine)
+    return $configPath
+}
 
 if ($Flavor -eq "remote") {
     if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
@@ -55,6 +99,25 @@ if ($ImportBundledEnv -and $Flavor -ne "local") {
     Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for tauri-$Flavor." -ForegroundColor Yellow
 }
 
+$tauriConfigArg = if ($Flavor -eq "local") { "src-tauri/tauri.local.release.conf.json" } else { "src-tauri/tauri.remote.conf.json" }
+if ($Flavor -eq "local") {
+    $updaterPubkey = [Environment]::GetEnvironmentVariable("TAURI_UPDATER_PUBKEY", "Process")
+    $signingPrivateKey = [Environment]::GetEnvironmentVariable("TAURI_SIGNING_PRIVATE_KEY", "Process")
+    if ([string]::IsNullOrWhiteSpace($updaterPubkey)) {
+        throw "TAURI_UPDATER_PUBKEY is required for tauri-local updater builds. Generate it with 'npm run tauri -- signer generate -w <private-key-path>' and store the public key in GitHub Variables or Secrets."
+    }
+    if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+        throw "TAURI_SIGNING_PRIVATE_KEY is required for tauri-local updater builds. Set it to the private key content or private key file path before building."
+    }
+
+    $generatedConfigPath = New-TauriLocalReleaseConfig `
+        -FrontendDir $frontendDir `
+        -UpdaterPubkey $updaterPubkey.Trim() `
+        -Endpoint $tauriLocalUpdaterEndpoint
+    Write-Host "Tauri updater endpoint: $tauriLocalUpdaterEndpoint"
+    Write-Host "Generated Tauri release config: $generatedConfigPath"
+}
+
 if (-not $SkipInstall) {
     Invoke-External -File $npm -Arguments @("install") -WorkingDirectory $frontendDir
 }
@@ -89,8 +152,11 @@ try {
     Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
 
     Remove-TauriBundleOutput -RepoRoot $repoRoot
-    $tauriBuildScript = if ($Flavor -eq "local") { "tauri:build:local:raw" } else { "tauri:build:remote" }
-    Invoke-External -File $npm -Arguments @("run", $tauriBuildScript) -WorkingDirectory $frontendDir
+    $tauriBuildArgs = @("exec", "--", "tauri", "build", "--config", $tauriConfigArg)
+    if ($Flavor -eq "local") {
+        $tauriBuildArgs += @("--features", "local-backend")
+    }
+    Invoke-External -File $npm -Arguments $tauriBuildArgs -WorkingDirectory $frontendDir
 }
 finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Enables default permissions for the main window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "updater:default", "process:default"]
 }

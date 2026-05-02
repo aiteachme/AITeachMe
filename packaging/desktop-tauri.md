@@ -21,6 +21,41 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
+- `packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip`
+- `packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- `packaging\release\latest-tauri-local.json`
+
+## 在线更新
+
+Tauri local 发布包启动后会检查 GitHub Release 静态清单：
+
+```text
+https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
+```
+
+有新版时会提示用户确认；确认后下载签名后的 NSIS updater 包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
+
+没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
+
+如果仓库是私有仓库，不要直接使用 GitHub Release asset 作为客户端更新源。把更新文件同步到公开 HTTPS 静态地址，并配置：
+
+- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。
+- `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：更新包所在公开目录。
+
+打包 Tauri local 前需要设置：
+
+- `TAURI_UPDATER_PUBKEY`
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，可选
+
+生成密钥：
+
+```powershell
+cd frontend
+npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
+```
+
+将 public key 配到 `TAURI_UPDATER_PUBKEY`，将私钥内容或私钥路径配到 `TAURI_SIGNING_PRIVATE_KEY`。GitHub Actions 发布时使用同名 Secrets/Variables。
 
 ## 本地运行
 
@@ -69,6 +104,7 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 - Node.js 和 npm。
 - Rust 工具链，包含 `rustc` 和 `cargo`。
 - Python 3.11，用于本地后端模式。
+- Tauri local 发布构建需要 updater 公钥和签名私钥环境变量。
 - Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
 
 底层实现脚本是 `packaging\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

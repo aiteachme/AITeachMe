@@ -1,6 +1,7 @@
 !macro NSIS_HOOK_PREINSTALL
   SetOverwrite on
   nsExec::ExecToLog 'taskkill /F /T /IM aiteachme-local.exe'
+  nsExec::ExecToLog 'taskkill /F /T /IM aiteachme-backend.exe'
   nsExec::ExecToLog 'taskkill /F /T /IM aiteachme-backend.bin'
   RMDir /r "$INSTDIR\backend"
   Delete "$INSTDIR\aiteachme-backend.exe"

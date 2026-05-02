@@ -240,6 +240,12 @@ jobs:
     needs: release
     env:
       PYTHONUTF8: "1"
+      AITEACHME_RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY || secrets.TAURI_UPDATER_PUBKEY }}
+      AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT: ${{ vars.AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT }}
+      AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL: ${{ vars.AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL }}
 
     steps:
       - name: Enable long paths
@@ -366,8 +372,8 @@ jobs:
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aiteachme-release-windows-installers
-          path: packaging/release/AiTeachMe-v${{ needs.release.outputs.version }}-installer*.exe
+          name: aiteachme-release-windows-assets
+          path: packaging/release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -388,7 +394,7 @@ jobs:
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
-          name: aiteachme-release-windows-installers
+          name: aiteachme-release-windows-assets
           path: release-assets
 
       - name: Create and push release tag

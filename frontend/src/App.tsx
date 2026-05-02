@@ -5,6 +5,7 @@ import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBacken
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
+import { DesktopUpdatePrompt } from "./components/desktop/DesktopUpdatePrompt";
 import { ToastProvider } from "./components/ui/Toast";
 import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
@@ -121,6 +122,7 @@ function App() {
         <BackendConnectivityBridge />
         <RuntimeSettingsBootstrap />
         <ToastProvider>
+          <DesktopUpdatePrompt />
           <Router unstable_useTransitions={false}>
             <ElectronWindowFrame>
               <Routes>

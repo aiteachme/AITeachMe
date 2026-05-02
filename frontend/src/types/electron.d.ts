@@ -10,6 +10,7 @@ declare global {
   interface Window {
     aiteachmeDesktop?: {
       apiBaseUrl: string;
+      desktopFlavor?: "local" | "remote";
     };
     electronWindow?: {
       minimize: () => Promise<void>;
