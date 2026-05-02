@@ -33,9 +33,36 @@ def build_plan_sketch_prompt(
     # sketch 是流式展示的“正在理解中”，不是最终计划。最终卡片只使用
     # 计划合成器生成的计划说明和初步大纲。
     mode_label = planner_mode_label(digest_mode)
+    is_revision = bool(latest_plan and str(latest_feedback or "").strip())
     context_mode_block = render_planner_context_mode(
         planner_context_mode=planner_context_mode,
         existing_doc_context=existing_doc_context,
+    )
+    output_focus = (
+        "\n".join(
+            [
+                "输出 3-5 段自然短句，围绕四件事：",
+                "1. 本轮修改意见指向上一版方案中的什么对象；",
+                "2. 哪些章节或字段应保持不动；",
+                "3. 如何把修改作为最小补丁应用到完整大纲；",
+                "4. 下一步会如何校验修订后的章节衔接。",
+            ]
+        )
+        if is_revision
+        else "\n".join(
+            [
+                "输出 3-5 段自然短句，围绕四件事：",
+                "1. 资料大概覆盖什么边界；",
+                "2. 用户当前更像哪类学习意图；",
+                "3. 哪些内容可能需要归并或拆开；",
+                "4. 下一步计划会优先解决什么学习问题。",
+            ]
+        )
+    )
+    revision_constraint = (
+        "\n9. 本轮是修订已有方案时，不要把局部修改扩展成重新压缩、重新分章或重新研究资料；除非用户明确要求整体重做。"
+        if is_revision
+        else ""
     )
     prompt = f"""
 你是 AITeachMe 的学习规划助手。请先输出一段自然的思考过程，让用户知道你正在如何理解资料。
@@ -62,11 +89,7 @@ def build_plan_sketch_prompt(
 最近对话：
 {render_message_history(message_history)}
 
-输出 3-5 段自然短句，围绕四件事：
-1. 资料大概覆盖什么边界；
-2. 用户当前更像哪类学习意图；
-3. 哪些内容可能需要归并或拆开；
-4. 下一步计划会优先解决什么学习问题。
+{output_focus}
 
 硬约束：
 1. 不要输出固定模板，不要写“资料判断/关注重点/预计计划大纲/待确认点”这种标签。
@@ -77,10 +100,11 @@ def build_plan_sketch_prompt(
 6. 如果没有上传资料，只能基于用户提示和课程常识判断，不要写“这批资料显示/资料里包含”。
 7. 若当前规划模式为已有知识文档重建/调整，必须围绕已有文档摘要和用户修改意见说明调整思路。
 8. 如果本轮最新输入是在修改已有方案，必须优先解释将如何响应这条最新修改，而不是重复上一版方案。
+{revision_constraint}
 
-请参考下面这些示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：
+{"请参考下面这些示例的自然表达，注意它们都是“思考过程”示例，不是最终方案：" if not is_revision else "本轮是修订已有方案，不使用普通新建示例。"}
 
-{render_plan_sketch_examples()}
+{"" if is_revision else render_plan_sketch_examples()}
 """.strip()
     return trace_prompt_build(
         "planner_plan_sketch",
@@ -91,6 +115,7 @@ def build_plan_sketch_prompt(
             "message_history_count": len(message_history),
             "latest_feedback_chars": len(latest_feedback or ""),
             "has_latest_plan": latest_plan is not None,
+            "is_revision": is_revision,
             "material_digest_chars": len(material_context.material_digest or ""),
             "planner_context_mode": planner_context_mode,
             "existing_doc_context_chars": len(existing_doc_context or ""),

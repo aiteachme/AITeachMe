@@ -48,6 +48,37 @@ def _render_latest_plan_json(latest_plan: dict[str, Any] | None) -> str:
     return json.dumps(latest_plan, ensure_ascii=False, indent=2)
 
 
+def _render_task_chapter_contract(*, digest_mode: str, is_revision: bool) -> str:
+    if not is_revision:
+        return render_planner_chapter_contract(digest_mode)
+    return "\n".join(
+        [
+            "修订章节合同：",
+            "- 上一版方案 JSON 是本轮 chapters 的源对象，先按它的章节顺序、标题和 key_points 建立工作副本。",
+            "- 本轮最新输入/修改意见是作用在工作副本上的最小补丁；没有明确要求整体重建时，不重新规划全局主线。",
+            "- 未被本轮修改意见影响的章节必须原样保留 title 和 key_points，顺序也保持不变。",
+            "- 如果本轮语义是在移除某个章节或内容，只移除被指向的对象；不要把被移除对象的内容吸收到其他章节，除非用户明确要求保留或融入。",
+            "- 如果本轮使用相对位置、序号或代称指向章节，必须以上一版 JSON 的章节列表为定位依据。",
+            "- 不要因为 sprint/systematic 的默认参考章数而自动压缩、扩展、合并或重排章节。",
+        ]
+    )
+
+
+def _render_revision_contract(latest_plan: dict[str, Any] | None) -> str:
+    return f"""
+上一版方案 JSON（修订源对象）：
+{_render_latest_plan_json(latest_plan)}
+
+修订方式：
+- 把上一版方案 JSON 当成唯一源对象，像编辑文档一样应用“本轮最新输入/修改意见”。
+- 先定位本轮修改实际影响哪些章节、字段或排序，再输出应用补丁后的完整 chapters。
+- 未被影响的章节，title 和 key_points 必须和上一版保持一致。
+- 如果用户只是删除、弱化或不要某个对象，不要擅自把它合并到其他章节；删除就是从修订后结果中消失。
+- 只有用户明确要求整体重建、重新规划、重排主线或改变整份方案总量时，才重新划分全局章节。
+- 输出的 chapters 必须是修订后的完整章节列表，不是差异列表。
+""".strip()
+
+
 def build_plan_composer_messages(
     *,
     course_name: str,
@@ -73,9 +104,9 @@ def build_plan_composer_messages(
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_label = planner_mode_label(digest_mode)
-    chapter_contract = render_planner_chapter_contract(digest_mode)
     feedback_text = (latest_feedback or "").strip()
     is_revision = bool(latest_plan and feedback_text)
+    chapter_contract = _render_task_chapter_contract(digest_mode=digest_mode, is_revision=is_revision)
     task_title = "对上一版方案做对话式修订" if is_revision else "生成一份构建前研究计划"
     task_layers = (
         "\n".join(
@@ -96,26 +127,55 @@ def build_plan_composer_messages(
             ]
         )
     )
-    revision_contract = (
-        f"""
-上一版方案 JSON（修订源对象）：
-{_render_latest_plan_json(latest_plan)}
-
-修订方式：
-- 把上一版方案 JSON 当成源对象，像编辑文档一样应用“本轮最新输入/修改意见”。
-- 未被本轮修改意见影响的章节，title 和 key_points 保持原样。
-- 如果用户明确要求整体重建、重新规划、重排主线或改成新的总章数，才重新划分全局章节。
-- 输出的 chapters 必须是修订后的完整章节列表，不是差异列表。
-""".strip()
-        if is_revision
-        else ""
-    )
+    revision_contract = _render_revision_contract(latest_plan) if is_revision else ""
     chapter_count_instruction = (
-        "- 修订时，章节数量由上一版方案应用本轮修改后自然得到；不要被默认参考章数牵引成重新规划。"
+        "- 修订时，章节数量必须等于上一版章节列表应用本轮最小补丁后的自然结果；不要被默认参考章数牵引成重新规划。"
         if is_revision
         else "- chapters 数量和章节边界由用户目标、资料复杂度、请求模式和系统级章节规划合同共同决定。"
     )
     examples_block = "" if is_revision else f"\n示例规律：\n{render_composer_examples()}"
+    visible_output_rules = (
+        "\n".join(
+            [
+                "- 先立即输出一段计划说明，不要标题、编号、项目符号。",
+                "- 计划说明控制在 140-260 字，重点写“我会如何定位上一版章节、应用本轮修改、校验未改章节”。",
+                "- 计划说明不要重新写成资料调研路线，不要暗示会重新压缩整份方案。",
+            ]
+        )
+        if is_revision
+        else "\n".join(
+            [
+                "- 先立即输出一段计划说明，不要标题、编号、项目符号。",
+                "- 计划说明控制在 140-320 字，重点写“我会先查什么/对照什么，再怎么整理和判断”。",
+                "- 计划说明不要列章节标题，不要提前写大纲内容；只表达研究路线和判断方法。",
+            ]
+        )
+    )
+    plan_steps_instruction = (
+        "- plan_steps 是 3-7 条修订检查动作，用来解释如何定位修改对象、应用补丁、检查未改章节和输出完整大纲。"
+        if is_revision
+        else "- plan_steps 是 3-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。"
+    )
+    chapter_shape_instruction = (
+        "- chapters 是上一版方案应用本轮最小补丁后的完整章节列表；未改部分保持上一版 title 和 key_points。"
+        if is_revision
+        else "- chapters 是很初步的粗颗粒骨架，不追求完整和细节。"
+    )
+    active_split_instruction = (
+        ""
+        if is_revision
+        else "- 如果资料覆盖多个知识簇、任务类型或学习阶段，应在模式允许范围内主动拆细。"
+    )
+    planning_boundary = (
+        "修订场景主要是编辑上一版方案；除非用户要求重新研究，不要把本轮回答写成全新检索计划。"
+        if is_revision
+        else "规划阶段现在只制定研究/整理计划，不代表已经执行检索。"
+    )
+    research_boundary_instruction = (
+        "- 如果用户只是修改方案，plan_text 和 plan_steps 只写定位、应用修改和校验，不新增查询/调研动作。"
+        if is_revision
+        else "- 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。"
+    )
     context_mode_block = render_planner_context_mode(
         planner_context_mode=planner_context_mode,
         existing_doc_context=existing_doc_context,
@@ -136,8 +196,8 @@ def build_plan_composer_messages(
 {task_layers}
 
 重要边界：
-- 规划阶段现在只制定研究/整理计划，不代表已经执行检索。
-- 可以写“后续会查询/对照/搜集哪些方向”，不要写“已经查到/来源显示/某网站或某论文指出”。
+- {planning_boundary}
+{research_boundary_instruction}
 
 主题：{course_name}
 用户提示：{resolved_user_prompt}
@@ -172,19 +232,17 @@ def build_plan_composer_messages(
 {plan_queries}
 
 可见输出要求：
-- 先立即输出一段计划说明，不要标题、编号、项目符号。
-- 计划说明控制在 140-320 字，重点写“我会先查什么/对照什么，再怎么整理和判断”。
-- 计划说明不要列章节标题，不要提前写大纲内容；只表达研究路线和判断方法。
+{visible_output_rules}
 
 隐藏 JSON 要求：
 - 计划说明结束后，从单独一行 {PLAN_JSON_MARKER} 开始。
 - 输出合法 JSON 对象，最后以 {PLAN_JSON_END_MARKER} 结束。
 - JSON 只有 plan_text、plan_steps、chapters 三个字段。
 - plan_text 与可见计划说明语义一致。
-- plan_steps 是 3-7 条动作步骤，用来解释本计划会查询什么、整理什么、判断什么、如何形成大纲。
-- chapters 是很初步的粗颗粒骨架，不追求完整和细节。
+{plan_steps_instruction}
+{chapter_shape_instruction}
 {chapter_count_instruction}
-- 如果资料覆盖多个知识簇、任务类型或学习阶段，应在模式允许范围内主动拆细。
+{active_split_instruction}
 - 如果这是对上一版方案的修订，chapters 必须体现编辑后的完整方案；未受影响的章节保持上一版写法。
 
 JSON 形状：
@@ -208,10 +266,11 @@ JSON 形状：
 - 若当前规划模式为已有文档重建/调整，JSON 必须体现对已有版本的改造，而不是新建文档的泛化规划。
 
 内容边界：
-- plan_steps 可以写“查询/对照/搜集/调研”的计划动作，但不能说已经完成检索。
+{research_boundary_instruction}
 - plan_text 和 plan_steps 是重点，不能被 chapters 反客为主。
 - 没有上传资料时，基于用户提示生成通用初步计划，不要声称读过具体文件。
 - 初步大纲保持概括，key_points 控制为 2-4 个方向，不要塞满细碎知识点。
+- 修订场景下，本轮没有要求重新研究资料时，不要让资料画像或默认模式覆盖上一版方案的局部编辑语义。
 {examples_block}
 """.strip()
     messages = [
@@ -266,27 +325,29 @@ def build_plan_outline_repair_messages(
     plan_queries = _render_plan_queries(plan_intent)
     plan_intent_text = plan_intent.plan_intent.strip() or DEFAULT_PLAN_INTENT
     mode_label = planner_mode_label(digest_mode)
-    chapter_contract = render_planner_chapter_contract(digest_mode)
     feedback_text = (latest_feedback or "").strip()
     is_revision = bool(latest_plan and feedback_text)
-    revision_contract = (
-        f"""
-上一版方案 JSON（修订源对象）：
-{_render_latest_plan_json(latest_plan)}
-
-修订方式：
-- 把上一版方案 JSON 当成源对象，像编辑文档一样应用“本轮最新输入/修改意见”。
-- 未被本轮修改意见影响的章节，title 和 key_points 保持原样。
-- 如果用户明确要求整体重建、重新规划、重排主线或改成新的总章数，才重新划分全局章节。
-- 输出的 chapters 必须是修订后的完整章节列表，不是差异列表。
-""".strip()
-        if is_revision
-        else ""
-    )
+    chapter_contract = _render_task_chapter_contract(digest_mode=digest_mode, is_revision=is_revision)
+    revision_contract = _render_revision_contract(latest_plan) if is_revision else ""
     chapter_count_instruction = (
-        "chapters 数量由上一版方案应用本轮修改后自然得到；不要被默认参考章数牵引成重新规划。"
+        "chapters 数量必须等于上一版章节列表应用本轮最小补丁后的自然结果；不要被默认参考章数牵引成重新规划。"
         if is_revision
         else "chapters 数量由用户目标、资料复杂度、请求模式和系统级章节规划合同共同决定；不要为了凑默认数量额外加空心章节。"
+    )
+    plan_text_requirement = (
+        "plan_text 控制在 140-260 字，说明如何基于上一版 JSON 定位修改对象、应用本轮补丁并校验未改章节；不要写成重新调研路线。"
+        if is_revision
+        else "plan_text 控制在 140-320 字，必须说明后续会如何查找、对照、整理和判断。"
+    )
+    plan_steps_requirement = (
+        "plan_steps 输出 3-7 条修订检查动作，不能声称已经完成检索，也不能提出未被用户要求的全局重排。"
+        if is_revision
+        else "plan_steps 输出 3-7 条动作步骤，不能声称已经完成检索。"
+    )
+    plan_steps_shape = (
+        '["定位上一版中被影响的对象", "应用本轮修改", "校验未改章节", "输出完整修订大纲"]'
+        if is_revision
+        else '["查询或对照什么", "归并或筛选什么", "整理什么", "形成什么"]'
     )
     context_mode_block = render_planner_context_mode(
         planner_context_mode=planner_context_mode,
@@ -346,7 +407,7 @@ def build_plan_outline_repair_messages(
 只输出合法 JSON，字段必须严格为：
 {{
   "plan_text": "一小段计划概括",
-  "plan_steps": ["查询或对照什么", "归并或筛选什么", "整理什么", "形成什么"],
+  "plan_steps": {plan_steps_shape},
   "chapters": [
     {{
       "title": "高度概括的章节方向",
@@ -356,13 +417,13 @@ def build_plan_outline_repair_messages(
 }}
 
 字段要求：
-1. plan_text 控制在 140-320 字，必须说明后续会如何查找、对照、整理和判断。
-2. plan_steps 输出 3-7 条动作步骤，不能声称已经完成检索。
+1. {plan_text_requirement}
+2. {plan_steps_requirement}
 3. {chapter_count_instruction}
 4. 每章 key_points 输出 2-4 条，服务后续知识文档生成器继续过大模型写正文。
 5. 没有上传资料时，只能基于用户提示生成通用初步计划，不要声称读过具体文件。
 6. 若当前规划模式为已有文档重建/调整，必须围绕已有版本如何改造来修复大纲。
-7. 如果这是对上一版方案的修订，必须把上一版 JSON 作为源对象；未受影响的章节保持上一版写法。
+7. 如果这是对上一版方案的修订，必须把上一版 JSON 作为源对象；未受影响的章节保持上一版写法，不要吸收被移除对象的内容。
 8. 不要输出来源名单、网站名、论文名、后端字段、Markdown 代码块或 {PLAN_JSON_MARKER} 标记。
 """.strip()
     messages = [

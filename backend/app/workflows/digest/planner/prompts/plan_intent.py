@@ -36,10 +36,22 @@ def build_plan_intent_messages(
     # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助计划合成器
     # 确定“用户想怎么学”和“该按什么问题去整理资料”。
     mode_label = planner_mode_label(digest_mode)
+    is_revision = bool(latest_plan and str(latest_feedback or "").strip())
     context_mode_block = render_planner_context_mode(
         planner_context_mode=planner_context_mode,
         existing_doc_context=existing_doc_context,
     )
+    revision_guidance = (
+        """
+修订优先级：
+- 这是对上一版方案的对话式修订，不是从零生成新方案。
+- 先把本轮最新输入理解为作用在上一版方案上的编辑意图；除非用户明确要求整体重建，否则只围绕被影响对象思考。
+- plan_queries 在修订场景下应写成修订检查抓手，例如定位上一版中的目标对象、应用本轮补丁、检查未改章节、形成完整修订大纲；不要提出新的全局章节主线。
+""".strip()
+        if is_revision
+        else ""
+    )
+    examples_block = "" if is_revision else f"\n示例：\n{render_plan_intent_examples()}"
     system_prompt = """
 你是 AITeachMe 的学习规划意图分析器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
@@ -70,6 +82,8 @@ def build_plan_intent_messages(
 最近对话：
 {render_message_history(message_history)}
 
+{revision_guidance}
+
 只输出合法 JSON：
 {{
   "plan_intent": "一小段内部规划意图",
@@ -87,11 +101,10 @@ def build_plan_intent_messages(
 5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
 6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
 7. 若当前规划模式为已有文档重建/调整，plan_intent 和 plan_queries 必须围绕已有版本如何改造。
-8. 如果本轮最新输入是在修改已有方案，必须判断这是对上一版的局部编辑还是整体重建；局部编辑只围绕被点名的章节或要求思考。
+8. 如果本轮最新输入是在修改已有方案，必须判断这是对上一版的局部编辑还是整体重建；局部编辑只围绕被影响对象思考，不要扩展成未要求的全局合并或重排。
 9. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
 
-示例：
-{render_plan_intent_examples()}
+{examples_block}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -106,6 +119,7 @@ def build_plan_intent_messages(
             "message_history_count": len(message_history),
             "latest_feedback_chars": len(latest_feedback or ""),
             "has_latest_plan": latest_plan is not None,
+            "is_revision": is_revision,
             "material_digest_chars": len(material_context.material_digest or ""),
             "plan_query_min": PLAN_QUERY_MIN,
             "plan_query_max": PLAN_QUERY_MAX,
