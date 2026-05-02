@@ -126,7 +126,12 @@ def summarize_docgen_presentation(markdown: str) -> dict[str, object]:
     return summarize_markdown_presentation(markdown)
 
 
-def summarize_docgen_presentation_collection(chapters: list[dict[str, Any]], *, merged_markdown: str = "") -> dict[str, object]:
+def summarize_docgen_presentation_collection(
+    chapters: list[dict[str, Any]],
+    *,
+    merged_markdown: str = "",
+    digest_mode: str = "",
+) -> dict[str, object]:
     chapter_summaries = [
         {
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
@@ -143,7 +148,7 @@ def summarize_docgen_presentation_collection(chapters: list[dict[str, Any]], *, 
     ]
     merged_summary = summarize_docgen_presentation(merged_markdown) if merged_markdown else {}
     return {
-        "policy": build_presentation_policy(),
+        "policy": build_presentation_policy(digest_mode=digest_mode),
         "chapter_count": len(chapter_summaries),
         "chapter_issue_count": sum(int(summary.get("issue_count", 0) or 0) for summary in chapter_summaries),
         "merged_issue_count": int(merged_summary.get("issue_count", 0) or 0),

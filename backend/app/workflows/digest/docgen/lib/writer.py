@@ -430,7 +430,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             lines.extend(
                 [
                     "",
-                    "做题前不必重新背一遍整章，先抓住题目给出的结构条件，再判断它对应本章哪一种方法。",
+                    "处理任务前不必重新背一遍整章，先抓住场景给出的结构条件，再判断它对应本章哪一种方法、步骤或判断标准。",
                 ]
             )
         else:

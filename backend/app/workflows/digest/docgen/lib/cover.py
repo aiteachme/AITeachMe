@@ -114,7 +114,7 @@ def _build_cover_prompt(
     course_cues = "；".join(_course_cues(confirmed_plan)) or course_name
     file_cues = "；".join(_file_summary_cues(file_summaries)) or course_cues
     mode_hint = (
-        "compressed, focused, tense but elegant, like dusk before an exam"
+        "compressed, focused, energetic but elegant, like final hours before an important milestone"
         if digest_mode == "sprint"
         else "slow, layered, spacious, calm, like a long journey through changing landscapes"
     )

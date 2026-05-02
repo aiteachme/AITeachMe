@@ -226,9 +226,9 @@ def _execution_contract_for_writer(
     example_ratio = _unit_float((task.practice_seed_policy or {}).get("example_ratio"))
     practice_ratio = _unit_float((task.practice_seed_policy or {}).get("practice_ratio"))
     density_policy = dict((task.practice_seed_policy or {}).get("example_density_policy") or {})
-    worked_example_target = int(density_policy.get("worked_examples_per_chapter", 3 if practice_style == "exam" else 1) or 1)
+    worked_example_target = int(density_policy.get("worked_examples_per_chapter", 3) or 1)
     if example_ratio >= 0.42:
-        worked_example_target = max(worked_example_target, 4 if practice_style == "exam" else 2)
+        worked_example_target = max(worked_example_target, 4)
     practice_task_target = int(density_policy.get("practice_tasks_per_chapter", 1) or 1)
     self_check_target = max(1 if practice_ratio >= 0.25 else 0, practice_task_target // 2)
     return {
@@ -250,8 +250,8 @@ def _execution_contract_for_writer(
             "worked_examples": worked_example_target,
             "short_answer": 0,
             "self_check": self_check_target,
-            "reasoning": 1 if practice_style != "exam" else 0,
-            "application": max(1 if practice_style != "exam" else 0, practice_task_target // 2),
+            "reasoning": 1,
+            "application": max(1, practice_task_target // 2),
             "policy": str((task.practice_seed_policy or {}).get("policy") or ""),
         },
         "media_quota": {

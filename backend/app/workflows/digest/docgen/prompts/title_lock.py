@@ -55,7 +55,7 @@ def build_title_lock_messages(
 2. 只能做轻微收束、补足和具体化，不能新增学习主题。
 3. 如果不确定，enhanced_title 必须直接沿用 confirmed_title。
 4. confirmed_title 和 enhanced_title 都只保留语义标题；如果原标题带编号，只保留后面的语义部分。
-5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的课程对象，例如“跨模块联系：代数、几何与统计的综合应用”。
+5. 如果 confirmed_title 偏抽象或像宣传文案，必须结合 objective / required_elements 收束成清晰的课程对象，例如“核心对象、关键方法与综合应用”。
 6. 如果 title 为空、未命名章节、本章内容或只有“第 N 章”，必须从 objective / required_elements 中抽取真实知识对象命名，不能输出“未命名章节”。
 7. 不要为了押韵、对仗或统一句式批量改写标题；相邻章节标题必须各自自然。
 8. 不要输出任何教学大纲、检索词、媒体请求或其他字段。

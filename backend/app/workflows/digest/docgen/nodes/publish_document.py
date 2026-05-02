@@ -118,6 +118,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             "presentation_quality_summary": summarize_docgen_presentation_collection(
                 chapter_metadatas,
                 merged_markdown=str(state.get("merged_markdown") or ""),
+                digest_mode=state.get("digest_mode") or "",
             ),
             "cover_artifact": cover_artifact,
             "build_metadata": {

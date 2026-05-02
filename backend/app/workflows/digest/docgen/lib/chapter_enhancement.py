@@ -72,7 +72,7 @@ def _build_practice_questions(
     )
     if mode_profile.is_sprint:
         focus_terms = [*claim_prompts, title]
-        first_claim = claim_prompts[0] if claim_prompts else title or "核心考点"
+        first_claim = claim_prompts[0] if claim_prompts else title or "核心重点"
         second_claim = claim_prompts[1] if len(claim_prompts) > 1 else first_claim
         examples = [
             {
@@ -125,13 +125,13 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": "综合应用",
-                    "stem": f"把《{title}》中两个相关知识点合在一道小题里，说明解题顺序。",
+                    "stem": f"把《{title}》中两个相关知识点合在一个综合任务里，说明处理顺序。",
                     "analysis_steps": [
                         "先判断哪一个知识点是入口，哪一个知识点是后续计算或论证工具。",
                         "再按依赖顺序展开步骤，避免先用后证。",
                         "最后检查两个结论之间是否存在条件冲突。",
                     ],
-                    "pitfall": "综合题不是把公式堆在一起，而是要先确定使用顺序。",
+                    "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
                 }
             )
         while len(examples) < 4:
@@ -142,9 +142,9 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": choose_heading_focus([focus], fallback=title),
-                    "stem": f"围绕“{focus}”设计一道速成训练：给出条件、识别信号，并说明最短处理路径。",
+                    "stem": f"围绕“{focus}”设计一个速成训练：给出条件、识别信号，并说明最短处理路径。",
                     "analysis_steps": [
-                        "先判断任务属于哪类高频场景或常见题型。",
+                        "先判断任务属于哪类高频场景、常见题型或操作任务。",
                         "再写出触发该方法的条件或关键词。",
                         "最后按模板完成步骤，并做一次易错检查。",
                     ],
