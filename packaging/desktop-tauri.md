@@ -21,9 +21,9 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
-- `packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip`
-- `packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
-- `packaging\release\latest-tauri-local.json`
+- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip`
+- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
 
 ## 在线更新
 
@@ -42,7 +42,9 @@ https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-loc
 - `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：更新包所在公开目录。
 
-打包 Tauri local 前需要设置：
+Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+
+如需同时生成在线更新产物，打包前需要设置：
 
 - `TAURI_UPDATER_PUBKEY`
 - `TAURI_SIGNING_PRIVATE_KEY`
@@ -104,7 +106,7 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 - Node.js 和 npm。
 - Rust 工具链，包含 `rustc` 和 `cargo`。
 - Python 3.11，用于本地后端模式。
-- Tauri local 发布构建需要 updater 公钥和签名私钥环境变量。
+- 如需生成 Tauri local 在线更新产物，需要 updater 公钥和签名私钥环境变量。
 - Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
 
 底层实现脚本是 `packaging\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

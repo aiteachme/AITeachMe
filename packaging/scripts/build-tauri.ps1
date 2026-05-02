@@ -28,10 +28,19 @@ function New-TauriLocalReleaseConfig {
     param(
         [string]$FrontendDir,
         [string]$UpdaterPubkey,
-        [string]$Endpoint
+        [string]$Endpoint,
+        [bool]$EnableUpdater = $false
     )
 
     $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
+    $bundleConfig = [ordered]@{}
+    if ($EnableUpdater) {
+        $bundleConfig["createUpdaterArtifacts"] = $true
+    }
+    $bundleConfig["resources"] = [ordered]@{
+        "resources/backend/" = "backend"
+    }
+
     $config = [ordered]@{
         productName = "AiTeachMe Local"
         identifier = "com.aiteachme.desktop.local"
@@ -39,13 +48,11 @@ function New-TauriLocalReleaseConfig {
         build = [ordered]@{
             devUrl = "http://127.0.0.1:5181"
         }
-        bundle = [ordered]@{
-            createUpdaterArtifacts = $true
-            resources = [ordered]@{
-                "resources/backend/" = "backend"
-            }
-        }
-        plugins = [ordered]@{
+        bundle = $bundleConfig
+    }
+
+    if ($EnableUpdater) {
+        $config["plugins"] = [ordered]@{
             updater = [ordered]@{
                 pubkey = $UpdaterPubkey
                 endpoints = @($Endpoint)
@@ -54,9 +61,11 @@ function New-TauriLocalReleaseConfig {
                 }
             }
         }
-    } | ConvertTo-Json -Depth 8
+    }
 
-    Write-Utf8NoBomFile -Path $configPath -Content ($config + [Environment]::NewLine)
+    $configJson = $config | ConvertTo-Json -Depth 8
+
+    Write-Utf8NoBomFile -Path $configPath -Content ($configJson + [Environment]::NewLine)
     return $configPath
 }
 
@@ -99,22 +108,32 @@ if ($ImportBundledEnv -and $Flavor -ne "local") {
     Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for tauri-$Flavor." -ForegroundColor Yellow
 }
 
+$tauriLocalUpdaterEnabled = $false
 $tauriConfigArg = if ($Flavor -eq "local") { "src-tauri/tauri.local.release.conf.json" } else { "src-tauri/tauri.remote.conf.json" }
 if ($Flavor -eq "local") {
     $updaterPubkey = [Environment]::GetEnvironmentVariable("TAURI_UPDATER_PUBKEY", "Process")
     $signingPrivateKey = [Environment]::GetEnvironmentVariable("TAURI_SIGNING_PRIVATE_KEY", "Process")
+    $missingUpdaterVars = @()
     if ([string]::IsNullOrWhiteSpace($updaterPubkey)) {
-        throw "TAURI_UPDATER_PUBKEY is required for tauri-local updater builds. Generate it with 'npm run tauri -- signer generate -w <private-key-path>' and store the public key in GitHub Variables or Secrets."
+        $missingUpdaterVars += "TAURI_UPDATER_PUBKEY"
     }
     if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
-        throw "TAURI_SIGNING_PRIVATE_KEY is required for tauri-local updater builds. Set it to the private key content or private key file path before building."
+        $missingUpdaterVars += "TAURI_SIGNING_PRIVATE_KEY"
     }
+    $tauriLocalUpdaterEnabled = $missingUpdaterVars.Count -eq 0
+    $trimmedUpdaterPubkey = if ([string]::IsNullOrWhiteSpace($updaterPubkey)) { "" } else { $updaterPubkey.Trim() }
 
     $generatedConfigPath = New-TauriLocalReleaseConfig `
         -FrontendDir $frontendDir `
-        -UpdaterPubkey $updaterPubkey.Trim() `
-        -Endpoint $tauriLocalUpdaterEndpoint
-    Write-Host "Tauri updater endpoint: $tauriLocalUpdaterEndpoint"
+        -UpdaterPubkey $trimmedUpdaterPubkey `
+        -Endpoint $tauriLocalUpdaterEndpoint `
+        -EnableUpdater $tauriLocalUpdaterEnabled
+    if ($tauriLocalUpdaterEnabled) {
+        Write-Host "Tauri updater endpoint: $tauriLocalUpdaterEndpoint"
+    }
+    else {
+        Write-Host "Tauri updater disabled; missing environment variable(s): $($missingUpdaterVars -join ', '). Installer build will continue without updater packages." -ForegroundColor Yellow
+    }
     Write-Host "Generated Tauri release config: $generatedConfigPath"
 }
 
@@ -162,4 +181,4 @@ finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
 }
 
-Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix
+Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix -IncludeUpdater:$tauriLocalUpdaterEnabled

@@ -97,7 +97,9 @@ https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-loc
 - `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：客户端检查的 `latest-tauri-local.json` 公开地址。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
 
-生成 Tauri local 发布包前必须配置：
+Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+
+如需同时生成在线更新产物，发布包前需要配置：
 
 - `TAURI_UPDATER_PUBKEY`：Tauri updater 公钥，写入最终 Tauri 配置。
 - `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容或私钥文件路径。
@@ -112,7 +114,7 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 把命令输出的 public key 配到 GitHub Variables 或 Secrets 的 `TAURI_UPDATER_PUBKEY`，把 `packaging\private\tauri-updater.key` 的内容配置到 GitHub Secrets 的 `TAURI_SIGNING_PRIVATE_KEY`。私钥不要提交到仓库。
 
-GitHub Release 会额外上传：
+配置齐全时，GitHub Release 会额外上传：
 
 - `AiTeachMe-v<version>-updater-tauri.nsis.zip`
 - `AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`

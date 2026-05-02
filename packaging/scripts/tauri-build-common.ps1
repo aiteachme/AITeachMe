@@ -194,7 +194,8 @@ function Copy-TauriArtifacts {
     param(
         [string]$RepoRoot,
         [string]$Flavor,
-        [string]$ReleaseSuffix = ""
+        [string]$ReleaseSuffix = "",
+        [switch]$IncludeUpdater
     )
 
     $bundleDir = Join-Path $RepoRoot "frontend\src-tauri\target\release\bundle"
@@ -213,7 +214,7 @@ function Copy-TauriArtifacts {
         Remove-Item -Force
     Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
         Remove-Item -Force
-    if ($Flavor -eq "tauri-local" -and $ReleaseSuffix -eq "-tauri") {
+    if ($Flavor -eq "tauri-local") {
         $latestJsonPath = Join-Path $releaseDir "latest-tauri-local.json"
         if (Test-Path $latestJsonPath) {
             Remove-Item -LiteralPath $latestJsonPath -Force
@@ -253,33 +254,35 @@ function Copy-TauriArtifacts {
     }
 
     $updaterOutputs = @()
-    $updaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
-        Where-Object { $_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip" } |
-        Sort-Object LastWriteTime -Descending)
+    if ($IncludeUpdater) {
+        $updaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
+            Where-Object { $_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip" } |
+            Sort-Object LastWriteTime -Descending)
 
-    if ($Flavor -eq "tauri-local" -and $updaterPackages.Count -eq 0) {
-        throw "Could not find Tauri NSIS updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
-    }
-
-    foreach ($updaterPackage in $updaterPackages) {
-        $sigPath = "$($updaterPackage.FullName).sig"
-        if (-not (Test-Path $sigPath)) {
-            throw "Tauri updater signature was not produced: $sigPath"
+        if ($Flavor -eq "tauri-local" -and $updaterPackages.Count -eq 0) {
+            throw "Could not find Tauri NSIS updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
         }
 
-        $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix.nsis.zip"
-        $updaterReleaseOutput = Join-Path $releaseDir $updaterName
-        $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
+        foreach ($updaterPackage in $updaterPackages) {
+            $sigPath = "$($updaterPackage.FullName).sig"
+            if (-not (Test-Path $sigPath)) {
+                throw "Tauri updater signature was not produced: $sigPath"
+            }
 
-        Copy-Item -LiteralPath $updaterPackage.FullName -Destination (Join-Path $bundleArtifactDir $updaterPackage.Name) -Force
-        Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
-        Copy-Item -LiteralPath $updaterPackage.FullName -Destination $updaterReleaseOutput -Force
-        Copy-Item -LiteralPath $sigPath -Destination $updaterSigReleaseOutput -Force
-        $updaterOutputs += $updaterReleaseOutput
-        $updaterOutputs += $updaterSigReleaseOutput
+            $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix.nsis.zip"
+            $updaterReleaseOutput = Join-Path $releaseDir $updaterName
+            $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
+
+            Copy-Item -LiteralPath $updaterPackage.FullName -Destination (Join-Path $bundleArtifactDir $updaterPackage.Name) -Force
+            Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
+            Copy-Item -LiteralPath $updaterPackage.FullName -Destination $updaterReleaseOutput -Force
+            Copy-Item -LiteralPath $sigPath -Destination $updaterSigReleaseOutput -Force
+            $updaterOutputs += $updaterReleaseOutput
+            $updaterOutputs += $updaterSigReleaseOutput
+        }
     }
 
-    if ($Flavor -eq "tauri-local" -and $ReleaseSuffix -eq "-tauri") {
+    if ($IncludeUpdater -and $Flavor -eq "tauri-local" -and $ReleaseSuffix -eq "-tauri") {
         if ($updaterOutputs.Count -eq 0) {
             throw "Tauri local updater package was not copied."
         }
