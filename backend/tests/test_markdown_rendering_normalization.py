@@ -2,9 +2,12 @@ import asyncio
 
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
+    find_markdown_presentation_issues,
     find_markdown_rendering_issues,
     normalize_markdown_rendering,
     normalize_mermaid_blocks,
+    summarize_markdown_presentation,
+    validate_single_file_html,
 )
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
@@ -475,3 +478,52 @@ def test_review_surface_patch_applies_deterministic_markdown_repair() -> None:
     assert trace[0].changed is True
     assert "\n$$\n- **错误吞入的列表**" in repaired[0].markdown
     assert "\n> [!WARNING]\n>\n> 不要把提示块写成裸标记" in repaired[0].markdown
+
+
+def test_presentation_validator_catches_style_contract_issues() -> None:
+    raw = "\n".join(
+        [
+            "## 跳级开头",
+            "",
+            "这里有 **未闭合的重点。",
+            "",
+            "| 项目 | 内容 |",
+            "| --- | --- |",
+            "| A | B | C |",
+            "",
+            "```",
+            "print('missing language')",
+            "```",
+            "",
+            "<div>不受控 HTML</div>",
+        ]
+    )
+
+    issues = find_markdown_presentation_issues(raw)
+
+    assert "Markdown 首个标题不是一级标题。" in issues
+    assert "Markdown 加粗标记 ** 未成对闭合。" in issues
+    assert "Markdown 表格行列数不一致。" in issues
+    assert "Markdown 代码块缺少语言标记。" in issues
+    assert "Markdown 正文包含不受控 HTML 标签。" in issues
+
+
+def test_presentation_normalizes_safe_highlight_spacing_and_summarizes() -> None:
+    raw = "# 标题\n\n这是 == 关键结论 ==，也可以 <mark> 条件 </mark>。"
+
+    fixed = normalize_markdown_rendering(raw)
+    summary = summarize_markdown_presentation(fixed)
+
+    assert "==关键结论==" in fixed
+    assert "<mark>条件</mark>" in fixed
+    assert summary["highlight_count"] == 2
+    assert summary["issue_count"] == 0
+
+
+def test_single_file_html_validator_reports_sidecar_risks() -> None:
+    html = "<html><head></head><body><script src=\"https://example.com/x.js\"></script></body></html>"
+
+    issues = validate_single_file_html(html)
+
+    assert "HTML sidecar 缺少 <!doctype html>。" in issues
+    assert "HTML sidecar 包含外部脚本引用。" in issues

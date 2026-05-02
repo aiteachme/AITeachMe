@@ -10,7 +10,7 @@ from typing import Any
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support import acompletion_stream
-from app.shared.infra.tools.builtin.markdown_processing import count_words, normalize_markdown_rendering
+from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
     ensure_chapter_learning_scaffold,
@@ -27,11 +27,14 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     strip_asset_requests,
 )
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
+from app.workflows.digest.docgen.lib.presentation_policy import (
+    find_docgen_presentation_issues,
+    normalize_docgen_presentation,
+    summarize_docgen_presentation,
+)
 from app.workflows.digest.docgen.lib.textbook_style import (
     build_textbook_heading,
     choose_heading_focus,
-    normalize_educational_callouts,
-    normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
@@ -365,6 +368,20 @@ class DocGenWriterRuntime(BaseTracedExecution):
             )
             repair_actions.append("length")
 
+        before_presentation_issues = find_docgen_presentation_issues(repaired)
+        if before_presentation_issues:
+            normalized = normalize_docgen_presentation(
+                repaired,
+                digest_mode=digest_mode,
+                title=title,
+                focus_items=required_elements,
+            )
+            after_presentation_issues = find_docgen_presentation_issues(normalized)
+            if normalized and len(after_presentation_issues) < len(before_presentation_issues):
+                repaired = normalized
+                repair_actions.append("presentation")
+                before_presentation_issues = after_presentation_issues
+
         coverage_score, missing_requirements = self._measure_coverage(
             repaired,
             coverage_requirements=coverage_requirements,
@@ -383,6 +400,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
             "final_word_count": count_words(repaired),
             "target_word_count": int(execution_contract.get("target_word_count", 0) or 0),
             "min_word_count": min_word_count,
+            "presentation": summarize_docgen_presentation(repaired),
+            "presentation_issues": before_presentation_issues[:12],
         }
 
     def _build_repair_section(
@@ -411,7 +430,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             lines.extend(
                 [
                     "",
-                    "做题前不必重新背一遍整章，先抓住题目给出的结构条件，再判断它对应本章哪一种方法。",
+                    "处理任务前不必重新背一遍整章，先抓住场景给出的结构条件，再判断它对应本章哪一种方法、步骤或判断标准。",
                 ]
             )
         else:
@@ -508,14 +527,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
             previous = line
 
         cleaned = "\n".join(lines)
-        cleaned = normalize_textbook_headings(
+        cleaned = normalize_docgen_presentation(
             cleaned,
             digest_mode=digest_mode,
-            fallback_title=title,
+            title=title,
             focus_items=focus_items,
         )
-        cleaned = normalize_educational_callouts(cleaned)
-        cleaned = normalize_markdown_rendering(cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if not cleaned.startswith("#"):
             cleaned = f"# {title}\n\n{cleaned}".strip()

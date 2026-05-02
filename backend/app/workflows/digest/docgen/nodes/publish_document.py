@@ -21,6 +21,10 @@ from app.workflows.digest.docgen.lib.publish import (
     publish_staged_knowledge_docs,
     stage_knowledge_docs,
 )
+from app.workflows.digest.docgen.lib.presentation_policy import (
+    build_presentation_policy,
+    summarize_docgen_presentation_collection,
+)
 from app.workflows.digest.docgen.state import DocGenState
 
 logger = structlog.get_logger()
@@ -110,6 +114,12 @@ def build_publish_document_node(*, context: WorkflowContext):
             "merge_review_report": dict(state.get("merge_review_report") or {}),
             "final_chapter_titles": list(state.get("final_chapter_titles") or []),
             "title_review_report": dict(state.get("title_review_report") or {}),
+            "presentation_policy": build_presentation_policy(digest_mode=state.get("digest_mode") or ""),
+            "presentation_quality_summary": summarize_docgen_presentation_collection(
+                chapter_metadatas,
+                merged_markdown=str(state.get("merged_markdown") or ""),
+                digest_mode=state.get("digest_mode") or "",
+            ),
             "cover_artifact": cover_artifact,
             "build_metadata": {
                 "build_session_id": state.get("build_session_id") or "",

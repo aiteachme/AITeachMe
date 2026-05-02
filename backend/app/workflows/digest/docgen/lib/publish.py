@@ -23,10 +23,7 @@ from app.shared.infra.storage import (
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_reference_section,
     count_words,
-    find_markdown_rendering_issues,
-    normalize_markdown_rendering,
     normalize_source_details,
-    normalize_mermaid_blocks,
 )
 from app.shared.infra.knowledge.build_store import (
     KnowledgeDocsManifest,
@@ -34,9 +31,9 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
-from app.workflows.digest.docgen.lib.textbook_style import (
-    normalize_educational_callouts,
-    normalize_textbook_headings,
+from app.workflows.digest.docgen.lib.presentation_policy import (
+    find_docgen_presentation_issues,
+    normalize_docgen_presentation,
 )
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.support.courses.learning_context import update_course_learning_context_from_docgen
@@ -81,25 +78,29 @@ def _prepare_chapter_markdown(
     digest_mode: str = "",
     focus_items: list[str] | None = None,
 ) -> str:
-    cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
-    cleaned = sanitize_public_markdown(cleaned)
-    cleaned = normalize_textbook_headings(
-        cleaned,
+    cleaned = normalize_docgen_presentation(
+        markdown,
         digest_mode=digest_mode,
-        fallback_title=title,
+        title=title,
         focus_items=focus_items or [],
     )
-    cleaned = normalize_educational_callouts(cleaned)
+    cleaned = sanitize_public_markdown(cleaned)
+    cleaned = normalize_docgen_presentation(
+        cleaned,
+        digest_mode=digest_mode,
+        title=title,
+        focus_items=focus_items or [],
+    )
     return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned, title=title))
 
 
 def _finalize_markdown_rendering(markdown: str) -> str:
     """Run a last deterministic rendering guard before writing public docs."""
 
-    issues = find_markdown_rendering_issues(markdown)
+    issues = find_docgen_presentation_issues(markdown)
     if not issues:
         return markdown
-    repaired = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+    repaired = normalize_docgen_presentation(markdown)
     return repaired if repaired else markdown
 
 
@@ -167,8 +168,8 @@ def build_merged_markdown(
     merged = separator.join(body).strip()
     if str(cover_markdown or "").strip():
         merged = f"{str(cover_markdown).strip()}\n\n{merged.lstrip()}".strip()
-    merged = normalize_educational_callouts(merged)
-    return _finalize_markdown_rendering(sanitize_public_markdown(normalize_mermaid_blocks(merged.strip())))
+    merged = normalize_docgen_presentation(merged)
+    return _finalize_markdown_rendering(sanitize_public_markdown(merged.strip()))
 
 
 

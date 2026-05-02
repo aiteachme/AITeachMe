@@ -574,6 +574,7 @@ def _quality_summary_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, 
     review_actions = _mapping_items(docgen_artifacts.get("review_actions"), limit=80)
     repair_trace = _mapping_items(docgen_artifacts.get("repair_trace"), limit=80)
     unresolved = _clean_string_list(docgen_artifacts.get("unresolved_warnings"), limit=20, max_chars=220)
+    presentation = _as_mapping(docgen_artifacts.get("presentation_quality_summary"))
     action_counts: dict[str, int] = {}
     for action in review_actions:
         action_type = _clean_text(action.get("action_type"), max_chars=60) or "unknown"
@@ -586,6 +587,9 @@ def _quality_summary_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, 
         "applied_patch_count": applied_patch_count,
         "unresolved_warning_count": len(unresolved),
         "unresolved_warnings": unresolved,
+        "presentation_issue_count": _safe_int(presentation.get("chapter_issue_count"))
+        + _safe_int(presentation.get("merged_issue_count")),
+        "presentation_top_issues": _clean_string_list(presentation.get("top_issues"), limit=12, max_chars=180),
     }
 
 
@@ -811,6 +815,8 @@ def build_course_learning_context_payload(
     kg_candidate_hints = _kg_candidate_hints_snapshot(chapters=chapters, backbone=backbone)
     learning_taxonomy = _learning_taxonomy_snapshot()
     content_mix_policy = _content_mix_policy_snapshot(digest_mode=digest_mode, docgen_artifacts=docgen_artifacts)
+    presentation_policy = _as_mapping(docgen_artifacts.get("presentation_policy"))
+    presentation_quality_summary = _as_mapping(docgen_artifacts.get("presentation_quality_summary"))
     role_coverage_by_chapter = _role_coverage_snapshot(chapters)
     example_coverage_by_chapter = _example_coverage_snapshot(chapters)
 
@@ -832,6 +838,8 @@ def build_course_learning_context_payload(
         "retrieval_policy": retrieval_policy,
         "learning_taxonomy": learning_taxonomy,
         "content_mix_policy": content_mix_policy,
+        "presentation_policy": presentation_policy,
+        "presentation_quality_summary": presentation_quality_summary,
         "user_prompt": user_prompt,
         "docgen_user_prompt": user_prompt,
         "plan_summary": plan_summary,
@@ -878,6 +886,7 @@ def render_course_llm_context(
     quality_summary = _as_mapping(document_summary_json.get("quality_summary"))
     kg_candidate_hints = _as_list(document_summary_json.get("kg_candidate_hints"))
     content_mix_policy = _as_mapping(document_summary_json.get("content_mix_policy"))
+    presentation_policy = _as_mapping(document_summary_json.get("presentation_policy"))
     role_coverage = _as_list(document_summary_json.get("role_coverage_by_chapter"))
     example_coverage = _as_list(document_summary_json.get("example_coverage_by_chapter"))
 
@@ -920,6 +929,19 @@ def render_course_llm_context(
             lines.append(f"- 例题策略：{_clean_text(density.get('policy_text'), max_chars=420)}")
         if coverage:
             lines.append("- 覆盖要求：" + "；".join(coverage))
+
+    if presentation_policy:
+        markdown_policy = _as_mapping(presentation_policy.get("markdown"))
+        lines.extend(["", "## 展示质量策略"])
+        heading_policy = _clean_text(markdown_policy.get("heading_levels"), max_chars=180)
+        highlight_policy = _clean_text(markdown_policy.get("highlight"), max_chars=180)
+        mermaid_policy = _clean_text(markdown_policy.get("mermaid"), max_chars=220)
+        if heading_policy:
+            lines.append(f"- 标题层级：{heading_policy}")
+        if highlight_policy:
+            lines.append(f"- 高亮策略：{highlight_policy}")
+        if mermaid_policy:
+            lines.append(f"- 图谱/Mermaid：{mermaid_policy}")
 
     if file_summaries:
         lines.extend(["", "## 资料摘要"])

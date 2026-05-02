@@ -251,21 +251,12 @@ _MATH_TOPIC_KEYWORDS: tuple[str, ...] = (
     "线性代数",
     "概率论",
     "数与代数",
-    "几何",
-    "代数",
-    "函数",
-    "方程",
-    "不等式",
-    "三角",
-    "统计",
-    "概率",
-    "中考",
+    "中考数学",
+    "数学竞赛",
 )
 _MATH_ASCII_TOPIC_KEYWORDS: tuple[str, ...] = (
     "math",
     "mathematics",
-    "algebra",
-    "geometry",
     "calculus",
 )
 _ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?")

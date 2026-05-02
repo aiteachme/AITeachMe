@@ -26,6 +26,8 @@ const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mer
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
+const HIGHLIGHT_MARK_CLASS =
+  "rounded-[3px] bg-amber-100 px-1 py-0.5 text-inherit shadow-[inset_0_-0.35em_rgba(251,191,36,0.22)] dark:bg-amber-300/20 dark:shadow-[inset_0_-0.35em_rgba(251,191,36,0.18)]";
 const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   times: "×",
   cdot: "·",
@@ -88,6 +90,7 @@ interface ViewerStyles {
   link: string;
   strong: string;
   em: string;
+  highlight: string;
   imageShell: string;
   imageFrame: string;
   image: string;
@@ -211,6 +214,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
     strong: "font-semibold text-slate-900 dark:text-slate-100",
     em: "italic text-slate-600 dark:text-slate-300",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
     imageFrame: "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -243,6 +247,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     link: "text-[#4F46E5] transition-colors hover:text-[#4338CA] hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300",
     strong: "font-semibold text-[#1F2329] dark:text-slate-100",
     em: "italic text-[#646A73] dark:text-slate-400",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-6",
     imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -275,6 +280,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
     strong: "font-semibold text-zinc-900 dark:text-slate-100",
     em: "italic text-zinc-600 dark:text-slate-300",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
     imageFrame: "overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[28rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -398,6 +404,52 @@ function normalizeBareLatexTextCommands(markdown: string): string {
   return output.join("\n");
 }
 
+function normalizeHighlightSyntaxForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let inDisplayMath = false;
+
+  const normalizeLine = (line: string) => {
+    const parts = line.split(/(`+[^`]*`+)/g);
+    return parts
+      .map((part) => {
+        if (part.startsWith("`") && part.endsWith("`")) return part;
+        return part
+          .replace(/<mark\b[^>]*>\s*([^<>\n]{1,160}?)\s*<\/mark>/gi, (_match, body: string) => {
+            const text = String(body || "").trim();
+            return text ? `==${text}==` : "";
+          })
+          .replace(/==\s*([^=\n]{1,160}?)\s*==/g, (_match, body: string) => {
+            const text = String(body || "").trim();
+            return text ? `==${text}==` : "";
+          });
+      })
+      .join("");
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (!activeFence) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+    if (!activeFence && /^\s*\$\$\s*$/.test(line)) {
+      inDisplayMath = !inDisplayMath;
+      output.push(line);
+      continue;
+    }
+    output.push(activeFence || inDisplayMath ? line : normalizeLine(line));
+  }
+
+  return output.join("\n");
+}
+
 function createBlankNode(): MarkdownAstNode {
   return {
     type: "blank",
@@ -410,6 +462,20 @@ function createBlankNode(): MarkdownAstNode {
       },
     },
     children: [{ type: "text", value: " " }],
+  };
+}
+
+function createHighlightNode(value: string): MarkdownAstNode {
+  return {
+    type: "highlightMark",
+    data: {
+      hName: "mark",
+      hProperties: {
+        className: HIGHLIGHT_MARK_CLASS,
+        "data-markdown-highlight": "true",
+      },
+    },
+    children: [{ type: "text", value }],
   };
 }
 
@@ -431,6 +497,50 @@ function remarkBlankTokens() {
           children.splice(index, 1, ...replacement);
           index += replacement.length - 1;
           continue;
+        }
+
+        if (child.type !== "math" && child.type !== "inlineMath") {
+          visit(child);
+        }
+      }
+    };
+
+    visit(tree);
+  };
+}
+
+function remarkSafeHighlights() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      const children = node.children;
+      if (!Array.isArray(children)) return;
+
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+        if (child.type === "text" && typeof child.value === "string" && child.value.includes("==")) {
+          const replacement: MarkdownAstNode[] = [];
+          const source = child.value;
+          const regex = /==([^=\n]{1,160})==/g;
+          let cursor = 0;
+          let match: RegExpExecArray | null;
+          while ((match = regex.exec(source)) !== null) {
+            const before = source.slice(cursor, match.index);
+            const body = (match[1] ?? "").trim();
+            if (before) replacement.push({ type: "text", value: before });
+            if (body) {
+              replacement.push(createHighlightNode(body));
+            } else {
+              replacement.push({ type: "text", value: match[0] });
+            }
+            cursor = match.index + match[0].length;
+          }
+          const tail = source.slice(cursor);
+          if (tail) replacement.push({ type: "text", value: tail });
+          if (replacement.length > 0) {
+            children.splice(index, 1, ...replacement);
+            index += replacement.length - 1;
+            continue;
+          }
         }
 
         if (child.type !== "math" && child.type !== "inlineMath") {
@@ -1281,7 +1391,7 @@ export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
       protectTableInlineMathPipesForRender(
-        repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+        repairMathDelimitersForRender(preprocessLaTeX(normalizeHighlightSyntaxForRender(preprocessCalloutSyntax(content)))),
       ),
     ),
   );
@@ -1986,7 +2096,7 @@ export function MarkdownViewer({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkCallouts, headingStructurePlugin]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkSafeHighlights, remarkCallouts, headingStructurePlugin]}
       rehypePlugins={[
         [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
         rehypeHighlight,
@@ -2106,6 +2216,7 @@ export function MarkdownViewer({
         ),
         strong: ({ children }) => <strong className={styles.strong}>{children}</strong>,
         em: ({ children }) => <em className={styles.em}>{children}</em>,
+        mark: ({ children }) => <mark className={styles.highlight}>{children}</mark>,
         img: ({ src, alt }) => {
           const resolvedSrc = resolveMarkdownImageSrc(src, {
             assetBaseUrl,

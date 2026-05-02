@@ -5,6 +5,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowl
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
+from app.workflows.digest.kg_doc_sync.lib.extraction import _assign_candidate_ids_and_edge_types
 from app.workflows.digest.kg_doc_sync.lib.extraction import _prepare_llm_chunk_content
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _build_backbone_graph_items,
@@ -423,6 +424,49 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
 
     assert len(result.nodes) == 8
     assert len(result.edges) == 12
+
+
+def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
+    result = ChunkExtractionResult.model_validate(
+        {
+            "nodes": [
+                {
+                    "candidate_id": "core",
+                    "name": "核心对象",
+                    "knowledge_unit_type": "core_knowledge",
+                    "local_summary": "本节说明核心对象。",
+                },
+                {
+                    "candidate_id": "method",
+                    "name": "操作方法",
+                    "knowledge_unit_type": "method_demo",
+                    "local_summary": "本节给出操作方法。",
+                },
+            ],
+            "edges": [
+                {
+                    "source_name": "核心对象",
+                    "target_name": "操作方法",
+                    "edge_type": "application",
+                    "description": "核心对象用于操作方法。",
+                },
+                {
+                    "source_name": "核心对象",
+                    "target_name": "不存在的练习",
+                    "source_candidate_id": "core",
+                    "target_candidate_id": "fabricated",
+                    "edge_type": "training",
+                    "description": "端点不在本次节点中。",
+                },
+            ],
+        }
+    )
+
+    finalized = _assign_candidate_ids_and_edge_types(result)
+
+    assert len(finalized.edges) == 1
+    assert finalized.edges[0].source_candidate_id == "core"
+    assert finalized.edges[0].target_candidate_id == "method"
 
 
 def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> None:

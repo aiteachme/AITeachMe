@@ -21,9 +21,10 @@ from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_mess
 logger = structlog.get_logger(__name__)
 
 _TITLE_STOPWORDS = {
-    "数学",
     "知识",
     "学习",
+    "课程",
+    "主题",
     "章节",
     "核心",
     "内容",
@@ -60,6 +61,7 @@ def _resolve_locked_title(
     confirmed_title: str,
     user_prompt: str,
     plan_summary: str,
+    chapter_anchor_text: str = "",
 ) -> tuple[str, str | None]:
     candidate = clean_generated_chapter_title(clean_text(candidate_title))
     confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "本章内容"
@@ -73,13 +75,34 @@ def _resolve_locked_title(
         return candidate, None
 
     user_terms = _title_terms(user_prompt)
-    plan_terms = _title_terms(" ".join([confirmed, plan_summary]))
+    plan_terms = _title_terms(" ".join([confirmed, plan_summary, chapter_anchor_text]))
     candidate_terms = _title_terms(candidate)
     if candidate_terms & user_terms:
         return candidate, None
     if candidate_terms & plan_terms:
         return candidate, None
     return confirmed, f"标题 `{candidate}` 与用户提示和 confirmed plan 锚点不一致，已回退到 `{confirmed}`。"
+
+
+def _chapter_title_anchor_text(chapter: Mapping[str, Any], *, fallback_title: str = "") -> str:
+    anchors: list[str] = [fallback_title]
+    for key in (
+        "title",
+        "resolved_title",
+        "objective",
+        "chapter_goal",
+        "summary",
+        "description",
+        "writing_instructions",
+    ):
+        value = chapter.get(key)
+        if value:
+            anchors.append(clean_text(value))
+    for key in ("required_elements", "content_points", "concept_targets", "formula_targets"):
+        values = chapter.get(key)
+        if isinstance(values, list):
+            anchors.extend(clean_text(item) for item in values[:6] if clean_text(item))
+    return " ".join(part for part in anchors if part).strip()
 
 
 def fallback_locked_title(
@@ -138,6 +161,7 @@ async def lock_title_for_chapter(
         confirmed_title=fallback.confirmed_title,
         user_prompt=user_prompt,
         plan_summary=plan_summary,
+        chapter_anchor_text=_chapter_title_anchor_text(chapter, fallback_title=fallback.confirmed_title),
     )
     locked.fallback_used = False
     if warning:

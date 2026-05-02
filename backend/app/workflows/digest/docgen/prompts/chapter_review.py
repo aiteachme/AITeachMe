@@ -59,8 +59,10 @@ def build_chapter_review_messages(
 5. 检查 7 类学习内容角色是否按章节合同合理覆盖：核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织、应用拓展。
 6. 如果是冲刺/速成型，重点检查例题、案例、变式、自测或实践任务是否足够支撑“会做题/会操作/会判断/会避坑”；例题密度不足时输出 `section_patch`。
 7. 如果是系统型，重点检查核心知识点是否都有例题、案例、操作示例或练习任务覆盖；知识点缺少例题覆盖时输出 `section_patch`。
-8. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`。
-9. 只做复核判断，不输出修补后的正文。
+8. 检查展示质量：标题层级、加粗/高亮闭合、callout、表格、公式、代码块、Mermaid 是否可渲染；纯格式问题输出 `surface_patch`，不要升级为整章重写。
+9. 检查知识图谱相关内容是否只使用 7 类学习节点与 8 类关系；关系方向明显错误时输出 `section_patch`。
+10. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`。
+11. 只做复核判断，不输出修补后的正文。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

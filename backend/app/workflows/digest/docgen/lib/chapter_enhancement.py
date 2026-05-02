@@ -9,8 +9,6 @@ from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_draft_excerpt,
-    normalize_markdown_rendering,
-    normalize_mermaid_blocks,
 )
 from app.workflows.digest.common.pedagogy import is_usable_resolved_chapter_title
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
@@ -24,12 +22,11 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     PracticeManifest,
 )
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
-    normalize_educational_callouts,
-    normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
@@ -75,7 +72,7 @@ def _build_practice_questions(
     )
     if mode_profile.is_sprint:
         focus_terms = [*claim_prompts, title]
-        first_claim = claim_prompts[0] if claim_prompts else title or "核心考点"
+        first_claim = claim_prompts[0] if claim_prompts else title or "核心重点"
         second_claim = claim_prompts[1] if len(claim_prompts) > 1 else first_claim
         examples = [
             {
@@ -128,13 +125,13 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": "综合应用",
-                    "stem": f"把《{title}》中两个相关知识点合在一道小题里，说明解题顺序。",
+                    "stem": f"把《{title}》中两个相关知识点合在一个综合任务里，说明处理顺序。",
                     "analysis_steps": [
                         "先判断哪一个知识点是入口，哪一个知识点是后续计算或论证工具。",
                         "再按依赖顺序展开步骤，避免先用后证。",
                         "最后检查两个结论之间是否存在条件冲突。",
                     ],
-                    "pitfall": "综合题不是把公式堆在一起，而是要先确定使用顺序。",
+                    "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
                 }
             )
         while len(examples) < 4:
@@ -145,9 +142,9 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": choose_heading_focus([focus], fallback=title),
-                    "stem": f"围绕“{focus}”设计一道速成训练：给出条件、识别信号，并说明最短处理路径。",
+                    "stem": f"围绕“{focus}”设计一个速成训练：给出条件、识别信号，并说明最短处理路径。",
                     "analysis_steps": [
-                        "先判断任务属于哪类高频场景或常见题型。",
+                        "先判断任务属于哪类高频场景、常见题型或操作任务。",
                         "再写出触发该方法的条件或关键词。",
                         "最后按模板完成步骤，并做一次易错检查。",
                     ],
@@ -316,18 +313,15 @@ async def enhance_chapter_draft(
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
-    markdown = normalize_markdown_rendering(markdown)
-    markdown = normalize_mermaid_blocks(markdown)
-    markdown = normalize_textbook_headings(
+    markdown = normalize_docgen_presentation(
         markdown,
         digest_mode=digest_mode,
-        fallback_title=draft.title,
+        title=draft.title,
         focus_items=[
             *(item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text),
             draft.title,
         ],
     )
-    markdown = normalize_educational_callouts(markdown)
 
     interactive_asset: dict[str, object] | None = None
     if settings.docgen.generate_interactive_html:
@@ -357,7 +351,7 @@ async def enhance_chapter_draft(
         else []
     )
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
-    markdown = normalize_educational_callouts(markdown)
+    markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,
