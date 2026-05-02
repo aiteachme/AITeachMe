@@ -222,10 +222,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#1E40AF] dark:border-slate-700 dark:text-blue-100",
-      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#1D4ED8] dark:text-blue-100",
-      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#2563EB] dark:text-blue-200",
-      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1D4ED8] dark:text-blue-200",
+      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
+      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#111827] dark:text-slate-100",
+      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
+      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
       5: "mt-4 mb-1.5 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
       6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
     },
@@ -2083,7 +2083,7 @@ export function MarkdownViewer({
             <span
               aria-hidden="true"
               data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#2563EB] [-webkit-user-select:none] dark:text-blue-300"
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1F2329] [-webkit-user-select:none] dark:text-slate-200"
             >
               {headingNumber}&nbsp;
             </span>

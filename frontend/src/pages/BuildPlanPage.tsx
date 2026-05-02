@@ -544,14 +544,14 @@ function BuildInProgressBubble({
   return (
     <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
           {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-slate-100">
-                {isActive ? <span className="build-live-dot h-2 w-2 text-indigo-500" aria-hidden="true" /> : null}
+                {isActive ? <span className="build-live-dot h-2 w-2 text-blue-500" aria-hidden="true" /> : null}
                 {isActive ? "知识库正在构建" : "知识库构建状态"}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
@@ -571,7 +571,7 @@ function BuildInProgressBubble({
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isActive ? "build-loading-progress-fill" : ""
-              } ${isActive ? "bg-indigo-600" : "bg-zinc-950 dark:bg-slate-100"}`}
+              } ${isActive ? "bg-blue-600" : "bg-zinc-950 dark:bg-slate-100"}`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -608,7 +608,7 @@ function fileMeta(file: FileRecord) {
   }
   return { 
     label: "正在解析文件...", 
-    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-indigo-500" />
+    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-blue-500" />
   };
 }
 
@@ -616,8 +616,8 @@ function fileIcon(file: FileRecord) {
   const ext = file.filetype?.toLowerCase();
   if (ext === "pdf") return <FileText className="h-3.5 w-3.5 text-red-400" />;
   if (["png", "jpg", "jpeg", "webp"].includes(ext ?? "")) return <FileImage className="h-3.5 w-3.5 text-emerald-400" />;
-  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-indigo-400" />;
-  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-indigo-400" />;
+  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-blue-400" />;
+  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-blue-400" />;
   if (["ppt", "pptx"].includes(ext ?? "")) return <FileType className="h-3.5 w-3.5 text-orange-400" />;
   return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
 }

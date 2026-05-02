@@ -39,7 +39,7 @@ export function DocUpdatingBanner({
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.25 }}
         className={cn(
-          "rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 dark:border-indigo-500/20 dark:bg-indigo-500/10",
+          "rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 dark:border-blue-500/20 dark:bg-blue-500/10",
           className,
         )}
       >
@@ -47,14 +47,14 @@ export function DocUpdatingBanner({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {isFetching ? (
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-600 dark:text-indigo-300" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600 dark:text-blue-300" />
               ) : (
-                <div className="build-live-dot h-1.5 w-1.5 text-indigo-600 dark:text-indigo-300" />
+                <div className="build-live-dot h-1.5 w-1.5 text-blue-600 dark:text-blue-300" />
               )}
               <p className="truncate text-[13px] font-medium text-[#1F2329] dark:text-slate-100">
                 {statusText}
               </p>
-              <span className="shrink-0 text-[12px] font-medium text-indigo-600 dark:text-indigo-300">
+              <span className="shrink-0 text-[12px] font-medium text-blue-600 dark:text-blue-300">
                 {Math.round(progress)}%
               </span>
             </div>
@@ -76,7 +76,7 @@ export function DocUpdatingBanner({
                 className={cn(
                   "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-all",
                   viewMode === "live"
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-blue-600 text-white"
                     : "text-[#646A73] hover:bg-[#F5F6F7] dark:text-slate-300 dark:hover:bg-slate-800",
                 )}
               >
@@ -89,7 +89,7 @@ export function DocUpdatingBanner({
                 className={cn(
                   "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-all",
                   viewMode === "draft"
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-blue-600 text-white"
                     : "text-[#646A73] hover:bg-[#F5F6F7] dark:text-slate-300 dark:hover:bg-slate-800",
                 )}
               >

@@ -59,7 +59,7 @@ export function BuildResearchSources({ events, className }: Props) {
                   initial={{ opacity: 0, scale: 0.92 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: index * 0.04, duration: 0.22 }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[11px] text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
                 >
                   <Globe className="h-3 w-3" />
                   {domain}

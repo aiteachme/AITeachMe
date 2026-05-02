@@ -54,11 +54,11 @@ const MODULES = [
 
 const COLOR_CLASSES = [
   "bg-slate-900",
-  "bg-indigo-600",
-  "bg-indigo-600",
-  "bg-purple-600",
-  "bg-fuchsia-600",
-  "bg-indigo-500",
+  "bg-blue-600",
+  "bg-sky-600",
+  "bg-cyan-600",
+  "bg-blue-500",
+  "bg-slate-700",
 ];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
@@ -638,7 +638,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className={cn("min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden pb-4 scrollbar-thin scrollbar-webkit", effectiveCollapsed ? "px-2" : "px-3")}>
+        <div className={cn("min-h-0 flex-1 space-y-2 overflow-hidden pb-3", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
             <div className="flex h-8 items-center gap-1">
               <button
@@ -659,7 +659,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-indigo-300"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-blue-300"
                 title="导入课程包"
                 aria-label="导入课程包"
               >
@@ -684,10 +684,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.18, ease: "easeOut" }}
-                className="overflow-hidden"
+                className="min-h-0 overflow-hidden"
               >
                 <motion.div
-                  className="space-y-0.5"
+                  className="max-h-[52vh] space-y-0.5 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin scrollbar-webkit"
                   variants={shouldAnimateCourseItems ? sidebarListContainerMotion : undefined}
                   initial={shouldAnimateCourseItems ? "hidden" : false}
                   animate={shouldAnimateCourseItems ? "visible" : undefined}
