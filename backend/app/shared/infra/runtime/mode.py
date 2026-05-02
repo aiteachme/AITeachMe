@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.shared.infra.env_support import get_env, get_env_optional_bool
 
-APP_VERSION = "0.0.1"
+APP_VERSION = "0.0.2"
 
 
 def resolve_app_mode() -> str:
