@@ -128,7 +128,7 @@ function applyGraphInteractiveStyles(
       return 0;
     });
   nodeG.select<SVGCircleElement>("circle.node-circle")
-    .attr("stroke", (d) => (d.id === selectedNodeId ? "#0f172a" : "#ffffff"))
+    .attr("stroke", (d) => (d.id === selectedNodeId ? "#1d4ed8" : "#ffffff"))
     .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : isAssessmentCoreNode(d) ? 2.35 : 2))
     .attr("opacity", (d) => {
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.34;
@@ -151,7 +151,7 @@ function applyGraphInteractiveStyles(
   nodeG.select<SVGTextElement>("text.node-label")
     .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "11.5px" : "10.5px"))
     .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "650" : "520"))
-    .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#334155"))
+    .attr("fill", (d) => (d.id === selectedNodeId ? "#1e3a8a" : "#334155"))
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
@@ -424,7 +424,7 @@ function GraphSettingsSidebar({
   const segmentClass = (active: boolean) =>
     `flex min-h-10 flex-1 items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
       active
-        ? "bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
+        ? "bg-blue-700 text-white shadow-sm dark:bg-blue-300 dark:text-blue-950"
         : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
     }`;
   const switchClass = (active: boolean) =>
@@ -684,7 +684,7 @@ export function ForceGraphView({
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
   const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
-  const [showDetailNodes, setShowDetailNodes] = useState(true);
+  const [showDetailNodes, setShowDetailNodes] = useState(false);
   const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(new Set());
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
@@ -773,7 +773,7 @@ export function ForceGraphView({
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
     setHiddenRelationTypes(new Set());
-    setShowDetailNodes(true);
+    setShowDetailNodes(false);
     setGraphDelta(null);
   }, [course]);
 
@@ -1217,31 +1217,13 @@ export function ForceGraphView({
 
     const defs = svgSel.append("defs");
     svgSel.append("style").text(`
-      @keyframes atm-node-breathe {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.065); }
-      }
-      @keyframes atm-node-halo {
-        0%, 100% { transform: scale(0.92); opacity: 0.05; }
-        50% { transform: scale(1.28); opacity: 0.18; }
-      }
-      .graph-node .node-circle {
-        transform-box: fill-box;
-        transform-origin: center;
-        animation: atm-node-breathe 5.8s ease-in-out infinite;
-        animation-delay: var(--atm-delay, 0s);
-      }
-      .graph-node .node-halo {
-        transform-box: fill-box;
-        transform-origin: center;
-        animation: atm-node-halo 6.6s ease-in-out infinite;
-        animation-delay: var(--atm-delay, 0s);
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .graph-node .node-circle,
-        .graph-node .node-halo {
-          animation: none;
-        }
+      .graph-link,
+      .graph-node .node-circle,
+      .graph-node .node-halo,
+      .graph-node .node-priority-ring,
+      .graph-node .node-label,
+      .graph-node .node-label-bg {
+        transition: opacity 160ms ease, stroke-width 160ms ease, stroke 160ms ease;
       }
     `);
 
@@ -1254,14 +1236,14 @@ export function ForceGraphView({
       .attr("cx", 1)
       .attr("cy", 1)
       .attr("r", 0.68)
-      .attr("fill", "#94a3b8")
-      .attr("opacity", 0.12);
+      .attr("fill", "#93c5fd")
+      .attr("opacity", 0.13);
 
     // Background: subtle workspace grid, borrowed from diagram tools without making the graph noisy.
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "#f8fafc");
+      .attr("fill", "#f8fbff");
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
@@ -1269,7 +1251,7 @@ export function ForceGraphView({
     svgSel.append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "rgba(255,255,255,0.66)");
+      .attr("fill", "rgba(255,255,255,0.62)");
 
     // Container for zoom/pan
     const g = svgSel.append("g");
@@ -1284,7 +1266,7 @@ export function ForceGraphView({
         .attr("x2", x)
         .attr("y1", guideTop)
         .attr("y2", guideBottom)
-        .attr("stroke", "rgba(203,213,225,0.30)")
+        .attr("stroke", "rgba(147,197,253,0.22)")
         .attr("stroke-width", 1)
         .attr("stroke-dasharray", "4 14");
     });
@@ -1326,7 +1308,7 @@ export function ForceGraphView({
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,-4L8,0L0,4")
-      .attr("fill", "#94a3b8");
+      .attr("fill", "#93c5fd");
 
     // Links group
     const linkGroup = g.append("g").attr("class", "links");
@@ -1340,7 +1322,7 @@ export function ForceGraphView({
       .attr("stroke-linecap", "round")
       .attr("stroke-linejoin", "round")
       .attr("stroke-width", 1.08)
-      .attr("stroke-opacity", 0.34)
+      .attr("stroke-opacity", 0.30)
       .attr("marker-end", "url(#arrowhead)");
 
     linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
@@ -1351,8 +1333,10 @@ export function ForceGraphView({
       .attr("stroke", "transparent")
       .attr("stroke-width", 12);
 
+    const labelLinks = showEdgeLabels ? simLinks : [];
+
     const linkLabelBg = linkGroup.selectAll<SVGRectElement, GraphLink>("rect")
-      .data(simLinks)
+      .data(labelLinks)
       .join("rect")
       .attr("class", "graph-link-label-bg")
       .attr("rx", 4)
@@ -1367,7 +1351,7 @@ export function ForceGraphView({
 
     // Link labels (clean white background effect using stroke)
     const linkLabel = linkGroup.selectAll<SVGTextElement, GraphLink>("text")
-      .data(simLinks)
+      .data(labelLinks)
       .join("text")
       .attr("class", "graph-link-label")
       .attr("text-anchor", "middle")
@@ -1391,7 +1375,6 @@ export function ForceGraphView({
       .join("g")
       .attr("class", "graph-node")
       .attr("cursor", "pointer")
-      .style("--atm-delay", (d) => `${-(d.id % 17) * 0.19}s`)
       .call(
         d3.drag<SVGGElement, GraphNode>()
           .on("start", (event, d) => {
@@ -1469,8 +1452,8 @@ export function ForceGraphView({
       .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeIdRef.current)))
       .attr("height", 20)
       .attr("rx", 4)
-      .attr("fill", "rgba(255,255,255,0.86)")
-      .attr("stroke", "rgba(203,213,225,0.8)")
+      .attr("fill", "rgba(255,255,255,0.9)")
+      .attr("stroke", "rgba(191,219,254,0.78)")
       .attr("stroke-width", 0.8)
       .attr("opacity", 0)
       .style("pointer-events", "none");
@@ -1551,7 +1534,7 @@ export function ForceGraphView({
         d3.select(this).select("circle.node-priority-ring").attr("opacity", 0.92);
         d3.select(this).select("rect.node-label-bg").attr("opacity", 0.96);
         d3.select(this).select("text.node-role-label").attr("opacity", 1);
-        d3.select(this).select("circle.node-circle").attr("stroke", "#0f172a").attr("stroke-width", 3);
+        d3.select(this).select("circle.node-circle").attr("stroke", "#1d4ed8").attr("stroke-width", 3);
       })
       .on("mouseleave", function () {
         applyGraphInteractiveStyles(
@@ -1582,14 +1565,14 @@ export function ForceGraphView({
         return d.is_backbone ? (sourceIsCore || targetIsCore ? 0.018 : 0.014) : 0.0026;
       }))
       .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -230 - Math.min(d.degree, 9) * 18 : -162 - Math.min(d.degree, 7) * 14
+        isAssessmentCoreNode(d) ? -190 - Math.min(d.degree, 9) * 14 : -132 - Math.min(d.degree, 7) * 10
       )))
       .force("center", d3.forceCenter(layoutMetrics.canvasWidth / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 70 : isAssessmentCoreNode(d) ? 54 : 46)).iterations(4))
-      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.34))
-      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.28))
-      .alphaDecay(0.088)
-      .velocityDecay(0.82);
+      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 58 : isAssessmentCoreNode(d) ? 40 : 32)).iterations(2))
+      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.42))
+      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.34))
+      .alphaDecay(0.11)
+      .velocityDecay(0.86);
     simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 || showAllEdges || showAllNodeLabels ? 0.22 : 0.035) : 1);
 
     simulationRef.current = simulation;
@@ -1603,22 +1586,11 @@ export function ForceGraphView({
       showAllNodeLabelsRef.current,
     );
 
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const floatingOffset = (node: GraphNode, now: number) => {
-      if (prefersReducedMotion || node.fx != null || node.fy != null) return { x: 0, y: 0 };
-      const seconds = now / 1000;
-      const seed = (node.id % 997) * 0.173;
-      const amplitude = isAssessmentCoreNode(node) ? 3.8 : 2.9;
-      return {
-        x: Math.sin(seconds * 0.48 + seed) * amplitude + Math.sin(seconds * 0.19 + seed * 1.7) * amplitude * 0.42,
-        y: Math.cos(seconds * 0.42 + seed * 1.3) * amplitude * 0.78,
-      };
-    };
     const displayPoint = (node: GraphNode, now: number) => {
-      const offset = floatingOffset(node, now);
+      void now;
       return {
-        x: Number(node.x ?? 0) + offset.x,
-        y: Number(node.y ?? 0) + offset.y,
+        x: Number(node.x ?? 0),
+        y: Number(node.y ?? 0),
       };
     };
     const buildCurvedLinkRoute = (d: any, now: number) => {
@@ -1694,8 +1666,6 @@ export function ForceGraphView({
       };
     };
     let tickFrame: number | null = null;
-    let breathingFrame: number | null = null;
-    let lastBreathingRender = 0;
     let positionSnapshotTick = 0;
     const saveNodePositions = () => {
       for (const node of simNodes) {
@@ -1731,20 +1701,10 @@ export function ForceGraphView({
       positionSnapshotTick += 1;
       if (positionSnapshotTick % 5 === 0) saveNodePositions();
     };
-    const renderBreathingFrame = (now: number) => {
-      if (now - lastBreathingRender >= 42) {
-        lastBreathingRender = now;
-        renderTick(now);
-      }
-      breathingFrame = window.requestAnimationFrame(renderBreathingFrame);
-    };
     simulation.on("tick", () => {
       if (tickFrame !== null) return;
       tickFrame = window.requestAnimationFrame((now) => renderTick(now));
     });
-    if (!prefersReducedMotion) {
-      breathingFrame = window.requestAnimationFrame(renderBreathingFrame);
-    }
 
     const fitCurrentGraphToView = (duration = 600) => {
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
@@ -1790,12 +1750,11 @@ export function ForceGraphView({
     return () => {
       window.clearTimeout(autoFitTimer);
       if (tickFrame !== null) window.cancelAnimationFrame(tickFrame);
-      if (breathingFrame !== null) window.cancelAnimationFrame(breathingFrame);
       saveNodePositions();
       simulation.stop();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
     };
-  }, [nodes, links, dimensions, showAllEdges, showAllNodeLabels]);
+  }, [nodes, links, dimensions, showAllEdges, showAllNodeLabels, showEdgeLabels]);
 
   useEffect(() => {
     const svg = svgRef.current;

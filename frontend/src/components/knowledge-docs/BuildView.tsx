@@ -395,10 +395,10 @@ export function BuildView({
                   className={cn(
                     "relative h-full overflow-hidden rounded-full",
                     roundedProgress === 100
-                      ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500"
+                      ? "bg-gradient-to-r from-blue-500 via-blue-600 to-blue-500"
                       : progressIsActive
-                        ? "bg-indigo-600 build-loading-progress-fill"
-                        : "bg-indigo-600"
+                        ? "bg-blue-600 build-loading-progress-fill"
+                        : "bg-blue-600"
                   )}
                   initial={{ width: 0 }}
                   animate={{

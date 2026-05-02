@@ -59,11 +59,11 @@ export interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 
 export const NODE_COLORS: Record<string, NodeVisualStyle> = {
   core_knowledge: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "核心知识", role: "assessment_core", roleLabel: "必须知道" },
-  method_demo: { fill: "#f97316", dark: "#ea580c", soft: "#ffedd5", label: "方法示范", role: "assessment_core", roleLabel: "怎么做" },
+  method_demo: { fill: "#f59e0b", dark: "#d97706", soft: "#fef3c7", label: "方法示范", role: "assessment_core", roleLabel: "怎么做" },
   explanation_support: { fill: "#64748b", dark: "#475569", soft: "#f1f5f9", label: "解释辅助", role: "support", roleLabel: "帮助理解" },
   principle_reasoning: { fill: "#0f766e", dark: "#115e59", soft: "#ccfbf1", label: "原理推理", role: "assessment_core", roleLabel: "为什么" },
-  practice_assessment: { fill: "#ef4444", dark: "#dc2626", soft: "#fee2e2", label: "练习评估", role: "assessment_core", roleLabel: "练会了吗" },
-  knowledge_organization: { fill: "#7c3aed", dark: "#6d28d9", soft: "#ede9fe", label: "知识组织", role: "context", roleLabel: "怎么安排" },
+  practice_assessment: { fill: "#f43f5e", dark: "#e11d48", soft: "#ffe4e6", label: "练习评估", role: "assessment_core", roleLabel: "练会了吗" },
+  knowledge_organization: { fill: "#6366f1", dark: "#4f46e5", soft: "#e0e7ff", label: "知识组织", role: "context", roleLabel: "怎么安排" },
   application_extension: { fill: "#a855f7", dark: "#9333ea", soft: "#f3e8ff", label: "应用拓展", role: "support", roleLabel: "能做什么" },
 };
 
@@ -91,10 +91,10 @@ export const RELATION_COLORS: Record<string, string> = {
   prerequisite: "#64748b",
   contains: "#94a3b8",
   reasoning: "#0f766e",
-  application: "#60a5fa",
+  application: "#6366f1",
   explanation: "#64748b",
-  training: "#ef4444",
-  contrast: "#f97316",
+  training: "#f43f5e",
+  contrast: "#f59e0b",
   similar: "#14b8a6",
 };
 
@@ -245,8 +245,8 @@ export function shouldShowSmartNodeLabel(
   if (showAllNodeLabels) return true;
   if (node.id === selectedNodeId || selectedNeighbors.has(node.id)) return true;
   if (isAssessmentCoreNode(node)) {
-    if (node.label_rank <= 34) return true;
-    return node.degree >= 4 && node.label_rank <= 52;
+    if (node.label_rank <= 24) return true;
+    return node.degree >= 5 && node.label_rank <= 36;
   }
-  return node.degree >= 5 && node.label_rank <= 42;
+  return node.degree >= 6 && node.label_rank <= 28;
 }

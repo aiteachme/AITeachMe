@@ -135,8 +135,8 @@ function statusBadgeLabel(state: DerivedBuildState): string {
 
 function progressFillTone(state: DerivedBuildState): string {
   if (state.isFailed) return "bg-rose-500";
-  if (state.isCompleted) return "bg-indigo-600";
-  if (state.isActive) return "bg-indigo-600";
+  if (state.isCompleted) return "bg-blue-600";
+  if (state.isActive) return "bg-blue-600";
   return "bg-slate-400";
 }
 
@@ -567,7 +567,7 @@ export function KnowledgeGraphBuildProgress({
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/90 dark:bg-slate-900/80">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#4f46e5_58%,#4f46e5_100%)] transition-[width] duration-500"
+          className="h-full rounded-full bg-[linear-gradient(90deg,#1d4ed8_0%,#2563eb_58%,#60a5fa_100%)] transition-[width] duration-500"
           style={{ width: `${state.progress}%` }}
         />
       </div>

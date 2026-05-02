@@ -100,12 +100,12 @@ export function DocUpdatingBanner({
           ) : null}
         </div>
 
-        <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-indigo-200/70 dark:bg-slate-800">
+        <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-blue-200/70 dark:bg-slate-800">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.6, ease: "easeOut" }}
-            className="h-full rounded-full bg-indigo-600 progress-bar-active progress-bar-breathing dark:bg-indigo-400"
+            className="h-full rounded-full bg-blue-600 progress-bar-active progress-bar-breathing dark:bg-blue-400"
           />
         </div>
       </motion.div>

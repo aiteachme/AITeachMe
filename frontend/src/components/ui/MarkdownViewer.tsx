@@ -120,16 +120,16 @@ const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
   default: {
     note: {
-      shell: "my-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-slate-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-2xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-slate-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-slate-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-slate-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-2xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-slate-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-slate-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -142,16 +142,16 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   document: {
     note: {
-      shell: "my-5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-[#1F2329] dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-5 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-[#1F2329] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-[#1F2329] dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-5 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-[#1F2329] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -164,16 +164,16 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   planner: {
     note: {
-      shell: "my-4 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-4 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-zinc-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-4 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-zinc-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -211,8 +211,8 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200",
     td: "border-t border-slate-100 px-3 py-2 text-slate-600 dark:border-slate-800 dark:text-slate-300",
     hr: "my-5 border-slate-200 dark:border-slate-800",
-    link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-slate-900 dark:text-slate-100",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-blue-800 dark:text-blue-200",
     em: "italic text-slate-600 dark:text-slate-300",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
@@ -222,10 +222,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#1F2329] dark:border-slate-700 dark:text-slate-100",
-      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#1F2329] dark:text-slate-100",
-      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-100",
-      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
+      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#1E40AF] dark:border-slate-700 dark:text-blue-100",
+      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#1D4ED8] dark:text-blue-100",
+      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#2563EB] dark:text-blue-200",
+      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1D4ED8] dark:text-blue-200",
       5: "mt-4 mb-1.5 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
       6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
     },
@@ -244,8 +244,8 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
     td: "border-t border-[#F0F0F0] px-3 py-2.5 text-[#1F2329] dark:border-slate-800 dark:text-slate-300",
     hr: "my-7 border-[#DEE0E3] dark:border-slate-800",
-    link: "text-[#4F46E5] transition-colors hover:text-[#4338CA] hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-[#1F2329] dark:text-slate-100",
+    link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-[#1D4ED8] dark:text-blue-200",
     em: "italic text-[#646A73] dark:text-slate-400",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-6",
@@ -266,7 +266,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "mb-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     orderedList: "mb-3 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     listItem: "leading-6 [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-300",
+    blockquote: "my-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-300",
     codeInline: "rounded bg-zinc-100 px-1.5 py-0.5 text-sm font-mono text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
     codeShell: "my-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 shadow-sm dark:border-slate-800",
     codeLanguageBadge: "border-b border-zinc-800/80 bg-zinc-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400",
@@ -277,8 +277,8 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left font-semibold text-zinc-700 dark:text-slate-200",
     td: "border-t border-zinc-100 px-3 py-2 text-zinc-600 dark:border-slate-800 dark:text-slate-300",
     hr: "my-5 border-zinc-200 dark:border-slate-800",
-    link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-zinc-900 dark:text-slate-100",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-blue-800 dark:text-blue-200",
     em: "italic text-zinc-600 dark:text-slate-300",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
@@ -2064,8 +2064,8 @@ export function MarkdownViewer({
               aria-expanded={!isCollapsed}
               title={isCollapsed ? "展开标题内容" : "折叠标题内容"}
               className={cn(
-                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-[#EFF1F3] hover:text-[#4F46E5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5]/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
-                isCollapsed && "text-[#4F46E5]",
+                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
+                isCollapsed && "text-blue-600",
               )}
               onClick={(event) => {
                 event.preventDefault();
@@ -2083,7 +2083,7 @@ export function MarkdownViewer({
             <span
               aria-hidden="true"
               data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1456F0] [-webkit-user-select:none]"
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#2563EB] [-webkit-user-select:none] dark:text-blue-300"
             >
               {headingNumber}&nbsp;
             </span>

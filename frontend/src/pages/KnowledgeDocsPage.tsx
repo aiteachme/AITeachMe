@@ -1325,7 +1325,7 @@ function DocBuildProgress({
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#4f46e5_58%,#4f46e5_100%)] transition-[width] duration-500"
+          className="h-full rounded-full bg-[linear-gradient(90deg,#1d4ed8_0%,#2563eb_58%,#60a5fa_100%)] transition-[width] duration-500"
           style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}
         />
       </div>
