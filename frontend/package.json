@@ -2,7 +2,7 @@
   "name": "aiteachme-frontend",
   "version": "0.0.2",
   "private": true,
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

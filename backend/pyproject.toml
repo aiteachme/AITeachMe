@@ -2,7 +2,7 @@
 name = "aiteachme-backend"
 version = "0.0.2"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { text = "AGPL-3.0-only" }
 dependencies = [
     "alembic>=1.13.0",
     "fastapi>=0.111.0",
