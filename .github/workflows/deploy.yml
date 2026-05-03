@@ -14,24 +14,25 @@ permissions:
   contents: read
 
 env:
-  # Public repositories should not carry concrete deployment topology. Configure
-  # these values as GitHub Repository Variables in the deployment repository.
-  # Secrets such as deploy hooks, kubeconfig, registry passwords, and signing
-  # keys must stay in GitHub Secrets.
-  AITEACHME_API_UPSTREAM: ${{ vars.AITEACHME_API_UPSTREAM }}
-  BACKEND_ACR_NAMESPACE: ${{ vars.BACKEND_ACR_NAMESPACE }}
-  BACKEND_ACR_REGISTRY: ${{ vars.BACKEND_ACR_REGISTRY }}
-  BACKEND_IMAGE_NAME: ${{ vars.BACKEND_IMAGE_NAME || 'aiteachme-backend' }}
-  BACKEND_ROLLOUT_TIMEOUT_SECONDS: ${{ vars.BACKEND_ROLLOUT_TIMEOUT_SECONDS || '3600' }}
-  FRONTEND_ACR_NAMESPACE: ${{ vars.FRONTEND_ACR_NAMESPACE }}
-  FRONTEND_ACR_REGISTRY: ${{ vars.FRONTEND_ACR_REGISTRY }}
-  FRONTEND_IMAGE_NAME: ${{ vars.FRONTEND_IMAGE_NAME || 'aiteachme-frontend' }}
-  FRONTEND_PUBLIC_URL: ${{ vars.FRONTEND_PUBLIC_URL }}
-  FRONTEND_ROLLOUT_TIMEOUT_SECONDS: ${{ vars.FRONTEND_ROLLOUT_TIMEOUT_SECONDS || '600' }}
-  SEALOS_BACKEND_DEPLOYMENT: ${{ vars.SEALOS_BACKEND_DEPLOYMENT }}
-  SEALOS_FRONTEND_DEPLOYMENT: ${{ vars.SEALOS_FRONTEND_DEPLOYMENT }}
-  SEALOS_IMAGE_PULL_SECRET: ${{ vars.SEALOS_IMAGE_PULL_SECRET }}
-  SEALOS_NAMESPACE: ${{ vars.SEALOS_NAMESPACE }}
+  # Non-secret deployment constants are intentionally kept here for maintainer
+  # convenience. Do not put deploy hooks, kubeconfig, registry passwords, or
+  # other credentials here; those must stay in GitHub Secrets.
+  # Nginx resolves runtime proxy_pass variables by itself, so use the full
+  # Kubernetes service FQDN instead of the Sealos UI short service.namespace form.
+  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
+  BACKEND_ACR_NAMESPACE: aiteachme
+  BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+  BACKEND_IMAGE_NAME: aiteachme-backend
+  BACKEND_ROLLOUT_TIMEOUT_SECONDS: "3600"
+  FRONTEND_ACR_NAMESPACE: aiteachme
+  FRONTEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
+  FRONTEND_IMAGE_NAME: aiteachme-frontend
+  FRONTEND_PUBLIC_URL: https://ghxbqhziktyi.sealosbja.site
+  FRONTEND_ROLLOUT_TIMEOUT_SECONDS: "600"
+  SEALOS_BACKEND_DEPLOYMENT: atm-d
+  SEALOS_FRONTEND_DEPLOYMENT: atm-frontend
+  SEALOS_IMAGE_PULL_SECRET: aliyun-acr-regcred
+  SEALOS_NAMESPACE: ns-icbq3ltw
 
 concurrency:
   group: deploy-main
@@ -148,7 +149,7 @@ jobs:
             {
               echo "Sealos frontend deploy skipped."
               echo
-              echo "Set GitHub Repository Variable SEALOS_FRONTEND_DEPLOYMENT after creating the Sealos frontend app."
+              echo "Set workflow env SEALOS_FRONTEND_DEPLOYMENT after creating the Sealos frontend app."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -181,13 +182,13 @@ jobs:
           [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
           [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
           [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
-          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("var:SEALOS_NAMESPACE")
-          [ -n "${SEALOS_FRONTEND_DEPLOYMENT}" ] || missing+=("var:SEALOS_FRONTEND_DEPLOYMENT")
-          [ -n "${FRONTEND_ACR_REGISTRY}" ] || missing+=("var:FRONTEND_ACR_REGISTRY")
-          [ -n "${FRONTEND_ACR_NAMESPACE}" ] || missing+=("var:FRONTEND_ACR_NAMESPACE")
-          [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("var:FRONTEND_IMAGE_NAME")
-          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("var:SEALOS_IMAGE_PULL_SECRET")
-          [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("var:AITEACHME_API_UPSTREAM")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_FRONTEND_DEPLOYMENT}" ] || missing+=("env:SEALOS_FRONTEND_DEPLOYMENT")
+          [ -n "${FRONTEND_ACR_REGISTRY}" ] || missing+=("env:FRONTEND_ACR_REGISTRY")
+          [ -n "${FRONTEND_ACR_NAMESPACE}" ] || missing+=("env:FRONTEND_ACR_NAMESPACE")
+          [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("env:FRONTEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
+          [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("env:AITEACHME_API_UPSTREAM")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required Sealos frontend deploy configuration:\n' >&2
@@ -459,7 +460,7 @@ jobs:
             {
               echo "Sealos backend deploy skipped."
               echo
-              echo "Set GitHub Repository Variable SEALOS_BACKEND_DEPLOYMENT after creating the Sealos backend app."
+              echo "Set workflow env SEALOS_BACKEND_DEPLOYMENT after creating the Sealos backend app."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -492,12 +493,12 @@ jobs:
           [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
           [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
           [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
-          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("var:SEALOS_NAMESPACE")
-          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("var:SEALOS_BACKEND_DEPLOYMENT")
-          [ -n "${BACKEND_ACR_REGISTRY}" ] || missing+=("var:BACKEND_ACR_REGISTRY")
-          [ -n "${BACKEND_ACR_NAMESPACE}" ] || missing+=("var:BACKEND_ACR_NAMESPACE")
-          [ -n "${BACKEND_IMAGE_NAME}" ] || missing+=("var:BACKEND_IMAGE_NAME")
-          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("var:SEALOS_IMAGE_PULL_SECRET")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_BACKEND_DEPLOYMENT}" ] || missing+=("env:SEALOS_BACKEND_DEPLOYMENT")
+          [ -n "${BACKEND_ACR_REGISTRY}" ] || missing+=("env:BACKEND_ACR_REGISTRY")
+          [ -n "${BACKEND_ACR_NAMESPACE}" ] || missing+=("env:BACKEND_ACR_NAMESPACE")
+          [ -n "${BACKEND_IMAGE_NAME}" ] || missing+=("env:BACKEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required deploy configuration:\n' >&2

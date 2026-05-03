@@ -1,6 +1,6 @@
 # 云端部署配置
 
-本文记录 AITeachMe 云端部署的当前口径。部署拓扑、registry、namespace、公网域名等非敏感但不适合写进公开仓库的值，应维护在 GitHub Repository Variables；deploy hook、kubeconfig、镜像仓库密码和其他凭证必须维护在 GitHub Secrets 中。
+本文记录 AITeachMe 云端部署的当前口径。Sealos app 名、namespace、registry、公网域名、后端内网 upstream 等非敏感部署常量可维护在 `.github/workflows/deploy.yml`，方便主仓库直接部署；deploy hook、kubeconfig、镜像仓库密码和其他凭证必须维护在 GitHub Secrets 中。
 
 ## 部署文件
 
@@ -155,24 +155,7 @@ python scripts/bootstrap_cloud_db.py
 
 ## GitHub Actions 部署配置
 
-`.github/workflows/deploy.yml` 默认从 GitHub Repository Variables 读取 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等部署拓扑信息。公开仓库不要把真实 namespace、registry、服务 FQDN 或公网域名写死在 workflow 中。
-
-常用 Variables：
-
-- `AITEACHME_API_UPSTREAM`
-- `BACKEND_ACR_NAMESPACE`
-- `BACKEND_ACR_REGISTRY`
-- `BACKEND_IMAGE_NAME`
-- `BACKEND_ROLLOUT_TIMEOUT_SECONDS`
-- `FRONTEND_ACR_NAMESPACE`
-- `FRONTEND_ACR_REGISTRY`
-- `FRONTEND_IMAGE_NAME`
-- `FRONTEND_PUBLIC_URL`
-- `FRONTEND_ROLLOUT_TIMEOUT_SECONDS`
-- `SEALOS_BACKEND_DEPLOYMENT`
-- `SEALOS_FRONTEND_DEPLOYMENT`
-- `SEALOS_IMAGE_PULL_SECRET`
-- `SEALOS_NAMESPACE`
+`.github/workflows/deploy.yml` 直接维护 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等非敏感部署常量，避免每次迁移仓库都重新配置 Variables。它们是部署坐标，不是授权凭证；如果维护者不希望公开具体部署拓扑，也可以自行改为 GitHub Repository Variables。
 
 真正授权部署的内容必须放 GitHub Secrets：
 
