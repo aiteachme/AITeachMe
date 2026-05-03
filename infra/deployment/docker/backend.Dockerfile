@@ -7,6 +7,7 @@ FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONUTF8=1 \
+    HOME=/tmp \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
@@ -21,6 +22,12 @@ COPY backend/ ./
 RUN uv sync --frozen --no-cache --extra cloud
 
 ENV PATH="/app/.venv/bin:$PATH"
+
+RUN groupadd --gid 10001 aiteachme \
+    && useradd --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin --no-create-home aiteachme \
+    && chown -R aiteachme:aiteachme /app
+
+USER 10001:10001
 
 # 默认部署端口统一为 9020；Render 等平台仍可通过 PORT 覆盖。
 EXPOSE 9020

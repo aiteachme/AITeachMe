@@ -603,6 +603,43 @@ jobs:
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
 
+          security_patch="$(
+            cat <<JSON
+          {
+            "spec": {
+              "template": {
+                "spec": {
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10001,
+                    "runAsGroup": 10001,
+                    "fsGroup": 10001,
+                    "seccompProfile": {
+                      "type": "RuntimeDefault"
+                    }
+                  },
+                  "containers": [
+                    {
+                      "name": "${SEALOS_BACKEND_DEPLOYMENT}",
+                      "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                          "drop": ["ALL"]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+          JSON
+          )"
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --type=strategic \
+            -p "${security_patch}"
+
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             "*=${{ steps.image.outputs.image }}"
@@ -631,6 +668,32 @@ jobs:
           echo "## Pods"
           kubectl -n "${SEALOS_NAMESPACE}" get pods -o wide \
             | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
+
+          echo
+          echo "## Deployment describe"
+          kubectl -n "${SEALOS_NAMESPACE}" describe \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" || true
+
+          echo
+          echo "## Pod describe"
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo
+            echo "### ${pod}"
+            kubectl -n "${SEALOS_NAMESPACE}" describe pod "${pod}" || true
+          done
+
+          echo
+          echo "## Pod logs"
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo
+            echo "### ${pod}"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=200 || true
+            echo
+            echo "### ${pod} previous"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=200 || true
+          done
 
           echo
           echo "## Recent events"
