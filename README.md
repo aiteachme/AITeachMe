@@ -85,9 +85,13 @@ shared.infra -> shared.kernel
 - [Workflows 结构规则](./backend/app/workflows/README.md)
 - [Infra 分层说明](./backend/app/shared/infra/README.md)
 
-## License
+## License 与商标
 
-本仓库使用 [Apache License 2.0](./LICENSE)。
+本仓库代码使用 [GNU Affero General Public License v3.0 only](./LICENSE)（`AGPL-3.0-only`）。
+
+如果你修改本项目并通过网络服务向用户提供访问，需要按照 AGPL-3.0 的要求向这些用户提供相应源码。需要在不触发 AGPL 源码开放义务的场景中使用、集成或托管 AITeachMe，请参考 [商业授权说明](./COMMERCIAL.md)。
+
+`AITeachMe` 名称、标识、Logo 和相关品牌资产不随代码许可证授权。商标和品牌使用边界见 [TRADEMARKS.md](./TRADEMARKS.md)。
 
 ## 开发约束
 

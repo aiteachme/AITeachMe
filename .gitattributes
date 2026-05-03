@@ -16,6 +16,7 @@ Dockerfile eol=lf
 *.dockerignore eol=lf
 .dockerignore eol=lf
 LICENSE eol=lf
+NOTICE eol=lf
 .gitattributes eol=lf
 .gitignore eol=lf
 *.gitignore eol=lf
