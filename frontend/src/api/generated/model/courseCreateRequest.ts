@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.0.2
+ * OpenAPI spec version: 0.0.3-alpha
  */
 
 export interface CourseCreateRequest {
