@@ -31,7 +31,7 @@ import {
 import type { CourseDeletePreviewData, CourseItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { resolveCourseIcon } from "../../lib/courseIcons";
+import { resolveCourseIcon, resolveCourseTone } from "../../lib/courseIcons";
 import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
@@ -51,15 +51,6 @@ const MODULES = [
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
 ] as const;
-
-const COLOR_CLASSES = [
-  "bg-slate-900",
-  "bg-blue-600",
-  "bg-sky-600",
-  "bg-cyan-600",
-  "bg-blue-500",
-  "bg-slate-700",
-];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
 const COURSE_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.coursesExpanded";
@@ -104,14 +95,6 @@ const sidebarChildItemMotion: Variants = {
 };
 
 type CourseWithIcon = CourseItem & { icon_key?: string | null };
-
-function colorClassForCourse(name: string) {
-  let hash = 0;
-  for (let index = 0; index < name.length; index += 1) {
-    hash = name.charCodeAt(index) + ((hash << 5) - hash);
-  }
-  return COLOR_CLASSES[Math.abs(hash) % COLOR_CLASSES.length];
-}
 
 function RenameCourseModal({
   courseId,
@@ -696,8 +679,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               {groupedCourses.map((course) => {
                 const expanded = expandedCourses.has(course.course_id);
                 const displayName = displayCourseName(course);
-                const badgeClass = colorClassForCourse(course.name || course.course_id);
                 const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
+                const toneClass = resolveCourseTone(displayName);
 
                 return (
                   <motion.div
@@ -734,10 +717,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
-                    <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
-                      effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
-                      badgeClass
-                    )}>
+                    <div
+                      className={cn(
+                        "flex shrink-0 items-center justify-center bg-gradient-to-br font-bold text-white shadow-sm",
+                        effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
+                        toneClass,
+                      )}
+                    >
                       <CourseIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
                     {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
