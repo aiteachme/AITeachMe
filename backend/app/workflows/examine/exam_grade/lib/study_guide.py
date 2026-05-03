@@ -8,8 +8,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.exams import ExamStudyGuideFocusUnit, ExamStudyGuideResponse
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import traceable_with_context
+from app.workflows.examine.exam_grade.lib.model_policy import (
+    ExamGradeModelStep,
+    exam_grade_completion_kwargs_with_metadata,
+)
 from app.workflows.examine.exam_grade.prompts import build_study_guide_messages
 
 
@@ -109,16 +112,15 @@ async def generate_exam_study_guide(
                 weak_points=weak_points,
                 pending_reviews=pending_reviews,
             ),
-            call_purpose=LLMCallPurpose.SUMMARIZE,
-            model="reason",
+            **exam_grade_completion_kwargs_with_metadata(
+                ExamGradeModelStep.STUDY_GUIDE,
+                extra_metadata={
+                    "substep": "exam.study_guide",
+                    "course_name": course_name,
+                    "exam_paper_id": exam_paper_id,
+                },
+            ),
             response_model=ExamStudyGuidePayload,
-            temperature=0.2,
-            max_tokens=1400,
-            extra_metadata={
-                "substep": "exam.study_guide",
-                "course_name": course_name,
-                "exam_paper_id": exam_paper_id,
-            },
         )
         assert isinstance(result, ExamStudyGuidePayload)
         return ExamStudyGuideResponse(

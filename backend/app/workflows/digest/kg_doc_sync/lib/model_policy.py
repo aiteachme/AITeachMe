@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
-from app.workflows.digest.common.model_policy import compact_metadata
+from app.workflows.common.model_policy import compact_metadata
 
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
 
@@ -77,7 +77,7 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=3600,
+        max_tokens=5200,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,
         max_content_chars=_SECTION_GRAPH_MAX_CONTENT_CHARS,
         course_context_max_chars=_SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS,
@@ -88,7 +88,7 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=1600,
+        max_tokens=2400,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,
         note="主抽取为空时的极短修复抽取，只补明显漏掉的知识点。",
     ),

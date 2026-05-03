@@ -38,6 +38,7 @@ class AgentLoopConfig:
         task_type: 任务类型，用于调用 profile 和观测标签。
         model: 模型选择器，默认固定使用 settings.models.primary。
         result_max_chars: 工具返回结果截断长度（防止 context 爆炸）。
+        llm_kwargs: 透传给 LLM completion 的受控参数，例如 max_tokens / temperature。
         extra_metadata: 透传到 LangSmith LLM span 的业务观测字段。
     """
 
@@ -47,6 +48,7 @@ class AgentLoopConfig:
     task_type: TaskType = TaskType.CHAT
     model: str = "primary"
     result_max_chars: int = 2000
+    llm_kwargs: dict[str, Any] = field(default_factory=dict)
     tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     tool_context: Any | None = None
     approved_tool_names: set[str] = field(default_factory=set)
@@ -126,6 +128,7 @@ async def run_agent_loop(
             task_type=cfg.task_type,
             model=cfg.model,
             extra_metadata=cfg.extra_metadata,
+            **cfg.llm_kwargs,
         )
         return AgentLoopResult(final_answer=answer, iterations=1)
 
@@ -142,6 +145,7 @@ async def run_agent_loop(
             task_type=cfg.task_type,
             model=cfg.model,
             extra_metadata=cfg.extra_metadata,
+            **cfg.llm_kwargs,
         )
 
         message = response.choices[0].message
@@ -178,6 +182,7 @@ async def run_agent_loop(
         task_type=cfg.task_type,
         model=cfg.model,
         extra_metadata=cfg.extra_metadata,
+        **cfg.llm_kwargs,
     )
     return AgentLoopResult(
         final_answer=final_answer,
@@ -226,6 +231,7 @@ async def run_agent_loop_stream(
             task_type=cfg.task_type,
             model=cfg.model,
             extra_metadata=cfg.extra_metadata,
+            **cfg.llm_kwargs,
         ):
             yield chunk
         return
@@ -240,6 +246,7 @@ async def run_agent_loop_stream(
             task_type=cfg.task_type,
             model=cfg.model,
             extra_metadata=cfg.extra_metadata,
+            **cfg.llm_kwargs,
         )
 
         message = response.choices[0].message
@@ -252,6 +259,7 @@ async def run_agent_loop_stream(
                 task_type=cfg.task_type,
                 model=cfg.model,
                 extra_metadata=cfg.extra_metadata,
+                **cfg.llm_kwargs,
             ):
                 yield chunk
             return
@@ -272,6 +280,7 @@ async def run_agent_loop_stream(
         task_type=cfg.task_type,
         model=cfg.model,
         extra_metadata=cfg.extra_metadata,
+        **cfg.llm_kwargs,
     ):
         yield chunk
 

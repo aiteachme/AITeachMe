@@ -44,7 +44,7 @@
 - 所有入口都走同一张图：普通对话、知识文档划选提问、构建过程触发只通过 `source` 标记区分，不再使用旁路 direct chat。
 - 图内节点 id 保持稳定英文，LangSmith 展示名、路由名和文档链路统一使用中文。
 - 每个 LangSmith 节点 metadata 都带 `node_key`、`node_description`、`reads`、`writes`、`emits`、`state_inputs`、`state_outputs`，排障时先看这些字段判断节点职责。
-- 所有 LLM 输出默认使用 `primary` 模型选择器；`流式生成回答` 节点的最终回答必须以 SSE token 形式推送。
+- 所有 LLM 输出的模型选择器、`max_tokens` 和 metadata 统一从 `lib/model_policy.py` 读取；`流式生成回答` 节点的最终回答必须以 SSE token 形式推送。
 - 工具扩展只改 `lib/tooling.py` 的工具计划策略；节点不直接硬编码工具清单。
 - Prompt 面向模型时使用 `course.name` 作为课程展示名；`course.id`/内部 id 只作为状态和数据库定位字段，不应该出现在“围绕某课程教学”的自然语言位置。
 - 课程背景由 `course_context` 提供，包括课程说明、学习目标、课程简介、教学背景摘要和用户整体画像。

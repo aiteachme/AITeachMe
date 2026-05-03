@@ -635,8 +635,8 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=3600`，`timeout_s=180`，并限制单片段最多 8 个节点、10 条关系。
-    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=1600`，`timeout_s=180`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=5200`，`timeout_s=180`，并限制单片段最多 8 个节点、10 条关系。
+    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2400`，`timeout_s=180`。
     - 结构化抽取失败会按任务重试；重试耗尽后该分片写入失败诊断并返回空 payload，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items

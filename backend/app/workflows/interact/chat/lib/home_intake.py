@@ -19,8 +19,11 @@ from app.models import ChatSession
 from app.repositories.chats_repo import get_chat_session
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support import acompletion
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.utils.course import GLOBAL_COURSE
+from app.workflows.interact.chat.lib.model_policy import (
+    InteractModelStep,
+    interact_completion_kwargs_with_metadata,
+)
 from app.workflows.interact.chat.lib.types import RecentMessage
 from app.workflows.interact.chat.state import InteractWorkflowState
 
@@ -155,10 +158,15 @@ async def _classify_home_intake_intent(
                 recent_messages=recent_messages,
                 pending_action=pending_action,
             ),
-            call_purpose=LLMCallPurpose.CHAT,
-            model=model,
-            temperature=0.1,
-            max_tokens=500,
+            **interact_completion_kwargs_with_metadata(
+                InteractModelStep.HOME_INTAKE_INTENT,
+                model_override=model,
+                extra_metadata={
+                    "substep": "interact.chat.home_intake_intent",
+                    "attached_file_count": len(attached_file_ids),
+                    "has_pending_action": pending_action is not None,
+                },
+            ),
         )
         payload = _extract_json_object(raw)
         if payload:

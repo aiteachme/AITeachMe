@@ -13,7 +13,6 @@ from fastapi import Request
 from app.shared.infra.agent_loop import run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
@@ -26,6 +25,11 @@ from app.workflows.interact.chat.lib.tooling import (
     INTERACT_MODEL_SELECTOR,
     build_agent_loop_config,
     resolve_interact_tool_plan,
+)
+from app.workflows.interact.chat.lib.model_policy import (
+    InteractModelStep,
+    get_interact_model_policy,
+    interact_completion_kwargs_with_metadata,
 )
 
 
@@ -74,10 +78,13 @@ def _build_stream_state(
 
 
 def _chat_model_trace_metadata(*, model_selector: str, model_override: str | None) -> dict[str, object]:
-    return {
-        "chat_model_slot": model_selector,
-        "chat_model_override": model_override or "settings",
-    }
+    metadata = get_interact_model_policy(InteractModelStep.RESPONSE_STREAM).metadata(
+        model_override=model_override,
+    )
+    metadata["chat_model_slot"] = model_selector
+    if not model_override:
+        metadata["chat_model_override"] = "settings"
+    return metadata
 
 
 def _build_response_stream(state: InteractWorkflowState, *, course_id: str, model_selector: str):
@@ -109,9 +116,11 @@ def _build_response_stream(state: InteractWorkflowState, *, course_id: str, mode
         )
     return acompletion_stream(
         state["messages"],
-        call_purpose=LLMCallPurpose.CHAT,
-        model=model_selector,
-        extra_metadata=trace_metadata,
+        **interact_completion_kwargs_with_metadata(
+            InteractModelStep.RESPONSE_STREAM,
+            model_override=model_override,
+            extra_metadata=trace_metadata,
+        ),
     )
 
 

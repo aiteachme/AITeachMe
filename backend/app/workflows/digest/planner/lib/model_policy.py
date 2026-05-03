@@ -8,7 +8,7 @@ from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.workflows.digest.common.model_policy import compact_metadata
+from app.workflows.common.model_policy import compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 
@@ -77,7 +77,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="stream",
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
-        max_tokens=900,
+        max_tokens=1400,
         note="用户可见的资料边界判断，不负责最终合同，用 light 降低首屏等待。",
     ),
     PlannerModelStep.EXTRACT_INTENT: PlannerModelPolicy(
@@ -85,7 +85,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        max_tokens=700,
+        max_tokens=1200,
         note="结构化抽取内部规划抓手，输出短，优先 light 提速。",
     ),
     PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
@@ -93,7 +93,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="stream",
         call_purpose=LLMCallPurpose.REASONING,
         model="light",
-        max_tokens=2600,
+        max_tokens=4200,
         note="生成可确认课程方案和机器 JSON 合同，是 Planner 最核心的规划调用。",
     ),
     PlannerModelStep.COURSE_NAME: PlannerModelPolicy(

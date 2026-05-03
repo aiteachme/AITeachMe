@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
-from app.workflows.digest.common.model_policy import compact_metadata
+from app.workflows.common.model_policy import compact_metadata
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
@@ -80,7 +80,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="reason",
-        max_tokens=600,
+        max_tokens=1000,
         note="文档级短意图判断，保留策略推理能力。",
     ),
     DocGenModelStep.FILE_SUMMARY: DocGenModelPolicy(
@@ -88,15 +88,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=5000,
-        note="文件级任务数量多，优先轻量并发。",
+        max_tokens=9000,
+        note="文件级摘要容易被长 JSON 截断，输入已采样但输出预算仍保持宽松。",
     ),
     DocGenModelStep.TITLE_LOCK: DocGenModelPolicy(
         step=DocGenModelStep.TITLE_LOCK,
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=220,
+        max_tokens=420,
         temperature_override=0.1,
         note="标题输出极短，但要守住 confirmed plan 语义。",
     ),
@@ -105,7 +105,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=420,
+        max_tokens=900,
         temperature_override=0.1,
         note="章级最小执行 brief，需要稳定抽取教学目标。",
     ),
@@ -114,7 +114,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=700,
+        max_tokens=1400,
         note="研究查询拆解需要覆盖缺口判断。",
     ),
     DocGenModelStep.RESEARCH_PURIFY: DocGenModelPolicy(
@@ -122,7 +122,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=2200,
+        max_tokens=4200,
         note="清洗 dense context，不做重推理。",
     ),
     DocGenModelStep.WRITER: DocGenModelPolicy(
@@ -130,6 +130,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="reason",
+        max_tokens=9000,
         note="实际 model slot 由 digest mode profile 决定。",
     ),
     DocGenModelStep.HEADING_REPAIR: DocGenModelPolicy(
@@ -137,6 +138,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
+        max_tokens=7000,
         note="只修结构和标题层级。",
     ),
     DocGenModelStep.CHAPTER_REWRITE: DocGenModelPolicy(
@@ -144,6 +146,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
+        max_tokens=9000,
         note="章节质量不足时的 bounded rewrite。",
     ),
     DocGenModelStep.MERMAID_PLACEHOLDER: DocGenModelPolicy(
@@ -151,6 +154,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
+        max_tokens=3200,
         note="辅助资产生成，优先低成本。",
     ),
     DocGenModelStep.INTERACTIVE_HTML: DocGenModelPolicy(
@@ -158,7 +162,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
-        max_tokens=2600,
+        max_tokens=7000,
         temperature_override=0.1,
         note="交互页需要较完整的 HTML 生成能力。",
     ),
@@ -167,6 +171,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
+        max_tokens=3200,
         note="并行结构化审稿，优先速度与成本。",
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
@@ -174,6 +179,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
+        max_tokens=7000,
         note="直接改正文，需要比 light 更稳。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(

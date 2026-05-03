@@ -1,0 +1,150 @@
+"""Central model policy for Interact chat LLM calls."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from enum import Enum
+from typing import Literal
+
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
+from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.common.model_policy import compact_metadata
+
+InteractModelSlot = Literal["light", "primary", "reason"]
+INTERACT_MODEL_SELECTOR: InteractModelSlot = "primary"
+
+
+class InteractModelStep(str, Enum):
+    RESPONSE_STREAM = "chat.response_stream"
+    SESSION_TITLE = "chat.session_title"
+    HOME_INTAKE_INTENT = "chat.home_intake_intent"
+
+
+@dataclass(frozen=True)
+class InteractModelPolicy:
+    step: InteractModelStep
+    call_type: Literal["stream", "text"]
+    call_purpose: LLMCallPurpose
+    model: InteractModelSlot
+    max_tokens: int | None = None
+    temperature_override: float | None = None
+    note: str = ""
+
+    def completion_kwargs(self) -> dict[str, object]:
+        kwargs: dict[str, object] = {
+            "call_purpose": self.call_purpose,
+            "model": self.model,
+        }
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.temperature_override is not None:
+            kwargs["temperature"] = self.temperature_override
+        return kwargs
+
+    def llm_kwargs(self) -> dict[str, object]:
+        """Return only LiteLLM kwargs used by shared infra wrappers."""
+
+        kwargs: dict[str, object] = {}
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.temperature_override is not None:
+            kwargs["temperature"] = self.temperature_override
+        return kwargs
+
+    def metadata(self, *, model_override: str | None = None) -> dict[str, object]:
+        metadata: dict[str, object] = {
+            "chat_model_step": self.step.value,
+            "chat_model_slot": self.model,
+            "chat_call_type": self.call_type,
+            "chat_max_tokens": self.max_tokens,
+        }
+        resolved_override = normalize_runtime_model_override(model_override)
+        if resolved_override:
+            metadata["chat_model_override"] = resolved_override
+        return metadata
+
+    def completion_kwargs_with_metadata(
+        self,
+        *,
+        model_override: str | None = None,
+        extra_metadata: Mapping[str, object] | None = None,
+        **metadata: object,
+    ) -> dict[str, object]:
+        kwargs = self.completion_kwargs()
+        kwargs["extra_metadata"] = compact_metadata(
+            extra_metadata,
+            metadata,
+            self.metadata(model_override=model_override),
+        )
+        return kwargs
+
+
+_POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
+    InteractModelStep.RESPONSE_STREAM: InteractModelPolicy(
+        step=InteractModelStep.RESPONSE_STREAM,
+        call_type="stream",
+        call_purpose=LLMCallPurpose.CHAT,
+        model=INTERACT_MODEL_SELECTOR,
+        max_tokens=8000,
+        note="伴读最终回答可长可短，给足输出空间避免流式回答被过早截断。",
+    ),
+    InteractModelStep.SESSION_TITLE: InteractModelPolicy(
+        step=InteractModelStep.SESSION_TITLE,
+        call_type="text",
+        call_purpose=LLMCallPurpose.SUMMARIZE,
+        model="light",
+        max_tokens=96,
+        temperature_override=0.2,
+        note="会话标题仍是短输出，但给模型留出清洗前的冗余空间。",
+    ),
+    InteractModelStep.HOME_INTAKE_INTENT: InteractModelPolicy(
+        step=InteractModelStep.HOME_INTAKE_INTENT,
+        call_type="text",
+        call_purpose=LLMCallPurpose.CHAT,
+        model="light",
+        max_tokens=1200,
+        temperature_override=0.1,
+        note="首页入口需要 JSON 意图和可直接展示的追问文案。",
+    ),
+}
+
+
+def get_interact_model_policy(step: InteractModelStep | str) -> InteractModelPolicy:
+    resolved_step = step if isinstance(step, InteractModelStep) else InteractModelStep(str(step))
+    return _POLICIES[resolved_step]
+
+
+def interact_completion_kwargs(step: InteractModelStep | str) -> dict[str, object]:
+    return get_interact_model_policy(step).completion_kwargs()
+
+
+def interact_llm_kwargs(step: InteractModelStep | str) -> dict[str, object]:
+    return get_interact_model_policy(step).llm_kwargs()
+
+
+def interact_completion_kwargs_with_metadata(
+    step: InteractModelStep | str,
+    *,
+    model_override: str | None = None,
+    extra_metadata: Mapping[str, object] | None = None,
+    **metadata: object,
+) -> dict[str, object]:
+    return get_interact_model_policy(step).completion_kwargs_with_metadata(
+        model_override=model_override,
+        extra_metadata=extra_metadata,
+        **metadata,
+    )
+
+
+__all__ = [
+    "INTERACT_MODEL_SELECTOR",
+    "InteractModelPolicy",
+    "InteractModelSlot",
+    "InteractModelStep",
+    "get_interact_model_policy",
+    "interact_completion_kwargs",
+    "interact_completion_kwargs_with_metadata",
+    "interact_llm_kwargs",
+]
+

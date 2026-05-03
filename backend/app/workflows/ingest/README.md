@@ -245,7 +245,7 @@ Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 sta
 如果配置了“文档 OCR 模型”（`settings.models.ocr`）：
 
 1. 扫描 Markdown 图片引用。
-2. 对图片资产调用 LLM Vision OCR。
+2. 对图片资产调用 LLM Vision OCR；视觉模型的输出 token 预算统一在 `parsing/lib/model_policy.py` 维护。
 3. 用 OCR 结果替换或补充图片占位内容。
 
 如果没有配置文档 OCR 模型，则跳过 OCR，只保留 Phase 1 Markdown。
