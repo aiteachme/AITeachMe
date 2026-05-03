@@ -28,10 +28,66 @@ _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 _FORMULA_RE = re.compile(r"\$\$?([^$\n]{2,120})\$\$?", re.DOTALL)
 _QUESTION_RE = re.compile(r"(例题|习题|选择题|填空题|简答题|证明题|计算题|真题|练习)")
 _EVIDENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
+_FILE_SUMMARY_MAX_EXCERPT_CHARS = 36_000
+_FILE_SUMMARY_HEAD_CHARS = 12_000
+_FILE_SUMMARY_TAIL_CHARS = 8_000
+_FILE_SUMMARY_SECTION_SAMPLE_CHARS = 900
+_FILE_SUMMARY_SECTION_SAMPLE_COUNT = 16
 
 
 def _sections_for_file(sections: Sequence[SectionPacket], file_id: str) -> list[SectionPacket]:
     return [section for section in sections if section.source_file_id == file_id]
+
+
+def _cap_text(text: str, max_chars: int) -> str:
+    cleaned = str(text or "").strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max(1, max_chars - 3)].rstrip() + "..."
+
+
+def _build_file_summary_excerpt(packet: SourcePacket, sections: Sequence[SectionPacket]) -> str:
+    """Return a bounded source sample for the LLM file-summary router."""
+
+    content = str(packet.normalized_content or "").strip()
+    if len(content) <= _FILE_SUMMARY_MAX_EXCERPT_CHARS:
+        return content
+
+    blocks: list[str] = []
+    head = _cap_text(content[:_FILE_SUMMARY_HEAD_CHARS], _FILE_SUMMARY_HEAD_CHARS)
+    if head:
+        blocks.append(f"## 文件开头摘录\n{head}")
+
+    priority_sections = sorted(
+        list(sections),
+        key=lambda item: (item.question_block_count, len(item.formula_refs), item.char_count),
+        reverse=True,
+    )[:_FILE_SUMMARY_SECTION_SAMPLE_COUNT]
+    for section in priority_sections:
+        excerpt = _cap_text(section.normalized_content, _FILE_SUMMARY_SECTION_SAMPLE_CHARS)
+        if not excerpt:
+            continue
+        title = section.title or section.header_path or f"Part {section.chunk_index + 1}"
+        blocks.append(
+            "\n".join(
+                [
+                    f"## 高价值切片摘录：{section.digest_chunk_uid}",
+                    f"标题：{title}",
+                    f"预览：{section.preview}",
+                    excerpt,
+                ]
+            ).strip()
+        )
+
+    tail = _cap_text(content[-_FILE_SUMMARY_TAIL_CHARS:], _FILE_SUMMARY_TAIL_CHARS)
+    if tail:
+        blocks.append(f"## 文件结尾摘录\n{tail}")
+
+    sampled = "\n\n".join(blocks).strip()
+    if len(sampled) <= _FILE_SUMMARY_MAX_EXCERPT_CHARS:
+        return sampled
+    omitted = "\n\n...[文件摘要采样已截断，完整切片请以切片目录为准]..."
+    return sampled[: max(1, _FILE_SUMMARY_MAX_EXCERPT_CHARS - len(omitted))].rstrip() + omitted
 
 
 def fallback_file_summary(
@@ -352,9 +408,9 @@ async def _summarize_one_file(
     ]
     file_sections = _sections_for_file(sections, packet.file_id)
     section_catalog = build_section_catalog_for_file(packet, sections=file_sections)
-    excerpt = str(packet.normalized_content or "").strip()
-    if not excerpt.strip():
+    if not str(packet.normalized_content or "").strip():
         return fallback
+    excerpt = _build_file_summary_excerpt(packet, file_sections)
     try:
         response = await acompletion_with_fallback(
             build_file_summary_messages(
