@@ -603,6 +603,16 @@ jobs:
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
 
+          backend_container_name="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get \
+              "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+              -o jsonpath='{.spec.template.spec.containers[0].name}'
+          )"
+          if [ -z "${backend_container_name}" ]; then
+            echo "Could not resolve backend container name from deployment/${SEALOS_BACKEND_DEPLOYMENT}." >&2
+            exit 1
+          fi
+
           security_patch="$(
             cat <<JSON
           {
@@ -620,7 +630,7 @@ jobs:
                   },
                   "containers": [
                     {
-                      "name": "${SEALOS_BACKEND_DEPLOYMENT}",
+                      "name": "${backend_container_name}",
                       "securityContext": {
                         "allowPrivilegeEscalation": false,
                         "capabilities": {
