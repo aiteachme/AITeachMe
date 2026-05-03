@@ -89,11 +89,15 @@ async def enhance_markdown_with_asset_ocr(
         )
     else:
         ocr_items = [_build_plain_asset_item(asset_path, asset_link_prefix=asset_link_prefix) for asset_path in candidate_paths]
-    if not ocr_items:
-        if placeholder_count:
-            ocr_items = [_build_plain_asset_item(asset_path, asset_link_prefix=asset_link_prefix) for asset_path in candidate_paths]
-        else:
-            return AssetOCREnhancementResult(markdown=markdown)
+    if placeholder_count:
+        ocr_items = _fill_missing_placeholder_items(
+            candidate_paths,
+            ocr_items,
+            asset_link_prefix=asset_link_prefix,
+            placeholder_count=placeholder_count,
+        )
+    elif not ocr_items:
+        return AssetOCREnhancementResult(markdown=markdown)
 
     if not ocr_items:
         return AssetOCREnhancementResult(markdown=markdown)
@@ -270,6 +274,27 @@ def _build_plain_asset_item(asset_path: Path, *, asset_link_prefix: str) -> Asse
         ocr_markdown="",
         page_number=_extract_asset_page_number(asset_path.name),
     )
+
+
+def _fill_missing_placeholder_items(
+    asset_paths: list[Path],
+    ocr_items: list[AssetOCRItem],
+    *,
+    asset_link_prefix: str,
+    placeholder_count: int,
+) -> list[AssetOCRItem]:
+    if placeholder_count <= 0:
+        return ocr_items
+
+    items_by_filename = {item.filename: item for item in ocr_items}
+    replacement_paths = asset_paths[: min(len(asset_paths), placeholder_count)]
+    replacement_names = {path.name for path in replacement_paths}
+    replacement_items = [
+        items_by_filename.get(path.name) or _build_plain_asset_item(path, asset_link_prefix=asset_link_prefix)
+        for path in replacement_paths
+    ]
+    extra_items = [item for item in ocr_items if item.filename not in replacement_names]
+    return [*replacement_items, *extra_items]
 
 
 def _collect_referenced_asset_names(markdown: str) -> set[str]:
