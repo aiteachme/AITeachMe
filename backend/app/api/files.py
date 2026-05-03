@@ -121,6 +121,7 @@ async def upload_files(
             kind="files.parse",
             course_id=normalized_course_id,
             name=f"files.parse:{normalized_course_id}",
+            dedupe_key=f"files.parse:{normalized_course_id}:{':'.join(sorted(parse_file_ids))}",
         )
     parse_file_id_set = set(parse_file_ids)
     reused_ready_file_ids = [

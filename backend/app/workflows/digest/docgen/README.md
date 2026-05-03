@@ -215,7 +215,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
   |
   v
 repair_or_route
-  当前实现：对 surface_patch / section_patch / evidence_patch 执行安全局部 Markdown patch；对 regenerate_chapter / re_dispatch / rebuild_backbone 等重动作结构化记录。
+  当前实现：对 surface_patch / section_patch / evidence_patch 执行安全局部 Markdown patch；regenerate_chapter 降级为单章局部修补；re_dispatch / rebuild_backbone 等重动作结构化记录。
   当前流水线：review_content -> repair_or_route -> merge_review。
   |
   v
@@ -533,18 +533,20 @@ repair_or_route
     - rebuild_backbone：跨章术语漂移、概念顺序错、整本结构断裂。
   当前实现：
     - 已支持 surface_patch / section_patch / evidence_patch 的局部 Markdown patch。
-    - regenerate_chapter / re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
+    - regenerate_chapter 会降级为单章局部修补；re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
     - repair 执行策略已经收口为“按章节并行、章内顺序 patch”：
       - 不同章节的 patch 会并行执行。
       - 同一章节内部仍保持顺序，避免多个 patch 同时改同一份 Markdown。
-      - 一旦某章已应用一次实质性 patch，同轮后续 patch 默认跳过；只有 `Markdown 渲染结构异常` 这类确定性表层修补不会锁死该章。
+      - 单章同轮最多应用 3 个实质性 patch，超出部分记录为 unresolved warning。
   当前模型方案：
     - `surface_patch / section_patch / evidence_patch`
       - `call_purpose=DOCGEN`
       - `model="primary"`
       - 默认映射到 `qwen-flash`
-    - `regenerate_chapter / re_dispatch / rebuild_backbone`
+    - `regenerate_chapter`
+      - 当前降级使用 `section_patch` 的单章局部修补路径
+    - `re_dispatch / rebuild_backbone`
       - 当前只记录，不自动发起新的大模型调用
   目标实现：
     - 支持最多两轮有限回流：review_content <-> repair_or_route。

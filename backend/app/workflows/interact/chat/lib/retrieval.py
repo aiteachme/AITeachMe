@@ -6,8 +6,9 @@ import math
 import re
 
 import structlog
-from sqlmodel import Session
+from sqlmodel import Session, or_, select
 
+from app.models import RetrievalChunk
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo, profile_repo
@@ -17,6 +18,11 @@ from app.workflows.interact.chat.lib.types import RetrievedContext
 logger = structlog.get_logger(__name__)
 
 _TOKEN_RE = re.compile(r"[\w]+|[\u4e00-\u9fff]", re.UNICODE)
+_CJK_PHRASE_RE = re.compile(r"[\u4e00-\u9fff]{2,}", re.UNICODE)
+_ASCII_TERM_RE = re.compile(r"[A-Za-z0-9_]{2,}", re.UNICODE)
+_KG_UNIT_CANDIDATE_LIMIT = 1200
+_KG_UNIT_SUPPLEMENT_LIMIT = 500
+_KG_UNIT_SEARCH_TERM_LIMIT = 8
 
 
 def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
@@ -101,6 +107,24 @@ async def retrieve_context(
         similarity_threshold=similarity_threshold,
     )
     if graph_results:
+        if len(graph_results) < top_k or all(item.low_relevance for item in graph_results):
+            vector_results = await _retrieve_vector_context(
+                session=session,
+                query=normalized_query,
+                course_id=course_id,
+                top_k=top_k,
+                similarity_threshold=similarity_threshold,
+            )
+            merged_results = _merge_context_results(graph_results, vector_results, top_k=top_k)
+            logger.info(
+                "interact_kg_vector_retrieval_done",
+                course_id=course_id,
+                query_len=len(normalized_query),
+                graph_result_count=len(graph_results),
+                vector_result_count=len(vector_results),
+                result_count=len(merged_results),
+            )
+            return merged_results
         logger.info(
             "interact_kg_retrieval_done",
             course_id=course_id,
@@ -126,6 +150,30 @@ async def retrieve_context(
     return vector_results
 
 
+def _merge_context_results(
+    graph_results: list[RetrievedContext],
+    vector_results: list[RetrievedContext],
+    *,
+    top_k: int,
+) -> list[RetrievedContext]:
+    merged: list[RetrievedContext] = []
+    seen: set[tuple[str, int]] = set()
+    for item in [*graph_results, *vector_results]:
+        if item.knowledge_unit_id is not None:
+            key = ("unit", int(item.knowledge_unit_id))
+        elif item.chunk_id:
+            key = ("chunk", int(item.chunk_id))
+        else:
+            key = ("content", hash((item.title, item.content[:160])))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= top_k:
+            break
+    return merged
+
+
 @traceable(
     name="interact.retrieval.knowledge_unit_search",
     run_type="retriever",
@@ -141,13 +189,7 @@ def _retrieve_knowledge_unit_context(
     user_id: str,
     similarity_threshold: float,
 ) -> list[RetrievedContext]:
-    units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
-        session,
-        course_id,
-        status="active",
-        limit=500,
-        offset=0,
-    )
+    units = _candidate_units_for_query(session, course_id=course_id, query=query, top_k=top_k)
     if not units:
         return []
 
@@ -163,7 +205,21 @@ def _retrieve_knowledge_unit_context(
     center_count = max(1, min(3, top_k))
     center_ids = {unit.id for unit, _ in ranked[:center_count] if unit.id is not None}
     unit_by_id = {unit.id: unit for unit in units if unit.id is not None}
-    edges = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
+    edges = knowledge_relation_repo.list_edges_for_knowledge_units(session, course_id, center_ids)
+    related_ids = {
+        edge.target_node_id if edge.source_node_id in center_ids else edge.source_node_id
+        for edge in edges
+        if edge.source_node_id in center_ids or edge.target_node_id in center_ids
+    }
+    missing_related_ids = {unit_id for unit_id in related_ids if unit_id not in unit_by_id}
+    if missing_related_ids:
+        unit_by_id.update(
+            {
+                int(unit.id): unit
+                for unit in _fetch_units_by_ids(session, course_id=course_id, unit_ids=missing_related_ids)
+                if unit.id is not None
+            }
+        )
     selected_scores: dict[int, float] = {
         int(unit.id): score for unit, score in ranked[:top_k] if unit.id is not None
     }
@@ -184,17 +240,114 @@ def _retrieve_knowledge_unit_context(
             unit_id,
         ),
     )[:top_k]
-    return [
-        _context_from_unit(
-            session,
+    selected_units = [
+        (
             unit_by_id[unit_id],
-            score=selected_scores[unit_id],
-            relation_path=relation_paths.get(unit_id),
-            mastery_score=mastery.get(unit_id),
+            selected_scores[unit_id],
+            relation_paths.get(unit_id),
+            mastery.get(unit_id),
         )
         for unit_id in ordered_ids
         if unit_id in unit_by_id
     ]
+    return _contexts_from_units(session, selected_units)
+
+
+def _candidate_units_for_query(
+    session: Session,
+    *,
+    course_id: str,
+    query: str,
+    top_k: int,
+) -> list[KnowledgeUnit]:
+    limit = max(80, min(_KG_UNIT_CANDIDATE_LIMIT, max(1, top_k) * 120))
+    terms = _candidate_search_terms(query)
+    units: list[KnowledgeUnit] = []
+
+    if terms:
+        predicates = []
+        for term in terms:
+            pattern = f"%{term}%"
+            predicates.extend(
+                [
+                    KnowledgeUnit.canonical_name.ilike(pattern),
+                    KnowledgeUnit.normalized_name.ilike(pattern),
+                    KnowledgeUnit.summary.ilike(pattern),
+                    KnowledgeUnit.body_markdown.ilike(pattern),
+                    KnowledgeUnit.body.ilike(pattern),
+                ]
+            )
+        stmt = (
+            select(KnowledgeUnit)
+            .where(
+                KnowledgeUnit.course_id == course_id,
+                KnowledgeUnit.status == "active",
+                or_(*predicates),
+            )
+            .order_by(KnowledgeUnit.id)
+            .limit(limit)
+        )
+        units = list(session.exec(stmt).all())
+
+    if len(units) < min(limit, top_k * 20):
+        supplement, _ = knowledge_unit_repo.list_knowledge_units_by_course(
+            session,
+            course_id,
+            status="active",
+            limit=min(_KG_UNIT_SUPPLEMENT_LIMIT, limit),
+            offset=0,
+        )
+        units = _dedupe_units([*units, *supplement])
+    return units
+
+
+def _candidate_search_terms(query: str) -> list[str]:
+    cleaned = " ".join(str(query or "").split()).strip()
+    terms: list[str] = []
+    if 1 < len(cleaned) <= 80:
+        terms.append(cleaned)
+    terms.extend(match.group(0) for match in _CJK_PHRASE_RE.finditer(cleaned))
+    terms.extend(match.group(0).casefold() for match in _ASCII_TERM_RE.finditer(cleaned))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        normalized = term.strip().casefold()
+        if len(normalized) < 2 or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(term.strip())
+        if len(deduped) >= _KG_UNIT_SEARCH_TERM_LIMIT:
+            break
+    return deduped
+
+
+def _dedupe_units(units: list[KnowledgeUnit]) -> list[KnowledgeUnit]:
+    deduped: list[KnowledgeUnit] = []
+    seen: set[int] = set()
+    for unit in units:
+        if unit.id is None or int(unit.id) in seen:
+            continue
+        seen.add(int(unit.id))
+        deduped.append(unit)
+    return deduped
+
+
+def _fetch_units_by_ids(
+    session: Session,
+    *,
+    course_id: str,
+    unit_ids: set[int],
+) -> list[KnowledgeUnit]:
+    normalized_ids = {int(unit_id) for unit_id in unit_ids if int(unit_id or 0) > 0}
+    if not normalized_ids:
+        return []
+    stmt = select(KnowledgeUnit).where(
+        KnowledgeUnit.course_id == course_id,
+        KnowledgeUnit.status == "active",
+        KnowledgeUnit.id.in_(normalized_ids),
+    )
+    return list(session.exec(stmt).all())
 
 
 def _add_related_unit(
@@ -260,16 +413,48 @@ def _mastery_by_unit_id(session: Session, *, course_id: str, user_id: str) -> di
     }
 
 
-def _context_from_unit(
+def _contexts_from_units(
     session: Session,
+    selected_units: list[tuple[KnowledgeUnit, float, str | None, float | None]],
+) -> list[RetrievedContext]:
+    evidence_by_unit_id = {
+        int(unit.id): _first_unit_evidence(session, unit)
+        for unit, _, _, _ in selected_units
+        if unit.id is not None
+    }
+    chunk_ids = [
+        int(evidence["chunk_id"])
+        for evidence in evidence_by_unit_id.values()
+        if int(evidence.get("chunk_id") or 0) > 0
+    ]
+    chunk_by_id = {
+        int(chunk.id): chunk
+        for chunk in knowledge_repo.get_chunks_by_ids(session, chunk_ids)
+        if chunk.id is not None
+    }
+    return [
+        _context_from_unit(
+            unit,
+            score=score,
+            relation_path=relation_path,
+            mastery_score=mastery_score,
+            evidence=evidence_by_unit_id.get(int(unit.id or 0), {"chunk_id": 0, "file_id": "", "quote_text": ""}),
+            chunk_by_id=chunk_by_id,
+        )
+        for unit, score, relation_path, mastery_score in selected_units
+    ]
+
+
+def _context_from_unit(
     unit: KnowledgeUnit,
     *,
     score: float,
     relation_path: str | None,
     mastery_score: float | None,
+    evidence: dict[str, object],
+    chunk_by_id: dict[int, RetrievalChunk],
 ) -> RetrievedContext:
-    evidence = _first_unit_evidence(session, unit)
-    chunk = knowledge_repo.get_chunk_by_id(session, evidence["chunk_id"]) if evidence["chunk_id"] else None
+    chunk = chunk_by_id.get(int(evidence["chunk_id"] or 0)) if evidence["chunk_id"] else None
     content = ""
     title = unit.canonical_name
     header_path = unit.canonical_name

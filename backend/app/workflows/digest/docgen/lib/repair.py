@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
+from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
@@ -21,6 +21,8 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
     "re_dispatch",
     "rebuild_backbone",
 }
+_PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
+_MAX_PATCH_ACTIONS_PER_CHAPTER = 3
 
 
 def _unresolved_message(action: ReviewAction, *, status: str) -> str:
@@ -203,10 +205,10 @@ async def repair_or_route_review_actions(
         indexed_actions: list[tuple[int, ReviewAction]],
     ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]]]:
         current_chapter = chapter
-        chapter_locked = False
+        changed_count = 0
         results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
         for action_index, action in indexed_actions:
-            if chapter_locked:
+            if changed_count >= _MAX_PATCH_ACTIONS_PER_CHAPTER:
                 updated_action = action.model_copy(update={"status": "skipped"})
                 results.append(
                     (
@@ -221,7 +223,7 @@ async def repair_or_route_review_actions(
                             reason=action.reason,
                             target_anchor=action.target_anchor,
                             changed=False,
-                            detail="Skipped because another patch was already applied to this chapter in the same repair pass.",
+                            detail="Skipped because this chapter reached the repair pass patch limit.",
                         ),
                         _unresolved_message(updated_action, status="skipped"),
                     )
@@ -233,13 +235,13 @@ async def repair_or_route_review_actions(
                 action=action,
             )
             current_chapter = patched_chapter
-            if trace_item.changed and "Markdown 渲染结构异常" not in action.reason:
-                chapter_locked = True
+            if trace_item.changed:
+                changed_count += 1
             results.append((action_index, updated_action, trace_item, unresolved_message))
         return current_chapter, results
 
     for action_index, action in enumerate(review_actions, start=1):
-        if action.action_type in {"surface_patch", "section_patch", "evidence_patch"}:
+        if action.action_type in _PATCHABLE_ACTION_TYPES:
             chapter = chapters_by_index.get(int(action.chapter_index or 0))
             if chapter is None:
                 updated_action = action.model_copy(update={"status": "skipped"})
@@ -257,7 +259,15 @@ async def repair_or_route_review_actions(
                     detail="No target chapter found for patch action.",
                 )
                 continue
-            patch_actions_by_chapter.setdefault(chapter.chapter_index, []).append((action_index, action))
+            patch_action = action
+            if action.action_type == "regenerate_chapter":
+                patch_action = action.model_copy(
+                    update={
+                        "action_type": "section_patch",
+                        "reason": f"重生成动作降级为单章局部修补：{action.reason}",
+                    }
+                )
+            patch_actions_by_chapter.setdefault(chapter.chapter_index, []).append((action_index, patch_action))
             continue
 
         if action.action_type in _ACTION_REQUIRES_FUTURE_REPAIR:
@@ -282,11 +292,14 @@ async def repair_or_route_review_actions(
         )
 
     if patch_actions_by_chapter:
-        patch_results = await asyncio.gather(
-            *[
-                _process_patch_actions_for_chapter(chapters_by_index[chapter_index], indexed_actions)
-                for chapter_index, indexed_actions in sorted(patch_actions_by_chapter.items())
-            ]
+        patch_jobs = [
+            (chapters_by_index[chapter_index], indexed_actions)
+            for chapter_index, indexed_actions in sorted(patch_actions_by_chapter.items())
+        ]
+        patch_results = await gather_with_concurrency(
+            patch_jobs,
+            lambda job: _process_patch_actions_for_chapter(job[0], job[1]),
+            limit=min(4, get_llm_concurrency_limit()),
         )
         for patched_chapter, action_results in patch_results:
             chapters_by_index[patched_chapter.chapter_index] = patched_chapter

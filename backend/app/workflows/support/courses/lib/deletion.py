@@ -245,6 +245,7 @@ def _schedule_course_external_cleanup(
         kind="courses.delete.cleanup",
         course_id=course_id,
         name=f"courses.delete.cleanup:{course_id}",
+        dedupe_key=f"courses.delete.cleanup:{course_id}",
     )
 
 

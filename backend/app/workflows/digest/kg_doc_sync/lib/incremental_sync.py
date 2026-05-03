@@ -97,6 +97,17 @@ class _ExtractionTask:
     source_kind: str
 
 
+@dataclass(slots=True)
+class _UnitLookupCache:
+    by_anchor: dict[str, KnowledgeUnit]
+    by_type_name: dict[tuple[str, str], KnowledgeUnit]
+
+
+@dataclass(slots=True)
+class _EdgeLookupCache:
+    by_key: dict[tuple[int, int, str], KnowledgeEdge]
+
+
 def _as_mapping(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
 
@@ -661,6 +672,7 @@ def persist_knowledge_graph_units_early(
     sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
     created_unit_ids: list[int] = []
     updated_unit_ids: list[int] = []
+    lookup_cache = _build_unit_lookup_cache(session, course_id=run_context.course_id)
     for item in payload.units:
         unit, created = _upsert_unit(
             session,
@@ -668,6 +680,7 @@ def persist_knowledge_graph_units_early(
             item=item,
             build_revision_no=run_context.build_revision_no,
             enable_rag_dedup=enable_rag_dedup,
+            lookup_cache=lookup_cache,
         )
         if unit.id is None:
             continue
@@ -709,6 +722,7 @@ def _apply_extracted_graph_items(
     report: KnowledgeSyncReport,
 ) -> None:
     unit_by_anchor: dict[str, KnowledgeUnit] = {}
+    unit_lookup_cache = _build_unit_lookup_cache(session, course_id=course_id)
     for item in units:
         unit, created = _upsert_unit(
             session,
@@ -716,6 +730,7 @@ def _apply_extracted_graph_items(
             item=item,
             build_revision_no=build_revision_no,
             enable_rag_dedup=enable_rag_dedup,
+            lookup_cache=unit_lookup_cache,
         )
         if unit.id is None:
             continue
@@ -727,6 +742,7 @@ def _apply_extracted_graph_items(
         if _create_source_ref_for_unit(session, sync_run=sync_run, course_id=course_id, unit=unit, item=item):
             report.source_ref_count += 1
 
+    edge_lookup_cache = _build_edge_lookup_cache(session, course_id=course_id)
     seen_edge_keys: set[tuple[int, int, str]] = set()
     for extracted_edge in extracted_edges:
         source = unit_by_anchor.get(extracted_edge.source_anchor)
@@ -755,6 +771,7 @@ def _apply_extracted_graph_items(
             edge_type=extracted_edge.edge_type,
             description=extracted_edge.description,
             build_revision_no=build_revision_no,
+            lookup_cache=edge_lookup_cache,
         )
         if edge.id is not None:
             seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
@@ -832,7 +849,6 @@ def _create_source_ref_for_unit(
         confidence=_source_confidence_for_kind(item.source_kind),
     )
     session.add(source_ref)
-    session.flush()
     return True
 
 
@@ -860,7 +876,6 @@ def _create_source_ref_for_edge(
         confidence=_source_confidence_for_kind(extracted_edge.source_kind),
     )
     session.add(source_ref)
-    session.flush()
     return True
 
 
@@ -2238,6 +2253,50 @@ def _resolve_edge_anchor(
     return None
 
 
+def _build_unit_lookup_cache(session: Session, *, course_id: str) -> _UnitLookupCache:
+    units = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == course_id,
+            KnowledgeUnit.status.in_(["active", "pending", "deprecated"]),
+        )
+    ).all()
+    cache = _UnitLookupCache(by_anchor={}, by_type_name={})
+    for unit in units:
+        _remember_unit_lookup(cache, unit)
+    return cache
+
+
+def _remember_unit_lookup(cache: _UnitLookupCache, unit: KnowledgeUnit) -> None:
+    if unit.id is None:
+        return
+    for key, cached in list(cache.by_type_name.items()):
+        if cached.id == unit.id:
+            cache.by_type_name.pop(key, None)
+    if unit.status in {"active", "pending"} and unit.normalized_name:
+        cache.by_type_name[(normalize_knowledge_unit_type(unit.knowledge_unit_type), unit.normalized_name)] = unit
+    for alias in _load_aliases(unit.aliases_json):
+        if alias.get("source") != _ANCHOR_ALIAS_SOURCE:
+            continue
+        anchor = str(alias.get("normalized_alias") or "").strip()
+        if anchor:
+            cache.by_anchor[anchor] = unit
+
+
+def _build_edge_lookup_cache(session: Session, *, course_id: str) -> _EdgeLookupCache:
+    edges = session.exec(
+        select(KnowledgeEdge).where(
+            KnowledgeEdge.course_id == course_id,
+            KnowledgeEdge.status.in_(["active", "pending", "deprecated"]),
+        )
+    ).all()
+    return _EdgeLookupCache(
+        by_key={
+            (edge.source_node_id, edge.target_node_id, normalize_relation_type(edge.edge_type)): edge
+            for edge in edges
+        }
+    )
+
+
 def _upsert_unit(
     session: Session,
     *,
@@ -2245,16 +2304,25 @@ def _upsert_unit(
     item: MarkdownKnowledgeUnit,
     build_revision_no: int,
     enable_rag_dedup: bool = False,
+    lookup_cache: _UnitLookupCache | None = None,
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
-    unit = _find_unit_by_anchor(session, course_id=course_id, anchor=item.anchor)
+    unit = (
+        lookup_cache.by_anchor.get(item.anchor)
+        if lookup_cache is not None
+        else _find_unit_by_anchor(session, course_id=course_id, anchor=item.anchor)
+    )
     if unit is None:
-        unit = _find_unit_by_exact_name(
-            session,
-            course_id=course_id,
-            item=item,
-            knowledge_unit_type=knowledge_unit_type,
+        unit = (
+            lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+            if lookup_cache is not None
+            else _find_unit_by_exact_name(
+                session,
+                course_id=course_id,
+                item=item,
+                knowledge_unit_type=knowledge_unit_type,
+            )
         )
     if unit is None and enable_rag_dedup:
         unit = _find_unit_with_rag(
@@ -2263,15 +2331,19 @@ def _upsert_unit(
             item=item,
             knowledge_unit_type=knowledge_unit_type,
         )
-    name_conflict_unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
-        session,
-        course_id,
-        normalized_name,
-        knowledge_unit_type,
+    name_conflict_unit = (
+        lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+        if lookup_cache is not None
+        else knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
+            session,
+            course_id,
+            normalized_name,
+            knowledge_unit_type,
+        )
     )
     if name_conflict_unit is not None and (unit is None or name_conflict_unit.id != unit.id):
         unit = name_conflict_unit
-    if unit is None:
+    if unit is None and lookup_cache is None:
         unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
             session,
             course_id,
@@ -2303,6 +2375,8 @@ def _upsert_unit(
     else:
         session.add(unit)
     session.flush()
+    if lookup_cache is not None:
+        _remember_unit_lookup(lookup_cache, unit)
     return unit, created
 
 
@@ -2315,13 +2389,19 @@ def _upsert_edge(
     edge_type: str,
     description: str,
     build_revision_no: int,
+    lookup_cache: _EdgeLookupCache | None = None,
 ) -> tuple[KnowledgeEdge, bool]:
     normalized_type = normalize_relation_type(edge_type)
-    existing = knowledge_relation_repo.find_edge(
-        session,
-        source_node_id,
-        target_node_id,
-        normalized_type,
+    edge_key = (source_node_id, target_node_id, normalized_type)
+    existing = (
+        lookup_cache.by_key.get(edge_key)
+        if lookup_cache is not None
+        else knowledge_relation_repo.find_edge(
+            session,
+            source_node_id,
+            target_node_id,
+            normalized_type,
+        )
     )
     created = existing is None
     edge = existing or KnowledgeEdge(
@@ -2341,6 +2421,8 @@ def _upsert_edge(
     else:
         session.add(edge)
     session.flush()
+    if lookup_cache is not None and edge.id is not None:
+        lookup_cache.by_key[edge_key] = edge
     return edge, created
 
 

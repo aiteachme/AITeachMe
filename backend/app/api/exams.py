@@ -1278,6 +1278,7 @@ def _schedule_exam_prewarm_task(
         kind="exam.prewarm",
         course_id=course_id,
         name=f"exam.prewarm:{course_id}:{config_hash[:12]}",
+        dedupe_key=f"exam.prewarm:{course_id}:{config_hash}",
     )
 
 
@@ -1884,6 +1885,7 @@ async def _spawn_exam_generation_after_response(
         kind="exam.generate",
         course_id=course_id,
         name=f"exam.generate:{course_id}:{paper_id}",
+        dedupe_key=f"exam.generate:{course_id}:{paper_id}",
     )
 
 
@@ -2365,6 +2367,7 @@ async def _spawn_exam_study_guide_after_response(
         kind="exam.study_guide",
         course_id=course_id,
         name=f"exam.study_guide:{course_id}:{paper_id}",
+        dedupe_key=f"exam.study_guide:{course_id}:{paper_id}",
     )
 
 

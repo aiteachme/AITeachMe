@@ -350,6 +350,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         recover_stalled_enhancements(task_registry=app.state.background_task_registry),
         kind="ingest.recovery",
         name="ingest.recovery",
+        dedupe_key="ingest.recovery",
     )
 
     logger.info(

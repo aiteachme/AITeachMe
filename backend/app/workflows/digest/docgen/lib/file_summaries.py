@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
+from app.shared.infra.runtime import gather_with_concurrency
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
@@ -402,19 +402,16 @@ async def summarize_files(
     if not packets:
         return []
     sections = list(material_context.section_packets or [])
-    return list(
-        await asyncio.gather(
-            *(
-                _summarize_one_file(
-                    packet,
-                    sections=sections,
-                    chapters=chapters,
-                    digest_mode=digest_mode,
-                    extra_metadata=dict(extra_metadata or {}),
-                )
-                for packet in packets
-            )
-        )
+    return await gather_with_concurrency(
+        packets,
+        lambda packet: _summarize_one_file(
+            packet,
+            sections=sections,
+            chapters=chapters,
+            digest_mode=digest_mode,
+            extra_metadata=dict(extra_metadata or {}),
+        ),
+        limit=min(8, get_llm_concurrency_limit()),
     )
 
 

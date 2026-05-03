@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.examine.question_build.prompts import (
     build_exam_question_requirement_messages,
@@ -1216,32 +1216,58 @@ async def generate_exam_questions_for_units(
     failed: list[ExamQuestionGenerationFailure] = []
     failures: list[str] = []
     failed_orders: list[int] = []
-    tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
+    spec_iter = iter(specs)
+    running_tasks: set[asyncio.Task[tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]]] = set()
+    worker_limit = max(1, min(len(specs), get_llm_concurrency_limit(), 8))
+
+    def _start_next() -> None:
+        try:
+            spec = next(spec_iter)
+        except StopIteration:
+            return
+        running_tasks.add(asyncio.create_task(generate_for_spec(spec)))
+
+    for _ in range(worker_limit):
+        _start_next()
+
     try:
-        for completed_task in asyncio.as_completed(tasks):
-            spec, result = await completed_task
-            if isinstance(result, Exception):
-                failed_orders.append(spec.item_order)
-                failures.append(f"item_order={spec.item_order}: {result}")
-                failure = ExamQuestionGenerationFailure(
-                    item_order=spec.item_order,
-                    question_type=spec.question_type,
-                    difficulty=spec.difficulty,
-                    knowledge_unit_ids=spec.knowledge_unit_ids,
-                    error_message=str(result),
-                )
-                failed.append(failure)
-                if on_question_failed is not None:
-                    await on_question_failed(failure)
-                continue
-            generated.append(result)
-            if on_question_generated is not None:
-                await on_question_generated(result)
+        while running_tasks:
+            completed_tasks, running_tasks = await asyncio.wait(
+                running_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for completed_task in completed_tasks:
+                spec, result = await completed_task
+                if isinstance(result, Exception):
+                    failed_orders.append(spec.item_order)
+                    failures.append(f"item_order={spec.item_order}: {result}")
+                    failure = ExamQuestionGenerationFailure(
+                        item_order=spec.item_order,
+                        question_type=spec.question_type,
+                        difficulty=spec.difficulty,
+                        knowledge_unit_ids=spec.knowledge_unit_ids,
+                        error_message=str(result),
+                    )
+                    failed.append(failure)
+                    if on_question_failed is not None:
+                        await on_question_failed(failure)
+                    _start_next()
+                    continue
+                generated.append(result)
+                if on_question_generated is not None:
+                    await on_question_generated(result)
+                _start_next()
     except asyncio.CancelledError:
-        for task in tasks:
+        for task in running_tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+        raise
+    except Exception:
+        for task in running_tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
         raise
 
     if failures and not allow_partial:

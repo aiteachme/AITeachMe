@@ -326,8 +326,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_REPAIR_OR_ROUTE: {
         "description": (
-            "根据 review_actions 执行有限回流：surface_patch/section_patch 会做局部 Markdown patch，"
-            "evidence_patch、regenerate_chapter、re_dispatch、rebuild_backbone 等重动作先结构化记录为 unresolved warnings。"
+            "根据 review_actions 执行有限回流：surface_patch/section_patch/evidence_patch 会做局部 Markdown patch，"
+            "regenerate_chapter 会降级为单章局部修补，re_dispatch/rebuild_backbone 等重动作结构化记录为 unresolved warnings。"
             "这个节点负责把复核问题转成可追踪的修补记录，不重新展开整本生成。"
         ),
         "reads": ["review_actions", "reviewed_chapter_drafts", "enhanced_chapter_drafts", "chapter_tasks", "document_backbone"],

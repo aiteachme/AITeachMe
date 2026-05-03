@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -11,8 +10,10 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models import ExamPaperItem
 from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import traceable_with_context
+from app.shared.infra.runtime import gather_with_concurrency
 from app.workflows.examine.exam_grade.prompts import (
     build_objective_feedback_messages,
     build_subjective_grade_messages,
@@ -294,7 +295,11 @@ async def grade_exam_items_with_workflow(
         # Unknown question types degrade to subjective handling.
         return await _grade_subjective_item(course_name, item)
 
-    return list(await asyncio.gather(*[_grade_item(item) for item in items]))
+    return await gather_with_concurrency(
+        items,
+        _grade_item,
+        limit=min(8, get_llm_concurrency_limit()),
+    )
 
 
 __all__ = [

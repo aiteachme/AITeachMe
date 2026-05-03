@@ -943,6 +943,7 @@ async def run_docgen_background(
                 llm_snapshot=graph_llm_snapshot,
                 docgen_state=final_docgen_state,
                 course_scope=course_scope,
+                background_task_registry=background_task_registry,
             )
             if background_task_registry is not None:
                 background_task_registry.spawn(

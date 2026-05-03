@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import inspect
 from threading import RLock
 from typing import Any
 from uuid import uuid4
@@ -25,6 +26,23 @@ class ManagedTaskRecord:
     course_id: str | None
     name: str
     created_at: object
+    dedupe_key: str | None = None
+
+
+_DEFAULT_KIND_LIMITS: dict[str, int] = {
+    "courses.delete.cleanup": 1,
+    "courses.icon_refine": 2,
+    "exam.generate": 2,
+    "exam.prewarm": 1,
+    "exam.study_guide": 2,
+    "files.index": 2,
+    "files.parse": 2,
+    "ingest.enhance": 3,
+    "ingest.enhance.recovery": 2,
+    "ingest.recovery": 1,
+    "knowledge.build.docs": 1,
+    "knowledge.build.graph": 1,
+}
 
 
 class BackgroundTaskRegistry:
@@ -33,6 +51,8 @@ class BackgroundTaskRegistry:
     def __init__(self) -> None:
         self._lock = RLock()
         self._tasks: dict[str, ManagedTaskRecord] = {}
+        self._tasks_by_dedupe_key: dict[str, str] = {}
+        self._scoped_semaphores: dict[tuple[str, str], asyncio.Semaphore] = {}
 
     def spawn(
         self,
@@ -41,11 +61,34 @@ class BackgroundTaskRegistry:
         kind: str,
         course_id: str | None = None,
         name: str | None = None,
+        dedupe_key: str | None = None,
+        max_concurrency: int | None = None,
     ) -> asyncio.Task[Any]:
-        """Create and register a tracked task."""
+        """Create and register a tracked task with optional local admission control."""
 
         task_name = name or f"{kind}:{course_id or 'global'}"
-        task = asyncio.create_task(coro, name=task_name)
+        normalized_dedupe_key = str(dedupe_key or "").strip() or None
+        with self._lock:
+            if normalized_dedupe_key is not None:
+                existing_task_id = self._tasks_by_dedupe_key.get(normalized_dedupe_key)
+                existing_record = self._tasks.get(existing_task_id or "")
+                if existing_record is not None and not existing_record.task.done():
+                    _close_unstarted_coroutine(coro)
+                    logger.info(
+                        "background_task_deduplicated",
+                        existing_task_id=existing_task_id,
+                        kind=kind,
+                        course_id=course_id,
+                        name=task_name,
+                        dedupe_key=normalized_dedupe_key,
+                    )
+                    return existing_record.task
+                if existing_task_id is not None:
+                    self._tasks_by_dedupe_key.pop(normalized_dedupe_key, None)
+
+        effective_limit = _normalize_kind_limit(kind, max_concurrency=max_concurrency)
+        guarded_coro = self._run_with_kind_limit(coro, kind=kind, course_id=course_id, limit=effective_limit)
+        task = asyncio.create_task(guarded_coro, name=task_name)
         record = ManagedTaskRecord(
             task_id=uuid4().hex,
             task=task,
@@ -53,9 +96,12 @@ class BackgroundTaskRegistry:
             course_id=course_id,
             name=task_name,
             created_at=utcnow(),
+            dedupe_key=normalized_dedupe_key,
         )
         with self._lock:
             self._tasks[record.task_id] = record
+            if normalized_dedupe_key is not None:
+                self._tasks_by_dedupe_key[normalized_dedupe_key] = record.task_id
         task.add_done_callback(
             lambda finished_task, task_id=record.task_id: self._finalize_task(task_id, finished_task)
         )
@@ -65,12 +111,41 @@ class BackgroundTaskRegistry:
             kind=kind,
             course_id=course_id,
             name=task_name,
+            dedupe_key=normalized_dedupe_key,
+            max_concurrency=effective_limit,
         )
         return task
+
+    async def _run_with_kind_limit(self, coro, *, kind: str, course_id: str | None, limit: int | None) -> Any:
+        started = False
+        try:
+            if limit is None:
+                started = True
+                return await coro
+            semaphore = self._get_scoped_semaphore(kind, course_id=course_id, limit=limit)
+            async with semaphore:
+                started = True
+                return await coro
+        finally:
+            if not started:
+                _close_unstarted_coroutine(coro)
+
+    def _get_scoped_semaphore(self, kind: str, *, course_id: str | None, limit: int) -> asyncio.Semaphore:
+        scope = str(course_id or "global").strip() or "global"
+        key = (kind, scope)
+        with self._lock:
+            semaphore = self._scoped_semaphores.get(key)
+            if semaphore is None:
+                semaphore = asyncio.Semaphore(max(1, int(limit)))
+                self._scoped_semaphores[key] = semaphore
+            return semaphore
 
     def _finalize_task(self, task_id: str, task: asyncio.Task[Any]) -> None:
         with self._lock:
             record = self._tasks.pop(task_id, None)
+            if record is not None and record.dedupe_key is not None:
+                if self._tasks_by_dedupe_key.get(record.dedupe_key) == task_id:
+                    self._tasks_by_dedupe_key.pop(record.dedupe_key, None)
         if record is None:
             return
         if task.cancelled():
@@ -175,6 +250,20 @@ class BackgroundTaskRegistry:
             )
             await asyncio.gather(*pending, return_exceptions=True)
         logger.info("background_task_shutdown_completed", completed=len(done), pending=len(pending))
+
+
+def _normalize_kind_limit(kind: str, *, max_concurrency: int | None) -> int | None:
+    if max_concurrency is not None:
+        return max(1, int(max_concurrency))
+    configured = _DEFAULT_KIND_LIMITS.get(kind)
+    if configured is None:
+        return None
+    return max(1, int(configured))
+
+
+def _close_unstarted_coroutine(coro) -> None:
+    if inspect.iscoroutine(coro):
+        coro.close()
 
 
 __all__ = ["BackgroundTaskRegistry", "ManagedTaskRecord"]

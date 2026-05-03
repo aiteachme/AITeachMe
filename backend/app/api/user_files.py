@@ -100,6 +100,7 @@ async def upload_user_files(
             kind="files.parse",
             course_id=registry_course,
             name=f"files.parse:{registry_course}",
+            dedupe_key=f"files.parse:{registry_course}:{':'.join(sorted(parse_file_ids))}",
         )
     return ok_response(data)
 

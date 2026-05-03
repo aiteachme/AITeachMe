@@ -7,12 +7,13 @@ enhancement stage before publishing.
 
 from __future__ import annotations
 
-import asyncio
 import re
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TypeVar
+
+from app.shared.infra.runtime import gather_with_concurrency
 
 ASSET_REQUEST_LANGUAGE = "atm-docgen-internal-asset-request-v1"
 ASSET_REQUEST_BEGIN = "ATM_DOCGEN_ASSET_REQUEST_V1_BEGIN::7A9F2E19E30B4B9DA0D2A9B1F6C8E7D3"
@@ -181,15 +182,15 @@ async def replace_asset_requests_with_results(
     if not normalized_kind:
         return str(markdown or ""), []
     parts: list[str | int] = []
-    render_tasks: list[Awaitable[tuple[str, _RenderMetadata]]] = []
+    render_requests: list[AssetRequest] = []
     last_index = 0
     text = str(markdown or "")
     for match in _ASSET_REQUEST_FENCE_RE.finditer(text):
         parts.append(text[last_index : match.start()])
         parsed = _parse_asset_request_body(match.group("body"), raw_block=match.group(0))
         if parsed is not None and parsed.kind == normalized_kind:
-            parts.append(len(render_tasks))
-            render_tasks.append(renderer(parsed))
+            parts.append(len(render_requests))
+            render_requests.append(parsed)
         elif parsed is None:
             parts.append("")
         else:
@@ -197,7 +198,11 @@ async def replace_asset_requests_with_results(
         last_index = match.end()
     parts.append(text[last_index:])
 
-    rendered_results = await asyncio.gather(*render_tasks) if render_tasks else []
+    rendered_results = (
+        await gather_with_concurrency(render_requests, renderer, limit=6)
+        if render_requests
+        else []
+    )
     output: list[str] = []
     metadata: list[_RenderMetadata] = []
     for part in parts:

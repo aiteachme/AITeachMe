@@ -16,10 +16,12 @@ from app.shared.infra.runtime.paths import (
     get_sqlite_db_path,
 )
 from app.shared.infra.runtime.tasks import BackgroundTaskRegistry, ManagedTaskRecord
+from app.shared.infra.runtime.concurrency import gather_with_concurrency
 
 __all__ = [
     "BackgroundTaskRegistry",
     "ManagedTaskRecord",
+    "gather_with_concurrency",
     "get_app_version",
     "get_backend_root",
     "get_guest_cookie_name",

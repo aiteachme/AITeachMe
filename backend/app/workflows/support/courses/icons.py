@@ -314,6 +314,7 @@ def schedule_course_icon_refinement(
         kind="courses.icon_refine",
         course_id=course_id,
         name=f"courses.icon_refine:{course_id}",
+        dedupe_key=f"courses.icon_refine:{course_id}",
     )
 
 
