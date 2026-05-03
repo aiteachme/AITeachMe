@@ -42,7 +42,7 @@ on:
         description: remote 桌面包使用的后端 API 地址
         type: string
         required: false
-        default: "https://aiteachme.onrender.com"
+        default: ""
       bundle_private_env:
         description: 是否把 Secret AITEACHME_BUNDLED_ENV_JSON 里的私有模型配置加密内置进 local 桌面包
         type: boolean

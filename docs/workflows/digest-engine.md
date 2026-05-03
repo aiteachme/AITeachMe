@@ -55,7 +55,7 @@ load_planner_materials
   -> normalize_and_persist_plan
 ```
 
-权威文档：`backend/app/workflows/digest/planner/FLOW_DESIGN.md`
+权威文档：`backend/app/workflows/digest/planner/README.md`
 
 ## 3. confirmed plan
 
@@ -114,7 +114,7 @@ load_context
 
 主链路文档：
 
-- Planner：`backend/app/workflows/digest/planner/FLOW_DESIGN.md`
+- Planner：`backend/app/workflows/digest/planner/README.md`
 - DocGen：`backend/app/workflows/digest/docgen/README.md`
 - KG Doc Sync：`backend/app/workflows/digest/kg_doc_sync/README.md`
 

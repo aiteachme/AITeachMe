@@ -1,6 +1,6 @@
 # 云端部署配置
 
-本文记录 AITeachMe 云端部署的当前口径。真实部署常量维护在平台配置或 `.github/workflows/deploy.yml`，文档只写占位符。
+本文记录 AITeachMe 云端部署的当前口径。非敏感部署常量可维护在 `.github/workflows/deploy.yml`；deploy hook、kubeconfig、镜像仓库密码和其他凭证必须维护在 GitHub Secrets 中。
 
 ## 部署文件
 
@@ -153,9 +153,20 @@ python scripts/bootstrap_cloud_db.py
 
 多副本时，Web 容器不要重复执行 bootstrap；只用独立 Job 跑迁移和运行时对象准备。
 
+## GitHub Actions 部署配置
+
+`.github/workflows/deploy.yml` 可以直接维护 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等非敏感常量，避免每次迁移仓库都重新配置 Variables。
+
+真正授权部署的内容必须放 GitHub Secrets：
+
+- Cloudflare Pages：`CLOUDFLARE_DEPLOY_KEY`。
+- Sealos：`SEALOS_KUBECONFIG_B64`、`ALIYUN_ACR_USERNAME`、`ALIYUN_ACR_PASSWORD`。
+
+缺少对应 Secret 时，部署 job 会跳过并在 GitHub Actions summary 中说明原因。
+
 ## 上线核对
 
-- `GET /api/health` 正常。
+- 通过 Sealos 前端公网域名访问 `GET /api/health` 正常，或在集群内对后端 Pod 执行 localhost health check 正常。
 - PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 migration、运行时对象准备和 schema 检查。
 - `STORAGE_BACKEND=s3` 时对象存储变量完整。
 - 首次接入新 OSS 可临时打开 `S3_STARTUP_SMOKE_TEST=true`，验证完成后关闭。

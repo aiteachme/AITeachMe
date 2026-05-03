@@ -1,5 +1,5 @@
 param(
-    [string]$ApiUrl = "https://aiteachme.onrender.com",
+    [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
     [string]$BackendPort = "",
     [switch]$ImportBundledEnv,

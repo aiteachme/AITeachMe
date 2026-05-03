@@ -40,7 +40,13 @@ IGNORED_DIRS = {
     ".idea",
     ".vscode",
     ".pytest_cache",
+    ".playwright-mcp",
+    ".codex",
     "data",
+    "release",
+    "desktop-release",
+    "desktop-release-electron",
+    "desktop-release-tauri",
 }
 
 IGNORED_SUFFIXES = {
@@ -134,7 +140,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def should_skip(path: Path) -> bool:
-    return any(part in IGNORED_DIRS for part in path.parts)
+    if any(part in IGNORED_DIRS for part in path.parts):
+        return True
+    parts = path.parts
+    return len(parts) >= 4 and parts[:4] == ("frontend", "src-tauri", "resources", "backend")
 
 
 def is_likely_binary(data: bytes) -> bool:

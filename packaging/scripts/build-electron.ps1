@@ -82,9 +82,13 @@ function Resolve-PythonCommand {
 
     $conda = Get-Command "conda.exe", "conda.cmd", "conda" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -ne $conda) {
+        $condaEnvName = [Environment]::GetEnvironmentVariable("AITEACHME_CONDA_ENV", "Process")
+        if ([string]::IsNullOrWhiteSpace($condaEnvName)) {
+            $condaEnvName = "aiteachme"
+        }
         return @{
             File = $conda.Source
-            PrefixArgs = @("run", "--no-capture-output", "-n", "atm", "python")
+            PrefixArgs = @("run", "--no-capture-output", "-n", $condaEnvName, "python")
         }
     }
 

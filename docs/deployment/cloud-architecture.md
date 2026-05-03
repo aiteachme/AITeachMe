@@ -47,7 +47,7 @@ AITeachMe 同时支持：
 
 ## 相关文档
 
-- `11_database_and_storage_architecture.md`：数据库和 ContentStore 分工。
-- `16_cloud_db_migrations.md`：云端 PostgreSQL 迁移流程。
-- `15_export_import.md`：`.atmx` 和演示课程分发。
-- `17_settings_config_ownership.md`：local/cloud 设置页边界。
+- [数据库与存储架构](../architecture/database-and-storage.md)：数据库和 ContentStore 分工。
+- [云端数据库迁移](./cloud-db-migrations.md)：云端 PostgreSQL 迁移流程。
+- [导入导出](../operations/export-import.md)：`.atmx` 和演示课程分发。
+- [设置与配置归属](../architecture/settings-config-ownership.md)：local/cloud 设置页边界。

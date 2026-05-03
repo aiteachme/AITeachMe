@@ -27,7 +27,7 @@ Profile   显影引擎：沉淀掌握度、薄弱点、复习任务和学习画�
 
 ```powershell
 cd backend
-conda activate atm
+pip install -e .
 $env:PYTHONUTF8 = "1"
 uvicorn app.main:app --reload --port 9020
 ```
@@ -85,9 +85,13 @@ shared.infra -> shared.kernel
 - [Workflows 结构规则](./backend/app/workflows/README.md)
 - [Infra 分层说明](./backend/app/shared/infra/README.md)
 
+## License
+
+本仓库使用 [Apache License 2.0](./LICENSE)。
+
 ## 开发约束
 
-- Python 环境默认使用 `conda activate atm`。
+- Python 使用 3.11+；如使用 Conda、venv 或其他环境管理器，请先激活自己的项目环境。
 - 输入输出文件读写统一使用 UTF-8。
 - `frontend/src/api/generated/` 由 Orval 生成，不手动修改。
 - 架构改动优先同步 `docs/` 的当前事实源，以及对应模块目录内 README。

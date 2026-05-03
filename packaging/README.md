@@ -45,6 +45,14 @@
 - `-BackendPort <port>`：local 桌面包的本地后端端口；默认留空，由 Electron local / Tauri local 启动时自动申请可用端口。仅在需要固定端口调试时传入。
 - `-SkipInstall`：跳过依赖安装步骤。
 
+Python 解释器解析顺序：
+
+1. `AITEACHME_PYTHON` 指向的 Python。
+2. 当前已激活环境的 `CONDA_PREFIX`。
+3. 仓库根目录 `.venv`。
+4. `conda run -n <env>`，环境名来自 `AITEACHME_CONDA_ENV`，未设置时使用 `aiteachme`。
+5. `py -3.11` 或 PATH 中的 `python`。
+
 ## 产物命名
 
 最终产物统一收集到：

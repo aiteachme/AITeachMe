@@ -85,15 +85,15 @@ backend/app/api/knowledge_docs.py
 读代码顺序：
 
 1. `backend/app/api/knowledge_docs.py`
-2. `backend/app/workflows/digest/planner/FLOW_DESIGN.md`
+2. `backend/app/workflows/digest/planner/README.md`
 3. `backend/app/workflows/digest/planner/graph.py`
 4. `backend/app/workflows/digest/docgen/README.md`
 5. `backend/app/workflows/digest/docgen/graph.py`
 6. `backend/app/workflows/digest/docgen/state.py`
 7. `backend/app/workflows/digest/docgen/lib/models.py`
 
-其中 `planner/` 目录当前以 `FLOW_DESIGN.md` 为主文档；`docgen/` 和 `kg_doc_sync/`
-目录当前以各自 `README.md` 为主文档。入口说明和流程判断都以对应目录内的主文档为准。
+其中 `planner/`、`docgen/` 和 `kg_doc_sync/` 目录当前都以各自 `README.md`
+为主文档。入口说明和流程判断都以对应目录内的主文档为准。
 
 ## 5. 运行时文件
 
@@ -194,7 +194,7 @@ frontend/dist/
 
 ## 9. 本地开发约束
 
-- Python 环境：`conda activate atm`
+- Python 环境：使用 Python 3.11+，先激活自己的项目环境。
 - 文件读写统一 UTF-8。
 - 修改前确认目标不是生成文件。
 - 架构判断优先看当前代码、`backend/app/workflows/*.md`、`backend/app/shared/infra/*.md`。
@@ -208,4 +208,4 @@ frontend/dist/
 4. `docs/architecture/ai-stack-and-infra.md`
 5. `backend/app/workflows/README.md`
 6. `backend/app/shared/infra/README.md`
-7. 进入具体 engine 或 support README / FLOW_DESIGN
+7. 进入具体 engine 或 support README

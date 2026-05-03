@@ -238,5 +238,5 @@ await acompletion_with_fallback(messages, model="light")
 ## 根目录能力包说明
 
 - `backend/tools/` 已删除。旧 YAML-only 工具说明不会注册运行时工具，后续不要恢复这套机制。
-- `backend/toolpacks/` 是开发者/管理员使用的可执行工具扩展点，必须提供 `manifest.yaml + handler.py`。
+- `backend/toolpacks/` 是开发者/管理员使用的可选可执行工具扩展点；只有提供 `manifest.yaml + handler.py` 的子目录才会注册运行时工具。
 - 独立 prompt 扩展层已删除。后续教学策略由 Planner、DocGen 节点和 confirmed plan 显式决定。

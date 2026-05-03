@@ -5,12 +5,17 @@
 *.yml   eol=lf
 *.yaml  eol=lf
 *.json  eol=lf
+*.json.example eol=lf
+*.toml  eol=lf
+*.lock  eol=lf
 *.sample eol=lf
+*.bat   eol=crlf
 *.ps1   eol=crlf
 Dockerfile eol=lf
 *.Dockerfile eol=lf
 *.dockerignore eol=lf
 .dockerignore eol=lf
+LICENSE eol=lf
 .gitattributes eol=lf
 .gitignore eol=lf
 *.gitignore eol=lf
