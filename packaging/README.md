@@ -96,11 +96,11 @@ Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时前端会提示用户确认；确认后下载已签名的 NSIS updater 安装包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+有新版时前端会提示用户确认；确认后下载已签名的 NSIS 安装包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
-如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、updater 安装包和对应 `.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
+如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、安装包和对应 `.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
 
 - `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：客户端检查的 `latest-tauri-local.json` 公开地址。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
@@ -124,9 +124,8 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 配置齐全时，GitHub Release 会额外上传：
 
-- 普通 Tauri local：`AiTeachMe-v<version>-updater-tauri.exe`
-- 预绑定 Tauri local：`AiTeachMe-v<version>-updater-tauri-bundled.exe`
-- 对应的 `.sig` 签名文件
+- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
 - `latest-tauri-local.json`
 
 `tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。

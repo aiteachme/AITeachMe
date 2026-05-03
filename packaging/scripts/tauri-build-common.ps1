@@ -249,12 +249,14 @@ function Copy-TauriArtifacts {
     }
 
     $releaseOutputs = @()
+    $installerReleaseOutputsBySource = @{}
     foreach ($artifact in $artifacts) {
         $artifactName = "AiTeachMe-v$projectVersion-installer$ReleaseSuffix$($artifact.Extension)"
         $releaseOutput = Join-Path $releaseDir $artifactName
         Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $bundleArtifactDir $artifact.Name) -Force
         Copy-Item -LiteralPath $artifact.FullName -Destination $releaseOutput -Force
         $releaseOutputs += $releaseOutput
+        $installerReleaseOutputsBySource[$artifact.FullName] = $releaseOutput
     }
 
     $updaterOutputs = @()
@@ -274,43 +276,52 @@ function Copy-TauriArtifacts {
             } |
             Sort-Object LastWriteTime -Descending)
 
-        $updaterPackages = @()
         if ($legacyUpdaterPackages.Count -gt 0) {
-            $updaterPackages = @($legacyUpdaterPackages)
-        }
-        else {
-            $updaterPackages = @($signedInstallerUpdaterPackages)
-        }
+            foreach ($updaterPackage in $legacyUpdaterPackages) {
+                $sigPath = "$($updaterPackage.FullName).sig"
+                if (-not (Test-Path $sigPath)) {
+                    throw "Tauri updater signature was not produced: $sigPath"
+                }
 
-        if ($Flavor -eq "tauri-local" -and $updaterPackages.Count -eq 0) {
+                $updaterExtension = if ($updaterPackage.Name -like "*.nsis.zip") {
+                    ".nsis.zip"
+                }
+                else {
+                    ".msi.zip"
+                }
+                $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix$updaterExtension"
+                $updaterReleaseOutput = Join-Path $releaseDir $updaterName
+                $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
+
+                Copy-Item -LiteralPath $updaterPackage.FullName -Destination (Join-Path $bundleArtifactDir $updaterPackage.Name) -Force
+                Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
+                Copy-Item -LiteralPath $updaterPackage.FullName -Destination $updaterReleaseOutput -Force
+                Copy-Item -LiteralPath $sigPath -Destination $updaterSigReleaseOutput -Force
+                $updaterOutputs += $updaterReleaseOutput
+                $updaterOutputs += $updaterSigReleaseOutput
+            }
+        }
+        elseif ($signedInstallerUpdaterPackages.Count -gt 0) {
+            foreach ($updaterPackage in $signedInstallerUpdaterPackages) {
+                $sigPath = "$($updaterPackage.FullName).sig"
+                if (-not (Test-Path $sigPath)) {
+                    throw "Tauri updater signature was not produced: $sigPath"
+                }
+
+                $installerReleaseOutput = $installerReleaseOutputsBySource[$updaterPackage.FullName]
+                if ([string]::IsNullOrWhiteSpace($installerReleaseOutput)) {
+                    throw "Tauri signed updater installer was not copied as a release package: $($updaterPackage.FullName)"
+                }
+
+                $installerSigReleaseOutput = "$installerReleaseOutput.sig"
+                Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
+                Copy-Item -LiteralPath $sigPath -Destination $installerSigReleaseOutput -Force
+                $updaterOutputs += $installerReleaseOutput
+                $updaterOutputs += $installerSigReleaseOutput
+            }
+        }
+        elseif ($Flavor -eq "tauri-local") {
             throw "Could not find a signed Tauri updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
-        }
-
-        foreach ($updaterPackage in $updaterPackages) {
-            $sigPath = "$($updaterPackage.FullName).sig"
-            if (-not (Test-Path $sigPath)) {
-                throw "Tauri updater signature was not produced: $sigPath"
-            }
-
-            $updaterExtension = if ($updaterPackage.Name -like "*.nsis.zip") {
-                ".nsis.zip"
-            }
-            elseif ($updaterPackage.Name -like "*.msi.zip") {
-                ".msi.zip"
-            }
-            else {
-                $updaterPackage.Extension
-            }
-            $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix$updaterExtension"
-            $updaterReleaseOutput = Join-Path $releaseDir $updaterName
-            $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
-
-            Copy-Item -LiteralPath $updaterPackage.FullName -Destination (Join-Path $bundleArtifactDir $updaterPackage.Name) -Force
-            Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
-            Copy-Item -LiteralPath $updaterPackage.FullName -Destination $updaterReleaseOutput -Force
-            Copy-Item -LiteralPath $sigPath -Destination $updaterSigReleaseOutput -Force
-            $updaterOutputs += $updaterReleaseOutput
-            $updaterOutputs += $updaterSigReleaseOutput
         }
     }
 
