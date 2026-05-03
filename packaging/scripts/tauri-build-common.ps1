@@ -259,12 +259,31 @@ function Copy-TauriArtifacts {
 
     $updaterOutputs = @()
     if ($IncludeUpdater) {
-        $updaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
-            Where-Object { $_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip" } |
+        $legacyUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
+            Where-Object {
+                ($_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip") -or
+                ($_.Directory.Name -eq "msi" -and $_.Name -like "*.msi.zip")
+            } |
             Sort-Object LastWriteTime -Descending)
 
+        $signedInstallerUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
+            Where-Object {
+                $isSignedNsisInstaller = $_.Directory.Name -eq "nsis" -and $_.Extension -eq ".exe" -and (Test-Path "$($_.FullName).sig")
+                $isSignedMsiInstaller = $_.Directory.Name -eq "msi" -and $_.Extension -eq ".msi" -and (Test-Path "$($_.FullName).sig")
+                $isSignedNsisInstaller -or $isSignedMsiInstaller
+            } |
+            Sort-Object LastWriteTime -Descending)
+
+        $updaterPackages = @()
+        if ($legacyUpdaterPackages.Count -gt 0) {
+            $updaterPackages = @($legacyUpdaterPackages)
+        }
+        else {
+            $updaterPackages = @($signedInstallerUpdaterPackages)
+        }
+
         if ($Flavor -eq "tauri-local" -and $updaterPackages.Count -eq 0) {
-            throw "Could not find Tauri NSIS updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
+            throw "Could not find a signed Tauri updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
         }
 
         foreach ($updaterPackage in $updaterPackages) {
@@ -273,7 +292,16 @@ function Copy-TauriArtifacts {
                 throw "Tauri updater signature was not produced: $sigPath"
             }
 
-            $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix.nsis.zip"
+            $updaterExtension = if ($updaterPackage.Name -like "*.nsis.zip") {
+                ".nsis.zip"
+            }
+            elseif ($updaterPackage.Name -like "*.msi.zip") {
+                ".msi.zip"
+            }
+            else {
+                $updaterPackage.Extension
+            }
+            $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix$updaterExtension"
             $updaterReleaseOutput = Join-Path $releaseDir $updaterName
             $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
 
@@ -291,8 +319,12 @@ function Copy-TauriArtifacts {
             throw "Tauri local updater package was not copied."
         }
 
-        $updaterZip = $updaterOutputs | Where-Object { $_ -like "*.nsis.zip" } | Select-Object -First 1
-        $updaterSig = "$updaterZip.sig"
+        $updaterPackageOutput = $updaterOutputs | Where-Object { $_ -notlike "*.sig" } | Select-Object -First 1
+        if ([string]::IsNullOrWhiteSpace($updaterPackageOutput)) {
+            throw "Tauri local updater package was not copied."
+        }
+
+        $updaterSig = "$updaterPackageOutput.sig"
         if (-not (Test-Path $updaterSig)) {
             throw "Tauri local updater signature is missing: $updaterSig"
         }
@@ -307,7 +339,7 @@ function Copy-TauriArtifacts {
             $repository = "aiteachme/AITeachMe"
         }
 
-        $updaterFileName = Split-Path $updaterZip -Leaf
+        $updaterFileName = Split-Path $updaterPackageOutput -Leaf
         $assetBaseUrl = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL", "Process")
         if ([string]::IsNullOrWhiteSpace($assetBaseUrl)) {
             $assetBaseUrl = "https://github.com/$repository/releases/download/$releaseTag"
