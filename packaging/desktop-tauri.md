@@ -22,6 +22,7 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
 - updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.exe`
+- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri-bundled.exe`
 - updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.exe.sig`
 - updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
 
@@ -100,6 +101,8 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
+
+预绑定配置会随安装包分发，不应作为公开发布的密钥保护边界；公开 Release 不要内置真实高权限 Provider Key。
 
 ## 前置要求
 

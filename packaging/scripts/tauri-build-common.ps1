@@ -314,7 +314,7 @@ function Copy-TauriArtifacts {
         }
     }
 
-    if ($IncludeUpdater -and $Flavor -eq "tauri-local" -and $ReleaseSuffix -eq "-tauri") {
+    if ($IncludeUpdater -and $Flavor -eq "tauri-local") {
         if ($updaterOutputs.Count -eq 0) {
             throw "Tauri local updater package was not copied."
         }

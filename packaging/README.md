@@ -124,8 +124,9 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 配置齐全时，GitHub Release 会额外上传：
 
-- `AiTeachMe-v<version>-updater-tauri.exe`
-- `AiTeachMe-v<version>-updater-tauri.exe.sig`
+- 普通 Tauri local：`AiTeachMe-v<version>-updater-tauri.exe`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-updater-tauri-bundled.exe`
+- 对应的 `.sig` 签名文件
 - `latest-tauri-local.json`
 
 `tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。
@@ -162,6 +163,8 @@ JSON 结构：
 ```
 
 该选项只对带本地后端的 Electron local / Tauri local 有实际效果。打包脚本会生成 `packaging\artifacts\generated-configs\aiteachme_bundled_env.enc.json`，PyInstaller 会把它收进后端运行时。应用启动后会把这些值作为默认环境变量使用；设置页中的预绑定密钥不会回显明文，会显示为“预绑定密钥，已加密隐藏”。
+
+注意：预绑定配置会随安装包一起分发，只适合受控渠道和低权限配置，不应当把真实高权限 Provider Key 放进公开 GitHub Release。如果误发布了包含真实密钥的 bundled 安装包，应删除对应 Release asset 并轮换密钥。
 
 ## GitHub Release 预绑定配置
 
