@@ -26,6 +26,22 @@ gateways, deployment tooling, or brand assets may be released under separate
 terms. Unless a file, package, service, or written agreement says otherwise,
 the code in this repository remains licensed under AGPL-3.0-only.
 
+Private or proprietary modules should live outside this AGPL repository, or in
+clearly separated packages, services, or directories that carry their own
+license notice. If proprietary code imports, links with, modifies, or is
+distributed as one combined program with AGPL-covered AITeachMe code, you
+should assume AGPL obligations may apply unless you have a separate commercial
+license from the project owners.
+
+For enterprise features that must stay closed, prefer one of these boundaries:
+
+- a separate service communicating with AITeachMe over a documented HTTP or
+  RPC API;
+- a private package distributed under a written commercial license;
+- a hosted managed service operated by the project owners;
+- deployment or integration tooling that does not copy AGPL-covered source into
+  proprietary deliverables.
+
 ## Trademarks
 
 The AGPL license covers copyright permissions for the software. It does not

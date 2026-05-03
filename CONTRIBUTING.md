@@ -15,9 +15,19 @@ that cannot legally be distributed under AGPL-3.0-only.
 ## Commercial Licensing Flexibility
 
 AITeachMe may offer separate commercial licenses or commercial modules in the
-future. For larger contributions, maintainers may require a Contributor License
-Agreement before merging so that the project can preserve clear licensing and
-commercial authorization paths.
+future. To preserve that option, maintainers should not merge substantial
+external code contributions unless copyright ownership and relicensing rights
+are clear.
+
+For non-trivial code, documentation, prompt, workflow, model-routing, or product
+contributions, maintainers may require a Contributor License Agreement or
+another written contribution agreement before merging. Small typo fixes,
+configuration corrections, and issue reports usually do not need a separate
+agreement.
+
+Do not submit private commercial module code to this AGPL repository unless the
+file, package, service, or written agreement clearly states the separate license
+terms that apply to that module.
 
 ## Generated Files
 
