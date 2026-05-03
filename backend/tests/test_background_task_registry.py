@@ -77,3 +77,27 @@ async def test_background_task_registry_limits_are_scoped_by_course() -> None:
     await registry.shutdown()
 
     assert max_active_count == 2
+
+
+@pytest.mark.anyio
+async def test_background_task_registry_shutdown_preserves_timeout_for_stubborn_task() -> None:
+    registry = BackgroundTaskRegistry()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stubborn_job() -> None:
+        started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    task = registry.spawn(stubborn_job(), kind="test.registry.stubborn")
+    await started.wait()
+
+    await asyncio.wait_for(registry.shutdown(cancel_timeout_s=0.01), timeout=0.5)
+
+    assert not task.done()
+
+    release.set()
+    await asyncio.wait_for(task, timeout=0.5)

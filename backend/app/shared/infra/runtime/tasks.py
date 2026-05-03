@@ -248,7 +248,6 @@ class BackgroundTaskRegistry:
                 completed=len(done),
                 pending=len(pending),
             )
-            await asyncio.gather(*pending, return_exceptions=True)
         logger.info("background_task_shutdown_completed", completed=len(done), pending=len(pending))
 
 
