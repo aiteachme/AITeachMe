@@ -25,7 +25,7 @@ on:
         description: 要打包并附加到 GitHub Release 的桌面端模式
         type: choice
         required: true
-        default: electron-local
+        default: tauri-local
         options:
           - electron-local
           - electron-remote

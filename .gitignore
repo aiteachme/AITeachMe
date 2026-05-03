@@ -37,6 +37,7 @@ settings.private.yaml
 /packaging/artifacts/
 /packaging/private/*.json
 /packaging/private/*.key
+/packaging/private/*.key.pub
 /packaging/private/*.pem
 /packaging/release/
 /packaging/electron/
