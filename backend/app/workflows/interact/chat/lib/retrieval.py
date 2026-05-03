@@ -158,20 +158,28 @@ def _merge_context_results(
 ) -> list[RetrievedContext]:
     merged: list[RetrievedContext] = []
     seen: set[tuple[str, int]] = set()
-    for item in [*graph_results, *vector_results]:
-        if item.knowledge_unit_id is not None:
-            key = ("unit", int(item.knowledge_unit_id))
-        elif item.chunk_id:
-            key = ("chunk", int(item.chunk_id))
-        else:
-            key = ("content", hash((item.title, item.content[:160])))
-        if key in seen:
+    strong_graph_results = [item for item in graph_results if not item.low_relevance]
+    weak_graph_results = [item for item in graph_results if item.low_relevance]
+    for item in [*strong_graph_results, *vector_results, *weak_graph_results]:
+        keys = _context_result_keys(item)
+        if seen & keys:
             continue
-        seen.add(key)
+        seen.update(keys)
         merged.append(item)
         if len(merged) >= top_k:
             break
     return merged
+
+
+def _context_result_keys(item: RetrievedContext) -> set[tuple[str, int]]:
+    keys: set[tuple[str, int]] = set()
+    if item.knowledge_unit_id is not None:
+        keys.add(("unit", int(item.knowledge_unit_id)))
+    if item.chunk_id:
+        keys.add(("chunk", int(item.chunk_id)))
+    if not keys:
+        keys.add(("content", hash((item.title, item.content[:160]))))
+    return keys
 
 
 @traceable(
