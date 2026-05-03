@@ -24,7 +24,7 @@ class CourseSupportModelPolicy:
     call_purpose: LLMCallPurpose
     model: CourseSupportModelSlot
     max_tokens: int
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -33,8 +33,8 @@ class CourseSupportModelPolicy:
             "model": self.model,
             "max_tokens": self.max_tokens,
         }
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def completion_kwargs_with_metadata(
@@ -63,8 +63,8 @@ _POLICIES: dict[CourseSupportModelStep, CourseSupportModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        max_tokens=80,
-        temperature_override=0.0,
+        max_tokens=128,
+        temperature=0.0,
         note="图标选择是短分类，但给少量冗余避免模型输出解释时被截断。",
     ),
 }
@@ -96,4 +96,3 @@ __all__ = [
     "course_support_completion_kwargs_with_metadata",
     "get_course_support_model_policy",
 ]
-

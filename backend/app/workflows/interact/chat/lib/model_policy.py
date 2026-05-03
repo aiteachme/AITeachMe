@@ -28,7 +28,7 @@ class InteractModelPolicy:
     call_purpose: LLMCallPurpose
     model: InteractModelSlot
     max_tokens: int | None = None
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -38,8 +38,8 @@ class InteractModelPolicy:
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def llm_kwargs(self) -> dict[str, object]:
@@ -48,8 +48,8 @@ class InteractModelPolicy:
         kwargs: dict[str, object] = {}
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(self, *, model_override: str | None = None) -> dict[str, object]:
@@ -86,7 +86,8 @@ _POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
         call_type="stream",
         call_purpose=LLMCallPurpose.CHAT,
         model=INTERACT_MODEL_SELECTOR,
-        max_tokens=8000,
+        max_tokens=12000,
+        temperature=0.7,
         note="伴读最终回答可长可短，给足输出空间避免流式回答被过早截断。",
     ),
     InteractModelStep.SESSION_TITLE: InteractModelPolicy(
@@ -94,8 +95,8 @@ _POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.SUMMARIZE,
         model="light",
-        max_tokens=96,
-        temperature_override=0.2,
+        max_tokens=128,
+        temperature=0.2,
         note="会话标题仍是短输出，但给模型留出清洗前的冗余空间。",
     ),
     InteractModelStep.HOME_INTAKE_INTENT: InteractModelPolicy(
@@ -103,8 +104,8 @@ _POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.CHAT,
         model="light",
-        max_tokens=1200,
-        temperature_override=0.1,
+        max_tokens=1800,
+        temperature=0.1,
         note="首页入口需要 JSON 意图和可直接展示的追问文案。",
     ),
 }
@@ -147,4 +148,3 @@ __all__ = [
     "interact_completion_kwargs_with_metadata",
     "interact_llm_kwargs",
 ]
-

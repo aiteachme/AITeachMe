@@ -24,7 +24,7 @@ class IngestParsingModelPolicy:
     call_purpose: LLMCallPurpose
     model: IngestParsingModelSlot | None
     max_tokens: int
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -32,8 +32,8 @@ class IngestParsingModelPolicy:
             "call_purpose": self.call_purpose,
             "max_tokens": self.max_tokens,
         }
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def completion_kwargs_with_metadata(
@@ -63,8 +63,8 @@ _POLICIES: dict[IngestParsingModelStep, IngestParsingModelPolicy] = {
         call_type="vision",
         call_purpose=LLMCallPurpose.VISION,
         model=None,
-        max_tokens=6000,
-        temperature_override=0.3,
+        max_tokens=9000,
+        temperature=0.3,
         note="单页图片 OCR 需要保留公式、表格和标题层级，输出预算不依赖 provider 默认值。",
     ),
 }
@@ -98,4 +98,3 @@ __all__ = [
     "get_ingest_parsing_model_policy",
     "ingest_parsing_completion_kwargs_with_metadata",
 ]
-

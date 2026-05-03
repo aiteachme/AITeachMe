@@ -622,7 +622,7 @@ _extract_chapter_with_retries
     - `_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1800`
     - `_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2`
     - `_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4`
-    - `KGDocSyncModelPolicy.timeout_s = 180`，位于 `kg_doc_sync/lib/model_policy.py`，与共享 EXTRACT LLM profile 保持一致。
+    - `KGDocSyncModelPolicy.timeout_s = 300`，位于 `kg_doc_sync/lib/model_policy.py`，与共享 EXTRACT LLM profile 保持一致。
     - `KGDocSyncModelPolicy.max_content_chars = 12000`，主抽取仍走 LLM，但会限制单章输入窗口；常规任务通常先被 1800 字符目标拆小，这里主要保护无清晰子标题的长章。
     - `KGDocSyncModelPolicy.course_context_max_chars = 2400`，避免课程上下文挤占正文片段预算，同时保留足够的 DocGen 辅助信号用于消歧。
   SectionExtractionPayload 包含：
@@ -635,8 +635,8 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=5200`，`timeout_s=180`，并限制单片段最多 8 个节点、10 条关系。
-    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=2400`，`timeout_s=180`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=7000`，`timeout_s=300`，并限制单片段最多 8 个节点、10 条关系。
+    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=3600`，`timeout_s=300`。
     - 结构化抽取失败会按任务重试；重试耗尽后该分片写入失败诊断并返回空 payload，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items

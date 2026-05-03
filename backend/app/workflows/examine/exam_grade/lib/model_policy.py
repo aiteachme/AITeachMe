@@ -26,7 +26,7 @@ class ExamGradeModelPolicy:
     call_purpose: LLMCallPurpose
     model: ExamGradeModelSlot
     max_tokens: int
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -35,8 +35,8 @@ class ExamGradeModelPolicy:
             "model": self.model,
             "max_tokens": self.max_tokens,
         }
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(self) -> dict[str, object]:
@@ -63,8 +63,8 @@ _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.GRADE,
         model="reason",
-        max_tokens=1200,
-        temperature_override=0.1,
+        max_tokens=1800,
+        temperature=0.1,
         note="客观题反馈短，但需要容纳错因标签和解释。",
     ),
     ExamGradeModelStep.SUBJECTIVE_GRADE: ExamGradeModelPolicy(
@@ -72,8 +72,8 @@ _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.GRADE,
         model="reason",
-        max_tokens=1800,
-        temperature_override=0.1,
+        max_tokens=2600,
+        temperature=0.1,
         note="主观题判分反馈比客观题更长。",
     ),
     ExamGradeModelStep.STUDY_GUIDE: ExamGradeModelPolicy(
@@ -81,8 +81,8 @@ _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.SUMMARIZE,
         model="reason",
-        max_tokens=3200,
-        temperature_override=0.2,
+        max_tokens=4500,
+        temperature=0.2,
         note="整卷学习指南包含总结、优势、缺口、行动项和复习任务。",
     ),
 }
@@ -117,4 +117,3 @@ __all__ = [
     "exam_grade_completion_kwargs_with_metadata",
     "get_exam_grade_model_policy",
 ]
-

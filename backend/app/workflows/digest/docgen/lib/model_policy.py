@@ -38,7 +38,7 @@ class DocGenModelPolicy:
     call_purpose: LLMCallPurpose | None
     model: DocGenModelSlot | None
     max_tokens: int | None = None
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -51,8 +51,8 @@ class DocGenModelPolicy:
             kwargs["model"] = self.model
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(self) -> dict[str, object]:
@@ -80,7 +80,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="reason",
-        max_tokens=1000,
+        max_tokens=1400,
+        temperature=0.1,
         note="文档级短意图判断，保留策略推理能力。",
     ),
     DocGenModelStep.FILE_SUMMARY: DocGenModelPolicy(
@@ -88,7 +89,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=9000,
+        max_tokens=12000,
+        temperature=0.1,
         note="文件级摘要容易被长 JSON 截断，输入已采样但输出预算仍保持宽松。",
     ),
     DocGenModelStep.TITLE_LOCK: DocGenModelPolicy(
@@ -96,8 +98,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=420,
-        temperature_override=0.1,
+        max_tokens=700,
+        temperature=0.1,
         note="标题输出极短，但要守住 confirmed plan 语义。",
     ),
     DocGenModelStep.CHAPTER_EXECUTION_BRIEF: DocGenModelPolicy(
@@ -105,8 +107,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=900,
-        temperature_override=0.1,
+        max_tokens=1400,
+        temperature=0.1,
         note="章级最小执行 brief，需要稳定抽取教学目标。",
     ),
     DocGenModelStep.QUERY_PLANNING: DocGenModelPolicy(
@@ -114,7 +116,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.REASONING,
         model="reason",
-        max_tokens=1400,
+        max_tokens=2200,
+        temperature=0.2,
         note="研究查询拆解需要覆盖缺口判断。",
     ),
     DocGenModelStep.RESEARCH_PURIFY: DocGenModelPolicy(
@@ -122,7 +125,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=4200,
+        max_tokens=6000,
+        temperature=0.1,
         note="清洗 dense context，不做重推理。",
     ),
     DocGenModelStep.WRITER: DocGenModelPolicy(
@@ -130,7 +134,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="reason",
-        max_tokens=9000,
+        max_tokens=12000,
+        temperature=0.5,
         note="实际 model slot 由 digest mode profile 决定。",
     ),
     DocGenModelStep.HEADING_REPAIR: DocGenModelPolicy(
@@ -138,7 +143,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=7000,
+        max_tokens=9000,
+        temperature=0.1,
         note="只修结构和标题层级。",
     ),
     DocGenModelStep.CHAPTER_REWRITE: DocGenModelPolicy(
@@ -146,7 +152,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
-        max_tokens=9000,
+        max_tokens=12000,
+        temperature=0.5,
         note="章节质量不足时的 bounded rewrite。",
     ),
     DocGenModelStep.MERMAID_PLACEHOLDER: DocGenModelPolicy(
@@ -154,7 +161,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=3200,
+        max_tokens=4500,
+        temperature=0.1,
         note="辅助资产生成，优先低成本。",
     ),
     DocGenModelStep.INTERACTIVE_HTML: DocGenModelPolicy(
@@ -162,8 +170,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
-        max_tokens=7000,
-        temperature_override=0.1,
+        max_tokens=12000,
+        temperature=0.1,
         note="交互页需要较完整的 HTML 生成能力。",
     ),
     DocGenModelStep.CHAPTER_REVIEW: DocGenModelPolicy(
@@ -171,7 +179,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
-        max_tokens=3200,
+        max_tokens=4500,
+        temperature=0.1,
         note="并行结构化审稿，优先速度与成本。",
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
@@ -179,7 +188,8 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
-        max_tokens=7000,
+        max_tokens=9000,
+        temperature=0.5,
         note="直接改正文，需要比 light 更稳。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(
@@ -187,6 +197,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="image",
         call_purpose=LLMCallPurpose.IMAGE_GENERATION,
         model="image_generation",
+        temperature=0.7,
         note="图片模型由 settings.models.image_generation 决定。",
     ),
 }

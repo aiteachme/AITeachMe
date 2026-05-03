@@ -24,7 +24,7 @@ class ProfileModelPolicy:
     call_purpose: LLMCallPurpose
     model: ProfileModelSlot
     max_tokens: int
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -33,8 +33,8 @@ class ProfileModelPolicy:
             "model": self.model,
             "max_tokens": self.max_tokens,
         }
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def completion_kwargs_with_metadata(
@@ -63,7 +63,8 @@ _POLICIES: dict[ProfileModelStep, ProfileModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.SUMMARIZE,
         model="light",
-        max_tokens=1200,
+        max_tokens=1800,
+        temperature=0.5,
         note="学习建议是轻量总结，但设置明确输出预算避免 provider 默认过小。",
     ),
 }
@@ -98,4 +99,3 @@ __all__ = [
     "profile_completion_kwargs",
     "profile_completion_kwargs_with_metadata",
 ]
-

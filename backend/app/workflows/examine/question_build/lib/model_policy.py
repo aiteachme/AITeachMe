@@ -32,7 +32,7 @@ class QuestionBuildModelPolicy:
     tokens_per_question: int | None = None
     max_tokens_cap: int | None = None
     attempt_max_tokens: tuple[int, ...] = ()
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def resolved_max_tokens(
@@ -67,8 +67,8 @@ class QuestionBuildModelPolicy:
         max_tokens = self.resolved_max_tokens(question_count=question_count, attempt=attempt)
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(
@@ -110,8 +110,8 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        max_tokens=2600,
-        temperature_override=0.1,
+        max_tokens=3600,
+        temperature=0.1,
         note="知识点候选池筛选需要返回排序、理由和兜底提示，避免长图谱下 JSON 被截断。",
     ),
     QuestionBuildModelStep.ALLOCATE_BLUEPRINTS: QuestionBuildModelPolicy(
@@ -119,10 +119,10 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        min_tokens=3200,
-        tokens_per_question=520,
-        max_tokens_cap=12000,
-        temperature_override=0.45,
+        min_tokens=4200,
+        tokens_per_question=700,
+        max_tokens_cap=14000,
+        temperature=0.45,
         note="按题量线性扩容，覆盖题型、难度和知识点分配。",
     ),
     QuestionBuildModelStep.PLAN_REQUIREMENTS: QuestionBuildModelPolicy(
@@ -130,10 +130,10 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        min_tokens=1800,
-        tokens_per_question=280,
-        max_tokens_cap=9000,
-        temperature_override=0.2,
+        min_tokens=2600,
+        tokens_per_question=420,
+        max_tokens_cap=12000,
+        temperature=0.2,
         note="用户约束拆成逐题生成要求，按题量扩容。",
     ),
     QuestionBuildModelStep.GENERATE_ONE: QuestionBuildModelPolicy(
@@ -141,8 +141,8 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.GENERATE,
         model="reason",
-        attempt_max_tokens=(4200, 6200),
-        temperature_override=0.65,
+        attempt_max_tokens=(6000, 9000),
+        temperature=0.65,
         note="单题生成第二次重试给更大的结构化输出空间。",
     ),
     QuestionBuildModelStep.PLAYGROUND_BATCH: QuestionBuildModelPolicy(
@@ -150,10 +150,10 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.GENERATE,
         model="reason",
-        min_tokens=4800,
-        tokens_per_question=720,
-        max_tokens_cap=12000,
-        temperature_override=0.65,
+        min_tokens=6000,
+        tokens_per_question=900,
+        max_tokens_cap=14000,
+        temperature=0.65,
         note="兼容脚本批量出题，按题数扩容。",
     ),
 }
@@ -207,4 +207,3 @@ __all__ = [
     "question_build_completion_kwargs",
     "question_build_completion_kwargs_with_metadata",
 ]
-
