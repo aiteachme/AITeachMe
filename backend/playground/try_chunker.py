@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import json
 from pathlib import Path
 
-from app.workflows.digest.knowledge_graph.services.chunker import chunk_markdown
+from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_chapter_chunks
 
 
 def main() -> None:
@@ -19,10 +20,10 @@ def main() -> None:
         return
 
     source = markdown_files[0]
-    chunks = chunk_markdown(source.read_text(encoding="utf-8"))
+    chunks = extract_markdown_chapter_chunks(source.read_text(encoding="utf-8"), max_body_chars=None)
     target = output_dir / f"{source.stem}.chunks.json"
     target.write_text(
-        json.dumps([chunk.to_dict() for chunk in chunks], ensure_ascii=False, indent=2),
+        json.dumps([asdict(chunk) for chunk in chunks], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     print(f"Wrote chunk output to: {target}")
@@ -30,4 +31,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
