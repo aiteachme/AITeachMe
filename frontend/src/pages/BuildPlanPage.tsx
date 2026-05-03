@@ -676,7 +676,12 @@ function LibraryPickerModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
       <button type="button" aria-label="关闭资料库选择" className="absolute inset-0 modal-backdrop border-0 p-0" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="从资料库选择"
+        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+      >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">

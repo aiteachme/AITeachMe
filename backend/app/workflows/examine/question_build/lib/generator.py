@@ -17,7 +17,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.examine.question_build.lib.model_policy import (
+    QuestionBuildModelStep,
+    question_build_attempt_max_tokens,
+    question_build_completion_kwargs_with_metadata,
+)
 from app.workflows.examine.question_build.prompts import (
     build_exam_question_requirement_messages,
     build_exam_knowledge_unit_filter_messages,
@@ -947,20 +951,19 @@ async def _select_exam_knowledge_units_once(
     )
     result = await acompletion_with_fallback(
         messages,
-        call_purpose=LLMCallPurpose.CLASSIFY,
-        model="light",
+        **question_build_completion_kwargs_with_metadata(
+            QuestionBuildModelStep.FILTER_UNITS,
+            extra_metadata={
+                "substep": "exam.question_build.filter_units",
+                "course_id": course_id,
+                "exam_mode": exam_mode,
+                "question_count": question_count,
+                "candidate_limit": candidate_limit,
+                "unit_count": len(units),
+                "round": round_name,
+            },
+        ),
         response_model=ExamKnowledgeUnitSelection,
-        temperature=0.1,
-        max_tokens=1400,
-        extra_metadata={
-            "substep": "exam.question_build.filter_units",
-            "course_id": course_id,
-            "exam_mode": exam_mode,
-            "question_count": question_count,
-            "candidate_limit": candidate_limit,
-            "unit_count": len(units),
-            "round": round_name,
-        },
     )
     assert isinstance(result, ExamKnowledgeUnitSelection)
     return _normalize_selection(
@@ -1039,7 +1042,6 @@ async def allocate_exam_question_knowledge_units(
     normalized_count = max(1, int(question_count or len(units) or 1))
     if not units:
         return []
-    max_tokens = min(9000, max(2200, normalized_count * 360))
     messages = build_exam_question_blueprint_messages(
         course_name=course_name,
         course_description=course_description,
@@ -1054,18 +1056,18 @@ async def allocate_exam_question_knowledge_units(
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            **question_build_completion_kwargs_with_metadata(
+                QuestionBuildModelStep.ALLOCATE_BLUEPRINTS,
+                question_count=normalized_count,
+                extra_metadata={
+                    "substep": "exam.question_build.allocate_knowledge_units",
+                    "course_id": course_id,
+                    "exam_mode": exam_mode,
+                    "question_count": normalized_count,
+                    "unit_count": len(units),
+                },
+            ),
             response_model=ExamQuestionBlueprintBatch,
-            temperature=0.45,
-            max_tokens=max_tokens,
-            extra_metadata={
-                "substep": "exam.question_build.allocate_knowledge_units",
-                "course_id": course_id,
-                "exam_mode": exam_mode,
-                "question_count": normalized_count,
-                "unit_count": len(units),
-            },
         )
         assert isinstance(result, ExamQuestionBlueprintBatch)
         return _validate_blueprints(
@@ -1089,7 +1091,6 @@ async def plan_exam_question_requirements(
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
-    max_tokens = min(6000, max(1200, normalized_count * 180))
     messages = build_exam_question_requirement_messages(
         exam_mode=exam_mode,
         requested_question_count=normalized_count,
@@ -1098,16 +1099,16 @@ async def plan_exam_question_requirements(
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            **question_build_completion_kwargs_with_metadata(
+                QuestionBuildModelStep.PLAN_REQUIREMENTS,
+                question_count=normalized_count,
+                extra_metadata={
+                    "substep": "exam.question_build.plan_question_requirements",
+                    "exam_mode": exam_mode,
+                    "question_count": normalized_count,
+                },
+            ),
             response_model=ExamQuestionRequirementBatch,
-            temperature=0.2,
-            max_tokens=max_tokens,
-            extra_metadata={
-                "substep": "exam.question_build.plan_question_requirements",
-                "exam_mode": exam_mode,
-                "question_count": normalized_count,
-            },
         )
         assert isinstance(result, ExamQuestionRequirementBatch)
         prompts = _validate_generation_prompts(
@@ -1137,21 +1138,22 @@ async def _generate_one_exam_question(
         system_constraints=system_constraints,
     )
     last_error: Exception | None = None
-    for attempt, max_tokens in enumerate((2600, 3600), start=1):
+    attempt_count = len(question_build_attempt_max_tokens(QuestionBuildModelStep.GENERATE_ONE)) or 1
+    for attempt in range(1, attempt_count + 1):
         try:
             result = await acompletion_with_fallback(
                 messages,
-                call_purpose=LLMCallPurpose.GENERATE,
-                model="reason",
+                **question_build_completion_kwargs_with_metadata(
+                    QuestionBuildModelStep.GENERATE_ONE,
+                    attempt=attempt,
+                    extra_metadata={
+                        "substep": "exam.question_build.generate_one",
+                        "item_order": spec.item_order,
+                        "unit_count": len(batch_units),
+                        "attempt": attempt,
+                    },
+                ),
                 response_model=ExamSingleQuestionResponse,
-                temperature=0.65,
-                max_tokens=max_tokens,
-                extra_metadata={
-                    "substep": "exam.question_build.generate_one",
-                    "item_order": spec.item_order,
-                    "unit_count": len(batch_units),
-                    "attempt": attempt,
-                },
             )
             assert isinstance(result, ExamSingleQuestionResponse)
             return _validate_batch_alignment(generated=[result.question], requested_specs=[spec])[0]
@@ -1286,16 +1288,16 @@ async def generate_exam_from_text(
     )
     result = await acompletion_with_fallback(
         messages,
-        call_purpose=LLMCallPurpose.GENERATE,
-        model="reason",
+        **question_build_completion_kwargs_with_metadata(
+            QuestionBuildModelStep.PLAYGROUND_BATCH,
+            question_count=normalized_count,
+            extra_metadata={
+                "substep": "exam.question_build.playground",
+                "course_name": course_name,
+                "question_count": normalized_count,
+            },
+        ),
         response_model=ExamQuestionBatch,
-        temperature=0.65,
-        max_tokens=2800,
-        extra_metadata={
-            "substep": "exam.question_build.playground",
-            "course_name": course_name,
-            "question_count": normalized_count,
-        },
     )
     assert isinstance(result, ExamQuestionBatch)
     return result.questions

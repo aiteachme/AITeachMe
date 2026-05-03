@@ -268,9 +268,12 @@ function LibraryPickerModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        role="dialog"
+        aria-modal="true"
+        aria-label="从资料库选择"
+        className="relative z-10 flex h-[82vh] max-h-[920px] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
               <FolderOpen className="h-5 w-5" />
@@ -290,7 +293,7 @@ function LibraryPickerModal({
           </button>
         </div>
 
-        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
+        <div className="shrink-0 border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -313,7 +316,7 @@ function LibraryPickerModal({
           </div>
         </div>
 
-        <div className="min-h-[260px] flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {filesQuery.isLoading ? (
             <div className="flex min-h-[240px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -341,21 +344,19 @@ function LibraryPickerModal({
                 const checked = selected.has(file.id);
                 const meta = homeFileStatusMeta(file);
                 return (
-                  <label
+                  <button
+                    type="button"
                     key={file.id}
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={() => toggleFileId(file.id)}
                     className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition",
+                      "flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-left transition",
                       checked
                         ? "border-slate-900 bg-slate-50 shadow-sm dark:border-slate-500 dark:bg-slate-800/70"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/60",
                     )}
                   >
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={checked}
-                      onChange={() => toggleFileId(file.id)}
-                    />
                     <span
                       className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition",
@@ -383,14 +384,14 @@ function LibraryPickerModal({
                       {meta.icon}
                       {meta.label}
                     </span>
-                  </label>
+                  </button>
                 );
               })}
             </div>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400">已选 {selectedCount} 份资料</div>
           <div className="flex items-center gap-2">
             <button

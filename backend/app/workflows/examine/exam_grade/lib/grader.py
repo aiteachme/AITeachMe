@@ -11,8 +11,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models import ExamPaperItem
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import traceable_with_context
+from app.workflows.examine.exam_grade.lib.model_policy import (
+    ExamGradeModelStep,
+    exam_grade_completion_kwargs_with_metadata,
+)
 from app.workflows.examine.exam_grade.prompts import (
     build_objective_feedback_messages,
     build_subjective_grade_messages,
@@ -149,15 +152,14 @@ async def _generate_objective_feedback(course_name: str, item: ExamPaperItem, *,
                 user_answer=item.answer_content,
                 is_correct=is_correct,
             ),
-            call_purpose=LLMCallPurpose.GRADE,
-            model="reason",
+            **exam_grade_completion_kwargs_with_metadata(
+                ExamGradeModelStep.OBJECTIVE_FEEDBACK,
+                extra_metadata={
+                    "substep": "exam.grade.objective_feedback",
+                    "question_type": item.question_type,
+                },
+            ),
             response_model=ObjectiveFeedbackPayload,
-            temperature=0.1,
-            max_tokens=500,
-            extra_metadata={
-                "substep": "exam.grade.objective_feedback",
-                "question_type": item.question_type,
-            },
         )
         assert isinstance(result, ObjectiveFeedbackPayload)
         return result.feedback_text, result.error_cause_label
@@ -205,15 +207,14 @@ async def _grade_subjective_item(course_name: str, item: ExamPaperItem) -> ExamI
                 reference_explanation=item.explanation_snapshot,
                 user_answer=item.answer_content,
             ),
-            call_purpose=LLMCallPurpose.GRADE,
-            model="reason",
+            **exam_grade_completion_kwargs_with_metadata(
+                ExamGradeModelStep.SUBJECTIVE_GRADE,
+                extra_metadata={
+                    "substep": "exam.grade.subjective_judge",
+                    "question_type": item.question_type,
+                },
+            ),
             response_model=SubjectiveGradePayload,
-            temperature=0.1,
-            max_tokens=700,
-            extra_metadata={
-                "substep": "exam.grade.subjective_judge",
-                "question_type": item.question_type,
-            },
         )
         assert isinstance(result, SubjectiveGradePayload)
         bounded_score = max(0.0, min(float(item.score or 1.0), float(item.score or 1.0) * result.score_obtained))

@@ -205,6 +205,24 @@ export const COURSE_ICON_MAP: Record<string, LucideIcon> = {
   "flower-2": Flower2,
 };
 
+const COURSE_TONE_CLASSES = [
+  "from-slate-900 to-slate-700",
+  "from-indigo-600 to-indigo-500",
+  "from-indigo-600 to-indigo-500",
+  "from-fuchsia-600 to-indigo-500",
+  "from-indigo-500 to-purple-500",
+  "from-indigo-500 to-slate-700",
+];
+
 export function resolveCourseIcon(iconKey?: string | null): LucideIcon {
   return COURSE_ICON_MAP[String(iconKey || "").trim()] ?? BookOpen;
+}
+
+export function resolveCourseTone(name?: string | null): string {
+  const normalizedName = String(name || "").trim() || "未命名课程";
+  let hash = 0;
+  for (let index = 0; index < normalizedName.length; index += 1) {
+    hash = normalizedName.charCodeAt(index) + ((hash << 5) - hash);
+  }
+  return COURSE_TONE_CLASSES[Math.abs(hash) % COURSE_TONE_CLASSES.length];
 }

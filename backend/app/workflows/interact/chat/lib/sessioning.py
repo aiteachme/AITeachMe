@@ -11,7 +11,10 @@ import asyncio
 
 from app.schemas.llm import SYSTEM, USER, ChatMessage as LLMChatMessage
 from app.shared.infra.llm_support import acompletion
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.interact.chat.lib.model_policy import (
+    InteractModelStep,
+    interact_completion_kwargs_with_metadata,
+)
 
 TITLE_GENERATION_TIMEOUT_S = 8.0
 TITLE_RESOLVE_TIMEOUT_S = 1.5
@@ -70,10 +73,10 @@ async def generate_session_title(
         raw_title = await asyncio.wait_for(
             acompletion(
                 messages,
-                call_purpose=LLMCallPurpose.SUMMARIZE,
-                model="light",
-                temperature=0.2,
-                max_tokens=48,
+                **interact_completion_kwargs_with_metadata(
+                    InteractModelStep.SESSION_TITLE,
+                    extra_metadata={"substep": "interact.chat.session_title"},
+                ),
             ),
             timeout=TITLE_GENERATION_TIMEOUT_S,
         )

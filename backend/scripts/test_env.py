@@ -34,7 +34,7 @@ async def main() -> None:
     print(f"  EMBEDDING_MODEL   : {settings.models.embedding}")
     print(f"  EMBEDDING_DIM     : {settings.embedding_dim}")
     if llm_api_key:
-        print(f"  LLM_API_KEY       : {llm_api_key[:8]}...{llm_api_key[-4:]}")
+        print("  LLM_API_KEY       : 已配置（已隐藏）")
     else:
         print(f"  LLM_API_KEY       : {'未配置（当前 provider 可省略）' if not key_required else '未配置'}")
     print()

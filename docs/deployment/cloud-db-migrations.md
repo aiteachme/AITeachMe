@@ -125,7 +125,7 @@ ALLOW_CLOUD_VECTOR_REBUILD=false
 - `ALLOW_CLOUD_VECTOR_REBUILD` 默认必须是 `false`。
 - 只有在明确知道旧向量可以完全重建时，才临时改为 `true`。
 
-GitHub Actions 的 `deploy.yml` 默认不执行真实部署；设置 `AITEACHME_DEPLOY_ENABLED=true` 后，可按 GitHub Variables / Secrets 选择触发 Cloudflare Pages、Sealos 前端或 Sealos 后端部署。后端镜像也可以通过 `build-backend-images.yml` 手动构建并推送到 GHCR。
+GitHub Actions 的 `deploy.yml` 默认只在对应部署常量和 Secrets 齐全时执行真实部署；缺少 Cloudflare deploy hook 或 Sealos kubeconfig / registry 凭证时会自动跳过对应 job。后端镜像也可以通过 `build-backend-images.yml` 手动构建并推送到 GHCR。
 
 ### 4.1 Docker 部署
 

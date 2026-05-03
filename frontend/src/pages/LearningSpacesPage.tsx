@@ -3,13 +3,22 @@ import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Download, LayoutGrid, Loader2, PackagePlus, Plus, Upload } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Download,
+  LayoutGrid,
+  Loader2,
+  PackagePlus,
+  Plus,
+  Upload,
+} from "lucide-react";
 
 import { listCoursesApiApiV1CoursesListPost } from "../api/generated/courses";
 import { CourseExportModal } from "../components/course/CourseExportModal";
 import { CourseImportModal } from "../components/course/CourseImportModal";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-import { resolveCourseIcon } from "../lib/courseIcons";
+import { resolveCourseIcon, resolveCourseTone } from "../lib/courseIcons";
 import { cn } from "../lib/utils";
 import { buildCoursePath } from "../lib/courseNavigation";
 
@@ -21,24 +30,6 @@ type CourseWithIcon = {
 
 function displayCourseName(course: { name?: string | null }) {
   return course.name?.trim() || "未命名课程";
-}
-
-function courseTone(name: string) {
-  const tones = [
-    "from-slate-900 to-slate-700",
-    "from-indigo-600 to-indigo-500",
-    "from-indigo-600 to-indigo-500",
-    "from-fuchsia-600 to-indigo-500",
-    "from-indigo-500 to-purple-500",
-    "from-indigo-500 to-slate-700",
-  ];
-
-  let hash = 0;
-  for (let index = 0; index < name.length; index += 1) {
-    hash = name.charCodeAt(index) + ((hash << 5) - hash);
-  }
-
-  return tones[Math.abs(hash) % tones.length];
 }
 
 function WorkspaceActionButton({
@@ -175,7 +166,7 @@ export function LearningSpacesPage() {
                 return (
                   <motion.div
                     key={course.course_id}
-                    className="atm-deferred-card group flex min-h-[232px] flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
+                    className="atm-deferred-card group flex min-h-[190px] flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-sm transition duration-200 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/90 dark:hover:border-slate-700 dark:hover:shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
                     initial={{ opacity: 0, scale: 0.97, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{
@@ -186,68 +177,39 @@ export function LearningSpacesPage() {
                     whileHover={{ y: -3 }}
                     whileTap={{ scale: 0.99 }}
                   >
-                    <div className="flex items-start gap-3 px-4 pb-4 pt-4">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${courseTone(displayName)} text-white shadow-sm`}>
-                        <CourseIcon className="h-5 w-5" strokeWidth={2.1} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="line-clamp-2 text-base font-semibold leading-6 text-slate-950 dark:text-slate-100">
-                            {displayName}
-                          </h3>
-                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            课程
-                          </span>
+                    <div className="flex flex-1 flex-col p-4">
+                      <div className="flex items-start gap-3">
+                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${resolveCourseTone(displayName)} text-white shadow-sm`}>
+                          <CourseIcon className="h-5 w-5" strokeWidth={2.1} />
                         </div>
-                        <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                          整理资料、生成知识文档、练习考试并查看画像。
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-1 flex-col px-4 pb-4">
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { label: "构建", path: "build" },
-                          { label: "知识库", path: "knowledge-docs" },
-                          { label: "画像", path: "profile" },
-                        ].map((item) => (
-                          <Link
-                            key={item.path}
-                            to={buildCoursePath(course.course_id, item.path as "build" | "knowledge-docs" | "profile")}
-                            className="rounded-lg bg-slate-50 px-2 py-2 text-center text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="line-clamp-2 text-base font-semibold leading-6 text-slate-950 dark:text-slate-100">
+                              {displayName}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => setExportCourseId(course.course_id)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                              title="导出课程包"
+                              aria-label={`导出 ${displayName}`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">继续构建、阅读、练习和查看画像。</p>
+                        </div>
                       </div>
 
-                      <div className="mt-auto grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                      <div className="mt-auto pt-4">
                         <Link
                           to={buildCoursePath(course.course_id, "build")}
-                          className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                          className="inline-flex min-h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         >
                           <BookOpen className="h-4 w-4" />
                           进入学习
                           <ArrowRight className="h-4 w-4" />
                         </Link>
-                        <Link
-                          to={buildCoursePath(course.course_id, "build")}
-                          className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-                          title="进入构建页添加资料"
-                        >
-                          <Upload className="h-4 w-4" />
-                          资料
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setExportCourseId(course.course_id)}
-                          className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-                          title="导出课程包"
-                        >
-                          <Download className="h-4 w-4" />
-                          导出
-                        </button>
                       </div>
                     </div>
                   </motion.div>

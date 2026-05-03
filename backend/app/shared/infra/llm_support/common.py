@@ -440,8 +440,10 @@ def build_completion_kwargs(
     completion_kwargs = {
         "model": context.model,
         "messages": messages,
-        "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
+    temperature = remaining_kwargs.pop("temperature", None)
+    if temperature is not None:
+        completion_kwargs["temperature"] = temperature
     if should_enforce_request_timeout(context):
         completion_kwargs["timeout"] = context.profile.timeout_s
     api_base = context.base_url
@@ -456,8 +458,6 @@ def build_completion_kwargs(
             api_version=context.api_version,
         )
     )
-    if context.profile.max_tokens is not None:
-        completion_kwargs["max_tokens"] = context.profile.max_tokens
     completion_kwargs.update(remaining_kwargs)
     return completion_kwargs
 

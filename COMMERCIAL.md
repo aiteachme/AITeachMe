@@ -26,6 +26,11 @@ gateways, deployment tooling, or brand assets may be released under separate
 terms. Unless a file, package, service, or written agreement says otherwise,
 the code in this repository remains licensed under AGPL-3.0-only.
 
+Private commercial modules should be kept outside this AGPL repository, or in
+clearly separated packages, services, or directories with their own license
+notice. A separate service boundary, such as HTTP or RPC, is the preferred way
+to keep closed enterprise functionality independent from the AGPL core.
+
 ## Trademarks
 
 The AGPL license covers copyright permissions for the software. It does not

@@ -36,6 +36,7 @@ import {
 } from "../components/knowledge-docs";
 import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
+import { useToast } from "../components/ui/Toast";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
@@ -1787,6 +1788,7 @@ export function KnowledgeDocsPage() {
     sidebarRequest,
   } = useAiInteraction();
   const location = useLocation();
+  const { toast } = useToast();
   const {
     courseId,
     docMarkdownQuery,
@@ -1888,6 +1890,38 @@ export function KnowledgeDocsPage() {
   const selectedRangeRef = useRef<Range | null>(null);
   const selectedRangeThreadIdRef = useRef<string | null>(null);
   const commentsRef = useRef<Comment[]>([]);
+
+  useEffect(() => {
+    if (!courseId || typeof window === "undefined") {
+      return;
+    }
+    const storageKey = `aiteachme:knowledge-docs-selection-hint:${courseId}`;
+    let shouldShowHint = true;
+    try {
+      if (window.sessionStorage.getItem(storageKey) === "1") {
+        shouldShowHint = false;
+      }
+    } catch {
+      // Ignore storage failures; the hint is helpful but not required for reading.
+    }
+    if (!shouldShowHint) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      toast({
+        title: "可以滑选文字提问",
+        description: "在正文中拖动选中一段内容，就能让 AI 围绕这段知识解释、追问或总结。",
+        variant: "info",
+        duration: 8000,
+      });
+      try {
+        window.sessionStorage.setItem(storageKey, "1");
+      } catch {
+        // Ignore storage failures; the hint is helpful but not required for reading.
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [courseId, toast]);
   const quickChatStartedThreadIdsRef = useRef(new Set<string>());
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());

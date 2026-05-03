@@ -1,9 +1,10 @@
 """Call-purpose profiles for the LLM layer.
 
 Model names are resolved from ``settings.models`` in ``llm_support.common``.
-This module does not route models. It only keeps observability labels and
-non-model defaults. A call site should only pass an explicit kwarg when it
-needs to override the profile for that specific prompt.
+This module does not route models or sampling behavior. It only keeps
+observability labels and operational defaults such as timeout/retry budgets.
+Workflow lanes should pass concrete model-policy kwargs for prompt-sensitive
+values such as ``temperature`` and ``max_tokens``.
 
 ``TaskType`` is kept as a compatibility alias for older call sites. New code
 should prefer ``LLMCallPurpose`` / ``call_purpose=`` so it is clear that model
@@ -39,25 +40,23 @@ class LLMCallPurpose(str, Enum):
 class LLMCallProfile:
     """Non-model call defaults for one call purpose."""
 
-    temperature: float = 0.7
-    max_tokens: int | None = None
     timeout_s: int = 60
     max_retries: int = 3
 
 
 _DEFAULT_PROFILES: dict[LLMCallPurpose, LLMCallProfile] = {
-    LLMCallPurpose.EXTRACT: LLMCallProfile(temperature=0.1, timeout_s=180, max_retries=2),
-    LLMCallPurpose.GENERATE: LLMCallProfile(temperature=0.2, timeout_s=180, max_retries=2),
-    LLMCallPurpose.GRADE: LLMCallProfile(temperature=0.1, timeout_s=90, max_retries=2),
-    LLMCallPurpose.CHAT: LLMCallProfile(temperature=0.7, timeout_s=120, max_retries=2),
-    LLMCallPurpose.SUMMARIZE: LLMCallProfile(temperature=0.5, timeout_s=120, max_retries=2),
-    LLMCallPurpose.CLASSIFY: LLMCallProfile(temperature=0.1, timeout_s=45, max_retries=2),
-    LLMCallPurpose.VISION: LLMCallProfile(temperature=0.3, timeout_s=240, max_retries=2),
-    LLMCallPurpose.REASONING: LLMCallProfile(temperature=0.2, timeout_s=240, max_retries=2),
-    LLMCallPurpose.DOCGEN: LLMCallProfile(temperature=0.5, timeout_s=300, max_retries=1),
-    LLMCallPurpose.DOCGEN_LIGHT: LLMCallProfile(temperature=0.1, timeout_s=240, max_retries=2),
-    LLMCallPurpose.IMAGE_GENERATION: LLMCallProfile(temperature=0.7, timeout_s=360, max_retries=1),
-    LLMCallPurpose.DEFAULT: LLMCallProfile(timeout_s=120, max_retries=2),
+    LLMCallPurpose.EXTRACT: LLMCallProfile(timeout_s=300, max_retries=3),
+    LLMCallPurpose.GENERATE: LLMCallProfile(timeout_s=300, max_retries=3),
+    LLMCallPurpose.GRADE: LLMCallProfile(timeout_s=180, max_retries=3),
+    LLMCallPurpose.CHAT: LLMCallProfile(timeout_s=240, max_retries=3),
+    LLMCallPurpose.SUMMARIZE: LLMCallProfile(timeout_s=240, max_retries=3),
+    LLMCallPurpose.CLASSIFY: LLMCallProfile(timeout_s=120, max_retries=3),
+    LLMCallPurpose.VISION: LLMCallProfile(timeout_s=480, max_retries=3),
+    LLMCallPurpose.REASONING: LLMCallProfile(timeout_s=480, max_retries=3),
+    LLMCallPurpose.DOCGEN: LLMCallProfile(timeout_s=600, max_retries=3),
+    LLMCallPurpose.DOCGEN_LIGHT: LLMCallProfile(timeout_s=480, max_retries=3),
+    LLMCallPurpose.IMAGE_GENERATION: LLMCallProfile(timeout_s=600, max_retries=3),
+    LLMCallPurpose.DEFAULT: LLMCallProfile(timeout_s=240, max_retries=3),
 }
 
 

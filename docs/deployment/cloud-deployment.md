@@ -1,6 +1,6 @@
 # 云端部署配置
 
-本文记录 AITeachMe 云端部署的当前口径。非敏感部署常量可维护在 `.github/workflows/deploy.yml`；deploy hook、kubeconfig、镜像仓库密码和其他凭证必须维护在 GitHub Secrets 中。
+本文记录 AITeachMe 云端部署的当前口径。Sealos app 名、namespace、registry、公网域名、后端内网 upstream 等非敏感部署常量可维护在 `.github/workflows/deploy.yml`，方便主仓库直接部署；deploy hook、kubeconfig、镜像仓库密码和其他凭证必须维护在 GitHub Secrets 中。
 
 ## 部署文件
 
@@ -155,7 +155,7 @@ python scripts/bootstrap_cloud_db.py
 
 ## GitHub Actions 部署配置
 
-`.github/workflows/deploy.yml` 可以直接维护 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等非敏感常量，避免每次迁移仓库都重新配置 Variables。
+`.github/workflows/deploy.yml` 直接维护 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等非敏感部署常量，避免每次迁移仓库都重新配置 Variables。它们是部署坐标，不是授权凭证；如果维护者不希望公开具体部署拓扑，也可以自行改为 GitHub Repository Variables。
 
 真正授权部署的内容必须放 GitHub Secrets：
 
