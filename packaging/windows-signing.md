@@ -13,6 +13,8 @@ Windows 安装包如果没有 Authenticode 代码签名，或者刚发布还没�
 
 没有配置签名环境变量时，Electron/Tauri 打包继续生成未签名安装包，不会因为缺少证书而失败。打包脚本会输出签名状态提示。
 
+GitHub Release 发布流水线会强制要求 Windows Authenticode 签名，并在上传前检查 `packaging\release` 下所有 `.exe` 的签名状态。未签名或签名无效的安装包不会被上传到 Release。
+
 如需在发布流水线中强制要求签名：
 
 ```powershell
@@ -86,6 +88,8 @@ Get-AuthenticodeSignature .\packaging\release\AiTeachMe-v*-installer*.exe
 ```
 
 状态应为 `Valid`。
+
+注意：Tauri updater 的 `.sig` 文件只用于应用内更新包验签，不能替代 Windows Authenticode 代码签名。浏览器下载页显示“发布者：未知”时，优先检查安装包本身的 Authenticode 签名。
 
 ## 误报处理
 
