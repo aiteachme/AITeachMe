@@ -19,7 +19,7 @@ from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.course import (
-    resolve_course_build_vector_status,
+    get_runtime_embedding_config,
     should_generate_course_embeddings,
 )
 from app.shared.infra.storage import (
@@ -510,21 +510,6 @@ def _rebuild_imported_embeddings(
         warnings.append("embedding_rebuild: imported course not found after commit")
         return
 
-    try:
-        resolve_course_build_vector_status(
-            session,
-            course=course_record,
-            embedding_resolution=None,
-        )
-    except Exception as exc:
-        logger.warning(
-            "course_import_embedding_precheck_failed",
-            course_id=course_id,
-            error=str(exc),
-        )
-        warnings.append(f"embedding_rebuild: precheck failed: {exc}")
-        return
-
     if not should_generate_course_embeddings(session, course_id=course_id):
         logger.info(
             "course_import_embedding_skipped",
@@ -532,6 +517,7 @@ def _rebuild_imported_embeddings(
             reason="course_vectors_disabled_or_unavailable",
         )
         return
+    runtime = get_runtime_embedding_config()
 
     chunks = list(
         session.exec(
@@ -548,7 +534,13 @@ def _rebuild_imported_embeddings(
         return
 
     payloads = [f"{chunk.title}\n{chunk.content}".strip() for chunk in chunk_rows]
-    embeddings = _run_async(aembed_texts(payloads, soft_fail=True))
+    embeddings = _run_async(
+        aembed_texts(
+            payloads,
+            soft_fail=True,
+            model=runtime.embedding_model,
+        )
+    )
     if not embeddings:
         logger.warning(
             "course_import_embedding_soft_failed",
@@ -564,6 +556,7 @@ def _rebuild_imported_embeddings(
             course_id=course_id,
             chunk_ids=[int(chunk.id) for chunk in chunk_rows],
             embeddings=embeddings,
+            embedding_model=runtime.embedding_model,
         )
     except Exception as exc:
         logger.warning(
