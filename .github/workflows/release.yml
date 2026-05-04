@@ -400,6 +400,9 @@ jobs:
 
           if ($arguments.PackageMode -in @("tauri-local", "all-local", "all")) {
             $arguments.RequireTauriUpdater = $true
+            if ("${{ needs.release.outputs.prerelease }}" -eq "true" -and [string]::IsNullOrWhiteSpace($env:AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT)) {
+              throw "Prerelease Tauri local builds require AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT. GitHub releases/latest is intended for the latest stable release, so configure a public alpha/beta channel manifest URL."
+            }
           }
 
           .\packaging\scripts\build-desktop-mode.ps1 @arguments
@@ -437,6 +440,50 @@ jobs:
           if ($failed.Count -gt 0) {
             throw "Unsigned or invalid Windows installer(s): $($failed -join '; ')"
           }
+
+      - name: Verify Tauri updater manifest
+        if: ${{ inputs.desktop_package_mode == 'tauri-local' || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
+        shell: pwsh
+        run: |
+          $manifestPath = "packaging\release\latest-tauri-local.json"
+          if (-not (Test-Path $manifestPath)) {
+            throw "Tauri local updater manifest was not produced: $manifestPath"
+          }
+
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $platform = $manifest.platforms.'windows-x86_64'
+          if ($null -eq $platform) {
+            throw "Tauri updater manifest is missing platforms.windows-x86_64."
+          }
+          if ([string]::IsNullOrWhiteSpace($platform.url)) {
+            throw "Tauri updater manifest is missing the Windows package URL."
+          }
+          if ([string]::IsNullOrWhiteSpace($platform.signature)) {
+            throw "Tauri updater manifest is missing the Windows package signature."
+          }
+
+          try {
+            $packageFileName = Split-Path ([Uri]$platform.url).AbsolutePath -Leaf
+          }
+          catch {
+            throw "Tauri updater manifest URL is not a valid absolute URL: $($platform.url)"
+          }
+
+          $packagePath = Join-Path "packaging\release" $packageFileName
+          $signaturePath = "$packagePath.sig"
+          if (-not (Test-Path $packagePath)) {
+            throw "Tauri updater package referenced by manifest was not found: $packagePath"
+          }
+          if (-not (Test-Path $signaturePath)) {
+            throw "Tauri updater signature file was not found: $signaturePath"
+          }
+
+          $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
+          if ($signature -ne $platform.signature) {
+            throw "Tauri updater manifest signature does not match $signaturePath."
+          }
+
+          Write-Host "Tauri updater manifest verified: $packageFileName"
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
