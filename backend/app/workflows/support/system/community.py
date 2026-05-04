@@ -12,8 +12,14 @@ _COMMUNITY_QR_URL = (
     "https://raw.githubusercontent.com/aiteachme/assets/main/community/wechat-qr.jpg"
 )
 _COMMUNITY_QR_FETCH_TIMEOUT_SECONDS = 8
+_COMMUNITY_QR_CACHE_TTL_SECONDS = 10 * 60
+_COMMUNITY_QR_STALE_RETRY_SECONDS = 60
 _COMMUNITY_QR_MAX_BYTES = 2 * 1024 * 1024
 logger = structlog.get_logger(__name__)
+
+_community_qr_cache: bytes | None = None
+_community_qr_cache_expires_at = 0.0
+_community_qr_cache_lock = asyncio.Lock()
 
 
 def _with_cache_buster(url: str) -> str:
@@ -49,15 +55,41 @@ def _read_remote_community_wechat_qr_sync(url: str) -> bytes:
 async def read_community_wechat_qr_bytes() -> bytes | None:
     """Read the latest community WeChat QR image from the project assets repo."""
 
+    global _community_qr_cache, _community_qr_cache_expires_at
+
+    now = time.monotonic()
+    if _community_qr_cache is not None and now < _community_qr_cache_expires_at:
+        return _community_qr_cache
+
+    async with _community_qr_cache_lock:
+        now = time.monotonic()
+        if _community_qr_cache is not None and now < _community_qr_cache_expires_at:
+            return _community_qr_cache
+
+        try:
+            image_bytes = await asyncio.to_thread(_read_remote_community_wechat_qr_sync, _COMMUNITY_QR_URL)
+        except Exception as exc:
+            logger.warning(
+                "community_wechat_qr_fetch_failed",
+                url=_COMMUNITY_QR_URL,
+                error=str(exc),
+            )
+            if _community_qr_cache is not None:
+                _community_qr_cache_expires_at = time.monotonic() + _COMMUNITY_QR_STALE_RETRY_SECONDS
+            return _community_qr_cache
+
+        _community_qr_cache = image_bytes
+        _community_qr_cache_expires_at = time.monotonic() + _COMMUNITY_QR_CACHE_TTL_SECONDS
+        return image_bytes
+
+
+async def refresh_community_wechat_qr_cache() -> None:
+    """Best-effort warmup for the community QR cache."""
+
     try:
-        return await asyncio.to_thread(_read_remote_community_wechat_qr_sync, _COMMUNITY_QR_URL)
-    except Exception as exc:
-        logger.warning(
-            "community_wechat_qr_fetch_failed",
-            url=_COMMUNITY_QR_URL,
-            error=str(exc),
-        )
-        return None
+        await read_community_wechat_qr_bytes()
+    except Exception:
+        logger.debug("community_wechat_qr_cache_warmup_failed", exc_info=True)
 
 
-__all__ = ["read_community_wechat_qr_bytes"]
+__all__ = ["read_community_wechat_qr_bytes", "refresh_community_wechat_qr_cache"]

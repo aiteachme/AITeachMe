@@ -344,11 +344,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _log_infra_diagnostics(settings)
 
     from app.workflows.ingest import recover_stalled_enhancements
+    from app.workflows.support.system import refresh_community_wechat_qr_cache
 
     app.state.background_task_registry.spawn(
         recover_stalled_enhancements(task_registry=app.state.background_task_registry),
         kind="ingest.recovery",
         name="ingest.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        refresh_community_wechat_qr_cache(),
+        kind="system.community_qr_warmup",
+        name="system.community_qr_warmup",
     )
 
     logger.info(

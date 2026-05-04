@@ -235,6 +235,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }, [assistantScope, isAssistantPage, routeCourseId]);
   const isCourseConversationScope = sidebarConversationScope.type === "course";
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const timer = window.setTimeout(ensureCommunityQrPreloaded, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses"],
     queryFn: async () =>
