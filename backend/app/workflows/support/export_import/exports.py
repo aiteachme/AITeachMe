@@ -651,6 +651,8 @@ def _import_table(
                     table_id_map[old_id] = existing_raw_file.id
                 if legacy_uid is not None:
                     table_id_map[legacy_uid] = existing_raw_file.id
+                filename = str(record_data.get("filename") or existing_raw_file.filename or "同一份资料")
+                warnings.append(f"资料库已存在 {filename}，本次导入已复用已有解析结果。")
                 logger.info(
                     "course_import_raw_file_reused",
                     old_id=old_id,

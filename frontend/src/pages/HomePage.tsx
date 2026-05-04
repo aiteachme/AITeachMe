@@ -560,10 +560,14 @@ export function HomePage() {
       notifyCoursesImported({ courseId: result.course_id });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
       queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
+      const warning = result.warnings.find((item) => item.trim())?.trim();
       toast({
-        title: "导入成功",
-        description: `${result.course_name} 已加入左侧课程列表。`,
-        variant: "success",
+        title: warning ? "导入成功，有提示" : "导入成功",
+        description: warning
+          ? `${result.course_name} 已加入左侧课程列表。${warning}`
+          : `${result.course_name} 已加入左侧课程列表。`,
+        variant: warning ? "warning" : "success",
+        duration: warning ? 8000 : undefined,
       });
     },
     onError: (err: unknown) => {
