@@ -41,6 +41,8 @@ _AUTH_ERROR_CODES = {
     "RequestExpired",
     "SignatureDoesNotMatch",
 }
+_PUBLIC_URL_PREFIXES = ("community/", "demo-courses/", "releases/")
+_PRIVATE_URL_PREFIXES = ("users/",)
 
 
 class _ResolvedS3Credentials(BaseModel):
@@ -353,4 +355,9 @@ class S3ArtifactStore(ArtifactStore):
     def public_url(self, storage_key: str) -> str | None:
         if not self._public_base_url:
             return None
-        return f"{self._public_base_url}/{storage_key}"
+        normalized_key = str(storage_key or "").replace("\\", "/").lstrip("/")
+        if any(normalized_key.startswith(prefix) for prefix in _PRIVATE_URL_PREFIXES):
+            return None
+        if not any(normalized_key.startswith(prefix) for prefix in _PUBLIC_URL_PREFIXES):
+            return None
+        return f"{self._public_base_url}/{normalized_key}"
