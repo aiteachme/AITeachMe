@@ -206,6 +206,23 @@ def test_normalize_mermaid_quotes_flowchart_labels_with_comparison_symbols() -> 
     assert "classDef core fill:#f9f,stroke:#333,stroke-width:1px;" in fixed
 
 
+def test_normalize_mermaid_wraps_plain_flowchart_lines_with_hex_values() -> None:
+    raw = "\n".join(
+        [
+            "```mermaid",
+            "flowchart TB PC: 0xFFFF0 → 0x00000",
+            "A[入口] --> B[执行]",
+            "```",
+        ]
+    )
+
+    fixed = normalize_mermaid_blocks(raw)
+
+    assert "flowchart TB" in fixed
+    assert '["PC: 0xFFFF0 → 0x00000"]' in fixed
+    assert 'A["入口"] --> B["执行"]' in fixed
+
+
 def test_normalize_ignores_dollars_inside_inline_code() -> None:
     raw = "\n".join(
         [

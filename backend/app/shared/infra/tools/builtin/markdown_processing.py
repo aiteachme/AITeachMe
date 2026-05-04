@@ -29,8 +29,19 @@ MERMAID_INFO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FLOWCHART_HEADER_PATTERN = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
+FLOWCHART_INLINE_HEADER_PATTERN = re.compile(
+    r"^\s*((?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL))\s+(.+)$",
+    re.IGNORECASE,
+)
 FLOWCHART_NODE_LABEL_PATTERN = re.compile(r"(^|[^\w\"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]")
 FLOWCHART_EDGE_LABEL_PATTERN = re.compile(r"\|([^|\n]+)\|")
+FLOWCHART_CONTROL_LINE_PATTERN = re.compile(
+    r"^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|"
+    r"linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)",
+    re.IGNORECASE,
+)
+FLOWCHART_EDGE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:-->|---|==>|-.->|==|--|~~~|o--|x--)")
+FLOWCHART_NODE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:\[|\(|\{|\>)")
 MINDMAP_ROOT_PATTERN = re.compile(r"^root\(\((.+)\)\)$", re.IGNORECASE)
 MINDMAP_MIXED_SYNTAX_PATTERN = re.compile(
     r"-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b",
@@ -188,13 +199,43 @@ def _quote_flowchart_labels(line: str) -> str:
     return FLOWCHART_EDGE_LABEL_PATTERN.sub(replace_edge_label, quoted)
 
 
+def _split_inline_flowchart_header(line: str) -> list[str]:
+    match = FLOWCHART_INLINE_HEADER_PATTERN.match(line)
+    if match is None:
+        return [line]
+    header = match.group(1).strip()
+    body = match.group(2).strip()
+    if not header or not body:
+        return [line]
+    return [header, body]
+
+
+def _normalize_flowchart_line(line: str, index: int) -> str:
+    quoted = _quote_flowchart_labels(line)
+    stripped = quoted.strip()
+    if not stripped:
+        return quoted
+    if (
+        FLOWCHART_CONTROL_LINE_PATTERN.search(stripped)
+        or FLOWCHART_EDGE_LINE_PATTERN.search(stripped)
+        or FLOWCHART_NODE_LINE_PATTERN.search(stripped)
+    ):
+        return quoted
+    label = _sanitize_mermaid_label(stripped).replace('"', "'")
+    return f'ATM_AUTO_{index}["{label}"]'
+
+
 def _sanitize_flowchart_source(source: str) -> str:
-    lines = [line.rstrip() for line in str(source or "").splitlines() if line.strip()]
+    lines: list[str] = []
+    for raw_line in str(source or "").splitlines():
+        if not raw_line.strip():
+            continue
+        lines.extend(_split_inline_flowchart_header(raw_line.rstrip()))
     if not lines:
         return "flowchart TD"
     if not FLOWCHART_HEADER_PATTERN.match(lines[0].strip()):
         lines.insert(0, "flowchart TD")
-    return "\n".join(_quote_flowchart_labels(line) for line in lines).strip()
+    return "\n".join(_normalize_flowchart_line(line, index) for index, line in enumerate(lines)).strip()
 
 
 def _sanitize_mindmap_label(value: str, *, max_length: int = 28) -> str:
