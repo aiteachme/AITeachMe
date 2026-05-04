@@ -374,6 +374,10 @@ jobs:
             $arguments.BundledEnvArtifactSuffix = "${{ inputs.bundled_env_artifact_suffix }}"
           }
 
+          if ($arguments.PackageMode -in @("tauri-local", "all-local", "all")) {
+            $arguments.RequireTauriUpdater = $true
+          }
+
           .\packaging\scripts\build-desktop-mode.ps1 @arguments
 
       - name: Show release artifacts

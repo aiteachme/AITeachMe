@@ -106,6 +106,7 @@ https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-loc
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
 
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
 
 如需同时生成在线更新产物，发布包前需要配置：
 

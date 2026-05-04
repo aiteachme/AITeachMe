@@ -6,7 +6,8 @@ param(
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
-    [string]$BundledEnvArtifactSuffix = "bundled"
+    [string]$BundledEnvArtifactSuffix = "bundled",
+    [switch]$RequireUpdater
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -172,6 +173,9 @@ if ($Flavor -eq "local") {
         Write-Host "Tauri updater endpoint: $tauriLocalUpdaterEndpoint"
     }
     else {
+        if ($RequireUpdater) {
+            throw "Tauri updater is required for this build, but missing environment variable(s): $($missingUpdaterVars -join ', '). Configure TAURI_UPDATER_PUBKEY and TAURI_SIGNING_PRIVATE_KEY before publishing."
+        }
         Write-Host "Tauri updater disabled; missing environment variable(s): $($missingUpdaterVars -join ', '). Installer build will continue without updater packages." -ForegroundColor Yellow
     }
     Write-Host "Generated Tauri release config: $generatedConfigPath"
