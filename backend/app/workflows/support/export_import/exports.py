@@ -547,6 +547,46 @@ def _create_unique_course_id(session: Session) -> str:
     raise RuntimeError("Cannot generate unique course id after 100 attempts")
 
 
+def _find_existing_raw_file_for_import(
+    session: Session,
+    record_data: dict[str, Any],
+    *,
+    user_id: str,
+) -> RawFile | None:
+    """Return an existing user library file matching the imported raw file."""
+
+    if str(record_data.get("status") or "").strip().lower() == "failed":
+        return None
+
+    content_hash = str(record_data.get("content_hash") or "").strip()
+    filetype = str(record_data.get("filetype") or "").strip().lstrip(".").lower()
+    parse_signature = str(record_data.get("parse_request_signature") or "default").strip() or "default"
+    try:
+        file_size = int(record_data.get("file_size_bytes"))
+    except (TypeError, ValueError):
+        return None
+
+    if not content_hash or not filetype or file_size < 0:
+        return None
+
+    record_data["filetype"] = filetype
+    record_data["parse_request_signature"] = parse_signature
+    record_data["file_size_bytes"] = file_size
+
+    return session.exec(
+        select(RawFile)
+        .where(
+            RawFile.user_id == user_id,
+            RawFile.content_hash == content_hash,
+            RawFile.file_size_bytes == file_size,
+            RawFile.filetype == filetype,
+            RawFile.parse_request_signature == parse_signature,
+            RawFile.status != "failed",
+        )
+        .order_by(RawFile.updated_at.desc())
+    ).first()
+
+
 def _import_table(
     session: Session,
     spec: _TableSpec,
@@ -567,6 +607,7 @@ def _import_table(
     for raw_record in records:
         record_data = dict(raw_record)
         old_id = record_data.get(spec.id_field)
+        legacy_uid = record_data.get("uid") if spec.name == "raw_file" else None
         old_self_refs = {field: record_data.get(field) for field in self_fk_fields}
 
         # 新 ID
@@ -599,6 +640,25 @@ def _import_table(
             if "file_id" not in record_data and legacy_document_id is not None:
                 record_data["file_id"] = legacy_document_id
 
+        if spec.name == "raw_file":
+            existing_raw_file = _find_existing_raw_file_for_import(
+                session,
+                record_data,
+                user_id=user_id,
+            )
+            if existing_raw_file is not None:
+                if old_id is not None:
+                    table_id_map[old_id] = existing_raw_file.id
+                if legacy_uid is not None:
+                    table_id_map[legacy_uid] = existing_raw_file.id
+                logger.info(
+                    "course_import_raw_file_reused",
+                    old_id=old_id,
+                    file_id=existing_raw_file.id,
+                    user_id=user_id,
+                )
+                continue
+
         # Remap foreign keys after the referenced tables have been imported.
         for fk_field, ref_table in spec.fk_remap.items():
             if fk_field in self_fk_fields:
@@ -620,7 +680,8 @@ def _import_table(
             )
 
         # Clear absolute-path fields so they can be rebuilt during import
-        legacy_uid = record_data.pop("uid", None) if spec.name == "raw_file" else None
+        if spec.name == "raw_file":
+            record_data.pop("uid", None)
         if spec.name == "raw_file":
             record_data["id"] = f"file_{uuid.uuid4().hex}"  # Prevent identity conflicts
             record_data["origin_course_id"] = new_course_id

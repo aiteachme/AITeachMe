@@ -796,7 +796,12 @@ export function HomePage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="relative z-20 flex min-h-[calc(100dvh-9rem)] w-full max-w-[800px] translate-y-[8vh] flex-col items-center justify-center md:translate-y-[11vh]"
+        className={cn(
+          "relative z-20 flex w-full max-w-[800px] flex-col items-center",
+          shouldShowDemoCourseSection
+            ? "min-h-[54dvh] justify-end pb-8 pt-8 md:min-h-[58dvh] md:pb-10"
+            : "min-h-[calc(100dvh-9rem)] translate-y-[8vh] justify-center md:translate-y-[11vh]",
+        )}
       >
         {/* ── Logo & Title ── */}
         <motion.div
@@ -995,7 +1000,7 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
+          className="relative z-10 mt-4 w-full max-w-5xl flex flex-col items-center"
         >
           {/* Section Toggle */}
           <button
