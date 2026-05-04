@@ -70,9 +70,9 @@ function MetricTile({
           : "bg-slate-50 text-slate-700 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-slate-800";
 
   return (
-    <div className={`rounded-lg px-3 py-2 ring-1 ${toneClass}`}>
+    <div className={`rounded-md px-3 py-2 ring-1 ${toneClass}`}>
       <p className="text-[11px] opacity-75">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums">{value}</p>
+      <p className="mt-1 text-base font-bold tabular-nums">{value}</p>
     </div>
   );
 }
@@ -135,7 +135,7 @@ function RelationMatrix({ model }: { model: GraphInsightModel }) {
       meta={`${model.edgeCount} 条边`}
       description="行是关系起点，列是关系终点；颜色越深，表示这段学习流越密。"
     >
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="overflow-x-auto">
           <div
             className="grid min-w-[520px] gap-1.5"
@@ -187,7 +187,7 @@ function RelationMatrix({ model }: { model: GraphInsightModel }) {
             return (
               <div
                 key={`${pair.sourceType}-${pair.targetType}-${pair.relationType}`}
-                className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800"
+                className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
@@ -261,13 +261,13 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
   }, [model.nodes]);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(340px,0.7fr)]">
-      <div className="grid gap-4">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)]">
+      <div className="grid gap-3">
         <ChartPanel
           title="学习闭环"
           meta={`路径 ${pathCompletedCount}/4 · 回流 ${backwardCount}`}
         >
-          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div>
               <div className="grid grid-cols-5 gap-2">
                 {LEARNING_LAYERS.map((layer, index) => (
@@ -319,7 +319,7 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
         <RelationMatrix model={model} />
 
         <ChartPanel title="同级辨析" meta={`${peerPairs.length} 组`}>
-          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2.5 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
             {peerPairs.length ? (
               peerPairs.map((pair) => {
                 const sourceStyle = nodeStyle(String(pair.source.knowledge_unit_type || ""));
@@ -327,7 +327,7 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
                 return (
                   <div
                     key={pair.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/60"
+                    className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/60"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span
@@ -358,11 +358,11 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
         </ChartPanel>
       </div>
 
-      <div className="grid content-start gap-4">
+      <div className="grid content-start gap-3">
         <ChartPanel title="优先处理">
-          <div className="grid gap-3 p-4">
+          <div className="grid gap-2.5 p-3 sm:p-4">
             <div
-              className={`rounded-lg border px-3 py-2 ${
+              className={`rounded-md border px-3 py-2 ${
                 issueIsGood
                   ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
                   : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
@@ -380,7 +380,7 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
                 return (
                   <div
                     key={node.id}
-                    className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800"
+                    className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
@@ -402,7 +402,7 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
         </ChartPanel>
 
         <ChartPanel title="结构分布" meta={`${model.componentCount} 岛`}>
-          <div className="grid gap-4 p-4">
+          <div className="grid gap-3 p-3 sm:p-4">
             <CategoryBar segments={relationSegments} height={8} />
             <div className="flex flex-wrap gap-2">
               {model.typeItems.slice(0, 7).map((type) => (
@@ -420,7 +420,7 @@ export function InsightDashboardView({ model }: { model: GraphInsightModel }) {
         </ChartPanel>
 
         <ChartPanel title="数据质量" meta={`均权 ${weightAvg.toFixed(2)}`}>
-          <div className="grid gap-4 p-4">
+          <div className="grid gap-3 p-3 sm:p-4">
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">节点置信度</p>

@@ -199,7 +199,7 @@ function NodeDetail({
     .slice(0, 8);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950 sm:p-4">
       <div className="flex items-start gap-3">
         <span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: node.color }} />
         <div className="min-w-0">
@@ -240,7 +240,7 @@ function NodeDetail({
                   key={edge.id}
                   type="button"
                   onClick={() => onSelect(next.id)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700 dark:hover:bg-slate-900"
+                  className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="min-w-0 truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
@@ -279,7 +279,7 @@ function OverviewPanel({
 
   return (
     <ChartPanel title="概览">
-      <div className="grid gap-4 p-4">
+      <div className="grid gap-3 p-3 sm:p-4">
         <div
           className={`rounded-lg border px-3 py-2 ${
             issueIsGood
@@ -294,13 +294,13 @@ function OverviewPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          <div className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">主干</p>
             <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {percentText(model.largestComponentPct)}
             </p>
           </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+          <div className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">练习</p>
             <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {percentText(model.practiceCoveragePct)}
@@ -322,7 +322,7 @@ function OverviewPanel({
                     key={node.id}
                     type="button"
                     onClick={() => onSelect(node.id)}
-                    className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
+                    className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
@@ -355,7 +355,7 @@ function OverviewPanel({
                 key={node.id}
                 type="button"
                 onClick={() => onSelect(node.id)}
-                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
+                className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
               >
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-[11px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
                   {index + 1}
@@ -418,16 +418,16 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
       <ChartPanel
         title="地图"
         meta={`${model.nodeCount} 点 · ${visibleEdges.length}/${model.edgeCount} 线`}
-        className="min-h-[740px]"
+        className="min-h-[700px]"
       >
         <div className="relative overflow-x-auto bg-[#f8fafc] dark:bg-slate-950">
           <svg
             viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-            className="h-[720px] min-w-[1080px] w-full"
+            className="h-[680px] min-w-[1080px] w-full"
             role="img"
             aria-label="可读知识图谱地图"
           >
@@ -535,20 +535,20 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
         </div>
       </ChartPanel>
 
-      <div className="grid content-start gap-4">
+      <div className="grid content-start gap-3">
         {activeNode ? (
           <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
         ) : (
           <OverviewPanel model={model} onSelect={setSelectedId} />
         )}
         <ChartPanel title="图例">
-          <div className="grid gap-4 p-4">
+          <div className="grid gap-3 p-3 sm:p-4">
             <div className="flex flex-wrap gap-2">
               {model.typeItems.slice(0, 7).map((item) => (
                 <button
                   key={item.type}
                   type="button"
-                  className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-800"
+                  className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-900"
                   onClick={() => {
                     const first = layout.nodes.find((node) => node.type === item.type);
                     if (first) setSelectedId(first.id);

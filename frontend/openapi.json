@@ -3,7 +3,7 @@
   "info": {
     "title": "AITeachMe",
     "description": "本地优先的 AI 助教后端服务。",
-    "version": "0.0.3-beta"
+    "version": "0.0.3-beta.1"
   },
   "paths": {
     "/api/health": {

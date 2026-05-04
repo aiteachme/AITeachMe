@@ -407,13 +407,13 @@ export function AtlasGalaxyView({ model }: { model: GraphInsightModel }) {
                 {selectedId === activeNode.id ? "已固定 · " : ""}
                 {truncateGraphLabel(activeNode.canonical_name, 24)}
               </p>
-              <p className="mt-1 text-[11px] text-slate-300">
+              <p className="mt-1 text-[11px] leading-4 text-slate-300">
                 {nodeTypeLabel(activeNode.type)} · {activeNode.degree} 连 · {percentText(Number(activeNode.confidence || 0))}
               </p>
             </div>
           ) : (
             <div className="pointer-events-none absolute bottom-4 left-4 rounded-full border border-white/10 bg-slate-950/60 px-3 py-1.5 text-[11px] text-slate-300 shadow-xl backdrop-blur">
-              拖动旋转 · 悬停看关联
+              拖动旋转 · 点击固定
             </div>
           )}
         </div>
