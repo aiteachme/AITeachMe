@@ -1,6 +1,6 @@
 [package]
 name = "aiteachme-tauri"
-version = "0.0.3-beta"
+version = "0.0.3-beta.1"
 description = "AiTeachMe desktop shell"
 authors = ["AiTeachMe"]
 license = "AGPL-3.0-only"
