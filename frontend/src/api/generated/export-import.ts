@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.0.3-alpha
+ * OpenAPI spec version: 0.0.3-beta
  */
 import {
   useMutation,
@@ -519,15 +519,10 @@ export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse502 =
   status: 502
 }
 
-export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse503 = {
-  data: ErrorResponse
-  status: 503
-}
-
 export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponseSuccess = (importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse200) & {
   headers: Headers;
 };
-export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponseError = (importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse404 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse413 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse422 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse500 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse502 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse503) & {
+export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponseError = (importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse404 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse413 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse422 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse500 | importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse502) & {
   headers: Headers;
 };
 

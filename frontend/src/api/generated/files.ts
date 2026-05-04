@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.0.3-alpha
+ * OpenAPI spec version: 0.0.3-beta
  */
 import {
   useMutation,
@@ -1039,8 +1039,7 @@ export const useDeleteFilesApiApiV1CoursesCourseIdFilesDeletePost = <TError = Er
     /**
  * 代理访问文件资产。
 
-cloud 模式：优先 302 到 CDN，无 CDN 时流式返回。
-local 模式：从本地文件系统返回。
+通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
  * @summary Serve file asset (images, etc.)
  */
 export type serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetResponse200 = {
