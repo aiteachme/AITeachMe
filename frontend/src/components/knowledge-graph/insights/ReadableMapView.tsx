@@ -41,7 +41,7 @@ const MAP_HEIGHT = 680;
 const MAP_TOP = 92;
 const MAP_BOTTOM = 565;
 const LAYER_X = [86, 330, 574, 818, 1062];
-const LABEL_BUDGET_BY_LAYER = [7, 11, 9, 9, 8];
+const LABEL_BUDGET_BY_LAYER = [3, 6, 4, 5, 3];
 const BACKBONE_RELATIONS = new Set(["prerequisite", "contains", "reasoning", "application", "training"]);
 
 function labelWidth(text: string): number {
@@ -72,7 +72,7 @@ function buildReadableMap(model: GraphInsightModel): { nodes: MapNode[]; edges: 
     const sorted = [...bucket].sort((left, right) => {
       return right.impactScore - left.impactScore || right.degree - left.degree || left.id - right.id;
     });
-    const rowCount = Math.min(sorted.length, 18);
+    const rowCount = Math.min(sorted.length, 14);
     const laneHeight = MAP_BOTTOM - MAP_TOP;
     const x = LAYER_X[layer] ?? LAYER_X[2];
     const side: 1 | -1 = layer >= 3 ? -1 : 1;
@@ -225,11 +225,11 @@ function NodeDetail({
       ) : (
         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
           <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />
-          这个知识点已经接入当前图谱主干。
+          已接入主干。
         </div>
       )}
       <div className="mt-4">
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">直接关系</p>
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">关系</p>
         <div className="mt-2 grid gap-2">
           {connected.length ? (
             connected.map((edge) => {
@@ -265,21 +265,134 @@ function NodeDetail({
   );
 }
 
+function OverviewPanel({
+  model,
+  onSelect,
+}: {
+  model: GraphInsightModel;
+  onSelect: (id: number) => void;
+}) {
+  const mainIssue = model.issues[0];
+  const issueIsGood = mainIssue?.tone === "good";
+  const gapNodes = model.gapNodes.slice(0, 4);
+  const hubNodes = model.bottleneckNodes.slice(0, 4);
+
+  return (
+    <ChartPanel title="概览">
+      <div className="grid gap-4 p-4">
+        <div
+          className={`rounded-lg border px-3 py-2 ${
+            issueIsGood
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+              : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+          }`}
+        >
+          <p className="truncate text-sm font-semibold">
+            {issueIsGood ? <CheckCircle2 className="mr-1 inline h-4 w-4" /> : <AlertTriangle className="mr-1 inline h-4 w-4" />}
+            {mainIssue?.title ?? "图谱结构可用"}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">主干</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
+              {percentText(model.largestComponentPct)}
+            </p>
+          </div>
+          <div className="rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">练习</p>
+            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
+              {percentText(model.practiceCoveragePct)}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">补齐</p>
+            <span className="text-[11px] tabular-nums text-slate-400">{gapNodes.length} 项</span>
+          </div>
+          <div className="grid gap-2">
+            {gapNodes.length ? (
+              gapNodes.map((node) => {
+                const style = nodeStyle(String(node.knowledge_unit_type || "other"));
+                return (
+                  <button
+                    key={node.id}
+                    type="button"
+                    onClick={() => onSelect(node.id)}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        {node.canonical_name}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: style.fill }} />
+                        {node.issueReasons[0] || "待复核"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                      {node.degree}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                暂无明显断点。
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">入口</p>
+          <div className="grid gap-2">
+            {hubNodes.map((node, index) => (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => onSelect(node.id)}
+                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-white dark:bg-slate-900/70 dark:ring-slate-800 dark:hover:bg-slate-900"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-[11px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                  {node.canonical_name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ChartPanel>
+  );
+}
+
 export function ReadableMapView({ model }: { model: GraphInsightModel }) {
   const layout = useMemo(() => buildReadableMap(model), [model]);
-  const [selectedId, setSelectedId] = useState<number | null>(model.bottleneckNodes[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const activeId = hoveredId ?? selectedId;
   const activeNode = activeId ? layout.nodes.find((node) => node.id === activeId) ?? null : null;
   const baseEdgeIds = useMemo(() => {
-    const budget = Math.min(layout.edges.length, Math.max(18, Math.min(62, Math.round(model.nodeCount * 0.58))));
+    const budget = Math.min(layout.edges.length, Math.max(12, Math.min(34, Math.round(model.nodeCount * 0.32))));
     return new Set(layout.edges.slice(0, budget).map((edge) => edge.id));
   }, [layout.edges, model.nodeCount]);
 
   const visibleEdges = useMemo(() => {
     if (!activeId) return layout.edges.filter((edge) => baseEdgeIds.has(edge.id));
+    const activeEdgeIds = new Set(
+      layout.edges
+        .filter((edge) => edge.source.id === activeId || edge.target.id === activeId)
+        .slice(0, 10)
+        .map((edge) => edge.id),
+    );
     return layout.edges.filter(
-      (edge) => baseEdgeIds.has(edge.id) || edge.source.id === activeId || edge.target.id === activeId,
+      (edge) => baseEdgeIds.has(edge.id) || activeEdgeIds.has(edge.id),
     );
   }, [activeId, baseEdgeIds, layout.edges]);
 
@@ -307,9 +420,8 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
       <ChartPanel
-        title="学习路径地图"
-        meta={`${model.nodeCount} 节点 · 显示 ${visibleEdges.length}/${model.edgeCount} 关系`}
-        description="按组织、知识、原理、方法、训练展开；节点越大连接越多，默认先呈现主干关系。"
+        title="地图"
+        meta={`${model.nodeCount} 点 · ${visibleEdges.length}/${model.edgeCount} 线`}
         className="min-h-[740px]"
       >
         <div className="relative overflow-x-auto bg-[#f8fafc] dark:bg-slate-950">
@@ -346,9 +458,6 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
                   />
                   <text x={x} y={34} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
                     {layer.label}
-                  </text>
-                  <text x={x} y={54} textAnchor="middle" className="select-none text-[10px]" fill="#64748b">
-                    {layer.description}
                   </text>
                 </g>
               );
@@ -427,59 +536,31 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
       </ChartPanel>
 
       <div className="grid content-start gap-4">
-        <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
-        <ChartPanel title="知识类型">
-          <div className="grid gap-2 p-4">
-            {model.typeItems.map((item) => (
-              <button
-                key={item.type}
-                type="button"
-                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs dark:bg-slate-900/70"
-                onClick={() => {
-                  const first = layout.nodes.find((node) => node.type === item.type);
-                  if (first) setSelectedId(first.id);
-                }}
-              >
-                <span className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.label}
-                </span>
-                <span className="font-semibold tabular-nums text-slate-500 dark:text-slate-400">{item.count}</span>
-              </button>
-            ))}
-          </div>
-        </ChartPanel>
-        <ChartPanel title="关系类型">
-          <div className="p-4">
-            <CategoryBar segments={relationSegments} height={10} />
-          </div>
-        </ChartPanel>
-        <ChartPanel title="主干入口">
-          <div className="grid gap-2 p-4">
-            {model.bottleneckNodes.slice(0, 5).map((node, index) => {
-              const style = nodeStyle(String(node.knowledge_unit_type || "other"));
-              return (
+        {activeNode ? (
+          <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
+        ) : (
+          <OverviewPanel model={model} onSelect={setSelectedId} />
+        )}
+        <ChartPanel title="图例">
+          <div className="grid gap-4 p-4">
+            <div className="flex flex-wrap gap-2">
+              {model.typeItems.slice(0, 7).map((item) => (
                 <button
-                  key={node.id}
+                  key={item.type}
                   type="button"
-                  onClick={() => setSelectedId(node.id)}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700"
+                  className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-800"
+                  onClick={() => {
+                    const first = layout.nodes.find((node) => node.type === item.type);
+                    if (first) setSelectedId(first.id);
+                  }}
                 >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-[11px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
-                      {node.canonical_name}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: style.fill }} />
-                      连接 {node.degree}
-                    </span>
-                  </span>
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                  {item.label}
+                  <span className="tabular-nums text-slate-400">{item.count}</span>
                 </button>
-              );
-            })}
+              ))}
+            </div>
+            <CategoryBar segments={relationSegments} height={8} />
           </div>
         </ChartPanel>
       </div>

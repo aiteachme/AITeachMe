@@ -1,16 +1,14 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, GitBranch, Loader2, Network, Route, Sparkles, type LucideIcon } from "lucide-react";
+import { BarChart3, Loader2, Network, Sparkles, type LucideIcon } from "lucide-react";
 
 import { graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { FlowSankeyView } from "./insights/FlowSankeyView";
+import { InsightDashboardView } from "./insights/InsightDashboardView";
 import { buildInsightModel, percentText } from "./insights/insightsCore";
-import { PeerArcView } from "./insights/PeerArcView";
 import { ReadableMapView } from "./insights/ReadableMapView";
-import { StructureMatrixView } from "./insights/StructureMatrixView";
 
-type InsightMode = "map" | "galaxy" | "peer" | "flow" | "matrix";
+type InsightMode = "map" | "galaxy" | "analysis";
 
 const AtlasGalaxyView = lazy(async () => {
   const module = await import("./insights/AtlasGalaxyView");
@@ -18,11 +16,9 @@ const AtlasGalaxyView = lazy(async () => {
 });
 
 const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon }> = [
-  { id: "map", label: "知识地图", icon: Network },
-  { id: "galaxy", label: "3D 展示", icon: Sparkles },
-  { id: "peer", label: "同级弧线", icon: GitBranch },
-  { id: "flow", label: "学习流", icon: Route },
-  { id: "matrix", label: "结构矩阵", icon: BarChart3 },
+  { id: "map", label: "地图", icon: Network },
+  { id: "galaxy", label: "3D", icon: Sparkles },
+  { id: "analysis", label: "数据分析", icon: BarChart3 },
 ];
 
 function LoadingState({ toolbar }: { toolbar?: ReactNode }) {
@@ -79,21 +75,21 @@ export function KnowledgeGraphInsightsView({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
         {toolbar}
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 text-xs text-slate-500 dark:text-slate-400 lg:flex">
+          <div className="hidden items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 lg:flex">
             <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
               {model.nodeCount}
             </span>
-            节点
+            点
             <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
               {model.edgeCount}
             </span>
-            关系
+            线
             <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
               {percentText(model.loopCoveragePct)}
             </span>
             闭环
           </div>
-          <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
+          <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1 dark:bg-slate-900">
             {TABS.map((item) => {
               const Icon = item.icon;
               const active = mode === item.id;
@@ -102,7 +98,9 @@ export function KnowledgeGraphInsightsView({
                   key={item.id}
                   type="button"
                   onClick={() => setMode(item.id)}
-                  className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                  title={item.label}
+                  aria-label={item.label}
+                  className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors ${
                     active
                       ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100"
                       : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
@@ -122,7 +120,7 @@ export function KnowledgeGraphInsightsView({
         {mode === "galaxy" ? (
           <Suspense
             fallback={
-              <div className="flex h-[680px] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <div className="flex h-[640px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 正在加载 3D 展示...
               </div>
@@ -131,9 +129,7 @@ export function KnowledgeGraphInsightsView({
             <AtlasGalaxyView model={model} />
           </Suspense>
         ) : null}
-        {mode === "peer" ? <PeerArcView model={model} /> : null}
-        {mode === "flow" ? <FlowSankeyView model={model} /> : null}
-        {mode === "matrix" ? <StructureMatrixView model={model} /> : null}
+        {mode === "analysis" ? <InsightDashboardView model={model} /> : null}
       </div>
     </div>
   );
