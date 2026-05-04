@@ -1,7 +1,7 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
-import { publicAssetPath } from "../../lib/publicAsset";
+import { Loader2, X } from "lucide-react";
+import { buildApiUrl } from "../../api/client";
 
 /* ------------------------------------------------------------------ */
 /*  Inline brand icons                                                 */
@@ -26,8 +26,24 @@ function WeChatIcon({ className }: { className?: string }) {
 /*  Community Modal                                                    */
 /* ------------------------------------------------------------------ */
 
-const WECHAT_QR_SRC = publicAssetPath("wechat-qr-1.jpg");
+const QR_CACHE_BUSTER_TTL_MS = 60_000;
 let communityQrPreloadStarted = false;
+let communityQrCacheToken = 0;
+
+type QrStatus = "loading" | "ready" | "error";
+
+function withCacheBuster(src: string): string {
+  const now = Date.now();
+  if (!communityQrCacheToken || now - communityQrCacheToken > QR_CACHE_BUSTER_TTL_MS) {
+    communityQrCacheToken = now;
+  }
+
+  return `${src}${src.includes("?") ? "&" : "?"}t=${communityQrCacheToken}`;
+}
+
+function getWechatQrSrc(): string {
+  return withCacheBuster(buildApiUrl("/api/v1/system/community/wechat-qr"));
+}
 
 export function ensureCommunityQrPreloaded() {
   if (typeof window === "undefined" || communityQrPreloadStarted) {
@@ -37,7 +53,7 @@ export function ensureCommunityQrPreloaded() {
   communityQrPreloadStarted = true;
   const image = new Image();
   image.decoding = "async";
-  image.src = WECHAT_QR_SRC;
+  image.src = getWechatQrSrc();
 }
 
 export const CommunityModal = memo(function CommunityModal({
@@ -47,6 +63,9 @@ export const CommunityModal = memo(function CommunityModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const [qrSrc, setQrSrc] = useState("");
+  const [qrStatus, setQrStatus] = useState<QrStatus>("loading");
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -57,9 +76,21 @@ export const CommunityModal = memo(function CommunityModal({
   }, [isOpen, onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      ensureCommunityQrPreloaded();
+    if (!isOpen) {
+      setQrStatus("loading");
+      return;
     }
+
+    let ignore = false;
+    setQrStatus("loading");
+    if (!ignore) {
+      setQrSrc(getWechatQrSrc());
+    }
+    ensureCommunityQrPreloaded();
+
+    return () => {
+      ignore = true;
+    };
   }, [isOpen]);
 
   return (
@@ -98,14 +129,41 @@ export const CommunityModal = memo(function CommunityModal({
               </div>
 
               <div className="rounded-2xl border border-slate-100 p-2 dark:border-slate-800 dark:bg-slate-800/50">
-                <img
-                  src={WECHAT_QR_SRC}
-                  alt="微信群二维码"
-                  loading="eager"
-                  decoding="async"
-                  className="block rounded-xl"
-                  style={{ width: 280, height: 280, objectFit: "contain" }}
-                />
+                {qrStatus === "error" ? (
+                  <div
+                    className="flex flex-col items-center justify-center rounded-xl bg-slate-50 px-6 text-center text-sm leading-6 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                    style={{ width: 280, height: 280 }}
+                  >
+                    <span className="font-medium text-slate-700 dark:text-slate-200">图片加载失败</span>
+                    <span className="mt-2">可通过意见反馈告知我们。</span>
+                  </div>
+                ) : (
+                  <div
+                    className="relative rounded-xl bg-slate-50 dark:bg-slate-800"
+                    style={{ width: 280, height: 280 }}
+                  >
+                    {qrStatus === "loading" ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-[#07C160]" />
+                        <span>二维码加载中</span>
+                      </div>
+                    ) : null}
+                    {qrSrc ? (
+                      <img
+                        src={qrSrc}
+                        alt="微信群二维码"
+                        loading="eager"
+                        decoding="async"
+                        onLoad={() => setQrStatus("ready")}
+                        onError={() => setQrStatus("error")}
+                        className={`block rounded-xl transition-opacity ${
+                          qrStatus === "loading" ? "opacity-0" : "opacity-100"
+                        }`}
+                        style={{ width: 280, height: 280, objectFit: "contain" }}
+                      />
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

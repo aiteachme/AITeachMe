@@ -21,8 +21,8 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
-- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip`
-- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
 - updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
 
 ## 在线更新
@@ -33,7 +33,7 @@ Tauri local 发布包启动后会检查 GitHub Release 静态清单：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时会提示用户确认；确认后下载签名后的 NSIS updater 包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
+有新版时会提示用户确认；确认后下载签名后的 NSIS 安装包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
@@ -100,6 +100,8 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
+
+预绑定配置会随安装包分发，不应作为公开发布的密钥保护边界；公开 Release 不要内置真实高权限 Provider Key。
 
 ## 前置要求
 

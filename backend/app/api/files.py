@@ -6,7 +6,7 @@ import mimetypes
 from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
@@ -231,8 +231,7 @@ async def serve_file_asset(
 ) -> Response:
     """代理访问文件资产。
 
-    cloud 模式：优先 302 到 CDN，无 CDN 时流式返回。
-    local 模式：从本地文件系统返回。
+    通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
     """
     normalized_course_id = normalize_course_id(course_id)
     get_course_record(session, normalized_course_id, owner_user_id=user.user_id)
@@ -244,10 +243,6 @@ async def serve_file_asset(
         return Response(status_code=404, content=b"Not found")
     storage_key = f"{course_scope.namespace}/assets/{normalized_asset_path}"
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
-
-    public_url = cs.public_url(storage_key)
-    if public_url:
-        return RedirectResponse(public_url)
 
     try:
         data = await cs.read_bytes(storage_key)

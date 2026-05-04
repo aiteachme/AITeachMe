@@ -19,8 +19,9 @@ dependencies = [
 
 [[package]]
 name = "aiteachme-tauri"
-version = "0.0.2"
+version = "0.0.3-beta"
 dependencies = [
+ "serde_json",
  "tauri",
  "tauri-build",
 ]

@@ -152,6 +152,8 @@ S3_PUBLIC_BASE_URL -> https://<your-cdn-domain>
 
 其中 `S3_PUBLIC_BASE_URL` 是发行/部署侧配置，不应出现在普通本地用户设置页；本地开发如需调试演示课程，可在 `.env` 配置同一变量。`index.json` 由本机私有脚本 `scripts/private/demo_course_package.py` 维护。脚本支持上传、下载和删除 `.atmx` 演示课程包，并通过 `.git/info/exclude` 保持不入库。
 
+公开 CDN/OSS 地址只用于固定公开前缀：`community/`、`demo-courses/`、`releases/`。`users/` 会被存储层硬拒绝生成公开 URL，用户资料、课程资产和知识文档应由后端鉴权后代理返回。
+
 演示课程页面有两条运行时路径：
 
 - 展示课程：配置 `S3_PUBLIC_BASE_URL` 后读取 OSS index；未配置时后端 `GET /api/v1/demo-courses` 返回空列表。

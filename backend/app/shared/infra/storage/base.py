@@ -67,7 +67,7 @@ class ArtifactStore(ABC):
         """
 
     def public_url(self, storage_key: str) -> str | None:
-        """返回文件的公开访问 URL，无 CDN 时返回 None。"""
+        """返回允许公开分发文件的访问 URL；私有资源必须返回 None。"""
 
         return None
 

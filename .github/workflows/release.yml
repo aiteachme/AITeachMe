@@ -13,7 +13,7 @@ on:
           - minor
           - major
       suffix:
-        description: Optional prerelease suffix
+        description: Optional prerelease channel; alpha/beta tags are auto-numbered as alpha.1, alpha.2, ...
         type: choice
         required: true
         default: none
@@ -112,15 +112,29 @@ jobs:
               ;;
           esac
 
+          TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           SUFFIX="${{ inputs.suffix }}"
           case "$SUFFIX" in
             none)
               PRERELEASE=false
-              TAG="v${MAJOR}.${MINOR}.${PATCH}"
+              TAG="v${TARGET_VERSION}"
               ;;
             alpha|beta)
               PRERELEASE=true
-              TAG="v${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
+              PRERELEASE_PREFIX="v${TARGET_VERSION}-${SUFFIX}"
+              NEXT_PRERELEASE_NUMBER=1
+              for existing_tag in $(git tag -l "${PRERELEASE_PREFIX}.*"); do
+                existing_number="${existing_tag#${PRERELEASE_PREFIX}.}"
+                if [[ "$existing_number" =~ ^[0-9]+$ ]] && [ "$existing_number" -ge "$NEXT_PRERELEASE_NUMBER" ]; then
+                  NEXT_PRERELEASE_NUMBER=$((existing_number + 1))
+                fi
+              done
+
+              TAG="${PRERELEASE_PREFIX}.${NEXT_PRERELEASE_NUMBER}"
+              while git rev-parse "$TAG" >/dev/null 2>&1; do
+                NEXT_PRERELEASE_NUMBER=$((NEXT_PRERELEASE_NUMBER + 1))
+                TAG="${PRERELEASE_PREFIX}.${NEXT_PRERELEASE_NUMBER}"
+              done
               ;;
             *)
               echo "Unsupported release suffix: $SUFFIX"
@@ -130,8 +144,8 @@ jobs:
 
           RELEASE_VERSION="${TAG#v}"
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha|-beta)?$ ]]; then
-            echo "Tag '$TAG' does not match required format vX.X.X, vX.X.X-alpha, or vX.X.X-beta."
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
+            echo "Tag '$TAG' does not match required format vX.X.X or vX.X.X-alpha.N / vX.X.X-beta.N."
             exit 1
           fi
 
