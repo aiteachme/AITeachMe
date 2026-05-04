@@ -19,6 +19,7 @@
 
 - Demo-course root: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/`
 - Default catalog index: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/catalog/v1/index.json`
+- Course packages: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/atmx/*.atmx`
 - Backend catalog reads use no-cache headers plus a cache-buster query. If the public catalog is unavailable, `GET /api/v1/demo-courses` returns an empty list and manual `.atmx` upload import remains available.
 
 ## Demo Course Paths

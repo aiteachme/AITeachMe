@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 _COMMUNITY_QR_URL = (
-    "https://raw.githubusercontent.com/aiteachme/assets/main/wechat-qr.jpg"
+    "https://raw.githubusercontent.com/aiteachme/assets/main/community/wechat-qr.jpg"
 )
 _COMMUNITY_QR_FETCH_TIMEOUT_SECONDS = 8
 _COMMUNITY_QR_MAX_BYTES = 2 * 1024 * 1024

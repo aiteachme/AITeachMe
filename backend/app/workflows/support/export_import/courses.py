@@ -85,7 +85,7 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
     try:
         timeout = _get_demo_courses_timeout_s()
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", descriptor.package_url) as response:
+            with client.stream("GET", _with_cache_buster(descriptor.package_url)) as response:
                 _raise_for_http_status(
                     response,
                     action=f"下载课程包 `{descriptor.identifier}`",
@@ -447,15 +447,16 @@ def _validate_remote_content_length(response: httpx.Response) -> None:
 
 def _remote_package_exists(package_url: str) -> bool:
     timeout = _PACKAGE_PROBE_TIMEOUT_S
+    url = _with_cache_buster(package_url)
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            response = client.head(package_url)
+            response = client.head(url)
             if response.status_code < 400:
                 return True
             if response.status_code in {404, 410}:
                 return False
 
-            with client.stream("GET", package_url, headers={"Range": "bytes=0-0"}) as fallback:
+            with client.stream("GET", url, headers={"Range": "bytes=0-0"}) as fallback:
                 if fallback.status_code in {404, 410}:
                     return False
                 return fallback.status_code < 400

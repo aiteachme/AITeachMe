@@ -231,10 +231,8 @@ demo-courses/
 ├── catalog/
 │   └── v1/
 │       └── index.json
-├── packages/
-│   └── <course_slug>/
-│       └── v<package_version>/
-│           └── <course_slug>.atmx
+├── atmx/
+│   └── <course_slug>.atmx
 └── covers/
     └── <course_slug>.png
 ```
