@@ -156,11 +156,7 @@ wheels = [
 
 [[package]]
 name = "aiteachme-backend"
-<<<<<<< HEAD
-version = "0.0.3b0"
-=======
 version = "0.0.3-beta.1"
->>>>>>> c6a5e6cd27dd09e818b1dc460d32baa8c2f8dd3d
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
