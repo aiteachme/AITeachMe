@@ -502,6 +502,7 @@ export function HomePage() {
   const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [demoCourseError, setDemoCourseError] = useState<string | null>(null);
 
   // Modal state
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
@@ -555,7 +556,7 @@ export function HomePage() {
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
       importDemoCourse(filename, newName),
     onSuccess: (result) => {
-      setError(null);
+      setDemoCourseError(null);
       notifyCoursesImported({ courseId: result.course_id });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
       queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
@@ -567,7 +568,7 @@ export function HomePage() {
     },
     onError: (err: unknown) => {
       const message = getApiErrorMessage(err, "演示课程导入失败");
-      setError(message);
+      setDemoCourseError(message);
       void queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
       toast({
         title: "导入失败",
@@ -795,12 +796,7 @@ export function HomePage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className={cn(
-          "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          !shouldShowDemoCourseSection
-            ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]"
-            : "mt-[10vh]"
-        )}
+        className="relative z-20 flex min-h-[calc(100dvh-9rem)] w-full max-w-[800px] translate-y-[8vh] flex-col items-center justify-center md:translate-y-[11vh]"
       >
         {/* ── Logo & Title ── */}
         <motion.div
@@ -1031,9 +1027,14 @@ export function HomePage() {
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                 className="w-full overflow-hidden"
               >
-                  <div className="pt-6 pb-12">
-                    {courses.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="pt-6 pb-12">
+                  {demoCourseError ? (
+                    <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600">
+                      {demoCourseError}
+                    </div>
+                  ) : null}
+                  {courses.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {courses.map((course, i) => (
                           <motion.div
                             key={course.filename}
@@ -1094,9 +1095,9 @@ export function HomePage() {
                             </div>
                           </motion.div>
                         ))}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
