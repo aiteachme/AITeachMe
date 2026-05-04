@@ -468,126 +468,130 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
         </span>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#f8fafc] dark:bg-slate-950">
-        <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
-          <svg
-            viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-            className="h-full min-w-[1120px] w-full"
-            role="img"
-            aria-label="可读知识图谱地图"
-          >
-            <defs>
-              <marker id="kg-readable-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" opacity="0.72" />
-              </marker>
-              <filter id="kg-readable-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#64748b" floodOpacity="0.16" />
-              </filter>
-            </defs>
-            <rect width={MAP_WIDTH} height={MAP_HEIGHT} fill="transparent" />
-            {LEARNING_LAYERS.map((layer, index) => {
-              const x = LAYER_X[index] ?? 0;
-              return (
-                <g key={layer.label}>
-                  <rect
-                    x={x - 82}
-                    y={54}
-                    width={164}
-                    height={466}
-                    rx={24}
-                    fill={layer.color}
-                    opacity={0.055}
-                    stroke={layer.color}
-                    strokeDasharray="4 8"
-                    strokeOpacity={0.18}
-                  />
-                  <text x={x} y={36} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
-                    {layer.label}
-                  </text>
-                </g>
-              );
-            })}
-
-            <g>
-              {visibleEdges.map((edge) => {
-                const active = activeId && (edge.source.id === activeId || edge.target.id === activeId);
-                const related = activeId ? active : true;
-                const isBackbone = baseEdgeIds.has(edge.id);
+      <div className="grid min-h-0 flex-1 bg-[#f8fafc] dark:bg-slate-950 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="relative min-h-0 overflow-hidden">
+          <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
+            <svg
+              viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+              className="h-full min-w-[1120px] w-full"
+              role="img"
+              aria-label="可读知识图谱地图"
+            >
+              <defs>
+                <marker id="kg-readable-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" opacity="0.72" />
+                </marker>
+                <filter id="kg-readable-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#64748b" floodOpacity="0.16" />
+                </filter>
+              </defs>
+              <rect width={MAP_WIDTH} height={MAP_HEIGHT} fill="transparent" />
+              {LEARNING_LAYERS.map((layer, index) => {
+                const x = LAYER_X[index] ?? 0;
                 return (
-                  <path
-                    key={edge.id}
-                    d={mapEdgePath(edge)}
-                    fill="none"
-                    stroke={edge.color}
-                    strokeWidth={active ? edge.width + 1.2 : edge.width}
-                    strokeOpacity={active ? 0.88 : related && isBackbone ? 0.3 + edge.confidence * 0.34 : 0.075}
-                    markerEnd={edge.source.layer === edge.target.layer ? undefined : "url(#kg-readable-arrow)"}
-                  />
-                );
-              })}
-            </g>
-
-            <g>
-              {layout.nodes.map((node) => {
-                const active = activeId === node.id;
-                const related = activeId ? connectedIds.has(node.id) : true;
-                const showLabel = active || node.labelVisible || (activeId && related && node.degree >= 2);
-                return (
-                  <g
-                    key={node.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={node.canonical_name}
-                    className="cursor-pointer outline-none"
-                    onMouseEnter={() => setHoveredId(node.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    onClick={() => toggleSelected(node.id)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      toggleSelected(node.id);
-                    }}
-                  >
-                    {showLabel ? <NodeLabel node={node} active={active} /> : null}
-                    <circle
-                      cx={node.x}
-                      cy={node.y}
-                      r={node.r + (active ? 4 : 0)}
-                      fill={active ? "#ffffff" : node.soft}
-                      stroke={active ? "#0f172a" : "#ffffff"}
-                      strokeWidth={active ? 3 : 2}
-                      opacity={related ? 1 : 0.2}
-                      filter={active ? "url(#kg-readable-shadow)" : undefined}
+                  <g key={layer.label}>
+                    <rect
+                      x={x - 82}
+                      y={54}
+                      width={164}
+                      height={466}
+                      rx={24}
+                      fill={layer.color}
+                      opacity={0.055}
+                      stroke={layer.color}
+                      strokeDasharray="4 8"
+                      strokeOpacity={0.18}
                     />
-                    <circle
-                      cx={node.x}
-                      cy={node.y}
-                      r={node.r}
-                      fill={node.color}
-                      opacity={related ? 0.95 : 0.2}
-                    />
-                    {node.issueReasons.length ? (
-                      <circle cx={node.x + node.r * 0.6} cy={node.y - node.r * 0.65} r="3.2" fill="#f59e0b" stroke="#fff" />
-                    ) : null}
-                    <title>
-                      {node.canonical_name} · {nodeTypeLabel(node.type)} · 连接 {node.degree}
-                    </title>
+                    <text x={x} y={36} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
+                      {layer.label}
+                    </text>
                   </g>
                 );
               })}
-            </g>
-          </svg>
+
+              <g>
+                {visibleEdges.map((edge) => {
+                  const active = activeId && (edge.source.id === activeId || edge.target.id === activeId);
+                  const related = activeId ? active : true;
+                  const isBackbone = baseEdgeIds.has(edge.id);
+                  return (
+                    <path
+                      key={edge.id}
+                      d={mapEdgePath(edge)}
+                      fill="none"
+                      stroke={edge.color}
+                      strokeWidth={active ? edge.width + 1.2 : edge.width}
+                      strokeOpacity={active ? 0.88 : related && isBackbone ? 0.3 + edge.confidence * 0.34 : 0.075}
+                      markerEnd={edge.source.layer === edge.target.layer ? undefined : "url(#kg-readable-arrow)"}
+                    />
+                  );
+                })}
+              </g>
+
+              <g>
+                {layout.nodes.map((node) => {
+                  const active = activeId === node.id;
+                  const related = activeId ? connectedIds.has(node.id) : true;
+                  const showLabel = active || node.labelVisible || (activeId && related && node.degree >= 2);
+                  return (
+                    <g
+                      key={node.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={node.canonical_name}
+                      className="cursor-pointer outline-none"
+                      onMouseEnter={() => setHoveredId(node.id)}
+                      onMouseLeave={() => setHoveredId(null)}
+                      onClick={() => toggleSelected(node.id)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        toggleSelected(node.id);
+                      }}
+                    >
+                      {showLabel ? <NodeLabel node={node} active={active} /> : null}
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={node.r + (active ? 4 : 0)}
+                        fill={active ? "#ffffff" : node.soft}
+                        stroke={active ? "#0f172a" : "#ffffff"}
+                        strokeWidth={active ? 3 : 2}
+                        opacity={related ? 1 : 0.2}
+                        filter={active ? "url(#kg-readable-shadow)" : undefined}
+                      />
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={node.r}
+                        fill={node.color}
+                        opacity={related ? 0.95 : 0.2}
+                      />
+                      {node.issueReasons.length ? (
+                        <circle cx={node.x + node.r * 0.6} cy={node.y - node.r * 0.65} r="3.2" fill="#f59e0b" stroke="#fff" />
+                      ) : null}
+                      <title>
+                        {node.canonical_name} · {nodeTypeLabel(node.type)} · 连接 {node.degree}
+                      </title>
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+          </div>
+
+          <div className="pointer-events-none absolute bottom-3 left-4 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
+            点击节点查看关系
+          </div>
         </div>
 
-        <div className="pointer-events-none absolute right-4 top-4 z-10 hidden w-[286px] gap-3 xl:grid">
-          <div className="pointer-events-auto">
+        <aside className="hidden min-h-0 overflow-y-auto border-l border-slate-200/80 bg-white/95 p-3 dark:border-slate-800 dark:bg-slate-950/95 xl:block">
+          <div className="grid gap-3">
             {activeNode ? (
               <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
             ) : (
               <OverviewPanel model={model} onSelect={setSelectedId} />
             )}
-          </div>
-          <div className="pointer-events-auto">
             <LegendPanel
               model={model}
               layout={layout}
@@ -595,11 +599,7 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
               onSelect={setSelectedId}
             />
           </div>
-        </div>
-
-        <div className="pointer-events-none absolute bottom-3 left-4 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
-          点击节点查看关系
-        </div>
+        </aside>
       </div>
     </section>
   );
