@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { Loader2, RefreshCw, X } from "lucide-react";
 
 import { useTheme, type Theme } from "../providers/ThemeProvider";
 
 import { useExamResultDisplayPreference } from "../../lib/examResultDisplayPreference";
+import { DesktopUpdateModal, useDesktopUpdateDialog } from "../desktop/DesktopUpdatePrompt";
+import { Button } from "../ui/Button";
 import { FieldLabelBlock, SelectInput, SwitchRow } from "./SettingsFields";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SettingsFooter } from "./SettingsFooter";
@@ -35,6 +37,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
   const { mode: examResultDisplayMode, setMode: setExamResultDisplayMode } = useExamResultDisplayPreference();
   const [activeSection, setActiveSection] = useState<SectionId>("");
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const {
+    open: updateDialogOpen,
+    update: desktopUpdate,
+    status: desktopUpdateStatus,
+    errorText: desktopUpdateErrorText,
+    downloadedBytes: desktopUpdateDownloadedBytes,
+    contentLength: desktopUpdateContentLength,
+    isBusy: isDesktopUpdating,
+    isSupported: isDesktopUpdateSupported,
+    checkForUpdate: checkForDesktopUpdate,
+    closeUpdateDialog,
+    installUpdate,
+  } = useDesktopUpdateDialog();
   const {
     overview,
     isOverviewLoading,
@@ -74,11 +90,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   useEffect(() => {
     if (!isOpen) return;
     const onEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !updateDialogOpen) onClose();
     };
     document.addEventListener("keydown", onEsc);
     return () => document.removeEventListener("keydown", onEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, updateDialogOpen]);
 
   useEffect(() => {
     if (!isOpen || typeof document === "undefined") {
@@ -92,6 +108,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   }, [isOpen]);
 
   const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
+  const isUpdateCheckBusy = isCheckingUpdate || isDesktopUpdating;
+
+  const handleManualUpdateCheck = useCallback(async () => {
+    if (isUpdateCheckBusy) {
+      return;
+    }
+
+    setIsCheckingUpdate(true);
+    try {
+      await checkForDesktopUpdate();
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, [checkForDesktopUpdate, isUpdateCheckBusy]);
 
   const panel = (
     <AnimatePresence>
@@ -165,6 +195,31 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                           enabled={showExamScores}
                           onToggle={() => setExamResultDisplayMode(showExamScores ? "completed" : "score")}
                         />
+                        {isDesktopUpdateSupported ? (
+                          <div className={SETTINGS_STYLES.list.item}>
+                            <FieldLabelBlock
+                              label="桌面更新"
+                              description="手动检查新版本，发现更新后再确认安装。"
+                            />
+
+                            <div className="flex flex-1 items-center justify-start md:justify-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleManualUpdateCheck}
+                                disabled={isUpdateCheckBusy}
+                              >
+                                {isCheckingUpdate ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                                检查更新
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -200,5 +255,21 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     </AnimatePresence>
   );
 
-  return typeof document !== "undefined" ? createPortal(panel, document.body) : panel;
+  const content = (
+    <>
+      {panel}
+      <DesktopUpdateModal
+        open={updateDialogOpen}
+        update={desktopUpdate}
+        status={desktopUpdateStatus}
+        errorText={desktopUpdateErrorText}
+        downloadedBytes={desktopUpdateDownloadedBytes}
+        contentLength={desktopUpdateContentLength}
+        onClose={closeUpdateDialog}
+        onInstall={installUpdate}
+      />
+    </>
+  );
+
+  return typeof document !== "undefined" ? createPortal(content, document.body) : content;
 }
