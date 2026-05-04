@@ -81,7 +81,6 @@ S3_ACCESS_KEY=<access-key>
 S3_SECRET_KEY=<secret-key>
 S3_REGION=<region>
 S3_ADDRESSING_STYLE=virtual
-S3_PUBLIC_BASE_URL=<optional-public-base-url>
 CORS_ALLOWED_ORIGINS=<frontend-origins>
 AUTH_ENABLED=true
 LLM_API_KEY=<model-api-key>

@@ -22,7 +22,7 @@ AITeachMe 同时支持：
 | 文件存储 | 本地 `backend/data` | S3-compatible OSS |
 | 鉴权 | 可关闭或 guest | 云端启用账号鉴权 |
 | 设置页 | 可写本地 `system_runtime_settings` | 普通用户只读 |
-| 演示课程 | 未配置 `S3_PUBLIC_BASE_URL` 时不读取 OSS 目录 | 配置 `S3_PUBLIC_BASE_URL` 后读取公开 demo course catalog |
+| 演示课程 | 读取项目公开 assets 仓库目录 | 读取项目公开 assets 仓库目录 |
 
 ## 代码入口
 
@@ -43,7 +43,7 @@ AITeachMe 同时支持：
 - 业务代码统一通过 ContentStore 访问文件，不手拼本地路径或 S3 URL。
 - 对象存储 key 必须以用户和 course 作用域组织。
 - 本地与云端不做强制历史数据迁移；跨环境课程迁移走 `.atmx`。
-- 演示课程按 `S3_PUBLIC_BASE_URL` 是否配置展示；未配置时只保留上传导入 `.atmx`。
+- 演示课程读取独立公开 assets 仓库；私有 OSS 不参与公开分发。
 
 ## 相关文档
 

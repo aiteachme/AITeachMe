@@ -41,8 +41,6 @@ _AUTH_ERROR_CODES = {
     "RequestExpired",
     "SignatureDoesNotMatch",
 }
-_PUBLIC_URL_PREFIXES = ("community/", "demo-courses/", "releases/")
-_PRIVATE_URL_PREFIXES = ("users/",)
 
 
 class _ResolvedS3Credentials(BaseModel):
@@ -84,7 +82,6 @@ class S3ArtifactStore(ArtifactStore):
     """ArtifactStore backed by an S3-compatible object storage service."""
 
     def __init__(self) -> None:
-        self._public_base_url = (get_env("S3_PUBLIC_BASE_URL") or "").rstrip("/")
         self._client_lock = Lock()
         self._client: Any | None = None
         self._bucket = get_env("S3_BUCKET") or ""
@@ -351,13 +348,3 @@ class S3ArtifactStore(ArtifactStore):
             lambda client: client.download_file(self._bucket, storage_key, str(local_path)),
         )
         return local_path
-
-    def public_url(self, storage_key: str) -> str | None:
-        if not self._public_base_url:
-            return None
-        normalized_key = str(storage_key or "").replace("\\", "/").lstrip("/")
-        if any(normalized_key.startswith(prefix) for prefix in _PRIVATE_URL_PREFIXES):
-            return None
-        if not any(normalized_key.startswith(prefix) for prefix in _PUBLIC_URL_PREFIXES):
-            return None
-        return f"{self._public_base_url}/{normalized_key}"

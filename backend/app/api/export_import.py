@@ -156,7 +156,7 @@ async def list_demo_courses_api(response: Response) -> ApiResponse[list[CoursePa
     "/demo-courses/{identifier}/import",
     response_model=ApiResponse[ImportResultData],
     summary="从演示课程导入",
-    responses=build_error_responses([404, 413, 422, 500, 502, 503]),
+    responses=build_error_responses([404, 413, 422, 500, 502]),
 )
 async def import_demo_course_api(
     identifier: str,

@@ -66,10 +66,4 @@ class ArtifactStore(ABC):
         云端模式下载到 temp_dir 后返回临时路径。
         """
 
-    def public_url(self, storage_key: str) -> str | None:
-        """返回允许公开分发文件的访问 URL；私有资源必须返回 None。"""
-
-        return None
-
-
 __all__ = ["ArtifactStore", "validate_delete_prefix"]

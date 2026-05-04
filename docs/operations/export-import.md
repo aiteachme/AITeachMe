@@ -217,15 +217,14 @@ POST /api/v1/demo-courses/{identifier}/import
 | 包格式错误、manifest/table 不合法、缺少 course | 422 | `INVALID_IMPORT_PACKAGE` |
 | 上传包或解压包超过限制 | 413 | `IMPORT_PACKAGE_TOO_LARGE` |
 | 演示课程目录不可用 | 502 | `DEMO_COURSE_CATALOG_UNAVAILABLE` |
-| 未配置演示课程目录时调用演示课程下载 | 503 | `DEMO_COURSE_CATALOG_NOT_CONFIGURED` |
 
 ---
 
 ## 9. 演示课程分发建议
 
-首页“演示课程”由 `S3_PUBLIC_BASE_URL` 控制。前端不要直接硬编码 OSS 路径，而是统一请求后端课程目录接口；后端仅在配置该变量后读取公开课程索引，未配置时返回空列表，也不展示远程演示课程。
+首页“演示课程”统一由后端读取项目公开 assets 仓库目录。前端不要直接硬编码远程路径，而是统一请求后端课程目录接口；公开目录暂不可用时返回空列表，也不影响手动上传 `.atmx` 导入。
 
-推荐在 OSS 中固定一套公开前缀：
+推荐在 `aiteachme/assets` 仓库中固定一套公开前缀：
 
 ```text
 demo-courses/
@@ -242,11 +241,11 @@ demo-courses/
 
 运行时职责：
 
-- 配置 `S3_PUBLIC_BASE_URL` 后读取 `demo-courses/catalog/v1/index.json`；未配置时返回空列表。
-- 后端读取 catalog 时必须带 no-cache 请求头和一次性 query，避免 CDN 某个地域节点继续返回旧索引；运维侧删除/重建后也应刷新 CDN 中的 catalog 对象。
+- 后端读取 `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/catalog/v1/index.json`。
+- 后端读取 catalog 时必须带 no-cache 请求头和一次性 query，避免拿到旧索引。
 - 前端只消费统一后的演示课程目录 API，并在返回课程后展示演示课程区。
 - 真正导入时，由后端下载到临时目录后复用同一套 `import_course()` 逻辑。
-- 后端只允许课程包 URL 位于配置出的 `<S3_PUBLIC_BASE_URL>/demo-courses/` 前缀下。
+- 后端只允许课程包 URL 位于固定 `aiteachme/assets` 演示课程前缀下。
 - 下载时同时检查 catalog 声明大小、HTTP `Content-Length` 和实际流式写入字节数。
 - catalog 可提供 `sha256`，后端下载后校验，不匹配则拒绝导入。
 - 云端页面导入的是当前云端账号；本地用户如需导入课程包，走上传 `.atmx` 入口。
@@ -254,7 +253,7 @@ demo-courses/
 
 一句话原则：
 
-> 演示课程主源统一为 OSS；未配置 `S3_PUBLIC_BASE_URL` 的环境不依赖 OSS，手动 `.atmx` 导入仍复用同一套导入执行器。
+> 演示课程主源统一为项目公开 assets 仓库；私有 OSS 不参与公开分发，手动 `.atmx` 导入仍复用同一套导入执行器。
 
 ---
 

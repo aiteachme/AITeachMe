@@ -56,9 +56,7 @@ users/<user_id>/courses/<course>/
   knowledge_markdowns/
 ```
 
-禁止业务代码手拼绝对路径、公开 URL 或绕过 ContentStore。
-
-公开 URL 只允许用于明确可公开分发的前缀，例如 `community/`、`demo-courses/`、`releases/`。用户上传资料、课程资产、知识文档等 `users/<user_id>/...` 私有对象必须通过后端鉴权接口代理读取，不允许把对象存储或 CDN 地址直接返回给前端。
+禁止业务代码手拼绝对路径、公开 URL 或绕过 ContentStore。存储层不提供通用公开 URL 生成能力；用户上传资料、课程资产、知识文档等 `users/<user_id>/...` 私有对象必须通过后端鉴权接口代理读取，不允许把对象存储或 CDN 地址直接返回给前端。
 
 ## 6. 派生数据原则
 

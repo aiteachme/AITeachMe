@@ -166,6 +166,3 @@ class ContentStore:
     async def materialize(self, key: str, temp_dir: Path) -> Path:
         """将文件物化到本地临时目录。local 模式零拷贝。"""
         return await self._inner.materialize_to_temp(key, temp_dir)
-
-    def public_url(self, key: str) -> str | None:
-        return self._inner.public_url(key)

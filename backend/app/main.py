@@ -246,7 +246,6 @@ def _log_infra_diagnostics(settings) -> None:
     if uses_s3:
         lines.append(f"    S3 Bucket              : {get_env('S3_BUCKET') or '!! NOT_SET !!'}")
         lines.append(f"    S3 Endpoint            : {get_env('S3_ENDPOINT') or '!! NOT_SET !!'}")
-        lines.append(f"    S3 CDN                 : {get_env('S3_PUBLIC_BASE_URL') or 'none'}")
         lines.append(f"    S3 Addressing Style    : {resolve_s3_addressing_style()}")
         lines.append(f"    S3 Credential Mode     : {resolve_s3_credential_mode()}")
         lines.append(

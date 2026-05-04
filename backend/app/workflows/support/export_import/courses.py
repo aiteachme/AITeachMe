@@ -17,9 +17,7 @@ import httpx
 import structlog
 
 from app.schemas.export_import import CoursePackageItem
-from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import (
-    DemoCourseCatalogNotConfiguredError,
     DemoCourseCatalogUnavailableError,
     DemoCoursePackageNotFoundError,
     ImportPackageTooLargeError,
@@ -34,7 +32,7 @@ logger = structlog.get_logger()
 _DEFAULT_TIMEOUT_S = 15.0
 _PACKAGE_PROBE_TIMEOUT_S = 4.0
 _PACKAGE_PROBE_MAX_WORKERS = 6
-_DEMO_COURSES_ROOT = "demo-courses/"
+_DEMO_COURSES_BASE_URL = "https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/"
 _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
 
 
@@ -60,22 +58,21 @@ class _RemoteCourseDescriptor:
 
 
 def list_available_courses() -> list[CoursePackageItem]:
-    """List remote demo courses declared in the configured OSS catalog."""
+    """List remote demo courses declared in the public assets catalog."""
 
-    if not _demo_courses_enabled():
+    try:
+        return [item.to_item() for item in _load_remote_course_descriptors()]
+    except DemoCourseCatalogUnavailableError as exc:
+        logger.warning(
+            "demo_course_catalog_unavailable",
+            catalog_url=get_demo_courses_index_url(),
+            error=str(exc),
+        )
         return []
-
-    catalog_url = get_demo_courses_index_url()
-    if not catalog_url:
-        return []
-    return [item.to_item() for item in _load_remote_course_descriptors()]
 
 
 def download_course_package(identifier: str) -> tuple[Path, str]:
     """Download one remote `.atmx` package into a temporary local file."""
-
-    if not _demo_courses_enabled():
-        raise DemoCourseCatalogNotConfiguredError()
 
     descriptor = get_remote_course_descriptor(identifier)
     if descriptor.file_size_bytes > MAX_IMPORT_PACKAGE_BYTES:
@@ -116,9 +113,6 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
 def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     """Resolve one demo course descriptor by its stable identifier."""
 
-    if not _demo_courses_enabled():
-        raise DemoCourseCatalogNotConfiguredError()
-
     normalized = str(identifier or "").strip()
     if not normalized:
         raise DemoCoursePackageNotFoundError(identifier)
@@ -129,26 +123,16 @@ def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     raise DemoCoursePackageNotFoundError(normalized)
 
 
-def get_demo_courses_base_url() -> str | None:
-    """Return the fixed remote demo-course root under the existing public OSS base."""
+def get_demo_courses_base_url() -> str:
+    """Return the fixed public demo-course root in the project assets repo."""
 
-    value = (get_env("S3_PUBLIC_BASE_URL") or "").strip()
-    if not value:
-        return None
-    return urljoin(value.rstrip("/") + "/", _DEMO_COURSES_ROOT)
+    return _DEMO_COURSES_BASE_URL
 
 
-def get_demo_courses_index_url() -> str | None:
+def get_demo_courses_index_url() -> str:
     """Return the fixed remote `index.json` URL for demo courses."""
 
-    base_url = get_demo_courses_base_url()
-    if not base_url:
-        return None
-    return urljoin(base_url, _DEMO_COURSES_INDEX_PATH)
-
-
-def _demo_courses_enabled() -> bool:
-    return get_demo_courses_base_url() is not None
+    return urljoin(get_demo_courses_base_url(), _DEMO_COURSES_INDEX_PATH)
 
 
 def _get_demo_courses_timeout_s() -> float:
@@ -157,9 +141,6 @@ def _get_demo_courses_timeout_s() -> float:
 
 def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
     catalog_url = get_demo_courses_index_url()
-    if not catalog_url:
-        raise DemoCourseCatalogNotConfiguredError()
-
     payload = _fetch_remote_catalog_payload(catalog_url)
     raw_items = _extract_catalog_items(payload)
     base_url = get_demo_courses_base_url()

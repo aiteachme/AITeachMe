@@ -157,19 +157,6 @@ class RawFileInUseError(AITeachMeError):
         )
 
 
-class DemoCourseCatalogNotConfiguredError(AITeachMeError):
-    error_code = "DEMO_COURSE_CATALOG_NOT_CONFIGURED"
-    status_code = HTTPStatus.SERVICE_UNAVAILABLE
-
-    def __init__(self) -> None:
-        super().__init__(
-            detail=(
-                "当前发行版未配置演示课程目录。"
-                "演示课程由部署侧统一发布到公共对象存储后提供。"
-            )
-        )
-
-
 class DemoCourseCatalogUnavailableError(AITeachMeError):
     error_code = "DEMO_COURSE_CATALOG_UNAVAILABLE"
     status_code = HTTPStatus.BAD_GATEWAY
