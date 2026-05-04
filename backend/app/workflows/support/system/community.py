@@ -8,26 +8,12 @@ import time
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
-from app.shared.infra.env_support import get_env
-
-_DEFAULT_COMMUNITY_QR_URL = (
+_COMMUNITY_QR_URL = (
     "https://raw.githubusercontent.com/aiteachme/assets/main/wechat-qr.jpg"
 )
 _COMMUNITY_QR_FETCH_TIMEOUT_SECONDS = 8
 _COMMUNITY_QR_MAX_BYTES = 2 * 1024 * 1024
 logger = structlog.get_logger(__name__)
-
-
-def _get_community_wechat_qr_url() -> str | None:
-    url = (
-        (get_env("COMMUNITY_WECHAT_QR_URL") or "").strip()
-        or _DEFAULT_COMMUNITY_QR_URL
-    )
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        logger.warning("community_wechat_qr_invalid_url", url=url)
-        return None
-    return url
 
 
 def _with_cache_buster(url: str) -> str:
@@ -61,18 +47,14 @@ def _read_remote_community_wechat_qr_sync(url: str) -> bytes:
 
 
 async def read_community_wechat_qr_bytes() -> bytes | None:
-    """Read the latest community WeChat QR image from the configured remote URL."""
-
-    url = _get_community_wechat_qr_url()
-    if not url:
-        return None
+    """Read the latest community WeChat QR image from the project assets repo."""
 
     try:
-        return await asyncio.to_thread(_read_remote_community_wechat_qr_sync, url)
+        return await asyncio.to_thread(_read_remote_community_wechat_qr_sync, _COMMUNITY_QR_URL)
     except Exception as exc:
         logger.warning(
             "community_wechat_qr_fetch_failed",
-            url=url,
+            url=_COMMUNITY_QR_URL,
             error=str(exc),
         )
         return None

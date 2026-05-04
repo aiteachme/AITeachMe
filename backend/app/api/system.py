@@ -55,7 +55,7 @@ async def init_system(
 @router.get(
     "/community/wechat-qr",
     summary="读取社区微信二维码",
-    description="从 COMMUNITY_WECHAT_QR_URL 指向的远程图片读取社区微信二维码，并以 no-store 返回给前端。",
+    description="从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。",
     responses=build_error_responses([404, 500]),
 )
 async def get_community_wechat_qr() -> Response:
