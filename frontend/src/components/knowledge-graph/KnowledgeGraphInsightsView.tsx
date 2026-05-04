@@ -1,15 +1,16 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, GitBranch, Loader2, Route, Sparkles, type LucideIcon } from "lucide-react";
+import { BarChart3, GitBranch, Loader2, Network, Route, Sparkles, type LucideIcon } from "lucide-react";
 
 import { graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { FlowSankeyView } from "./insights/FlowSankeyView";
 import { buildInsightModel, percentText } from "./insights/insightsCore";
 import { PeerArcView } from "./insights/PeerArcView";
+import { ReadableMapView } from "./insights/ReadableMapView";
 import { StructureMatrixView } from "./insights/StructureMatrixView";
 
-type InsightMode = "atlas" | "peer" | "flow" | "matrix";
+type InsightMode = "map" | "galaxy" | "peer" | "flow" | "matrix";
 
 const AtlasGalaxyView = lazy(async () => {
   const module = await import("./insights/AtlasGalaxyView");
@@ -17,7 +18,8 @@ const AtlasGalaxyView = lazy(async () => {
 });
 
 const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon }> = [
-  { id: "atlas", label: "3D 星云", icon: Sparkles },
+  { id: "map", label: "知识地图", icon: Network },
+  { id: "galaxy", label: "3D 展示", icon: Sparkles },
   { id: "peer", label: "同级弧线", icon: GitBranch },
   { id: "flow", label: "学习流", icon: Route },
   { id: "matrix", label: "结构矩阵", icon: BarChart3 },
@@ -57,7 +59,7 @@ export function KnowledgeGraphInsightsView({
   course: string;
   toolbar?: ReactNode;
 }) {
-  const [mode, setMode] = useState<InsightMode>("atlas");
+  const [mode, setMode] = useState<InsightMode>("map");
   const { data, isLoading } = useQuery({
     queryKey: ["graph-insights-full", course],
     queryFn: async () =>
@@ -116,12 +118,13 @@ export function KnowledgeGraphInsightsView({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {mode === "atlas" ? (
+        {mode === "map" ? <ReadableMapView model={model} /> : null}
+        {mode === "galaxy" ? (
           <Suspense
             fallback={
               <div className="flex h-[680px] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                正在加载 3D 星云...
+                正在加载 3D 展示...
               </div>
             }
           >
