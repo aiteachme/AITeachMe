@@ -5,7 +5,7 @@ import { BarChart3, Loader2, Network, Sparkles, type LucideIcon } from "lucide-r
 import { graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { InsightDashboardView } from "./insights/InsightDashboardView";
-import { buildInsightModel, percentText } from "./insights/insightsCore";
+import { buildInsightModel } from "./insights/insightsCore";
 import { ReadableMapView } from "./insights/ReadableMapView";
 
 type InsightMode = "map" | "galaxy" | "analysis";
@@ -23,7 +23,7 @@ const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon }> = [
 
 function LoadingState({ toolbar }: { toolbar?: ReactNode }) {
   return (
-    <div className="flex h-full flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-slate-50 dark:bg-slate-950">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
         {toolbar}
       </div>
@@ -37,7 +37,7 @@ function LoadingState({ toolbar }: { toolbar?: ReactNode }) {
 
 function EmptyState({ toolbar }: { toolbar?: ReactNode }) {
   return (
-    <div className="flex h-full flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-slate-50 dark:bg-slate-950">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
         {toolbar}
       </div>
@@ -71,24 +71,10 @@ export function KnowledgeGraphInsightsView({
   if (!model.nodeCount) return <EmptyState toolbar={toolbar} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         {toolbar}
-        <div className="ml-auto flex min-w-0 items-center gap-3">
-          <div className="hidden items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 lg:flex">
-            <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-              {model.nodeCount}
-            </span>
-            点
-            <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-              {model.edgeCount}
-            </span>
-            线
-            <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-              {percentText(model.loopCoveragePct)}
-            </span>
-            闭环
-          </div>
+        <div className="ml-auto flex min-w-0 items-center">
           <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-slate-100 p-1 dark:bg-slate-900">
             {TABS.map((item) => {
               const Icon = item.icon;
@@ -115,12 +101,12 @@ export function KnowledgeGraphInsightsView({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+      <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
         {mode === "map" ? <ReadableMapView model={model} /> : null}
         {mode === "galaxy" ? (
           <Suspense
             fallback={
-              <div className="flex h-[640px] items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 正在加载 3D 展示...
               </div>

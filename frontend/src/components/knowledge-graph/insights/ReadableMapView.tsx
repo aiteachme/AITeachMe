@@ -10,7 +10,7 @@ import {
   percentText,
   relationLabel,
 } from "./insightsCore";
-import { CategoryBar, ChartPanel } from "./sharedPrimitives";
+import { CategoryBar } from "./sharedPrimitives";
 
 type MapNode = NodeInsight & {
   type: string;
@@ -36,11 +36,11 @@ type MapEdge = {
   score: number;
 };
 
-const MAP_WIDTH = 1180;
-const MAP_HEIGHT = 680;
-const MAP_TOP = 92;
-const MAP_BOTTOM = 565;
-const LAYER_X = [86, 330, 574, 818, 1062];
+const MAP_WIDTH = 1500;
+const MAP_HEIGHT = 560;
+const MAP_TOP = 82;
+const MAP_BOTTOM = 498;
+const LAYER_X = [160, 455, 750, 1045, 1340];
 const LABEL_BUDGET_BY_LAYER = [3, 6, 4, 5, 3];
 const BACKBONE_RELATIONS = new Set(["prerequisite", "contains", "reasoning", "application", "training"]);
 
@@ -85,12 +85,12 @@ function buildReadableMap(model: GraphInsightModel): { nodes: MapNode[]; edges: 
       const compactIndex = Math.max(0, index - rowCount);
       const compactColumn = compactIndex % 4;
       const compactRow = Math.floor(compactIndex / 4);
-      const compactYOffset = 18 + (compactRow % 10) * 22;
+      const compactYOffset = 12 + (compactRow % 12) * 20;
       const rankRatio = rowCount > 1 ? index / (rowCount - 1) : 0.5;
       const y = isCompact
         ? MAP_TOP + compactYOffset + ((compactIndex * 17) % 15)
         : MAP_TOP + rankRatio * laneHeight;
-      const xOffset = isCompact ? side * (58 + compactColumn * 15) : (index % 3 - 1) * 8;
+      const xOffset = isCompact ? side * (54 + compactColumn * 13) : (index % 3 - 1) * 8;
       const degreeRadius = Math.sqrt(Math.max(1, node.degree)) * 1.5;
       const isHighSignal = index < labelBudget || node.degree >= 5 || node.issueScore >= 2.8;
 
@@ -199,7 +199,7 @@ function NodeDetail({
     .slice(0, 8);
 
   return (
-    <div className="rounded-lg border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+    <div className="max-h-[360px] overflow-y-auto rounded-lg border border-slate-200/80 bg-white/96 p-3 shadow-lg shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
       <div className="flex items-start gap-3">
         <span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: node.color }} />
         <div className="min-w-0">
@@ -278,17 +278,21 @@ function OverviewPanel({
   const hubNodes = model.bottleneckNodes.slice(0, 4);
 
   return (
-    <ChartPanel title="概览">
-      <div className="grid gap-3 p-3 sm:p-4">
+    <div className="rounded-lg border border-slate-200/80 bg-white/96 p-3 shadow-lg shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">概览</p>
+        <span className="text-[11px] tabular-nums text-slate-500">{model.nodeCount} 点</span>
+      </div>
+      <div className="grid gap-3">
         <div
-          className={`rounded-lg border px-3 py-2 ${
+          className={`rounded-md border px-3 py-2 ${
             issueIsGood
               ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
               : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
           }`}
         >
-          <p className="truncate text-sm font-semibold">
-            {issueIsGood ? <CheckCircle2 className="mr-1 inline h-4 w-4" /> : <AlertTriangle className="mr-1 inline h-4 w-4" />}
+          <p className="truncate text-xs font-semibold">
+            {issueIsGood ? <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" /> : <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />}
             {mainIssue?.title ?? "图谱结构可用"}
           </p>
         </div>
@@ -296,13 +300,13 @@ function OverviewPanel({
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">主干</p>
-            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
+            <p className="mt-1 text-base font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {percentText(model.largestComponentPct)}
             </p>
           </div>
           <div className="rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200 dark:bg-slate-900/70 dark:ring-slate-800">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">练习</p>
-            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
+            <p className="mt-1 text-base font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {percentText(model.practiceCoveragePct)}
             </p>
           </div>
@@ -368,7 +372,45 @@ function OverviewPanel({
           </div>
         </div>
       </div>
-    </ChartPanel>
+    </div>
+  );
+}
+
+function LegendPanel({
+  model,
+  layout,
+  relationSegments,
+  onSelect,
+}: {
+  model: GraphInsightModel;
+  layout: { nodes: MapNode[]; edges: MapEdge[] };
+  relationSegments: Array<{ key: string; label: string; color: string; count: number }>;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200/80 bg-white/96 p-3 shadow-lg shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+      <p className="mb-2 text-sm font-semibold text-slate-950 dark:text-slate-50">图例</p>
+      <div className="flex flex-wrap gap-1.5">
+        {model.typeItems.slice(0, 7).map((item) => (
+          <button
+            key={item.type}
+            type="button"
+            className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-900"
+            onClick={() => {
+              const first = layout.nodes.find((node) => node.type === item.type);
+              if (first) onSelect(first.id);
+            }}
+          >
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+            {item.label}
+            <span className="tabular-nums text-slate-400">{item.count}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-3">
+        <CategoryBar segments={relationSegments} height={7} showLegend={false} />
+      </div>
+    </div>
   );
 }
 
@@ -418,16 +460,19 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
   };
 
   return (
-    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
-      <ChartPanel
-        title="地图"
-        meta={`${model.nodeCount} 点 · ${visibleEdges.length}/${model.edgeCount} 线`}
-        className="min-h-[700px]"
-      >
-        <div className="relative overflow-x-auto bg-[#f8fafc] dark:bg-slate-950">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 dark:border-slate-800">
+        <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">地图</p>
+        <span className="text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+          {model.nodeCount} 点 · {visibleEdges.length}/{model.edgeCount} 线
+        </span>
+      </div>
+
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#f8fafc] dark:bg-slate-950">
+        <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
           <svg
             viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-            className="h-[680px] min-w-[1080px] w-full"
+            className="h-full min-w-[1120px] w-full"
             role="img"
             aria-label="可读知识图谱地图"
           >
@@ -445,18 +490,18 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
               return (
                 <g key={layer.label}>
                   <rect
-                    x={x - 72}
-                    y={44}
-                    width={144}
-                    height={560}
-                    rx={22}
+                    x={x - 82}
+                    y={54}
+                    width={164}
+                    height={466}
+                    rx={24}
                     fill={layer.color}
                     opacity={0.055}
                     stroke={layer.color}
                     strokeDasharray="4 8"
                     strokeOpacity={0.18}
                   />
-                  <text x={x} y={34} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
+                  <text x={x} y={36} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
                     {layer.label}
                   </text>
                 </g>
@@ -533,37 +578,29 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
             </g>
           </svg>
         </div>
-      </ChartPanel>
 
-      <div className="grid content-start gap-3">
-        {activeNode ? (
-          <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
-        ) : (
-          <OverviewPanel model={model} onSelect={setSelectedId} />
-        )}
-        <ChartPanel title="图例">
-          <div className="grid gap-3 p-3 sm:p-4">
-            <div className="flex flex-wrap gap-2">
-              {model.typeItems.slice(0, 7).map((item) => (
-                <button
-                  key={item.type}
-                  type="button"
-                  className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-slate-900/70 dark:text-slate-300 dark:ring-slate-800 dark:hover:bg-slate-900"
-                  onClick={() => {
-                    const first = layout.nodes.find((node) => node.type === item.type);
-                    if (first) setSelectedId(first.id);
-                  }}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.label}
-                  <span className="tabular-nums text-slate-400">{item.count}</span>
-                </button>
-              ))}
-            </div>
-            <CategoryBar segments={relationSegments} height={8} />
+        <div className="pointer-events-none absolute right-4 top-4 z-10 hidden w-[286px] gap-3 xl:grid">
+          <div className="pointer-events-auto">
+            {activeNode ? (
+              <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
+            ) : (
+              <OverviewPanel model={model} onSelect={setSelectedId} />
+            )}
           </div>
-        </ChartPanel>
+          <div className="pointer-events-auto">
+            <LegendPanel
+              model={model}
+              layout={layout}
+              relationSegments={relationSegments}
+              onSelect={setSelectedId}
+            />
+          </div>
+        </div>
+
+        <div className="pointer-events-none absolute bottom-3 left-4 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
+          点击节点查看关系
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

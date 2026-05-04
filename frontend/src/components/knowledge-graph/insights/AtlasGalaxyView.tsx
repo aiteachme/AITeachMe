@@ -356,15 +356,15 @@ export function AtlasGalaxyView({ model }: { model: GraphInsightModel }) {
   }, [galaxy.nodes, hoveredId, selectedId]);
 
   return (
-    <div className="h-full">
+    <div className="h-full min-h-0">
       <ChartPanel
         title="3D 知识星团"
         meta={`${model.nodeCount} 知识点 · ${galaxy.clusters.length} 类型`}
         description="方块是关键知识点；颜色代表类型；点击可固定查看邻接关系。"
-        className="flex h-full min-h-[620px] flex-col overflow-hidden"
-        bodyClassName="min-h-0 flex-1"
+        className="flex h-full min-h-0 flex-col overflow-hidden"
+        bodyClassName="flex min-h-0 flex-1"
       >
-        <div className="relative h-full min-h-[560px] bg-slate-950">
+        <div className="relative min-h-0 flex-1 bg-slate-950">
           <Canvas
             camera={{ position: [7.4, 8.2, 21], fov: 48 }}
             dpr={[1, 1.25]}
