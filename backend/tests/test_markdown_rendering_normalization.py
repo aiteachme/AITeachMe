@@ -223,6 +223,26 @@ def test_normalize_mermaid_wraps_plain_flowchart_lines_with_hex_values() -> None
     assert 'A["入口"] --> B["执行"]' in fixed
 
 
+def test_normalize_mermaid_compacts_class_node_lists() -> None:
+    raw = "\n".join(
+        [
+            "```mermaid",
+            "flowchart TB",
+            "C[概念] --> D[方法]",
+            "G[练习]",
+            "classDef method fill:#eef,stroke:#88f;",
+            "class C, D, G method",
+            "```",
+        ]
+    )
+
+    fixed = normalize_mermaid_blocks(raw)
+
+    assert "class C,D,G method" in fixed
+    assert "class C, D, G method" not in fixed
+    assert "classDef method fill:#eef,stroke:#88f;" in fixed
+
+
 def test_normalize_ignores_dollars_inside_inline_code() -> None:
     raw = "\n".join(
         [

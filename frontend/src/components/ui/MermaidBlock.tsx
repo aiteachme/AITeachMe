@@ -20,6 +20,7 @@ const FLOWCHART_HEADER_RE = /^(?:flowchart|graph)\b/i;
 const FLOWCHART_INLINE_HEADER_RE = /^\s*((?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL))\s+(.+)$/i;
 const FLOWCHART_NODE_LABEL_RE = /(^|[^\w"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]/g;
 const FLOWCHART_EDGE_LABEL_RE = /\|([^|\n]+)\|/g;
+const FLOWCHART_CLASS_LINE_RE = /^(\s*class\s+)([^;\n]+?)(;?\s*)$/i;
 const FLOWCHART_CONTROL_LINE_RE = /^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)/i;
 const FLOWCHART_EDGE_LINE_RE = /^\s*[A-Za-z_][\w-]*\s*(?:-->|---|==>|-.->|==|--|~~~|o--|x--)/;
 const FLOWCHART_NODE_LINE_RE = /^\s*[A-Za-z_][\w-]*\s*(?:\[|\(|\{|\>)/;
@@ -112,9 +113,37 @@ function sanitizeFlowchartLabel(label: string): string {
   return normalized || "节点";
 }
 
+function normalizeFlowchartControlLine(line: string): string {
+  const classMatch = line.match(FLOWCHART_CLASS_LINE_RE);
+  if (!classMatch || /^\s*classDef\b/i.test(line)) {
+    return line;
+  }
+
+  const prefix = classMatch[1] ?? "";
+  const body = (classMatch[2] ?? "").trim();
+  const suffix = classMatch[3] ?? "";
+  const parts = body.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return line;
+  }
+
+  const className = parts.pop() ?? "";
+  const nodeList = parts
+    .join(" ")
+    .split(",")
+    .map((nodeId) => nodeId.trim())
+    .filter(Boolean)
+    .join(",");
+  if (!nodeList || !className) {
+    return line;
+  }
+
+  return `${prefix}${nodeList} ${className}${suffix}`;
+}
+
 function quoteFlowchartLabels(line: string): string {
   if (/^\s*(?:classDef|class|style|linkStyle|click)\b/i.test(line)) {
-    return line;
+    return normalizeFlowchartControlLine(line);
   }
 
   return line.replace(FLOWCHART_NODE_LABEL_RE, (_match, prefix: string, nodeId: string, label: string) => {

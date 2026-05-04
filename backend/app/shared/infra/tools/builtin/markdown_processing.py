@@ -35,6 +35,7 @@ FLOWCHART_INLINE_HEADER_PATTERN = re.compile(
 )
 FLOWCHART_NODE_LABEL_PATTERN = re.compile(r"(^|[^\w\"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]")
 FLOWCHART_EDGE_LABEL_PATTERN = re.compile(r"\|([^|\n]+)\|")
+FLOWCHART_CLASS_LINE_PATTERN = re.compile(r"^(\s*class\s+)([^;\n]+?)(;?\s*)$", re.IGNORECASE)
 FLOWCHART_CONTROL_LINE_PATTERN = re.compile(
     r"^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|"
     r"linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)",
@@ -183,9 +184,30 @@ def _sanitize_mermaid_label(value: str, *, max_length: int = 44) -> str:
     return (cleaned[:max_length].strip() or "节点").rstrip("：:，,。；; ")
 
 
+def _normalize_flowchart_control_line(line: str) -> str:
+    if re.match(r"^\s*classDef\b", line, re.IGNORECASE):
+        return line
+    match = FLOWCHART_CLASS_LINE_PATTERN.match(line)
+    if match is None:
+        return line
+
+    prefix = match.group(1) or ""
+    body = (match.group(2) or "").strip()
+    suffix = match.group(3) or ""
+    parts = [part for part in re.split(r"\s+", body) if part]
+    if len(parts) < 2:
+        return line
+
+    class_name = parts.pop()
+    node_list = ",".join(node_id.strip() for node_id in " ".join(parts).split(",") if node_id.strip())
+    if not node_list or not class_name:
+        return line
+    return f"{prefix}{node_list} {class_name}{suffix}"
+
+
 def _quote_flowchart_labels(line: str) -> str:
     if re.match(r"^\s*(?:classDef|class|style|linkStyle|click)\b", line, re.IGNORECASE):
-        return line
+        return _normalize_flowchart_control_line(line)
 
     def replace_node_label(match: re.Match[str]) -> str:
         label = _sanitize_mermaid_label(match.group(3)).replace('"', "'")
