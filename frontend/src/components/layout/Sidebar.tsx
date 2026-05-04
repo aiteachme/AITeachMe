@@ -13,7 +13,6 @@ import {
   Loader2,
   Menu,
   MoreVertical,
-  PackagePlus,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -37,7 +36,6 @@ import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive } from "../../lib/courseNavigation";
 import { CourseExportModal } from "../course/CourseExportModal";
-import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
@@ -205,7 +203,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -632,7 +629,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-2 overflow-hidden pb-3", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex h-8 items-center gap-1">
+            <div className="flex h-8 items-center">
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
@@ -647,15 +644,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   )}
                 />
                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsImportModalOpen(true)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-blue-300"
-                title="导入课程包"
-                aria-label="导入课程包"
-              >
-                <PackagePlus className="h-4 w-4" />
               </button>
             </div>
           ) : (
@@ -931,10 +919,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
       {exportCourseId ? (
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
-      ) : null}
-
-      {isImportModalOpen ? (
-        <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
