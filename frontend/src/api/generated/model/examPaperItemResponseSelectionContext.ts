@@ -3,7 +3,7 @@
  * Do not edit manually.
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
- * OpenAPI spec version: 0.0.3-beta.1
+ * OpenAPI spec version: 0.0.3-beta.2
  */
 
 export type ExamPaperItemResponseSelectionContext = { [key: string]: unknown };
