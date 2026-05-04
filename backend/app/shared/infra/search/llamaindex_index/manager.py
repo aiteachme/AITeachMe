@@ -25,6 +25,7 @@ from sqlalchemy.engine.url import make_url
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env
+from app.shared.infra.exceptions import CourseRegistryNotFoundError
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope, run_store_sync
 from app.shared.infra.search.llamaindex_index.sqlite_vec_store import SQLiteVecVectorStore
@@ -389,6 +390,8 @@ def clear_course_index(course_id: str) -> None:
             try:
                 cs = get_content_store()
                 run_store_sync(cs.delete_prefix, _local_index_prefix(normalized_course_id), default=0)
+            except CourseRegistryNotFoundError:
+                pass
             except Exception as exc:  # pragma: no cover - legacy cleanup only
                 logger.warning(
                     "llamaindex_legacy_local_store_cleanup_failed",

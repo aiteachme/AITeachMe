@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import posixpath
+import shutil
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +23,7 @@ from app.shared.infra.exceptions import (
     DemoCoursePackageNotFoundError,
     ImportPackageTooLargeError,
 )
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.workflows.support.export_import.limits import (
     MAX_IMPORT_PACKAGE_BYTES,
     MAX_IMPORT_PACKAGE_SIZE_MB,
@@ -32,8 +34,10 @@ logger = structlog.get_logger()
 _DEFAULT_TIMEOUT_S = 15.0
 _PACKAGE_PROBE_TIMEOUT_S = 4.0
 _PACKAGE_PROBE_MAX_WORKERS = 6
+_CATALOG_CACHE_TTL_S = 60.0
 _DEMO_COURSES_BASE_URL = "https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/"
 _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
+_REMOTE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,16 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
 
+    cached_path = _get_valid_cached_package_path(descriptor)
+    if cached_path is not None:
+        shutil.copyfile(cached_path, tmp_path)
+        logger.info(
+            "demo_course_package_cache_hit",
+            identifier=descriptor.identifier,
+            package_filename=descriptor.package_filename,
+        )
+        return tmp_path, descriptor.package_filename
+
     try:
         timeout = _get_demo_courses_timeout_s()
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
@@ -104,6 +118,7 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
                             fh.write(chunk)
                 if hasher is not None and hasher.hexdigest().lower() != descriptor.sha256:
                     raise DemoCourseCatalogUnavailableError(reason="课程包校验失败。")
+        _store_cached_package(descriptor, tmp_path)
         return tmp_path, descriptor.package_filename
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -117,7 +132,7 @@ def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     if not normalized:
         raise DemoCoursePackageNotFoundError(identifier)
 
-    for descriptor in _load_remote_course_descriptors():
+    for descriptor in _load_remote_course_descriptors(probe_packages=False):
         if normalized in {descriptor.identifier, descriptor.package_filename}:
             return descriptor
     raise DemoCoursePackageNotFoundError(normalized)
@@ -139,8 +154,25 @@ def _get_demo_courses_timeout_s() -> float:
     return _DEFAULT_TIMEOUT_S
 
 
-def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
+def _load_remote_course_descriptors(*, probe_packages: bool = True) -> list[_RemoteCourseDescriptor]:
     catalog_url = get_demo_courses_index_url()
+    descriptors = _load_catalog_descriptors(catalog_url)
+    if not probe_packages:
+        return descriptors
+    return _filter_available_remote_course_descriptors(descriptors)
+
+
+def _load_catalog_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
+    global _REMOTE_DESCRIPTOR_CACHE
+
+    now = time.monotonic()
+    if (
+        _REMOTE_DESCRIPTOR_CACHE is not None
+        and _REMOTE_DESCRIPTOR_CACHE[1] == catalog_url
+        and now - _REMOTE_DESCRIPTOR_CACHE[0] <= _CATALOG_CACHE_TTL_S
+    ):
+        return list(_REMOTE_DESCRIPTOR_CACHE[2])
+
     payload = _fetch_remote_catalog_payload(catalog_url)
     raw_items = _extract_catalog_items(payload)
     base_url = get_demo_courses_base_url()
@@ -156,7 +188,63 @@ def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
         if descriptor is None:
             continue
         descriptors.append(descriptor)
-    return _filter_available_remote_course_descriptors(descriptors)
+
+    _REMOTE_DESCRIPTOR_CACHE = (now, catalog_url, descriptors)
+    return list(descriptors)
+
+
+def _demo_course_package_cache_dir() -> Path:
+    cache_dir = get_runtime_data_dir() / "cache" / "demo-courses"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _cache_key_for_descriptor(descriptor: _RemoteCourseDescriptor) -> str | None:
+    if not descriptor.sha256:
+        return None
+    digest = descriptor.sha256.lower()
+    suffix = Path(descriptor.package_filename or "").suffix or ".atmx"
+    return f"{digest}{suffix}"
+
+
+def _get_valid_cached_package_path(descriptor: _RemoteCourseDescriptor) -> Path | None:
+    cache_key = _cache_key_for_descriptor(descriptor)
+    if not cache_key:
+        return None
+    cache_path = _demo_course_package_cache_dir() / cache_key
+    if not cache_path.is_file():
+        return None
+    if descriptor.file_size_bytes > 0 and cache_path.stat().st_size != descriptor.file_size_bytes:
+        cache_path.unlink(missing_ok=True)
+        return None
+    if descriptor.sha256 and _sha256_file(cache_path) != descriptor.sha256.lower():
+        cache_path.unlink(missing_ok=True)
+        return None
+    return cache_path
+
+
+def _store_cached_package(descriptor: _RemoteCourseDescriptor, package_path: Path) -> None:
+    cache_key = _cache_key_for_descriptor(descriptor)
+    if not cache_key:
+        return
+    cache_path = _demo_course_package_cache_dir() / cache_key
+    try:
+        shutil.copyfile(package_path, cache_path)
+    except Exception as exc:  # pragma: no cover - cache best effort
+        logger.warning(
+            "demo_course_package_cache_store_failed",
+            identifier=descriptor.identifier,
+            error=str(exc),
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            if chunk:
+                hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _filter_available_remote_course_descriptors(
