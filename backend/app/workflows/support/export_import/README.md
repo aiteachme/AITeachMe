@@ -25,7 +25,7 @@
 ## Demo Course Paths
 
 - `GET /api/v1/demo-courses`: list demo-course cards for the frontend.
-- `POST /api/v1/demo-courses/{identifier}/import`: download one `.atmx` package from the public catalog and import it into the current account; after a successful import it appears in the sidebar course list.
+- `POST /api/v1/demo-courses/{identifier}/import`: download one `.atmx` package from the public catalog and import it into the current account; after a successful import it appears in the sidebar course list. Demo-course vector indexing is scheduled in the background so the course card can appear quickly.
 
 ## Export Data Boundary
 

@@ -517,8 +517,12 @@ def _record_to_dict(record: SQLModel) -> dict:
     return data
 
 
-def _ensure_course_icon(record_data: dict[str, Any], course_name: str) -> None:
+def _prepare_imported_course_settings(record_data: dict[str, Any], course_name: str) -> None:
     settings = _decode_settings_json(record_data.get("settings_json"))
+    embedding = settings.get("embedding")
+    if isinstance(embedding, dict) and embedding.get("mode") == "enabled":
+        # The package does not include vector rows, so enabled bindings must be rebuilt.
+        settings.pop("embedding", None)
     if normalize_course_icon_key(settings.get(COURSE_ICON_SETTINGS_KEY)) is None:
         settings[COURSE_ICON_SETTINGS_KEY] = infer_course_icon_key(course_name)
     record_data["settings_json"] = json.dumps(settings, ensure_ascii=False)
@@ -623,7 +627,7 @@ def _import_table(
             record_data["normalized_name"] = None
             record_data["created_at"] = imported_at
             record_data["updated_at"] = imported_at
-            _ensure_course_icon(record_data, new_name)
+            _prepare_imported_course_settings(record_data, new_name)
         elif spec.course_field and spec.course_field != "id":
             record_data[spec.course_field] = new_course_id
 

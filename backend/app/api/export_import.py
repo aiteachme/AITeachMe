@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, Form, Path, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 from starlette.concurrency import run_in_threadpool
@@ -29,6 +29,7 @@ from app.workflows.support.export_import import (
     import_course,
     list_available_courses,
     preview_export,
+    spawn_imported_embedding_rebuild_background,
 )
 from app.workflows.support.export_import.limits import (
     MAX_IMPORT_PACKAGE_BYTES,
@@ -159,6 +160,7 @@ async def list_demo_courses_api(response: Response) -> ApiResponse[list[CoursePa
     responses=build_error_responses([404, 413, 422, 500, 502]),
 )
 async def import_demo_course_api(
+    request: Request,
     identifier: str,
     new_course_name: str | None = Body(default=None, embed=True),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -171,9 +173,15 @@ async def import_demo_course_api(
         result = import_course(
             session,
             file_path=tmp_path,
-            options=ImportOptions(new_course_name=new_course_name),
+            options=ImportOptions(new_course_name=new_course_name, rebuild_embeddings=False),
             user_id=user.user_id,
         )
+        if spawn_imported_embedding_rebuild_background(
+            getattr(request.app.state, "background_task_registry", None),
+            course_id=result.course_id,
+            imported_counts=result.imported_counts,
+        ):
+            result.warnings.append("课程已导入，检索索引正在后台准备，通常几秒内完成。")
         return ok_response(result)
     finally:
         tmp_path.unlink(missing_ok=True)

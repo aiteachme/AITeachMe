@@ -11,7 +11,10 @@ from app.workflows.support.export_import.exports import (
     export_course,
     preview_export,
 )
-from app.workflows.support.export_import.imports import import_course
+from app.workflows.support.export_import.imports import (
+    import_course,
+    spawn_imported_embedding_rebuild_background,
+)
 
 __all__ = [
     "download_course_package",
@@ -22,4 +25,5 @@ __all__ = [
     "import_course",
     "list_available_courses",
     "preview_export",
+    "spawn_imported_embedding_rebuild_background",
 ]

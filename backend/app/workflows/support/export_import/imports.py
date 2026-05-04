@@ -137,12 +137,13 @@ def import_course(
             _cleanup_import_artifacts(new_course_id, user_id=user_id)
             raise
 
-        _rebuild_imported_embeddings(
-            session,
-            course_id=new_course_id,
-            imported_counts=imported_counts,
-            warnings=warnings,
-        )
+        if options.rebuild_embeddings:
+            _rebuild_imported_embeddings(
+                session,
+                course_id=new_course_id,
+                imported_counts=imported_counts,
+                warnings=warnings,
+            )
 
         logger.info(
             "course_imported",
@@ -573,6 +574,79 @@ def _rebuild_imported_embeddings(
         warnings.append(f"embedding_rebuild: failed: {exc}")
 
 
+def _rebuild_imported_embeddings_with_new_session(
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+    warnings: list[str],
+) -> None:
+    from app.shared.infra.database import managed_session
+
+    with managed_session() as session:
+        _rebuild_imported_embeddings(
+            session,
+            course_id=course_id,
+            imported_counts=imported_counts,
+            warnings=warnings,
+        )
+
+
+async def rebuild_imported_embeddings_background(
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+) -> None:
+    """Rebuild imported course embeddings without holding up the import response."""
+
+    warnings: list[str] = []
+    await asyncio.to_thread(
+        _rebuild_imported_embeddings_with_new_session,
+        course_id=course_id,
+        imported_counts=dict(imported_counts),
+        warnings=warnings,
+    )
+    if warnings:
+        logger.warning(
+            "course_import_embedding_background_warnings",
+            course_id=course_id,
+            warnings=warnings,
+        )
+
+
+def spawn_imported_embedding_rebuild_background(
+    background_task_registry: Any | None,
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+) -> bool:
+    """Schedule imported-course embedding rebuild, returning whether it was queued."""
+
+    if int(imported_counts.get("retrieval_chunk", 0) or 0) <= 0:
+        return False
+    if background_task_registry is None:
+        logger.warning(
+            "course_import_embedding_background_registry_missing",
+            course_id=course_id,
+        )
+        return False
+
+    coroutine = rebuild_imported_embeddings_background(
+        course_id=course_id,
+        imported_counts=imported_counts,
+    )
+    try:
+        background_task_registry.spawn(
+            coroutine,
+            kind="course.import.embeddings",
+            course_id=course_id,
+            name=f"course.import.embeddings:{course_id}",
+        )
+    except Exception:
+        coroutine.close()
+        raise
+    return True
+
+
 def _run_async(coro):
     """Run one coroutine safely from sync import flows."""
 
@@ -589,4 +663,8 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-__all__ = ["import_course"]
+__all__ = [
+    "import_course",
+    "rebuild_imported_embeddings_background",
+    "spawn_imported_embedding_rebuild_background",
+]

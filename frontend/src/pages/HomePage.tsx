@@ -545,10 +545,10 @@ export function HomePage() {
     queryKey: ["available-demo-courses"],
     queryFn: fetchDemoCourses,
     retry: false,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
 
@@ -559,7 +559,6 @@ export function HomePage() {
       setDemoCourseError(null);
       notifyCoursesImported({ courseId: result.course_id });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
       const warning = result.warnings.find((item) => item.trim())?.trim();
       toast({
         title: warning ? "导入成功，有提示" : "导入成功",

@@ -55,6 +55,10 @@ class ImportOptions(BaseModel):
     """Import options payload."""
 
     new_course_name: str | None = Field(default=None, description="Optional custom course name after import.")
+    rebuild_embeddings: bool = Field(
+        default=True,
+        description="Whether to rebuild imported retrieval embeddings before returning.",
+    )
 
 
 class ImportResultData(BaseModel):
