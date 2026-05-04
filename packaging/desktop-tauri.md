@@ -110,5 +110,6 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 - Python 3.11，用于本地后端模式。
 - 如需生成 Tauri local 在线更新产物，需要 updater 公钥和签名私钥环境变量。
 - Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
+- 面向真实用户发布的 Windows `.exe` 建议启用 Authenticode 代码签名；配置见 `packaging\windows-signing.md`。
 
 底层实现脚本是 `packaging\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

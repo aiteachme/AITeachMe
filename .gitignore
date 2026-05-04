@@ -47,6 +47,7 @@ settings.private.yaml
 /packaging/tauri-remote/
 /build/
 /frontend/src-tauri/tauri.local.release.conf.json
+/frontend/src-tauri/tauri.remote.release.conf.json
 
 # Tooling caches
 .langgraph_api/

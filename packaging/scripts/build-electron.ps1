@@ -314,6 +314,10 @@ $npm = Resolve-CommandPath @("npm.cmd", "npm")
 Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
 
 . (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+. (Join-Path $PSScriptRoot "windows-signing-common.ps1")
+$windowsSigning = Get-AITeachMeWindowsSigningState
+Assert-AITeachMeWindowsSigningReady -Signing $windowsSigning
+
 $bundledEnvConfigPath = Initialize-BundledEnvConfig `
     -RepoRoot $repoRoot `
     -ImportBundledEnv:($ImportBundledEnv -and $Flavor -eq "local") `
@@ -341,6 +345,7 @@ Write-Host "Product: $productName"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
 Write-Host "API base URL: $apiBaseUrl"
+Write-AITeachMeWindowsSigningSummary -Signing $windowsSigning
 if ($Flavor -eq "local") {
     if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) {
         Write-Host "Backend port: auto"
@@ -375,6 +380,12 @@ if ($Flavor -eq "local") {
     if (-not (Test-Path (Join-Path $backendDistDir "aiteachme-backend.exe"))) {
         throw "Backend executable was not produced: $backendDistDir"
     }
+
+    Invoke-AITeachMeWindowsSignFile `
+        -Signing $windowsSigning `
+        -Path (Join-Path $backendDistDir "aiteachme-backend.exe") `
+        -Description "Electron backend sidecar" `
+        -SkipIfSigned
 }
 
 Write-Step "Write Electron runtime build config"
@@ -442,7 +453,13 @@ $installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-instal
 $installerArtifact = Join-Path $electronArtifactDir $installer.Name
 
 Copy-Item -LiteralPath $installer.FullName -Destination $installerArtifact -Force
+Invoke-AITeachMeWindowsSignFile `
+    -Signing $windowsSigning `
+    -Path $installerArtifact `
+    -Description "Electron installer" `
+    -SkipIfSigned
 Copy-Item -LiteralPath $installerArtifact -Destination $installerOutput -Force
+Write-AITeachMeSignatureStatus -Path $installerOutput -Description "Electron release installer"
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
