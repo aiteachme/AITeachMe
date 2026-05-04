@@ -81,7 +81,13 @@ frontend/dist/
 VITE_API_URL=<backend-api-origin>
 ```
 
-社区二维码由后端从当前存储后端读取 `community/wechat-qr.jpg` 并以 `no-store` 返回。线上只需要覆盖 OSS 上同名图片；图片不存在或加载失败时，弹窗会提示用户通过意见反馈告知我们。
+社区二维码由前端请求后端 `/api/v1/system/community/wechat-qr`，后端再从 `COMMUNITY_WECHAT_QR_URL` 指向的远程图片直链读取并以 `no-store` 返回。默认地址为：
+
+```env
+COMMUNITY_WECHAT_QR_URL=https://raw.githubusercontent.com/aiteachme/assets/main/wechat-qr.jpg
+```
+
+更新二维码时覆盖公开 assets 仓库中的同名图片即可；不要使用 `https://github.com/.../blob/...` 这类 GitHub 预览页地址。
 
 ### Sealos Nginx
 

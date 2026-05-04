@@ -5,43 +5,47 @@ from __future__ import annotations
 import asyncio
 import structlog
 import time
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from app.shared.infra.env_support import get_env
-from app.shared.infra.storage import get_artifact_store
 
-_COMMUNITY_QR_OBJECT_KEY = "community/wechat-qr.jpg"
+_DEFAULT_COMMUNITY_QR_URL = (
+    "https://raw.githubusercontent.com/aiteachme/assets/main/wechat-qr.jpg"
+)
 _COMMUNITY_QR_FETCH_TIMEOUT_SECONDS = 8
+_COMMUNITY_QR_MAX_BYTES = 2 * 1024 * 1024
 logger = structlog.get_logger(__name__)
 
 
-async def _read_community_wechat_qr_from_store() -> bytes | None:
-    """Read the community QR image from the configured artifact store."""
-
-    try:
-        return await get_artifact_store().read_bytes(_COMMUNITY_QR_OBJECT_KEY)
-    except Exception as exc:
-        logger.debug(
-            "community_wechat_qr_read_failed",
-            storage_key=_COMMUNITY_QR_OBJECT_KEY,
-            error=str(exc),
-        )
+def _get_community_wechat_qr_url() -> str | None:
+    url = (
+        (get_env("COMMUNITY_WECHAT_QR_URL") or "").strip()
+        or _DEFAULT_COMMUNITY_QR_URL
+    )
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        logger.warning("community_wechat_qr_invalid_url", url=url)
         return None
+    return url
 
 
-def _build_public_community_wechat_qr_url() -> str | None:
-    public_base_url = (get_env("S3_PUBLIC_BASE_URL") or "").strip()
-    if not public_base_url:
-        return None
-    url = urljoin(public_base_url.rstrip("/") + "/", _COMMUNITY_QR_OBJECT_KEY)
-    return f"{url}{'&' if '?' in url else '?'}t={int(time.time())}"
+def _with_cache_buster(url: str) -> str:
+    parsed = urlparse(url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key != "t"
+    ]
+    query.append(("t", str(int(time.time()))))
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
 
-def _read_public_community_wechat_qr_sync(url: str) -> bytes:
+def _read_remote_community_wechat_qr_sync(url: str) -> bytes:
     request = Request(
-        url,
+        _with_cache_buster(url),
         headers={
+            "Accept": "image/*,*/*;q=0.8",
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
             "User-Agent": "AITeachMe/CommunityQR",
@@ -49,31 +53,29 @@ def _read_public_community_wechat_qr_sync(url: str) -> bytes:
         method="GET",
     )
     with urlopen(request, timeout=_COMMUNITY_QR_FETCH_TIMEOUT_SECONDS) as response:
-        return response.read()
+        image_bytes = response.read(_COMMUNITY_QR_MAX_BYTES + 1)
+
+    if len(image_bytes) > _COMMUNITY_QR_MAX_BYTES:
+        raise ValueError("community QR image is too large")
+    return image_bytes
 
 
-async def _read_community_wechat_qr_from_public_url() -> bytes | None:
-    """Fetch the community QR image from the public OSS/CDN URL as a desktop fallback."""
+async def read_community_wechat_qr_bytes() -> bytes | None:
+    """Read the latest community WeChat QR image from the configured remote URL."""
 
-    url = _build_public_community_wechat_qr_url()
+    url = _get_community_wechat_qr_url()
     if not url:
         return None
 
     try:
-        return await asyncio.to_thread(_read_public_community_wechat_qr_sync, url)
+        return await asyncio.to_thread(_read_remote_community_wechat_qr_sync, url)
     except Exception as exc:
         logger.warning(
-            "community_wechat_qr_public_fetch_failed",
+            "community_wechat_qr_fetch_failed",
             url=url,
             error=str(exc),
         )
         return None
-
-
-async def read_community_wechat_qr_bytes() -> bytes | None:
-    """Read the latest community WeChat QR image from storage or public OSS."""
-
-    return await _read_community_wechat_qr_from_store() or await _read_community_wechat_qr_from_public_url()
 
 
 __all__ = ["read_community_wechat_qr_bytes"]
