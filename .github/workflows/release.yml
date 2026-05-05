@@ -421,8 +421,14 @@ jobs:
           catch {
             throw "Tauri updater manifest URL is not a valid absolute URL: $($platform.url)"
           }
-          if (-not $packageFileName.EndsWith(".msi", [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Tauri local updater manifest should reference the Windows MSI package, but got: $packageFileName"
+          $isPrerelease = "${{ needs.release.outputs.prerelease }}" -eq "true"
+          $isMsi = $packageFileName.EndsWith(".msi", [System.StringComparison]::OrdinalIgnoreCase)
+          $isExe = $packageFileName.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)
+          if (-not $isPrerelease -and -not $isMsi) {
+            throw "Stable Tauri local updater manifest should reference the Windows MSI package, but got: $packageFileName"
+          }
+          if ($isPrerelease -and -not ($isMsi -or $isExe)) {
+            throw "Prerelease Tauri local updater manifest should reference a Windows installer package, but got: $packageFileName"
           }
 
           $packagePath = Join-Path "packaging\release" $packageFileName

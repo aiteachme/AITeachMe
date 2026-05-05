@@ -16,6 +16,7 @@ param(
 
 $repoRoot = Resolve-RepoRoot
 $frontendDir = Join-Path $repoRoot "frontend"
+$projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 $defaultTauriLocalUpdaterEndpoint = "https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json"
 $configuredTauriLocalUpdaterEndpoint = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT", "Process")
@@ -44,6 +45,12 @@ function Split-TauriUpdaterEndpoints {
     return $endpoints
 }
 
+function Test-TauriPrereleaseVersion {
+    param([string]$Version)
+
+    return $Version -match "-"
+}
+
 $tauriLocalUpdaterEndpoints = Split-TauriUpdaterEndpoints `
     -ConfiguredEndpoint $configuredTauriLocalUpdaterEndpoint `
     -DefaultEndpoint $defaultTauriLocalUpdaterEndpoint
@@ -54,13 +61,18 @@ function New-TauriLocalReleaseConfig {
         [string]$UpdaterPubkey,
         [string[]]$Endpoints,
         [bool]$EnableUpdater = $false,
+        [bool]$IncludeMsiTarget = $true,
         [object]$WindowsSigningConfig = $null
     )
 
     $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
     $bundleConfig = [ordered]@{}
     if ($EnableUpdater) {
-        $bundleConfig["targets"] = @("nsis", "msi")
+        $targets = @("nsis")
+        if ($IncludeMsiTarget) {
+            $targets += "msi"
+        }
+        $bundleConfig["targets"] = $targets
         $bundleConfig["createUpdaterArtifacts"] = $true
     }
     $bundleConfig["resources"] = [ordered]@{
@@ -191,11 +203,15 @@ if ($Flavor -eq "local") {
         -UpdaterPubkey $trimmedUpdaterPubkey `
         -Endpoints $tauriLocalUpdaterEndpoints `
         -EnableUpdater $tauriLocalUpdaterEnabled `
+        -IncludeMsiTarget (-not (Test-TauriPrereleaseVersion -Version $projectVersion)) `
         -WindowsSigningConfig $tauriWindowsSigningConfig
     if ($tauriLocalUpdaterEnabled) {
         Write-Host "Tauri updater endpoints:"
         $tauriLocalUpdaterEndpoints | ForEach-Object {
             Write-Host "  $_"
+        }
+        if (Test-TauriPrereleaseVersion -Version $projectVersion) {
+            Write-Host "Tauri MSI target disabled for prerelease version $projectVersion; MSI requires a numeric Windows installer version." -ForegroundColor Yellow
         }
     }
     else {
