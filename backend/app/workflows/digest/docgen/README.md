@@ -543,7 +543,7 @@ repair_or_route
       - 不同章节的 patch 会并行执行。
       - 确定性的 Markdown 展示修复不占用 LLM 修补额度。
       - LLM 会在一轮局部 patch 中尽量合并处理同章多个复核动作，并返回 covered/unresolved action ids。
-      - 如果模型没有一次覆盖完，最多继续到 `DOCGEN_REPAIR_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER`，当前上限为 3。
+      - 如果模型没有一次覆盖完，单章最多继续 3 轮；这是 repair 文件内的工程约束，不作为部署配置项暴露。
       - 三轮后仍未覆盖的同章 patch 动作记录为 unresolved warning，等待下一次用户触发或后续更明确的有限回流。
   当前模型方案：
     - `surface_patch / section_patch / evidence_patch`

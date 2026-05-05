@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.shared.infra.env_support import get_env_bounded_int
 from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
 from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
@@ -26,18 +25,8 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
     "rebuild_backbone",
 }
 _PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
-_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER = get_env_bounded_int(
-    "DOCGEN_REPAIR_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER",
-    3,
-    min_value=1,
-    max_value=3,
-)
-_MAX_PATCH_CONTEXT_CHARS = get_env_bounded_int(
-    "DOCGEN_REPAIR_PATCH_CONTEXT_CHARS",
-    7000,
-    min_value=1500,
-    max_value=16000,
-)
+_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER = 3
+_MAX_PATCH_CONTEXT_CHARS = 7000
 
 
 class _LocalMarkdownPatch(DocGenBaseModel):
