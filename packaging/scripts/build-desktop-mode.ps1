@@ -8,7 +8,6 @@ param(
     [switch]$HideElectronSuffix,
     [switch]$ImportBundledEnv,
     [switch]$RequireTauriUpdater,
-    [switch]$IncludeTauriMsi,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled"
 )
@@ -89,9 +88,6 @@ function Build-TauriLocal {
     }
     if ($RequireTauriUpdater) {
         $arguments += "-RequireUpdater"
-    }
-    if ($IncludeTauriMsi) {
-        $arguments += "-IncludeMsi"
     }
 
     Invoke-PackagingScript `

@@ -7,8 +7,7 @@ param(
     [string]$BundledEnvArtifactSuffix = "bundled",
     [switch]$IncludeTauri,
     [switch]$TauriOnly,
-    [switch]$IncludeRemote,
-    [switch]$IncludeTauriMsi
+    [switch]$IncludeRemote
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,15 +66,10 @@ if (-not $TauriOnly) {
 }
 
 if ($buildTauri) {
-    $tauriLocalArgs = @($commonArgs + $bundledEnvArgs + @("-Flavor", "local"))
-    if ($IncludeTauriMsi) {
-        $tauriLocalArgs += "-IncludeMsi"
-    }
-
     Invoke-BuildStep `
         -Name "Tauri local installer" `
         -Script (Join-Path $scriptDir "build-tauri.ps1") `
-        -Arguments $tauriLocalArgs
+        -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local"))
 }
 
 if ($IncludeRemote) {

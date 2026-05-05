@@ -339,7 +339,7 @@ jobs:
           $signing = Get-AITeachMeWindowsSigningState
 
           $installers = @(Get-ChildItem -Path packaging\release -File |
-            Where-Object { $_.Extension -in @(".exe", ".msi") })
+            Where-Object { $_.Extension -eq ".exe" })
           if ($installers.Count -eq 0) {
             throw "No Windows installer was produced under packaging\release."
           }

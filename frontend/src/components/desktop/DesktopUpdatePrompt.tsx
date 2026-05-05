@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, RefreshCw } from "lucide-react";
-import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
@@ -8,7 +8,6 @@ import { useToast } from "../ui/Toast";
 const CHECK_DELAY_MS = 1800;
 const CHECK_TIMEOUT_MS = 30_000;
 const CHECK_WATCHDOG_MS = 45_000;
-const INSTALL_TIMEOUT_MS = 900_000;
 const STARTUP_CHECK_SESSION_KEY = "aiteachme:tauri-local-update-startup-check";
 const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 
@@ -242,20 +241,7 @@ export function useDesktopUpdateDialog() {
     setContentLength(null);
 
     try {
-      await update.downloadAndInstall((event: DownloadEvent) => {
-        if (event.event === "Started") {
-          setContentLength(event.data.contentLength ?? null);
-          setDownloadedBytes(0);
-          return;
-        }
-        if (event.event === "Progress") {
-          setDownloadedBytes((current) => current + event.data.chunkLength);
-          return;
-        }
-        if (event.event === "Finished") {
-          setStatus("installing");
-        }
-      }, { timeout: INSTALL_TIMEOUT_MS });
+      await update.downloadAndInstall();
 
       setStatus("restarting");
       const { relaunch } = await import("@tauri-apps/plugin-process");
@@ -348,7 +334,7 @@ export function DesktopUpdateModal({
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {status === "downloading"
                 ? progressPercent === null
-                  ? `正在下载更新包，已下载 ${formatBytes(downloadedBytes)}`
+                  ? "正在下载更新包..."
                   : `正在下载更新包，${progressPercent}%（${formatBytes(downloadedBytes)} / ${formatBytes(contentLength ?? 0)}）`
                 : status === "installing"
                   ? "正在安装更新，应用会自动关闭并完成覆盖安装..."

@@ -202,7 +202,7 @@ function Select-PreferredTauriUpdaterPackage {
         return ""
     }
 
-    foreach ($pattern in @("*.exe", "*.nsis.zip", "*.msi", "*.msi.zip")) {
+    foreach ($pattern in @("*.exe", "*.nsis.zip")) {
         $preferred = @($packages | Where-Object { $_ -like $pattern } | Select-Object -First 1)
         if ($preferred.Count -gt 0) {
             return $preferred[0]
@@ -257,8 +257,7 @@ function Copy-TauriArtifacts {
     $artifacts = @(Get-ChildItem $bundleDir -Recurse -File |
         Where-Object {
             $isNsisInstaller = $_.Extension -eq ".exe" -and $_.Directory.Name -eq "nsis"
-            $isMsiInstaller = $_.Extension -in @(".msi", ".msix")
-            $isNsisInstaller -or $isMsiInstaller
+            $isNsisInstaller
         } |
         Sort-Object LastWriteTime -Descending)
 
@@ -281,16 +280,14 @@ function Copy-TauriArtifacts {
     if ($IncludeUpdater) {
         $legacyUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
             Where-Object {
-                ($_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip") -or
-                ($_.Directory.Name -eq "msi" -and $_.Name -like "*.msi.zip")
+                $_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip"
             } |
             Sort-Object LastWriteTime -Descending)
 
         $signedInstallerUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
             Where-Object {
                 $isSignedNsisInstaller = $_.Directory.Name -eq "nsis" -and $_.Extension -eq ".exe" -and (Test-Path "$($_.FullName).sig")
-                $isSignedMsiInstaller = $_.Directory.Name -eq "msi" -and $_.Extension -eq ".msi" -and (Test-Path "$($_.FullName).sig")
-                $isSignedNsisInstaller -or $isSignedMsiInstaller
+                $isSignedNsisInstaller
             } |
             Sort-Object LastWriteTime -Descending)
 
@@ -301,12 +298,7 @@ function Copy-TauriArtifacts {
                     throw "Tauri updater signature was not produced: $sigPath"
                 }
 
-                $updaterExtension = if ($updaterPackage.Name -like "*.nsis.zip") {
-                    ".nsis.zip"
-                }
-                else {
-                    ".msi.zip"
-                }
+                $updaterExtension = ".nsis.zip"
                 $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix$updaterExtension"
                 $updaterReleaseOutput = Join-Path $releaseDir $updaterName
                 $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"

@@ -7,8 +7,7 @@ param(
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
-    [switch]$RequireUpdater,
-    [switch]$IncludeMsi
+    [switch]$RequireUpdater
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -21,31 +20,18 @@ $projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 $tauriLocalUpdaterEndpoints = @("https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json")
 
-function Test-TauriPrereleaseVersion {
-    param([string]$Version)
-
-    return $Version -match "-"
-}
-
 function New-TauriLocalReleaseConfig {
     param(
         [string]$FrontendDir,
         [string]$UpdaterPubkey,
         [string[]]$Endpoints,
         [bool]$EnableUpdater = $false,
-        [bool]$IncludeMsiTarget = $false,
         [object]$WindowsSigningConfig = $null
     )
 
     $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
     $bundleConfig = [ordered]@{}
-    $targets = @("nsis")
-    if ($IncludeMsiTarget) {
-        $targets += "msi"
-    }
-    if ($EnableUpdater -or $IncludeMsiTarget) {
-        $bundleConfig["targets"] = $targets
-    }
+    $bundleConfig["targets"] = @("nsis")
     if ($EnableUpdater) {
         $bundleConfig["createUpdaterArtifacts"] = $true
     }
@@ -171,24 +157,14 @@ if ($Flavor -eq "local") {
     }
     $tauriLocalUpdaterEnabled = $missingUpdaterVars.Count -eq 0
     $trimmedUpdaterPubkey = if ([string]::IsNullOrWhiteSpace($updaterPubkey)) { "" } else { $updaterPubkey.Trim() }
-    $includeMsiTarget = $IncludeMsi -and -not (Test-TauriPrereleaseVersion -Version $projectVersion)
 
     $generatedConfigPath = New-TauriLocalReleaseConfig `
         -FrontendDir $frontendDir `
         -UpdaterPubkey $trimmedUpdaterPubkey `
         -Endpoints $tauriLocalUpdaterEndpoints `
         -EnableUpdater $tauriLocalUpdaterEnabled `
-        -IncludeMsiTarget $includeMsiTarget `
         -WindowsSigningConfig $tauriWindowsSigningConfig
-    if ($includeMsiTarget) {
-        Write-Host "Tauri MSI target enabled by -IncludeMsi."
-    }
-    elseif ($IncludeMsi -and (Test-TauriPrereleaseVersion -Version $projectVersion)) {
-        Write-Host "Tauri MSI target disabled for prerelease version $projectVersion; MSI requires a numeric Windows installer version." -ForegroundColor Yellow
-    }
-    else {
-        Write-Host "Tauri MSI target disabled by default; NSIS .exe is smaller and is used for distribution and updater packages."
-    }
+    Write-Host "Tauri Windows target: NSIS .exe"
     if ($tauriLocalUpdaterEnabled) {
         Write-Host "Tauri updater endpoints:"
         $tauriLocalUpdaterEndpoints | ForEach-Object {
@@ -261,7 +237,7 @@ $releaseDir = Join-Path $repoRoot "packaging\release"
 $tauriInstallers = @(Get-ChildItem -LiteralPath $releaseDir -File -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like "AiTeachMe-v*-installer$releaseSuffix.*" -and
-            $_.Extension -in @(".exe", ".msi")
+            $_.Extension -eq ".exe"
     })
 foreach ($installer in $tauriInstallers) {
     $tauriUpdaterSignature = "$($installer.FullName).sig"
