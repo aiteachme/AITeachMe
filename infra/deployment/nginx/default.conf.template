@@ -30,6 +30,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
+    location ~ ^/.+/assets/ {
+        try_files $uri =404;
+        access_log off;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
     location = /index.html {
         try_files /index.html =404;
         add_header Cache-Control "no-cache" always;

@@ -71,6 +71,12 @@ npm run build
 frontend/dist/
 ```
 
+桌面端打包需要保留相对静态资源路径，使用：
+
+```powershell
+npm run build:desktop
+```
+
 ## 部署
 
 ### 静态站点
@@ -80,6 +86,8 @@ frontend/dist/
 ```env
 VITE_API_URL=<backend-api-origin>
 ```
+
+Web 部署默认使用 `/` 作为 Vite base，保证直接访问 `/courses/<id>/knowledge-docs` 这类深链时仍从 `/assets/*` 加载静态资源。
 
 ### Sealos Nginx
 

@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_BACKEND_PORT = "9020";
 const DEFAULT_FRONTEND_PORT = 5180;
+const DEFAULT_WEB_BASE_PATH = "/";
 
 const MARKDOWN_CORE_PACKAGES = new Set([
   "react-markdown",
@@ -136,14 +137,31 @@ function manualChunks(id: string): string | undefined {
   return undefined;
 }
 
+function normalizeBasePath(rawValue?: string): string {
+  const value = (rawValue || DEFAULT_WEB_BASE_PATH).trim();
+  if (!value) {
+    return DEFAULT_WEB_BASE_PATH;
+  }
+  if (value === "." || value === "./") {
+    return "./";
+  }
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(value)) {
+    return value.endsWith("/") ? value : `${value}/`;
+  }
+
+  const normalized = value.startsWith("/") ? value : `/${value}`;
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, "..", "");
   const backendPort = env.AITEACHME_BACKEND_PORT || DEFAULT_BACKEND_PORT;
   const frontendPort = Number(env.AITEACHME_FRONTEND_PORT || DEFAULT_FRONTEND_PORT);
   const apiTarget = env.VITE_API_URL?.trim() || `http://${LOCAL_HOST}:${backendPort}`;
+  const basePath = normalizeBasePath(env.VITE_BASE_PATH || env.AITEACHME_FRONTEND_BASE_PATH);
 
   return {
-    base: "./",
+    base: basePath,
     plugins: [react()],
     root: ".",
     envDir: "..",

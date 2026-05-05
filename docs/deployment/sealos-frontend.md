@@ -36,6 +36,8 @@ Environment:
 
 前端 App 不要配置 `VITE_API_URL`。Sealos 前端应该走同源 `/api`，再由 Nginx 反代到后端内网服务。
 
+前端 Web 镜像默认使用 `VITE_BASE_PATH=/` 构建静态资源路径，避免深链页面把 JS/CSS 错误解析成相对路径。只有部署到子路径时才需要覆盖这个值。
+
 ## GitHub Actions 配置
 
 需要在仓库 Secrets 中配置：
@@ -86,6 +88,12 @@ curl https://<frontend-domain>/api/health
 
 ```bash
 curl -I https://<frontend-domain>/assets/<hashed-js-file>
+```
+
+SPA 深链：
+
+```bash
+curl https://<frontend-domain>/courses/<course-id>/knowledge-docs
 ```
 
 浏览器里重点验证：

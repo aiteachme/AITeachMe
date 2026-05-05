@@ -418,7 +418,7 @@ try {
     Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
 
     Write-Step "Build frontend"
-    Invoke-External -File $npm -Arguments @("run", "build") -WorkingDirectory $frontendDir
+    Invoke-External -File $npm -Arguments @("run", "build:desktop") -WorkingDirectory $frontendDir
 
     Write-Step "Build Electron installer"
     Stop-LocalBuildToolProcesses -RepoRoot $repoRoot

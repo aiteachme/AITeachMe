@@ -5,7 +5,9 @@ WORKDIR /app
 # Keep the Sealos/Nginx image same-origin by default. Cloudflare Pages can still
 # inject VITE_API_URL in its own build pipeline.
 ARG VITE_API_URL=""
+ARG VITE_BASE_PATH="/"
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 # 安装依赖
 COPY frontend/package*.json ./
