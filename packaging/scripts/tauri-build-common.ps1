@@ -202,9 +202,11 @@ function Select-PreferredTauriUpdaterPackage {
         return ""
     }
 
-    $preferred = @($packages | Where-Object { $_ -like "*.msi" -or $_ -like "*.msi.zip" } | Select-Object -First 1)
-    if ($preferred.Count -gt 0) {
-        return $preferred[0]
+    foreach ($pattern in @("*.exe", "*.nsis.zip", "*.msi", "*.msi.zip")) {
+        $preferred = @($packages | Where-Object { $_ -like $pattern } | Select-Object -First 1)
+        if ($preferred.Count -gt 0) {
+            return $preferred[0]
+        }
     }
 
     return $packages[0]

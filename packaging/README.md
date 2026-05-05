@@ -20,6 +20,9 @@
 # 额外构建 Tauri local
 .\packaging\release.bat -IncludeTauri
 
+# 额外构建 Tauri local，并按需生成更大的 MSI 包
+.\packaging\release.bat -IncludeTauri -IncludeTauriMsi
+
 # 只构建 Tauri local
 .\packaging\release.bat -TauriOnly
 
@@ -37,6 +40,7 @@
 
 - `-IncludeTauri`：额外构建 Tauri 安装包。
 - `-TauriOnly`：只构建 Tauri 安装包，不生成默认 Electron 安装包。
+- `-IncludeTauriMsi`：额外生成 Tauri MSI 安装包；默认只生成体积更小的 NSIS `.exe`。
 - `-IncludeRemote`：额外构建 remote 安装包。
 - `-ApiUrl <url>`：remote 包使用的后端地址，也可用环境变量 `AITEACHME_REMOTE_API_URL`。
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
@@ -64,8 +68,10 @@ Python 解释器解析顺序：
 - `AiTeachMe-v<version>-installer.exe`：默认 Electron local。
 - `AiTeachMe-v<version>-installer-bundled.exe`：Electron local，预绑定密钥。
 - `AiTeachMe-v<version>-installer-remote.exe`：Electron remote。
-- `AiTeachMe-v<version>-installer-tauri.exe` / `.msi`：Tauri local。
-- `AiTeachMe-v<version>-installer-tauri-bundled.exe` / `.msi`：Tauri local，预绑定密钥。
+- `AiTeachMe-v<version>-installer-tauri.exe`：Tauri local。
+- `AiTeachMe-v<version>-installer-tauri.msi`：Tauri local，仅传入 `-IncludeTauriMsi` 时生成。
+- `AiTeachMe-v<version>-installer-tauri-bundled.exe`：Tauri local，预绑定密钥。
+- `AiTeachMe-v<version>-installer-tauri-bundled.msi`：Tauri local，预绑定密钥，仅传入 `-IncludeTauriMsi` 时生成。
 - `AiTeachMe-v<version>-installer-tauri-remote.exe`：Tauri remote。
 
 中间产物会保留在 `packaging\artifacts`。
@@ -96,7 +102,7 @@ Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时前端会提示用户确认；确认后下载清单中声明的已签名安装包，验签通过后覆盖安装并重启。稳定版优先使用 MSI 作为 updater 包；alpha/beta 预发布因 MSI 版本号限制使用 NSIS 安装包。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+有新版时前端会提示用户确认；确认后下载清单中声明的已签名安装包，验签通过后覆盖安装并重启。Windows updater 默认使用 NSIS `.exe`，它和 MSI 包含同一套应用内容，但 LZMA 压缩通常明显小于 WiX/MSI 产物。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
@@ -122,8 +128,8 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 配置齐全时，GitHub Release 会额外上传：
 
-- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.msi.sig`，预发布版本为 `.exe.sig`
-- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.msi.sig`，预发布版本为 `.exe.sig`
+- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
 - `latest-tauri-local.json`
 
 `tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。

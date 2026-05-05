@@ -7,7 +7,8 @@ param(
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
-    [switch]$RequireUpdater
+    [switch]$RequireUpdater,
+    [switch]$IncludeMsi
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
@@ -32,18 +33,20 @@ function New-TauriLocalReleaseConfig {
         [string]$UpdaterPubkey,
         [string[]]$Endpoints,
         [bool]$EnableUpdater = $false,
-        [bool]$IncludeMsiTarget = $true,
+        [bool]$IncludeMsiTarget = $false,
         [object]$WindowsSigningConfig = $null
     )
 
     $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
     $bundleConfig = [ordered]@{}
-    if ($EnableUpdater) {
-        $targets = @("nsis")
-        if ($IncludeMsiTarget) {
-            $targets += "msi"
-        }
+    $targets = @("nsis")
+    if ($IncludeMsiTarget) {
+        $targets += "msi"
+    }
+    if ($EnableUpdater -or $IncludeMsiTarget) {
         $bundleConfig["targets"] = $targets
+    }
+    if ($EnableUpdater) {
         $bundleConfig["createUpdaterArtifacts"] = $true
     }
     $bundleConfig["resources"] = [ordered]@{
@@ -168,21 +171,28 @@ if ($Flavor -eq "local") {
     }
     $tauriLocalUpdaterEnabled = $missingUpdaterVars.Count -eq 0
     $trimmedUpdaterPubkey = if ([string]::IsNullOrWhiteSpace($updaterPubkey)) { "" } else { $updaterPubkey.Trim() }
+    $includeMsiTarget = $IncludeMsi -and -not (Test-TauriPrereleaseVersion -Version $projectVersion)
 
     $generatedConfigPath = New-TauriLocalReleaseConfig `
         -FrontendDir $frontendDir `
         -UpdaterPubkey $trimmedUpdaterPubkey `
         -Endpoints $tauriLocalUpdaterEndpoints `
         -EnableUpdater $tauriLocalUpdaterEnabled `
-        -IncludeMsiTarget (-not (Test-TauriPrereleaseVersion -Version $projectVersion)) `
+        -IncludeMsiTarget $includeMsiTarget `
         -WindowsSigningConfig $tauriWindowsSigningConfig
+    if ($includeMsiTarget) {
+        Write-Host "Tauri MSI target enabled by -IncludeMsi."
+    }
+    elseif ($IncludeMsi -and (Test-TauriPrereleaseVersion -Version $projectVersion)) {
+        Write-Host "Tauri MSI target disabled for prerelease version $projectVersion; MSI requires a numeric Windows installer version." -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "Tauri MSI target disabled by default; NSIS .exe is smaller and is used for distribution and updater packages."
+    }
     if ($tauriLocalUpdaterEnabled) {
         Write-Host "Tauri updater endpoints:"
         $tauriLocalUpdaterEndpoints | ForEach-Object {
             Write-Host "  $_"
-        }
-        if (Test-TauriPrereleaseVersion -Version $projectVersion) {
-            Write-Host "Tauri MSI target disabled for prerelease version $projectVersion; MSI requires a numeric Windows installer version." -ForegroundColor Yellow
         }
     }
     else {

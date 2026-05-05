@@ -258,27 +258,13 @@ jobs:
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
         shell: pwsh
         run: |
-          choco install nsis wixtoolset -y --no-progress
+          choco install nsis -y --no-progress
           $nsisPath = Join-Path ${env:ProgramFiles(x86)} "NSIS"
           if (Test-Path $nsisPath) {
             $env:Path = "$nsisPath;$env:Path"
             $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
-          $wixPaths = @(
-            (Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.14\bin"),
-            (Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.11\bin"),
-            (Join-Path ${env:ProgramFiles} "WiX Toolset v3.14\bin"),
-            (Join-Path ${env:ProgramFiles} "WiX Toolset v3.11\bin")
-          )
-          foreach ($wixPath in $wixPaths) {
-            if (Test-Path $wixPath) {
-              $env:Path = "$wixPath;$env:Path"
-              $wixPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              break
-            }
-          }
           makensis /VERSION
-          candle.exe -? | Select-Object -First 1
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -416,14 +402,9 @@ jobs:
           catch {
             throw "Tauri updater manifest URL is not a valid absolute URL: $($platform.url)"
           }
-          $isPrerelease = "${{ needs.release.outputs.prerelease }}" -eq "true"
-          $isMsi = $packageFileName.EndsWith(".msi", [System.StringComparison]::OrdinalIgnoreCase)
           $isExe = $packageFileName.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)
-          if (-not $isPrerelease -and -not $isMsi) {
-            throw "Stable Tauri local updater manifest should reference the Windows MSI package, but got: $packageFileName"
-          }
-          if ($isPrerelease -and -not ($isMsi -or $isExe)) {
-            throw "Prerelease Tauri local updater manifest should reference a Windows installer package, but got: $packageFileName"
+          if (-not $isExe) {
+            throw "Tauri local updater manifest should reference the NSIS setup executable, but got: $packageFileName"
           }
 
           $packagePath = Join-Path "packaging\release" $packageFileName
