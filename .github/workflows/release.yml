@@ -53,6 +53,11 @@ on:
         type: string
         required: false
         default: "bundled"
+      require_windows_signing:
+        description: Require Windows Authenticode signing before publishing installers
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: write
@@ -255,7 +260,7 @@ jobs:
     env:
       PYTHONUTF8: "1"
       AITEACHME_RELEASE_TAG: ${{ needs.release.outputs.tag }}
-      AITEACHME_WINDOWS_SIGNING_REQUIRED: "1"
+      AITEACHME_WINDOWS_SIGNING_REQUIRED: ${{ inputs.require_windows_signing && '1' || '0' }}
       AITEACHME_WINDOWS_SIGN_COMMAND: ${{ secrets.AITEACHME_WINDOWS_SIGN_COMMAND }}
       AITEACHME_WINDOWS_PUBLISHER_NAME: ${{ vars.AITEACHME_WINDOWS_PUBLISHER_NAME || secrets.AITEACHME_WINDOWS_PUBLISHER_NAME }}
       AITEACHME_WINDOWS_TIMESTAMP_URL: ${{ vars.AITEACHME_WINDOWS_TIMESTAMP_URL }}
@@ -417,16 +422,26 @@ jobs:
       - name: Verify Windows installer signatures
         shell: pwsh
         run: |
+          . .\packaging\scripts\windows-signing-common.ps1
+          $signing = Get-AITeachMeWindowsSigningState
+
           $installers = @(Get-ChildItem -Path packaging\release -File -Filter "*.exe")
           if ($installers.Count -eq 0) {
             throw "No Windows installer exe was produced under packaging\release."
           }
 
           $failed = @()
+          $unsigned = @()
           foreach ($installer in $installers) {
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
             if ($signature.Status -ne "Valid") {
-              $failed += "$($installer.Name): $($signature.Status)"
+              $status = "$($installer.Name): $($signature.Status)"
+              if ($signing.Enabled -or $signing.Required) {
+                $failed += $status
+              }
+              else {
+                $unsigned += $status
+              }
               continue
             }
             $publisher = if ($signature.SignerCertificate) {
@@ -439,6 +454,11 @@ jobs:
 
           if ($failed.Count -gt 0) {
             throw "Unsigned or invalid Windows installer(s): $($failed -join '; ')"
+          }
+
+          if ($unsigned.Count -gt 0) {
+            Write-Host "Windows installer(s) are unsigned because signing is not configured: $($unsigned -join '; ')" -ForegroundColor Yellow
+            "Windows installer signing skipped: $($unsigned -join '; ')" >> $env:GITHUB_STEP_SUMMARY
           }
 
       - name: Verify Tauri updater manifest
