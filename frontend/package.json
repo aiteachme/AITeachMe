@@ -133,5 +133,9 @@
     "workerDirectory": [
       "public"
     ]
+  },
+  "dependencies": {
+    "@posthog/react": "^1.9.0",
+    "posthog-js": "^1.372.8"
   }
 }

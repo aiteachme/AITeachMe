@@ -29,6 +29,13 @@ updateJson("frontend/package-lock.json", (data) => {
   }
 });
 
+replaceInFile("frontend/openapi.json", (text) =>
+  text.replace(
+    /("info"\s*:\s*\{\s*"title"\s*:\s*"[^"]+"\s*,\s*"description"\s*:\s*"[^"]+"\s*,\s*"version"\s*:\s*)"([^"]+)"/,
+    `$1"${version}"`,
+  ),
+);
+
 updateJson("frontend/src-tauri/tauri.conf.json", (data) => {
   data.version = version;
 });
