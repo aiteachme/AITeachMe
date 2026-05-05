@@ -10,7 +10,7 @@
     "desktop": "npm run electron:dev",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:window\"",
     "electron:window": "node electron/wait-dev-server.cjs && electron . --dev",
-    "electron:preview": "npm run build && electron .",
+    "electron:preview": "npm run build:desktop && electron .",
     "electron:installer": "electron-builder --config ../packaging/scripts/electron-builder-config.cjs --win nsis",
     "electron:dist": "npm run electron:installer",
     "desktop:installer": "npm run electron:installer",
@@ -24,6 +24,7 @@
     "tauri:build:local": "npm run tauri:prepare:local && npm run tauri:build:local:raw",
     "tauri:build:local:raw": "tauri build --config src-tauri/tauri.local.conf.json --features local-backend",
     "build": "tsc && vite build",
+    "build:desktop": "tsc && vite build --base=./",
     "preview": "vite preview"
   },
   "devDependencies": {
