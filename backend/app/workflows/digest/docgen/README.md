@@ -539,10 +539,10 @@ repair_or_route
     - LLM repair 只生成局部补丁片段，由代码插入目标锚点或小结前；不再要求模型返回完整章节 Markdown。
     - regenerate_chapter 会降级为单章局部修补；re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
-    - repair 执行策略已经收口为“按章节并行、章内顺序 patch”：
+    - repair 执行策略已经收口为“按章节并行、单章单次局部 patch”：
       - 不同章节的 patch 会并行执行。
-      - 同一章节内部仍保持顺序，避免多个 patch 同时改同一份 Markdown。
-      - 单章同轮最多应用 3 个实质性 patch，超出部分记录为 unresolved warning。
+      - 同一章节同一轮最多尝试 1 次局部修补，避免复核阶段反复改同一份 Markdown。
+      - 同章其余 patch 动作记录为 unresolved warning，等待下一次用户触发或后续更明确的有限回流。
   当前模型方案：
     - `surface_patch / section_patch / evidence_patch`
       - `call_purpose=DOCGEN`

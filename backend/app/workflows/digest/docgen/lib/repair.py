@@ -23,7 +23,7 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
     "rebuild_backbone",
 }
 _PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
-_MAX_PATCH_ACTIONS_PER_CHAPTER = 3
+_MAX_PATCH_ATTEMPTS_PER_CHAPTER = 1
 _MAX_PATCH_CONTEXT_CHARS = 7000
 
 
@@ -162,8 +162,8 @@ async def _apply_patch_action(
 ) -> tuple[ReviewedChapterDraft, RepairTraceItem, ReviewAction, str | None]:
     """对单章执行一次安全局部 patch。
 
-    只处理 review action 指向的小范围问题；LLM 必须返回完整章节
-    Markdown。若返回空、无变化或失败，就记录 skipped/downgraded，
+    只处理 review action 指向的小范围问题；LLM 只返回局部补丁片段，
+    由代码插回章节。若返回空、无变化或失败，就记录 skipped/downgraded，
     不假装已经修复。
     """
 
@@ -336,10 +336,10 @@ async def repair_or_route_review_actions(
         indexed_actions: list[tuple[int, ReviewAction]],
     ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]]]:
         current_chapter = chapter
-        changed_count = 0
+        attempted_count = 0
         results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
         for action_index, action in indexed_actions:
-            if changed_count >= _MAX_PATCH_ACTIONS_PER_CHAPTER:
+            if attempted_count >= _MAX_PATCH_ATTEMPTS_PER_CHAPTER:
                 updated_action = action.model_copy(update={"status": "skipped"})
                 results.append(
                     (
@@ -354,20 +354,19 @@ async def repair_or_route_review_actions(
                             reason=action.reason,
                             target_anchor=action.target_anchor,
                             changed=False,
-                            detail="Skipped because this chapter reached the repair pass patch limit.",
+                            detail="Skipped because this chapter already had one local repair attempt in this pass.",
                         ),
                         _unresolved_message(updated_action, status="skipped"),
                     )
                 )
                 continue
 
+            attempted_count += 1
             patched_chapter, trace_item, updated_action, unresolved_message = await _apply_patch_action(
                 chapter=current_chapter,
                 action=action,
             )
             current_chapter = patched_chapter
-            if trace_item.changed:
-                changed_count += 1
             results.append((action_index, updated_action, trace_item, unresolved_message))
         return current_chapter, results
 

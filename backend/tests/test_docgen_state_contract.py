@@ -191,3 +191,53 @@ async def test_repair_patch_applies_local_snippet(monkeypatch) -> None:
     assert traces[0].changed is True
     assert "## 易错补充" in repaired[0].markdown
     assert repaired[0].markdown.index("## 易错补充") < repaired[0].markdown.index("## 本章小结")
+
+
+@pytest.mark.anyio
+async def test_repair_only_attempts_one_patch_per_chapter(monkeypatch) -> None:
+    calls = 0
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=f"## 补充 {calls}\n\n- 只应该出现第一次补充。",
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown="# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n## 本章小结\n\n记住公式。\n",
+    )
+    actions = [
+        ReviewAction(
+            action_id="a1",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少易错提醒",
+            target_anchor="核心概念",
+            instruction="补充单位易错点。",
+        ),
+        ReviewAction(
+            action_id="a2",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少第二个例题",
+            target_anchor="核心概念",
+            instruction="补充第二个例题。",
+        ),
+    ]
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=actions,
+    )
+
+    assert calls == 1
+    assert [action.status for action in updated_actions] == ["applied", "skipped"]
+    assert len(unresolved) == 1
+    assert [trace.changed for trace in traces] == [True, False]
+    assert "## 补充 1" in repaired[0].markdown
+    assert "## 补充 2" not in repaired[0].markdown
