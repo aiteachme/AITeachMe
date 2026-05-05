@@ -194,6 +194,22 @@ function Write-Utf8NoBomFile {
     )
 }
 
+function Select-PreferredTauriUpdaterPackage {
+    param([string[]]$Paths)
+
+    $packages = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($packages.Count -eq 0) {
+        return ""
+    }
+
+    $preferred = @($packages | Where-Object { $_ -like "*.msi" -or $_ -like "*.msi.zip" } | Select-Object -First 1)
+    if ($preferred.Count -gt 0) {
+        return $preferred[0]
+    }
+
+    return $packages[0]
+}
+
 function Copy-TauriArtifacts {
     param(
         [string]$RepoRoot,
@@ -330,7 +346,7 @@ function Copy-TauriArtifacts {
             throw "Tauri local updater package was not copied."
         }
 
-        $updaterPackageOutput = $updaterOutputs | Where-Object { $_ -notlike "*.sig" } | Select-Object -First 1
+        $updaterPackageOutput = Select-PreferredTauriUpdaterPackage -Paths @($updaterOutputs | Where-Object { $_ -notlike "*.sig" })
         if ([string]::IsNullOrWhiteSpace($updaterPackageOutput)) {
             throw "Tauri local updater package was not copied."
         }

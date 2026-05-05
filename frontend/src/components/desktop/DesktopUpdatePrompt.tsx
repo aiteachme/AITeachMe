@@ -6,12 +6,15 @@ import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 
 const CHECK_DELAY_MS = 1800;
-const CHECK_TIMEOUT_MS = 15_000;
-const INSTALL_TIMEOUT_MS = 180_000;
+const CHECK_TIMEOUT_MS = 30_000;
+const CHECK_WATCHDOG_MS = 45_000;
+const INSTALL_TIMEOUT_MS = 900_000;
 const STARTUP_CHECK_SESSION_KEY = "aiteachme:tauri-local-update-startup-check";
 const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 
 type UpdateStatus = "available" | "downloading" | "installing" | "restarting" | "failed";
+
+let pendingDesktopUpdateCheck: Promise<Update | null> | null = null;
 
 export function isTauriLocalRuntime(): boolean {
   if (typeof window === "undefined") {
@@ -72,8 +75,30 @@ function formatUpdateDate(value: string | undefined): string {
 }
 
 async function checkDesktopUpdate(): Promise<Update | null> {
-  const { check } = await import("@tauri-apps/plugin-updater");
-  return check({ timeout: CHECK_TIMEOUT_MS });
+  if (pendingDesktopUpdateCheck) {
+    return pendingDesktopUpdateCheck;
+  }
+
+  pendingDesktopUpdateCheck = (async () => {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    let watchdog: number | null = null;
+    try {
+      const checkPromise = check({ timeout: CHECK_TIMEOUT_MS });
+      const watchdogPromise = new Promise<never>((_, reject) => {
+        watchdog = window.setTimeout(() => {
+          reject(new Error("desktop update check timed out"));
+        }, CHECK_WATCHDOG_MS);
+      });
+      return await Promise.race([checkPromise, watchdogPromise]);
+    } finally {
+      if (watchdog !== null) {
+        window.clearTimeout(watchdog);
+      }
+      pendingDesktopUpdateCheck = null;
+    }
+  })();
+
+  return pendingDesktopUpdateCheck;
 }
 
 function isDesktopUpdateAvailableEvent(event: Event): event is CustomEvent<Update> {

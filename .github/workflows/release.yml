@@ -256,17 +256,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-tauri-
 
-      - name: Install NSIS
+      - name: Install Windows installer tools
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
         shell: pwsh
         run: |
-          choco install nsis -y --no-progress
+          choco install nsis wixtoolset -y --no-progress
           $nsisPath = Join-Path ${env:ProgramFiles(x86)} "NSIS"
           if (Test-Path $nsisPath) {
             $env:Path = "$nsisPath;$env:Path"
             $nsisPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
+          $wixPaths = @(
+            (Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.14\bin"),
+            (Join-Path ${env:ProgramFiles(x86)} "WiX Toolset v3.11\bin"),
+            (Join-Path ${env:ProgramFiles} "WiX Toolset v3.14\bin"),
+            (Join-Path ${env:ProgramFiles} "WiX Toolset v3.11\bin")
+          )
+          foreach ($wixPath in $wixPaths) {
+            if (Test-Path $wixPath) {
+              $env:Path = "$wixPath;$env:Path"
+              $wixPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              break
+            }
+          }
           makensis /VERSION
+          candle.exe -? | Select-Object -First 1
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -343,9 +357,10 @@ jobs:
           . .\packaging\scripts\windows-signing-common.ps1
           $signing = Get-AITeachMeWindowsSigningState
 
-          $installers = @(Get-ChildItem -Path packaging\release -File -Filter "*.exe")
+          $installers = @(Get-ChildItem -Path packaging\release -File |
+            Where-Object { $_.Extension -in @(".exe", ".msi") })
           if ($installers.Count -eq 0) {
-            throw "No Windows installer exe was produced under packaging\release."
+            throw "No Windows installer was produced under packaging\release."
           }
 
           $failed = @()
@@ -405,6 +420,9 @@ jobs:
           }
           catch {
             throw "Tauri updater manifest URL is not a valid absolute URL: $($platform.url)"
+          }
+          if (-not $packageFileName.EndsWith(".msi", [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Tauri local updater manifest should reference the Windows MSI package, but got: $packageFileName"
           }
 
           $packagePath = Join-Path "packaging\release" $packageFileName

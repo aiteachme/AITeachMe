@@ -60,6 +60,7 @@ function New-TauriLocalReleaseConfig {
     $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
     $bundleConfig = [ordered]@{}
     if ($EnableUpdater) {
+        $bundleConfig["targets"] = @("nsis", "msi")
         $bundleConfig["createUpdaterArtifacts"] = $true
     }
     $bundleConfig["resources"] = [ordered]@{
@@ -260,8 +261,25 @@ finally {
 Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix -IncludeUpdater:$tauriLocalUpdaterEnabled
 
 $releaseDir = Join-Path $repoRoot "packaging\release"
-$tauriInstallers = @(Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-installer$releaseSuffix.exe" -ErrorAction SilentlyContinue)
+$tauriInstallers = @(Get-ChildItem -LiteralPath $releaseDir -File -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -like "AiTeachMe-v*-installer$releaseSuffix.*" -and
+            $_.Extension -in @(".exe", ".msi")
+    })
 foreach ($installer in $tauriInstallers) {
+    $tauriUpdaterSignature = "$($installer.FullName).sig"
+    if (Test-Path $tauriUpdaterSignature) {
+        Write-AITeachMeSignatureStatus `
+            -Path $installer.FullName `
+            -Description "Tauri updater installer"
+
+        if (($windowsSigning.Enabled -or $windowsSigning.Required) -and -not (Test-AITeachMeSignatureValid -Path $installer.FullName)) {
+            throw "Tauri updater installer is not Authenticode signed before updater signature generation: $($installer.FullName). Configure AITEACHME_WINDOWS_SIGN_COMMAND or AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT so Tauri signs the installer during bundling."
+        }
+
+        continue
+    }
+
     Invoke-AITeachMeWindowsSignFile `
         -Signing $windowsSigning `
         -Path $installer.FullName `
