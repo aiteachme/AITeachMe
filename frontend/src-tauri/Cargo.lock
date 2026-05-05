@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "aiteachme-tauri"
-version = "0.0.5-alpha.1"
+version = "0.0.5"
 dependencies = [
  "serde_json",
  "tauri",
