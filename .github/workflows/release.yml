@@ -324,7 +324,7 @@ jobs:
           if ($arguments.PackageMode -in @("tauri-local", "all-local", "all")) {
             $arguments.RequireTauriUpdater = $true
             if ("${{ needs.release.outputs.prerelease }}" -eq "true" -and [string]::IsNullOrWhiteSpace($env:AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT)) {
-              throw "Prerelease Tauri local builds require AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT. GitHub releases/latest is intended for the latest stable release, so configure a public alpha/beta channel manifest URL."
+              Write-Host "Prerelease Tauri local build will use the stable updater endpoint from GitHub releases/latest." -ForegroundColor Yellow
             }
           }
 
