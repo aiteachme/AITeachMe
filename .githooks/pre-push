@@ -26,7 +26,10 @@ echo "[pre-push] Verifying OpenAPI and generated API client..."
 if ! git diff --quiet -- frontend/openapi.json frontend/src/api/generated ||
    ! git diff --cached --quiet -- frontend/openapi.json frontend/src/api/generated; then
   echo "Generated API client changed after regeneration." >&2
-  echo "Commit frontend/openapi.json and frontend/src/api/generated before pushing." >&2
+  echo "Run this, commit the generated files, then push again:" >&2
+  echo "  cd backend && python scripts/export_api_docs.py" >&2
+  echo "  git add frontend/openapi.json frontend/src/api/generated" >&2
+  echo "  git commit -m \"chore: 同步 OpenAPI 客户端\"" >&2
   git diff --stat -- frontend/openapi.json frontend/src/api/generated >&2 || true
   git diff --cached --stat -- frontend/openapi.json frontend/src/api/generated >&2 || true
   exit 1
