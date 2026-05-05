@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+from pydantic import Field
+
 from app.shared.infra.env_support import get_env_bounded_int
 from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
 from app.shared.infra.runtime import gather_with_concurrency
@@ -42,8 +44,8 @@ class _LocalMarkdownPatch(DocGenBaseModel):
     status: Literal["patch", "no_change"] = "patch"
     target_anchor: str = ""
     patch_markdown: str = ""
-    covered_action_ids: list[str] = []
-    unresolved_action_ids: list[str] = []
+    covered_action_ids: list[str] = Field(default_factory=list)
+    unresolved_action_ids: list[str] = Field(default_factory=list)
     note: str = ""
 
 
