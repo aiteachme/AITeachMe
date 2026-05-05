@@ -52,6 +52,7 @@ workflows/ingest/
     parse_dispatch.py
     deletion.py
   fast_parse/
+    README.md
     graph.py
     state.py
     nodes/

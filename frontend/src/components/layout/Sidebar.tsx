@@ -13,7 +13,6 @@ import {
   Loader2,
   Menu,
   MoreVertical,
-  PackagePlus,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -31,13 +30,12 @@ import {
 import type { CourseDeletePreviewData, CourseItem } from "../../api/generated/model";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { resolveCourseIcon } from "../../lib/courseIcons";
+import { resolveCourseIcon, resolveCourseTone } from "../../lib/courseIcons";
 import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive } from "../../lib/courseNavigation";
 import { CourseExportModal } from "../course/CourseExportModal";
-import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
@@ -51,15 +49,6 @@ const MODULES = [
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
 ] as const;
-
-const COLOR_CLASSES = [
-  "bg-slate-900",
-  "bg-blue-600",
-  "bg-sky-600",
-  "bg-cyan-600",
-  "bg-blue-500",
-  "bg-slate-700",
-];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
 const COURSE_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.coursesExpanded";
@@ -104,14 +93,6 @@ const sidebarChildItemMotion: Variants = {
 };
 
 type CourseWithIcon = CourseItem & { icon_key?: string | null };
-
-function colorClassForCourse(name: string) {
-  let hash = 0;
-  for (let index = 0; index < name.length; index += 1) {
-    hash = name.charCodeAt(index) + ((hash << 5) - hash);
-  }
-  return COLOR_CLASSES[Math.abs(hash) % COLOR_CLASSES.length];
-}
 
 function RenameCourseModal({
   courseId,
@@ -222,7 +203,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -251,6 +231,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     return { type: "global" };
   }, [assistantScope, isAssistantPage, routeCourseId]);
   const isCourseConversationScope = sidebarConversationScope.type === "course";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const timer = window.setTimeout(ensureCommunityQrPreloaded, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ["courses"],
@@ -640,7 +629,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
         <div className={cn("min-h-0 flex-1 space-y-2 overflow-hidden pb-3", effectiveCollapsed ? "px-2" : "px-3")}>
           {!effectiveCollapsed ? (
-            <div className="flex h-8 items-center gap-1">
+            <div className="flex h-8 items-center">
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
@@ -655,15 +644,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   )}
                 />
                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsImportModalOpen(true)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-blue-300"
-                title="导入课程包"
-                aria-label="导入课程包"
-              >
-                <PackagePlus className="h-4 w-4" />
               </button>
             </div>
           ) : (
@@ -696,8 +676,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               {groupedCourses.map((course) => {
                 const expanded = expandedCourses.has(course.course_id);
                 const displayName = displayCourseName(course);
-                const badgeClass = colorClassForCourse(course.name || course.course_id);
                 const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
+                const toneClass = resolveCourseTone(displayName);
 
                 return (
                   <motion.div
@@ -734,10 +714,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
-                    <div className={cn("flex shrink-0 items-center justify-center font-bold text-white shadow-sm", 
-                      effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
-                      badgeClass
-                    )}>
+                    <div
+                      className={cn(
+                        "flex shrink-0 items-center justify-center bg-gradient-to-br font-bold text-white shadow-sm",
+                        effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
+                        toneClass,
+                      )}
+                    >
                       <CourseIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                     </div>
                     {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
@@ -936,10 +919,6 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
       {exportCourseId ? (
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
-      ) : null}
-
-      {isImportModalOpen ? (
-        <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />

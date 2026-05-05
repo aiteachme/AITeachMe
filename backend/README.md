@@ -6,7 +6,6 @@
 
 ```powershell
 cd backend
-conda activate atm
 $env:PYTHONUTF8 = "1"
 pip install -e .
 uvicorn app.main:app --reload --port 9020
@@ -80,7 +79,6 @@ LLM_BASE_URL=https://api.example.com/v1
 
 ```powershell
 cd backend
-conda activate atm
 pip install -e .
 pip install -U "langgraph-cli[inmem]"
 langgraph dev --config langgraph.json

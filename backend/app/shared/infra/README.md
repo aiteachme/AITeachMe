@@ -179,7 +179,7 @@ await acompletion_with_fallback(messages, model="primary")
 await acompletion_with_fallback(messages, model="light")
 ```
 
-这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`call_purpose` 可用于默认温度、超时、重试和观测归类，但不应作为业务代码选择模型的主要方式。旧参数名 `task_type` 仅保留给存量调用兼容使用。
+这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`call_purpose` 可用于超时、重试和观测归类，但不应作为业务代码选择模型或采样参数的主要方式。旧参数名 `task_type` 仅保留给存量调用兼容使用。
 
 ### LLM 全局并发
 
@@ -190,11 +190,11 @@ await acompletion_with_fallback(messages, model="light")
 
 `call_purpose` 和 workflow 自己的 `model_policy.py` 分工必须保持清楚：
 
-- `call_purpose` 是 infra 级调用画像，负责默认 `temperature / timeout / max_retries` 以及观测归类。默认值维护在 `app.shared.infra.llm_support.routing`。
+- `call_purpose` 是 infra 级调用画像，只负责 `timeout / max_retries` 以及观测归类。默认值维护在 `app.shared.infra.llm_support.routing`。
+- 默认 `timeout / max_retries` 应偏宽松，优先避免长文档生成、结构化修复、网络抖动导致的非业务失败；线上可用 `LLM_TIMEOUT_<PURPOSE>_S` 和 `LLM_MAX_RETRIES_<PURPOSE>` 覆盖。
 - `model=` 是模型槽位选择，业务 workflow 应显式传 `reason / primary / light`，不要指望 `call_purpose` 替你选模型。
-- workflow 的 `model_policy.py` 只负责“这个业务步骤用哪个模型槽位、调用类型、必要的 token 上限、稳定 metadata”。不要把 `call_purpose` profile 已经提供的默认 `temperature` 再复制一遍。
-- 如果确实要覆盖 profile 默认采样参数，字段名应表达覆盖语义，例如 `temperature_override`，并在 `note` 中写清楚为什么这一步要偏离默认画像。
-- 如果发现自己在写 `CLASSIFY + temperature=0.2`、`DOCGEN_LIGHT + temperature=0.1` 这类组合，优先重新判断 `call_purpose` 是否选错，或直接删除重复参数。
+- workflow 的 `model_policy.py` 负责“这个业务步骤用哪个模型槽位、调用类型、必要的 token 上限、temperature、稳定 metadata”。采样参数应跟业务步骤走，不跟 `call_purpose` 走。
+- 如果发现非 workflow 临时调用需要采样参数，应在调用点显式传 `temperature`；不要把新的 temperature 默认塞回 `call_purpose` profile。
 - 业务观测字段如 `planner_model_step / docgen_model_step` 应从 workflow 的 model policy 统一生成，再与运行时 metadata 合并，避免每个调用点手写一套。
 
 ## 什么不该放进 Infra
@@ -238,5 +238,5 @@ await acompletion_with_fallback(messages, model="light")
 ## 根目录能力包说明
 
 - `backend/tools/` 已删除。旧 YAML-only 工具说明不会注册运行时工具，后续不要恢复这套机制。
-- `backend/toolpacks/` 是开发者/管理员使用的可执行工具扩展点，必须提供 `manifest.yaml + handler.py`。
+- `backend/toolpacks/` 是开发者/管理员使用的可选可执行工具扩展点；只有提供 `manifest.yaml + handler.py` 的子目录才会注册运行时工具。
 - 独立 prompt 扩展层已删除。后续教学策略由 Planner、DocGen 节点和 confirmed plan 显式决定。

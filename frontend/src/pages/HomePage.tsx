@@ -131,20 +131,6 @@ async function importDemoCourse(filename: string, newName?: string): Promise<Imp
   });
   return response.data;
 }
-
-async function importCourse(file: File, newName?: string): Promise<ImportResultData> {
-  const formData = new FormData();
-  formData.append("file", file);
-  if (newName) formData.append("new_course_name", newName);
-  const response = await apiClient<ApiResponse<ImportResultData>>({
-    method: "POST",
-    url: `/api/v1/courses/import`,
-    data: formData,
-    headers: { "Content-Type": "multipart/form-data" },
-    timeout: LONG_RUNNING_API_TIMEOUT_MS,
-  });
-  return response.data;
-}
 /* ── Helpers ── */
 
 const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", fileIds.join(",")] as const;
@@ -268,9 +254,12 @@ function LibraryPickerModal({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        role="dialog"
+        aria-modal="true"
+        aria-label="从资料库选择"
+        className="relative z-10 flex h-[82vh] max-h-[920px] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
               <FolderOpen className="h-5 w-5" />
@@ -290,7 +279,7 @@ function LibraryPickerModal({
           </button>
         </div>
 
-        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
+        <div className="shrink-0 border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -313,7 +302,7 @@ function LibraryPickerModal({
           </div>
         </div>
 
-        <div className="min-h-[260px] flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {filesQuery.isLoading ? (
             <div className="flex min-h-[240px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -341,21 +330,19 @@ function LibraryPickerModal({
                 const checked = selected.has(file.id);
                 const meta = homeFileStatusMeta(file);
                 return (
-                  <label
+                  <button
+                    type="button"
                     key={file.id}
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={() => toggleFileId(file.id)}
                     className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition",
+                      "flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-left transition",
                       checked
                         ? "border-slate-900 bg-slate-50 shadow-sm dark:border-slate-500 dark:bg-slate-800/70"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/60",
                     )}
                   >
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={checked}
-                      onChange={() => toggleFileId(file.id)}
-                    />
                     <span
                       className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition",
@@ -383,14 +370,14 @@ function LibraryPickerModal({
                       {meta.icon}
                       {meta.label}
                     </span>
-                  </label>
+                  </button>
                 );
               })}
             </div>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400">已选 {selectedCount} 份资料</div>
           <div className="flex items-center gap-2">
             <button
@@ -410,143 +397,6 @@ function LibraryPickerModal({
               确认选择
             </button>
           </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-/* ── Export Modal ── */
-
-/* ── Import Modal ── */
-
-function ImportModal({
-  onClose,
-  onSuccess,
-}: {
-  onClose: () => void;
-  onSuccess: (result: ImportResultData) => void;
-}) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [customName, setCustomName] = useState("");
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const importMutation = useMutation({
-    mutationFn: () => importCourse(selectedFile!, customName.trim() || undefined),
-    onSuccess: (result) => { onSuccess(result); onClose(); },
-  });
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative z-10 w-[480px] max-w-[90vw] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden dark:bg-slate-900 dark:border-slate-800"
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-sm">
-              <Upload className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">导入课程</h3>
-              <p className="text-xs text-slate-500 mt-0.5 dark:text-slate-400">从 .atmx 文件导入已构建的课程</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors dark:hover:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300" title="关闭">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-4">
-          <input
-            type="file"
-            ref={inputRef}
-            accept=".atmx,.zip"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }}
-          />
-          <div
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
-            onDragLeave={(e) => { e.stopPropagation(); setDragOver(false); }}
-            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f); }}
-            onClick={() => inputRef.current?.click()}
-            className={cn(
-              "flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 cursor-pointer transition-all",
-              dragOver
-                ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/10"
-                : selectedFile
-                  ? "border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/80"
-            )}
-          >
-            {selectedFile ? (
-              <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30">
-                  <Package className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{selectedFile.name}</p>
-                  <p className="text-xs text-slate-400 mt-1">{formatFileSize(selectedFile.size)}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
-                  className="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 underline"
-                >
-                  重新选择
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800">
-                  <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">点击选择或拖拽 .atmx 文件</p>
-                  <p className="text-xs text-slate-400 mt-1 dark:text-slate-500">支持 AITeachMe 导出包</p>
-                </div>
-              </>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5 dark:text-slate-400">自定义课程名称（可选）</label>
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              placeholder="留空则使用导出时的原名"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300 transition-colors dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
-            />
-          </div>
-          {importMutation.isError && (
-            <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2">
-              <p className="text-sm text-red-600">{getApiErrorMessage(importMutation.error, "导入失败")}</p>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-900">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800">
-            取消
-          </button>
-          <button
-            onClick={() => importMutation.mutate()}
-            disabled={!selectedFile || importMutation.isPending}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all",
-              selectedFile && !importMutation.isPending
-                ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
-            )}
-          >
-            {importMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> 导入中…</>
-            ) : (
-              <><Upload className="w-4 h-4" /> 导入</>
-            )}
-          </button>
         </div>
       </motion.div>
     </div>
@@ -652,10 +502,10 @@ export function HomePage() {
   const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [demoCourseError, setDemoCourseError] = useState<string | null>(null);
 
   // Modal state
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const newEntryAt = (location.state as { newEntryAt?: number } | null)?.newEntryAt;
@@ -695,10 +545,10 @@ export function HomePage() {
     queryKey: ["available-demo-courses"],
     queryFn: fetchDemoCourses,
     retry: false,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: "always",
   });
 
@@ -706,19 +556,22 @@ export function HomePage() {
     mutationFn: ({ filename, newName }: { filename: string; newName?: string }) =>
       importDemoCourse(filename, newName),
     onSuccess: (result) => {
-      setError(null);
+      setDemoCourseError(null);
       notifyCoursesImported({ courseId: result.course_id });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
+      const warning = result.warnings.find((item) => item.trim())?.trim();
       toast({
-        title: "导入成功",
-        description: `${result.course_name} 已加入左侧课程列表。`,
-        variant: "success",
+        title: warning ? "导入成功，有提示" : "导入成功",
+        description: warning
+          ? `${result.course_name} 已加入左侧课程列表。${warning}`
+          : `${result.course_name} 已加入左侧课程列表。`,
+        variant: warning ? "warning" : "success",
+        duration: warning ? 8000 : undefined,
       });
     },
     onError: (err: unknown) => {
       const message = getApiErrorMessage(err, "演示课程导入失败");
-      setError(message);
+      setDemoCourseError(message);
       void queryClient.invalidateQueries({ queryKey: ["available-demo-courses"] });
       toast({
         title: "导入失败",
@@ -934,7 +787,7 @@ export function HomePage() {
       onDrop={(droppedFiles) => {
         handleFileDrop(droppedFiles);
       }}
-      disabled={isWorking || Boolean(exportCourseId) || importOpen || libraryPickerOpen || Boolean(renameTarget)}
+      disabled={isWorking || Boolean(exportCourseId) || libraryPickerOpen || Boolean(renameTarget)}
     />
     <div
       className={cn(
@@ -947,10 +800,10 @@ export function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
-          "relative z-20 w-full max-w-[800px] flex flex-col items-center",
-          !shouldShowDemoCourseSection
-            ? "justify-center min-h-[calc(100dvh-9rem)] translate-y-[8vh] md:translate-y-[11vh]"
-            : "mt-[10vh]"
+          "relative z-20 flex w-full max-w-[800px] flex-col items-center",
+          shouldShowDemoCourseSection
+            ? "min-h-[54dvh] justify-end pb-8 pt-8 md:min-h-[58dvh] md:pb-10"
+            : "min-h-[calc(100dvh-9rem)] translate-y-[8vh] justify-center md:translate-y-[11vh]",
         )}
       >
         {/* ── Logo & Title ── */}
@@ -1150,7 +1003,7 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-12 w-full max-w-5xl flex flex-col items-center"
+          className="relative z-10 mt-4 w-full max-w-5xl flex flex-col items-center"
         >
           {/* Section Toggle */}
           <button
@@ -1182,20 +1035,14 @@ export function HomePage() {
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                 className="w-full overflow-hidden"
               >
-                <div className="flex items-center justify-end pt-4 pb-2 px-1">
-                  <button
-                    onClick={() => setImportOpen(true)}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow transition-all dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                    title="从文件导入课程包"
-                  >
-                    <Upload className="w-4 h-4 text-indigo-500" />
-                    上传导入
-                  </button>
-                </div>
-
-                  <div className="pt-2 pb-12">
-                    {courses.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="pt-6 pb-12">
+                  {demoCourseError ? (
+                    <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600">
+                      {demoCourseError}
+                    </div>
+                  ) : null}
+                  {courses.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {courses.map((course, i) => (
                           <motion.div
                             key={course.filename}
@@ -1256,9 +1103,9 @@ export function HomePage() {
                             </div>
                           </motion.div>
                         ))}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1284,21 +1131,6 @@ export function HomePage() {
           key="export"
           courseId={exportCourseId}
           onClose={() => setExportCourseId(null)}
-        />
-      )}
-      {importOpen && (
-        <ImportModal
-          key="import"
-          onClose={() => setImportOpen(false)}
-          onSuccess={(result) => {
-            notifyCoursesImported({ courseId: result.course_id });
-            queryClient.invalidateQueries({ queryKey: ["courses"] });
-            toast({
-              title: "导入成功",
-              description: `${result.course_name} 已加入左侧课程列表。`,
-              variant: "success",
-            });
-          }}
         />
       )}
       {libraryPickerOpen && (

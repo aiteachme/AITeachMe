@@ -21,8 +21,8 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
-- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip`
-- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
 - updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
 
 ## 在线更新
@@ -33,7 +33,7 @@ Tauri local 发布包启动后会检查 GitHub Release 静态清单：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时会提示用户确认；确认后下载签名后的 NSIS updater 包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
+有新版时会提示用户确认；确认后下载签名后的 NSIS 安装包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
@@ -42,7 +42,10 @@ https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-loc
 - `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：更新包所在公开目录。
 
+如果发布 alpha/beta 预发布 Tauri local 包，也需要显式配置 `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`，例如指向 `latest-tauri-local-beta.json`。GitHub 的 `releases/latest` 更适合稳定版通道，不能作为预发布通道的可靠清单地址。
+
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
 
 如需同时生成在线更新产物，打包前需要设置：
 
@@ -101,6 +104,8 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
 
+预绑定配置会随安装包分发，不应作为公开发布的密钥保护边界；公开 Release 不要内置真实高权限 Provider Key。
+
 ## 前置要求
 
 - Node.js 和 npm。
@@ -108,5 +113,6 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 - Python 3.11，用于本地后端模式。
 - 如需生成 Tauri local 在线更新产物，需要 updater 公钥和签名私钥环境变量。
 - Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
+- 面向真实用户发布的 Windows `.exe` 建议启用 Authenticode 代码签名；配置见 `packaging\windows-signing.md`。
 
 底层实现脚本是 `packaging\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

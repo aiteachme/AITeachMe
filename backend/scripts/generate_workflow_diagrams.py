@@ -632,7 +632,7 @@ def write_all(*, output_dir: Path, keys: list[str]) -> list[Path]:
         "# AITeachMe 工作流架构图",
         "",
         "> 由 `backend/scripts/generate_workflow_diagrams.py` 从已编译的 LangGraph 拓扑自动生成。",
-        "> 运行 `conda activate atm && python backend/scripts/generate_workflow_diagrams.py` 可重新生成。",
+        "> 激活项目 Python 环境后，运行 `python backend/scripts/generate_workflow_diagrams.py` 可重新生成。",
         "",
         "## 图例说明",
         "",

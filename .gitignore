@@ -7,6 +7,7 @@
 .kiro/*
 !.kiro/specs/
 .claude/
+.codex/
 
 # OS
 .DS_Store
@@ -18,8 +19,10 @@ Thumbs.db
 /venv/
 /data/
 *.log
+tsc_errors.txt
 .env
 .env.local
+settings.private.yaml
 .history
 
 # Root packaging workspace
@@ -34,6 +37,7 @@ Thumbs.db
 /packaging/artifacts/
 /packaging/private/*.json
 /packaging/private/*.key
+/packaging/private/*.key.pub
 /packaging/private/*.pem
 /packaging/release/
 /packaging/electron/
@@ -43,6 +47,7 @@ Thumbs.db
 /packaging/tauri-remote/
 /build/
 /frontend/src-tauri/tauri.local.release.conf.json
+/frontend/src-tauri/tauri.remote.release.conf.json
 
 # Tooling caches
 .langgraph_api/

@@ -12,11 +12,14 @@ const STARTUP_CHECK_SESSION_KEY = "aiteachme:tauri-local-update-startup-check";
 
 type UpdateStatus = "available" | "downloading" | "installing" | "restarting" | "failed";
 
-function isTauriLocalRuntime(): boolean {
+export function isTauriLocalRuntime(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
   return window.location.hostname === "tauri.localhost" && window.aiteachmeDesktop?.desktopFlavor === "local";
 }
 
-function describeError(error: unknown): string {
+function describeUpdateError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
@@ -56,9 +59,28 @@ function formatUpdateDate(value: string | undefined): string {
   });
 }
 
-export function DesktopUpdatePrompt() {
+async function checkDesktopUpdate(): Promise<Update | null> {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  return check({ timeout: CHECK_TIMEOUT_MS });
+}
+
+interface CheckForUpdateOptions {
+  silent?: boolean;
+}
+
+interface DesktopUpdateModalProps {
+  open: boolean;
+  update: Update | null;
+  status: UpdateStatus;
+  errorText: string;
+  downloadedBytes: number;
+  contentLength: number | null;
+  onClose: () => void;
+  onInstall: () => void;
+}
+
+export function useDesktopUpdateDialog() {
   const { toast } = useToast();
-  const hasStartedRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
   const [status, setStatus] = useState<UpdateStatus>("available");
@@ -66,59 +88,73 @@ export function DesktopUpdatePrompt() {
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [contentLength, setContentLength] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (hasStartedRef.current || !isTauriLocalRuntime()) {
-      return;
-    }
-    hasStartedRef.current = true;
-
-    try {
-      if (window.sessionStorage.getItem(STARTUP_CHECK_SESSION_KEY) === "1") {
-        return;
-      }
-      window.sessionStorage.setItem(STARTUP_CHECK_SESSION_KEY, "1");
-    } catch {
-      // Session storage is only used to avoid duplicate startup prompts.
-    }
-
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const { check } = await import("@tauri-apps/plugin-updater");
-          const availableUpdate = await check({ timeout: CHECK_TIMEOUT_MS });
-          if (!availableUpdate) {
-            return;
-          }
-          setUpdate(availableUpdate);
-          setStatus("available");
-          setErrorText("");
-          setOpen(true);
-        } catch (error) {
-          logSkippedStartupCheck(error);
-        }
-      })();
-    }, CHECK_DELAY_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  const progressPercent = useMemo(() => {
-    if (!contentLength || contentLength <= 0) {
-      return null;
-    }
-    return Math.min(100, Math.round((downloadedBytes / contentLength) * 100));
-  }, [contentLength, downloadedBytes]);
-
-  const updateDate = formatUpdateDate(update?.date);
   const isBusy = status === "downloading" || status === "installing" || status === "restarting";
 
-  const handleClose = useCallback(() => {
+  const checkForUpdate = useCallback(async ({ silent = false }: CheckForUpdateOptions = {}) => {
+    if (!isTauriLocalRuntime()) {
+      if (!silent) {
+        toast({
+          title: "当前环境不支持在线更新",
+          description: "只有本地桌面版可以直接检查并安装更新。",
+          variant: "warning",
+        });
+      }
+      return null;
+    }
+
+    try {
+      const availableUpdate = await checkDesktopUpdate();
+      if (!availableUpdate) {
+        if (!silent) {
+          toast({
+            title: "已是最新版本",
+            description: "当前没有可用更新。",
+            variant: "success",
+          });
+        }
+        return null;
+      }
+
+      setUpdate(availableUpdate);
+      setStatus("available");
+      setErrorText("");
+      setDownloadedBytes(0);
+      setContentLength(null);
+      setOpen(true);
+
+      if (!silent) {
+        toast({
+          title: "发现新版本",
+          description: `AiTeachMe ${availableUpdate.version}`,
+          variant: "info",
+        });
+      }
+
+      return availableUpdate;
+    } catch (error) {
+      if (silent) {
+        logSkippedStartupCheck(error);
+        return null;
+      }
+
+      const message = describeUpdateError(error);
+      toast({
+        title: "检查更新失败",
+        description: message,
+        variant: "error",
+        duration: 9000,
+      });
+      return null;
+    }
+  }, [toast]);
+
+  const closeUpdateDialog = useCallback(() => {
     if (!isBusy) {
       setOpen(false);
     }
   }, [isBusy]);
 
-  const handleInstall = useCallback(async () => {
+  const installUpdate = useCallback(async () => {
     if (!update || isBusy) {
       return;
     }
@@ -148,7 +184,7 @@ export function DesktopUpdatePrompt() {
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (error) {
-      const message = describeError(error);
+      const message = describeUpdateError(error);
       setStatus("failed");
       setErrorText(message);
       toast({
@@ -160,12 +196,47 @@ export function DesktopUpdatePrompt() {
     }
   }, [isBusy, toast, update]);
 
+  return {
+    open,
+    update,
+    status,
+    errorText,
+    downloadedBytes,
+    contentLength,
+    isBusy,
+    isSupported: isTauriLocalRuntime(),
+    checkForUpdate,
+    closeUpdateDialog,
+    installUpdate,
+  };
+}
+
+export function DesktopUpdateModal({
+  open,
+  update,
+  status,
+  errorText,
+  downloadedBytes,
+  contentLength,
+  onClose,
+  onInstall,
+}: DesktopUpdateModalProps) {
+  const progressPercent = useMemo(() => {
+    if (!contentLength || contentLength <= 0) {
+      return null;
+    }
+    return Math.min(100, Math.round((downloadedBytes / contentLength) * 100));
+  }, [contentLength, downloadedBytes]);
+
+  const updateDate = formatUpdateDate(update?.date);
+  const isBusy = status === "downloading" || status === "installing" || status === "restarting";
+
   if (!update) {
     return null;
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="发现新版本" className="max-w-lg rounded-xl">
+    <Modal open={open} onClose={onClose} title="发现新版本" className="max-w-lg rounded-xl">
       <div className="space-y-5">
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
           <div className="flex items-center justify-between gap-3">
@@ -215,10 +286,10 @@ export function DesktopUpdatePrompt() {
         ) : null}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={handleClose} disabled={isBusy}>
+          <Button variant="outline" onClick={onClose} disabled={isBusy}>
             稍后再说
           </Button>
-          <Button onClick={handleInstall} disabled={isBusy}>
+          <Button onClick={onInstall} disabled={isBusy}>
             {status === "downloading" || status === "installing" || status === "restarting" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : status === "failed" ? (
@@ -231,5 +302,46 @@ export function DesktopUpdatePrompt() {
         </div>
       </div>
     </Modal>
+  );
+}
+
+export function DesktopUpdatePrompt() {
+  const hasStartedRef = useRef(false);
+  const updater = useDesktopUpdateDialog();
+  const { checkForUpdate } = updater;
+
+  useEffect(() => {
+    if (hasStartedRef.current || !isTauriLocalRuntime()) {
+      return;
+    }
+    hasStartedRef.current = true;
+
+    try {
+      if (window.sessionStorage.getItem(STARTUP_CHECK_SESSION_KEY) === "1") {
+        return;
+      }
+      window.sessionStorage.setItem(STARTUP_CHECK_SESSION_KEY, "1");
+    } catch {
+      // Session storage is only used to avoid duplicate startup prompts.
+    }
+
+    const timer = window.setTimeout(() => {
+      void checkForUpdate({ silent: true });
+    }, CHECK_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [checkForUpdate]);
+
+  return (
+    <DesktopUpdateModal
+      open={updater.open}
+      update={updater.update}
+      status={updater.status}
+      errorText={updater.errorText}
+      downloadedBytes={updater.downloadedBytes}
+      contentLength={updater.contentLength}
+      onClose={updater.closeUpdateDialog}
+      onInstall={updater.installUpdate}
+    />
   );
 }

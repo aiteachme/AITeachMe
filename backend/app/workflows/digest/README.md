@@ -19,7 +19,7 @@ digest/
 ## 各目录做什么
 
 - `planner/`
-  负责根据文件内容和历史对话生成可确认 plan，权威文档见 `planner/FLOW_DESIGN.md`
+  负责根据文件内容和历史对话生成可确认 plan，权威文档见 `planner/README.md`
 - `docgen/`
   负责根据 confirmed plan 生成知识文档，权威文档见 `docgen/README.md`
 - `kg_doc_sync/`

@@ -36,6 +36,7 @@ import {
 } from "../components/knowledge-docs";
 import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
+import { useToast } from "../components/ui/Toast";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
@@ -1787,6 +1788,7 @@ export function KnowledgeDocsPage() {
     sidebarRequest,
   } = useAiInteraction();
   const location = useLocation();
+  const { toast } = useToast();
   const {
     courseId,
     docMarkdownQuery,
@@ -1888,6 +1890,38 @@ export function KnowledgeDocsPage() {
   const selectedRangeRef = useRef<Range | null>(null);
   const selectedRangeThreadIdRef = useRef<string | null>(null);
   const commentsRef = useRef<Comment[]>([]);
+
+  useEffect(() => {
+    if (!courseId || typeof window === "undefined") {
+      return;
+    }
+    const storageKey = `aiteachme:knowledge-docs-selection-hint:${courseId}`;
+    let shouldShowHint = true;
+    try {
+      if (window.sessionStorage.getItem(storageKey) === "1") {
+        shouldShowHint = false;
+      }
+    } catch {
+      // Ignore storage failures; the hint is helpful but not required for reading.
+    }
+    if (!shouldShowHint) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      toast({
+        title: "可以滑选文字提问",
+        description: "在正文中拖动选中一段内容，就能让 AI 围绕这段知识解释、追问或总结。",
+        variant: "info",
+        duration: 8000,
+      });
+      try {
+        window.sessionStorage.setItem(storageKey, "1");
+      } catch {
+        // Ignore storage failures; the hint is helpful but not required for reading.
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [courseId, toast]);
   const quickChatStartedThreadIdsRef = useRef(new Set<string>());
   const threadRefs = useRef(new Map<string, HTMLDivElement>());
   const headingFlashTimersRef = useRef(new Map<string, number>());
@@ -5547,12 +5581,15 @@ export function KnowledgeDocsPage() {
           ref={settingsButtonRef}
           type="button"
           onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
-          className="fixed bottom-32 right-6 z-[88] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-3 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100"
+          className={cn(
+            "fixed bottom-[7.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            isSettingsPanelOpen && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
+          )}
           aria-label="打开课程设置"
           aria-expanded={isSettingsPanelOpen}
         >
-          <SlidersHorizontal className="h-4 w-4" />
-          <span className="hidden sm:inline">课程设置</span>
+          <SlidersHorizontal className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline">课程设置</span>
         </button>
       )}
 
@@ -5562,13 +5599,13 @@ export function KnowledgeDocsPage() {
           type="button"
           onClick={openGraphPanel}
           className={cn(
-            "fixed bottom-20 right-6 z-[86] inline-flex h-11 items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/95 px-4 text-[14px] font-medium text-zinc-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl transition duration-300 hover:border-zinc-300 hover:bg-white hover:text-zinc-900 active:scale-[0.98] dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-300 dark:shadow-[0_18px_40px_-22px_rgba(0,0,0,0.8)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            "fixed bottom-[4.5rem] right-6 z-[86] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
             isGraphDrawerOpen || isSettingsPanelOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开知识图谱"
         >
-          <Network className="h-4 w-4 text-zinc-500 dark:text-slate-400" />
-          <span className="hidden sm:inline">知识图谱</span>
+          <Network className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+          <span className="hidden truncate sm:inline">知识图谱</span>
         </button>
       )}
 

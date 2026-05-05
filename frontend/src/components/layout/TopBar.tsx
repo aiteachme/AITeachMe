@@ -444,7 +444,7 @@ export function TopBar({ className }: TopBarProps) {
                   }}
                 >
                   <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <span>意见反馈</span>
+                  <span>反馈与联系</span>
                 </button>
               </div>
 
@@ -566,7 +566,7 @@ export function TopBar({ className }: TopBarProps) {
                 }}
               >
                 <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <span>意见反馈</span>
+                <span>反馈与联系</span>
               </button>
             </div>
 

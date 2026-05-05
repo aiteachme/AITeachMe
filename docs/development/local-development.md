@@ -5,7 +5,7 @@
 ## 环境要求
 
 - Windows 优先支持。
-- Python `3.11+`，项目默认使用 Conda 环境 `atm`。
+- Python `3.11+`；可以使用 Conda、venv 或其他环境管理器。
 - Node.js 建议 `18+`。
 - 文件读写和终端输出尽量使用 UTF-8。
 
@@ -13,7 +13,6 @@
 
 ```powershell
 cd backend
-conda activate atm
 $env:PYTHONUTF8 = "1"
 pip install -e .
 uvicorn app.main:app --reload --port 9020
@@ -62,7 +61,7 @@ frontend/src/api/generated/
 ```env
 AITEACHME_BACKEND_PORT=9020
 AITEACHME_FRONTEND_PORT=5180
-AITEACHME_CONDA_ENV=atm
+AITEACHME_CONDA_ENV=<your-conda-env>
 ```
 
 ## 环境变量

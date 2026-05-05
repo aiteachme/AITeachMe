@@ -45,6 +45,14 @@
 - `-BackendPort <port>`：local 桌面包的本地后端端口；默认留空，由 Electron local / Tauri local 启动时自动申请可用端口。仅在需要固定端口调试时传入。
 - `-SkipInstall`：跳过依赖安装步骤。
 
+Python 解释器解析顺序：
+
+1. `AITEACHME_PYTHON` 指向的 Python。
+2. 当前已激活环境的 `CONDA_PREFIX`。
+3. 仓库根目录 `.venv`。
+4. `conda run -n <env>`，环境名来自 `AITEACHME_CONDA_ENV`，未设置时使用 `aiteachme`。
+5. `py -3.11` 或 PATH 中的 `python`。
+
 ## 产物命名
 
 最终产物统一收集到：
@@ -88,16 +96,19 @@ Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时前端会提示用户确认；确认后下载已签名的 NSIS updater 包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+有新版时前端会提示用户确认；确认后下载已签名的 NSIS 安装包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
-如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、`*.nsis.zip`、`*.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
+如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、安装包和对应 `.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
 
 - `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：客户端检查的 `latest-tauri-local.json` 公开地址。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
 
+如果发布 alpha/beta 预发布 Tauri local 包，也需要显式配置 `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`，例如指向 `latest-tauri-local-beta.json`。GitHub 的 `releases/latest` 更适合稳定版通道，不能作为预发布通道的可靠清单地址。
+
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
 
 如需同时生成在线更新产物，发布包前需要配置：
 
@@ -116,8 +127,8 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 配置齐全时，GitHub Release 会额外上传：
 
-- `AiTeachMe-v<version>-updater-tauri.nsis.zip`
-- `AiTeachMe-v<version>-updater-tauri.nsis.zip.sig`
+- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
 - `latest-tauri-local.json`
 
 `tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。
@@ -154,6 +165,8 @@ JSON 结构：
 ```
 
 该选项只对带本地后端的 Electron local / Tauri local 有实际效果。打包脚本会生成 `packaging\artifacts\generated-configs\aiteachme_bundled_env.enc.json`，PyInstaller 会把它收进后端运行时。应用启动后会把这些值作为默认环境变量使用；设置页中的预绑定密钥不会回显明文，会显示为“预绑定密钥，已加密隐藏”。
+
+注意：预绑定配置会随安装包一起分发，只适合受控渠道和低权限配置，不应当把真实高权限 Provider Key 放进公开 GitHub Release。如果误发布了包含真实密钥的 bundled 安装包，应删除对应 Release asset 并轮换密钥。
 
 ## GitHub Release 预绑定配置
 

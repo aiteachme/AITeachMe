@@ -48,7 +48,6 @@
 
 ```bash
 cd backend
-conda activate atm
 pip install -e .
 pip install -U "langgraph-cli[inmem]"
 langgraph dev --config langgraph.json

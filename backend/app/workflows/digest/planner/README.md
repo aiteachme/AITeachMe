@@ -1,18 +1,18 @@
-# Planner 流程设计
+# Planner 流程说明
 
 最后更新：2026-05-02
 
-这份文档是 `backend/app/workflows/digest/planner/` 当前唯一的文档文件，同时承担入口说明、流程权威文档和持久化合同说明。
+这份文档是 `backend/app/workflows/digest/planner/` 的当前主文档，同时承担入口说明、流程权威文档和持久化合同说明。
 
 如果当前文档、上游设计文档和代码之间出现冲突，优先级如下：
 
 1. 当前代码：`graph.py`、`state.py`、`nodes/`、`lib/store.py`
-2. 当前文档：`FLOW_DESIGN.md`
+2. 当前文档：`README.md`
 
 使用约定：
 
-- `FLOW_DESIGN.md` 必须同时保留两类内容：短流程总览和长流程执行合同。
-- `planner/` 目录下不再保留第二份入口 README。
+- `README.md` 必须同时保留两类内容：短流程总览和长流程执行合同。
+- `planner/` 目录下不再保留平行的流程设计文档。
 - Planner 只做确认前规划：理解资料、理解目标、合成可确认方案、保存 Planner 会话。
 - Planner 不做本地 RAG 检索，不做外部 Web research，不提前替 DocGen 决定证据来源。
 
@@ -34,7 +34,7 @@ planner/
   nodes/               # 顶层图节点
   lib/                 # 持久化、模型策略、plan normalize、SSE 事件等
   prompts/             # prompt builder
-  FLOW_DESIGN.md       # 当前唯一文档文件
+  README.md           # 当前主文档
 ```
 
 公开入口：
@@ -52,7 +52,7 @@ from app.workflows.digest.planner import (
 
 阅读顺序：
 
-1. `FLOW_DESIGN.md`
+1. `README.md`
 2. `graph.py`
 3. `state.py`
 4. `nodes/load_planner_materials.py`

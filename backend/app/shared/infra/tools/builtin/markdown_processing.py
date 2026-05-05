@@ -29,8 +29,20 @@ MERMAID_INFO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FLOWCHART_HEADER_PATTERN = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
+FLOWCHART_INLINE_HEADER_PATTERN = re.compile(
+    r"^\s*((?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL))\s+(.+)$",
+    re.IGNORECASE,
+)
 FLOWCHART_NODE_LABEL_PATTERN = re.compile(r"(^|[^\w\"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]")
 FLOWCHART_EDGE_LABEL_PATTERN = re.compile(r"\|([^|\n]+)\|")
+FLOWCHART_CLASS_LINE_PATTERN = re.compile(r"^(\s*class\s+)([^;\n]+?)(;?\s*)$", re.IGNORECASE)
+FLOWCHART_CONTROL_LINE_PATTERN = re.compile(
+    r"^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|"
+    r"linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)",
+    re.IGNORECASE,
+)
+FLOWCHART_EDGE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:-->|---|==>|-.->|==|--|~~~|o--|x--)")
+FLOWCHART_NODE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:\[|\(|\{|\>)")
 MINDMAP_ROOT_PATTERN = re.compile(r"^root\(\((.+)\)\)$", re.IGNORECASE)
 MINDMAP_MIXED_SYNTAX_PATTERN = re.compile(
     r"-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b",
@@ -172,9 +184,30 @@ def _sanitize_mermaid_label(value: str, *, max_length: int = 44) -> str:
     return (cleaned[:max_length].strip() or "节点").rstrip("：:，,。；; ")
 
 
+def _normalize_flowchart_control_line(line: str) -> str:
+    if re.match(r"^\s*classDef\b", line, re.IGNORECASE):
+        return line
+    match = FLOWCHART_CLASS_LINE_PATTERN.match(line)
+    if match is None:
+        return line
+
+    prefix = match.group(1) or ""
+    body = (match.group(2) or "").strip()
+    suffix = match.group(3) or ""
+    parts = [part for part in re.split(r"\s+", body) if part]
+    if len(parts) < 2:
+        return line
+
+    class_name = parts.pop()
+    node_list = ",".join(node_id.strip() for node_id in " ".join(parts).split(",") if node_id.strip())
+    if not node_list or not class_name:
+        return line
+    return f"{prefix}{node_list} {class_name}{suffix}"
+
+
 def _quote_flowchart_labels(line: str) -> str:
     if re.match(r"^\s*(?:classDef|class|style|linkStyle|click)\b", line, re.IGNORECASE):
-        return line
+        return _normalize_flowchart_control_line(line)
 
     def replace_node_label(match: re.Match[str]) -> str:
         label = _sanitize_mermaid_label(match.group(3)).replace('"', "'")
@@ -188,13 +221,43 @@ def _quote_flowchart_labels(line: str) -> str:
     return FLOWCHART_EDGE_LABEL_PATTERN.sub(replace_edge_label, quoted)
 
 
+def _split_inline_flowchart_header(line: str) -> list[str]:
+    match = FLOWCHART_INLINE_HEADER_PATTERN.match(line)
+    if match is None:
+        return [line]
+    header = match.group(1).strip()
+    body = match.group(2).strip()
+    if not header or not body:
+        return [line]
+    return [header, body]
+
+
+def _normalize_flowchart_line(line: str, index: int) -> str:
+    quoted = _quote_flowchart_labels(line)
+    stripped = quoted.strip()
+    if not stripped:
+        return quoted
+    if (
+        FLOWCHART_CONTROL_LINE_PATTERN.search(stripped)
+        or FLOWCHART_EDGE_LINE_PATTERN.search(stripped)
+        or FLOWCHART_NODE_LINE_PATTERN.search(stripped)
+    ):
+        return quoted
+    label = _sanitize_mermaid_label(stripped).replace('"', "'")
+    return f'ATM_AUTO_{index}["{label}"]'
+
+
 def _sanitize_flowchart_source(source: str) -> str:
-    lines = [line.rstrip() for line in str(source or "").splitlines() if line.strip()]
+    lines: list[str] = []
+    for raw_line in str(source or "").splitlines():
+        if not raw_line.strip():
+            continue
+        lines.extend(_split_inline_flowchart_header(raw_line.rstrip()))
     if not lines:
         return "flowchart TD"
     if not FLOWCHART_HEADER_PATTERN.match(lines[0].strip()):
         lines.insert(0, "flowchart TD")
-    return "\n".join(_quote_flowchart_labels(line) for line in lines).strip()
+    return "\n".join(_normalize_flowchart_line(line, index) for index, line in enumerate(lines)).strip()
 
 
 def _sanitize_mindmap_label(value: str, *, max_length: int = 28) -> str:

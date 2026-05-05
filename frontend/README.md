@@ -75,10 +75,10 @@ frontend/dist/
 
 ### 静态站点
 
-前端可以部署到任意 Vite 静态站点平台。若没有同源网关把 `/api/*` 转发到后端，需要配置：
+前端可以部署到任意 Vite 静态站点平台。生产环境推荐使用同源网关把 `/api/*` 转发到后端；如果临时使用独立 API origin，可以配置：
 
 ```env
-VITE_API_URL=<backend-public-api-origin>
+VITE_API_URL=<backend-api-origin>
 ```
 
 ### Sealos Nginx

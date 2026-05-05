@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
   BarChart3,
   CalendarClock,
+  CheckCircle2,
   Clock3,
   Gauge,
   Sparkles,
@@ -51,6 +52,7 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { courseName } = useCourseDisplayName(courseId);
+  const [recentlyCompletedReviews, setRecentlyCompletedReviews] = useState<ReviewTaskResponse[]>([]);
 
   const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(courseId ?? "");
   const reviewsQuery = useReviewTasksApiV1CoursesCourseIdProfileReviewsGet(courseId ?? "");
@@ -63,11 +65,29 @@ export function ProfilePage() {
     () => unwrapOrvalResponse<ReviewTaskResponse[]>(reviewsQuery.data) ?? [],
     [reviewsQuery.data],
   );
+  const reviewTaskById = useMemo(() => new Map(reviewTasks.map((task) => [task.id, task])), [reviewTasks]);
+  const pendingReviewTaskIds = useMemo(() => new Set(reviewTasks.map((task) => task.id)), [reviewTasks]);
+  const visibleCompletedReviews = useMemo(
+    () => recentlyCompletedReviews.filter((task) => !pendingReviewTaskIds.has(task.id)).slice(0, 3),
+    [pendingReviewTaskIds, recentlyCompletedReviews],
+  );
+
+  useEffect(() => {
+    setRecentlyCompletedReviews([]);
+  }, [courseId]);
 
   const completeReview = useCompleteReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePost({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, variables) => {
         if (!courseId) return;
+        const completedTask =
+          unwrapOrvalResponse<ReviewTaskResponse>(response) ?? reviewTaskById.get(variables.taskId);
+        if (completedTask) {
+          setRecentlyCompletedReviews((current) => [
+            completedTask,
+            ...current.filter((task) => task.id !== completedTask.id),
+          ].slice(0, 3));
+        }
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
@@ -121,7 +141,7 @@ export function ProfilePage() {
   const visibleProfileNotes = profileNotes
     .filter((note) => !/：0\s*(个|项)/.test(note))
     .slice(0, 4);
-  const hasProfileSignals = states.length > 0 || reviewTasks.length > 0;
+  const hasProfileSignals = states.length > 0 || reviewTasks.length > 0 || visibleCompletedReviews.length > 0;
   const primaryAction = dueSoonCount > 0
     ? "先处理到期复习"
     : (mastery?.weak_knowledge_unit_count ?? 0) > 0
@@ -266,27 +286,65 @@ export function ProfilePage() {
                     {reviewsQuery.isLoading ? (
                       <p className="py-4 text-sm text-slate-500 dark:text-slate-400">正在加载复习任务...</p>
                     ) : sortedReviewTasks.length ? (
-                      sortedReviewTasks.slice(0, 4).map((task) => (
-                        <div key={task.id} className="flex items-center justify-between gap-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                              {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              {formatToken(task.knowledge_unit_type, "知识点")} · {formatDateTime(task.scheduled_at)}
-                            </p>
+                      <>
+                        {sortedReviewTasks.slice(0, 4).map((task) => (
+                          <div key={task.id} className="flex items-center justify-between gap-4 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                                {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {formatToken(task.knowledge_unit_type, "知识点")} · {formatDateTime(task.scheduled_at)}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => completeReview.mutate({ courseId, taskId: task.id })}
+                              disabled={completeReview.isPending}
+                              className="h-8 shrink-0 px-3 text-xs"
+                            >
+                              完成
+                            </Button>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => completeReview.mutate({ courseId, taskId: task.id })}
-                            disabled={completeReview.isPending}
-                            className="h-8 shrink-0 px-3 text-xs"
-                          >
-                            完成
-                          </Button>
+                        ))}
+                        {visibleCompletedReviews.length > 0 && (
+                          <div className="py-3">
+                            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">刚刚完成</p>
+                            <div className="mt-2 space-y-2">
+                              {visibleCompletedReviews.map((task) => (
+                                <div
+                                  key={task.id}
+                                  className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : visibleCompletedReviews.length ? (
+                      <div className="py-4">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">本轮复习已完成。</p>
+                        <div className="mt-3 space-y-2">
+                          {visibleCompletedReviews.map((task) => (
+                            <div
+                              key={task.id}
+                              className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">
+                                {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
+                              </span>
+                              <span className="ml-auto shrink-0">已完成</span>
+                            </div>
+                          ))}
                         </div>
-                      ))
+                      </div>
                     ) : (
                       <p className="py-4 text-sm text-slate-500 dark:text-slate-400">当前没有待处理复习任务。</p>
                     )}

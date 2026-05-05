@@ -2,7 +2,7 @@
 
 最后更新：2026-04-27
 
-本文只记录数据库和文件存储的当前分工。运行目录看 `10_repo_structure_and_runtime_files.md`，云端迁移看 `16_cloud_db_migrations.md`。
+本文只记录数据库和文件存储的当前分工。运行目录看 [仓库结构与运行时文件](./repo-structure-and-runtime-files.md)，云端迁移看 [云端数据库迁移](../deployment/cloud-db-migrations.md)。
 
 ## 1. 一句话
 
@@ -16,7 +16,7 @@
 - 图谱同步记录和来源引用。
 - 聊天、试卷、题目、掌握度、复习任务。
 
-当前数据库结构清单以 `13_database_schema_inventory.md` 为准。
+当前数据库结构清单以 [数据库结构清单](./database-schema-inventory.md) 为准。
 
 ## 3. ContentStore 存什么
 
@@ -56,7 +56,7 @@ users/<user_id>/courses/<course>/
   knowledge_markdowns/
 ```
 
-禁止业务代码手拼绝对路径、公开 URL 或绕过 ContentStore。
+禁止业务代码手拼绝对路径、公开 URL 或绕过 ContentStore。存储层不提供通用公开 URL 生成能力；用户上传资料、课程资产、知识文档等 `users/<user_id>/...` 私有对象必须通过后端鉴权接口代理读取，不允许把对象存储或 CDN 地址直接返回给前端。
 
 ## 6. 派生数据原则
 
@@ -66,7 +66,7 @@ users/<user_id>/courses/<course>/
 
 ## 7. 相关文档
 
-- `13_database_schema_inventory.md`
-- `14_cloud_deployment_architecture.md`
-- `15_export_import.md`
-- `16_cloud_db_migrations.md`
+- [数据库结构清单](./database-schema-inventory.md)
+- [云端部署架构](../deployment/cloud-architecture.md)
+- [导入导出](../operations/export-import.md)
+- [云端数据库迁移](../deployment/cloud-db-migrations.md)

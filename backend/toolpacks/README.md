@@ -1,8 +1,10 @@
 # Toolpacks
 
-`backend/toolpacks/` 是项目内真实可执行的外部工具扩展目录。
+`backend/toolpacks/` 是项目内可选的外部工具扩展目录，当前只保留说明，没有内置 toolpack 实现。
 
 这不是普通学习用户上传工具的产品入口。它面向开发者、部署管理员和企业私有扩展场景；普通用户不需要也不应该编写 Python `handler.py`。
+
+如果短期没有私有工具集成，也可以让这个目录保持只有 README。真正删除目录前，需要同步调整 `app.shared.infra.tools.tool_loader` 和 `shared/infra` 文档里的项目内 toolpack 入口说明。
 
 ## 目录约定
 

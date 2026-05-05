@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, X } from "lucide-react";
+import { ImagePlus, Loader2, Mail, X } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { Modal } from "./Modal";
@@ -8,6 +8,9 @@ interface FeedbackModalProps {
   open: boolean;
   onClose: () => void;
 }
+
+const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL?.trim() || "support@aiteachme.com";
+const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("AITeachMe 意见反馈")}`;
 
 export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   const [content, setContent] = useState("");
@@ -71,10 +74,21 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     <Modal
       open={open}
       onClose={isSubmitting ? () => {} : onClose}
-      title="意见反馈"
+      title="反馈与联系"
       className="max-w-[36rem]"
     >
       <div className="space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+          <p>遇到账号、部署或紧急问题，可以直接邮件联系我们。</p>
+          <a
+            href={CONTACT_MAILTO}
+            className="mt-2 inline-flex items-center gap-1.5 font-medium text-slate-900 underline-offset-4 hover:underline dark:text-slate-100"
+          >
+            <Mail className="h-4 w-4" />
+            {CONTACT_EMAIL}
+          </a>
+        </div>
+
         {successStatus ? (
           <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
             反馈发送成功，感谢你的宝贵意见。
@@ -92,7 +106,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             value={content}
             onChange={(event) => setContent(event.target.value)}
             disabled={isSubmitting || successStatus}
-            placeholder="请在这里描述你的问题或建议..."
+            placeholder="请在这里描述你的问题或建议；如果希望我们回复，也可以留下联系方式。"
             className="min-h-[160px] w-full resize-none rounded-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
             maxLength={2000}
           />

@@ -27,7 +27,7 @@ Profile   显影引擎：沉淀掌握度、薄弱点、复习任务和学习画�
 
 ```powershell
 cd backend
-conda activate atm
+pip install -e .
 $env:PYTHONUTF8 = "1"
 uvicorn app.main:app --reload --port 9020
 ```
@@ -85,9 +85,17 @@ shared.infra -> shared.kernel
 - [Workflows 结构规则](./backend/app/workflows/README.md)
 - [Infra 分层说明](./backend/app/shared/infra/README.md)
 
+## License 与商标
+
+本仓库代码使用 [GNU Affero General Public License v3.0 only](./LICENSE)（`AGPL-3.0-only`）。
+
+如果你修改本项目并通过网络服务向用户提供访问，需要按照 AGPL-3.0 的要求向这些用户提供相应源码。需要在不触发 AGPL 源码开放义务的场景中使用、集成或托管 AITeachMe，请参考 [商业授权说明](./COMMERCIAL.md)。
+
+`AITeachMe` 名称、标识、Logo 和相关品牌资产不随代码许可证授权。商标和品牌使用边界见 [TRADEMARKS.md](./TRADEMARKS.md)。
+
 ## 开发约束
 
-- Python 环境默认使用 `conda activate atm`。
+- Python 使用 3.11+；如使用 Conda、venv 或其他环境管理器，请先激活自己的项目环境。
 - 输入输出文件读写统一使用 UTF-8。
 - `frontend/src/api/generated/` 由 Orval 生成，不手动修改。
 - 架构改动优先同步 `docs/` 的当前事实源，以及对应模块目录内 README。
