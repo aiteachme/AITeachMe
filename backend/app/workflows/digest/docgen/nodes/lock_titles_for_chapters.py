@@ -70,7 +70,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
         locked_titles = await gather_with_concurrency(
             chapters,
             _lock_one,
-            limit=min(8, get_llm_concurrency_limit()),
+            limit=get_llm_concurrency_limit(),
         )
         locked_titles.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
         elapsed_ms = int((perf_counter() - started_at) * 1000)

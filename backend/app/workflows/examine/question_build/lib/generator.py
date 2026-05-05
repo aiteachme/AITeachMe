@@ -1220,7 +1220,7 @@ async def generate_exam_questions_for_units(
     failed_orders: list[int] = []
     spec_iter = iter(specs)
     running_tasks: set[asyncio.Task[tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]]] = set()
-    worker_limit = max(1, min(len(specs), get_llm_concurrency_limit(), 8))
+    worker_limit = max(1, min(len(specs), get_llm_concurrency_limit()))
 
     def _start_next() -> None:
         try:

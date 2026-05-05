@@ -298,7 +298,7 @@ async def grade_exam_items_with_workflow(
     return await gather_with_concurrency(
         items,
         _grade_item,
-        limit=min(8, get_llm_concurrency_limit()),
+        limit=get_llm_concurrency_limit(),
     )
 
 

@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TypeVar
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.runtime import gather_with_concurrency
 
 ASSET_REQUEST_LANGUAGE = "atm-docgen-internal-asset-request-v1"
@@ -199,7 +200,7 @@ async def replace_asset_requests_with_results(
     parts.append(text[last_index:])
 
     rendered_results = (
-        await gather_with_concurrency(render_requests, renderer, limit=6)
+        await gather_with_concurrency(render_requests, renderer, limit=get_llm_concurrency_limit())
         if render_requests
         else []
     )

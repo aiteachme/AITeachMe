@@ -86,7 +86,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
         chapter_briefs = await gather_with_concurrency(
             task_seeds,
             _build_one,
-            limit=min(8, get_llm_concurrency_limit()),
+            limit=get_llm_concurrency_limit(),
         )
         chapter_briefs.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
         elapsed_ms = int((perf_counter() - started_at) * 1000)

@@ -39,10 +39,10 @@ def test_llm_concurrency_runtime_settings_override_default() -> None:
     assert get_llm_concurrency_limit() == 3
 
 
-def test_kg_graph_cap_uses_shared_llm_limit() -> None:
+def test_kg_graph_cap_uses_full_shared_llm_limit() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 8}})
 
-    assert _graph_llm_concurrency_cap() == 6
+    assert _graph_llm_concurrency_cap() == 8
 
 
 def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:

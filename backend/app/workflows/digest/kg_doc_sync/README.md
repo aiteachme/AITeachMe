@@ -158,7 +158,7 @@ prepare
 - 阶段 A 的 section 抽取执行并发是 `min(任务数, prefetch_concurrency)`，同时仍受全局 `settings.llm.concurrency_limit` 限制。
 - 阶段 B 的任务规划上限是 `max_parallel_extractions`；章节很少但内容很长时，会把大章拆成子章节任务，最多扩展到该上限。
 - 阶段 B 的执行并发默认是 `min(任务数, max_parallel_extractions)`，并由全局 LLM limiter 进一步约束。
-- 阶段 A 与 DocGen review / repair 共享同一个 LLM limiter，所以默认 2 路是为了让图谱预热提速，但不抢满 DocGen 的后半段复核资源。
+- 阶段 A 与 DocGen review / repair 共享同一个 LLM limiter；预抽取默认 2 路是显式的 sidecar 并发设置，仍受全局 LLM 并发限制约束。
 - 阶段 B 如果大部分 section 命中预抽取缓存，真正需要 catch-up 的 LLM 调用数会明显低于任务数；runtime 中的 `prefetch_reused_section_count` / `prefetch_catchup_section_count` 用于判断复用效果。
 
 ## 1. 流程总览与执行合同
@@ -283,7 +283,7 @@ _extract_chapter_with_retries x N
     ├─ chapter 1 extraction
     ├─ chapter 2 / subsection 2.1 extraction
     └─ chapter N / subsection N.x extraction
-  正式同步默认最多 16 路抽取并发，并会保留全局 LLM 并发余量；每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
+  正式同步默认最多 16 路抽取并发，并受全局 LLM 并发限制约束；每个抽取任务最多 2 次尝试；单任务 LLM 输入会保留开头和结尾并压到固定字符预算内。
   通过 contextvars 继承外层运行上下文，让 LLM 子调用挂在同一条 trace 下。
   |
   v
@@ -615,7 +615,7 @@ _extract_chapter_with_retries
   输出：
     - SectionExtractionPayload
   并发：
-    - 正式同步并发上限默认 16，来自 `settings.knowledge_graph.max_parallel_extractions`，并会为出题等交互任务预留一小段全局 LLM 并发余量。
+    - 正式同步并发上限默认 16，来自 `settings.knowledge_graph.max_parallel_extractions`，并受全局 LLM 并发限制约束。
     - DocGen sidecar 预抽取并发默认 2，来自 `settings.knowledge_graph.prefetch_concurrency`。
     - `_DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2`
     - `_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400`

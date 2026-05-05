@@ -299,7 +299,7 @@ async def repair_or_route_review_actions(
         patch_results = await gather_with_concurrency(
             patch_jobs,
             lambda job: _process_patch_actions_for_chapter(job[0], job[1]),
-            limit=min(4, get_llm_concurrency_limit()),
+            limit=get_llm_concurrency_limit(),
         )
         for patched_chapter, action_results in patch_results:
             chapters_by_index[patched_chapter.chapter_index] = patched_chapter

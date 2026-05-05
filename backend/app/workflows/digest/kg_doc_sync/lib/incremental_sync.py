@@ -932,11 +932,9 @@ def _max_parallel_extractions() -> int:
 
 
 def _graph_llm_concurrency_cap() -> int:
-    """Keep graph extraction from occupying all shared LLM call slots."""
+    """Use the shared LLM concurrency setting as the graph extraction cap."""
 
-    normalized_limit = get_llm_concurrency_limit()
-    reserved_slots = max(1, min(4, normalized_limit // 4))
-    return max(1, normalized_limit - reserved_slots)
+    return get_llm_concurrency_limit()
 
 
 def _chapter_concurrency_limit() -> int:

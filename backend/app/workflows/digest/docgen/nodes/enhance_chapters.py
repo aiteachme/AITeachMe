@@ -133,7 +133,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         results = await gather_with_concurrency(
             drafts,
             _enhance_one,
-            limit=min(6, get_llm_concurrency_limit()),
+            limit=get_llm_concurrency_limit(),
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         enhanced_items = [item[0] for item in results]

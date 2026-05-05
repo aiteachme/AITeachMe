@@ -467,7 +467,7 @@ async def summarize_files(
             digest_mode=digest_mode,
             extra_metadata=dict(extra_metadata or {}),
         ),
-        limit=min(8, get_llm_concurrency_limit()),
+        limit=get_llm_concurrency_limit(),
     )
 
 
