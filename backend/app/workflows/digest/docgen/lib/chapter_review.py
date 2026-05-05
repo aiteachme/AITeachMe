@@ -1,4 +1,4 @@
-﻿"""Chapter-level review for enhanced DocGen drafts."""
+"""Chapter-level review for enhanced DocGen drafts."""
 
 from __future__ import annotations
 
@@ -175,14 +175,14 @@ def _rule_review_chapter(
             ),
         )
         if activity_count < expected_activity_count:
-            warnings.append("速成课例题、案例、训练或实践任务密度不足。")
+            warnings.append("速成课模式例题、案例、训练或实践任务密度不足。")
             actions.append(
                 ReviewAction(
                     action_id=f"review_ch{draft.chapter_index:02d}_sprint_examples",
                     action_type="section_patch",
                     chapter_index=draft.chapter_index,
                     severity="warning",
-                    reason=f"速成课学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
+                    reason=f"速成课模式学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
                     target_anchor=_chapter_anchor(draft),
                     instruction=(
                         "补充高价值例题、操作案例、变式训练、自测或错误诊断；每个重要方法要有识别信号、"
@@ -193,7 +193,7 @@ def _rule_review_chapter(
                         "优先补本章已有知识点、方法或场景的例子，不新增无来源的新主题。",
                         "理论说明必须服务会做题、会操作、会判断、会避坑。",
                     ],
-                    expected_effect="速成章形成题型/场景/任务驱动的例题和训练密度。",
+                    expected_effect="本章形成题型/场景/任务驱动的例题和训练密度。",
                 )
             )
     else:

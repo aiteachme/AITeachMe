@@ -96,7 +96,7 @@ def _normalize_digest_mode(value: Any) -> str:
 
 
 def planner_mode_label(value: Any) -> str:
-    return "冲刺型" if _normalize_digest_mode(value) == "sprint" else "系统型"
+    return "速成课" if _normalize_digest_mode(value) == "sprint" else "系统课"
 
 
 def render_planner_chapter_contract(value: Any) -> str:
@@ -304,11 +304,11 @@ def build_supplement_chapter_payload(
     if normalized_mode == "sprint":
         required = _strings([f"{title} 的常见任务/题型", f"{title} 的快速抓手", f"{title} 的易错边界"])
         objective = f"把《{title}》整理成能快速定位、练习和查漏的任务主线。"
-        writing = "按冲刺型写法组织：先给判断抓手，再讲典型任务/题型和易错边界。"
+        writing = "按速成课写法组织：先给判断抓手，再讲典型任务/题型和易错边界。"
     else:
         required = _strings([f"{title} 的核心对象", f"{title} 的结构关系", f"{title} 的例子与迁移"])
         objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
-        writing = "按系统型写法组织：先讲对象和结构，再展开推理、例子与迁移。"
+        writing = "按系统课写法组织：先讲对象和结构，再展开推理、例子与迁移。"
     if user_prompt:
         required = _strings([*required, f"{title} 与用户目标的连接"])
     return {

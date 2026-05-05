@@ -1,4 +1,4 @@
-﻿"""Chapter-level enhancement, assets, and practice seeds."""
+"""Chapter-level enhancement, assets, and practice seeds."""
 
 from __future__ import annotations
 
@@ -142,13 +142,13 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": choose_heading_focus([focus], fallback=title),
-                    "stem": f"围绕“{focus}”设计一个速成训练：给出条件、识别信号，并说明最短处理路径。",
+                    "stem": f"围绕“{focus}”设计一个速成课练习：给出条件、识别信号，并说明最短处理路径。",
                     "analysis_steps": [
                         "先判断任务属于哪类高频场景、常见题型或操作任务。",
                         "再写出触发该方法的条件或关键词。",
                         "最后按模板完成步骤，并做一次易错检查。",
                     ],
-                    "pitfall": "速成训练的关键是识别信号和方法边界，不能只背答案。",
+                    "pitfall": "速成课的关键是识别信号和方法边界，不能只背答案。",
                 }
             )
         return examples

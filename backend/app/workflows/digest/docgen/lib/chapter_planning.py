@@ -131,7 +131,7 @@ def _example_coverage_plan(
             {
                 "target": target,
                 "example_type": "worked_example_or_case",
-                "purpose": "速成课用例题/任务形成抓手；系统课用例题/案例覆盖知识点。",
+                "purpose": "速成课模式用例题/任务形成抓手；系统课用例题/案例覆盖知识点。",
                 "min_examples": min_examples,
             }
             for target in targets

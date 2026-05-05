@@ -20,7 +20,7 @@ class ConfirmedBuildPlan(BaseModel):
     user_id: str = "local"
     status: str = "confirmed"
     user_prompt: str = ""
-    digest_mode: str = "sprint"
+    digest_mode: str = "systematic"
     selected_file_ids_json: list[str] = Field(default_factory=list)
     chapter_plan_json: list[dict[str, Any]] = Field(default_factory=list)
     build_constraints_json: dict[str, Any] = Field(default_factory=dict)

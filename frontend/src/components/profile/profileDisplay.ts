@@ -14,7 +14,7 @@ const TOKEN_LABELS: Record<string, string> = {
   hard: "困难",
   mixed: "混合",
   steady: "稳步推进",
-  sprint: "冲刺强化",
+  sprint: "重点强化",
   building: "建立中",
   balanced: "平衡讲解",
   concise: "简洁提示",

@@ -88,7 +88,7 @@ def build_chapter_execution_brief_messages(
 1. 这是最小执行简报，不是完整教学大纲。
 2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
 3. `content_role_targets` 是主合同，要按 7 类学习内容角色列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
-4. `example_coverage_plan` 必须列出本章需要用例题、案例、操作示例、变式训练或自测覆盖的重点；速成课更密，系统课要保证核心知识点有例题覆盖。
+4. `example_coverage_plan` 必须列出本章需要用例题、案例、操作示例、变式训练或自测覆盖的重点；速成课模式更密，系统课要保证核心知识点有例题覆盖。
 5. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
 6. `retrieval_queries` 最多 2 条。
 7. 不允许顺带修改标题。

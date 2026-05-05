@@ -63,7 +63,7 @@ def build_intent_core_messages(
 2. 有练习或公式只说明材料信号，不能直接把课程判断成试卷或数学课。
 3. `example_ratio` / `practice_ratio` 表示正文中例子和练习应占的相对权重，取 0.0-1.0。
 4. `evidence_strictness` / `review_strictness` 表示来源和复核要求强度，取 0.0-1.0。
-5. 模式只影响节奏：冲刺更聚焦抓手和练习，系统更强调结构和推理；不要因此改变章节数量、顺序或主题。
+5. 模式只影响节奏：速成课更聚焦抓手和练习，系统课更强调结构和推理；不要因此改变章节数量、顺序或主题。
 6. 只输出文档级短字段；不要生成按章 `chapter_style_hints`。
 """.strip()
     messages = [

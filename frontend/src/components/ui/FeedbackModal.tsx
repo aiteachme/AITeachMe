@@ -9,7 +9,7 @@ interface FeedbackModalProps {
   onClose: () => void;
 }
 
-const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL?.trim() || "support@aiteachme.com";
+const CONTACT_EMAIL = "support@aiteachme.com";
 const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("AITeachMe 意见反馈")}`;
 
 export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
@@ -78,29 +78,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
       className="max-w-[36rem]"
     >
       <div className="space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-          <p>遇到账号、部署或紧急问题，可以直接邮件联系我们。</p>
-          <a
-            href={CONTACT_MAILTO}
-            className="mt-2 inline-flex items-center gap-1.5 font-medium text-slate-900 underline-offset-4 hover:underline dark:text-slate-100"
-          >
-            <Mail className="h-4 w-4" />
-            {CONTACT_EMAIL}
-          </a>
-        </div>
-
-        {successStatus ? (
-          <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-            反馈发送成功，感谢你的宝贵意见。
-          </div>
-        ) : null}
-
-        {errorStatus ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {errorStatus}
-          </div>
-        ) : null}
-
         <div className="relative">
           <textarea
             value={content}
@@ -114,6 +91,18 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             已输入 {content.length} / 2000
           </div>
         </div>
+
+        {successStatus ? (
+          <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            反馈发送成功，感谢你的宝贵意见。
+          </div>
+        ) : null}
+
+        {errorStatus ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {errorStatus}
+          </div>
+        ) : null}
 
         <div className="flex">
           <button
@@ -174,6 +163,17 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
               "发送"
             )}
           </button>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <span>联系方式：</span>
+          <a
+            href={CONTACT_MAILTO}
+            className="inline-flex items-center gap-1 font-medium text-slate-700 underline-offset-4 hover:underline dark:text-slate-200"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {CONTACT_EMAIL}
+          </a>
         </div>
       </div>
     </Modal>

@@ -132,7 +132,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `assemble_chapter_tasks` | 当前纯规则 | 无 LLM | 无 | 无 | 合并 locked title、intent core、backbone、chapter brief，组装最终章节任务 | 任务装配是规则问题，不需要再调用模型 |
 | `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 研究问题拆解仍然适合推理式规划 |
 | `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
-| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-flash` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，冲刺课更偏快速成文 |
+| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-flash` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，速成课更偏快速成文 |
 | `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
 | `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-flash` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
 | `enhance_chapters.mermaid_placeholder` | `lib/asset_rendering.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |

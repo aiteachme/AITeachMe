@@ -41,7 +41,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "history_turns": 10,
     },
     "planner": {
-        "default_digest_mode": "sprint",
+        "default_digest_mode": "systematic",
         "history_turns": 10,
         "sprint": SPRINT_MODE_DEFAULTS,
         "systematic": SYSTEMATIC_MODE_DEFAULTS,

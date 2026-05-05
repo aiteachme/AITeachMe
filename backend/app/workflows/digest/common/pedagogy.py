@@ -381,7 +381,7 @@ def build_chapter_title_resolution_messages(
     web_hits: int,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
+    mode_label = "速成课" if normalized_mode == "sprint" else "系统课"
     required_text = "、".join(item for item in required_elements if item.strip()) or "核心概念、推理路径、典型例子"
     query_text = "；".join(item for item in search_queries if item.strip()) or "无明确检索词"
     source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 当前没有明确来源标题"
@@ -431,7 +431,7 @@ def build_document_overview(
     """构建知识文档开头的总览页。"""
 
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "冲刺课" if normalized_mode == "sprint" else "系统课"
+    mode_label = "速成课" if normalized_mode == "sprint" else "系统课"
     display_course = _resolve_course_name(course_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
     goal_line = user_prompt.strip() or f"围绕 {display_course} 生成一份结构化学习文档。"
@@ -984,7 +984,7 @@ def _chapter_evidence(chapter: Mapping[str, object]) -> str:
 
 
 def _default_plan_summary(*, course_name: str, digest_mode: str, chapters: list[Mapping[str, object]]) -> str:
-    mode_label = "冲刺型" if digest_mode == "sprint" else "系统型"
+    mode_label = "速成课" if digest_mode == "sprint" else "系统课"
     return f"围绕 {course_name} 设计的一条 {mode_label} 学习路径，共 {len(chapters)} 章。"
 
 

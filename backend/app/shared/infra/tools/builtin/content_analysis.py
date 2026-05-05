@@ -24,7 +24,7 @@ _STOPWORDS = frozenset(
         "知识文档",
         "学习目标",
         "系统课",
-        "冲刺课",
+        "速成课",
         "important",
         "tip",
         "chapter",

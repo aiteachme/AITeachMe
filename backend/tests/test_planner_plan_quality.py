@@ -40,8 +40,8 @@ def test_confirm_padding_builds_contextual_chapter_titles() -> None:
 
 
 def test_planner_mode_label_is_student_facing() -> None:
-    assert planner_mode_label("sprint") == "冲刺型"
-    assert planner_mode_label("systematic") == "系统型"
+    assert planner_mode_label("sprint") == "速成课"
+    assert planner_mode_label("systematic") == "系统课"
 
 
 def test_chapter_contract_mentions_range_and_total_length_budget() -> None:
@@ -66,7 +66,7 @@ def test_normalize_planner_draft_caps_over_split_chapters() -> None:
 
     draft = normalize_planner_draft(
         {
-            "plan_summary": "围绕 Python 数据分析作业目标生成一份可确认的冲刺计划。",
+            "plan_summary": "围绕 Python 数据分析作业目标生成一份可确认的速成课计划。",
             "plan_steps": ["确认目标", "拆分任务", "整理边界", "形成大纲"],
             "chapter_plan": raw_chapters,
         },
