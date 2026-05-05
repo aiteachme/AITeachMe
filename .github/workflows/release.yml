@@ -77,7 +77,7 @@ jobs:
       tag: ${{ steps.release_tag.outputs.tag }}
       version: ${{ steps.release_tag.outputs.version }}
       prerelease: ${{ steps.release_tag.outputs.prerelease }}
-      commit_sha: ${{ steps.version_commit.outputs.commit_sha }}
+      source_sha: ${{ steps.release_source.outputs.source_sha }}
 
     steps:
       - name: Checkout repository
@@ -163,95 +163,10 @@ jobs:
           echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
-      - name: Update project versions
-        env:
-          RELEASE_VERSION: ${{ steps.release_tag.outputs.version }}
+      - name: Record release source commit
+        id: release_source
         run: |
-          node <<'NODE'
-          const fs = require('fs');
-
-          const version = process.env.RELEASE_VERSION;
-
-          function updateJson(path, updater) {
-            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-            updater(data);
-            fs.writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
-          }
-
-          function replaceInFile(path, replacer) {
-            const before = fs.readFileSync(path, 'utf8');
-            const after = replacer(before);
-            fs.writeFileSync(path, after);
-          }
-
-          updateJson('frontend/package.json', (data) => {
-            data.version = version;
-          });
-
-          updateJson('frontend/package-lock.json', (data) => {
-            data.version = version;
-            if (data.packages && data.packages['']) {
-              data.packages[''].version = version;
-            }
-          });
-
-          updateJson('frontend/src-tauri/tauri.conf.json', (data) => {
-            data.version = version;
-          });
-
-          replaceInFile('frontend/src-tauri/Cargo.toml', (text) =>
-            text.replace(/^version = "([^"]+)"/m, `version = "${version}"`)
-          );
-
-          replaceInFile('frontend/src-tauri/Cargo.lock', (text) =>
-            text.replace(
-              /(\[\[package\]\]\r?\nname = "aiteachme-tauri"\r?\nversion = )"([^"]+)"/,
-              `$1"${version}"`
-            )
-          );
-
-          replaceInFile('backend/pyproject.toml', (text) =>
-            text.replace(/^version = "([^"]+)"/m, `version = "${version}"`)
-          );
-
-          replaceInFile('backend/uv.lock', (text) =>
-            text.replace(
-              /(\[\[package\]\]\r?\nname = "aiteachme-backend"\r?\nversion = )"([^"]+)"/,
-              `$1"${version}"`
-            )
-          );
-
-          replaceInFile('backend/app/shared/infra/runtime/mode.py', (text) =>
-            text.replace(/^APP_VERSION = "([^"]+)"/m, `APP_VERSION = "${version}"`)
-          );
-          NODE
-
-      - name: Commit version bump
-        id: version_commit
-        env:
-          TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-
-          if git diff --quiet; then
-            echo "Project versions already match '$TAG'; using current commit."
-          else
-            git add \
-              frontend/package.json \
-              frontend/package-lock.json \
-              frontend/src-tauri/tauri.conf.json \
-              frontend/src-tauri/Cargo.toml \
-              frontend/src-tauri/Cargo.lock \
-              backend/pyproject.toml \
-              backend/uv.lock \
-              backend/app/shared/infra/runtime/mode.py
-
-            git commit -m "chore: release $TAG"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
-
-          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build_desktop_installers:
     name: Build ${{ inputs.desktop_package_mode }} Windows installer
@@ -286,10 +201,10 @@ jobs:
       - name: Enable long paths
         run: git config --global core.longpaths true
 
-      - name: Checkout release commit
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.commit_sha }}
+          ref: ${{ needs.release.outputs.source_sha }}
 
       - name: Verify Windows signing configuration
         shell: pwsh
@@ -321,6 +236,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply release version for build
+        run: node packaging/scripts/apply-release-version.mjs "${{ needs.release.outputs.version }}"
 
       - name: Set up Rust
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
@@ -521,11 +439,60 @@ jobs:
       - build_desktop_installers
 
     steps:
-      - name: Checkout release commit
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.commit_sha }}
+          ref: ${{ needs.release.outputs.source_sha }}
           fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Commit release version
+        id: release_commit
+        env:
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          node packaging/scripts/apply-release-version.mjs "$RELEASE_VERSION"
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          if git diff --quiet; then
+            echo "Project versions already match '$TAG'; using current commit."
+          else
+            git add \
+              frontend/package.json \
+              frontend/package-lock.json \
+              frontend/src-tauri/tauri.conf.json \
+              frontend/src-tauri/Cargo.toml \
+              frontend/src-tauri/Cargo.lock \
+              backend/pyproject.toml \
+              backend/uv.lock \
+              backend/app/shared/infra/runtime/mode.py
+
+            git commit -m "chore: release $TAG"
+          fi
+
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify branch still points to release source
+        env:
+          SOURCE_SHA: ${{ needs.release.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin "${GITHUB_REF_NAME}"
+          REMOTE_SHA="$(git rev-parse "origin/${GITHUB_REF_NAME}")"
+          if [ "$REMOTE_SHA" != "$SOURCE_SHA" ]; then
+            echo "Branch ${GITHUB_REF_NAME} moved during release: expected $SOURCE_SHA, got $REMOTE_SHA."
+            exit 1
+          fi
 
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
@@ -536,12 +503,9 @@ jobs:
       - name: Create and push release tag
         env:
           TAG: ${{ needs.release.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.release.outputs.commit_sha }}
+          RELEASE_COMMIT: ${{ steps.release_commit.outputs.commit_sha }}
         run: |
           set -euo pipefail
-
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             EXISTING_COMMIT="$(git rev-list -n 1 "$TAG")"
@@ -578,3 +542,8 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             "${RELEASE_ARGS[@]}"
+
+      - name: Sync release commit to branch
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:${GITHUB_REF_NAME}"
