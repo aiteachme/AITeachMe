@@ -188,9 +188,9 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
-        max_tokens=9000,
+        max_tokens=1800,
         temperature=0.5,
-        note="直接改正文，需要比 light 更稳。",
+        note="只生成局部补丁片段，代码负责插入原章节。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(
         step=DocGenModelStep.COVER_IMAGE,

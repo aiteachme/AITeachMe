@@ -281,18 +281,24 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "LangGraph Send fan-out 后的单章复核节点。每个分支检查章节合同覆盖、证据支撑、写作质量和风险信号，"
             "产出 reviewed draft、review report 和后续 repair action，随后 fan-in 到整本一致性复核。"
         ),
-        "reads": ["enhanced_chapter_draft", "chapter_tasks", "claim_ledgers", "claim_evidence_maps", "conflict_reports"],
-        "writes": ["reviewed_chapter_draft_items", "chapter_review_report_items", "review_action_items"],
+        "reads": [
+            "enhanced_chapter_draft",
+            "review_chapter_task",
+            "review_claim_ledger",
+            "review_claim_evidence_map",
+            "review_conflict_report",
+        ],
+        "writes": ["reviewed_chapter_overlay_items", "chapter_review_report_items", "review_action_items"],
         "input_keys": [
             "enhanced_chapter_draft",
-            "chapter_tasks",
-            "claim_ledgers",
-            "claim_evidence_maps",
-            "conflict_reports",
+            "review_chapter_task",
+            "review_claim_ledger",
+            "review_claim_evidence_map",
+            "review_conflict_report",
             "total_chapters",
         ],
         "output_keys": [
-            "reviewed_chapter_draft_items",
+            "reviewed_chapter_overlay_items",
             "chapter_review_report_items",
             "review_action_items",
             "review_ms",
@@ -306,10 +312,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "在所有章节复核 fan-in 后执行整本文档一致性检查，重点看跨章术语、符号、定义、前置关系、重复讲解和风格断裂。"
             "当前主要是规则复核，不检索、不改正文，只产出 document_consistency_report 和整本 review_decision。"
         ),
-        "reads": ["reviewed_chapter_draft_items", "chapter_review_report_items", "review_action_items", "document_backbone"],
+        "reads": [
+            "enhanced_chapter_drafts",
+            "reviewed_chapter_overlay_items",
+            "chapter_review_report_items",
+            "review_action_items",
+            "document_backbone",
+        ],
         "writes": ["reviewed_chapter_drafts", "chapter_review_reports", "review_actions", "document_consistency_report", "review_decision"],
         "input_keys": [
-            "reviewed_chapter_draft_items",
+            "enhanced_chapter_drafts",
+            "reviewed_chapter_overlay_items",
             "chapter_review_report_items",
             "review_action_items",
             "document_backbone",
@@ -744,16 +757,36 @@ def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     if not enhanced:
         return "fail"
     total = len(enhanced)
+    tasks_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("chapter_tasks") or [])
+        if isinstance(item, dict)
+    }
+    claim_ledgers_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("claim_ledgers") or [])
+        if isinstance(item, dict)
+    }
+    claim_maps_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("claim_evidence_maps") or [])
+        if isinstance(item, dict)
+    }
+    conflict_reports_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("conflict_reports") or [])
+        if isinstance(item, dict)
+    }
     return [
         Send(
             NODE_REVIEW_CHAPTERS,
             {
                 **_child_state_base(state, teaching_action="chapter_review"),
                 "enhanced_chapter_draft": draft,
-                "chapter_tasks": list(state.get("chapter_tasks") or []),
-                "claim_ledgers": list(state.get("claim_ledgers") or []),
-                "claim_evidence_maps": list(state.get("claim_evidence_maps") or []),
-                "conflict_reports": list(state.get("conflict_reports") or []),
+                "review_chapter_task": tasks_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_claim_ledger": claim_ledgers_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_claim_evidence_map": claim_maps_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_conflict_report": conflict_reports_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
                 "total_chapters": total,
             },
         )

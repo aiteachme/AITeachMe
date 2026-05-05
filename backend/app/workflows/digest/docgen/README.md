@@ -485,7 +485,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
   ├─ review_chapter 2
   ├─ review_chapter N
   └─ document_consistency_review
-  输入：EnhancedChapterDraft[] / ChapterGenerationTask[] / DocumentBackbone / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[] / DocGenIntentProfile
+  输入：EnhancedChapterDraft[] / 单章 ChapterGenerationTask / 单章 ClaimLedger / 单章 ClaimEvidenceMap / 单章 ConflictReport / DocumentBackbone
   输出：ReviewedChapterDraft[] / ChapterReviewReport[] / DocumentConsistencyReport / ReviewAction[] / review_decision
     - ReviewedChapterDraft：最终可合并章节稿。
     - ChapterReviewReport：单章覆盖率、质量分、缺失点、修补记录、warning。
@@ -511,6 +511,9 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
   当前实现补充：
     - review_chapter 使用 LLM 结构化复核 + 规则 guardrail。
     - review_chapter 当前通过 LangGraph Send 按章 fan-out，在 LangSmith 中可见为并行章节复核分支。
+    - review_chapter 子分支只携带本章 task / claim / evidence / conflict，不再把整本列表复制到每个 review run。
+    - review_chapter 子分支只输出 review overlay、report 和 action；完整 ReviewedChapterDraft 在 fan-in 后由 document_consistency_review materialize，避免每个复核分支重复输出整章 Markdown。
+    - LLM review prompt 只传单章 Markdown、精简章节合同、主张摘要、低支撑 evidence binding 和冲突摘要，不再传完整任务/账本 JSON。
     - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
   当前模型方案：
     - `review_chapter`
@@ -533,6 +536,7 @@ repair_or_route
     - rebuild_backbone：跨章术语漂移、概念顺序错、整本结构断裂。
   当前实现：
     - 已支持 surface_patch / section_patch / evidence_patch 的局部 Markdown patch。
+    - LLM repair 只生成局部补丁片段，由代码插入目标锚点或小结前；不再要求模型返回完整章节 Markdown。
     - regenerate_chapter 会降级为单章局部修补；re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
     - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
     - repair 执行策略已经收口为“按章节并行、章内顺序 patch”：

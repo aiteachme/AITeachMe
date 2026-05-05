@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
 from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
-from app.workflows.digest.docgen.lib.models import RepairTraceItem, ReviewAction, ReviewedChapterDraft
+from app.workflows.digest.docgen.lib.models import DocGenBaseModel, RepairTraceItem, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
@@ -23,6 +24,14 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
 }
 _PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
 _MAX_PATCH_ACTIONS_PER_CHAPTER = 3
+_MAX_PATCH_CONTEXT_CHARS = 7000
+
+
+class _LocalMarkdownPatch(DocGenBaseModel):
+    status: Literal["patch", "no_change"] = "patch"
+    target_anchor: str = ""
+    patch_markdown: str = ""
+    note: str = ""
 
 
 def _unresolved_message(action: ReviewAction, *, status: str) -> str:
@@ -37,6 +46,113 @@ def _strip_markdown_fence(text: str) -> str:
     if match is not None:
         return match.group("body").strip()
     return cleaned
+
+
+def _normalize_anchor(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
+def _trim_patch_context(markdown: str, *, max_chars: int = _MAX_PATCH_CONTEXT_CHARS) -> str:
+    text = str(markdown or "").strip()
+    if len(text) <= max_chars:
+        return text
+    head_len = max_chars // 2
+    tail_len = max_chars - head_len
+    return f"{text[:head_len].rstrip()}\n\n[...中间内容已截断，仅用于局部修补定位...]\n\n{text[-tail_len:].lstrip()}"
+
+
+def _heading_match(line: str):
+    return re.match(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", line.strip())
+
+
+def _find_heading_section(markdown: str, *, anchor: str, chapter_title: str) -> tuple[int, int] | None:
+    normalized_anchor = _normalize_anchor(anchor)
+    normalized_title = _normalize_anchor(chapter_title)
+    if not normalized_anchor or normalized_anchor == normalized_title:
+        return None
+    lines = str(markdown or "").splitlines(keepends=True)
+    offsets: list[int] = []
+    cursor = 0
+    for line in lines:
+        offsets.append(cursor)
+        cursor += len(line)
+    for index, line in enumerate(lines):
+        match = _heading_match(line)
+        if match is None:
+            continue
+        heading_title = _normalize_anchor(match.group("title"))
+        if normalized_anchor not in heading_title and heading_title not in normalized_anchor:
+            continue
+        level = len(match.group("marks"))
+        end_index = len(lines)
+        for next_index in range(index + 1, len(lines)):
+            next_match = _heading_match(lines[next_index])
+            if next_match is not None and len(next_match.group("marks")) <= level:
+                end_index = next_index
+                break
+        return offsets[index], offsets[end_index] if end_index < len(offsets) else len(markdown)
+    return None
+
+
+def _patch_context_for_action(chapter: ReviewedChapterDraft, action: ReviewAction) -> str:
+    section = _find_heading_section(
+        chapter.markdown,
+        anchor=action.target_anchor,
+        chapter_title=chapter.title,
+    )
+    if section is None:
+        return _trim_patch_context(chapter.markdown)
+    start, end = section
+    return _trim_patch_context(chapter.markdown[start:end])
+
+
+def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
+    cleaned = normalize_markdown_rendering(_strip_markdown_fence(markdown)).strip()
+    lines = []
+    chapter_title_norm = _normalize_anchor(chapter_title)
+    for line in cleaned.splitlines():
+        match = re.match(r"^#\s+(.+?)\s*$", line.strip())
+        if match is not None and _normalize_anchor(match.group(1)) == chapter_title_norm:
+            continue
+        if match is not None:
+            lines.append(f"## {match.group(1).strip()}")
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _fallback_insert_offset(markdown: str) -> int:
+    matches = list(
+        re.finditer(
+            r"(?m)^##\s+(?:本章小结|小结|总结|回顾|复盘|本章复盘|自测|练习)",
+            str(markdown or ""),
+        )
+    )
+    if matches:
+        return matches[-1].start()
+    return len(markdown)
+
+
+def _insert_local_patch(
+    markdown: str,
+    patch_markdown: str,
+    *,
+    target_anchor: str,
+    chapter_title: str,
+) -> str:
+    patch = _clean_patch_snippet(patch_markdown, chapter_title=chapter_title)
+    if not patch:
+        return markdown
+    if _normalize_anchor(patch) and _normalize_anchor(patch) in _normalize_anchor(markdown):
+        return markdown
+    section = _find_heading_section(markdown, anchor=target_anchor, chapter_title=chapter_title)
+    insert_at = section[1] if section is not None else _fallback_insert_offset(markdown)
+    before = markdown[:insert_at].rstrip()
+    after = markdown[insert_at:].lstrip()
+    middle = f"{before}\n\n{patch}\n"
+    if after:
+        return f"{middle}\n{after}".rstrip() + "\n"
+    return middle.rstrip() + "\n"
 
 
 async def _apply_patch_action(
@@ -108,11 +224,12 @@ async def _apply_patch_action(
         )
 
     try:
-        patched_markdown = await acompletion_with_fallback(
+        patch_result = await acompletion_with_fallback(
             build_chapter_patch_messages(
                 chapter_title=chapter.title,
                 action=action.model_dump(mode="json"),
-                markdown=chapter.markdown,
+                markdown_context=_patch_context_for_action(chapter, action),
+                full_markdown_chars=len(chapter.markdown),
             ),
             **docgen_completion_kwargs_with_metadata(
                 DocGenModelStep.REPAIR_PATCH,
@@ -120,8 +237,22 @@ async def _apply_patch_action(
                 repair_action_id=action.action_id,
                 repair_action_type=action.action_type,
             ),
+            response_model=_LocalMarkdownPatch,
         )
-        patched = normalize_markdown_rendering(_strip_markdown_fence(str(patched_markdown)))
+        if isinstance(patch_result, _LocalMarkdownPatch):
+            patch = patch_result
+        else:
+            patch = _LocalMarkdownPatch(patch_markdown=str(patch_result or ""))
+        patched = (
+            chapter.markdown
+            if patch.status == "no_change"
+            else _insert_local_patch(
+                chapter.markdown,
+                patch.patch_markdown,
+                target_anchor=patch.target_anchor or action.target_anchor,
+                chapter_title=chapter.title,
+            )
+        )
         if not patched or patched == chapter.markdown:
             updated_action = action.model_copy(update={"status": "skipped"})
             return (
@@ -135,7 +266,7 @@ async def _apply_patch_action(
                     reason=action.reason,
                     target_anchor=action.target_anchor,
                     changed=False,
-                    detail="LLM patch returned empty or unchanged markdown.",
+                    detail="LLM local patch returned empty, no_change, duplicate, or unchanged markdown.",
                 ),
                 updated_action,
                 _unresolved_message(updated_action, status="skipped"),
