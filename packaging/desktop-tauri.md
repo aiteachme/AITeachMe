@@ -14,15 +14,16 @@ Tauri 作为可选桌面端包，通过统一入口显式启用：
 
 Tauri local 会打包 Vite 前端、Tauri 壳，以及 PyInstaller `onedir` 生成的本地后端目录。后端运行件会作为内部资源放在 `backend\` 下，由 Tauri 主程序自动启动；默认启动时自动申请可用本地端口并注入前端，避免固定占用 `9020`。安装目录可写时，后端日志、本地数据写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
 
-Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
+Tauri Windows 稳定版会同时生成 NSIS 和 MSI 安装包；alpha/beta 预发布只生成 NSIS，避免 MSI 的数字版本号限制。NSIS 使用 `lzma` 压缩和 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
 
 NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` 标记为隐藏文件，普通文件夹视图里只保留用户启动的主程序 `.exe`。
 
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
-- updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri.exe.sig`
-- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
+- 稳定版额外生成：`packaging\release\AiTeachMe-v<version>-installer-tauri.msi`
+- updater 密钥齐全时：对应 updater 安装包的 `.sig`
+- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe` / `.msi` 及对应 `.sig`
 - updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
 
 ## 在线更新
@@ -33,16 +34,11 @@ Tauri local 发布包启动后会检查 GitHub Release 静态清单：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时会提示用户确认；确认后下载签名后的 NSIS 安装包，验签通过后覆盖安装。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
+有新版时会提示用户确认；确认后下载清单中声明的已签名安装包，验签通过后覆盖安装。稳定版优先使用 MSI 作为 updater 包；alpha/beta 预发布因 MSI 版本号限制使用 NSIS 安装包。Tauri updater 只替换程序和内置资源，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
-如果仓库是私有仓库，不要直接使用 GitHub Release asset 作为客户端更新源。把更新文件同步到公开 HTTPS 静态地址，并配置：
-
-- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。可用逗号、分号或换行配置多个地址，建议把 CDN/OSS 地址放第一位，GitHub 地址仅作兜底。
-- `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：更新包所在公开目录。
-
-如果发布 alpha/beta 预发布 Tauri local 包，也需要显式配置 `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`，例如指向 `latest-tauri-local-beta.json`。GitHub 的 `releases/latest` 更适合稳定版通道，不能作为预发布通道的可靠清单地址。
+Tauri local 更新源固定为 GitHub Release `releases/latest` 通道，不再通过 GitHub Variables 覆盖 endpoint 或 asset base URL。alpha/beta 预发布包也内置同一个 stable latest 检查地址：它们不会追 alpha.2/beta.1，只会在后续 stable 发布后更新到 stable。
 
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
 GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
@@ -103,6 +99,7 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 产物写入：
 
 - `packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
+- 稳定版额外生成：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.msi`
 
 预绑定配置会随安装包分发，不应作为公开发布的密钥保护边界；公开 Release 不要内置真实高权限 Provider Key。
 

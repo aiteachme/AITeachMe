@@ -194,8 +194,6 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY || secrets.TAURI_UPDATER_PUBKEY }}
-      AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT: ${{ vars.AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT }}
-      AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL: ${{ vars.AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL }}
 
     steps:
       - name: Enable long paths
@@ -337,9 +335,6 @@ jobs:
 
           if ($arguments.PackageMode -in @("tauri-local", "all-local", "all")) {
             $arguments.RequireTauriUpdater = $true
-            if ("${{ needs.release.outputs.prerelease }}" -eq "true" -and [string]::IsNullOrWhiteSpace($env:AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT)) {
-              Write-Host "Prerelease Tauri local build will use the stable updater endpoint from GitHub releases/latest." -ForegroundColor Yellow
-            }
           }
 
           .\packaging\scripts\build-desktop-mode.ps1 @arguments

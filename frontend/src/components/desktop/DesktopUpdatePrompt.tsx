@@ -36,8 +36,8 @@ function describeUpdateError(error: unknown): string {
   if (/error sending request|failed to fetch|network|timed?\s*out|connection/i.test(message)) {
     return [
       "无法连接更新源。",
-      "当前安装包内置的 GitHub Release 更新源无法访问，桌面端请求可能没有走浏览器代理或被网络拦截。",
-      "请先从浏览器手动下载安装包；后续发布应改用 CDN/OSS 更新源。",
+      "当前网络无法访问安装包内置的 GitHub Release 更新源，可能是 GitHub 连接不稳定或被网络拦截。",
+      "请先从浏览器手动下载安装包，或稍后重试。",
     ].join("\n");
   }
 

@@ -18,42 +18,13 @@ $repoRoot = Resolve-RepoRoot
 $frontendDir = Join-Path $repoRoot "frontend"
 $projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
-$defaultTauriLocalUpdaterEndpoint = "https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json"
-$configuredTauriLocalUpdaterEndpoint = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT", "Process")
-
-function Split-TauriUpdaterEndpoints {
-    param(
-        [string]$ConfiguredEndpoint,
-        [string]$DefaultEndpoint
-    )
-
-    $rawEndpoint = if ([string]::IsNullOrWhiteSpace($ConfiguredEndpoint)) {
-        $DefaultEndpoint
-    }
-    else {
-        $ConfiguredEndpoint
-    }
-
-    $endpoints = @($rawEndpoint -split "[,;`r`n]+" |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-
-    if ($endpoints.Count -eq 0) {
-        throw "Tauri updater endpoint is empty. Configure AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT or keep the default GitHub Release endpoint."
-    }
-
-    return $endpoints
-}
+$tauriLocalUpdaterEndpoints = @("https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json")
 
 function Test-TauriPrereleaseVersion {
     param([string]$Version)
 
     return $Version -match "-"
 }
-
-$tauriLocalUpdaterEndpoints = Split-TauriUpdaterEndpoints `
-    -ConfiguredEndpoint $configuredTauriLocalUpdaterEndpoint `
-    -DefaultEndpoint $defaultTauriLocalUpdaterEndpoint
 
 function New-TauriLocalReleaseConfig {
     param(

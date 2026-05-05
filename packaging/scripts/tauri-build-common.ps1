@@ -367,13 +367,7 @@ function Copy-TauriArtifacts {
         }
 
         $updaterFileName = Split-Path $updaterPackageOutput -Leaf
-        $assetBaseUrl = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL", "Process")
-        if ([string]::IsNullOrWhiteSpace($assetBaseUrl)) {
-            $assetBaseUrl = "https://github.com/$repository/releases/download/$releaseTag"
-        }
-        else {
-            $assetBaseUrl = $assetBaseUrl.TrimEnd("/")
-        }
+        $assetBaseUrl = "https://github.com/$repository/releases/download/$releaseTag"
 
         $signature = (Get-Content -LiteralPath $updaterSig -Raw).Trim()
         $latestJson = [ordered]@{

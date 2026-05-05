@@ -64,8 +64,8 @@ Python 解释器解析顺序：
 - `AiTeachMe-v<version>-installer.exe`：默认 Electron local。
 - `AiTeachMe-v<version>-installer-bundled.exe`：Electron local，预绑定密钥。
 - `AiTeachMe-v<version>-installer-remote.exe`：Electron remote。
-- `AiTeachMe-v<version>-installer-tauri.exe`：Tauri local。
-- `AiTeachMe-v<version>-installer-tauri-bundled.exe`：Tauri local，预绑定密钥。
+- `AiTeachMe-v<version>-installer-tauri.exe` / `.msi`：Tauri local。
+- `AiTeachMe-v<version>-installer-tauri-bundled.exe` / `.msi`：Tauri local，预绑定密钥。
 - `AiTeachMe-v<version>-installer-tauri-remote.exe`：Tauri remote。
 
 中间产物会保留在 `packaging\artifacts`。
@@ -96,16 +96,11 @@ Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
 https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
 ```
 
-有新版时前端会提示用户确认；确认后下载已签名的 NSIS 安装包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+有新版时前端会提示用户确认；确认后下载清单中声明的已签名安装包，验签通过后覆盖安装并重启。稳定版优先使用 MSI 作为 updater 包；alpha/beta 预发布因 MSI 版本号限制使用 NSIS 安装包。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
 
 没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
 
-如果仓库仍是私有仓库，GitHub Release asset 不能直接作为普通用户客户端的公开更新源。此时需要把 `latest-tauri-local.json`、安装包和对应 `.sig` 同步到一个公开 HTTPS 地址，例如 Cloudflare R2/Pages、阿里云 OSS/CDN、学校内网静态文件服务，并在 GitHub Variables 配置：
-
-- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：客户端检查的 `latest-tauri-local.json` 公开地址。可用逗号、分号或换行配置多个地址，打包时会按顺序写入 Tauri updater，建议把 CDN/OSS 地址放第一位，GitHub 地址仅作兜底。
-- `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：`latest-tauri-local.json` 里更新包下载 URL 的公开目录，末尾不需要 `/`。
-
-如果发布 alpha/beta 预发布 Tauri local 包，也需要显式配置 `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`，例如指向 `latest-tauri-local-beta.json`。GitHub 的 `releases/latest` 更适合稳定版通道，不能作为预发布通道的可靠清单地址。
+Tauri local 更新源固定为 GitHub Release `releases/latest` 通道，不再通过 GitHub Variables 覆盖 endpoint 或 asset base URL。alpha/beta 预发布包也内置同一个 stable latest 检查地址：它们不会追 alpha.2/beta.1，只会在后续 stable 发布后更新到 stable。
 
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
 GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
@@ -127,8 +122,8 @@ npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
 
 配置齐全时，GitHub Release 会额外上传：
 
-- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.exe.sig`
-- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
+- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.msi.sig`，预发布版本为 `.exe.sig`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.msi.sig`，预发布版本为 `.exe.sig`
 - `latest-tauri-local.json`
 
 `tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。
