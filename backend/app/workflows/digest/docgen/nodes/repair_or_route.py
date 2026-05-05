@@ -13,6 +13,14 @@ from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
+def _repair_trace_used_llm(item) -> bool:
+    return bool(getattr(item, "llm_attempted", False))
+
+
+def _repair_trace_llm_call_group(item) -> str:
+    return str(getattr(item, "llm_call_group", "") or "")
+
+
 def build_repair_or_route_node(*, context: WorkflowContext):
     """构建复核回流处理节点。
 
@@ -48,6 +56,12 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             review_actions=actions,
         )
         changed_count = sum(1 for item in repair_trace if item.changed)
+        llm_call_groups = {
+            _repair_trace_llm_call_group(item)
+            for item in repair_trace
+            if _repair_trace_used_llm(item) and _repair_trace_llm_call_group(item)
+        }
+        llm_attempt_count = len(llm_call_groups)
         next_review_decision = str(state.get("review_decision") or "")
         if unresolved:
             next_review_decision = "publish_with_warnings"
@@ -88,7 +102,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             "unresolved_warnings": unresolved,
             "repair_trace": [item.model_dump(mode="json") for item in repair_trace],
             "repair_ms": elapsed_ms,
-            "llm_calls_total": sum(1 for item in actions if item.action_type in {"surface_patch", "section_patch", "evidence_patch"}),
+            "llm_calls_total": llm_attempt_count,
         }
 
     return repair_or_route_node

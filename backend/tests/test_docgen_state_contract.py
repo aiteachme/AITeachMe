@@ -194,7 +194,7 @@ async def test_repair_patch_applies_local_snippet(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_repair_only_attempts_one_patch_per_chapter(monkeypatch) -> None:
+async def test_repair_batches_multiple_actions_into_one_llm_patch(monkeypatch) -> None:
     calls = 0
 
     async def fake_completion(*args, **kwargs):
@@ -202,7 +202,7 @@ async def test_repair_only_attempts_one_patch_per_chapter(monkeypatch) -> None:
         calls += 1
         return repair._LocalMarkdownPatch(
             status="patch",
-            patch_markdown=f"## 补充 {calls}\n\n- 只应该出现第一次补充。",
+            patch_markdown="## 综合补充\n\n- 同一段 patch 同时补充易错提醒和第二个例题。",
         )
 
     monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
@@ -236,8 +236,126 @@ async def test_repair_only_attempts_one_patch_per_chapter(monkeypatch) -> None:
     )
 
     assert calls == 1
-    assert [action.status for action in updated_actions] == ["applied", "skipped"]
-    assert len(unresolved) == 1
-    assert [trace.changed for trace in traces] == [True, False]
+    assert [action.status for action in updated_actions] == ["applied", "applied"]
+    assert unresolved == []
+    assert [trace.changed for trace in traces] == [True, True]
+    assert [trace.llm_attempted for trace in traces] == [True, True]
+    assert len({trace.llm_call_group for trace in traces if trace.llm_call_group}) == 1
+    assert "## 综合补充" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+async def test_repair_can_continue_when_model_leaves_actions_for_next_round(monkeypatch) -> None:
+    calls = 0
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        covered = ["a1"] if calls == 1 else ["a2"]
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=f"## 补充 {calls}\n\n- 第 {calls} 轮局部补充。",
+            covered_action_ids=covered,
+        )
+
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 2)
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown="# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n## 本章小结\n\n记住公式。\n",
+    )
+    actions = [
+        ReviewAction(
+            action_id="a1",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少易错提醒",
+            target_anchor="核心概念",
+            instruction="补充单位易错点。",
+        ),
+        ReviewAction(
+            action_id="a2",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少第二个例题",
+            target_anchor="核心概念",
+            instruction="补充第二个例题。",
+        ),
+    ]
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=actions,
+    )
+
+    assert calls == 2
+    assert [action.status for action in updated_actions] == ["applied", "applied"]
+    assert unresolved == []
+    assert [trace.changed for trace in traces] == [True, True]
+    assert [trace.llm_attempted for trace in traces] == [True, True]
+    assert len({trace.llm_call_group for trace in traces if trace.llm_call_group}) == 2
     assert "## 补充 1" in repaired[0].markdown
-    assert "## 补充 2" not in repaired[0].markdown
+    assert "## 补充 2" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+async def test_deterministic_rendering_patch_does_not_consume_llm_patch_limit(monkeypatch) -> None:
+    calls = 0
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown="## 易错补充\n\n- 先看单位，再代入公式。",
+        )
+
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 1)
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    monkeypatch.setattr(
+        repair,
+        "find_docgen_presentation_issues",
+        lambda markdown: ["Markdown 渲染结构异常"] if "BROKEN_TABLE" in markdown else [],
+    )
+    monkeypatch.setattr(
+        repair,
+        "normalize_docgen_presentation",
+        lambda markdown, **kwargs: markdown.replace("BROKEN_TABLE", "FIXED_TABLE"),
+    )
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown="# 面积\n\n## 核心概念\n\nBROKEN_TABLE\n\n## 本章小结\n\n记住公式。\n",
+    )
+    actions = [
+        ReviewAction(
+            action_id="a1",
+            action_type="surface_patch",
+            chapter_index=1,
+            reason="Markdown 渲染结构异常：表格损坏",
+            target_anchor="核心概念",
+            instruction="修复表格。",
+        ),
+        ReviewAction(
+            action_id="a2",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少易错提醒",
+            target_anchor="核心概念",
+            instruction="补充单位易错点。",
+        ),
+    ]
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=actions,
+    )
+
+    assert calls == 1
+    assert [action.status for action in updated_actions] == ["applied", "applied"]
+    assert unresolved == []
+    assert [trace.changed for trace in traces] == [True, True]
+    assert [trace.llm_attempted for trace in traces] == [False, True]
+    assert "FIXED_TABLE" in repaired[0].markdown
+    assert "## 易错补充" in repaired[0].markdown

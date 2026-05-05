@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+from app.shared.infra.env_support import get_env_bounded_int
 from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
 from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
@@ -23,14 +24,26 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
     "rebuild_backbone",
 }
 _PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
-_MAX_PATCH_ATTEMPTS_PER_CHAPTER = 1
-_MAX_PATCH_CONTEXT_CHARS = 7000
+_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER = get_env_bounded_int(
+    "DOCGEN_REPAIR_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER",
+    3,
+    min_value=1,
+    max_value=3,
+)
+_MAX_PATCH_CONTEXT_CHARS = get_env_bounded_int(
+    "DOCGEN_REPAIR_PATCH_CONTEXT_CHARS",
+    7000,
+    min_value=1500,
+    max_value=16000,
+)
 
 
 class _LocalMarkdownPatch(DocGenBaseModel):
     status: Literal["patch", "no_change"] = "patch"
     target_anchor: str = ""
     patch_markdown: str = ""
+    covered_action_ids: list[str] = []
+    unresolved_action_ids: list[str] = []
     note: str = ""
 
 
@@ -46,6 +59,14 @@ def _strip_markdown_fence(text: str) -> str:
     if match is not None:
         return match.group("body").strip()
     return cleaned
+
+
+def _is_deterministic_rendering_patch(action: ReviewAction) -> bool:
+    return action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason
+
+
+def _repair_action_key(action_index: int, action: ReviewAction) -> str:
+    return action.action_id or f"repair_action_{action_index:03d}"
 
 
 def _normalize_anchor(value: str) -> str:
@@ -106,6 +127,27 @@ def _patch_context_for_action(chapter: ReviewedChapterDraft, action: ReviewActio
     return _trim_patch_context(chapter.markdown[start:end])
 
 
+def _patch_context_for_actions(chapter: ReviewedChapterDraft, actions: list[ReviewAction]) -> str:
+    if len(actions) == 1:
+        return _patch_context_for_action(chapter, actions[0])
+    sections: list[str] = []
+    seen: set[tuple[int, int]] = set()
+    for action in actions:
+        section = _find_heading_section(
+            chapter.markdown,
+            anchor=action.target_anchor,
+            chapter_title=chapter.title,
+        )
+        if section is None or section in seen:
+            continue
+        seen.add(section)
+        start, end = section
+        sections.append(chapter.markdown[start:end].strip())
+    if sections:
+        return _trim_patch_context("\n\n---\n\n".join(sections))
+    return _trim_patch_context(chapter.markdown)
+
+
 def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
     cleaned = normalize_markdown_rendering(_strip_markdown_fence(markdown)).strip()
     lines = []
@@ -160,14 +202,13 @@ async def _apply_patch_action(
     chapter: ReviewedChapterDraft,
     action: ReviewAction,
 ) -> tuple[ReviewedChapterDraft, RepairTraceItem, ReviewAction, str | None]:
-    """对单章执行一次安全局部 patch。
+    """对单章执行一次确定性展示修补。
 
-    只处理 review action 指向的小范围问题；LLM 只返回局部补丁片段，
-    由代码插回章节。若返回空、无变化或失败，就记录 skipped/downgraded，
-    不假装已经修复。
+    LLM 内容修补统一走 batched patch rounds；这里只处理无需模型的
+    Markdown 渲染结构归一化。
     """
 
-    if action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason:
+    if _is_deterministic_rendering_patch(action):
         before_issues = find_docgen_presentation_issues(chapter.markdown)
         patched = normalize_docgen_presentation(
             chapter.markdown,
@@ -223,99 +264,194 @@ async def _apply_patch_action(
             _unresolved_message(updated_action, status="skipped"),
         )
 
+    updated_action = action.model_copy(update={"status": "skipped"})
+    return (
+        chapter,
+        RepairTraceItem(
+            trace_id=f"repair_trace_{action.action_id or action.action_type}",
+            action_id=action.action_id,
+            action_type=action.action_type,
+            chapter_index=action.chapter_index,
+            status="skipped",
+            reason=action.reason,
+            target_anchor=action.target_anchor,
+            changed=False,
+            detail="Non-deterministic patch actions are handled by batched LLM patch rounds.",
+        ),
+        updated_action,
+        _unresolved_message(updated_action, status="skipped"),
+    )
+
+
+async def _apply_llm_patch_actions(
+    *,
+    chapter: ReviewedChapterDraft,
+    indexed_actions: list[tuple[int, ReviewAction]],
+    repair_round: int,
+) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]], list[tuple[int, ReviewAction]]]:
+    """Ask the model for one local patch that can cover multiple actions."""
+
+    action_payloads = [
+        {
+            **action.model_dump(mode="json"),
+            "repair_action_key": _repair_action_key(action_index, action),
+        }
+        for action_index, action in indexed_actions
+    ]
+    action_keys = {
+        _repair_action_key(action_index, action): (action_index, action)
+        for action_index, action in indexed_actions
+    }
+    llm_call_group = f"ch{chapter.chapter_index:02d}_repair_round_{repair_round}"
     try:
         patch_result = await acompletion_with_fallback(
             build_chapter_patch_messages(
                 chapter_title=chapter.title,
-                action=action.model_dump(mode="json"),
-                markdown_context=_patch_context_for_action(chapter, action),
+                actions=action_payloads,
+                markdown_context=_patch_context_for_actions(chapter, [action for _, action in indexed_actions]),
                 full_markdown_chars=len(chapter.markdown),
+                repair_round=repair_round,
             ),
             **docgen_completion_kwargs_with_metadata(
                 DocGenModelStep.REPAIR_PATCH,
                 chapter_index=chapter.chapter_index,
-                repair_action_id=action.action_id,
-                repair_action_type=action.action_type,
+                repair_round=repair_round,
+                repair_action_count=len(indexed_actions),
             ),
             response_model=_LocalMarkdownPatch,
         )
-        if isinstance(patch_result, _LocalMarkdownPatch):
-            patch = patch_result
-        else:
-            patch = _LocalMarkdownPatch(patch_markdown=str(patch_result or ""))
-        patched = (
-            chapter.markdown
-            if patch.status == "no_change"
-            else _insert_local_patch(
-                chapter.markdown,
-                patch.patch_markdown,
-                target_anchor=patch.target_anchor or action.target_anchor,
-                chapter_title=chapter.title,
-            )
-        )
-        if not patched or patched == chapter.markdown:
-            updated_action = action.model_copy(update={"status": "skipped"})
-            return (
-                chapter,
-                RepairTraceItem(
-                    trace_id=f"repair_trace_{action.action_id or action.action_type}",
-                    action_id=action.action_id,
-                    action_type=action.action_type,
-                    chapter_index=action.chapter_index,
-                    status="skipped",
-                    reason=action.reason,
-                    target_anchor=action.target_anchor,
-                    changed=False,
-                    detail="LLM local patch returned empty, no_change, duplicate, or unchanged markdown.",
-                ),
-                updated_action,
-                _unresolved_message(updated_action, status="skipped"),
-            )
-        updated = chapter.model_copy(
-            update={
-                "markdown": patched,
-                "patched": True,
-                "warnings": [
-                    *chapter.warnings,
-                    f"已根据复核动作执行局部修补：{action.reason}",
-                ],
-            }
-        )
-        updated_action = action.model_copy(update={"status": "applied"})
-        return (
-            updated,
-            RepairTraceItem(
-                trace_id=f"repair_trace_{action.action_id or action.action_type}",
-                action_id=action.action_id,
-                action_type=action.action_type,
-                chapter_index=action.chapter_index,
-                status="applied",
-                reason=action.reason,
-                target_anchor=action.target_anchor,
-                changed=True,
-                detail="Applied LLM markdown patch to the target chapter.",
-            ),
-            updated_action,
-            None,
+        patch = patch_result if isinstance(patch_result, _LocalMarkdownPatch) else _LocalMarkdownPatch(
+            patch_markdown=str(patch_result or "")
         )
     except Exception as exc:
-        updated_action = action.model_copy(update={"status": "downgraded"})
-        return (
-            chapter,
-            RepairTraceItem(
-                trace_id=f"repair_trace_{action.action_id or action.action_type}",
-                action_id=action.action_id,
-                action_type=action.action_type,
-                chapter_index=action.chapter_index,
-                status="downgraded",
-                reason=action.reason,
-                target_anchor=action.target_anchor,
-                changed=False,
-                detail=f"LLM patch failed: {str(exc)[:180]}",
-            ),
-            updated_action,
-            _unresolved_message(updated_action, status="downgraded"),
+        results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
+        for action_index, action in indexed_actions:
+            updated_action = action.model_copy(update={"status": "downgraded"})
+            results.append(
+                (
+                    action_index,
+                    updated_action,
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_{repair_round:02d}_{_repair_action_key(action_index, action)}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="downgraded",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=False,
+                        llm_attempted=True,
+                        llm_call_group=llm_call_group,
+                        detail=f"LLM patch round failed: {str(exc)[:180]}",
+                    ),
+                    _unresolved_message(updated_action, status="downgraded"),
+                )
+            )
+        return chapter, results, []
+
+    patched = (
+        chapter.markdown
+        if patch.status == "no_change"
+        else _insert_local_patch(
+            chapter.markdown,
+            patch.patch_markdown,
+            target_anchor=patch.target_anchor or indexed_actions[0][1].target_anchor,
+            chapter_title=chapter.title,
         )
+    )
+    if not patched or patched == chapter.markdown:
+        results = []
+        for action_index, action in indexed_actions:
+            updated_action = action.model_copy(update={"status": "skipped"})
+            results.append(
+                (
+                    action_index,
+                    updated_action,
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_{repair_round:02d}_{_repair_action_key(action_index, action)}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="skipped",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=False,
+                        llm_attempted=True,
+                        llm_call_group=llm_call_group,
+                        detail="LLM local patch round returned empty, no_change, duplicate, or unchanged markdown.",
+                    ),
+                    _unresolved_message(updated_action, status="skipped"),
+                )
+            )
+        return chapter, results, []
+
+    covered_keys = {str(item).strip() for item in patch.covered_action_ids if str(item).strip()}
+    unresolved_keys = {str(item).strip() for item in patch.unresolved_action_ids if str(item).strip()}
+    covered_keys &= set(action_keys)
+    unresolved_keys &= set(action_keys)
+    if not covered_keys and not unresolved_keys:
+        covered_keys = set(action_keys)
+    updated = chapter.model_copy(
+        update={
+            "markdown": patched,
+            "patched": True,
+            "warnings": [
+                *chapter.warnings,
+                f"已根据 {len(covered_keys)} 条复核动作执行第 {repair_round} 轮局部修补。",
+            ],
+        }
+    )
+    results = []
+    remaining: list[tuple[int, ReviewAction]] = []
+    for action_index, action in indexed_actions:
+        key = _repair_action_key(action_index, action)
+        if key in covered_keys:
+            updated_action = action.model_copy(update={"status": "applied"})
+            results.append(
+                (
+                    action_index,
+                    updated_action,
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_{repair_round:02d}_{key}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="applied",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=True,
+                        llm_attempted=True,
+                        llm_call_group=llm_call_group,
+                        detail="Applied shared LLM local patch round to this review action.",
+                    ),
+                    None,
+                )
+            )
+        elif key in unresolved_keys:
+            updated_action = action.model_copy(update={"status": "skipped"})
+            results.append(
+                (
+                    action_index,
+                    updated_action,
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_{repair_round:02d}_{key}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="skipped",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=False,
+                        llm_attempted=True,
+                        llm_call_group=llm_call_group,
+                        detail="LLM local patch round marked this action unresolved.",
+                    ),
+                    _unresolved_message(updated_action, status="skipped"),
+                )
+            )
+        else:
+            remaining.append((action_index, action))
+    return updated, results, remaining
 
 
 async def repair_or_route_review_actions(
@@ -336,38 +472,53 @@ async def repair_or_route_review_actions(
         indexed_actions: list[tuple[int, ReviewAction]],
     ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]]]:
         current_chapter = chapter
-        attempted_count = 0
         results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
+        llm_actions: list[tuple[int, ReviewAction]] = []
         for action_index, action in indexed_actions:
-            if attempted_count >= _MAX_PATCH_ATTEMPTS_PER_CHAPTER:
-                updated_action = action.model_copy(update={"status": "skipped"})
-                results.append(
-                    (
-                        action_index,
-                        updated_action,
-                        RepairTraceItem(
-                            trace_id=f"repair_trace_{action_index:03d}_{action.action_id or action.action_type}",
-                            action_id=action.action_id,
-                            action_type=action.action_type,
-                            chapter_index=action.chapter_index,
-                            status="skipped",
-                            reason=action.reason,
-                            target_anchor=action.target_anchor,
-                            changed=False,
-                            detail="Skipped because this chapter already had one local repair attempt in this pass.",
-                        ),
-                        _unresolved_message(updated_action, status="skipped"),
-                    )
-                )
+            if not _is_deterministic_rendering_patch(action):
+                llm_actions.append((action_index, action))
                 continue
-
-            attempted_count += 1
             patched_chapter, trace_item, updated_action, unresolved_message = await _apply_patch_action(
                 chapter=current_chapter,
                 action=action,
             )
             current_chapter = patched_chapter
             results.append((action_index, updated_action, trace_item, unresolved_message))
+
+        remaining_llm_actions = llm_actions
+        for repair_round in range(1, _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER + 1):
+            if not remaining_llm_actions:
+                break
+            current_chapter, round_results, remaining_llm_actions = await _apply_llm_patch_actions(
+                chapter=current_chapter,
+                indexed_actions=remaining_llm_actions,
+                repair_round=repair_round,
+            )
+            results.extend(round_results)
+
+        for action_index, action in remaining_llm_actions:
+            updated_action = action.model_copy(update={"status": "skipped"})
+            results.append(
+                (
+                    action_index,
+                    updated_action,
+                    RepairTraceItem(
+                        trace_id=f"repair_trace_max_rounds_{_repair_action_key(action_index, action)}",
+                        action_id=action.action_id,
+                        action_type=action.action_type,
+                        chapter_index=action.chapter_index,
+                        status="skipped",
+                        reason=action.reason,
+                        target_anchor=action.target_anchor,
+                        changed=False,
+                        detail=(
+                            "Skipped because this chapter reached the configured LLM local repair round limit "
+                            f"({_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER})."
+                        ),
+                    ),
+                    _unresolved_message(updated_action, status="skipped"),
+                )
+            )
         return current_chapter, results
 
     for action_index, action in enumerate(review_actions, start=1):

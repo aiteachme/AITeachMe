@@ -1263,6 +1263,8 @@ class RepairTraceItem(DocGenBaseModel):
     reason: str = ""
     target_anchor: str = ""
     changed: bool = False
+    llm_attempted: bool = False
+    llm_call_group: str = ""
     detail: str = ""
 
     @field_validator("trace_id", "action_id", "action_type", "reason", "target_anchor", "detail", mode="before")
