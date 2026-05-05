@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+run_python() {
+  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+    python "$@"
+  elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+    python3 "$@"
+  elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
+    py -3 "$@"
+  else
+    echo "python was not found; cannot sync generated API client." >&2
+    exit 1
+  fi
+}
+
+echo "[pre-commit] Syncing OpenAPI and generated API client..."
+(
+  cd backend
+  run_python scripts/export_api_docs.py
+)
+
+git add frontend/openapi.json frontend/src/api/generated
