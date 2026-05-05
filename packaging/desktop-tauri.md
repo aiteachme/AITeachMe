@@ -39,7 +39,7 @@ https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-loc
 
 如果仓库是私有仓库，不要直接使用 GitHub Release asset 作为客户端更新源。把更新文件同步到公开 HTTPS 静态地址，并配置：
 
-- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。
+- `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`：`latest-tauri-local.json` 的公开地址。可用逗号、分号或换行配置多个地址，建议把 CDN/OSS 地址放第一位，GitHub 地址仅作兜底。
 - `AITEACHME_TAURI_LOCAL_UPDATER_ASSET_BASE_URL`：更新包所在公开目录。
 
 如果发布 alpha/beta 预发布 Tauri local 包，也需要显式配置 `AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT`，例如指向 `latest-tauri-local-beta.json`。GitHub 的 `releases/latest` 更适合稳定版通道，不能作为预发布通道的可靠清单地址。

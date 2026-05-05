@@ -9,6 +9,7 @@ const CHECK_DELAY_MS = 1800;
 const CHECK_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 180_000;
 const STARTUP_CHECK_SESSION_KEY = "aiteachme:tauri-local-update-startup-check";
+const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 
 type UpdateStatus = "available" | "downloading" | "installing" | "restarting" | "failed";
 
@@ -20,13 +21,24 @@ export function isTauriLocalRuntime(): boolean {
 }
 
 function describeUpdateError(error: unknown): string {
+  const fallbackMessage = "请稍后重试，或从 GitHub Release 手动下载安装包。";
+  let message = "";
+
   if (error instanceof Error && error.message.trim()) {
-    return error.message;
+    message = error.message.trim();
+  } else if (typeof error === "string" && error.trim()) {
+    message = error.trim();
   }
-  if (typeof error === "string" && error.trim()) {
-    return error;
+
+  if (/error sending request|failed to fetch|network|timed?\s*out|connection/i.test(message)) {
+    return [
+      "无法连接更新源。",
+      "当前安装包内置的 GitHub Release 更新源无法访问，桌面端请求可能没有走浏览器代理或被网络拦截。",
+      "请先从浏览器手动下载安装包；后续发布应改用 CDN/OSS 更新源。",
+    ].join("\n");
   }
-  return "请稍后重试，或从 GitHub Release 手动下载安装包。";
+
+  return message || fallbackMessage;
 }
 
 function logSkippedStartupCheck(error: unknown) {
@@ -64,6 +76,17 @@ async function checkDesktopUpdate(): Promise<Update | null> {
   return check({ timeout: CHECK_TIMEOUT_MS });
 }
 
+function isDesktopUpdateAvailableEvent(event: Event): event is CustomEvent<Update> {
+  return event instanceof CustomEvent && Boolean(event.detail);
+}
+
+function broadcastDesktopUpdateAvailable(update: Update) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent<Update>(DESKTOP_UPDATE_AVAILABLE_EVENT, { detail: update }));
+}
+
 interface CheckForUpdateOptions {
   silent?: boolean;
 }
@@ -90,6 +113,33 @@ export function useDesktopUpdateDialog() {
 
   const isBusy = status === "downloading" || status === "installing" || status === "restarting";
 
+  const applyAvailableUpdate = useCallback((availableUpdate: Update, openDialog: boolean) => {
+    setUpdate(availableUpdate);
+    setStatus("available");
+    setErrorText("");
+    setDownloadedBytes(0);
+    setContentLength(null);
+    if (openDialog) {
+      setOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriLocalRuntime()) {
+      return;
+    }
+
+    const handleUpdateAvailable = (event: Event) => {
+      if (!isDesktopUpdateAvailableEvent(event)) {
+        return;
+      }
+      applyAvailableUpdate(event.detail, false);
+    };
+
+    window.addEventListener(DESKTOP_UPDATE_AVAILABLE_EVENT, handleUpdateAvailable);
+    return () => window.removeEventListener(DESKTOP_UPDATE_AVAILABLE_EVENT, handleUpdateAvailable);
+  }, [applyAvailableUpdate]);
+
   const checkForUpdate = useCallback(async ({ silent = false }: CheckForUpdateOptions = {}) => {
     if (!isTauriLocalRuntime()) {
       if (!silent) {
@@ -115,12 +165,8 @@ export function useDesktopUpdateDialog() {
         return null;
       }
 
-      setUpdate(availableUpdate);
-      setStatus("available");
-      setErrorText("");
-      setDownloadedBytes(0);
-      setContentLength(null);
-      setOpen(true);
+      applyAvailableUpdate(availableUpdate, true);
+      broadcastDesktopUpdateAvailable(availableUpdate);
 
       if (!silent) {
         toast({
@@ -146,13 +192,19 @@ export function useDesktopUpdateDialog() {
       });
       return null;
     }
-  }, [toast]);
+  }, [applyAvailableUpdate, toast]);
 
   const closeUpdateDialog = useCallback(() => {
     if (!isBusy) {
       setOpen(false);
     }
   }, [isBusy]);
+
+  const showUpdateDialog = useCallback(() => {
+    if (update) {
+      setOpen(true);
+    }
+  }, [update]);
 
   const installUpdate = useCallback(async () => {
     if (!update || isBusy) {
@@ -207,6 +259,7 @@ export function useDesktopUpdateDialog() {
     isSupported: isTauriLocalRuntime(),
     checkForUpdate,
     closeUpdateDialog,
+    showUpdateDialog,
     installUpdate,
   };
 }
@@ -305,6 +358,40 @@ export function DesktopUpdateModal({
   );
 }
 
+interface DesktopUpdateIndicatorProps {
+  update: Update;
+  isBusy: boolean;
+  onOpen: () => void;
+}
+
+function DesktopUpdateIndicator({ update, isBusy, onOpen }: DesktopUpdateIndicatorProps) {
+  const updateDate = formatUpdateDate(update.date);
+  const tooltip = [
+    `最新版本：AiTeachMe ${update.version}`,
+    updateDate ? `发布于：${updateDate}` : "",
+    "点击查看更新",
+  ].filter(Boolean).join("\n");
+
+  return (
+    <div className="fixed right-5 top-5 z-[95] md:right-6">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={isBusy}
+        title={tooltip}
+        aria-label={`发现新版本 AiTeachMe ${update.version}`}
+        className="group relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200/80 bg-white/92 text-emerald-700 shadow-[0_12px_32px_-20px_rgba(15,23,42,0.65)] backdrop-blur-md transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 dark:border-emerald-500/30 dark:bg-slate-950/88 dark:text-emerald-300 dark:hover:border-emerald-400/50 dark:hover:bg-emerald-500/10"
+      >
+        <Download className="h-4.5 w-4.5" />
+        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950" />
+        <span className="pointer-events-none absolute right-0 top-full mt-2 hidden w-max max-w-[min(20rem,calc(100vw-2rem))] whitespace-pre-line rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs leading-5 text-slate-700 shadow-lg dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 group-hover:block group-focus-visible:block">
+          {tooltip}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 export function DesktopUpdatePrompt() {
   const hasStartedRef = useRef(false);
   const updater = useDesktopUpdateDialog();
@@ -333,15 +420,24 @@ export function DesktopUpdatePrompt() {
   }, [checkForUpdate]);
 
   return (
-    <DesktopUpdateModal
-      open={updater.open}
-      update={updater.update}
-      status={updater.status}
-      errorText={updater.errorText}
-      downloadedBytes={updater.downloadedBytes}
-      contentLength={updater.contentLength}
-      onClose={updater.closeUpdateDialog}
-      onInstall={updater.installUpdate}
-    />
+    <>
+      {updater.update && !updater.open ? (
+        <DesktopUpdateIndicator
+          update={updater.update}
+          isBusy={updater.isBusy}
+          onOpen={updater.showUpdateDialog}
+        />
+      ) : null}
+      <DesktopUpdateModal
+        open={updater.open}
+        update={updater.update}
+        status={updater.status}
+        errorText={updater.errorText}
+        downloadedBytes={updater.downloadedBytes}
+        contentLength={updater.contentLength}
+        onClose={updater.closeUpdateDialog}
+        onInstall={updater.installUpdate}
+      />
+    </>
   );
 }

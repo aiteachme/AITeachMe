@@ -19,18 +19,40 @@ $frontendDir = Join-Path $repoRoot "frontend"
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 $defaultTauriLocalUpdaterEndpoint = "https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json"
 $configuredTauriLocalUpdaterEndpoint = [Environment]::GetEnvironmentVariable("AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT", "Process")
-$tauriLocalUpdaterEndpoint = if ([string]::IsNullOrWhiteSpace($configuredTauriLocalUpdaterEndpoint)) {
-    $defaultTauriLocalUpdaterEndpoint
+
+function Split-TauriUpdaterEndpoints {
+    param(
+        [string]$ConfiguredEndpoint,
+        [string]$DefaultEndpoint
+    )
+
+    $rawEndpoint = if ([string]::IsNullOrWhiteSpace($ConfiguredEndpoint)) {
+        $DefaultEndpoint
+    }
+    else {
+        $ConfiguredEndpoint
+    }
+
+    $endpoints = @($rawEndpoint -split "[,;`r`n]+" |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    if ($endpoints.Count -eq 0) {
+        throw "Tauri updater endpoint is empty. Configure AITEACHME_TAURI_LOCAL_UPDATER_ENDPOINT or keep the default GitHub Release endpoint."
+    }
+
+    return $endpoints
 }
-else {
-    $configuredTauriLocalUpdaterEndpoint.Trim()
-}
+
+$tauriLocalUpdaterEndpoints = Split-TauriUpdaterEndpoints `
+    -ConfiguredEndpoint $configuredTauriLocalUpdaterEndpoint `
+    -DefaultEndpoint $defaultTauriLocalUpdaterEndpoint
 
 function New-TauriLocalReleaseConfig {
     param(
         [string]$FrontendDir,
         [string]$UpdaterPubkey,
-        [string]$Endpoint,
+        [string[]]$Endpoints,
         [bool]$EnableUpdater = $false,
         [object]$WindowsSigningConfig = $null
     )
@@ -61,7 +83,7 @@ function New-TauriLocalReleaseConfig {
         $config["plugins"] = [ordered]@{
             updater = [ordered]@{
                 pubkey = $UpdaterPubkey
-                endpoints = @($Endpoint)
+                endpoints = @($Endpoints)
                 windows = [ordered]@{
                     installMode = "passive"
                 }
@@ -166,11 +188,14 @@ if ($Flavor -eq "local") {
     $generatedConfigPath = New-TauriLocalReleaseConfig `
         -FrontendDir $frontendDir `
         -UpdaterPubkey $trimmedUpdaterPubkey `
-        -Endpoint $tauriLocalUpdaterEndpoint `
+        -Endpoints $tauriLocalUpdaterEndpoints `
         -EnableUpdater $tauriLocalUpdaterEnabled `
         -WindowsSigningConfig $tauriWindowsSigningConfig
     if ($tauriLocalUpdaterEnabled) {
-        Write-Host "Tauri updater endpoint: $tauriLocalUpdaterEndpoint"
+        Write-Host "Tauri updater endpoints:"
+        $tauriLocalUpdaterEndpoints | ForEach-Object {
+            Write-Host "  $_"
+        }
     }
     else {
         if ($RequireUpdater) {
