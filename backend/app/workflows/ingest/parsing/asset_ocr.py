@@ -11,6 +11,7 @@ from urllib.parse import unquote
 from pydantic import BaseModel
 import structlog
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
@@ -262,7 +263,7 @@ async def _ocr_asset_paths(
                 return
             await _run_one(index, asset_path)
 
-    worker_count = max(1, min(int(concurrency or 1), len(asset_paths)))
+    worker_count = max(1, min(int(concurrency or 1), get_llm_concurrency_limit(), len(asset_paths)))
     await asyncio.gather(*(_worker() for _ in range(worker_count)))
     return [item for item in results if item is not None]
 

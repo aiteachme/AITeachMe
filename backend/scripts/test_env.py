@@ -13,7 +13,7 @@ async def main() -> None:
     # 加载配置
     from app.shared.infra.settings import get_settings
     from app.shared.infra.env_support import get_env
-    from app.shared.infra.llm_support.common import build_litellm_provider_kwargs
+    from app.shared.infra.llm_support.common import build_litellm_provider_kwargs, get_llm_concurrency_limiter
     from app.shared.infra.settings.support import (
         llm_provider_requires_api_key,
         resolve_runtime_llm_provider,
@@ -59,7 +59,8 @@ async def main() -> None:
             llm_kwargs["api_base"] = llm_base_url
         if llm_api_key is not None:
             llm_kwargs["api_key"] = llm_api_key
-        response = await litellm.acompletion(**llm_kwargs)
+        async with get_llm_concurrency_limiter():
+            response = await litellm.acompletion(**llm_kwargs)
         elapsed = time.monotonic() - start
 
         content = response.choices[0].message.content
@@ -91,7 +92,8 @@ async def main() -> None:
                 embedding_kwargs["api_base"] = llm_base_url
             if llm_api_key is not None:
                 embedding_kwargs["api_key"] = llm_api_key
-            response = await litellm.aembedding(**embedding_kwargs)
+            async with get_llm_concurrency_limiter():
+                response = await litellm.aembedding(**embedding_kwargs)
             elapsed = time.monotonic() - start
 
             vector = response.data[0]["embedding"]

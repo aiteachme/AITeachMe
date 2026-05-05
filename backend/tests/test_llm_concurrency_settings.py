@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,7 @@ from app.shared.infra.settings import (
     set_system_settings_override,
 )
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _graph_llm_concurrency_cap
+from app.workflows.ingest.parsing.strategy import build_parse_plan
 from app.workflows.support.system.settings import build_settings_overview_data
 
 
@@ -43,6 +45,21 @@ def test_kg_graph_cap_uses_full_shared_llm_limit() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 8}})
 
     assert _graph_llm_concurrency_cap() == 8
+
+
+def test_ingest_llm_ocr_plan_respects_shared_llm_limit(tmp_path: Path) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    file_path = tmp_path / "notes.txt"
+    file_path.write_text("hello", encoding="utf-8")
+
+    plan = build_parse_plan(
+        file_path=file_path,
+        filetype=".txt",
+        file_size_bytes=file_path.stat().st_size,
+        classification=None,
+    )
+
+    assert plan.options.llm_ocr_page_concurrency == 1
 
 
 def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:
