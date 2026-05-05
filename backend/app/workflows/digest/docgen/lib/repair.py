@@ -139,6 +139,21 @@ def _patch_context_for_actions(chapter: ReviewedChapterDraft, actions: list[Revi
     return _trim_patch_context(chapter.markdown)
 
 
+def _fallback_patch_target_anchor(
+    indexed_actions: list[tuple[int, ReviewAction]],
+    *,
+    covered_keys: set[str],
+) -> str:
+    if covered_keys:
+        for action_index, action in indexed_actions:
+            if _repair_action_key(action_index, action) in covered_keys and action.target_anchor:
+                return action.target_anchor
+    for _, action in indexed_actions:
+        if action.target_anchor:
+            return action.target_anchor
+    return ""
+
+
 def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
     cleaned = normalize_markdown_rendering(_strip_markdown_fence(markdown)).strip()
     lines = []
@@ -340,13 +355,19 @@ async def _apply_llm_patch_actions(
             )
         return chapter, results, []
 
+    covered_keys = {str(item).strip() for item in patch.covered_action_ids if str(item).strip()}
+    unresolved_keys = {str(item).strip() for item in patch.unresolved_action_ids if str(item).strip()}
+    covered_keys &= set(action_keys)
+    unresolved_keys &= set(action_keys)
+    if not covered_keys and not unresolved_keys:
+        covered_keys = set(action_keys)
     patched = (
         chapter.markdown
         if patch.status == "no_change"
         else _insert_local_patch(
             chapter.markdown,
             patch.patch_markdown,
-            target_anchor=patch.target_anchor or indexed_actions[0][1].target_anchor,
+            target_anchor=patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys),
             chapter_title=chapter.title,
         )
     )
@@ -375,13 +396,6 @@ async def _apply_llm_patch_actions(
                 )
             )
         return chapter, results, []
-
-    covered_keys = {str(item).strip() for item in patch.covered_action_ids if str(item).strip()}
-    unresolved_keys = {str(item).strip() for item in patch.unresolved_action_ids if str(item).strip()}
-    covered_keys &= set(action_keys)
-    unresolved_keys &= set(action_keys)
-    if not covered_keys and not unresolved_keys:
-        covered_keys = set(action_keys)
     updated = chapter.model_copy(
         update={
             "markdown": patched,

@@ -300,6 +300,62 @@ async def test_repair_can_continue_when_model_leaves_actions_for_next_round(monk
 
 
 @pytest.mark.anyio
+async def test_repair_uses_covered_action_anchor_when_patch_target_missing(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown="## 应用补充\n\n- 先识别题目给出的边长，再选择面积公式。",
+            covered_action_ids=["a2"],
+        )
+
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 1)
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown=(
+            "# 面积\n\n"
+            "## 核心概念\n\n"
+            "面积表示平面的大小。\n\n"
+            "## 应用练习\n\n"
+            "先做基础题。\n\n"
+            "## 本章小结\n\n"
+            "记住公式。\n"
+        ),
+    )
+    actions = [
+        ReviewAction(
+            action_id="a1",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少概念易错提醒",
+            target_anchor="核心概念",
+            instruction="补充单位易错点。",
+        ),
+        ReviewAction(
+            action_id="a2",
+            action_type="section_patch",
+            chapter_index=1,
+            reason="缺少应用题步骤",
+            target_anchor="应用练习",
+            instruction="补充应用题步骤。",
+        ),
+    ]
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=actions,
+    )
+
+    markdown = repaired[0].markdown
+    assert [action.status for action in updated_actions] == ["skipped", "applied"]
+    assert len(unresolved) == 1
+    assert [trace.changed for trace in traces] == [False, True]
+    assert markdown.index("## 应用练习") < markdown.index("## 应用补充")
+    assert markdown.index("## 应用补充") < markdown.index("## 本章小结")
+
+
+@pytest.mark.anyio
 async def test_deterministic_rendering_patch_does_not_consume_llm_patch_limit(monkeypatch) -> None:
     calls = 0
 
