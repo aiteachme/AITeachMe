@@ -168,14 +168,6 @@ jobs:
         run: |
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Guard stable bundled releases
-        if: ${{ inputs.bundle_private_env == true && inputs.suffix == 'none' }}
-        run: |
-          echo "Stable GitHub Releases feed the public Tauri latest updater channel."
-          echo "Do not publish bundled private-env installers to the stable latest channel."
-          echo "Use alpha/beta for private validation, or publish a normal tauri-local stable release."
-          exit 1
-
   build_desktop_installers:
     name: Build ${{ inputs.desktop_package_mode }} Windows installer
     runs-on: windows-latest
@@ -427,6 +419,15 @@ jobs:
           $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
           if ($signature -ne $platform.signature) {
             throw "Tauri updater manifest signature does not match $signaturePath."
+          }
+
+          if ("${{ inputs.bundle_private_env }}" -eq "true") {
+            . .\packaging\scripts\bundled-env-common.ps1
+            $bundledSuffix = ConvertTo-BundledEnvArtifactSuffix -Value "${{ inputs.bundled_env_artifact_suffix }}"
+            $expectedPattern = "*-installer-tauri-$bundledSuffix.exe"
+            if ($packageFileName -notlike $expectedPattern) {
+              throw "Bundled Tauri updater manifest should reference '$expectedPattern', but got: $packageFileName"
+            }
           }
 
           Write-Host "Tauri updater manifest verified: $packageFileName"
