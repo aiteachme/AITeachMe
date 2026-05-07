@@ -208,20 +208,18 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                             <FieldLabelBlock
                               label="桌面更新"
                               description="手动检查新版本，发现更新后再确认安装。"
-                              helper={
-                                <span
-                                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
-                                  title={desktopVersionError || undefined}
-                                >
-                                  <span className="shrink-0">当前安装版本</span>
-                                  <span className="min-w-0 truncate font-mono font-semibold text-zinc-900 dark:text-slate-100">
-                                    {desktopVersionDisplay}
-                                  </span>
-                                </span>
-                              }
                             />
 
-                            <div className="flex flex-1 items-center justify-start md:justify-end">
+                            <div className="flex flex-1 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-start md:justify-end">
+                              <span
+                                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                                title={desktopVersionError || undefined}
+                              >
+                                <span className="shrink-0">当前版本</span>
+                                <span className="min-w-0 truncate font-mono font-semibold text-zinc-900 dark:text-slate-100">
+                                  {desktopVersionDisplay}
+                                </span>
+                              </span>
                               <Button
                                 type="button"
                                 variant="outline"

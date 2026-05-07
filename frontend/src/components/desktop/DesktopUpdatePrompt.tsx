@@ -8,6 +8,7 @@ import { useToast } from "../ui/Toast";
 const CHECK_DELAY_MS = 1800;
 const CHECK_TIMEOUT_MS = 30_000;
 const CHECK_WATCHDOG_MS = 45_000;
+const DOWNLOAD_INSTALL_TIMEOUT_MS = 30 * 60_000;
 const DOWNLOAD_PROGRESS_UPDATE_INTERVAL_MS = 250;
 const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 
@@ -330,28 +331,31 @@ export function useDesktopUpdateDialog() {
         setContentLength(nextContentLength);
       };
 
-      await update.downloadAndInstall((event: DownloadEvent) => {
-        if (event.event === "Started") {
-          nextDownloadedBytes = 0;
-          nextContentLength = event.data.contentLength ?? null;
-          flushProgress(true);
-          return;
-        }
-
-        if (event.event === "Progress") {
-          nextDownloadedBytes += event.data.chunkLength;
-          flushProgress();
-          return;
-        }
-
-        if (event.event === "Finished") {
-          if (nextContentLength !== null) {
-            nextDownloadedBytes = Math.max(nextDownloadedBytes, nextContentLength);
+      await update.downloadAndInstall(
+        (event: DownloadEvent) => {
+          if (event.event === "Started") {
+            nextDownloadedBytes = 0;
+            nextContentLength = event.data.contentLength ?? null;
+            flushProgress(true);
+            return;
           }
-          flushProgress(true);
-          setStatus("installing");
-        }
-      });
+
+          if (event.event === "Progress") {
+            nextDownloadedBytes += event.data.chunkLength;
+            flushProgress();
+            return;
+          }
+
+          if (event.event === "Finished") {
+            if (nextContentLength !== null) {
+              nextDownloadedBytes = Math.max(nextDownloadedBytes, nextContentLength);
+            }
+            flushProgress(true);
+            setStatus("installing");
+          }
+        },
+        { timeout: DOWNLOAD_INSTALL_TIMEOUT_MS },
+      );
 
       setStatus("restarting");
       const { relaunch } = await import("@tauri-apps/plugin-process");
