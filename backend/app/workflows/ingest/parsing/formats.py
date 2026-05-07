@@ -76,15 +76,12 @@ TEXT_EXTENSIONS = frozenset(
 
 IMAGE_EXTENSIONS = frozenset(
     {
-        # 未扩展链路：当前上传白名单不接受原始图片文件直传解析。
-        # 注意：这不影响 PDF / DOCX / PPTX 中抽取出来的图片资产处理。
-        # AI 提示：如果任务不是“恢复图片直传 ingest”，可以先不读 raw image parser。
-        # ".png",
-        # ".jpg",
-        # ".jpeg",
+        ".png",
+        ".jpg",
+        ".jpeg",
         # ".webp",
         # ".gif",
-        # ".bmp",
+        ".bmp",
         # ".tif",
         # ".tiff",
     }

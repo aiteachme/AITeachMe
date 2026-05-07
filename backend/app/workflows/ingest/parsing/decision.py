@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.ingest.parsing.formats import (
+    is_image_extension,
     normalize_extension,
 )
 from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
@@ -22,9 +23,10 @@ DEFAULT_MINERU_EXTENSIONS = frozenset(
         # AI 提示：如果任务不是扩大上传入口，可以先不看这些 capability 设计。
         # ".xls",
         # ".xlsx",
-        # ".png",
-        # ".jpg",
-        # ".jpeg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
         # ".html",
         # ".htm",
     }
@@ -37,12 +39,12 @@ DEFAULT_PADDLE_OCR_EXTENSIONS = frozenset(
         # ".docx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
         # ".doc",
-        # 未扩展链路：当前上传白名单不允许图片直传，所以这些扩展当前不会命中。
-        # ".png",
-        # ".jpg",
-        # ".jpeg",
+        # 图片直传只走 PaddleOCR / MinerU 外部链路，不进入本地 OCR。
+        ".png",
+        ".jpg",
+        ".jpeg",
         # ".webp",
-        # ".bmp",
+        ".bmp",
         # ".tif",
         # ".tiff",
     }
@@ -66,7 +68,7 @@ DEFAULT_MARKITDOWN_EXTENSIONS = frozenset(
 DEFAULT_OCR_EXTENSIONS = frozenset(
     {
         ".pdf",
-        # 未扩展链路：原始图片直传目前未开放，因此这里不再展开 IMAGE_EXTENSIONS。
+        # 图片直传不走 LLM OCR 兜底，因此这里不展开 IMAGE_EXTENSIONS。
         # *IMAGE_EXTENSIONS,
     }
 )
@@ -173,6 +175,58 @@ def build_parse_decision(
                 "extension": normalized_extension,
                 "route_mode": "unsupported_doc",
                 "doc_supported": False,
+            },
+        )
+
+    if is_image_extension(normalized_extension):
+        mineru_supports_extension = mineru.supports(normalized_extension)
+        paddle_ocr_supports_extension = paddle_ocr.supports(normalized_extension)
+        image_metadata = {
+            "extension": normalized_extension,
+            "route_mode": "image_external_only",
+            "image_external_required": True,
+            "paddle_ocr_supported": paddle_ocr_supports_extension,
+            "paddle_ocr_available": paddle_ocr.available,
+            "mineru_supported": mineru_supports_extension,
+            "mineru_available": mineru.available,
+        }
+
+        if paddle_ocr.available and paddle_ocr_supports_extension:
+            fallback_chain = ["mineru"] if mineru.available and mineru_supports_extension else []
+            return ParseDecision(
+                requested_provider=normalized_request,
+                primary_provider="paddle_ocr",
+                primary_reason=(
+                    "图片上传仅走外部解析链路；已检测到 PaddleOCR Token，"
+                    "优先使用 PaddleOCR，失败后尝试 MinerU。"
+                ),
+                fallback_chain=fallback_chain,
+                can_preview_before_primary=False,
+                metadata=image_metadata,
+            )
+
+        if mineru.available and mineru_supports_extension:
+            return ParseDecision(
+                requested_provider=normalized_request,
+                primary_provider="mineru",
+                primary_reason=(
+                    "图片上传仅走外部解析链路；PaddleOCR 未配置或不可用，"
+                    "自动改用 MinerU。"
+                ),
+                fallback_chain=[],
+                can_preview_before_primary=False,
+                metadata=image_metadata,
+            )
+
+        return ParseDecision(
+            requested_provider=normalized_request,
+            primary_provider="local",
+            primary_reason="图片上传当前没有可用的外部解析 provider，且不提供本地兜底解析。",
+            fallback_chain=[],
+            requested_provider_unavailable=normalized_request is not None,
+            metadata={
+                **image_metadata,
+                "route_mode": "image_external_unavailable",
             },
         )
 

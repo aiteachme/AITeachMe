@@ -22,7 +22,13 @@ import {
 import { apiClient, getApiErrorMessage } from "../api/client";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { useToast } from "../components/ui/Toast";
-import { buildUnsupportedFilesMessage, FILE_ACCEPT, partitionUploadFiles } from "../lib/fileUpload";
+import {
+  buildImageParserUnavailableMessage,
+  buildUnsupportedFilesMessage,
+  FILE_ACCEPT,
+  IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+  partitionUploadFilesForRuntime,
+} from "../lib/fileUpload";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -313,19 +319,30 @@ export function LibraryPage() {
             multiple
             accept={FILE_ACCEPT}
             className="hidden"
-            onChange={(event) => {
+            onChange={async (event) => {
               const selected = Array.from(event.target.files ?? []);
               if (fileInputRef.current) fileInputRef.current.value = "";
               if (selected.length > 0) {
-                const { supportedFiles, unsupportedFiles } = partitionUploadFiles(selected);
+                const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+                  await partitionUploadFilesForRuntime(selected);
                 const unsupportedMessage = unsupportedFiles.length
                   ? buildUnsupportedFilesMessage(unsupportedFiles)
                   : null;
-                setError(unsupportedMessage);
+                const imageParserUnavailableMessage = imageParserUnavailableFiles.length
+                  ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
+                  : null;
+                setError(unsupportedMessage ?? imageParserUnavailableMessage);
                 if (unsupportedMessage) {
                   toast({
                     title: "文件类型暂不支持",
                     description: unsupportedMessage,
+                    variant: "error",
+                  });
+                }
+                if (imageParserUnavailableMessage) {
+                  toast({
+                    title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+                    description: imageParserUnavailableMessage,
                     variant: "error",
                   });
                 }

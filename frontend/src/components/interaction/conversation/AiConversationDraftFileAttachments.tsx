@@ -30,9 +30,11 @@ import {
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import {
   buildUnsupportedFilesMessage,
+  buildImageParserUnavailableMessage,
   extractPasteFiles,
   FILE_ACCEPT,
-  partitionUploadFiles,
+  IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+  partitionUploadFilesForRuntime,
 } from "../../../lib/fileUpload";
 import { cn } from "../../../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../../../types/files";
@@ -451,13 +453,24 @@ export function AiConversationDraftFileAttachments({
       return;
     }
 
-    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(pendingFiles);
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+      await partitionUploadFilesForRuntime(pendingFiles);
     const unsupportedMessage = unsupportedFiles.length ? buildUnsupportedFilesMessage(unsupportedFiles) : null;
-    setError(unsupportedMessage);
+    const imageParserUnavailableMessage = imageParserUnavailableFiles.length
+      ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
+      : null;
+    setError(unsupportedMessage ?? imageParserUnavailableMessage);
     if (unsupportedMessage) {
       toast({
         title: "文件类型暂不支持",
         description: unsupportedMessage,
+        variant: "error",
+      });
+    }
+    if (imageParserUnavailableMessage) {
+      toast({
+        title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+        description: imageParserUnavailableMessage,
         variant: "error",
       });
     }

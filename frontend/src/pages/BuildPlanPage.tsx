@@ -60,9 +60,11 @@ import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import {
   buildUnsupportedFilesMessage,
+  buildImageParserUnavailableMessage,
   FILE_ACCEPT,
   extractPasteFiles,
-  partitionUploadFiles,
+  IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+  partitionUploadFilesForRuntime,
 } from "../lib/fileUpload";
 import { publicAssetPath } from "../lib/publicAsset";
 import { buildCoursePath } from "../lib/courseNavigation";
@@ -1501,15 +1503,25 @@ export function BuildPlanPage() {
     },
   });
 
-  const queueUploadFiles = useCallback((candidateFiles: File[]) => {
+  const queueUploadFiles = useCallback(async (candidateFiles: File[]) => {
     if (!candidateFiles.length) {
       return;
     }
-    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(candidateFiles);
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+      await partitionUploadFilesForRuntime(candidateFiles);
     if (unsupportedFiles.length > 0) {
       const message = buildUnsupportedFilesMessage(unsupportedFiles);
       toast({
         title: "文件类型暂不支持",
+        description: message,
+        variant: "error",
+      });
+      setMessages((prev) => [...prev, createMessage("system", message)]);
+    }
+    if (imageParserUnavailableFiles.length > 0) {
+      const message = buildImageParserUnavailableMessage(imageParserUnavailableFiles);
+      toast({
+        title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
         description: message,
         variant: "error",
       });
@@ -1944,7 +1956,7 @@ export function BuildPlanPage() {
       return;
     }
     setHasAutoUploaded(true);
-    queueUploadFiles(navState.initialFiles);
+    void queueUploadFiles(navState.initialFiles);
     navigate(location.pathname, {
       replace: true,
       state: navState?.initialPrompt ? { initialPrompt: navState.initialPrompt } : null,
@@ -1982,7 +1994,7 @@ export function BuildPlanPage() {
     <>
       <FullPageDropOverlay
         onDrop={(droppedFiles) => {
-          queueUploadFiles(droppedFiles);
+          void queueUploadFiles(droppedFiles);
         }}
         disabled={uploadMutation.isPending}
       />
@@ -2186,7 +2198,7 @@ export function BuildPlanPage() {
                     const files = extractPasteFiles(event);
                     if (files.length > 0) {
                       event.preventDefault();
-                      queueUploadFiles(files);
+                      void queueUploadFiles(files);
                     }
                   }}
                 disabled={isBuilding || plannerStreaming}
@@ -2239,13 +2251,13 @@ export function BuildPlanPage() {
                       accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                          const selected = Array.from(event.target.files ?? []);
-                          event.target.value = "";
-                          if (selected.length) {
-                            queueUploadFiles(selected);
-                          }
-                        }}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const selected = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        if (selected.length) {
+                          void queueUploadFiles(selected);
+                        }
+                      }}
                     />
                     <label
                       htmlFor="files-page-upload"

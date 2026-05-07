@@ -33,6 +33,7 @@ from app.workflows.ingest.parsing.decision import build_parse_decision
 from app.workflows.ingest.parsing.formats import (
     categorize_text_extension,
     get_text_language_hint,
+    is_image_extension,
     is_text_extension,
     normalize_extension,
 )
@@ -396,6 +397,19 @@ def build_plan_parse_node(*, context: WorkflowContext):
         logger = workflow_logger(context, state)
         try:
             parse_decision = state.get("parse_decision")
+            if (
+                is_image_extension(state["filetype"])
+                and parse_decision
+                and parse_decision.metadata.get("image_external_required")
+                and not (parse_decision.uses_mineru or parse_decision.uses_paddle_ocr)
+            ):
+                return {
+                    **state,
+                    "error": (
+                        "image_external_parser_unavailable: 当前无法处理图片上传，"
+                        "请配置 PaddleOCR 或 MinerU 后重试。"
+                    ),
+                }
             if parse_decision and parse_decision.uses_mineru:
                 parse_plan = ParsePlan(
                     mode="external_mineru",

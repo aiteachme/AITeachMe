@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from app.shared.infra.env_support import get_env, get_env_choice
-from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.exceptions import FileParseError, UnsupportedFileTypeError
 from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
@@ -60,9 +60,10 @@ def build_parse_plan(
     available_parsers = get_available_parsers(extension, allow_llm_vision=allow_image_vision)
     if not available_parsers:
         if is_image_extension(extension):
-            if not settings.has_vision_model:
-                raise FileParseError(Path(file_path).name, reason="未配置视觉理解模型，当前不处理图片文件。")
-            raise MissingLLMApiKeyError()
+            raise FileParseError(
+                Path(file_path).name,
+                reason="图片文件只支持 PaddleOCR 或 MinerU 外部解析，当前不提供本地兜底。",
+            )
         raise UnsupportedFileTypeError(extension)
 
     file_mb = round((file_size_bytes or 0) / (1024 * 1024), 2)
@@ -117,8 +118,7 @@ def _preferred_parser_order(
     classification: ClassificationResult | None,
     image_vision_enabled: bool,
 ) -> list[str]:
-    # 未扩展链路：当前上传白名单不开放原始图片直传。
-    # AI 提示：除非任务明确要求恢复图片上传，否则可以先跳过这段分支。
+    # 图片直传由 ParseDecision 路由到 PaddleOCR / MinerU，不能进入本地 parser chain。
     # if is_image_extension(extension):
     #     if not image_vision_enabled:
     #         return []
@@ -162,8 +162,7 @@ def _decide_mode_and_options(
     document_ocr_enabled: bool,
     options: ParserRunOptions,
 ) -> tuple[str, str]:
-    # 未扩展链路：当前上传白名单不开放原始图片直传。
-    # AI 提示：如果不是恢复图片上传，这段 mode 设计可以先不读。
+    # 图片直传由 ParseDecision 路由到 PaddleOCR / MinerU，不能进入本地 parser chain。
     # if is_image_extension(extension):
     #     if file_mb > _VISION_MAX_MB:
     #         options.timeout_s = max(options.timeout_s, 150)

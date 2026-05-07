@@ -30,9 +30,11 @@ import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import {
   buildUnsupportedFilesMessage,
+  buildImageParserUnavailableMessage,
   FILE_ACCEPT,
   extractPasteFiles,
-  partitionUploadFiles,
+  IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+  partitionUploadFilesForRuntime,
 } from "../lib/fileUpload";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs";
 import { notifyCoursesImported } from "../lib/courseEvents";
@@ -632,15 +634,26 @@ export function HomePage() {
     if (!files.length) {
       return;
     }
-    const { supportedFiles, unsupportedFiles } = partitionUploadFiles(files);
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+      await partitionUploadFilesForRuntime(files);
     const unsupportedMessage = unsupportedFiles.length
       ? buildUnsupportedFilesMessage(unsupportedFiles)
       : null;
-    setError(unsupportedMessage);
+    const imageParserUnavailableMessage = imageParserUnavailableFiles.length
+      ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
+      : null;
+    setError(unsupportedMessage ?? imageParserUnavailableMessage);
     if (unsupportedMessage) {
       toast({
         title: "文件类型暂不支持",
         description: unsupportedMessage,
+        variant: "error",
+      });
+    }
+    if (imageParserUnavailableMessage) {
+      toast({
+        title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+        description: imageParserUnavailableMessage,
         variant: "error",
       });
     }

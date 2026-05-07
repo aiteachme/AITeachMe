@@ -25,6 +25,7 @@ from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
 )
 from app.workflows.ingest.parsing.orchestrator import fast_parse_file
+from app.workflows.ingest.parsing.formats import is_image_extension
 from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.fast_parse.lib.common import workflow_logger
@@ -349,6 +350,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                 }
 
             if parse_decision and (parse_decision.uses_mineru or parse_decision.uses_paddle_ocr):
+                is_external_only_image = is_image_extension(state["filetype"])
                 provider_failures: dict[str, str] = {}
                 attempted_external_parsers: list[str] = []
                 external_elapsed_s: dict[str, float] = {}
@@ -410,7 +412,8 @@ def build_parse_file_node(*, context: WorkflowContext):
                             timeout_budget_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
                             error=str(exc),
                         )
-                        break
+                        if not is_external_only_image:
+                            break
                     except Exception as exc:
                         attempted_external_parsers.append(provider_name)
                         provider_failures[provider_name] = str(exc)
@@ -425,6 +428,14 @@ def build_parse_file_node(*, context: WorkflowContext):
                             external_elapsed_s["paddle_ocr"] = round(time.monotonic() - provider_started_at, 2)
 
                 if parse_result is None:
+                    if is_external_only_image:
+                        return {
+                            **state,
+                            "error": (
+                                "image_external_parser_unavailable: 当前无法处理图片上传，"
+                                "请配置 PaddleOCR 或 MinerU 后重试。"
+                            ),
+                        }
                     effective_parse_plan = build_parse_plan(
                         file_path=state["file_path"],
                         filetype=state["filetype"],
