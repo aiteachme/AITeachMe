@@ -19,16 +19,19 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
     MarkdownExtractedEdge,
 )
 
-_PRIMARY_UNIT_TYPES = {"concept", "method", "theorem", "formula"}
+_PRIMARY_UNIT_TYPES = {
+    "core_knowledge",
+    "method_demo",
+    "principle_reasoning",
+    "knowledge_organization",
+    "application_extension",
+}
 _SECONDARY_TO_PARENT_RELATION = {
-    "definition": "derivation",
-    "formula": "derivation",
-    "theorem": "derivation",
-    "proof_step": "derivation",
-    "example": "example_of",
-    "exercise": "example_of",
-    "remark": "application",
-    "method": "application",
+    "method_demo": "application",
+    "principle_reasoning": "reasoning",
+    "explanation_support": "explanation",
+    "practice_assessment": "training",
+    "application_extension": "application",
 }
 _MAX_SECTION_STITCH_EDGES_PER_SECTION = 6
 _MAX_MENTION_STITCH_EDGES = 160
@@ -64,7 +67,13 @@ def _unit_type(unit: MarkdownKnowledgeUnit) -> str:
 
 
 def _choose_section_parent(units: list[MarkdownKnowledgeUnit]) -> MarkdownKnowledgeUnit | None:
-    for preferred_type in ("concept", "method", "theorem", "formula"):
+    for preferred_type in (
+        "core_knowledge",
+        "method_demo",
+        "principle_reasoning",
+        "knowledge_organization",
+        "application_extension",
+    ):
         for unit in units:
             if _unit_type(unit) == preferred_type:
                 return unit
@@ -77,8 +86,8 @@ def _relation_to_section_parent(unit: MarkdownKnowledgeUnit, parent: MarkdownKno
     relation = _SECONDARY_TO_PARENT_RELATION.get(unit_type)
     if relation is None:
         return None
-    if relation == "application" and unit_type == "method" and parent_type != "concept":
-        relation = "derivation"
+    if relation in {"explanation", "training"}:
+        return relation if parent_type in _PRIMARY_UNIT_TYPES else None
     return relation
 
 
@@ -157,9 +166,13 @@ def _add_section_local_edges(
             relation = _relation_to_section_parent(unit, parent)
             if relation is None:
                 continue
+            if relation in {"application", "explanation", "training", "contains"}:
+                source_unit, target_unit = parent, unit
+            else:
+                source_unit, target_unit = unit, parent
             edge = _new_edge(
-                source=unit,
-                target=parent,
+                source=source_unit,
+                target=target_unit,
                 edge_type=relation,
                 description=f"{unit.name} 在同一小节中服务于 {parent.name} 的理解。",
                 source_kind="section_local_stitch",
@@ -180,11 +193,13 @@ def _infer_reference_relation(text: str, source_type: str) -> str:
         return "contrast"
     if any(token in normalized for token in ("类似", "相似", "同理")):
         return "similar"
-    if normalize_knowledge_unit_type(source_type) in {"example", "exercise"}:
-        return "example_of"
+    if normalize_knowledge_unit_type(source_type) == "practice_assessment":
+        return "training"
+    if normalize_knowledge_unit_type(source_type) == "explanation_support":
+        return "explanation"
     if any(token in normalized for token in ("利用", "应用", "借助", "结合", "使用")):
         return "application"
-    return "derivation"
+    return "contains"
 
 
 def _unique_name_index(units: list[MarkdownKnowledgeUnit]) -> dict[str, MarkdownKnowledgeUnit]:
@@ -223,6 +238,8 @@ def _add_mention_edges(
                 continue
             relation = _infer_reference_relation(text, unit.knowledge_unit_type)
             if relation == "prerequisite":
+                source, target_unit = target, unit
+            elif relation in {"explanation", "training"}:
                 source, target_unit = target, unit
             else:
                 source, target_unit = unit, target

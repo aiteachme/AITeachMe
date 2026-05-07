@@ -42,8 +42,16 @@
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
-- `-BackendPort <port>`：Electron local 的本地后端端口，默认 `19020`，用于避开开发后端默认端口 `9020`；Tauri local 启动时会自动申请可用本地端口，不使用此参数。
+- `-BackendPort <port>`：local 桌面包的本地后端端口；默认留空，由 Electron local / Tauri local 启动时自动申请可用端口。仅在需要固定端口调试时传入。
 - `-SkipInstall`：跳过依赖安装步骤。
+
+Python 解释器解析顺序：
+
+1. `AITEACHME_PYTHON` 指向的 Python。
+2. 当前已激活环境的 `CONDA_PREFIX`。
+3. 仓库根目录 `.venv`。
+4. `conda run -n <env>`，环境名来自 `AITEACHME_CONDA_ENV`，未设置时使用 `aiteachme`。
+5. `py -3.11` 或 PATH 中的 `python`。
 
 ## 产物命名
 
@@ -62,15 +70,65 @@
 
 中间产物会保留在 `packaging\artifacts`。
 
+## Electron local 的后端与数据目录
+
+Electron local 安装包内置 PyInstaller 生成的 FastAPI 后端，安装后由 Electron 主进程自动启动。默认不再固定占用 `9020` 或 `19020`，启动时会自动向系统申请可用本地端口，并把真实 API 地址注入前端；传入 `-BackendPort <port>` 时才会固定使用指定端口。
+
+安装目录可写时，Electron local 的后端日志、SQLite 和课程文件会写入安装目录下的 `data`；安装目录不可写时，才回退到 Electron app data 目录下的 `backend-data`。旧版本写在 app data 里的 `aiteachme.db` 和 `users` 会在首次启动时迁移到安装目录 `data`。
+
 ## Tauri local 的 exe 结构
 
 `-IncludeTauri` 表示“在默认 Electron local 之外额外生成 Tauri local”，所以会看到 Electron 和 Tauri 两个安装包；只需要 Tauri 时请用 `-TauriOnly`。
 
-Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller 生成的 FastAPI 后端运行件。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会改名为 `aiteachme-backend.bin` 并作为内部资源放在 `resources\backend\` 下，由 Tauri 主程序自动启动，因此安装目录中不会额外出现后端 `.exe`。
+Tauri local 安装后会有一个用户直接启动的主程序，同时内置一个 PyInstaller `onedir` 生成的 FastAPI 后端目录。后端运行件是本地模式的运行前提，不能在当前 Python/FastAPI 架构下物理消失；打包时会作为内部资源放在 `backend\` 下，由 Tauri 主程序自动启动。
 
 NSIS 仍会生成 Windows 卸载器；安装脚本会将 `uninstall.exe` 标记为隐藏文件，避免普通文件夹视图里出现多个 `.exe`。不要删除它，否则系统卸载入口会失效。
 
-Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。后端日志、SQLite、课程文件和 PyInstaller onefile 临时解包目录都写入 Tauri app data 目录下的 `backend-data`，不写入安装目录根部。
+Tauri local 默认不再固定占用 `9020`，启动时会自动向系统申请可用本地端口并注入前端。安装目录可写时，后端日志、SQLite 和课程文件都会写入安装目录下的 `data`；安装目录不可写时，才回退到 Tauri app data 目录下的 `backend-data`。
+
+Tauri Windows 安装包显式使用 NSIS `lzma` 压缩，并使用 `currentUser` 安装模式，默认安装位置不需要管理员权限，便于本地数据目录留在安装文件夹内。
+
+## Tauri local 在线更新
+
+Tauri local 已接入 Tauri v2 updater。发布包启动后会检查：
+
+```text
+https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json
+```
+
+有新版时前端会提示用户确认；确认后下载清单中声明的已签名 NSIS `.exe` 安装包，验签通过后覆盖安装并重启。更新只替换程序、前端资源和内置后端运行件，不删除安装目录下的 `data` 用户数据目录。
+
+没有 GitHub Release、没有 `latest-tauri-local.json` 或网络不可达时，启动检查会静默跳过，不影响用户正常使用。
+
+Tauri local 更新源固定为 GitHub Release `releases/latest` 通道，不再通过 GitHub Variables 覆盖 endpoint 或 asset base URL。alpha/beta 预发布包也内置同一个 stable latest 检查地址：它们不会追 alpha.2/beta.1，只会在后续 stable 发布后更新到 stable。
+
+Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
+GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
+GitHub Release 可通过 `require_windows_signing` 输入参数强制要求 Windows Authenticode 签名；当前未配置证书时保持关闭，安装包会是未签名状态。
+`bundle_private_env = true` 时会生成带预绑定私有配置的 local 安装包；如果同时发布 Tauri local，`latest-tauri-local.json` 会指向带 `-tauri-<suffix>.exe` 的预绑定安装包。
+
+如需同时生成在线更新产物，发布包前需要配置：
+
+- `TAURI_UPDATER_PUBKEY`：Tauri updater 公钥，写入最终 Tauri 配置。
+- `TAURI_SIGNING_PRIVATE_KEY`：Tauri updater 私钥内容或私钥文件路径。
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：私钥密码，可选。
+
+密钥生成示例：
+
+```powershell
+cd frontend
+npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
+```
+
+把命令输出的 public key 配到 GitHub Variables 或 Secrets 的 `TAURI_UPDATER_PUBKEY`，把 `packaging\private\tauri-updater.key` 的内容配置到 GitHub Secrets 的 `TAURI_SIGNING_PRIVATE_KEY`。私钥不要提交到仓库。
+
+配置齐全时，GitHub Release 会额外上传：
+
+- 普通 Tauri local：`AiTeachMe-v<version>-installer-tauri.exe.sig`
+- 预绑定 Tauri local：`AiTeachMe-v<version>-installer-tauri-bundled.exe.sig`
+- `latest-tauri-local.json`
+
+`tauri-remote` 暂不接在线更新；线上网站已经覆盖云端使用场景，避免维护两套桌面云端发布链路。
 
 ## 预绑定本地大模型配置
 
@@ -81,7 +139,7 @@ JSON 结构：
 ```json
 {
   "env": {
-    "LLM_API_KEY": "sk-...",
+    "LLM_API_KEY": "<model-api-key>",
     "LLM_BASE_URL": "https://api.example.com/v1",
     "LLM_PROVIDER": "openai-compatible",
     "LLM_API_VERSION": ""
@@ -100,10 +158,12 @@ JSON 结构：
 .\packaging\release.bat -ImportBundledEnv
 .\packaging\release.bat -IncludeTauri -ImportBundledEnv
 .\packaging\release.bat -ImportBundledEnv -BundledEnvArtifactSuffix campus-a
-.\packaging\release.bat -ImportBundledEnv -BundledEnvConfigPath C:\private\aiteachme-bundled-env.json
+.\packaging\release.bat -ImportBundledEnv -BundledEnvConfigPath <private-path>\aiteachme-bundled-env.json
 ```
 
 该选项只对带本地后端的 Electron local / Tauri local 有实际效果。打包脚本会生成 `packaging\artifacts\generated-configs\aiteachme_bundled_env.enc.json`，PyInstaller 会把它收进后端运行时。应用启动后会把这些值作为默认环境变量使用；设置页中的预绑定密钥不会回显明文，会显示为“预绑定密钥，已加密隐藏”。
+
+注意：预绑定配置会随安装包一起分发，只适合受控渠道和低权限配置，不应当把真实高权限 Provider Key 放进公开 GitHub Release。如果误发布了包含真实密钥的 bundled 安装包，应删除对应 Release asset 并轮换密钥。
 
 ## GitHub Release 预绑定配置
 

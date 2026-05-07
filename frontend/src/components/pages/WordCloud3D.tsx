@@ -31,27 +31,23 @@ interface LayoutWord {
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Color Palette 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const TYPE_COLORS: Record<string, string> = {
-  concept: "#5dade2",
-  method: "#ec7063",
-  definition: "#58d68d",
-  example: "#af7ac5",
-  theorem: "#48c9b0",
-  formula: "#5d6d7e",
-  exercise: "#e74c3c",
-  proof_step: "#8e44ad",
-  remark: "#7f8c8d",
+  core_knowledge: "#5dade2",
+  method_demo: "#ec7063",
+  explanation_support: "#7f8c8d",
+  principle_reasoning: "#48c9b0",
+  practice_assessment: "#e74c3c",
+  knowledge_organization: "#8e44ad",
+  application_extension: "#af7ac5",
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  concept: "概念",
-  definition: "定义",
-  theorem: "定理",
-  formula: "公式",
-  example: "示例",
-  exercise: "练习",
-  method: "方法",
-  proof_step: "证明步骤",
-  remark: "备注",
+  core_knowledge: "核心知识",
+  method_demo: "方法示范",
+  explanation_support: "解释辅助",
+  principle_reasoning: "原理推理",
+  practice_assessment: "练习评估",
+  knowledge_organization: "知识组织",
+  application_extension: "应用拓展",
 };
 
 const DEFAULT_COLOR = "#94a3b8";
@@ -436,4 +432,3 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
 }
 
 export default WordCloud3D;
-

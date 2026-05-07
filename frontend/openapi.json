@@ -3,7 +3,7 @@
   "info": {
     "title": "AITeachMe",
     "description": "本地优先的 AI 助教后端服务。",
-    "version": "0.0.1"
+    "version": "0.0.9"
   },
   "paths": {
     "/api/health": {
@@ -83,6 +83,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/community/wechat-qr": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取社区微信二维码",
+        "description": "从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。",
+        "operationId": "get_community_wechat_qr_api_v1_system_community_wechat_qr_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1650,7 +1690,7 @@
           "files"
         ],
         "summary": "Serve file asset (images, etc.)",
-        "description": "代理访问文件资产。\n\ncloud 模式：优先 302 到 CDN，无 CDN 时流式返回。\nlocal 模式：从本地文件系统返回。",
+        "description": "代理访问文件资产。\n\n通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。",
         "operationId": "serve_file_asset_api_v1_courses__course_id__files_assets__asset_path__get",
         "parameters": [
           {
@@ -6397,16 +6437,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "依赖服务当前不可用。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
           }
         }
       }
@@ -8782,6 +8812,11 @@
             "type": "string",
             "title": "Confirmed Plan Id"
           },
+          "version_no": {
+            "type": "integer",
+            "title": "Version No",
+            "default": 1
+          },
           "course_id": {
             "type": "string",
             "title": "Course Id"
@@ -8793,6 +8828,17 @@
           "digest_mode": {
             "type": "string",
             "title": "Digest Mode"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "selected_file_ids": {
             "items": {
@@ -9019,6 +9065,17 @@
               }
             ],
             "title": "Confirmed Plan Id"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           }
         },
         "type": "object",
@@ -9071,6 +9128,17 @@
           },
           "latest_plan": {
             "$ref": "#/components/schemas/BuildPlannerPlanResponse"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "turns": {
             "items": {
@@ -9156,6 +9224,18 @@
           "content": {
             "type": "string",
             "title": "Content"
+          },
+          "plan_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Json"
           },
           "created_at": {
             "type": "string",
@@ -9428,7 +9508,7 @@
           "card_type": {
             "type": "string",
             "title": "Card Type",
-            "description": "mode / topic / concept / method"
+            "description": "mode / topic / core_knowledge / method_demo / practice_assessment"
           },
           "summary": {
             "type": "string",
@@ -11075,6 +11155,18 @@
             ],
             "title": "Digest Mode",
             "description": "Digest mode frozen in the confirmed build plan."
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override",
+            "description": "Concrete runtime model selected for this build, if any."
           }
         },
         "type": "object",

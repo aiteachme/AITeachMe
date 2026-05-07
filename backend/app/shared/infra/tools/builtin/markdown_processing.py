@@ -28,6 +28,26 @@ MERMAID_INFO_PATTERN = re.compile(
     r"^(mermaid|mindmap|graph|flowchart|sequencediagram|classdiagram|statediagram(?:-v2)?|erdiagram|gantt|pie|journey|timeline|gitgraph)\b",
     re.IGNORECASE,
 )
+FLOWCHART_HEADER_PATTERN = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
+FLOWCHART_INLINE_HEADER_PATTERN = re.compile(
+    r"^\s*((?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL))\s+(.+)$",
+    re.IGNORECASE,
+)
+FLOWCHART_NODE_LABEL_PATTERN = re.compile(r"(^|[^\w\"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]")
+FLOWCHART_EDGE_LABEL_PATTERN = re.compile(r"\|([^|\n]+)\|")
+FLOWCHART_CLASS_LINE_PATTERN = re.compile(r"^(\s*class\s+)([^;\n]+?)(;?\s*)$", re.IGNORECASE)
+FLOWCHART_CONTROL_LINE_PATTERN = re.compile(
+    r"^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|"
+    r"linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)",
+    re.IGNORECASE,
+)
+FLOWCHART_EDGE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:-->|---|==>|-.->|==|--|~~~|o--|x--)")
+FLOWCHART_NODE_LINE_PATTERN = re.compile(r"^\s*[A-Za-z_][\w-]*\s*(?:\[|\(|\{|\>)")
+MINDMAP_ROOT_PATTERN = re.compile(r"^root\(\((.+)\)\)$", re.IGNORECASE)
+MINDMAP_MIXED_SYNTAX_PATTERN = re.compile(
+    r"-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b",
+    re.IGNORECASE,
+)
 RAW_MERMAID_FENCE_PATTERN = re.compile(
     r"(?m)^\s{0,3}```\s*(?:mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b",
     re.IGNORECASE,
@@ -47,6 +67,30 @@ BARE_CALLOUT_PATTERN = re.compile(
     r"(?m)^(?!\s*>)\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
     re.IGNORECASE,
 )
+RAW_MARK_OPEN_PATTERN = re.compile(r"<mark\b[^>]*>", re.IGNORECASE)
+RAW_MARK_CLOSE_PATTERN = re.compile(r"</mark>", re.IGNORECASE)
+RAW_HTML_TAG_PATTERN = re.compile(r"</?(?!mark\b|br\b)[A-Za-z][^>\n]{0,120}>", re.IGNORECASE)
+DOUBLE_EQUALS_HIGHLIGHT_PATTERN = re.compile(r"==\s*(?P<body>[^=\n]{1,160}?)\s*==")
+RAW_MARK_HIGHLIGHT_PATTERN = re.compile(r"<mark\b[^>]*>\s*(?P<body>[^<>\n]{1,160}?)\s*</mark>", re.IGNORECASE)
+FLOWCHART_RELATION_LABEL_PATTERN = re.compile(r"--[^|\n]*\|(?P<label>[^|\n]{1,24})\|[^-\n]*--?>|-->\s*\|(?P<label2>[^|\n]{1,24})\|")
+KNOWLEDGE_GRAPH_RELATION_LABELS = {
+    "前置",
+    "包含",
+    "推理",
+    "应用",
+    "说明",
+    "训练",
+    "对比",
+    "相似",
+    "prerequisite",
+    "contains",
+    "reasoning",
+    "application",
+    "explanation",
+    "training",
+    "contrast",
+    "similar",
+}
 MATH_MARKDOWN_BOUNDARY_PATTERN = re.compile(
     r"^(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
     r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|```)",
@@ -129,6 +173,212 @@ def _looks_like_mermaid_garbage(line: str) -> bool:
     return any(token in stripped for token in ("-->", "[", "]", "classDef", "subgraph"))
 
 
+def _sanitize_mermaid_label(value: str, *, max_length: int = 44) -> str:
+    cleaned = str(value or "").strip().strip("\"'")
+    cleaned = cleaned.replace("\\n", " ")
+    cleaned = re.sub(r"[`$#]+", " ", cleaned)
+    cleaned = re.sub(r"[{}]+", " ", cleaned)
+    cleaned = cleaned.replace("|", " ")
+    cleaned = cleaned.replace(">", "大于").replace("<", "小于").replace("=", "等于")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned[:max_length].strip() or "节点").rstrip("：:，,。；; ")
+
+
+def _normalize_flowchart_control_line(line: str) -> str:
+    if re.match(r"^\s*classDef\b", line, re.IGNORECASE):
+        return line
+    match = FLOWCHART_CLASS_LINE_PATTERN.match(line)
+    if match is None:
+        return line
+
+    prefix = match.group(1) or ""
+    body = (match.group(2) or "").strip()
+    suffix = match.group(3) or ""
+    parts = [part for part in re.split(r"\s+", body) if part]
+    if len(parts) < 2:
+        return line
+
+    class_name = parts.pop()
+    node_list = ",".join(node_id.strip() for node_id in " ".join(parts).split(",") if node_id.strip())
+    if not node_list or not class_name:
+        return line
+    return f"{prefix}{node_list} {class_name}{suffix}"
+
+
+def _quote_flowchart_labels(line: str) -> str:
+    if re.match(r"^\s*(?:classDef|class|style|linkStyle|click)\b", line, re.IGNORECASE):
+        return _normalize_flowchart_control_line(line)
+
+    def replace_node_label(match: re.Match[str]) -> str:
+        label = _sanitize_mermaid_label(match.group(3)).replace('"', "'")
+        return f'{match.group(1)}{match.group(2)}["{label}"]'
+
+    def replace_edge_label(match: re.Match[str]) -> str:
+        label = _sanitize_mermaid_label(match.group(1), max_length=32).replace('"', "'")
+        return f"|{label}|"
+
+    quoted = FLOWCHART_NODE_LABEL_PATTERN.sub(replace_node_label, line)
+    return FLOWCHART_EDGE_LABEL_PATTERN.sub(replace_edge_label, quoted)
+
+
+def _split_inline_flowchart_header(line: str) -> list[str]:
+    match = FLOWCHART_INLINE_HEADER_PATTERN.match(line)
+    if match is None:
+        return [line]
+    header = match.group(1).strip()
+    body = match.group(2).strip()
+    if not header or not body:
+        return [line]
+    return [header, body]
+
+
+def _normalize_flowchart_line(line: str, index: int) -> str:
+    quoted = _quote_flowchart_labels(line)
+    stripped = quoted.strip()
+    if not stripped:
+        return quoted
+    if (
+        FLOWCHART_CONTROL_LINE_PATTERN.search(stripped)
+        or FLOWCHART_EDGE_LINE_PATTERN.search(stripped)
+        or FLOWCHART_NODE_LINE_PATTERN.search(stripped)
+    ):
+        return quoted
+    label = _sanitize_mermaid_label(stripped).replace('"', "'")
+    return f'ATM_AUTO_{index}["{label}"]'
+
+
+def _sanitize_flowchart_source(source: str) -> str:
+    lines: list[str] = []
+    for raw_line in str(source or "").splitlines():
+        if not raw_line.strip():
+            continue
+        lines.extend(_split_inline_flowchart_header(raw_line.rstrip()))
+    if not lines:
+        return "flowchart TD"
+    if not FLOWCHART_HEADER_PATTERN.match(lines[0].strip()):
+        lines.insert(0, "flowchart TD")
+    return "\n".join(_normalize_flowchart_line(line, index) for index, line in enumerate(lines)).strip()
+
+
+def _sanitize_mindmap_label(value: str, *, max_length: int = 28) -> str:
+    cleaned = re.sub(
+        r"\b(?:mindmap|root|graph|flowchart|subgraph|classDef|class|style|click|section|title|LR|RL|TB|BT)\b",
+        " ",
+        str(value or ""),
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"[`$#<>{}\[\]]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:max_length].rstrip("：:，,。；; ")
+
+
+def _extract_mindmap_labels(source: str, *, limit: int = 6) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def push(value: str) -> None:
+        cleaned = _sanitize_mindmap_label(value)
+        if not cleaned:
+            return
+        key = cleaned.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        labels.append(cleaned)
+
+    for match in re.finditer(r"root\(\((.+?)\)\)", source, re.IGNORECASE):
+        push(match.group(1))
+    for match in re.finditer(r"\[([^\]]+)\]", source):
+        push(match.group(1))
+
+    for raw_line in str(source or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.lower() == "mindmap" or line.startswith("```"):
+            continue
+        root_match = MINDMAP_ROOT_PATTERN.match(line)
+        if root_match is not None:
+            push(root_match.group(1))
+            continue
+        if MINDMAP_MIXED_SYNTAX_PATTERN.search(line):
+            arrow_labels = re.findall(r"\[([^\]]+)\]", line)
+            if arrow_labels:
+                for item in arrow_labels:
+                    push(item)
+            else:
+                push(line.split("-->")[-1].split("==>")[-1])
+            continue
+        push(re.sub(r"^[-*+]\s+", "", line))
+        if len(labels) >= limit:
+            break
+    return labels[:limit]
+
+
+def _build_simplified_mindmap(source: str) -> str:
+    labels = _extract_mindmap_labels(source, limit=6)
+    root = labels[0] if labels else "核心主题"
+    lines = ["mindmap", f"  root(({root}))"]
+    for label in labels[1:]:
+        lines.append(f"    {label}")
+    return "\n".join(lines)
+
+
+def _sanitize_mindmap_source(source: str) -> str:
+    raw_lines = [line.rstrip() for line in str(source or "").splitlines() if line.strip()]
+    if not raw_lines or not raw_lines[0].strip().lower().startswith("mindmap"):
+        return _build_simplified_mindmap(source)
+    body_lines = raw_lines[1:]
+    if any(MINDMAP_MIXED_SYNTAX_PATTERN.search(line) for line in body_lines):
+        return _build_simplified_mindmap(source)
+
+    output = ["mindmap"]
+    has_root = False
+    child_count = 0
+    for raw_line in body_lines:
+        expanded = raw_line.replace("\t", "  ")
+        indent_chars = len(re.match(r"^\s*", expanded).group(0))
+        indent_level = max(1, indent_chars // 2)
+        stripped = re.sub(r"^[-*+]\s+", "", expanded.strip())
+        if not stripped:
+            continue
+        root_match = MINDMAP_ROOT_PATTERN.match(stripped)
+        if root_match is not None:
+            root_label = _sanitize_mindmap_label(root_match.group(1))
+            if root_label:
+                output.append(f"  root(({root_label}))")
+                has_root = True
+            continue
+        label = _sanitize_mindmap_label(stripped)
+        if not label:
+            continue
+        if not has_root and indent_level <= 1:
+            output.append(f"  root(({label}))")
+            has_root = True
+            continue
+        output.append(f"{'  ' * max(2, indent_level)}{label}")
+        child_count += 1
+        if child_count >= 8:
+            break
+    if not has_root:
+        return _build_simplified_mindmap(source)
+    return "\n".join(output)
+
+
+def sanitize_mermaid_source(source: str) -> str:
+    """Normalize Mermaid body text without changing surrounding Markdown."""
+
+    normalized = str(source or "").replace("\ufeff", "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    lines = [line.rstrip() for line in normalized.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    first_line = lines[0].strip()
+    joined = "\n".join(lines)
+    if first_line.lower().startswith("mindmap"):
+        return _sanitize_mindmap_source(joined)
+    if FLOWCHART_HEADER_PATTERN.match(first_line) or any(token in joined for token in ("-->", "==>")):
+        return _sanitize_flowchart_source(joined)
+    return joined
+
+
 def _is_indented_context_echo(line: str) -> bool:
     if not line.startswith(("    ", "\t")):
         return False
@@ -160,13 +410,11 @@ def _append_mermaid_block(output_lines: list[str], block_lines: list[str]) -> No
         body_lines.pop()
     if not body_lines:
         return
-    first_line = body_lines[0].strip()
-    if not MERMAID_KEYWORD_PATTERN.match(first_line) and any(
-        token in "\n".join(body_lines) for token in ("-->", "==>")
-    ):
-        body_lines.insert(0, "flowchart TD")
+    body = sanitize_mermaid_source("\n".join(body_lines))
+    if not body.strip():
+        return
     output_lines.append("```mermaid")
-    output_lines.extend(body_lines)
+    output_lines.extend(body.splitlines())
     output_lines.append("```")
 
 
@@ -592,14 +840,63 @@ def _unescaped_single_dollar_positions(line: str) -> list[int]:
     return positions
 
 
+def _inline_math_body_has_math_signal(body: str) -> bool:
+    trimmed = str(body or "").strip()
+    return bool(
+        re.search(
+            r"\\(?:frac|dfrac|tfrac|lim|sum|prod|int|sqrt|left|right|to|infty|text|cdot|times|leq?|geq?|neq|approx|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|omega)\b",
+            trimmed,
+        )
+        or re.search(r"[_^{}∞∑∫√≤≥≈≠]|[A-Za-z0-9]\s*[=+\-*/<>]\s*[A-Za-z0-9\\]", trimmed)
+    )
+
+
 def _inline_math_body_is_unsafe(body: str) -> bool:
+    trimmed = str(body or "").strip()
+    if not trimmed:
+        return True
     if "\n" in body:
         return True
-    if len(body) > 240:
+    if len(trimmed) > 800 and not _inline_math_body_has_math_signal(trimmed):
         return True
     if INLINE_MATH_MARKDOWN_PATTERN.search(body):
         return True
     return any(marker in body for marker in ("```", "`", "**", "[!", "<div", "</", "<table"))
+
+
+def _restore_escaped_inline_math_spans(markdown: str) -> str:
+    r"""Recover likely math spans previously over-escaped as ``\$...\$``."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+
+    def replace(match: re.Match[str]) -> str:
+        body = str(match.group(1) or "").strip()
+        if not body or not _inline_math_body_has_math_signal(body) or _inline_math_body_is_unsafe(body):
+            return match.group(0)
+        return f"${body}$"
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append(_normalize_math_fence_line(line))
+            continue
+        if in_math:
+            fixed.append(line)
+            continue
+        fixed.append(re.sub(r"\\\$([^\n]*?)\\\$", replace, line))
+    return "\n".join(fixed)
 
 
 def _find_unsafe_inline_math_spans(markdown: str) -> list[str]:
@@ -850,6 +1147,58 @@ def _normalize_table_inline_math_pipes(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _replace_outside_inline_code(line: str, pattern: re.Pattern[str], repl) -> str:
+    """Apply a regex replacement outside inline-code spans on one line."""
+
+    parts = re.split(r"(`+[^`]*`+)", str(line or ""))
+    for index, part in enumerate(parts):
+        if part.startswith("`") and part.endswith("`"):
+            continue
+        parts[index] = pattern.sub(repl, part)
+    return "".join(parts)
+
+
+def normalize_markdown_highlights(markdown: str) -> str:
+    """Normalize safe learner-facing highlights without enabling raw HTML.
+
+    ``<mark>...</mark>`` and ``==...==`` are both accepted as authoring
+    syntax. This pass only trims tiny inline highlights and leaves code/math
+    fences untouched; frontend rendering is responsible for displaying them.
+    """
+
+    lines = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if MATH_FENCE_PATTERN.match(line):
+            in_math = not in_math
+            fixed.append(line)
+            continue
+        if in_fence or in_math:
+            fixed.append(line)
+            continue
+
+        line = _replace_outside_inline_code(
+            line,
+            RAW_MARK_HIGHLIGHT_PATTERN,
+            lambda match: f"<mark>{match.group('body').strip()}</mark>",
+        )
+        line = _replace_outside_inline_code(
+            line,
+            DOUBLE_EQUALS_HIGHLIGHT_PATTERN,
+            lambda match: f"=={match.group('body').strip()}==",
+        )
+        fixed.append(line)
+    return "\n".join(fixed)
+
+
 def _normalize_list_embedded_headings(markdown: str) -> str:
     """Turn list items that accidentally contain Markdown headings back into text."""
 
@@ -890,10 +1239,12 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
     text = _repair_split_inline_code_math_literals(text)
     text = _repair_display_math_boundaries(text)
+    text = _restore_escaped_inline_math_spans(text)
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
     text = _trim_inline_math_padding(text)
     text = _normalize_table_inline_math_pipes(text)
+    text = normalize_markdown_highlights(text)
     text = _normalize_list_embedded_headings(text)
     text = _normalize_callout_blocks(text)
     if not text:
@@ -958,6 +1309,16 @@ def normalize_markdown_rendering(markdown: str) -> str:
             in_fence = True
             continue
 
+        if re.match(r"^```\s*[A-Za-z0-9_-]+\s*$", stripped):
+            fixed.append(line)
+            in_fence = True
+            continue
+
+        if stripped == "```":
+            fixed.append("```text")
+            in_fence = True
+            continue
+
         fixed.append(line)
 
     normalized = "\n".join(fixed)
@@ -988,6 +1349,219 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
     if _raw_mermaid_fence_count(text) != _parsed_mermaid_fence_count(text):
         issues.append("Mermaid 代码围栏未被 Markdown 解析为独立代码块。")
     return list(dict.fromkeys(issues))
+
+
+def find_markdown_presentation_issues(markdown: str) -> list[str]:
+    """Return rendering plus style-contract issues for student-facing docs."""
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    issues = list(find_markdown_rendering_issues(text))
+    issues.extend(_find_heading_structure_issues(text))
+    issues.extend(_find_emphasis_highlight_issues(text))
+    issues.extend(_find_table_shape_issues(text))
+    issues.extend(_find_code_fence_style_issues(text))
+    issues.extend(_find_mermaid_knowledge_graph_issues(text))
+    return list(dict.fromkeys(issue for issue in issues if issue))
+
+
+def summarize_markdown_presentation(markdown: str) -> dict[str, object]:
+    """Build a compact presentation-quality summary safe for manifests/traces."""
+
+    text = str(markdown or "")
+    issues = find_markdown_presentation_issues(text)
+    return {
+        "issue_count": len(issues),
+        "issues": issues[:20],
+        "heading_count": len(HEADER_PATTERN.findall(text)),
+        "callout_count": len(re.findall(r"(?m)^>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", text, re.IGNORECASE)),
+        "table_count": _count_gfm_tables(text),
+        "code_block_count": text.count("```") // 2,
+        "mermaid_block_count": _parsed_mermaid_fence_count(text),
+        "highlight_count": len(DOUBLE_EQUALS_HIGHLIGHT_PATTERN.findall(text)) + len(RAW_MARK_HIGHLIGHT_PATTERN.findall(text)),
+    }
+
+
+def validate_single_file_html(html: str) -> list[str]:
+    """Check an interactive sidecar HTML document without executing it."""
+
+    text = str(html or "").strip()
+    lower = text.lower()
+    issues: list[str] = []
+    if not lower.startswith("<!doctype html>"):
+        issues.append("HTML sidecar 缺少 <!doctype html>。")
+    for tag in ("<html", "<head", "<body"):
+        if tag not in lower:
+            issues.append(f"HTML sidecar 缺少 {tag}> 结构。")
+    for tag in ("</html>", "</head>", "</body>"):
+        if tag not in lower:
+            issues.append(f"HTML sidecar 缺少 {tag}。")
+    if re.search(r"<script[^>]+src\s*=", text, re.IGNORECASE):
+        issues.append("HTML sidecar 包含外部脚本引用。")
+    if re.search(r"<link[^>]+href\s*=\s*['\"]https?://", text, re.IGNORECASE):
+        issues.append("HTML sidecar 包含外部样式、字体或资源引用。")
+    if re.search(r"\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage)\s*\(", text):
+        issues.append("HTML sidecar 包含不允许的联网或持久化 API。")
+    return list(dict.fromkeys(issues))
+
+
+def _find_heading_structure_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    in_fence = False
+    previous_level = 0
+    first_heading_seen = False
+    for raw_line in markdown.split("\n"):
+        stripped = raw_line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*$", raw_line)
+        if match is None:
+            continue
+        level = len(match.group(1))
+        title = KNOWLEDGE_ANCHOR_PATTERN.sub("", match.group(2)).strip()
+        if not first_heading_seen:
+            first_heading_seen = True
+            if level != 1:
+                issues.append("Markdown 首个标题不是一级标题。")
+        if previous_level and level > previous_level + 1:
+            issues.append("Markdown 标题层级存在跳级。")
+        if len(title) > 80:
+            issues.append("Markdown 标题过长，影响目录和阅读。")
+        previous_level = level
+    return issues
+
+
+def _plain_text_outside_fences(markdown: str) -> str:
+    lines: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in str(markdown or "").split("\n"):
+        stripped = raw_line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if MATH_FENCE_PATTERN.match(raw_line):
+            in_math = not in_math
+            continue
+        if in_fence or in_math:
+            continue
+        lines.append(raw_line)
+    return "\n".join(lines)
+
+
+def _find_emphasis_highlight_issues(markdown: str) -> list[str]:
+    text = _plain_text_outside_fences(markdown)
+    issues: list[str] = []
+    if len(re.findall(r"(?<!\\)\*\*", text)) % 2 != 0:
+        issues.append("Markdown 加粗标记 ** 未成对闭合。")
+    if len(re.findall(r"(?<!\\)==", text)) % 2 != 0:
+        issues.append("Markdown 高亮标记 == 未成对闭合。")
+    if len(RAW_MARK_OPEN_PATTERN.findall(text)) != len(RAW_MARK_CLOSE_PATTERN.findall(text)):
+        issues.append("Markdown <mark> 高亮标签未成对闭合。")
+    if RAW_HTML_TAG_PATTERN.search(text):
+        issues.append("Markdown 正文包含不受控 HTML 标签。")
+    highlight_count = len(DOUBLE_EQUALS_HIGHLIGHT_PATTERN.findall(text)) + len(RAW_MARK_HIGHLIGHT_PATTERN.findall(text))
+    paragraph_count = max(1, len([line for line in text.split("\n") if line.strip() and not line.lstrip().startswith(("#", ">", "|"))]))
+    if highlight_count > max(12, paragraph_count):
+        issues.append("Markdown 高亮过多，重点可能失效。")
+    return issues
+
+
+def _find_table_shape_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    lines = str(markdown or "").split("\n")
+    in_fence = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            index += 1
+            continue
+        if in_fence or not (_is_probable_table_row(line) and index + 1 < len(lines) and _is_table_separator_line(lines[index + 1])):
+            index += 1
+            continue
+        expected = len(_split_markdown_table_cells(line))
+        if expected > 5:
+            issues.append("Markdown 表格列数过多，建议控制在 3 到 5 列。")
+        cursor = index + 2
+        while cursor < len(lines) and _is_probable_table_row(lines[cursor]):
+            if len(_split_markdown_table_cells(lines[cursor])) != expected:
+                issues.append("Markdown 表格行列数不一致。")
+                break
+            cursor += 1
+        index = cursor
+    return issues
+
+
+def _find_code_fence_style_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    in_fence = False
+    for raw_line in str(markdown or "").split("\n"):
+        stripped = raw_line.strip()
+        if not stripped.startswith("```"):
+            continue
+        if not in_fence:
+            language = stripped[3:].strip()
+            if not language:
+                issues.append("Markdown 代码块缺少语言标记。")
+            in_fence = True
+        else:
+            in_fence = False
+    return issues
+
+
+def _iter_mermaid_blocks(markdown: str) -> list[str]:
+    blocks: list[str] = []
+    lines = str(markdown or "").split("\n")
+    in_mermaid = False
+    body: list[str] = []
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not in_mermaid and re.match(r"^```\s*mermaid\s*$", stripped, re.IGNORECASE):
+            in_mermaid = True
+            body = []
+            continue
+        if in_mermaid and stripped.startswith("```"):
+            blocks.append("\n".join(body))
+            in_mermaid = False
+            continue
+        if in_mermaid:
+            body.append(raw_line)
+    return blocks
+
+
+def _find_mermaid_knowledge_graph_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    for block in _iter_mermaid_blocks(markdown):
+        first_line = next((line.strip() for line in block.split("\n") if line.strip()), "")
+        if first_line and not MERMAID_INFO_PATTERN.match(first_line):
+            issues.append("Mermaid 代码块缺少合法图类型开头。")
+        if "知识图谱" not in block and "K01" not in block:
+            continue
+        for match in FLOWCHART_RELATION_LABEL_PATTERN.finditer(block):
+            label = (match.group("label") or match.group("label2") or "").strip()
+            if label and label not in KNOWLEDGE_GRAPH_RELATION_LABELS:
+                issues.append("Mermaid 知识图谱关系标签不在允许的 8 类关系中。")
+                break
+    return issues
+
+
+def _count_gfm_tables(markdown: str) -> int:
+    lines = str(markdown or "").split("\n")
+    count = 0
+    in_fence = False
+    for index, line in enumerate(lines[:-1]):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and _is_probable_table_row(line) and _is_table_separator_line(lines[index + 1]):
+            count += 1
+    return count
 
 
 def _display_math_contains_markdown(markdown: str) -> bool:
@@ -1210,10 +1784,15 @@ __all__ = [
     "extract_image_placeholders",
     "extract_markdown_headers",
     "extract_mermaid_placeholders",
+    "find_markdown_presentation_issues",
     "find_markdown_rendering_issues",
+    "normalize_markdown_highlights",
     "normalize_markdown_rendering",
     "normalize_source_details",
     "normalize_mermaid_blocks",
+    "sanitize_mermaid_source",
+    "summarize_markdown_presentation",
+    "validate_single_file_html",
     "prepend_table_of_contents",
     "slugify_markdown_anchor",
 ]

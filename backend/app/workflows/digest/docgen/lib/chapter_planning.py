@@ -22,6 +22,8 @@ from app.workflows.digest.docgen.lib.models import (
     LockedChapterTitle,
     SourceAffinityByChapter,
     clean_string_list,
+    clean_content_role_targets,
+    clean_example_coverage_plan,
 )
 from app.workflows.digest.docgen.lib.textbook_style import build_textbook_heading, choose_heading_focus
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
@@ -77,6 +79,65 @@ def _briefs_by_index(
     briefs: Sequence[ChapterExecutionBrief],
 ) -> dict[int, ChapterExecutionBrief]:
     return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
+
+
+def _fallback_role_targets(
+    *,
+    required: list[str],
+    concept_targets: list[str],
+    example_targets: list[str],
+    pitfall_targets: list[str],
+    is_sprint: bool,
+) -> dict[str, list[str]]:
+    roles: dict[str, list[str]] = {}
+    core = clean_string_list([*concept_targets, *required], limit=10)
+    if core:
+        roles["core_knowledge"] = core
+    method = clean_string_list([*example_targets, *required], limit=8)
+    if method:
+        roles["method_demo"] = method
+    practice = clean_string_list([*example_targets, *required], limit=8)
+    if practice:
+        roles["practice_assessment"] = practice
+    support = clean_string_list(pitfall_targets, limit=6)
+    if support:
+        roles["explanation_support"] = support
+    if not is_sprint and core:
+        roles["principle_reasoning"] = core[:6]
+        roles["application_extension"] = method[:6] or core[:4]
+    return roles
+
+
+def _example_coverage_plan(
+    *,
+    brief: ChapterExecutionBrief,
+    required: list[str],
+    mode_profile,
+) -> list[dict[str, Any]]:
+    plan = clean_example_coverage_plan(brief.example_coverage_plan, limit=16)
+    if plan:
+        return plan
+    targets = clean_string_list(
+        [
+            *brief.example_targets,
+            *brief.concept_targets,
+            *required,
+        ],
+        limit=8,
+    )
+    min_examples = 2 if mode_profile.is_sprint else 1
+    return clean_example_coverage_plan(
+        [
+            {
+                "target": target,
+                "example_type": "worked_example_or_case",
+                "purpose": "速成课模式用例题/任务形成抓手；系统课用例题/案例覆盖知识点。",
+                "min_examples": min_examples,
+            }
+            for target in targets
+        ],
+        limit=12,
+    )
 
 
 def compose_seed_plan_and_backbone_agenda(
@@ -260,12 +321,28 @@ def assemble_chapter_generation_plan(
         visual_terms = " ".join([locked.enhanced_title, *seed.required_elements, *brief.concept_targets])
         if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")):
             placeholder_requests.append({"kind": "mermaid", "description": f"{locked.enhanced_title} 的结构关系图"})
+        content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
+        if not content_role_targets:
+            content_role_targets = _fallback_role_targets(
+                required=list(seed.required_elements),
+                concept_targets=clean_string_list([*brief.concept_targets, *seed.required_elements], limit=8),
+                example_targets=clean_string_list(brief.example_targets, limit=4),
+                pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
+                is_sprint=mode_profile.is_sprint,
+            )
+        example_coverage_plan = _example_coverage_plan(
+            brief=brief,
+            required=list(seed.required_elements),
+            mode_profile=mode_profile,
+        )
         task = ChapterGenerationTask(
             chapter_index=chapter_index,
             confirmed_title=confirmed_title,
             enhanced_title=locked.enhanced_title or confirmed_title,
             objective=seed.chapter_goal or str(chapter.get("objective") or ""),
             teaching_outline=clean_string_list(brief.teaching_outline, limit=3),
+            content_role_targets=content_role_targets,
+            example_coverage_plan=example_coverage_plan,
             content_points=clean_string_list(seed.required_elements),
             concept_targets=clean_string_list([*brief.concept_targets, *seed.required_elements], limit=8),
             definition_targets=clean_string_list(brief.definition_targets, limit=4),
@@ -286,9 +363,21 @@ def assemble_chapter_generation_plan(
             uncertainty_policy=seed.uncertainty_policy,
             allowed_assets=clean_string_list([str(item.get("kind") or "") for item in placeholder_requests if isinstance(item, dict)]),
             placeholder_requests=placeholder_requests,
-            practice_seed_policy={"style": mode_profile.practice_style},
-            coverage_threshold=mode_profile.coverage_threshold,
-            evidence_support_threshold=mode_profile.evidence_support_threshold,
+            practice_seed_policy={
+                "style": mode_profile.practice_style,
+                "example_ratio": intent_profile.example_ratio,
+                "practice_ratio": intent_profile.practice_ratio,
+                "policy": intent_profile.example_practice_policy,
+                "content_mix_policy": dict(mode_profile.content_mix_policy),
+                "example_density_policy": dict(mode_profile.example_density_policy),
+                "coverage_policy": list(mode_profile.coverage_policy),
+                "example_coverage_plan": example_coverage_plan,
+            },
+            coverage_threshold=max(mode_profile.coverage_threshold, round(0.55 + intent_profile.review_strictness * 0.25, 3)),
+            evidence_support_threshold=max(
+                mode_profile.evidence_support_threshold,
+                round(0.42 + intent_profile.evidence_strictness * 0.28, 3),
+            ),
             repetition_tolerance=mode_profile.repetition_tolerance,
             patch_tolerance=mode_profile.patch_tolerance,
             min_word_count=min_words,
@@ -348,7 +437,24 @@ def build_fallback_chapter_markdown(
     digest_mode: str,
     reason: str,
 ) -> str:
-    title = task.enhanced_title or task.confirmed_title or f"第 {task.chapter_index} 章"
+    title = resolve_effective_chapter_title(
+        {
+            "chapter_index": task.chapter_index,
+            "title": task.enhanced_title,
+            "resolved_title": task.enhanced_title,
+            "objective": task.objective,
+            "required_elements": [
+                *task.content_points,
+                *task.required_elements,
+                *task.concept_targets,
+                *task.formula_targets,
+                *task.example_targets,
+                *task.pitfall_targets,
+            ],
+        },
+        chapter_index=task.chapter_index,
+        fallback_title=task.confirmed_title,
+    )
     points = task.content_points or task.concept_targets or [task.objective or title]
     mode_profile = get_docgen_mode_profile(digest_mode)
     structure_heading = _fallback_heading(
@@ -393,14 +499,14 @@ def build_fallback_chapter_markdown(
             "",
             f"### {example_focus}的基础练习",
             "",
-            f"**题目**：围绕《{title}》中的“{example_focus}”设计一个基础任务，判断应该使用哪个定义、结论或方法。",
+            f"**任务**：围绕《{title}》中的“{example_focus}”设计一个基础任务，判断应该使用哪个定义、结论、方法或操作步骤。",
             "",
             "**解析**：",
             "1. 先识别任务给出的对象、条件和要求。",
             "2. 再匹配本章对应的定义、结论或判定方法。",
             "3. 最后检查结果是否满足原始条件。",
             "",
-            "**易错点**：只记结论、不看适用条件，容易把相似任务混用。",
+            "**易错点**：只记结论、不看适用条件，容易把相似任务或场景混用。",
         ]
     else:
         lines = [

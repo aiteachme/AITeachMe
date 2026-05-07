@@ -1,7 +1,0 @@
-{
-  "files.exclude": {
-    "**/aiteachme_backend.egg-info": true,
-    "**/__pycache__": true,
-    // "**/": true,
-  }
-}

@@ -165,6 +165,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_group="统一模型接入",
                 ui_order=25,
             ),
+            setting(
+                "llm.concurrency_limit",
+                "全局 LLM 并发上限",
+                description="限制本进程同时发起的文本、结构化、流式、工具调用、文生图、embedding 和 rerank 模型请求数。可先按上游 RPM/TPM 额度保守设置，触发 429 时下调。",
+                ui_group="统一模型接入",
+                ui_order=30,
+            ),
         ),
     ),
     SettingsCatalogSection(
@@ -310,6 +317,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=70,
             ),
             setting(
+                "planner.history_turns",
+                "规划历史轮数",
+                description="Planner 调整方案时带入的最近对话轮数，用于理解连续修改要求。",
+                ui_group="学习规划",
+                ui_order=75,
+            ),
+            setting(
                 "planner.sprint.min_chapters",
                 "速成课最少章节",
                 ui_group="速成课模式",
@@ -387,14 +401,14 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "knowledge_graph.prefetch_concurrency",
                 "图谱预抽取并发",
-                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 2 路，并会保留全局 LLM 并发余量。",
+                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 2 路，并受全局 LLM 并发限制约束。",
                 ui_group="图谱联动",
                 ui_order=150,
             ),
             setting(
                 "knowledge_graph.max_parallel_extractions",
                 "图谱最大抽取并发",
-                description="发布后正式图谱同步的最大章节/子章节抽取并发；默认 16 路，并会为出题等交互任务预留一小段全局 LLM 并发余量。",
+                description="发布后正式图谱同步的最大章节/子章节抽取并发；默认 16 路，并受全局 LLM 并发限制约束。",
                 ui_group="图谱联动",
                 ui_order=155,
             ),

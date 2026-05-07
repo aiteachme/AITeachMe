@@ -1,6 +1,7 @@
 import type { MutableRefObject } from "react";
 import { Loader2 } from "lucide-react";
 
+import type { ChatContextItem } from "../../../api/generated/model";
 import type { ChatSessionMessage } from "../../../hooks/useChatSession";
 import { ChatTranscript } from "../../chat/ChatTranscript";
 import { AiConversationDraftHome } from "./AiConversationDraftHome";
@@ -13,7 +14,7 @@ interface AiConversationMessageViewProps {
   historyLoaded: boolean;
   isStreaming: boolean;
   emptyAnimationKey: number;
-  onOpenCitation: (chunkId: number) => void;
+  onOpenCitation: (context: ChatContextItem) => void;
 }
 
 export function AiConversationMessageView({

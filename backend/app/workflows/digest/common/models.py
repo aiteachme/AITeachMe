@@ -17,6 +17,7 @@ class MaterialStats(BaseModel):
     formula_density: float = 0.0
     exercise_count: int = 0
     exercise_density: float = 0.0
+    concept_density: float = 0.0
     image_count: int = 0
     table_count: int = 0
     ocr_noise_ratio: float = 0.0
@@ -32,6 +33,11 @@ class MaterialProfile(BaseModel):
     stats: MaterialStats = Field(default_factory=MaterialStats)
     discipline: str = ""
     difficulty_level: str = ""
+    knowledge_domain_hints: list[str] = Field(default_factory=list)
+    material_forms: list[str] = Field(default_factory=list)
+    assessment_signals: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    evidence: dict[str, str] = Field(default_factory=dict)
 
 
 class DigestMode(str, Enum):
@@ -142,7 +148,7 @@ class TopicAnchor(BaseModel):
     """Knowledge-graph topic anchor produced during graph finalization."""
 
     topic_name: str
-    knowledge_unit_type: str = "concept"
+    knowledge_unit_type: str = "core_knowledge"
     confidence: float = 1.0
     chunk_uids: list[str] = Field(default_factory=list)
 
@@ -172,6 +178,11 @@ class CourseProfile(BaseModel):
     has_heavy_questions: bool = False
     has_heavy_diagrams: bool = False
     teaching_style_hint: str = ""  # guidance for writer prompt
+    knowledge_domain_hints: list[str] = Field(default_factory=list)
+    material_forms: list[str] = Field(default_factory=list)
+    assessment_signals: list[str] = Field(default_factory=list)
+    profile_confidence: float = 0.0
+    profile_evidence: dict[str, str] = Field(default_factory=dict)
 
     def build_context_string(self) -> str:
         """Build a concise context string for LLM prompts."""

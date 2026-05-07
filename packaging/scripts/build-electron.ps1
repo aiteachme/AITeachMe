@@ -3,7 +3,7 @@ param(
     [ValidateSet("local", "remote")]
     [string]$Flavor,
     [switch]$SkipInstall,
-    [string]$BackendPort = "19020",
+    [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
@@ -82,9 +82,13 @@ function Resolve-PythonCommand {
 
     $conda = Get-Command "conda.exe", "conda.cmd", "conda" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -ne $conda) {
+        $condaEnvName = [Environment]::GetEnvironmentVariable("AITEACHME_CONDA_ENV", "Process")
+        if ([string]::IsNullOrWhiteSpace($condaEnvName)) {
+            $condaEnvName = "aiteachme"
+        }
         return @{
             File = $conda.Source
-            PrefixArgs = @("run", "--no-capture-output", "-n", "atm", "python")
+            PrefixArgs = @("run", "--no-capture-output", "-n", $condaEnvName, "python")
         }
     }
 
@@ -298,13 +302,22 @@ if ($Flavor -eq "remote") {
     }
 }
 
-$apiBaseUrl = if ($Flavor -eq "local") { "http://127.0.0.1:$BackendPort" } else { $ApiUrl.TrimEnd("/") }
+$normalizedBackendPort = if ($null -eq $BackendPort) { "" } else { $BackendPort.Trim() }
+$apiBaseUrl = if ($Flavor -eq "local") {
+    if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) { "" } else { "http://127.0.0.1:$normalizedBackendPort" }
+} else {
+    $ApiUrl.TrimEnd("/")
+}
 
 $python = Resolve-PythonCommand $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
 Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
 
 . (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+. (Join-Path $PSScriptRoot "windows-signing-common.ps1")
+$windowsSigning = Get-AITeachMeWindowsSigningState
+Assert-AITeachMeWindowsSigningReady -Signing $windowsSigning
+
 $bundledEnvConfigPath = Initialize-BundledEnvConfig `
     -RepoRoot $repoRoot `
     -ImportBundledEnv:($ImportBundledEnv -and $Flavor -eq "local") `
@@ -332,8 +345,14 @@ Write-Host "Product: $productName"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
 Write-Host "API base URL: $apiBaseUrl"
+Write-AITeachMeWindowsSigningSummary -Signing $windowsSigning
 if ($Flavor -eq "local") {
-    Write-Host "Backend port: $BackendPort"
+    if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) {
+        Write-Host "Backend port: auto"
+    }
+    else {
+        Write-Host "Backend port: $normalizedBackendPort"
+    }
     if ($bundledEnvConfigPath) {
         Write-Host "Bundled env: $bundledEnvConfigPath"
         Write-Host "Release suffix: $releaseSuffix"
@@ -361,6 +380,12 @@ if ($Flavor -eq "local") {
     if (-not (Test-Path (Join-Path $backendDistDir "aiteachme-backend.exe"))) {
         throw "Backend executable was not produced: $backendDistDir"
     }
+
+    Invoke-AITeachMeWindowsSignFile `
+        -Signing $windowsSigning `
+        -Path (Join-Path $backendDistDir "aiteachme-backend.exe") `
+        -Description "Electron backend sidecar" `
+        -SkipIfSigned
 }
 
 Write-Step "Write Electron runtime build config"
@@ -368,7 +393,7 @@ Write-ElectronBuildConfig `
     -FrontendDir $frontendDir `
     -BackendMode $Flavor `
     -ApiBaseUrl $apiBaseUrl `
-    -BackendPort $BackendPort `
+    -BackendPort $normalizedBackendPort `
     -AppId $appId `
     -ProductName $productName
 
@@ -393,7 +418,7 @@ try {
     Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
 
     Write-Step "Build frontend"
-    Invoke-External -File $npm -Arguments @("run", "build") -WorkingDirectory $frontendDir
+    Invoke-External -File $npm -Arguments @("run", "build:desktop") -WorkingDirectory $frontendDir
 
     Write-Step "Build Electron installer"
     Stop-LocalBuildToolProcesses -RepoRoot $repoRoot
@@ -428,7 +453,13 @@ $installerOutput = Join-Path $finalReleaseDir "AiTeachMe-v$projectVersion-instal
 $installerArtifact = Join-Path $electronArtifactDir $installer.Name
 
 Copy-Item -LiteralPath $installer.FullName -Destination $installerArtifact -Force
+Invoke-AITeachMeWindowsSignFile `
+    -Signing $windowsSigning `
+    -Path $installerArtifact `
+    -Description "Electron installer" `
+    -SkipIfSigned
 Copy-Item -LiteralPath $installerArtifact -Destination $installerOutput -Force
+Write-AITeachMeSignatureStatus -Path $installerOutput -Description "Electron release installer"
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green

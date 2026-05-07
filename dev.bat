@@ -65,8 +65,6 @@ if "%CONDA_CMD%"=="" (
 rem 3) Common fallback locations
 if "%CONDA_CMD%"=="" if exist "%USERPROFILE%\Anaconda3\Scripts\conda.exe" set "CONDA_CMD=%USERPROFILE%\Anaconda3\Scripts\conda.exe"
 if "%CONDA_CMD%"=="" if exist "%USERPROFILE%\Miniconda3\Scripts\conda.exe" set "CONDA_CMD=%USERPROFILE%\Miniconda3\Scripts\conda.exe"
-if "%CONDA_CMD%"=="" if exist "D:\Env\Anaconda3\Scripts\conda.exe" set "CONDA_CMD=D:\Env\Anaconda3\Scripts\conda.exe"
-if "%CONDA_CMD%"=="" if exist "D:\Anaconda\Scripts\conda.exe" set "CONDA_CMD=D:\Anaconda\Scripts\conda.exe"
 if "%CONDA_CMD%"=="" if exist "C:\Anaconda\Scripts\conda.exe" set "CONDA_CMD=C:\Anaconda\Scripts\conda.exe"
 if "%CONDA_CMD%"=="" if exist "C:\ProgramData\Anaconda3\Scripts\conda.exe" set "CONDA_CMD=C:\ProgramData\Anaconda3\Scripts\conda.exe"
 if "%CONDA_CMD%"=="" if exist "C:\ProgramData\Miniconda3\Scripts\conda.exe" set "CONDA_CMD=C:\ProgramData\Miniconda3\Scripts\conda.exe"

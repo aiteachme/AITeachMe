@@ -15,6 +15,27 @@ from app.utils.time import is_at_or_before, utcnow
 _WEAK_THRESHOLD = 0.8
 _RECENT_EXAM_ITEM_LIMIT = 200
 
+_EXAM_MODE_LABELS = {
+    ExamMode.WEB_PRACTICE.value: "网页练习",
+    ExamMode.PAPER_EXAM.value: "整卷练习",
+}
+
+_QUESTION_TYPE_LABELS = {
+    "single_choice": "单选题",
+    "multiple_choice": "多选题",
+    "fill_blank": "填空题",
+    "short_answer": "简答题",
+    "calculation": "计算题",
+    "proof": "证明题",
+}
+
+_DIFFICULTY_LABELS = {
+    "easy": "基础巩固",
+    "medium": "标准训练",
+    "hard": "拔高突破",
+    "mixed": "混合训练",
+}
+
 
 def _parse_json_object(raw: str | None) -> dict[str, object]:
     if not raw:
@@ -141,13 +162,18 @@ def _build_notes(
     difficulty_focus: str,
 ) -> list[str]:
     notes = [
-        f"Weak KnowledgeUnits: {weak_knowledge_unit_count}",
-        f"Due reviews: {due_review_count}",
-        f"Recommended exam mode: {recommended_exam_mode}",
+        f"薄弱知识点：{weak_knowledge_unit_count} 个",
+        f"到期复习：{due_review_count} 个",
+        f"推荐练习模式：{_EXAM_MODE_LABELS.get(recommended_exam_mode, '网页练习')}",
     ]
     if recommended_question_types:
-        notes.append("Recommended question types: " + ", ".join(recommended_question_types))
-    notes.append(f"Difficulty focus: {difficulty_focus}")
+        notes.append(
+            "推荐题型：" + "、".join(
+                _QUESTION_TYPE_LABELS.get(question_type, "其他题型")
+                for question_type in recommended_question_types
+            )
+        )
+    notes.append(f"难度聚焦：{_DIFFICULTY_LABELS.get(difficulty_focus, '标准训练')}")
     return notes
 
 

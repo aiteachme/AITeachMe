@@ -6,7 +6,7 @@ import mimetypes
 from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
@@ -100,6 +100,7 @@ async def upload_user_files(
             kind="files.parse",
             course_id=registry_course,
             name=f"files.parse:{registry_course}",
+            dedupe_key=f"files.parse:{registry_course}:{':'.join(sorted(parse_file_ids))}",
         )
     return ok_response(data)
 
@@ -170,10 +171,6 @@ async def serve_user_file_asset(
     media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
 
     cs = get_content_store()
-    public_url = cs.public_url(storage_key)
-    if public_url:
-        return RedirectResponse(public_url)
-
     try:
         data = await cs.read_bytes(storage_key)
         return Response(content=data, media_type=media_type)

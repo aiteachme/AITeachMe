@@ -21,6 +21,7 @@ from app.models.course import Course
 from app.repositories.confirmed_plan_repo import (
     create_confirmed_plan,
     get_confirmed_plan,
+    next_confirmed_plan_version_no,
     update_confirmed_plan,
 )
 from app.repositories.chats_repo import (
@@ -31,6 +32,7 @@ from app.repositories.chats_repo import (
 )
 from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerPlanResponse,
@@ -92,10 +94,12 @@ def _file_ids(raw_files: list[RawFile]) -> list[str]:
 
 
 def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnResponse:
+    raw_plan = turn.get("plan_json")
     return BuildPlannerTurnResponse(
         id=turn.get("id"),
         role=str(turn.get("role") or ""),
         content=str(turn.get("content") or ""),
+        plan_json=dict(raw_plan) if isinstance(raw_plan, Mapping) and raw_plan else None,
         created_at=turn["created_at"],
     )
 
@@ -125,6 +129,10 @@ def _planner_selected_file_ids(session_item: ChatSession) -> list[str]:
     return result
 
 
+def _planner_model_override(session_item: ChatSession) -> str | None:
+    return normalize_runtime_model_override(_planner_meta(session_item).get("model_override"))
+
+
 def _planner_session_meta(
     *,
     session_id: str,
@@ -132,6 +140,7 @@ def _planner_session_meta(
     user_prompt: str,
     digest_mode: str,
     selected_file_ids: list[str],
+    model_override: str | None = None,
     latest_plan: dict[str, Any] | None = None,
     latest_summary: str = "",
     confirmed_plan_id: str | None = None,
@@ -143,6 +152,7 @@ def _planner_session_meta(
         "user_prompt": user_prompt,
         "digest_mode": digest_mode,
         "selected_file_ids": list(selected_file_ids),
+        "model_override": normalize_runtime_model_override(model_override),
         "latest_plan": dict(latest_plan or {}),
         "latest_summary": latest_summary,
         "confirmed_plan_id": confirmed_plan_id,
@@ -336,6 +346,7 @@ def _plan_response(
     confirmed_plan_id: str | None,
     status: str,
     plan: dict[str, Any],
+    model_override: str | None = None,
 ) -> BuildPlannerPlanResponse:
     return BuildPlannerPlanResponse(
         course_id=course_id,
@@ -348,6 +359,7 @@ def _plan_response(
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
+        model_override=normalize_runtime_model_override(model_override),
     )
 
 
@@ -380,6 +392,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
     course_id = str(record.get("course_id") or final_state.get("course_id") or "")
     session_id = str(record.get("id") or final_state.get("planner_session_id") or "")
     status = str(record.get("status") or "draft")
+    model_override = normalize_runtime_model_override(final_state.get("model_override") or record.get("model_override"))
     logger.info(
         "planner_response_from_state",
         planner_session_id=session_id,
@@ -394,6 +407,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
         title=str(record.get("title") or ""),
         status=status,
         revision=len(turns),
+        model_override=model_override,
         latest_plan=_plan_response(
             course_id=course_id,
             selected_file_ids=list(final_state.get("selected_file_ids") or []),
@@ -401,6 +415,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
             confirmed_plan_id=record.get("confirmed_plan_id"),
             status=status,
             plan=plan,
+            model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(turn) for turn in turns],
         runtime_stats=_runtime_stats_response(final_state),
@@ -418,12 +433,14 @@ def _planner_session_response(
     turns: list[ChatMessage],
 ) -> BuildPlannerSessionResponse:
     meta = _planner_meta(record)
+    model_override = _planner_model_override(record)
     return BuildPlannerSessionResponse(
         session_id=record.id,
         course_id=course_id,
         title=record.title,
         status=_planner_status(record),
         revision=len(turns),
+        model_override=model_override,
         latest_plan=_plan_response(
             course_id=course_id,
             selected_file_ids=selected_file_ids,
@@ -431,6 +448,7 @@ def _planner_session_response(
             confirmed_plan_id=meta.get("confirmed_plan_id"),
             status=_planner_status(record),
             plan=plan,
+            model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(_turn_snapshot(turn)) for turn in turns],
         runtime_stats=None,
@@ -511,6 +529,7 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
         "latest_plan_json": _planner_plan(record),
         "latest_summary": str(meta.get("latest_summary") or ""),
         "confirmed_plan_id": meta.get("confirmed_plan_id"),
+        "model_override": _planner_model_override(record),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
     }
@@ -560,6 +579,66 @@ def _build_docgen_history_brief(turns: list[ChatMessage]) -> str:
         if content:
             lines.append(f"{role}: {content}")
     return "\n".join(lines)
+
+
+def _recent_planner_turns(turns: list[ChatMessage], *, history_turns: int) -> list[ChatMessage]:
+    if history_turns <= 0:
+        return list(turns)
+
+    selected: list[ChatMessage] = []
+    user_turns = 0
+    for turn in reversed(turns):
+        selected.append(turn)
+        if turn.role == "user":
+            user_turns += 1
+        if user_turns >= history_turns:
+            break
+    return list(reversed(selected))
+
+
+def _planner_history_turns() -> int:
+    try:
+        return max(1, int(get_teaching_runtime_config().planner.history_turns or 10))
+    except Exception:
+        return 10
+
+
+def _build_planner_message_history(turns: list[ChatMessage]) -> list[str]:
+    lines: list[str] = []
+    recent_turns = _recent_planner_turns(turns, history_turns=_planner_history_turns())
+    for turn in recent_turns:
+        role = "用户" if turn.role == "user" else "规划器"
+        content = str(turn.content or "").strip()
+        if content:
+            lines.append(f"{role}: {content}")
+    return lines
+
+
+def _planner_plan_chapter_count(plan: Mapping[str, Any] | None) -> int:
+    if not plan:
+        return 0
+    chapters = plan.get("chapter_plan") or plan.get("chapters") or []
+    if isinstance(chapters, list):
+        return len(chapters)
+    return 0
+
+
+def _build_planner_context_stats(
+    *,
+    turns: list[ChatMessage],
+    message_history: list[str],
+    latest_plan: Mapping[str, Any] | None,
+    feedback_message: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    return {
+        "stored_turn_count": len(turns),
+        "prompt_message_count": len(message_history),
+        "history_turn_limit": _planner_history_turns(),
+        "latest_plan_chapter_count": _planner_plan_chapter_count(latest_plan),
+        "latest_feedback_chars": len(feedback_message or ""),
+        "user_prompt_chars": len(user_prompt or ""),
+    }
 
 
 def _build_planner_context_payload(
@@ -672,6 +751,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     user_prompt=user_prompt,
                     digest_mode=digest_mode,
                     selected_file_ids=selected_file_ids,
+                    model_override=state.get("model_override"),
                 ),
             )
             user_turn = _create_planner_message(
@@ -688,12 +768,20 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 workflow_file_count=len(workflow_file_ids),
                 selected_file_ids=selected_file_ids,
             )
+            message_history = _build_planner_message_history([user_turn])
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "user_prompt": user_prompt,
                 "digest_mode": digest_mode,
-                "message_history": [user_prompt],
+                "message_history": message_history,
+                "planner_context_stats": _build_planner_context_stats(
+                    turns=[user_turn],
+                    message_history=message_history,
+                    latest_plan=None,
+                    feedback_message="",
+                    user_prompt=user_prompt,
+                ),
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(user_turn)],
             }
@@ -725,6 +813,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 session,
                 record,
                 planner_status="planning",
+                model_override=normalize_runtime_model_override(state.get("model_override")),
                 confirmed_plan_id=None,
                 confirmed_plan=None,
             )
@@ -735,6 +824,8 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 content=feedback,
             )
             turns = _list_planner_turns(session, session_id=record.id, course_id=course_id, user_id=user_id)
+            message_history = _build_planner_message_history(turns)
+            latest_plan = _planner_plan(record)
             selected_file_ids = _planner_selected_file_ids(record)
             raw_files = list_raw_files_by_ids(session, course_id, selected_file_ids)
             workflow_files = _select_planner_workflow_files(raw_files)
@@ -742,13 +833,29 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             if selected_file_ids and not workflow_file_ids:
                 raise PlannerMaterialsNotReadyError(course_id)
             selected_file_ids = _file_ids(raw_files)
+            logger.info(
+                "planner_prepare_run_history_ready",
+                course_id=course_id,
+                planner_session_id=record.id,
+                stored_turn_count=len(turns),
+                prompt_message_count=len(message_history),
+                history_turn_limit=_planner_history_turns(),
+                latest_plan_chapter_count=len(list(latest_plan.get("chapter_plan") or [])),
+            )
             return {
                 "file_ids": workflow_file_ids,
                 "selected_file_ids": selected_file_ids,
                 "user_prompt": str(meta.get("user_prompt") or ""),
                 "digest_mode": str(meta.get("digest_mode") or ""),
-                "message_history": [turn.content for turn in turns if turn.content.strip()],
-                "latest_plan": _planner_plan(record),
+                "message_history": message_history,
+                "latest_plan": latest_plan,
+                "planner_context_stats": _build_planner_context_stats(
+                    turns=turns,
+                    message_history=message_history,
+                    latest_plan=latest_plan,
+                    feedback_message=feedback,
+                    user_prompt=str(meta.get("user_prompt") or ""),
+                ),
                 "planner_record": _record_snapshot(record),
                 "planner_turns": [_turn_snapshot(turn) for turn in turns],
             }
@@ -821,6 +928,7 @@ def save_planner_result(
             latest_plan=persisted_plan,
             latest_summary=str(persisted_plan.get("plan_summary") or state.get("plan_summary") or ""),
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
+            model_override=normalize_runtime_model_override(state.get("model_override")),
             planner_status="draft",
             confirmed_plan_id=None,
             confirmed_plan=None,
@@ -851,6 +959,7 @@ def save_planner_result(
             "plan": persisted_plan,
             "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
+            "model_override": _planner_model_override(record),
             "selected_file_ids": selected_file_ids,
             "planner_record": _record_snapshot(record),
             "planner_turns": [_turn_snapshot(turn) for turn in turns],
@@ -879,6 +988,7 @@ def _normalized_plan_payload(
         "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
         "plan_steps": [str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
+        "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
     if context_payload:
@@ -1089,10 +1199,12 @@ def confirm_planner_session(
         turns=turns,
         plan=latest_plan,
     )
+    model_override = _planner_model_override(record)
     plan_payload = _normalized_plan_payload(
         latest_plan,
         planner_context=planner_context,
     )
+    plan_payload["model_override"] = model_override or ""
     current_confirmed = None
     if meta.get("confirmed_plan_id"):
         current_confirmed = get_confirmed_plan(
@@ -1107,10 +1219,12 @@ def confirm_planner_session(
     ):
         confirmed = current_confirmed
     else:
+        version_no = next_confirmed_plan_version_no(session, course_id=course.id, user_id=user_id)
         confirmed = create_confirmed_plan(
             session,
             ConfirmedBuildPlan(
                 id=uuid.uuid4().hex,
+                version_no=version_no,
                 course_id=course.id,
                 planner_session_id=session_id,
                 user_id=user_id,
@@ -1131,15 +1245,18 @@ def confirm_planner_session(
         latest_plan=plan_payload,
         latest_summary=str(plan_payload.get("plan_summary") or ""),
         confirmed_plan_id=confirmed.id,
+        model_override=model_override,
         planner_status="confirmed",
     )
     selected_file_ids = _planner_selected_file_ids(record)
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
+        version_no=int(confirmed.version_no or 1),
         course_id=course.id,
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
+        model_override=model_override,
         selected_file_ids=list(confirmed.selected_file_ids_json),
         user_prompt=confirmed.user_prompt,
         plan_summary=confirmed.plan_summary,

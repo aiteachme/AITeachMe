@@ -1,137 +1,105 @@
-# AiTeachMe Backend
+# AITeachMe Backend
 
-本目录是 AITeachMe 的后端服务，基于 FastAPI + SQLModel，面向“本地优先”的 AI 助教场景。
+本目录是 AITeachMe 后端服务，基于 FastAPI + SQLModel + LangGraph，面向本地优先的 AI 学习系统。
+
+## 快速启动
+
+```powershell
+cd backend
+$env:PYTHONUTF8 = "1"
+pip install -e .
+uvicorn app.main:app --reload --port 9020
+```
+
+默认健康检查：
+
+```text
+http://127.0.0.1:9020/api/health
+```
 
 ## 当前接口形态
 
 - `GET /api/health`
 - 业务接口以 `POST` 为主，少量稳定读取接口使用 `GET`
-- JSON 接口统一返回：
+- JSON 接口统一返回 `ApiResponse`
+- `chat/send` 使用原生 SSE，不包 `ApiResponse`
 
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {}
-}
-```
-
-- `chat/send` 仍然保留原生 SSE，不包 `ApiResponse`
-
-## 主要资源
+主要资源：
 
 - `courses`
 - `files`
 - `knowledge`
-- `chat`
-- `exam`
+- `chats`
+- `exams`
 - `profile`
+- `system`
 
-新增的动作接口：
+## 架构入口
 
-- `files/retry`
-- `files/delete`
-- `knowledge/retry`
-- `knowledge/delete`
-- `chat/clear`
-- `exam/delete`
+后端当前依赖方向：
 
-## 快速启动
-
-### 1. 安装依赖
-
-要求：Python `3.11+`
-
-```bash
-pip install -e .
+```text
+api -> workflows -> repositories / shared.infra / models / schemas
+shared.infra -> shared.kernel
 ```
 
-### 2. 配置 `.env`
+关键文档：
 
-至少需要：
+- [系统架构](../docs/architecture/system-architecture.md)
+- [领域模型与状态](../docs/architecture/domain-model-and-state.md)
+- [Workflows 结构规则](./app/workflows/README.md)
+- [Infra 分层说明](./app/shared/infra/README.md)
+- [云端数据库迁移](../docs/deployment/cloud-db-migrations.md)
+
+## 环境变量
+
+本地用户侧变量参考仓库根目录 `.env.sample`，开发/部署/验证码/通知变量参考 `.env.developer.sample`。
+
+最小本地示例：
 
 ```env
-LLM_API_KEY=sk-your-api-key-here
-LLM_BASE_URL=https://api.openai.com/v1
-# 可选：LLM_PROVIDER=openai|openai_compatible|anthropic|gemini|azure|deepseek|kimi|glm|qwen|minimax|siliconflow|doubao|vllm|ollama|...
-# Azure 场景通常还需要：LLM_API_VERSION=2024-10-21
 APP_MODE=local
 AUTH_ENABLED=false
+LLM_API_KEY=<model-api-key>
+LLM_BASE_URL=https://api.example.com/v1
 ```
 
-环境变量样例现在拆成两份：
+未开启鉴权的 Ollama、vLLM、LM Studio 等本地网关可以不填 `LLM_API_KEY`。
 
-- `.env.sample`：本地用户与设置页主入口
-- `.env.developer.sample`：开发 / 部署 / 基础设施 / 验证码 / 通知变量
+## 数据库
 
-大多数本地开发只需要先复制 `.env.sample`，再按需从 `.env.developer.sample` 补充部署项。
+- 本地：SQLite，默认写入 `backend/data/aiteachme.db`。
+- 云端：PostgreSQL + pgvector，必须通过 Alembic migration 和准备脚本管理。
 
-`LLM_API_KEY / LLM_BASE_URL` 是统一模型接入口，会被对话、规划、出题、批改、Embedding、Vision OCR 等模型能力复用。后端现在会优先根据 `LLM_PROVIDER` 或 `LLM_BASE_URL` 自动识别 OpenAI-compatible、Anthropic、Gemini、Azure、DeepSeek、Kimi、GLM、MiniMax、Doubao、SiliconFlow、vLLM、Ollama 等主流上游，并切换一组更匹配的默认 `models.*`。如果供应商支持的模型名与默认值不同，仍可通过代码默认值、设置页或 `PROJECT_SETTINGS_PATH` 指向的外部 override 文件覆盖 `models.*`。Azure OpenAI 这类上游通常还需要额外提供 `LLM_API_VERSION`；本地 Ollama / vLLM / LM Studio 等未开启鉴权的网关可以不填 `LLM_API_KEY`。
+本地 SQLite 会在 schema drift 时做开发便利处理；云端 PostgreSQL 不允许应用启动时自动建表、删表或删列。
 
-### 3. 启动服务
+## LangGraph Dev
 
-```bash
-uvicorn app.main:app --reload --port 9020
+调试入口配置在 `backend/langgraph.json`。
+
+```powershell
+cd backend
+pip install -e .
+pip install -U "langgraph-cli[inmem]"
+langgraph dev --config langgraph.json
 ```
 
-首次启动时若缺少 SQLite 相关 Python 依赖，服务会自动尝试安装并继续启动。
-数据库文件会自动创建在 `data/aiteachme.db`。
-如果检测到本地 SQLite schema 过期，服务会先把旧库及其 `-wal/-shm` 文件备份到 `data/backups/`，再重建新库；备份失败时不会继续删除旧库。
-云端 PostgreSQL 使用 Alembic 迁移，见 `docs/designs/16_cloud_db_migrations.md`。
-
-## LangGraph Dev 调试
-
-后端现在额外提供了一组只用于调试的 LangGraph 入口，配置文件在 `backend/langgraph.json`。
-
-可调试的 graph 包括：
+当前主要图包括：
 
 - `ingest_fast_parse`
-- `digest_kg`
+- `digest_planner`
 - `digest_docgen`
-- `digest_unified`
+- `kg_doc_sync`
 - `interact_chat`
 - `examine_question_build`
 - `examine_exam_grade`
 - `profile_pipeline`
 
-这些 graph 由 `langgraph.json` 直接指向各自 workflow 模块内的图定义或轻量调试工厂函数，不替换原有 FastAPI / service 调用链，也不需要再维护一个单独的汇总入口文件。
-
-### 使用说明
-
-1. 使用 Python `3.11+`
-2. 在 `backend/` 目录运行：
-
-```bash
-pip install -e .
-langgraph dev --config langgraph.json
-```
-
-### 说明
-
-- `backend` 现在将 Python 版本要求收敛为 `3.11+`，这样 `pip install -e .` 会一并安装 LangGraph Dev 所需依赖。
-- `interact_chat` 使用的是“非生产 SSE 外壳”的调试图，目的是在 Studio 里直接观察完整 state，而不改变线上聊天接口行为。
-- `profile_pipeline` 是为调试新增的可执行 graph；原有 `profile` 概览图仍然保留。
-
-### LangSmith
-
-如果希望在 LangSmith 中直接查看 workflow 与 LLM 调用链路，可额外配置：
-
-```env
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=lsv2_xxx
-LANGSMITH_PROJECT=AITeachMe
-# 自建或 EU 区域实例时再配置：
-# LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-```
-
-当前约定下，workflow 统一运行入口和共享 infra trace 边界会自动继承 tracing 上下文，因此不需要在每个业务节点里重复手写观测代码。`observability.tracing_enabled=false` 会强制关闭 workflow trace；开启追踪时默认保留输入/输出预览，便于排障。线上或严格隐私场景建议关闭追踪，或使用 LangSmith 官方 `LANGSMITH_HIDE_INPUTS / LANGSMITH_HIDE_OUTPUTS`。
+更多调试说明见 [Workflows 调试指南](../docs/workflows/debugging.md)。
 
 ## 手动验证
 
-查看以下文档：
-
-- [docs/design.md](./docs/design.md)
-- [docs/local-dev.md](./docs/local-dev.md)
-- [docs/manual-testing.md](./docs/manual-testing.md)
-- [docs/implementation-log.md](./docs/implementation-log.md)
-- [playground/README.md](./playground/README.md)
+- [本地开发](../docs/development/local-development.md)
+- [手动验证](../docs/development/manual-testing.md)
+- [API 契约与开发流程](../docs/development/api-contracts-and-dev-workflow.md)
+- [playground README](./playground/README.md)

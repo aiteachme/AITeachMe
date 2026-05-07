@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { Loader2, RefreshCw, X } from "lucide-react";
 
 import { useTheme, type Theme } from "../providers/ThemeProvider";
 
 import { useExamResultDisplayPreference } from "../../lib/examResultDisplayPreference";
+import { DesktopUpdateModal, formatDesktopAppVersion, useDesktopUpdateDialog } from "../desktop/DesktopUpdatePrompt";
+import { Button } from "../ui/Button";
 import { FieldLabelBlock, SelectInput, SwitchRow } from "./SettingsFields";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SettingsFooter } from "./SettingsFooter";
@@ -35,6 +37,23 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
   const { mode: examResultDisplayMode, setMode: setExamResultDisplayMode } = useExamResultDisplayPreference();
   const [activeSection, setActiveSection] = useState<SectionId>("");
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const {
+    open: updateDialogOpen,
+    update: desktopUpdate,
+    status: desktopUpdateStatus,
+    errorText: desktopUpdateErrorText,
+    downloadedBytes: desktopUpdateDownloadedBytes,
+    contentLength: desktopUpdateContentLength,
+    isBusy: isDesktopUpdating,
+    isSupported: isDesktopUpdateSupported,
+    currentVersion: desktopCurrentVersion,
+    isVersionLoading: isDesktopVersionLoading,
+    versionError: desktopVersionError,
+    checkForUpdate: checkForDesktopUpdate,
+    closeUpdateDialog,
+    installUpdate,
+  } = useDesktopUpdateDialog();
   const {
     overview,
     isOverviewLoading,
@@ -74,11 +93,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   useEffect(() => {
     if (!isOpen) return;
     const onEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !updateDialogOpen) onClose();
     };
     document.addEventListener("keydown", onEsc);
     return () => document.removeEventListener("keydown", onEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, updateDialogOpen]);
 
   useEffect(() => {
     if (!isOpen || typeof document === "undefined") {
@@ -92,6 +111,25 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   }, [isOpen]);
 
   const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
+  const isUpdateCheckBusy = isCheckingUpdate || isDesktopUpdating;
+  const desktopVersionDisplay = isDesktopVersionLoading
+    ? "读取中..."
+    : desktopVersionError
+      ? "读取失败"
+      : formatDesktopAppVersion(desktopCurrentVersion);
+
+  const handleManualUpdateCheck = useCallback(async () => {
+    if (isUpdateCheckBusy) {
+      return;
+    }
+
+    setIsCheckingUpdate(true);
+    try {
+      await checkForDesktopUpdate();
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, [checkForDesktopUpdate, isUpdateCheckBusy]);
 
   const panel = (
     <AnimatePresence>
@@ -165,6 +203,40 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                           enabled={showExamScores}
                           onToggle={() => setExamResultDisplayMode(showExamScores ? "completed" : "score")}
                         />
+                        {isDesktopUpdateSupported ? (
+                          <div className={SETTINGS_STYLES.list.item}>
+                            <FieldLabelBlock
+                              label="桌面更新"
+                              description="手动检查新版本，发现更新后再确认安装。"
+                            />
+
+                            <div className="flex flex-1 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-start md:justify-end">
+                              <span
+                                className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                                title={desktopVersionError || undefined}
+                              >
+                                <span className="shrink-0">当前版本</span>
+                                <span className="min-w-0 truncate font-mono font-semibold text-zinc-900 dark:text-slate-100">
+                                  {desktopVersionDisplay}
+                                </span>
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleManualUpdateCheck}
+                                disabled={isUpdateCheckBusy}
+                              >
+                                {isCheckingUpdate ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                                检查更新
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -200,5 +272,22 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     </AnimatePresence>
   );
 
-  return typeof document !== "undefined" ? createPortal(panel, document.body) : panel;
+  const content = (
+    <>
+      {panel}
+      <DesktopUpdateModal
+        open={updateDialogOpen}
+        update={desktopUpdate}
+        status={desktopUpdateStatus}
+        errorText={desktopUpdateErrorText}
+        downloadedBytes={desktopUpdateDownloadedBytes}
+        contentLength={desktopUpdateContentLength}
+        currentVersion={desktopCurrentVersion}
+        onClose={closeUpdateDialog}
+        onInstall={installUpdate}
+      />
+    </>
+  );
+
+  return typeof document !== "undefined" ? createPortal(content, document.body) : content;
 }

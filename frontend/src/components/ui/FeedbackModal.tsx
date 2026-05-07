@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, X } from "lucide-react";
+import { ImagePlus, Loader2, Mail, X } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { Modal } from "./Modal";
@@ -8,6 +8,9 @@ interface FeedbackModalProps {
   open: boolean;
   onClose: () => void;
 }
+
+const CONTACT_EMAIL = "aiteachme_test1@163.com";
+const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("AITeachMe 意见反馈")}`;
 
 export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   const [content, setContent] = useState("");
@@ -71,10 +74,24 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     <Modal
       open={open}
       onClose={isSubmitting ? () => {} : onClose}
-      title="意见反馈"
+      title="反馈与联系"
       className="max-w-[36rem]"
     >
       <div className="space-y-4">
+        <div className="relative">
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            disabled={isSubmitting || successStatus}
+            placeholder="请在这里描述你的问题或建议；如果希望我们回复，也可以留下联系方式。"
+            className="min-h-[160px] w-full resize-none rounded-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
+            maxLength={2000}
+          />
+          <div className="pointer-events-none absolute bottom-3 right-3 text-xs text-slate-400 dark:text-slate-500">
+            已输入 {content.length} / 2000
+          </div>
+        </div>
+
         {successStatus ? (
           <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
             反馈发送成功，感谢你的宝贵意见。
@@ -86,20 +103,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             {errorStatus}
           </div>
         ) : null}
-
-        <div className="relative">
-          <textarea
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            disabled={isSubmitting || successStatus}
-            placeholder="请在这里描述你的问题或建议..."
-            className="min-h-[160px] w-full resize-none rounded-xl border border-slate-300 bg-white p-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-800"
-            maxLength={2000}
-          />
-          <div className="pointer-events-none absolute bottom-3 right-3 text-xs text-slate-400 dark:text-slate-500">
-            已输入 {content.length} / 2000
-          </div>
-        </div>
 
         <div className="flex">
           <button
@@ -160,6 +163,17 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
               "发送"
             )}
           </button>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500 dark:border-slate-800 dark:text-slate-400">
+          <span>联系方式：</span>
+          <a
+            href={CONTACT_MAILTO}
+            className="inline-flex items-center gap-1 font-medium text-slate-700 underline-offset-4 hover:underline dark:text-slate-200"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {CONTACT_EMAIL}
+          </a>
         </div>
       </div>
     </Modal>

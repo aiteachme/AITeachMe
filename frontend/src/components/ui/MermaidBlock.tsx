@@ -16,6 +16,14 @@ let mermaidModulePromise: Promise<MermaidApi> | null = null;
 const MINDMAP_ROOT_RE = /^root\(\((.+)\)\)$/i;
 const MINDMAP_MIXED_SYNTAX_RE =
   /-->|==>|\b(?:graph|flowchart|sequencediagram|classdiagram|statediagram|erdiagram|gantt)\b/i;
+const FLOWCHART_HEADER_RE = /^(?:flowchart|graph)\b/i;
+const FLOWCHART_INLINE_HEADER_RE = /^\s*((?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL))\s+(.+)$/i;
+const FLOWCHART_NODE_LABEL_RE = /(^|[^\w"'])([A-Za-z_][\w-]*)\s*\[([^\]\n]+)\]/g;
+const FLOWCHART_EDGE_LABEL_RE = /\|([^|\n]+)\|/g;
+const FLOWCHART_CLASS_LINE_RE = /^(\s*class\s+)([^;\n]+?)(;?\s*)$/i;
+const FLOWCHART_CONTROL_LINE_RE = /^\s*(?:%%|flowchart|graph|subgraph|end\b|direction\b|classDef\b|class\b|style\b|linkStyle\b|click\b|accTitle\b|accDescr\b|title\b)/i;
+const FLOWCHART_EDGE_LINE_RE = /^\s*[A-Za-z_][\w-]*\s*(?:-->|---|==>|-.->|==|--|~~~|o--|x--)/;
+const FLOWCHART_NODE_LINE_RE = /^\s*[A-Za-z_][\w-]*\s*(?:\[|\(|\{|\>)/;
 
 function loadMermaid() {
   mermaidModulePromise ??= import("mermaid").then((module) => module.default);
@@ -85,6 +93,116 @@ function sanitizeMindmapLabel(label: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 32);
+}
+
+function sanitizeFlowchartLabel(label: string): string {
+  const normalized = String(label ?? "")
+    .normalize("NFKC")
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, " ")
+    .replace(/[`$#]/g, " ")
+    .replace(/[{}]/g, " ")
+    .replace(/[|]/g, " ")
+    .replace(/>/g, "大于")
+    .replace(/</g, "小于")
+    .replace(/=/g, "等于")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 44)
+    .trim();
+  return normalized || "节点";
+}
+
+function normalizeFlowchartControlLine(line: string): string {
+  const classMatch = line.match(FLOWCHART_CLASS_LINE_RE);
+  if (!classMatch || /^\s*classDef\b/i.test(line)) {
+    return line;
+  }
+
+  const prefix = classMatch[1] ?? "";
+  const body = (classMatch[2] ?? "").trim();
+  const suffix = classMatch[3] ?? "";
+  const parts = body.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return line;
+  }
+
+  const className = parts.pop() ?? "";
+  const nodeList = parts
+    .join(" ")
+    .split(",")
+    .map((nodeId) => nodeId.trim())
+    .filter(Boolean)
+    .join(",");
+  if (!nodeList || !className) {
+    return line;
+  }
+
+  return `${prefix}${nodeList} ${className}${suffix}`;
+}
+
+function quoteFlowchartLabels(line: string): string {
+  if (/^\s*(?:classDef|class|style|linkStyle|click)\b/i.test(line)) {
+    return normalizeFlowchartControlLine(line);
+  }
+
+  return line.replace(FLOWCHART_NODE_LABEL_RE, (_match, prefix: string, nodeId: string, label: string) => {
+    const cleaned = sanitizeFlowchartLabel(label).replace(/"/g, "'");
+    return `${prefix}${nodeId}["${cleaned}"]`;
+  }).replace(FLOWCHART_EDGE_LABEL_RE, (_match, label: string) => {
+    const cleaned = sanitizeFlowchartLabel(label).replace(/"/g, "'").slice(0, 32);
+    return `|${cleaned}|`;
+  });
+}
+
+function splitInlineFlowchartHeader(line: string): string[] {
+  const match = line.match(FLOWCHART_INLINE_HEADER_RE);
+  if (!match) {
+    return [line];
+  }
+
+  const header = match[1]?.trim() ?? "";
+  const body = match[2]?.trim() ?? "";
+  if (!header || !body) {
+    return [line];
+  }
+  return [header, body];
+}
+
+function normalizeFlowchartLine(line: string, index: number): string {
+  const quoted = quoteFlowchartLabels(line);
+  const trimmed = quoted.trim();
+  if (!trimmed) {
+    return quoted;
+  }
+  if (
+    FLOWCHART_CONTROL_LINE_RE.test(trimmed) ||
+    FLOWCHART_EDGE_LINE_RE.test(trimmed) ||
+    FLOWCHART_NODE_LINE_RE.test(trimmed)
+  ) {
+    return quoted;
+  }
+
+  const cleaned = sanitizeFlowchartLabel(trimmed).replace(/"/g, "'");
+  return `ATM_AUTO_${index}["${cleaned}"]`;
+}
+
+function normalizeFlowchartChart(chart: string): string {
+  const normalized = normalizeMermaidSource(chart);
+  const rawLines = normalized
+    .split("\n")
+    .flatMap(splitInlineFlowchartHeader)
+    .filter((line) => line.trim().length > 0);
+  if (rawLines.length === 0) {
+    return normalized;
+  }
+
+  const output = [...rawLines];
+  if (!FLOWCHART_HEADER_RE.test(output[0]?.trim() ?? "") && output.some((line) => /-->|==>/.test(line))) {
+    output.unshift("flowchart TD");
+  }
+
+  return output.map(normalizeFlowchartLine).join("\n");
 }
 
 function extractMindmapLabels(chart: string, maxCount = 6): string[] {
@@ -200,7 +318,10 @@ function buildChartCandidates(chart: string): string[] {
     return [normalized];
   }
   if (!normalized.toLowerCase().startsWith("mindmap")) {
-    return [normalized];
+    const flowchartCandidate = normalizeFlowchartChart(normalized);
+    return [normalized, flowchartCandidate].filter(
+      (candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index,
+    );
   }
 
   const candidates = [

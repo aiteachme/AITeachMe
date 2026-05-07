@@ -16,8 +16,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
+from app.workflows.examine.question_build.lib.model_policy import (
+    QuestionBuildModelStep,
+    question_build_attempt_max_tokens,
+    question_build_completion_kwargs_with_metadata,
+)
 from app.workflows.examine.question_build.prompts import (
     build_exam_question_requirement_messages,
     build_exam_knowledge_unit_filter_messages,
@@ -45,9 +49,6 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
     re.IGNORECASE,
 )
-_QUESTION_GENERATION_CONCURRENCY = 12
-
-
 def _escape_text_underscore_placeholders(value: str) -> str:
     """Keep blank placeholders valid inside KaTeX/LaTeX text blocks."""
 
@@ -950,20 +951,19 @@ async def _select_exam_knowledge_units_once(
     )
     result = await acompletion_with_fallback(
         messages,
-        call_purpose=LLMCallPurpose.CLASSIFY,
-        model="light",
+        **question_build_completion_kwargs_with_metadata(
+            QuestionBuildModelStep.FILTER_UNITS,
+            extra_metadata={
+                "substep": "exam.question_build.filter_units",
+                "course_id": course_id,
+                "exam_mode": exam_mode,
+                "question_count": question_count,
+                "candidate_limit": candidate_limit,
+                "unit_count": len(units),
+                "round": round_name,
+            },
+        ),
         response_model=ExamKnowledgeUnitSelection,
-        temperature=0.1,
-        max_tokens=1400,
-        extra_metadata={
-            "substep": "exam.question_build.filter_units",
-            "course_id": course_id,
-            "exam_mode": exam_mode,
-            "question_count": question_count,
-            "candidate_limit": candidate_limit,
-            "unit_count": len(units),
-            "round": round_name,
-        },
     )
     assert isinstance(result, ExamKnowledgeUnitSelection)
     return _normalize_selection(
@@ -1042,7 +1042,6 @@ async def allocate_exam_question_knowledge_units(
     normalized_count = max(1, int(question_count or len(units) or 1))
     if not units:
         return []
-    max_tokens = min(9000, max(2200, normalized_count * 360))
     messages = build_exam_question_blueprint_messages(
         course_name=course_name,
         course_description=course_description,
@@ -1057,18 +1056,18 @@ async def allocate_exam_question_knowledge_units(
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            **question_build_completion_kwargs_with_metadata(
+                QuestionBuildModelStep.ALLOCATE_BLUEPRINTS,
+                question_count=normalized_count,
+                extra_metadata={
+                    "substep": "exam.question_build.allocate_knowledge_units",
+                    "course_id": course_id,
+                    "exam_mode": exam_mode,
+                    "question_count": normalized_count,
+                    "unit_count": len(units),
+                },
+            ),
             response_model=ExamQuestionBlueprintBatch,
-            temperature=0.45,
-            max_tokens=max_tokens,
-            extra_metadata={
-                "substep": "exam.question_build.allocate_knowledge_units",
-                "course_id": course_id,
-                "exam_mode": exam_mode,
-                "question_count": normalized_count,
-                "unit_count": len(units),
-            },
         )
         assert isinstance(result, ExamQuestionBlueprintBatch)
         return _validate_blueprints(
@@ -1092,7 +1091,6 @@ async def plan_exam_question_requirements(
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
-    max_tokens = min(6000, max(1200, normalized_count * 180))
     messages = build_exam_question_requirement_messages(
         exam_mode=exam_mode,
         requested_question_count=normalized_count,
@@ -1101,16 +1099,16 @@ async def plan_exam_question_requirements(
     try:
         result = await acompletion_with_fallback(
             messages,
-            call_purpose=LLMCallPurpose.CLASSIFY,
-            model="light",
+            **question_build_completion_kwargs_with_metadata(
+                QuestionBuildModelStep.PLAN_REQUIREMENTS,
+                question_count=normalized_count,
+                extra_metadata={
+                    "substep": "exam.question_build.plan_question_requirements",
+                    "exam_mode": exam_mode,
+                    "question_count": normalized_count,
+                },
+            ),
             response_model=ExamQuestionRequirementBatch,
-            temperature=0.2,
-            max_tokens=max_tokens,
-            extra_metadata={
-                "substep": "exam.question_build.plan_question_requirements",
-                "exam_mode": exam_mode,
-                "question_count": normalized_count,
-            },
         )
         assert isinstance(result, ExamQuestionRequirementBatch)
         prompts = _validate_generation_prompts(
@@ -1140,21 +1138,22 @@ async def _generate_one_exam_question(
         system_constraints=system_constraints,
     )
     last_error: Exception | None = None
-    for attempt, max_tokens in enumerate((2600, 3600), start=1):
+    attempt_count = len(question_build_attempt_max_tokens(QuestionBuildModelStep.GENERATE_ONE)) or 1
+    for attempt in range(1, attempt_count + 1):
         try:
             result = await acompletion_with_fallback(
                 messages,
-                call_purpose=LLMCallPurpose.GENERATE,
-                model="reason",
+                **question_build_completion_kwargs_with_metadata(
+                    QuestionBuildModelStep.GENERATE_ONE,
+                    attempt=attempt,
+                    extra_metadata={
+                        "substep": "exam.question_build.generate_one",
+                        "item_order": spec.item_order,
+                        "unit_count": len(batch_units),
+                        "attempt": attempt,
+                    },
+                ),
                 response_model=ExamSingleQuestionResponse,
-                temperature=0.65,
-                max_tokens=max_tokens,
-                extra_metadata={
-                    "substep": "exam.question_build.generate_one",
-                    "item_order": spec.item_order,
-                    "unit_count": len(batch_units),
-                    "attempt": attempt,
-                },
             )
             assert isinstance(result, ExamSingleQuestionResponse)
             return _validate_batch_alignment(generated=[result.question], requested_specs=[spec])[0]
@@ -1193,20 +1192,16 @@ async def generate_exam_questions_for_units(
         raise ValueError(f"missing KnowledgeUnits for specs: {missing_units}")
 
     parent_task = asyncio.current_task()
-    concurrency = max(1, min(_QUESTION_GENERATION_CONCURRENCY, len(specs) or 1))
-    semaphore = asyncio.Semaphore(concurrency)
-
     async def generate_for_spec(
         spec: ExamQuestionGenerationSpec,
     ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
         try:
-            async with semaphore:
-                question = await _generate_one_exam_question(
-                    unit_by_id=unit_by_id,
-                    spec=spec,
-                    course_profile=course_profile,
-                    system_constraints=system_constraints,
-                )
+            question = await _generate_one_exam_question(
+                unit_by_id=unit_by_id,
+                spec=spec,
+                course_profile=course_profile,
+                system_constraints=system_constraints,
+            )
             return spec, question
         except asyncio.CancelledError as exc:
             if parent_task is not None and parent_task.cancelling():
@@ -1223,32 +1218,58 @@ async def generate_exam_questions_for_units(
     failed: list[ExamQuestionGenerationFailure] = []
     failures: list[str] = []
     failed_orders: list[int] = []
-    tasks = [asyncio.create_task(generate_for_spec(spec)) for spec in specs]
+    spec_iter = iter(specs)
+    running_tasks: set[asyncio.Task[tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]]] = set()
+    worker_limit = max(1, min(len(specs), get_llm_concurrency_limit()))
+
+    def _start_next() -> None:
+        try:
+            spec = next(spec_iter)
+        except StopIteration:
+            return
+        running_tasks.add(asyncio.create_task(generate_for_spec(spec)))
+
+    for _ in range(worker_limit):
+        _start_next()
+
     try:
-        for completed_task in asyncio.as_completed(tasks):
-            spec, result = await completed_task
-            if isinstance(result, Exception):
-                failed_orders.append(spec.item_order)
-                failures.append(f"item_order={spec.item_order}: {result}")
-                failure = ExamQuestionGenerationFailure(
-                    item_order=spec.item_order,
-                    question_type=spec.question_type,
-                    difficulty=spec.difficulty,
-                    knowledge_unit_ids=spec.knowledge_unit_ids,
-                    error_message=str(result),
-                )
-                failed.append(failure)
-                if on_question_failed is not None:
-                    await on_question_failed(failure)
-                continue
-            generated.append(result)
-            if on_question_generated is not None:
-                await on_question_generated(result)
+        while running_tasks:
+            completed_tasks, running_tasks = await asyncio.wait(
+                running_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for completed_task in completed_tasks:
+                spec, result = await completed_task
+                if isinstance(result, Exception):
+                    failed_orders.append(spec.item_order)
+                    failures.append(f"item_order={spec.item_order}: {result}")
+                    failure = ExamQuestionGenerationFailure(
+                        item_order=spec.item_order,
+                        question_type=spec.question_type,
+                        difficulty=spec.difficulty,
+                        knowledge_unit_ids=spec.knowledge_unit_ids,
+                        error_message=str(result),
+                    )
+                    failed.append(failure)
+                    if on_question_failed is not None:
+                        await on_question_failed(failure)
+                    _start_next()
+                    continue
+                generated.append(result)
+                if on_question_generated is not None:
+                    await on_question_generated(result)
+                _start_next()
     except asyncio.CancelledError:
-        for task in tasks:
+        for task in running_tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+        raise
+    except Exception:
+        for task in running_tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*running_tasks, return_exceptions=True)
         raise
 
     if failures and not allow_partial:
@@ -1293,16 +1314,16 @@ async def generate_exam_from_text(
     )
     result = await acompletion_with_fallback(
         messages,
-        call_purpose=LLMCallPurpose.GENERATE,
-        model="reason",
+        **question_build_completion_kwargs_with_metadata(
+            QuestionBuildModelStep.PLAYGROUND_BATCH,
+            question_count=normalized_count,
+            extra_metadata={
+                "substep": "exam.question_build.playground",
+                "course_name": course_name,
+                "question_count": normalized_count,
+            },
+        ),
         response_model=ExamQuestionBatch,
-        temperature=0.65,
-        max_tokens=2800,
-        extra_metadata={
-            "substep": "exam.question_build.playground",
-            "course_name": course_name,
-            "question_count": normalized_count,
-        },
     )
     assert isinstance(result, ExamQuestionBatch)
     return result.questions

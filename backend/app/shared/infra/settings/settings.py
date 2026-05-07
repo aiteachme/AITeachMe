@@ -7,7 +7,9 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.shared.infra.llm_support.defaults import MAX_LLM_CONCURRENCY_LIMIT
 
 from .defaults import merge_default_settings, merge_settings_values
 from .support import (
@@ -62,6 +64,7 @@ class ModelsSettings(_SettingsModel):
 
 
 class LLMSettings(_SettingsModel):
+    concurrency_limit: int = Field(ge=1, le=MAX_LLM_CONCURRENCY_LIMIT)
     enforce_request_timeout: bool
 
 
@@ -77,6 +80,7 @@ class PlannerModeSettings(_SettingsModel):
 
 class PlannerSettings(_SettingsModel):
     default_digest_mode: str
+    history_turns: int = Field(ge=1, le=50)
     sprint: PlannerModeSettings
     systematic: PlannerModeSettings
 

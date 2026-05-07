@@ -21,7 +21,6 @@ backend/tests
 backend/uploads
 backend/build
 backend/dist
-backend/docs
 backend/.pytest_cache
 backend/.mypy_cache
 backend/.ruff_cache

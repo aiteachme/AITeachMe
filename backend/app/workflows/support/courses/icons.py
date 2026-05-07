@@ -18,7 +18,10 @@ from app.models import Course
 from app.schemas.llm import ChatMessage
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.workflows.support.courses.lib.model_policy import (
+    CourseSupportModelStep,
+    course_support_completion_kwargs_with_metadata,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -231,13 +234,10 @@ def set_course_icon_key(course: Course, icon_key: str | None) -> None:
 def _merge_icon_completion_kwargs(
     overrides: Mapping[str, object] | None,
 ) -> dict[str, object]:
-    kwargs: dict[str, object] = {
-        "call_purpose": LLMCallPurpose.CLASSIFY,
-        "model": "light",
-        "max_tokens": 20,
-        "temperature": 0,
-        "extra_metadata": {"substep": "select_course_icon"},
-    }
+    kwargs = course_support_completion_kwargs_with_metadata(
+        CourseSupportModelStep.ICON_SELECTION,
+        extra_metadata={"substep": "select_course_icon"},
+    )
     if not overrides:
         return kwargs
 
@@ -314,6 +314,7 @@ def schedule_course_icon_refinement(
         kind="courses.icon_refine",
         course_id=course_id,
         name=f"courses.icon_refine:{course_id}",
+        dedupe_key=f"courses.icon_refine:{course_id}",
     )
 
 

@@ -6,6 +6,11 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.workflows.digest.common.pedagogy import (
+    is_usable_resolved_chapter_title,
+    resolve_effective_chapter_title,
+)
+
 
 def clean_text(value: Any) -> str:
     return str(value or "").strip()
@@ -25,6 +30,60 @@ def clean_string_list(value: Any, *, limit: int | None = None) -> list[str]:
         seen.add(key)
         cleaned.append(text)
         if limit is not None and len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+LEARNING_CONTENT_ROLE_TYPES: tuple[str, ...] = (
+    "core_knowledge",
+    "method_demo",
+    "explanation_support",
+    "principle_reasoning",
+    "practice_assessment",
+    "knowledge_organization",
+    "application_extension",
+)
+
+
+def clean_content_role_targets(value: Any, *, item_limit: int = 8) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    cleaned: dict[str, list[str]] = {}
+    for role in LEARNING_CONTENT_ROLE_TYPES:
+        items = clean_string_list(value.get(role), limit=item_limit)
+        if items:
+            cleaned[role] = items
+    return cleaned
+
+
+def clean_example_coverage_plan(value: Any, *, limit: int = 16) -> list[dict[str, Any]]:
+    items = value if isinstance(value, list) else ([] if value is None else [value])
+    cleaned: list[dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, dict):
+            target = clean_text(item.get("target"))
+            example_type = clean_text(item.get("example_type") or item.get("type"))
+            purpose = clean_text(item.get("purpose"))
+            try:
+                min_examples = int(item.get("min_examples", 1) or 1)
+            except (TypeError, ValueError):
+                min_examples = 1
+        else:
+            target = clean_text(item)
+            example_type = ""
+            purpose = ""
+            min_examples = 1
+        if not target:
+            continue
+        cleaned.append(
+            {
+                "target": target,
+                "example_type": example_type or "worked_example_or_case",
+                "purpose": purpose or "用例题、案例或任务验证这个知识点能被实际使用。",
+                "min_examples": max(1, min(4, min_examples)),
+            }
+        )
+        if len(cleaned) >= limit:
             break
     return cleaned
 
@@ -53,6 +112,33 @@ def clean_unit_float(value: Any, *, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
     return max(0.0, min(1.0, parsed))
+
+
+def _resolve_task_title(
+    *,
+    chapter_index: int,
+    confirmed_title: str,
+    enhanced_title: str,
+    objective: str = "",
+    required_elements: list[str] | None = None,
+    fallback_title: str = "",
+) -> str:
+    title = resolve_effective_chapter_title(
+        {
+            "chapter_index": chapter_index,
+            "title": enhanced_title,
+            "resolved_title": enhanced_title,
+            "objective": objective,
+            "chapter_goal": objective,
+            "required_elements": list(required_elements or []),
+        },
+        chapter_index=chapter_index,
+        fallback_title=confirmed_title or fallback_title,
+    )
+    if is_usable_resolved_chapter_title(title):
+        return title
+    cleaned_fallback = clean_text(confirmed_title or fallback_title)
+    return cleaned_fallback or f"第 {chapter_index} 章"
 
 
 class DocGenBaseModel(BaseModel):
@@ -90,6 +176,16 @@ class DocGenContext(DocGenBaseModel):
 
 
 class DocGenIntentProfile(DocGenBaseModel):
+    learning_goal_text: str = ""
+    audience_profile_text: str = ""
+    content_strategy_text: str = ""
+    example_practice_policy: str = ""
+    source_usage_policy: str = ""
+    teaching_intent: str = ""
+    example_ratio: float = 0.35
+    practice_ratio: float = 0.25
+    evidence_strictness: float = 0.65
+    review_strictness: float = 0.55
     document_style: str = "teaching_notes"
     depth_level: str = "standard"
     explanation_depth: str = "detailed"
@@ -101,7 +197,21 @@ class DocGenIntentProfile(DocGenBaseModel):
     avoid_list: list[str] = Field(default_factory=list)
     fallback_used: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_legacy_compat(cls, value: Any) -> Any:
+        if isinstance(value, dict) and isinstance(value.get("legacy_compat"), dict):
+            legacy = dict(value.get("legacy_compat") or {})
+            return {**legacy, **value}
+        return value
+
     @field_validator(
+        "learning_goal_text",
+        "audience_profile_text",
+        "content_strategy_text",
+        "example_practice_policy",
+        "source_usage_policy",
+        "teaching_intent",
         "document_style",
         "depth_level",
         "explanation_depth",
@@ -118,7 +228,15 @@ class DocGenIntentProfile(DocGenBaseModel):
     def _avoid_list(cls, value: Any) -> list[str]:
         return clean_string_list(value, limit=12)
 
-    @field_validator("exam_orientation", "review_orientation", mode="before")
+    @field_validator(
+        "example_ratio",
+        "practice_ratio",
+        "evidence_strictness",
+        "review_strictness",
+        "exam_orientation",
+        "review_orientation",
+        mode="before",
+    )
     @classmethod
     def _unit_float(cls, value: Any) -> float:
         return clean_unit_float(value, default=0.5)
@@ -138,6 +256,29 @@ class DocGenIntentProfile(DocGenBaseModel):
             if index > 0 and text:
                 hints[index] = text
         return hints
+
+    @model_validator(mode="after")
+    def _derive_legacy_fields(self) -> "DocGenIntentProfile":
+        """Keep old DocGen call sites stable while v2 intent fields become canonical."""
+
+        if not self.teaching_intent:
+            self.teaching_intent = self.content_strategy_text or self.learning_goal_text
+        if self.example_preference not in {"few", "balanced", "many"}:
+            if self.example_ratio >= 0.45 or self.practice_ratio >= 0.35:
+                self.example_preference = "many"
+            elif self.example_ratio <= 0.18 and self.practice_ratio <= 0.15:
+                self.example_preference = "few"
+            else:
+                self.example_preference = "balanced"
+        if self.depth_level not in {"compact", "standard", "deep"}:
+            self.depth_level = "deep" if self.evidence_strictness >= 0.75 else "standard"
+        if self.explanation_depth not in {"compact", "standard", "detailed"}:
+            self.explanation_depth = "detailed" if self.evidence_strictness >= 0.55 else "standard"
+        if self.definition_depth not in {"minimal", "standard", "strict"}:
+            self.definition_depth = "strict" if self.evidence_strictness >= 0.78 else "standard"
+        self.exam_orientation = max(self.exam_orientation, min(1.0, (self.practice_ratio * 0.7) + 0.15))
+        self.review_orientation = max(self.review_orientation, self.review_strictness)
+        return self
 
 
 class ChapterSourceSlice(DocGenBaseModel):
@@ -324,6 +465,8 @@ class LockedChapterTitle(DocGenBaseModel):
 class ChapterExecutionBrief(DocGenBaseModel):
     chapter_index: int = 1
     teaching_outline: list[str] = Field(default_factory=list)
+    content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
+    example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
     formula_targets: list[str] = Field(default_factory=list)
@@ -347,6 +490,16 @@ class ChapterExecutionBrief(DocGenBaseModel):
     @classmethod
     def _lists(cls, value: Any) -> list[str]:
         return clean_string_list(value)
+
+    @field_validator("content_role_targets", mode="before")
+    @classmethod
+    def _content_role_targets(cls, value: Any) -> dict[str, list[str]]:
+        return clean_content_role_targets(value, item_limit=6)
+
+    @field_validator("example_coverage_plan", mode="before")
+    @classmethod
+    def _example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_example_coverage_plan(value, limit=12)
 
 
 class ChapterBudgetPolicy(DocGenBaseModel):
@@ -404,9 +557,16 @@ class ChapterGenerationTaskSeed(DocGenBaseModel):
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTaskSeed":
-        if not self.enhanced_title:
-            self.enhanced_title = self.confirmed_title or f"第 {self.chapter_index} 章"
-        if not self.confirmed_title:
+        resolved_title = _resolve_task_title(
+            chapter_index=self.chapter_index,
+            confirmed_title=self.confirmed_title,
+            enhanced_title=self.enhanced_title,
+            objective=self.chapter_goal,
+            required_elements=self.required_elements,
+        )
+        if not is_usable_resolved_chapter_title(self.enhanced_title):
+            self.enhanced_title = resolved_title
+        if not is_usable_resolved_chapter_title(self.confirmed_title):
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
             self.retrieval_queries = clean_string_list([self.enhanced_title, *self.required_elements])
@@ -464,6 +624,8 @@ class ChapterGenerationTask(DocGenBaseModel):
     enhanced_title: str = ""
     objective: str = ""
     teaching_outline: list[str] = Field(default_factory=list)
+    content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
+    example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     content_points: list[str] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
@@ -528,6 +690,16 @@ class ChapterGenerationTask(DocGenBaseModel):
     def _lists(cls, value: Any) -> list[str]:
         return clean_string_list(value)
 
+    @field_validator("content_role_targets", mode="before")
+    @classmethod
+    def _task_content_role_targets(cls, value: Any) -> dict[str, list[str]]:
+        return clean_content_role_targets(value, item_limit=10)
+
+    @field_validator("example_coverage_plan", mode="before")
+    @classmethod
+    def _task_example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_example_coverage_plan(value, limit=24)
+
     @field_validator("fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
     @classmethod
     def _policy_text(cls, value: Any) -> str:
@@ -545,9 +717,24 @@ class ChapterGenerationTask(DocGenBaseModel):
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":
-        if not self.enhanced_title:
-            self.enhanced_title = self.confirmed_title or f"第 {self.chapter_index} 章"
-        if not self.confirmed_title:
+        resolved_title = _resolve_task_title(
+            chapter_index=self.chapter_index,
+            confirmed_title=self.confirmed_title,
+            enhanced_title=self.enhanced_title,
+            objective=self.objective,
+            required_elements=[
+                *self.required_elements,
+                *self.content_points,
+                *self.concept_targets,
+                *self.definition_targets,
+                *self.formula_targets,
+                *self.example_targets,
+                *self.pitfall_targets,
+            ],
+        )
+        if not is_usable_resolved_chapter_title(self.enhanced_title):
+            self.enhanced_title = resolved_title
+        if not is_usable_resolved_chapter_title(self.confirmed_title):
             self.confirmed_title = self.enhanced_title
         if not self.retrieval_queries:
             self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points])
@@ -562,6 +749,36 @@ class ChapterGenerationTask(DocGenBaseModel):
                     *self.pitfall_targets,
                 ],
             )
+        if not self.content_role_targets:
+            role_targets: dict[str, list[str]] = {}
+            core_items = clean_string_list(
+                [
+                    *self.content_points,
+                    *self.concept_targets,
+                    *self.definition_targets,
+                    *self.formula_targets,
+                ],
+                limit=10,
+            )
+            if core_items:
+                role_targets["core_knowledge"] = core_items
+            method_items = clean_string_list(self.example_targets, limit=8)
+            if method_items:
+                role_targets["method_demo"] = method_items
+            support_items = clean_string_list(self.pitfall_targets, limit=8)
+            if support_items:
+                role_targets["explanation_support"] = support_items
+            self.content_role_targets = role_targets
+        if not self.example_coverage_plan:
+            example_targets = clean_string_list(
+                [
+                    *self.example_targets,
+                    *self.concept_targets[:3],
+                    *self.required_elements[:3],
+                ],
+                limit=8,
+            )
+            self.example_coverage_plan = clean_example_coverage_plan(example_targets, limit=8)
         if not self.style_rules:
             self.style_rules = list(self.writing_rules)
         if not self.claim_targets:
@@ -1046,6 +1263,8 @@ class RepairTraceItem(DocGenBaseModel):
     reason: str = ""
     target_anchor: str = ""
     changed: bool = False
+    llm_attempted: bool = False
+    llm_call_group: str = ""
     detail: str = ""
 
     @field_validator("trace_id", "action_id", "action_type", "reason", "target_anchor", "detail", mode="before")
@@ -1091,6 +1310,7 @@ __all__ = [
     "FileMaterialSummaryBatch",
     "HighConfidenceEvidenceUnit",
     "LLMChapterReviewResult",
+    "LEARNING_CONTENT_ROLE_TYPES",
     "MergeReviewIssue",
     "MergeReviewReport",
     "NotationItem",
@@ -1100,6 +1320,8 @@ __all__ = [
     "ReviewedChapterDraft",
     "SourceAffinityByChapter",
     "clean_int_list",
+    "clean_content_role_targets",
+    "clean_example_coverage_plan",
     "clean_string_list",
     "clean_text",
     "clean_unit_float",

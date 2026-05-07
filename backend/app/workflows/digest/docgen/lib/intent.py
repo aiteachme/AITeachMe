@@ -19,6 +19,16 @@ logger = structlog.get_logger(__name__)
 def fallback_intent_profile(*, digest_mode: str, chapter_count: int = 0) -> DocGenIntentProfile:
     if is_sprint_docgen_mode(digest_mode):
         return DocGenIntentProfile(
+            learning_goal_text="围绕用户已确认的大纲快速建立可复习、可迁移的知识抓手。",
+            audience_profile_text="学习者需要在较短时间内抓住材料主线、关键概念和可练习任务。",
+            content_strategy_text="优先讲清每章最核心的判断路径、关键定义、典型例子和常见误区，避免把材料改写成纯题库。",
+            example_practice_policy="例子和练习用于验证概念与方法迁移，比例略高，但不替代知识主线。",
+            source_usage_policy="优先使用用户资料和已确认章节范围；外部来源只用于补足背景或缺口。",
+            teaching_intent="快速建立可复习、可练习、可回看的一轮学习闭环。",
+            example_ratio=0.42,
+            practice_ratio=0.34,
+            evidence_strictness=0.62,
+            review_strictness=0.62,
             document_style="exam_sprint_notes",
             depth_level="compact",
             explanation_depth="compact",
@@ -31,6 +41,16 @@ def fallback_intent_profile(*, digest_mode: str, chapter_count: int = 0) -> DocG
             fallback_used=True,
         )
     return DocGenIntentProfile(
+        learning_goal_text="围绕用户已确认的大纲建立结构清晰、证据可追踪的系统学习文档。",
+        audience_profile_text="学习者需要按章节逐步理解资料中的概念、定义、关系、例子和边界条件。",
+        content_strategy_text="先搭建知识主线，再解释关键概念和依赖关系，最后用例子或练习帮助迁移。",
+        example_practice_policy="例子和练习服务于理解与迁移，比例适中，避免喧宾夺主。",
+        source_usage_policy="优先使用用户资料；当资料不足时才使用外部来源补充，并保留不确定性提示。",
+        teaching_intent="生成一份可长期复习、可追溯来源、能支撑后续问答和图谱的学习文档。",
+        example_ratio=0.30,
+        practice_ratio=0.20,
+        evidence_strictness=0.72,
+        review_strictness=0.66,
         document_style="systematic_teaching_notes",
         depth_level="deep",
         explanation_depth="detailed",

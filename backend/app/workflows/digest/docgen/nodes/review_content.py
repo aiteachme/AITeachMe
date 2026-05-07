@@ -52,6 +52,60 @@ def _by_chapter(model_cls, items: list[dict]) -> dict[int, object]:
     }
 
 
+def _single_or_by_chapter(
+    state: DocGenState,
+    *,
+    model_cls,
+    chapter_index: int,
+    single_key: str,
+    collection_key: str,
+):
+    single = state.get(single_key)
+    if isinstance(single, dict) and single:
+        try:
+            parsed = model_cls.model_validate(single)
+            if int(getattr(parsed, "chapter_index", 0) or 0) == chapter_index:
+                return parsed
+        except Exception:
+            pass
+    return _by_chapter(model_cls, list(state.get(collection_key) or [])).get(chapter_index)
+
+
+def _materialize_reviewed_chapters(state: DocGenState) -> list[ReviewedChapterDraft]:
+    overlays_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("reviewed_chapter_overlay_items") or [])
+        if isinstance(item, dict)
+    }
+    enhanced_items = sorted(
+        list(state.get("enhanced_chapter_drafts") or []),
+        key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
+    )
+    if enhanced_items:
+        reviewed: list[ReviewedChapterDraft] = []
+        for item in enhanced_items:
+            draft = EnhancedChapterDraft.model_validate(item)
+            overlay = overlays_by_chapter.get(draft.chapter_index, {})
+            reviewed.append(
+                ReviewedChapterDraft.model_validate(
+                    {
+                        **draft.model_dump(mode="json"),
+                        "review_report_ref": str(overlay.get("review_report_ref") or ""),
+                        "warnings": list(overlay.get("warnings") or draft.warnings),
+                        "patched": bool(overlay.get("patched", False)),
+                    }
+                )
+            )
+        return reviewed
+    return [
+        ReviewedChapterDraft.model_validate(item)
+        for item in sorted(
+            list(state.get("reviewed_chapter_draft_items") or []),
+            key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
+        )
+    ]
+
+
 def build_review_chapter_node(*, context: WorkflowContext):
     """构建单章复核节点。
 
@@ -65,10 +119,34 @@ def build_review_chapter_node(*, context: WorkflowContext):
 
         started_at = perf_counter()
         draft = EnhancedChapterDraft.model_validate(state["enhanced_chapter_draft"])
-        tasks_by_chapter = _by_chapter(ChapterGenerationTask, list(state.get("chapter_tasks") or []))
-        claim_ledgers_by_chapter = _by_chapter(ClaimLedger, list(state.get("claim_ledgers") or []))
-        claim_maps_by_chapter = _by_chapter(ClaimEvidenceMap, list(state.get("claim_evidence_maps") or []))
-        conflict_reports_by_chapter = _by_chapter(ConflictReport, list(state.get("conflict_reports") or []))
+        task = _single_or_by_chapter(
+            state,
+            model_cls=ChapterGenerationTask,
+            chapter_index=draft.chapter_index,
+            single_key="review_chapter_task",
+            collection_key="chapter_tasks",
+        )
+        claim_ledger = _single_or_by_chapter(
+            state,
+            model_cls=ClaimLedger,
+            chapter_index=draft.chapter_index,
+            single_key="review_claim_ledger",
+            collection_key="claim_ledgers",
+        )
+        claim_evidence_map = _single_or_by_chapter(
+            state,
+            model_cls=ClaimEvidenceMap,
+            chapter_index=draft.chapter_index,
+            single_key="review_claim_evidence_map",
+            collection_key="claim_evidence_maps",
+        )
+        conflict_report = _single_or_by_chapter(
+            state,
+            model_cls=ConflictReport,
+            chapter_index=draft.chapter_index,
+            single_key="review_conflict_report",
+            collection_key="conflict_reports",
+        )
 
         update_knowledge_build_status(
             state["course_id"],
@@ -94,10 +172,10 @@ def build_review_chapter_node(*, context: WorkflowContext):
         )
         reviewed, report, actions = await review_chapter(
             draft=draft,
-            task=tasks_by_chapter.get(draft.chapter_index),
-            claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
-            claim_evidence_map=claim_maps_by_chapter.get(draft.chapter_index),
-            conflict_report=conflict_reports_by_chapter.get(draft.chapter_index),
+            task=task,
+            claim_ledger=claim_ledger,
+            claim_evidence_map=claim_evidence_map,
+            conflict_report=conflict_report,
             digest_mode=state.get("digest_mode") or "",
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
@@ -144,7 +222,14 @@ def build_review_chapter_node(*, context: WorkflowContext):
             },
         )
         return {
-            "reviewed_chapter_draft_items": [reviewed.model_dump(mode="json")],
+            "reviewed_chapter_overlay_items": [
+                {
+                    "chapter_index": reviewed.chapter_index,
+                    "review_report_ref": reviewed.review_report_ref,
+                    "warnings": reviewed.warnings,
+                    "patched": reviewed.patched,
+                }
+            ],
             "chapter_review_report_items": [report.model_dump(mode="json")],
             "review_action_items": [item.model_dump(mode="json") for item in actions],
             "review_ms": elapsed_ms,
@@ -165,13 +250,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
         """汇总章节 review 并生成 review_decision。"""
 
         started_at = perf_counter()
-        reviewed = [
-            ReviewedChapterDraft.model_validate(item)
-            for item in sorted(
-                list(state.get("reviewed_chapter_draft_items") or []),
-                key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
-            )
-        ]
+        reviewed = _materialize_reviewed_chapters(state)
         if not reviewed:
             return {"error": "没有可做整本一致性复核的章节。"}
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})

@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+run_python() {
+  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+    python "$@"
+  elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+    python3 "$@"
+  elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
+    py -3 "$@"
+  else
+    echo "python was not found; cannot verify generated API client." >&2
+    exit 1
+  fi
+}
+
+echo "[pre-push] Verifying OpenAPI and generated API client..."
+(
+  cd backend
+  run_python scripts/export_api_docs.py
+)
+
+if ! git diff --quiet -- frontend/openapi.json frontend/src/api/generated ||
+   ! git diff --cached --quiet -- frontend/openapi.json frontend/src/api/generated; then
+  echo "Generated API client changed after regeneration." >&2
+  echo "Run this, commit the generated files, then push again:" >&2
+  echo "  cd backend && python scripts/export_api_docs.py" >&2
+  echo "  git add frontend/openapi.json frontend/src/api/generated" >&2
+  echo "  git commit -m \"chore: 同步 OpenAPI 客户端\"" >&2
+  git diff --stat -- frontend/openapi.json frontend/src/api/generated >&2 || true
+  git diff --cached --stat -- frontend/openapi.json frontend/src/api/generated >&2 || true
+  exit 1
+fi

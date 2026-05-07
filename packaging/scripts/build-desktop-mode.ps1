@@ -2,11 +2,12 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("tauri-local", "tauri-remote", "electron-local", "electron-remote", "all-local", "all")]
     [string]$PackageMode,
-    [string]$BackendPort = "19020",
+    [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
     [switch]$HideElectronSuffix,
     [switch]$ImportBundledEnv,
+    [switch]$RequireTauriUpdater,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled"
 )
@@ -32,7 +33,10 @@ function Invoke-PackagingScript {
 }
 
 function Build-ElectronLocal {
-    $arguments = @("-Flavor", "local", "-BackendPort", $BackendPort)
+    $arguments = @("-Flavor", "local")
+    if (-not [string]::IsNullOrWhiteSpace($BackendPort)) {
+        $arguments += @("-BackendPort", $BackendPort)
+    }
     if ($SkipInstall) {
         $arguments += "-SkipInstall"
     }
@@ -81,6 +85,9 @@ function Build-TauriLocal {
             "-BundledEnvArtifactSuffix",
             $BundledEnvArtifactSuffix
         )
+    }
+    if ($RequireTauriUpdater) {
+        $arguments += "-RequireUpdater"
     }
 
     Invoke-PackagingScript `

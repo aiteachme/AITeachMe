@@ -3,8 +3,10 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, usePar
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
+import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
+import { DesktopUpdatePrompt } from "./components/desktop/DesktopUpdatePrompt";
 import { ToastProvider } from "./components/ui/Toast";
 import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
@@ -121,7 +123,9 @@ function App() {
         <BackendConnectivityBridge />
         <RuntimeSettingsBootstrap />
         <ToastProvider>
+          <DesktopUpdatePrompt />
           <Router unstable_useTransitions={false}>
+            <RouteAnalyticsBridge />
             <ElectronWindowFrame>
               <Routes>
                 <Route path="/" element={<Layout />}>

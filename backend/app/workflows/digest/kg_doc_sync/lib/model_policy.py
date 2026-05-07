@@ -8,11 +8,11 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
-from app.workflows.digest.common.model_policy import compact_metadata
+from app.workflows.common.model_policy import compact_metadata
 
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
 
-_SECTION_GRAPH_TIMEOUT_S = 180
+_SECTION_GRAPH_TIMEOUT_S = 300
 _SECTION_GRAPH_MAX_CONTENT_CHARS = 12000
 _SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS = 2400
 
@@ -32,7 +32,7 @@ class KGDocSyncModelPolicy:
     timeout_s: int | None = None
     max_content_chars: int | None = None
     course_context_max_chars: int | None = None
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -46,8 +46,8 @@ class KGDocSyncModelPolicy:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
             kwargs["timeout"] = self.timeout_s
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(self) -> dict[str, object]:
@@ -77,10 +77,11 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=3600,
+        max_tokens=7000,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,
         max_content_chars=_SECTION_GRAPH_MAX_CONTENT_CHARS,
         course_context_max_chars=_SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS,
+        temperature=0.1,
         note="从单个知识文档章节抽取高置信候选知识单元和关系；输出预算要容纳最多 8 个节点和 10 条关系的结构化 JSON。",
     ),
     KGDocSyncModelStep.EMPTY_REPAIR: KGDocSyncModelPolicy(
@@ -88,8 +89,9 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
-        max_tokens=1600,
+        max_tokens=3600,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,
+        temperature=0.1,
         note="主抽取为空时的极短修复抽取，只补明显漏掉的知识点。",
     ),
 }

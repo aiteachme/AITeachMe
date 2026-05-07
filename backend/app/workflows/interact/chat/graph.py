@@ -343,7 +343,8 @@ def _trace_interact_node(trace, node_key: str, handler):
     details = NODE_TRACE_DETAILS[node_key]
     return trace.node(
         handler,
-        name=NODE_DISPLAY_NAMES[node_key],
+        name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
         description=details["description"],
         input_keys=details["input_keys"],
         output_keys=details["output_keys"],

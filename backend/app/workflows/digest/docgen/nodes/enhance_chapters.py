@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
 from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -129,7 +130,11 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             )
             return enhanced, asset_manifest, practice_manifest
 
-        results = await asyncio.gather(*(_enhance_one(draft) for draft in drafts))
+        results = await gather_with_concurrency(
+            drafts,
+            _enhance_one,
+            limit=get_llm_concurrency_limit(),
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]

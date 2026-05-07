@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 
 EXCLUDED_MODULE_PREFIXES = (
@@ -91,6 +91,7 @@ DATA_PACKAGES = (
     "pydantic",
     "pydantic_settings",
     "sqlalchemy",
+    "sqlite_vec",
     "sqlmodel",
     "uvicorn",
 )
@@ -170,7 +171,9 @@ def collect_runtime_datas() -> list[tuple[str, str]]:
     datas: list[tuple[str, str]] = [
         ("alembic.ini", "."),
         ("migrations", "migrations"),
+        ("pyproject.toml", "."),
     ]
+    datas += copy_metadata("aiteachme-backend")
 
     bundled_env_path = Path("../packaging/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
     if bundled_env_path.exists():

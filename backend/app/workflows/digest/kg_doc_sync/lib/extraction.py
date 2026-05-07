@@ -79,15 +79,13 @@ class CandidateNode(BaseModel):
     anchor_id: str = Field(default="", description="Markdown 中已有的 KnowledgeUnit anchor ID。")
     name: str = Field(description="知识单元名称，要求短、准、可展示；不超过 90 个字符。")
     knowledge_unit_type: Literal[
-        "concept",
-        "definition",
-        "theorem",
-        "formula",
-        "example",
-        "exercise",
-        "method",
-        "proof_step",
-        "remark",
+        "core_knowledge",
+        "method_demo",
+        "explanation_support",
+        "principle_reasoning",
+        "practice_assessment",
+        "knowledge_organization",
+        "application_extension",
     ] = Field(
         description="允许的节点类型，必须使用枚举值本身。"
     )
@@ -97,7 +95,7 @@ class CandidateNode(BaseModel):
     taxonomy_hint: str = Field(default="", description="可能的上位主题或分类线索。")
     parent_entity_name: str | None = Field(
         default=None,
-        description="定义、公式、例题等节点所属的父概念、方法或主题。",
+        description="解释辅助、练习评估、方法示范等节点所属的父知识、方法或主题。",
     )
 
     @field_validator("knowledge_unit_type", mode="before")
@@ -122,9 +120,11 @@ class CandidateEdge(BaseModel):
     target_node_type: str | None = Field(default=None, description="目标节点类型；不确定时可留空。")
     edge_type: Literal[
         "prerequisite",
-        "derivation",
+        "contains",
+        "reasoning",
         "application",
-        "example_of",
+        "explanation",
+        "training",
         "similar",
         "contrast",
     ] = Field(description="允许的关系类型，必须使用枚举值本身。")
@@ -133,7 +133,7 @@ class CandidateEdge(BaseModel):
     @field_validator("edge_type", mode="before")
     @classmethod
     def _normalize_edge_type(cls, value: object) -> str:
-        # Some providers occasionally echo a node type such as "remark" as a relation.
+        # Some providers occasionally echo a node type such as "explanation_support" as a relation.
         # Normalize before Literal validation so the section can still be salvaged.
         return normalize_relation_type(str(value or ""))
 
@@ -280,7 +280,7 @@ async def _repair_docs_extraction_after_empty(
             "role": USER,
             "content": (
                 "上一次抽取结果为空。请重新阅读片段：如果其中包含任何概念、定义、公式、方法、例题、"
-                "定理、证明步骤或注意事项，请返回非空图谱。若标题本身是一个真实主题，至少包含该主概念。"
+                "定理、推导、解释辅助、练习评估或应用任务，请返回非空图谱。若标题本身是一个真实主题，至少包含该核心知识。"
             ),
         }
     )
@@ -342,7 +342,13 @@ def _sanitize_candidate_graph(
     primary_terms = [
         node.name
         for node in result.nodes
-        if normalize_knowledge_unit_type(node.knowledge_unit_type) in {"concept", "method"}
+        if normalize_knowledge_unit_type(node.knowledge_unit_type) in {
+            "core_knowledge",
+            "method_demo",
+            "principle_reasoning",
+            "knowledge_organization",
+            "application_extension",
+        }
     ]
     semantic_topic_path = choose_semantic_topic_path(
         header_path=header_path,
@@ -373,11 +379,17 @@ def _sanitize_candidate_graph(
         else:
             node.name = _clip_text(_normalize_text(node.name), max_chars=_MAX_CANDIDATE_NAME_CHARS)
             node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
-            if node.knowledge_unit_type in {"concept", "method"} and (
+            if node.knowledge_unit_type in {
+                "core_knowledge",
+                "method_demo",
+                "principle_reasoning",
+                "knowledge_organization",
+                "application_extension",
+            } and (
                 not node.taxonomy_hint or is_generic_semantic_title(node.taxonomy_hint)
             ):
                 node.taxonomy_hint = semantic_topic_name
-            if node.knowledge_unit_type in {"definition", "example", "exercise"} and (
+            if node.knowledge_unit_type in {"explanation_support", "practice_assessment"} and (
                 not node.parent_entity_name or is_generic_semantic_title(node.parent_entity_name)
             ):
                 node.parent_entity_name = semantic_topic_name
@@ -454,6 +466,7 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
             return matches[0]
         return None
 
+    resolved_edges: list[CandidateEdge] = []
     for edge in result.edges:
         source_node = _select_local_candidate(
             edge.source_name,
@@ -465,12 +478,20 @@ def _assign_candidate_ids_and_edge_types(result: ChunkExtractionResult) -> Chunk
             endpoint_side="target",
             edge_type=edge.edge_type,
         )
-        if source_node is not None:
-            edge.source_candidate_id = source_node.candidate_id
-            edge.source_node_type = source_node.knowledge_unit_type
-        if target_node is not None:
-            edge.target_candidate_id = target_node.candidate_id
-            edge.target_node_type = target_node.knowledge_unit_type
+        if source_node is None or target_node is None:
+            logger.info(
+                "knowledge_candidate_edge_dropped_unmatched_local_endpoint",
+                edge_type=edge.edge_type,
+                source_name=edge.source_name,
+                target_name=edge.target_name,
+            )
+            continue
+        edge.source_candidate_id = source_node.candidate_id
+        edge.source_node_type = source_node.knowledge_unit_type
+        edge.target_candidate_id = target_node.candidate_id
+        edge.target_node_type = target_node.knowledge_unit_type
+        resolved_edges.append(edge)
+    result.edges = resolved_edges
     return result
 
 
@@ -498,7 +519,7 @@ def _build_markdown_anchor_result(
         nodes.append(
             CandidateNode(
                 name=name,
-                knowledge_unit_type="concept",
+                knowledge_unit_type="core_knowledge",
                 type_source="manual",
                 type_confidence=0.9,
                 local_summary=f"Markdown 标记引用了概念：{name}。",
@@ -530,7 +551,7 @@ def _build_markdown_anchor_result(
                 CandidateEdge(
                     source_name=prerequisite,
                     target_name=unit.name,
-                    edge_type="prerequisite",
+                edge_type="prerequisite",
                     description=f"{prerequisite} 是学习 {unit.name} 前需要掌握的前置知识。",
                 )
             )
@@ -540,7 +561,7 @@ def _build_markdown_anchor_result(
                 CandidateEdge(
                     source_name=unit.name,
                     target_name=related,
-                    edge_type="similar",
+                edge_type="similar",
                     description=f"{unit.name} 与 {related} 存在相关关系。",
                 )
             )

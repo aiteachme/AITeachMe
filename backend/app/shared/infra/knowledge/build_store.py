@@ -216,6 +216,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     discovered_node_count: int = 0
     discovered_node_types: dict[str, int] = Field(default_factory=dict)
     digest_mode: str | None = None
+    model_override: str | None = None
     sample_nodes: list[dict[str, str]] = Field(default_factory=list)
     estimated_remaining_seconds: int | None = None
     current_stage_description: str | None = None
@@ -304,16 +305,16 @@ def _build_sample_cards(
                 "title": "构建模式",
                 "card_type": "mode",
                 "summary": (
-                    "冲刺模式更强调快速抓重点、贴近题型和考前回顾。"
+                    "速成课模式更强调快速抓重点、贴近题型和考前回顾。"
                     if digest_mode == "sprint"
-                    else "系统模式更强调概念完整、推导清晰和结构化学习。"
+                    else "系统课模式更强调概念完整、推导清晰和结构化学习。"
                 ),
             }
         )
 
     for sample in sample_nodes[:3]:
         name = str(sample.get("name", "")).strip()
-        knowledge_unit_type = str(sample.get("type", "concept")).strip() or "concept"
+        knowledge_unit_type = str(sample.get("type", "core_knowledge")).strip() or "core_knowledge"
         if not name:
             continue
         cards.append(

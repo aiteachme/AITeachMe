@@ -11,6 +11,7 @@ from urllib.parse import unquote
 from pydantic import BaseModel
 import structlog
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
@@ -89,11 +90,15 @@ async def enhance_markdown_with_asset_ocr(
         )
     else:
         ocr_items = [_build_plain_asset_item(asset_path, asset_link_prefix=asset_link_prefix) for asset_path in candidate_paths]
-    if not ocr_items:
-        if placeholder_count:
-            ocr_items = [_build_plain_asset_item(asset_path, asset_link_prefix=asset_link_prefix) for asset_path in candidate_paths]
-        else:
-            return AssetOCREnhancementResult(markdown=markdown)
+    if placeholder_count:
+        ocr_items = _fill_missing_placeholder_items(
+            candidate_paths,
+            ocr_items,
+            asset_link_prefix=asset_link_prefix,
+            placeholder_count=placeholder_count,
+        )
+    elif not ocr_items:
+        return AssetOCREnhancementResult(markdown=markdown)
 
     if not ocr_items:
         return AssetOCREnhancementResult(markdown=markdown)
@@ -179,19 +184,50 @@ async def _ocr_asset_paths(
     """
     _CIRCUIT_BREAKER_THRESHOLD = 2  # consecutive failures to trigger stop
     consecutive_failures = 0
-    circuit_broken = False
+    stop_event = asyncio.Event()
+    failure_lock = asyncio.Lock()
+    pending_queue: asyncio.Queue[tuple[int, Path]] = asyncio.Queue()
+    results: list[AssetOCRItem | None] = [None] * len(asset_paths)
 
-    results: list[AssetOCRItem | None] = []
+    for index, asset_path in enumerate(asset_paths):
+        pending_queue.put_nowait((index, asset_path))
 
-    for asset_path in asset_paths:
-        if circuit_broken:
-            break
+    async def _record_failure(*, reason: str, asset_name: str, error: str | None = None) -> None:
+        nonlocal consecutive_failures
 
+        async with failure_lock:
+            consecutive_failures += 1
+            if error:
+                logger.warning("asset_ocr_failed", asset_name=asset_name, error=error)
+            if consecutive_failures < _CIRCUIT_BREAKER_THRESHOLD:
+                return
+            if stop_event.is_set():
+                return
+            stop_event.set()
+            logger.warning(
+                "ocr_circuit_breaker_triggered",
+                reason=reason,
+                failed_count=consecutive_failures,
+                remaining_skipped=pending_queue.qsize(),
+                hint=(
+                    "文档 OCR 模型可能不支持图片输入，请检查 settings.models.ocr 配置。"
+                    if reason == "vision_model_refused"
+                    else None
+                ),
+            )
+
+    async def _record_success() -> None:
+        nonlocal consecutive_failures
+        async with failure_lock:
+            consecutive_failures = 0
+
+    async def _run_one(index: int, asset_path: Path) -> None:
         mime_type = MIME_MAP.get(asset_path.suffix.lower(), "image/png")
         try:
             image_bytes = asset_path.read_bytes()
-        except OSError:
-            continue
+        except OSError as exc:
+            logger.warning("asset_ocr_read_failed", asset_name=asset_path.name, error=str(exc))
+            return
 
         try:
             ocr_markdown = await parse_image_bytes_with_llm_vision(
@@ -201,41 +237,34 @@ async def _ocr_asset_paths(
                 model_selector="ocr",
             )
         except Exception as exc:
-            logger.warning("asset_ocr_failed", asset_name=asset_path.name, error=str(exc))
-            consecutive_failures += 1
-            if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
-                logger.warning(
-                    "ocr_circuit_breaker_triggered",
-                    reason="consecutive_failures",
-                    failed_count=consecutive_failures,
-                    remaining_skipped=len(asset_paths) - len(results) - 1,
-                )
-                circuit_broken = True
-            continue
+            await _record_failure(reason="consecutive_failures", asset_name=asset_path.name, error=str(exc))
+            return
 
-        # Check if model refused (returned [unclear])
-        if ocr_markdown.strip() == "[unclear]":
-            consecutive_failures += 1
-            if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
-                logger.warning(
-                    "ocr_circuit_breaker_triggered",
-                    reason="vision_model_refused",
-                    failed_count=consecutive_failures,
-                    remaining_skipped=len(asset_paths) - len(results) - 1,
-                    hint="文档 OCR 模型可能不支持图片输入，请检查 settings.models.ocr 配置。",
-                )
-                circuit_broken = True
-            continue
-        else:
-            consecutive_failures = 0  # Reset on success
+        cleaned = ocr_markdown.strip()
+        if cleaned == "[unclear]":
+            await _record_failure(reason="vision_model_refused", asset_name=asset_path.name)
+            return
 
-        results.append(AssetOCRItem(
+        await _record_success()
+        results[index] = AssetOCRItem(
             filename=asset_path.name,
             markdown_url=f"{asset_link_prefix}/{asset_path.name}",
-            ocr_markdown=ocr_markdown.strip(),
+            ocr_markdown=cleaned,
             page_number=_extract_asset_page_number(asset_path.name),
-        ))
+        )
 
+    async def _worker() -> None:
+        while not stop_event.is_set():
+            try:
+                index, asset_path = pending_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            if stop_event.is_set():
+                return
+            await _run_one(index, asset_path)
+
+    worker_count = max(1, min(int(concurrency or 1), get_llm_concurrency_limit(), len(asset_paths)))
+    await asyncio.gather(*(_worker() for _ in range(worker_count)))
     return [item for item in results if item is not None]
 
 
@@ -246,6 +275,27 @@ def _build_plain_asset_item(asset_path: Path, *, asset_link_prefix: str) -> Asse
         ocr_markdown="",
         page_number=_extract_asset_page_number(asset_path.name),
     )
+
+
+def _fill_missing_placeholder_items(
+    asset_paths: list[Path],
+    ocr_items: list[AssetOCRItem],
+    *,
+    asset_link_prefix: str,
+    placeholder_count: int,
+) -> list[AssetOCRItem]:
+    if placeholder_count <= 0:
+        return ocr_items
+
+    items_by_filename = {item.filename: item for item in ocr_items}
+    replacement_paths = asset_paths[: min(len(asset_paths), placeholder_count)]
+    replacement_names = {path.name for path in replacement_paths}
+    replacement_items = [
+        items_by_filename.get(path.name) or _build_plain_asset_item(path, asset_link_prefix=asset_link_prefix)
+        for path in replacement_paths
+    ]
+    extra_items = [item for item in ocr_items if item.filename not in replacement_names]
+    return [*replacement_items, *extra_items]
 
 
 def _collect_referenced_asset_names(markdown: str) -> set[str]:

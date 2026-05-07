@@ -33,7 +33,7 @@ def build_file_summary_messages(
 切片目录（只能从这里选择 section_ref；line_start/line_end 用于后续精确提取原文）：
 {section_catalog_text}
 
-文件内容：
+文件内容采样（不是完整全文；切片选择必须以切片目录为准）：
 {excerpt}
 
 请输出 JSON：
@@ -70,6 +70,10 @@ def build_file_summary_messages(
 4. `chapter_slices` 是后续写作的关键上下文路由：请基于语义判断每个章节最需要哪些切片，不要只按关键词机械匹配。
 5. 每个 `section_ref` 必须来自切片目录；每个文件最多选择 18 个高价值切片，宁缺毋滥。
 6. `summary` 要概括这段原文对章节写作的用途，后续会和原文行一起注入章节上下文。
+7. 输出必须短：总 `summary` 不超过 180 个中文字符；各列表最多 8 项；每项不超过 32 个中文字符。
+8. `chapter_slices` 最多 12 项；`reason` 不超过 50 个中文字符，`summary` 不超过 70 个中文字符。
+9. 不要在 `chapter_slices` 里输出 `file_id`、`filename`、`section_title`、`header_path`、`excerpt` 等额外字段。
+10. 不确定就跳过；绝不能补造 `????`、省略号或目录中不存在的 `section_ref`。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

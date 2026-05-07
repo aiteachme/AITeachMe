@@ -14,14 +14,14 @@ permissions:
   contents: read
 
 env:
-  # Non-secret Sealos/ACR deployment constants. Update these here when the
-  # Sealos app name, public address, internal service address, or registry path changes.
+  # Non-secret deployment constants are intentionally kept here for maintainer
+  # convenience. Do not put deploy hooks, kubeconfig, registry passwords, or
+  # other credentials here; those must stay in GitHub Secrets.
   # Nginx resolves runtime proxy_pass variables by itself, so use the full
   # Kubernetes service FQDN instead of the Sealos UI short service.namespace form.
   AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
-  BACKEND_HEALTH_URL: https://jvpjzbwmwrjs.sealosbja.site/api/health
   BACKEND_IMAGE_NAME: aiteachme-backend
   BACKEND_ROLLOUT_TIMEOUT_SECONDS: "3600"
   FRONTEND_ACR_NAMESPACE: aiteachme
@@ -93,18 +93,25 @@ jobs:
     if: needs.verify-latest.outputs.should_deploy == 'true'
 
     steps:
-      - name: Validate Cloudflare deploy hook
+      - name: Check Cloudflare deploy hook opt-in
+        id: optin
         env:
           CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           if [ -z "$CLOUDFLARE_DEPLOY_KEY" ]; then
-            echo "Missing CLOUDFLARE_DEPLOY_KEY."
-            echo "Configure it in GitHub Settings -> Secrets and variables -> Actions."
-            exit 1
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Cloudflare Pages deploy skipped."
+              echo
+              echo "Set GitHub secret CLOUDFLARE_DEPLOY_KEY to enable it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger Cloudflare Pages build
+        if: steps.optin.outputs.enabled == 'true'
         env:
           CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
         run: |
@@ -112,6 +119,7 @@ jobs:
           curl -fsS -X POST "$CLOUDFLARE_DEPLOY_KEY"
 
       - name: Frontend summary
+        if: steps.optin.outputs.enabled == 'true'
         run: |
           echo "Frontend: Cloudflare Pages deploy hook triggered." >> "$GITHUB_STEP_SUMMARY"
 
@@ -146,6 +154,16 @@ jobs:
             exit 0
           fi
 
+          if [ -z "${ALIYUN_ACR_USERNAME}" ] || [ -z "${ALIYUN_ACR_PASSWORD}" ] || [ -z "${SEALOS_KUBECONFIG_B64}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Sealos frontend deploy skipped."
+              echo
+              echo "Set GitHub secrets ALIYUN_ACR_USERNAME, ALIYUN_ACR_PASSWORD, and SEALOS_KUBECONFIG_B64 to enable it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
@@ -164,13 +182,13 @@ jobs:
           [ -n "${ALIYUN_ACR_USERNAME}" ] || missing+=("secret:ALIYUN_ACR_USERNAME")
           [ -n "${ALIYUN_ACR_PASSWORD}" ] || missing+=("secret:ALIYUN_ACR_PASSWORD")
           [ -n "${SEALOS_KUBECONFIG_B64}" ] || missing+=("secret:SEALOS_KUBECONFIG_B64")
-          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("workflow env:SEALOS_NAMESPACE")
-          [ -n "${SEALOS_FRONTEND_DEPLOYMENT}" ] || missing+=("workflow env:SEALOS_FRONTEND_DEPLOYMENT")
-          [ -n "${FRONTEND_ACR_REGISTRY}" ] || missing+=("workflow env:FRONTEND_ACR_REGISTRY")
-          [ -n "${FRONTEND_ACR_NAMESPACE}" ] || missing+=("workflow env:FRONTEND_ACR_NAMESPACE")
-          [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("workflow env:FRONTEND_IMAGE_NAME")
-          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("workflow env:SEALOS_IMAGE_PULL_SECRET")
-          [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("workflow env:AITEACHME_API_UPSTREAM")
+          [ -n "${SEALOS_NAMESPACE}" ] || missing+=("env:SEALOS_NAMESPACE")
+          [ -n "${SEALOS_FRONTEND_DEPLOYMENT}" ] || missing+=("env:SEALOS_FRONTEND_DEPLOYMENT")
+          [ -n "${FRONTEND_ACR_REGISTRY}" ] || missing+=("env:FRONTEND_ACR_REGISTRY")
+          [ -n "${FRONTEND_ACR_NAMESPACE}" ] || missing+=("env:FRONTEND_ACR_NAMESPACE")
+          [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("env:FRONTEND_IMAGE_NAME")
+          [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
+          [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("env:AITEACHME_API_UPSTREAM")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required Sealos frontend deploy configuration:\n' >&2
@@ -431,12 +449,42 @@ jobs:
       ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
     steps:
+      - name: Check Sealos backend deployment opt-in
+        id: optin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SEALOS_BACKEND_DEPLOYMENT}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Sealos backend deploy skipped."
+              echo
+              echo "Set workflow env SEALOS_BACKEND_DEPLOYMENT after creating the Sealos backend app."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ -z "${ALIYUN_ACR_USERNAME}" ] || [ -z "${ALIYUN_ACR_PASSWORD}" ] || [ -z "${SEALOS_KUBECONFIG_B64}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "Sealos backend deploy skipped."
+              echo
+              echo "Set GitHub secrets ALIYUN_ACR_USERNAME, ALIYUN_ACR_PASSWORD, and SEALOS_KUBECONFIG_B64 to enable it."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.optin.outputs.enabled == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_SHA }}
 
       - name: Validate Sealos deploy configuration
+        if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -464,9 +512,11 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
+        if: steps.optin.outputs.enabled == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: steps.optin.outputs.enabled == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -474,6 +524,7 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Log in to Aliyun ACR
+        if: steps.optin.outputs.enabled == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.BACKEND_ACR_REGISTRY }}
@@ -481,6 +532,7 @@ jobs:
           password: ${{ env.ALIYUN_ACR_PASSWORD }}
 
       - name: Resolve backend image tags
+        if: steps.optin.outputs.enabled == 'true'
         id: image
         shell: bash
         run: |
@@ -497,6 +549,7 @@ jobs:
           echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:slim-latest,${acr_image}:${version_tag},${acr_image}:slim-latest" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
+        if: steps.optin.outputs.enabled == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -513,9 +566,11 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend-slim
 
       - name: Set up kubectl
+        if: steps.optin.outputs.enabled == 'true'
         uses: azure/setup-kubectl@v4
 
       - name: Configure Sealos kubeconfig
+        if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -527,6 +582,7 @@ jobs:
           echo "KUBECONFIG=${kube_dir}/config" >> "$GITHUB_ENV"
 
       - name: Update Sealos deployment image
+        if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -547,6 +603,53 @@ jobs:
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
 
+          backend_container_name="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get \
+              "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+              -o jsonpath='{.spec.template.spec.containers[0].name}'
+          )"
+          if [ -z "${backend_container_name}" ]; then
+            echo "Could not resolve backend container name from deployment/${SEALOS_BACKEND_DEPLOYMENT}." >&2
+            exit 1
+          fi
+
+          security_patch="$(
+            cat <<JSON
+          {
+            "spec": {
+              "template": {
+                "spec": {
+                  "securityContext": {
+                    "runAsNonRoot": true,
+                    "runAsUser": 10001,
+                    "runAsGroup": 10001,
+                    "fsGroup": 10001,
+                    "seccompProfile": {
+                      "type": "RuntimeDefault"
+                    }
+                  },
+                  "containers": [
+                    {
+                      "name": "${backend_container_name}",
+                      "securityContext": {
+                        "allowPrivilegeEscalation": false,
+                        "capabilities": {
+                          "drop": ["ALL"]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+          JSON
+          )"
+          kubectl -n "${SEALOS_NAMESPACE}" patch \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
+            --type=strategic \
+            -p "${security_patch}"
+
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             "*=${{ steps.image.outputs.image }}"
@@ -556,7 +659,7 @@ jobs:
             --timeout="${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
       - name: Show Sealos rollout diagnostics
-        if: always()
+        if: always() && steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           set +e
@@ -577,36 +680,69 @@ jobs:
             | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
 
           echo
+          echo "## Deployment describe"
+          kubectl -n "${SEALOS_NAMESPACE}" describe \
+            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" || true
+
+          echo
+          echo "## Pod describe"
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo
+            echo "### ${pod}"
+            kubectl -n "${SEALOS_NAMESPACE}" describe pod "${pod}" || true
+          done
+
+          echo
+          echo "## Pod logs"
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo
+            echo "### ${pod}"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=200 || true
+            echo
+            echo "### ${pod} previous"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=200 || true
+          done
+
+          echo
           echo "## Recent events"
           kubectl -n "${SEALOS_NAMESPACE}" get events --sort-by=.lastTimestamp \
             | grep -E "^LAST SEEN|${SEALOS_BACKEND_DEPLOYMENT}" \
             | tail -n 80 || true
 
-      - name: Smoke test backend
-        if: ${{ env.BACKEND_HEALTH_URL != '' }}
+      - name: Smoke test backend in cluster
+        if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
 
+          probe='import os, urllib.request; port = os.environ.get("PORT") or "9020"; url = "http://127.0.0.1:%s/api/health" % port; print(urllib.request.urlopen(url, timeout=5).read().decode("utf-8"))'
+
           for attempt in {1..12}; do
-            if curl -fsS "${BACKEND_HEALTH_URL}"; then
+            pod="$(
+              kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+                | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" { print $1; exit }'
+            )"
+
+            if [ -n "${pod}" ] && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- python -c "${probe}"; then
               exit 0
             fi
-            echo "Health check failed; retrying (${attempt}/12)..."
+
+            echo "Backend in-cluster health check failed; retrying (${attempt}/12)..."
             sleep 10
           done
 
-          echo "Backend health check did not pass: ${BACKEND_HEALTH_URL}" >&2
+          echo "Backend in-cluster health check did not pass." >&2
           exit 1
 
       - name: Backend summary
+        if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
           {
             echo "Backend image: ${{ steps.image.outputs.image }}"
             echo "Sealos namespace: ${SEALOS_NAMESPACE}"
             echo "Sealos deployment: ${SEALOS_BACKEND_DEPLOYMENT}"
-            if [ -n "${BACKEND_HEALTH_URL}" ]; then
-              echo "Health URL: ${BACKEND_HEALTH_URL}"
-            fi
+            echo "Health check: in-cluster pod localhost /api/health"
           } >> "$GITHUB_STEP_SUMMARY"

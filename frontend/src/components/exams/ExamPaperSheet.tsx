@@ -299,7 +299,7 @@ export function ExamPaperSheet({
 
   return (
                 <div
-                  className="relative mx-auto max-w-[1240px] pb-12"
+                  className="relative mx-auto max-w-[1040px] pb-12"
                   style={
                     pageScale < 1
                       ? {
@@ -328,7 +328,7 @@ export function ExamPaperSheet({
                       <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
                         <p className="font-bold text-slate-800 dark:text-slate-200">注意事项：</p>
                         <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
-                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查左侧题号状态。</p>
+                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查题号导航状态。</p>
                       </div>
                     </header>
 
@@ -481,15 +481,15 @@ export function ExamPaperSheet({
                                              : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400"
                                         : isReadonly
                                           ? isSelected
-                                             ? "border-indigo-300 bg-indigo-50 text-indigo-900 shadow-[0_0_0_2px_rgba(99,102,241,0.12)] dark:border-indigo-500/45 dark:bg-indigo-500/10 dark:text-indigo-100 dark:shadow-[0_0_0_2px_rgba(129,140,248,0.16)]"
+                                             ? "border-transparent bg-indigo-50 text-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-100"
                                              : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
                                         : isSelected
-                                           ? "border-indigo-300 bg-indigo-50 text-indigo-900 shadow-[0_0_0_2px_rgba(99,102,241,0.12)] dark:border-indigo-500/45 dark:bg-indigo-500/10 dark:text-indigo-100 dark:shadow-[0_0_0_2px_rgba(129,140,248,0.16)]"
+                                            ? "border-transparent bg-indigo-50 text-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-100"
                                            : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
-                                      className={`grid h-5 w-5 shrink-0 place-items-center border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
+                                      className={`relative h-5 w-5 shrink-0 border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
                                         isReviewStage
                                           ? isRightOption
                                             ? "border-emerald-600 bg-white dark:border-emerald-400 dark:bg-slate-950"
@@ -506,7 +506,7 @@ export function ExamPaperSheet({
                                       }`}
                                     >
                                       <span
-                                        className={`${isMultipleChoice ? "h-2.5 w-2.5 rounded-[3px]" : "h-2.5 w-2.5 rounded-full"} ${
+                                        className={`absolute left-1/2 top-1/2 block h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 ${isMultipleChoice ? "rounded-[3px]" : "rounded-full"} ${
                                           isReviewStage
                                             ? isRightOption
                                               ? "bg-emerald-600"

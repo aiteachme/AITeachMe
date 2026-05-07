@@ -125,6 +125,7 @@ def spawn_index_course_files_background(
             kind="files.index",
             course_id=normalized_course_id,
             name=f"files.index:{normalized_course_id}",
+            dedupe_key=f"files.index:{normalized_course_id}:{':'.join(sorted(normalized_file_ids))}",
         )
     except Exception:
         coroutine.close()

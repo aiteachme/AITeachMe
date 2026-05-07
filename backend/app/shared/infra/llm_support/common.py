@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import time
+import weakref
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -15,9 +16,12 @@ import structlog
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.settings import Settings, get_settings
-from app.shared.infra.env_support import get_env, get_env_int
+from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
-from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support.defaults import (
+    DEFAULT_LLM_CONCURRENCY_LIMIT,
+    MAX_LLM_CONCURRENCY_LIMIT,
+)
 from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
@@ -33,7 +37,7 @@ from app.shared.infra.settings.support import (
 logger = structlog.get_logger()
 
 _REQUEST_TIMEOUT_GRACE_S = 2
-_LLM_SEMAPHORE: asyncio.Semaphore | None = None
+_LLM_LIMITER: "LLMConcurrencyLimiter | None" = None
 _LLM_RUNTIME_SNAPSHOT: ContextVar["LLMRuntimeSnapshot | None"] = ContextVar(
     "llm_runtime_snapshot",
     default=None,
@@ -85,6 +89,49 @@ class CompletionAttempt:
     call_model: str
     provider: str
     tracked_model: str
+
+
+@dataclass(slots=True)
+class _LimiterState:
+    """Loop-local limiter state so tests and servers can use distinct loops."""
+
+    changed: asyncio.Event
+    active: int = 0
+
+
+class LLMConcurrencyLimiter:
+    """Async context manager enforcing the live global LLM concurrency limit."""
+
+    def __init__(self) -> None:
+        self._states: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LimiterState]" = (
+            weakref.WeakKeyDictionary()
+        )
+
+    def _state(self) -> _LimiterState:
+        loop = asyncio.get_running_loop()
+        state = self._states.get(loop)
+        if state is None:
+            state = _LimiterState(changed=asyncio.Event())
+            self._states[loop] = state
+        return state
+
+    async def __aenter__(self) -> "LLMConcurrencyLimiter":
+        state = self._state()
+        while state.active >= get_llm_concurrency_limit():
+            try:
+                await asyncio.wait_for(state.changed.wait(), timeout=0.5)
+            except asyncio.TimeoutError:
+                pass
+        state.active += 1
+        return self
+
+    def _release(self, state: _LimiterState) -> None:
+        state.active = max(0, state.active - 1)
+        state.changed.set()
+        state.changed = asyncio.Event()
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self._release(self._state())
 
 
 def normalize_model_selector(value: str | None) -> str | None:
@@ -291,12 +338,23 @@ def context_request_timeout_s(
     )
 
 
-def get_semaphore() -> asyncio.Semaphore:
-    global _LLM_SEMAPHORE
-    if _LLM_SEMAPHORE is None:
-        limit = get_env_int("LLM_CONCURRENCY_LIMIT", DEFAULT_LLM_CONCURRENCY_LIMIT)
-        _LLM_SEMAPHORE = asyncio.Semaphore(max(1, int(limit or DEFAULT_LLM_CONCURRENCY_LIMIT)))
-    return _LLM_SEMAPHORE
+def get_llm_concurrency_limit() -> int:
+    """Return the process-wide LLM concurrency limit from runtime settings."""
+
+    try:
+        value = int(get_settings().llm.concurrency_limit or DEFAULT_LLM_CONCURRENCY_LIMIT)
+    except Exception:
+        value = DEFAULT_LLM_CONCURRENCY_LIMIT
+    return max(1, min(MAX_LLM_CONCURRENCY_LIMIT, value))
+
+
+def get_llm_concurrency_limiter() -> LLMConcurrencyLimiter:
+    """Return the shared adaptive limiter for all LLM helper calls."""
+
+    global _LLM_LIMITER
+    if _LLM_LIMITER is None:
+        _LLM_LIMITER = LLMConcurrencyLimiter()
+    return _LLM_LIMITER
 
 
 def extract_usage(response: Any) -> tuple[int, int, int]:
@@ -382,8 +440,10 @@ def build_completion_kwargs(
     completion_kwargs = {
         "model": context.model,
         "messages": messages,
-        "temperature": remaining_kwargs.pop("temperature", context.profile.temperature),
     }
+    temperature = remaining_kwargs.pop("temperature", None)
+    if temperature is not None:
+        completion_kwargs["temperature"] = temperature
     if should_enforce_request_timeout(context):
         completion_kwargs["timeout"] = context.profile.timeout_s
     api_base = context.base_url
@@ -398,8 +458,6 @@ def build_completion_kwargs(
             api_version=context.api_version,
         )
     )
-    if context.profile.max_tokens is not None:
-        completion_kwargs["max_tokens"] = context.profile.max_tokens
     completion_kwargs.update(remaining_kwargs)
     return completion_kwargs
 

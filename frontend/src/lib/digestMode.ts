@@ -1,6 +1,6 @@
 export const DIGEST_MODE_OPTIONS = [
-  { value: "sprint", label: "速成课模式" },
   { value: "systematic", label: "系统课模式" },
+  { value: "sprint", label: "速成课模式" },
 ] as const;
 
 export function formatDigestModeLabel(value: string | null | undefined): string {

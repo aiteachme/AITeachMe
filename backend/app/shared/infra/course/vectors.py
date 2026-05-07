@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sqlite3
 
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
@@ -58,6 +59,29 @@ class CourseVectorCapability(BaseModel):
     writable: bool = False
 
 
+def _can_load_local_sqlite_vec() -> bool:
+    """Return whether sqlite-vec can actually be loaded by SQLite."""
+
+    try:
+        import sqlite_vec
+    except ImportError:
+        return False
+
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.enable_load_extension(True)
+        sqlite_vec.load(connection)
+        return True
+    except (AttributeError, OSError, sqlite3.Error):
+        return False
+    finally:
+        try:
+            connection.enable_load_extension(False)
+        except Exception:
+            pass
+        connection.close()
+
+
 def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
     """Return the runtime embedding configuration used by the backend."""
 
@@ -110,7 +134,7 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
             sqlite_vec_spec = importlib.util.find_spec("sqlite_vec")
         except ModuleNotFoundError:
             sqlite_vec_spec = None
-        if sqlite_vec_spec is None:
+        if sqlite_vec_spec is None or not _can_load_local_sqlite_vec():
             return RuntimeEmbeddingConfig(
                 configured=True,
                 embedding_model=model,

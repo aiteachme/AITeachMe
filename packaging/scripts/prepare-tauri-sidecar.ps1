@@ -35,9 +35,10 @@ else {
     Write-Host "SkipInstall is set; Python dependency installation skipped."
 }
 
-Invoke-Python -Python $python -Arguments @("-m", "PyInstaller", "--noconfirm", "aiteachme-backend-onefile.spec") -WorkingDirectory $backendDir
+Invoke-Python -Python $python -Arguments @("-m", "PyInstaller", "--noconfirm", "aiteachme-backend.spec") -WorkingDirectory $backendDir
 
-$sourceExe = Join-Path $backendDir "dist\aiteachme-backend.exe"
+$sourceDir = Join-Path $backendDir "dist\aiteachme-backend"
+$sourceExe = Join-Path $sourceDir "aiteachme-backend.exe"
 if (-not (Test-Path $sourceExe)) {
     throw "Backend sidecar executable was not produced: $sourceExe"
 }
@@ -47,11 +48,12 @@ Get-ChildItem -LiteralPath $tauriBinariesDir -File -Filter "aiteachme-backend-*"
     Remove-Item -Force
 
 New-Item -ItemType Directory -Path $tauriBackendResourcesDir -Force | Out-Null
-Get-ChildItem -LiteralPath $tauriBackendResourcesDir -File -Filter "aiteachme-backend.*" -ErrorAction SilentlyContinue |
-    Remove-Item -Force
+Get-ChildItem -LiteralPath $tauriBackendResourcesDir -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne ".gitkeep" } |
+    Remove-Item -Recurse -Force
 
-$targetBackend = Join-Path $tauriBackendResourcesDir "aiteachme-backend.bin"
-Copy-Item -LiteralPath $sourceExe -Destination $targetBackend -Force
+Get-ChildItem -LiteralPath $sourceDir -Force |
+    Copy-Item -Destination $tauriBackendResourcesDir -Recurse -Force
 
 Write-Host ""
-Write-Host "Prepared Tauri backend resource: $targetBackend" -ForegroundColor Green
+Write-Host "Prepared Tauri backend resources: $tauriBackendResourcesDir" -ForegroundColor Green

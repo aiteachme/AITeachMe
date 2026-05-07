@@ -163,6 +163,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
             workflow_file_id_count=len(working_state.get("file_ids", []) or []),
             message_count=len(working_state.get("message_history", []) or []),
             has_latest_plan=bool(working_state.get("latest_plan")),
+            planner_context_stats=working_state.get("planner_context_stats") or {},
         )
         await emit_planner_event(
             working_state,

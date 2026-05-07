@@ -219,6 +219,7 @@ class DocGenBuildData(BaseModel):
     planner_session_id: str | None = Field(default=None, description="Planner session id bound to this build.")
     confirmed_plan_id: str | None = Field(default=None, description="Confirmed build plan id bound to this build.")
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
+    model_override: str | None = Field(default=None, description="Concrete runtime model selected for this build, if any.")
 
 
 class DocGenBuildCancelData(BaseModel):
@@ -247,7 +248,7 @@ class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 
     title: str
-    card_type: str = Field(description="mode / topic / concept / method")
+    card_type: str = Field(description="mode / topic / core_knowledge / method_demo / practice_assessment")
     summary: str
 
 
@@ -693,6 +694,7 @@ class BuildPlannerTurnResponse(BaseModel):
     id: int | None = None
     role: str
     content: str
+    plan_json: dict[str, object] | None = None
     created_at: datetime
 
 
@@ -726,6 +728,7 @@ class BuildPlannerPlanResponse(BaseModel):
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
+    model_override: str | None = None
 
 
 class BuildPlannerSessionResponse(BaseModel):
@@ -735,6 +738,7 @@ class BuildPlannerSessionResponse(BaseModel):
     status: str
     revision: int
     latest_plan: BuildPlannerPlanResponse
+    model_override: str | None = None
     turns: list[BuildPlannerTurnResponse] = Field(default_factory=list)
     runtime_stats: BuildPlannerRuntimeStatsResponse | None = None
     created_at: datetime
@@ -744,9 +748,11 @@ class BuildPlannerSessionResponse(BaseModel):
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
     confirmed_plan_id: str
+    version_no: int = 1
     course_id: str
     status: str
     digest_mode: str
+    model_override: str | None = None
     selected_file_ids: list[str] = Field(default_factory=list)
     user_prompt: str
     plan_summary: str

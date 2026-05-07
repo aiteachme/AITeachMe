@@ -424,6 +424,7 @@ async def knowledge_build(
             build_group_id=build_group_id,
             planner_session_id=data.planner_session_id,
             confirmed_plan_id=data.confirmed_plan_id,
+            model_override=data.model_override,
             user_id=user.user_id,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),

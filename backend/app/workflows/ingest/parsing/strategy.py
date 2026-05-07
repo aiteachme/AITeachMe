@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import FileParseError, MissingLLMApiKeyError, UnsupportedFileTypeError
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.workflows.ingest.parsing.defaults import (
@@ -75,7 +76,7 @@ def build_parse_plan(
     options = ParserRunOptions(
         timeout_s=DEFAULT_PARSER_TIMEOUT_S,
         parser_parallelism=parser_parallelism,
-        llm_ocr_page_concurrency=parser_parallelism,
+        llm_ocr_page_concurrency=max(1, min(parser_parallelism, get_llm_concurrency_limit())),
         ocr_language_mode=ocr_language_mode,
     )
     preferred_order = _preferred_parser_order(

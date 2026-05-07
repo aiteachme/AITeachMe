@@ -89,9 +89,13 @@ function Resolve-PythonCommand {
 
     $conda = Get-Command "conda.exe", "conda.cmd", "conda" -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -ne $conda) {
+        $condaEnvName = [Environment]::GetEnvironmentVariable("AITEACHME_CONDA_ENV", "Process")
+        if ([string]::IsNullOrWhiteSpace($condaEnvName)) {
+            $condaEnvName = "aiteachme"
+        }
         return @{
             File = $conda.Source
-            PrefixArgs = @("run", "--no-capture-output", "-n", "atm", "python")
+            PrefixArgs = @("run", "--no-capture-output", "-n", $condaEnvName, "python")
         }
     }
 
@@ -177,11 +181,43 @@ function Remove-TauriBundleOutput {
     }
 }
 
+function Write-Utf8NoBomFile {
+    param(
+        [string]$Path,
+        [string]$Content
+    )
+
+    [System.IO.File]::WriteAllText(
+        $Path,
+        $Content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
+
+function Select-PreferredTauriUpdaterPackage {
+    param([string[]]$Paths)
+
+    $packages = @($Paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($packages.Count -eq 0) {
+        return ""
+    }
+
+    foreach ($pattern in @("*.exe", "*.nsis.zip")) {
+        $preferred = @($packages | Where-Object { $_ -like $pattern } | Select-Object -First 1)
+        if ($preferred.Count -gt 0) {
+            return $preferred[0]
+        }
+    }
+
+    return $packages[0]
+}
+
 function Copy-TauriArtifacts {
     param(
         [string]$RepoRoot,
         [string]$Flavor,
-        [string]$ReleaseSuffix = ""
+        [string]$ReleaseSuffix = "",
+        [switch]$IncludeUpdater
     )
 
     $bundleDir = Join-Path $RepoRoot "frontend\src-tauri\target\release\bundle"
@@ -196,8 +232,16 @@ function Copy-TauriArtifacts {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
     Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-installer$ReleaseSuffix.*" -ErrorAction SilentlyContinue |
         Remove-Item -Force
+    Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-updater$ReleaseSuffix.*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force
     Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-$Flavor-*.*" -ErrorAction SilentlyContinue |
         Remove-Item -Force
+    if ($Flavor -eq "tauri-local") {
+        $latestJsonPath = Join-Path $releaseDir "latest-tauri-local.json"
+        if (Test-Path $latestJsonPath) {
+            Remove-Item -LiteralPath $latestJsonPath -Force
+        }
+    }
 
     $bundleArtifactDir = Join-Path $artifactDir $Flavor
     if (Test-Path $bundleArtifactDir) {
@@ -213,8 +257,7 @@ function Copy-TauriArtifacts {
     $artifacts = @(Get-ChildItem $bundleDir -Recurse -File |
         Where-Object {
             $isNsisInstaller = $_.Extension -eq ".exe" -and $_.Directory.Name -eq "nsis"
-            $isMsiInstaller = $_.Extension -in @(".msi", ".msix")
-            $isNsisInstaller -or $isMsiInstaller
+            $isNsisInstaller
         } |
         Sort-Object LastWriteTime -Descending)
 
@@ -223,18 +266,131 @@ function Copy-TauriArtifacts {
     }
 
     $releaseOutputs = @()
+    $installerReleaseOutputsBySource = @{}
     foreach ($artifact in $artifacts) {
         $artifactName = "AiTeachMe-v$projectVersion-installer$ReleaseSuffix$($artifact.Extension)"
         $releaseOutput = Join-Path $releaseDir $artifactName
         Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $bundleArtifactDir $artifact.Name) -Force
         Copy-Item -LiteralPath $artifact.FullName -Destination $releaseOutput -Force
         $releaseOutputs += $releaseOutput
+        $installerReleaseOutputsBySource[$artifact.FullName] = $releaseOutput
+    }
+
+    $updaterOutputs = @()
+    if ($IncludeUpdater) {
+        $legacyUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
+            Where-Object {
+                $_.Directory.Name -eq "nsis" -and $_.Name -like "*.nsis.zip"
+            } |
+            Sort-Object LastWriteTime -Descending)
+
+        $signedInstallerUpdaterPackages = @(Get-ChildItem $bundleDir -Recurse -File |
+            Where-Object {
+                $isSignedNsisInstaller = $_.Directory.Name -eq "nsis" -and $_.Extension -eq ".exe" -and (Test-Path "$($_.FullName).sig")
+                $isSignedNsisInstaller
+            } |
+            Sort-Object LastWriteTime -Descending)
+
+        if ($legacyUpdaterPackages.Count -gt 0) {
+            foreach ($updaterPackage in $legacyUpdaterPackages) {
+                $sigPath = "$($updaterPackage.FullName).sig"
+                if (-not (Test-Path $sigPath)) {
+                    throw "Tauri updater signature was not produced: $sigPath"
+                }
+
+                $updaterExtension = ".nsis.zip"
+                $updaterName = "AiTeachMe-v$projectVersion-updater$ReleaseSuffix$updaterExtension"
+                $updaterReleaseOutput = Join-Path $releaseDir $updaterName
+                $updaterSigReleaseOutput = "$updaterReleaseOutput.sig"
+
+                Copy-Item -LiteralPath $updaterPackage.FullName -Destination (Join-Path $bundleArtifactDir $updaterPackage.Name) -Force
+                Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
+                Copy-Item -LiteralPath $updaterPackage.FullName -Destination $updaterReleaseOutput -Force
+                Copy-Item -LiteralPath $sigPath -Destination $updaterSigReleaseOutput -Force
+                $updaterOutputs += $updaterReleaseOutput
+                $updaterOutputs += $updaterSigReleaseOutput
+            }
+        }
+        elseif ($signedInstallerUpdaterPackages.Count -gt 0) {
+            foreach ($updaterPackage in $signedInstallerUpdaterPackages) {
+                $sigPath = "$($updaterPackage.FullName).sig"
+                if (-not (Test-Path $sigPath)) {
+                    throw "Tauri updater signature was not produced: $sigPath"
+                }
+
+                $installerReleaseOutput = $installerReleaseOutputsBySource[$updaterPackage.FullName]
+                if ([string]::IsNullOrWhiteSpace($installerReleaseOutput)) {
+                    throw "Tauri signed updater installer was not copied as a release package: $($updaterPackage.FullName)"
+                }
+
+                $installerSigReleaseOutput = "$installerReleaseOutput.sig"
+                Copy-Item -LiteralPath $sigPath -Destination (Join-Path $bundleArtifactDir (Split-Path $sigPath -Leaf)) -Force
+                Copy-Item -LiteralPath $sigPath -Destination $installerSigReleaseOutput -Force
+                $updaterOutputs += $installerReleaseOutput
+                $updaterOutputs += $installerSigReleaseOutput
+            }
+        }
+        elseif ($Flavor -eq "tauri-local") {
+            throw "Could not find a signed Tauri updater package under $bundleDir. Ensure createUpdaterArtifacts is enabled for tauri-local builds."
+        }
+    }
+
+    if ($IncludeUpdater -and $Flavor -eq "tauri-local") {
+        if ($updaterOutputs.Count -eq 0) {
+            throw "Tauri local updater package was not copied."
+        }
+
+        $updaterPackageOutput = Select-PreferredTauriUpdaterPackage -Paths @($updaterOutputs | Where-Object { $_ -notlike "*.sig" })
+        if ([string]::IsNullOrWhiteSpace($updaterPackageOutput)) {
+            throw "Tauri local updater package was not copied."
+        }
+
+        $updaterSig = "$updaterPackageOutput.sig"
+        if (-not (Test-Path $updaterSig)) {
+            throw "Tauri local updater signature is missing: $updaterSig"
+        }
+
+        $releaseTag = [Environment]::GetEnvironmentVariable("AITEACHME_RELEASE_TAG", "Process")
+        if ([string]::IsNullOrWhiteSpace($releaseTag)) {
+            $releaseTag = "v$projectVersion"
+        }
+
+        $repository = [Environment]::GetEnvironmentVariable("GITHUB_REPOSITORY", "Process")
+        if ([string]::IsNullOrWhiteSpace($repository)) {
+            $repository = "aiteachme/AITeachMe"
+        }
+
+        $updaterFileName = Split-Path $updaterPackageOutput -Leaf
+        $assetBaseUrl = "https://github.com/$repository/releases/download/$releaseTag"
+
+        $signature = (Get-Content -LiteralPath $updaterSig -Raw).Trim()
+        $latestJson = [ordered]@{
+            version = $projectVersion
+            notes = "AiTeachMe $projectVersion"
+            pub_date = [DateTimeOffset]::UtcNow.ToString("o")
+            platforms = [ordered]@{
+                "windows-x86_64" = [ordered]@{
+                    signature = $signature
+                    url = "$assetBaseUrl/$updaterFileName"
+                }
+            }
+        } | ConvertTo-Json -Depth 8
+
+        $latestJsonPath = Join-Path $releaseDir "latest-tauri-local.json"
+        Write-Utf8NoBomFile -Path $latestJsonPath -Content ($latestJson + [Environment]::NewLine)
+        $releaseOutputs += $latestJsonPath
     }
 
     Write-Host ""
     Write-Host "Tauri $Flavor release packages:" -ForegroundColor Green
     $releaseOutputs | ForEach-Object {
         Write-Host "  $_"
+    }
+    if ($updaterOutputs.Count -gt 0) {
+        Write-Host "Tauri $Flavor updater packages:" -ForegroundColor Green
+        $updaterOutputs | ForEach-Object {
+            Write-Host "  $_"
+        }
     }
     Write-Host "Intermediate artifacts:" -ForegroundColor DarkGray
     Write-Host "  $bundleArtifactDir"

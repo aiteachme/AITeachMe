@@ -80,7 +80,7 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
                         initial={{ width: 0 }}
                         animate={{ width: `${progress}%` }}
                         transition={{ duration: 0.45, ease: "easeOut" }}
-                        className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-500"
+                        className="h-full rounded-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-500"
                       />
                     </div>
                   ) : null}

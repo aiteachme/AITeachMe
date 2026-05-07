@@ -6,13 +6,18 @@ import re
 from collections.abc import Sequence
 from typing import Literal
 
+import structlog
+
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
+from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.prompts.interactive_html import build_interactive_html_messages
+
+logger = structlog.get_logger(__name__)
 
 InteractiveMode = Literal["parameter_explorer", "process_stepper", "concept_mapper"]
 
@@ -85,7 +90,7 @@ def choose_interactive_mode(
     claim_ledger: ClaimLedger | None = None,
 ) -> InteractiveMode:
     text = _build_signal_text(draft, claim_ledger=claim_ledger)
-    if any(marker in text for marker in ("步骤", "方法", "流程", "换元", "分部积分", "求解")):
+    if any(marker in text for marker in ("步骤", "方法", "流程", "推导", "计算", "求解", "操作")):
         return "process_stepper"
     if any(marker in text for marker in ("结构", "关系", "依赖", "网络", "概念图")):
         return "concept_mapper"
@@ -207,6 +212,15 @@ async def maybe_generate_interactive_html_asset(
         ),
     )
     cleaned_html = _sanitize_generated_html(str(html), title=draft.title)
+    validation_issues = validate_single_file_html(cleaned_html)
+    if validation_issues:
+        logger.warning(
+            "docgen_interactive_html_skipped_after_validation",
+            chapter_index=draft.chapter_index,
+            chapter_title=draft.title,
+            validation_issues=validation_issues,
+        )
+        return None
     cs = get_content_store()
     course_scope = resolve_course_storage_scope(traced_context.course_id)
     filename = f"docgen_interactive_{traced_context.build_session_id}_ch{draft.chapter_index:02d}_{sanitize_doc_title(draft.title)}.html"
@@ -226,6 +240,7 @@ async def maybe_generate_interactive_html_asset(
         "preview_url": preview_url,
         "open_mode": "new_tab",
         "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=f"{draft.title} 交互演示"),
+        "validation_issues": validation_issues,
     }
 
 

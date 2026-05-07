@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { AlertCircle, UserRound } from "lucide-react";
+import type { ChatContextItem } from "../../api/generated/model";
 import { type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
@@ -10,7 +11,7 @@ const LOGO_SRC = publicAssetPath("logo.svg");
 
 interface ChatTranscriptProps {
   messages: ChatSessionMessage[];
-  onOpenCitation: (chunkId: number) => void;
+  onOpenCitation: (context: ChatContextItem) => void;
 }
 
 export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps) {

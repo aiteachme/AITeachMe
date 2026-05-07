@@ -12,6 +12,8 @@ from typing import Any, Literal
 
 from langgraph.graph import END, StateGraph
 from langgraph.types import Send
+from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.events import InProcessEventBus
@@ -24,7 +26,6 @@ from app.workflows.digest.common.events import (
 )
 from app.workflows.digest.common.metrics import build_token_summary
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
-from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS
 from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes.assemble_chapter_tasks import (
     build_assemble_chapter_tasks_node,
@@ -51,23 +52,42 @@ from app.workflows.digest.docgen.nodes.sync_locked_titles import build_sync_lock
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
-NODE_LOAD_CONTEXT = "读取确认方案"
-NODE_PREPARE_GLOBAL_SEED = "准备全局种子"
-NODE_GENERATE_COVER = "生成封面"
-NODE_LOCK_TITLES = "锁定章节标题"
-NODE_CONFIRM_BACKBONE_SEED = "确认骨架种子"
-NODE_BUILD_BACKBONE = "构建文档知识骨架"
-NODE_BUILD_CHAPTER_BRIEFS = "生成章节执行简报"
-NODE_ASSEMBLE_CHAPTER_TASKS = "组装最终章节任务"
-NODE_GENERATE_CHAPTERS = "生成章节草稿"
-NODE_ENHANCE_CHAPTERS = "增强章节内容"
-NODE_REVIEW_CHAPTERS = "复核章节内容"
-NODE_DOCUMENT_CONSISTENCY_REVIEW = "复核整本一致性"
-NODE_REPAIR_OR_ROUTE = "记录复核回流动作"
-NODE_MERGE_REVIEW = "合并检查整本文档"
-NODE_SYNC_LOCKED_TITLES = "同步锁定标题"
-NODE_PUBLISH = "发布知识文档"
+NODE_LOAD_CONTEXT = "load_context"
+NODE_PREPARE_GLOBAL_SEED = "prepare_global_seed"
+NODE_GENERATE_COVER = "generate_cover"
+NODE_LOCK_TITLES = "lock_titles_for_chapters"
+NODE_CONFIRM_BACKBONE_SEED = "confirm_backbone_seed"
+NODE_BUILD_BACKBONE = "build_document_backbone"
+NODE_BUILD_CHAPTER_BRIEFS = "build_chapter_execution_briefs"
+NODE_ASSEMBLE_CHAPTER_TASKS = "assemble_chapter_tasks"
+NODE_GENERATE_CHAPTERS = "generate_chapters"
+NODE_ENHANCE_CHAPTERS = "enhance_chapters"
+NODE_REVIEW_CHAPTERS = "review_chapters"
+NODE_DOCUMENT_CONSISTENCY_REVIEW = "document_consistency_review"
+NODE_REPAIR_OR_ROUTE = "repair_or_route"
+NODE_MERGE_REVIEW = "merge_review"
+NODE_SYNC_LOCKED_TITLES = "sync_locked_titles"
+NODE_PUBLISH = "publish_document"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
+
+NODE_DISPLAY_NAMES = {
+    NODE_LOAD_CONTEXT: "读取确认方案",
+    NODE_PREPARE_GLOBAL_SEED: "准备全局种子",
+    NODE_GENERATE_COVER: "生成封面",
+    NODE_LOCK_TITLES: "锁定章节标题",
+    NODE_CONFIRM_BACKBONE_SEED: "确认骨架种子",
+    NODE_BUILD_BACKBONE: "构建文档知识骨架",
+    NODE_BUILD_CHAPTER_BRIEFS: "生成章节执行简报",
+    NODE_ASSEMBLE_CHAPTER_TASKS: "组装最终章节任务",
+    NODE_GENERATE_CHAPTERS: "生成章节草稿",
+    NODE_ENHANCE_CHAPTERS: "增强章节内容",
+    NODE_REVIEW_CHAPTERS: "复核章节内容",
+    NODE_DOCUMENT_CONSISTENCY_REVIEW: "复核整本一致性",
+    NODE_REPAIR_OR_ROUTE: "记录复核回流动作",
+    NODE_MERGE_REVIEW: "合并检查整本文档",
+    NODE_SYNC_LOCKED_TITLES: "同步锁定标题",
+    NODE_PUBLISH: "发布知识文档",
+}
 
 NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_LOAD_CONTEXT: {
@@ -77,7 +97,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "不调用 LLM，也不静默改写用户确认过的章节语义。"
         ),
         "reads": ["confirmed_plan", "shared_inputs", "planner_context", "build_session"],
-        "writes": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile"],
+        "writes": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "retrieval_policy"],
         "input_keys": [
             "course_id",
             "course_name",
@@ -88,8 +108,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
             "confirmed_plan_id",
             "digest_mode",
+            "model_override",
         ],
-        "output_keys": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "error"],
+        "output_keys": ["docgen_context", "document_context", "chapter_assignments", "retrieval_profile", "retrieval_policy", "error"],
     },
     NODE_PREPARE_GLOBAL_SEED: {
         "description": (
@@ -260,18 +281,24 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "LangGraph Send fan-out 后的单章复核节点。每个分支检查章节合同覆盖、证据支撑、写作质量和风险信号，"
             "产出 reviewed draft、review report 和后续 repair action，随后 fan-in 到整本一致性复核。"
         ),
-        "reads": ["enhanced_chapter_draft", "chapter_tasks", "claim_ledgers", "claim_evidence_maps", "conflict_reports"],
-        "writes": ["reviewed_chapter_draft_items", "chapter_review_report_items", "review_action_items"],
+        "reads": [
+            "enhanced_chapter_draft",
+            "review_chapter_task",
+            "review_claim_ledger",
+            "review_claim_evidence_map",
+            "review_conflict_report",
+        ],
+        "writes": ["reviewed_chapter_overlay_items", "chapter_review_report_items", "review_action_items"],
         "input_keys": [
             "enhanced_chapter_draft",
-            "chapter_tasks",
-            "claim_ledgers",
-            "claim_evidence_maps",
-            "conflict_reports",
+            "review_chapter_task",
+            "review_claim_ledger",
+            "review_claim_evidence_map",
+            "review_conflict_report",
             "total_chapters",
         ],
         "output_keys": [
-            "reviewed_chapter_draft_items",
+            "reviewed_chapter_overlay_items",
             "chapter_review_report_items",
             "review_action_items",
             "review_ms",
@@ -285,10 +312,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "在所有章节复核 fan-in 后执行整本文档一致性检查，重点看跨章术语、符号、定义、前置关系、重复讲解和风格断裂。"
             "当前主要是规则复核，不检索、不改正文，只产出 document_consistency_report 和整本 review_decision。"
         ),
-        "reads": ["reviewed_chapter_draft_items", "chapter_review_report_items", "review_action_items", "document_backbone"],
+        "reads": [
+            "enhanced_chapter_drafts",
+            "reviewed_chapter_overlay_items",
+            "chapter_review_report_items",
+            "review_action_items",
+            "document_backbone",
+        ],
         "writes": ["reviewed_chapter_drafts", "chapter_review_reports", "review_actions", "document_consistency_report", "review_decision"],
         "input_keys": [
-            "reviewed_chapter_draft_items",
+            "enhanced_chapter_drafts",
+            "reviewed_chapter_overlay_items",
             "chapter_review_report_items",
             "review_action_items",
             "document_backbone",
@@ -305,8 +339,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_REPAIR_OR_ROUTE: {
         "description": (
-            "根据 review_actions 执行有限回流：surface_patch/section_patch 会做局部 Markdown patch，"
-            "evidence_patch、regenerate_chapter、re_dispatch、rebuild_backbone 等重动作先结构化记录为 unresolved warnings。"
+            "根据 review_actions 执行有限回流：surface_patch/section_patch/evidence_patch 会做局部 Markdown patch，"
+            "regenerate_chapter 会降级为单章局部修补，re_dispatch/rebuild_backbone 等重动作结构化记录为 unresolved warnings。"
             "这个节点负责把复核问题转成可追踪的修补记录，不重新展开整本生成。"
         ),
         "reads": ["review_actions", "reviewed_chapter_drafts", "enhanced_chapter_drafts", "chapter_tasks", "document_backbone"],
@@ -369,7 +403,7 @@ def _trace_docgen_node(trace, node_key: str, handler, *, timing_field: str | Non
     return traced_digest_node(
         trace,
         node_key=node_key,
-        display_name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
         details=details,
         handler=handler,
         timing_field=timing_field,
@@ -379,7 +413,7 @@ def _trace_docgen_node(trace, node_key: str, handler, *, timing_field: str | Non
 def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
     return node_metadata(
         node_key=node_key,
-        display_name=node_key,
+        display_name=NODE_DISPLAY_NAMES[node_key],
         details=NODE_TRACE_DETAILS[node_key],
     )
 
@@ -621,6 +655,7 @@ def create_docgen_initial_state(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
+    model_override: str | None = None,
 ) -> DocGenState:
     """Create initial state for the DocGen graph."""
 
@@ -637,11 +672,13 @@ def create_docgen_initial_state(
         "planner_session_id": planner_session_id or "",
         "confirmed_plan_id": confirmed_plan_id or "",
         "digest_mode": digest_mode or "",
+        "model_override": normalize_runtime_model_override(model_override),
         "retrieval_profile": resolve_docgen_retrieval_profile(
             digest_mode,
             user_prompt=user_prompt,
             course_name=course_name,
         ),
+        "retrieval_policy": {},
         "teaching_action": "docgen_build",
         "document_context": None,
         "docgen_context": {},
@@ -669,7 +706,9 @@ def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, 
         "planner_session_id": state.get("planner_session_id", ""),
         "confirmed_plan_id": state.get("confirmed_plan_id", ""),
         "digest_mode": state.get("digest_mode", ""),
+        "model_override": state.get("model_override"),
         "retrieval_profile": state.get("retrieval_profile", ""),
+        "retrieval_policy": state.get("retrieval_policy", {}),
         "teaching_action": teaching_action,
     }
 
@@ -718,16 +757,36 @@ def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     if not enhanced:
         return "fail"
     total = len(enhanced)
+    tasks_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("chapter_tasks") or [])
+        if isinstance(item, dict)
+    }
+    claim_ledgers_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("claim_ledgers") or [])
+        if isinstance(item, dict)
+    }
+    claim_maps_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("claim_evidence_maps") or [])
+        if isinstance(item, dict)
+    }
+    conflict_reports_by_chapter = {
+        int(item.get("chapter_index", 0) or 0): item
+        for item in list(state.get("conflict_reports") or [])
+        if isinstance(item, dict)
+    }
     return [
         Send(
             NODE_REVIEW_CHAPTERS,
             {
                 **_child_state_base(state, teaching_action="chapter_review"),
                 "enhanced_chapter_draft": draft,
-                "chapter_tasks": list(state.get("chapter_tasks") or []),
-                "claim_ledgers": list(state.get("claim_ledgers") or []),
-                "claim_evidence_maps": list(state.get("claim_evidence_maps") or []),
-                "conflict_reports": list(state.get("conflict_reports") or []),
+                "review_chapter_task": tasks_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_claim_ledger": claim_ledgers_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_claim_evidence_map": claim_maps_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
+                "review_conflict_report": conflict_reports_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
                 "total_chapters": total,
             },
         )
@@ -763,6 +822,7 @@ async def run_docgen_workflow(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     digest_mode: str | None = None,
+    model_override: str | None = None,
 ) -> WorkflowResult[DocGenState]:
     """运行一次 DocGen LangGraph。
 
@@ -772,6 +832,7 @@ async def run_docgen_workflow(
     """
 
     bus = event_bus or InProcessEventBus()
+    resolved_model_override = normalize_runtime_model_override(model_override)
     await bus.publish(DocGenRequestedEvent(course_id=course_id, requested_at=requested_at, file_ids=file_ids))
 
     context = WorkflowContext(
@@ -786,28 +847,31 @@ async def run_docgen_workflow(
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
-            "max_concurrency": max(1, int(DEFAULT_DOCGEN_MAX_PARALLEL_CHAPTERS)),
+            "model_override": resolved_model_override,
+            "max_concurrency": get_llm_concurrency_limit(),
         },
     )
-    result = await run_state_graph(
-        workflow_name="digest.docgen",
-        graph_builder=lambda: build_docgen_graph(context=context),
-        initial_state=create_docgen_initial_state(
-            course_id=course_id,
-            course_name=course_name,
-            user_id=user_id,
-            file_ids=file_ids,
-            user_prompt=user_prompt,
-            requested_at=requested_at,
-            build_session_id=build_session_id,
-            shared_inputs=shared_inputs,
-            confirmed_plan=confirmed_plan,
-            planner_session_id=planner_session_id,
-            confirmed_plan_id=confirmed_plan_id,
-            digest_mode=digest_mode,
-        ),
-        context=context,
-    )
+    with use_runtime_model_override(resolved_model_override):
+        result = await run_state_graph(
+            workflow_name="digest.docgen",
+            graph_builder=lambda: build_docgen_graph(context=context),
+            initial_state=create_docgen_initial_state(
+                course_id=course_id,
+                course_name=course_name,
+                user_id=user_id,
+                file_ids=file_ids,
+                user_prompt=user_prompt,
+                requested_at=requested_at,
+                build_session_id=build_session_id,
+                shared_inputs=shared_inputs,
+                confirmed_plan=confirmed_plan,
+                planner_session_id=planner_session_id,
+                confirmed_plan_id=confirmed_plan_id,
+                digest_mode=digest_mode,
+                model_override=resolved_model_override,
+            ),
+            context=context,
+        )
     if result.failed:
         token_summary = build_token_summary(build_session_id=build_session_id or None, lane="docgen")
         context.get_logger().bind(node="runtime").info(

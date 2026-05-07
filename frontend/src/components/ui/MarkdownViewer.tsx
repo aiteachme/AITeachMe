@@ -4,7 +4,15 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
-import { ChevronRight } from "lucide-react";
+import {
+  BadgeCheck,
+  ChevronRight,
+  Info,
+  Lightbulb,
+  OctagonAlert,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 
 import { runTrackedApiFetch } from "../../api/client";
 import { cn } from "../../lib/utils";
@@ -18,6 +26,8 @@ const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mer
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
+const HIGHLIGHT_MARK_CLASS =
+  "rounded-[3px] bg-amber-100 px-1 py-0.5 text-inherit shadow-[inset_0_-0.35em_rgba(251,191,36,0.22)] dark:bg-amber-300/20 dark:shadow-[inset_0_-0.35em_rgba(251,191,36,0.18)]";
 const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   times: "×",
   cdot: "·",
@@ -34,6 +44,8 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   rightarrow: "→",
   leftarrow: "←",
 };
+const CALLOUT_LEADING_ICON_RE =
+  /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 
 type MarkdownAstNode = {
   type?: string;
@@ -78,6 +90,7 @@ interface ViewerStyles {
   link: string;
   strong: string;
   em: string;
+  highlight: string;
   imageShell: string;
   imageFrame: string;
   image: string;
@@ -96,27 +109,27 @@ type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
   node?: unknown;
 };
 
-const CALLOUT_LABELS: Record<CalloutKind, string> = {
-  note: "📌 提示",
-  tip: "💡 诀窍",
-  important: "🎯 重点",
-  warning: "⚠️ 注意",
-  caution: "⛔ 警告",
+const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
+  note: { label: "提示", Icon: Info },
+  tip: { label: "诀窍", Icon: Lightbulb },
+  important: { label: "重点", Icon: BadgeCheck },
+  warning: { label: "注意", Icon: TriangleAlert },
+  caution: { label: "警告", Icon: OctagonAlert },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
   default: {
     note: {
-      shell: "my-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-slate-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-2xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-slate-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-slate-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-slate-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-2xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-slate-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-slate-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -129,16 +142,16 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   document: {
     note: {
-      shell: "my-5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-[#1F2329] dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-5 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-[#1F2329] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-[#1F2329] dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-5 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-[#1F2329] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -151,16 +164,16 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   planner: {
     note: {
-      shell: "my-4 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
       shell: "my-4 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-zinc-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-4 rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-200",
-      badge: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
+      shell: "my-4 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
       shell: "my-4 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-zinc-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
@@ -198,9 +211,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200",
     td: "border-t border-slate-100 px-3 py-2 text-slate-600 dark:border-slate-800 dark:text-slate-300",
     hr: "my-5 border-slate-200 dark:border-slate-800",
-    link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-slate-900 dark:text-slate-100",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-blue-800 dark:text-blue-200",
     em: "italic text-slate-600 dark:text-slate-300",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
     imageFrame: "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -208,9 +222,9 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#1F2329] dark:border-slate-700 dark:text-slate-100",
-      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#1F2329] dark:text-slate-100",
-      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-100",
+      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
+      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#111827] dark:text-slate-100",
+      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
       4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
       5: "mt-4 mb-1.5 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
       6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
@@ -230,9 +244,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
     td: "border-t border-[#F0F0F0] px-3 py-2.5 text-[#1F2329] dark:border-slate-800 dark:text-slate-300",
     hr: "my-7 border-[#DEE0E3] dark:border-slate-800",
-    link: "text-[#4F46E5] transition-colors hover:text-[#4338CA] hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-[#1F2329] dark:text-slate-100",
+    link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-[#1D4ED8] dark:text-blue-200",
     em: "italic text-[#646A73] dark:text-slate-400",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-6",
     imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -251,7 +266,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "mb-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     orderedList: "mb-3 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     listItem: "leading-6 [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-slate-300",
+    blockquote: "my-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-300",
     codeInline: "rounded bg-zinc-100 px-1.5 py-0.5 text-sm font-mono text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
     codeShell: "my-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 shadow-sm dark:border-slate-800",
     codeLanguageBadge: "border-b border-zinc-800/80 bg-zinc-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400",
@@ -262,9 +277,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     th: "px-3 py-2 text-left font-semibold text-zinc-700 dark:text-slate-200",
     td: "border-t border-zinc-100 px-3 py-2 text-zinc-600 dark:border-slate-800 dark:text-slate-300",
     hr: "my-5 border-zinc-200 dark:border-slate-800",
-    link: "text-indigo-600 transition-colors hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300",
-    strong: "font-semibold text-zinc-900 dark:text-slate-100",
+    link: "text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200",
+    strong: "font-semibold text-blue-800 dark:text-blue-200",
     em: "italic text-zinc-600 dark:text-slate-300",
+    highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-5",
     imageFrame: "overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[28rem] w-full object-contain bg-white dark:bg-slate-950/60",
@@ -388,6 +404,52 @@ function normalizeBareLatexTextCommands(markdown: string): string {
   return output.join("\n");
 }
 
+function normalizeHighlightSyntaxForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let inDisplayMath = false;
+
+  const normalizeLine = (line: string) => {
+    const parts = line.split(/(`+[^`]*`+)/g);
+    return parts
+      .map((part) => {
+        if (part.startsWith("`") && part.endsWith("`")) return part;
+        return part
+          .replace(/<mark\b[^>]*>\s*([^<>\n]{1,160}?)\s*<\/mark>/gi, (_match, body: string) => {
+            const text = String(body || "").trim();
+            return text ? `==${text}==` : "";
+          })
+          .replace(/==\s*([^=\n]{1,160}?)\s*==/g, (_match, body: string) => {
+            const text = String(body || "").trim();
+            return text ? `==${text}==` : "";
+          });
+      })
+      .join("");
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (!activeFence) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+    if (!activeFence && /^\s*\$\$\s*$/.test(line)) {
+      inDisplayMath = !inDisplayMath;
+      output.push(line);
+      continue;
+    }
+    output.push(activeFence || inDisplayMath ? line : normalizeLine(line));
+  }
+
+  return output.join("\n");
+}
+
 function createBlankNode(): MarkdownAstNode {
   return {
     type: "blank",
@@ -400,6 +462,20 @@ function createBlankNode(): MarkdownAstNode {
       },
     },
     children: [{ type: "text", value: " " }],
+  };
+}
+
+function createHighlightNode(value: string): MarkdownAstNode {
+  return {
+    type: "highlightMark",
+    data: {
+      hName: "mark",
+      hProperties: {
+        className: HIGHLIGHT_MARK_CLASS,
+        "data-markdown-highlight": "true",
+      },
+    },
+    children: [{ type: "text", value }],
   };
 }
 
@@ -433,6 +509,50 @@ function remarkBlankTokens() {
   };
 }
 
+function remarkSafeHighlights() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      const children = node.children;
+      if (!Array.isArray(children)) return;
+
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+        if (child.type === "text" && typeof child.value === "string" && child.value.includes("==")) {
+          const replacement: MarkdownAstNode[] = [];
+          const source = child.value;
+          const regex = /==([^=\n]{1,160})==/g;
+          let cursor = 0;
+          let match: RegExpExecArray | null;
+          while ((match = regex.exec(source)) !== null) {
+            const before = source.slice(cursor, match.index);
+            const body = (match[1] ?? "").trim();
+            if (before) replacement.push({ type: "text", value: before });
+            if (body) {
+              replacement.push(createHighlightNode(body));
+            } else {
+              replacement.push({ type: "text", value: match[0] });
+            }
+            cursor = match.index + match[0].length;
+          }
+          const tail = source.slice(cursor);
+          if (tail) replacement.push({ type: "text", value: tail });
+          if (replacement.length > 0) {
+            children.splice(index, 1, ...replacement);
+            index += replacement.length - 1;
+            continue;
+          }
+        }
+
+        if (child.type !== "math" && child.type !== "inlineMath") {
+          visit(child);
+        }
+      }
+    };
+
+    visit(tree);
+  };
+}
+
 function trimBlankLines(lines: string[]): string[] {
   const next = [...lines];
   while (next.length > 0 && !next[0].trim()) next.shift();
@@ -440,8 +560,21 @@ function trimBlankLines(lines: string[]): string[] {
   return next;
 }
 
+function stripLeadingCalloutIcon(line: string): string {
+  return String(line || "").replace(CALLOUT_LEADING_ICON_RE, "").replace(/^\s+/, "");
+}
+
+function normalizeCalloutBodyLines(lines: string[]): string[] {
+  const body = trimBlankLines(lines);
+  const firstContentIndex = body.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex >= 0) {
+    body[firstContentIndex] = stripLeadingCalloutIcon(body[firstContentIndex]);
+  }
+  return body;
+}
+
 function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[]) {
-  const body = trimBlankLines(bodyLines);
+  const body = normalizeCalloutBodyLines(bodyLines);
   target.push(`> [!${kind.toUpperCase()}]`);
   if (body.length === 0) {
     target.push("");
@@ -883,8 +1016,18 @@ function unescapedSingleDollarPositions(line: string): number[] {
   return positions;
 }
 
+function inlineMathBodyHasSignal(body: string): boolean {
+  const trimmed = body.trim();
+  return (
+    /\\(?:frac|dfrac|tfrac|lim|sum|prod|int|sqrt|left|right|to|infty|text|cdot|times|leq?|geq?|neq|approx|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|omega)\b/.test(trimmed) ||
+    /[_^{}∞∑∫√≤≥≈≠]|[A-Za-z0-9]\s*[=+\-*/<>]\s*[A-Za-z0-9\\]/.test(trimmed)
+  );
+}
+
 function inlineMathBodyLooksUnsafe(body: string): boolean {
-  if (body.length > 240) return true;
+  const trimmed = body.trim();
+  if (!trimmed) return true;
+  if (trimmed.length > 800 && !inlineMathBodyHasSignal(trimmed)) return true;
   if (/[`]|<\/?[a-z][\s>]/i.test(body)) return true;
   if (body.includes("**") || body.includes("[!") || body.includes("```")) return true;
   return new RegExp(
@@ -893,8 +1036,18 @@ function inlineMathBodyLooksUnsafe(body: string): boolean {
   ).test(body);
 }
 
+function restoreEscapedInlineMathLineForRender(line: string): string {
+  return line.replace(/\\\$([^\n]*?)\\\$/g, (match, body: string) => {
+    const trimmed = String(body || "").trim();
+    if (!trimmed || !inlineMathBodyHasSignal(trimmed) || inlineMathBodyLooksUnsafe(trimmed)) {
+      return match;
+    }
+    return `$${trimmed}$`;
+  });
+}
+
 function repairInlineMathLineForRender(line: string): string {
-  let working = line;
+  let working = restoreEscapedInlineMathLineForRender(line);
   let positions = unescapedSingleDollarPositions(working);
   if (positions.length % 2 !== 0) {
     const dangling = positions[positions.length - 1];
@@ -914,6 +1067,9 @@ function repairInlineMathLineForRender(line: string): string {
     output.push(working.slice(cursor, left));
     if (inlineMathBodyLooksUnsafe(body)) {
       output.push("\\$", body, "\\$");
+      changed = true;
+    } else if (body !== body.trim()) {
+      output.push("$", body.trim(), "$");
       changed = true;
     } else {
       output.push(working.slice(left, right + 1));
@@ -1235,7 +1391,7 @@ export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
       protectTableInlineMathPipesForRender(
-        repairMathDelimitersForRender(preprocessLaTeX(preprocessCalloutSyntax(content))),
+        repairMathDelimitersForRender(preprocessLaTeX(normalizeHighlightSyntaxForRender(preprocessCalloutSyntax(content)))),
       ),
     ),
   );
@@ -1908,8 +2064,8 @@ export function MarkdownViewer({
               aria-expanded={!isCollapsed}
               title={isCollapsed ? "展开标题内容" : "折叠标题内容"}
               className={cn(
-                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-[#EFF1F3] hover:text-[#4F46E5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4F46E5]/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
-                isCollapsed && "text-[#4F46E5]",
+                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
+                isCollapsed && "text-blue-600",
               )}
               onClick={(event) => {
                 event.preventDefault();
@@ -1927,7 +2083,7 @@ export function MarkdownViewer({
             <span
               aria-hidden="true"
               data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1456F0] [-webkit-user-select:none]"
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1F2329] [-webkit-user-select:none] dark:text-slate-200"
             >
               {headingNumber}&nbsp;
             </span>
@@ -1940,7 +2096,7 @@ export function MarkdownViewer({
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkCallouts, headingStructurePlugin]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkSafeHighlights, remarkCallouts, headingStructurePlugin]}
       rehypePlugins={[
         [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
         rehypeHighlight,
@@ -1995,11 +2151,14 @@ export function MarkdownViewer({
           }
 
           const tone = CALLOUT_STYLES[variant][callout.kind];
+          const calloutMeta = CALLOUT_META[callout.kind];
+          const CalloutIcon = calloutMeta.Icon;
           return (
             <aside className={tone.shell}>
               <div className="mb-3 flex items-center gap-2">
-                <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]", tone.badge)}>
-                  {CALLOUT_LABELS[callout.kind]}
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em]", tone.badge)}>
+                  <CalloutIcon className="h-3.5 w-3.5" />
+                  {calloutMeta.label}
                 </span>
               </div>
               <div className="[&>*:last-child]:mb-0">{callout.body}</div>
@@ -2057,6 +2216,7 @@ export function MarkdownViewer({
         ),
         strong: ({ children }) => <strong className={styles.strong}>{children}</strong>,
         em: ({ children }) => <em className={styles.em}>{children}</em>,
+        mark: ({ children }) => <mark className={styles.highlight}>{children}</mark>,
         img: ({ src, alt }) => {
           const resolvedSrc = resolveMarkdownImageSrc(src, {
             assetBaseUrl,

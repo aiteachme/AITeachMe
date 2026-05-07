@@ -6,6 +6,7 @@ import { BookOpen, FileText, MessageSquareText, Plus, Sparkles } from "lucide-re
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import type {
   ApiResponsePaginatedDataChatSessionItem,
+  ChatContextItem,
   ChatSendRequest,
   ChatSessionItem,
 } from "../../../api/generated/model";
@@ -15,10 +16,9 @@ import { cn } from "../../../lib/utils";
 import type { FileRecord } from "../../../types/files";
 import { ChatCitationModal } from "../../chat/ChatCitationModal";
 import {
-  DEFAULT_CHAT_MODEL_CHOICE,
-  type ChatModelChoice,
   toChatModelChoice,
   toChatRequestModel,
+  useGlobalChatModelChoice,
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationFullscreenDraft } from "./AiConversationFullscreenDraft";
@@ -273,11 +273,11 @@ export const AiConversationView = memo(function AiConversationView({
   const [draftAttachedFileIds, setDraftAttachedFileIds] = useState<string[]>([]);
   const [draftAttachedFiles, setDraftAttachedFiles] = useState<FileRecord[]>([]);
   const [isDraftUploadingFiles, setIsDraftUploadingFiles] = useState(false);
-  const [chatModel, setChatModel] = useState<ChatModelChoice>(DEFAULT_CHAT_MODEL_CHOICE);
+  const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedChunkId, setSelectedChunkId] = useState<number | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<ChatContextItem | null>(null);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<PendingSelectionContext | null>(null);
   const [pendingAutoSendRequest, setPendingAutoSendRequest] = useState<PendingAutoSendRequest | null>(null);
   const [activeQuickChatContext, setActiveQuickChatContext] = useState<PendingSelectionContext | null>(null);
@@ -618,8 +618,11 @@ export const AiConversationView = memo(function AiConversationView({
     const distanceToBottom = scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight;
     shouldStickToBottomRef.current = distanceToBottom <= AUTO_SCROLL_BOTTOM_THRESHOLD;
   }, []);
-  const handleOpenCitation = useCallback((chunkId: number) => {
-    setSelectedChunkId(chunkId);
+  const handleOpenCitation = useCallback((context: ChatContextItem) => {
+    if (context.chunk_id <= 0 && Number(context.knowledge_unit_id ?? 0) <= 0) {
+      return;
+    }
+    setSelectedCitation(context);
   }, []);
 
   const jumpToSelectionTarget = useCallback((target: ChatSessionSelectionTarget | null) => {
@@ -804,7 +807,7 @@ export const AiConversationView = memo(function AiConversationView({
     setSessions([]);
     setSessionsError(null);
     setSelectedSessionId(null);
-    setSelectedChunkId(null);
+    setSelectedCitation(null);
     setPendingSelectionContext(null);
     setPendingAutoSendRequest(null);
     setActiveQuickChatContext(null);
@@ -1045,7 +1048,7 @@ export const AiConversationView = memo(function AiConversationView({
     autoSentRequestKeysRef.current.add(autoRequest.key);
     setDraft("");
     const requestModel =
-      autoRequest.model && autoRequest.model !== DEFAULT_CHAT_MODEL_CHOICE
+      autoRequest.model?.trim()
         ? autoRequest.model
         : toChatRequestModel(chatModel);
     const result = await sendMessage({
@@ -1323,10 +1326,10 @@ export const AiConversationView = memo(function AiConversationView({
       )}
 
       <ChatCitationModal
-        open={selectedChunkId !== null}
-        onClose={() => setSelectedChunkId(null)}
+        open={selectedCitation !== null}
+        onClose={() => setSelectedCitation(null)}
         course={courseId ?? ""}
-        chunkId={selectedChunkId}
+        context={selectedCitation}
       />
     </div>
   );

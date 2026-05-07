@@ -274,17 +274,7 @@ def build_docgen_lane_summary(
         for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
         if bool(_quality_mapping(chapter).get("rewrite_used", False) or chapter.get("repair_applied", False))
     )
-    return {
-        "status": resolved_status,
-        "error_message": resolved_error,
-        "planner_session_id": str(state.get("planner_session_id", "") or ""),
-        "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
-        "digest_mode": str(state.get("digest_mode", "") or ""),
-        "source_strategy": str(document_context.get("source_strategy", "") or ""),
-        "retrieval_profiles": retrieval_profiles,
-        "teaching_actions": teaching_actions,
-        "chapter_count": chapter_count,
-        "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
+    raw_timing_ms = {
         "load_ms": int(state.get("load_ms", 0)),
         "prepare_ms": int(state.get("prepare_ms", 0)),
         "intent_core_ms": int(state.get("intent_core_ms", 0)),
@@ -296,12 +286,48 @@ def build_docgen_lane_summary(
         "assemble_tasks_ms": int(state.get("assemble_tasks_ms", 0)),
         "research_ms": int(state.get("research_ms", 0)),
         "draft_ms": int(state.get("draft_ms", 0)),
-        "enrich_ms": int(state.get("enrich_ms", 0) or state.get("enhance_ms", 0) or 0),
         "enhance_ms": int(state.get("enhance_ms", 0)),
-        "examine_ms": int(state.get("examine_ms", 0)),
+        "review_ms": int(state.get("review_ms", 0)),
+        "repair_ms": int(state.get("repair_ms", 0)),
+        "merge_review_ms": int(state.get("merge_review_ms", 0)),
         "finalize_ms": int(state.get("finalize_ms", 0)),
-        "research_avg_ms": round(int(state.get("research_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
-        "draft_avg_ms": round(int(state.get("draft_ms", 0)) / chapter_count, 2) if chapter_count else 0.0,
+    }
+    grouped_timing_ms = {
+        "context_ms": raw_timing_ms["load_ms"] + raw_timing_ms["prepare_ms"],
+        "planning_ms": (
+            raw_timing_ms["intent_core_ms"]
+            + raw_timing_ms["title_lock_ms"]
+            + raw_timing_ms["planner_ms"]
+            + raw_timing_ms["seed_backbone_ms"]
+            + raw_timing_ms["backbone_ms"]
+            + raw_timing_ms["chapter_prepare_ms"]
+            + raw_timing_ms["assemble_tasks_ms"]
+        ),
+        "generation_ms": raw_timing_ms["research_ms"] + raw_timing_ms["draft_ms"],
+        "enhance_ms": raw_timing_ms["enhance_ms"],
+        "review_repair_ms": raw_timing_ms["review_ms"] + raw_timing_ms["repair_ms"] + raw_timing_ms["merge_review_ms"],
+        "publish_ms": raw_timing_ms["finalize_ms"],
+    }
+    retrieval_policy = dict(
+        document_context.get("retrieval_policy")
+        or state.get("retrieval_policy")
+        or {}
+    )
+    return {
+        "status": resolved_status,
+        "error_message": resolved_error,
+        "planner_session_id": str(state.get("planner_session_id", "") or ""),
+        "confirmed_plan_id": str(state.get("confirmed_plan_id", "") or ""),
+        "digest_mode": str(state.get("digest_mode", "") or ""),
+        "source_strategy": str(document_context.get("source_strategy", "") or ""),
+        "retrieval_policy": retrieval_policy,
+        "teaching_actions": teaching_actions,
+        "chapter_count": chapter_count,
+        "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms", 0)),
+        **grouped_timing_ms,
+        "timing_summary": grouped_timing_ms,
+        "research_avg_ms": round(raw_timing_ms["research_ms"] / chapter_count, 2) if chapter_count else 0.0,
+        "draft_avg_ms": round(raw_timing_ms["draft_ms"] / chapter_count, 2) if chapter_count else 0.0,
         "llm_calls_total": int(state.get("llm_calls_total", 0)),
         "llm_calls_skipped": int(state.get("llm_calls_skipped", 0)),
         "draft_available": bool(final_markdown.strip()),
@@ -320,11 +346,13 @@ def build_docgen_lane_summary(
         "active_retriever_count": len(active_retriever_names),
         "configured_retriever_names": configured_retriever_names,
         "configured_retriever_count": len(configured_retriever_names),
-        "requested_profiles": requested_profiles,
-        "applied_profiles": applied_profiles,
-        "requested_profile": requested_profiles[0] if len(requested_profiles) == 1 else "",
-        "applied_profile": applied_profiles[0] if len(applied_profiles) == 1 else "",
-        "applied_retrieval_profiles": applied_retrieval_profiles,
+        "debug_retrieval": {
+            "internal_profiles": retrieval_profiles,
+            "requested_profiles": requested_profiles,
+            "applied_profiles": applied_profiles,
+            "applied_retrieval_profiles": applied_retrieval_profiles,
+        },
+        "debug_timing_ms": raw_timing_ms,
         "planned_query_count": planned_query_count,
         "executed_query_count": executed_query_count,
         "read_url_count": read_url_count,

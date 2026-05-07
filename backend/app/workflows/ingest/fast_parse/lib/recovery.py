@@ -78,6 +78,7 @@ async def recover_stalled_enhancements(*, task_registry=None) -> int:
                         kind="ingest.enhance.recovery",
                         course_id=registry_course,
                         name=f"ingest.enhance.recover:{registry_course}:{raw_file.id}",
+                        dedupe_key=f"ingest.enhance:{registry_course}:{raw_file.id}",
                     )
                 else:
                     task = asyncio.create_task(enhance_coro)

@@ -5,6 +5,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowl
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
+from app.workflows.digest.kg_doc_sync.lib.extraction import _assign_candidate_ids_and_edge_types
 from app.workflows.digest.kg_doc_sync.lib.extraction import _prepare_llm_chunk_content
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _build_backbone_graph_items,
@@ -12,6 +13,7 @@ from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
 )
 from app.workflows.digest.kg_doc_sync.lib.models import (
     ChapterSourceContext,
+    PendingMarkdownExtractedEdge,
     SectionExtractionContext,
     SectionExtractionPayload,
 )
@@ -23,7 +25,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             MarkdownKnowledgeUnit(
                 anchor=anchor,
                 name=name,
-                knowledge_unit_type="concept",
+                knowledge_unit_type="core_knowledge",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=0,
@@ -38,7 +40,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
         node_contexts_by_anchor={
             anchor: {
                 "name": name,
-                "knowledge_unit_type": "concept",
+                "knowledge_unit_type": "core_knowledge",
                 "section_index": 0,
                 "knowledge_document_id": None,
                 "source_file_ids": [],
@@ -51,7 +53,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             body_markdown="body",
             primary_anchor=anchor,
             primary_name=name,
-            primary_type="concept",
+            primary_type="core_knowledge",
         ),
         diagnostics={
             "section_count": 0,
@@ -67,6 +69,100 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             "total_extracted_edge_count": 0,
         },
     )
+
+
+def _edge_payload(
+    source_anchor: str,
+    target_anchor: str,
+    *,
+    source_name: str,
+    target_name: str,
+) -> SectionExtractionPayload:
+    return SectionExtractionPayload(
+        units=[
+            MarkdownKnowledgeUnit(
+                anchor=source_anchor,
+                name=source_name,
+                knowledge_unit_type="core_knowledge",
+                summary="summary",
+                body_markdown="body",
+                chapter_index=1,
+                knowledge_document_id=1,
+                source_file_ids=[],
+            ),
+            MarkdownKnowledgeUnit(
+                anchor=target_anchor,
+                name=target_name,
+                knowledge_unit_type="core_knowledge",
+                summary="summary",
+                body_markdown="body",
+                chapter_index=1,
+                knowledge_document_id=1,
+                source_file_ids=[],
+            ),
+        ],
+        pending_edges=[
+            PendingMarkdownExtractedEdge(
+                source_candidate_id="n1",
+                target_candidate_id="n2",
+                source_name=source_name,
+                target_name=target_name,
+                edge_type="prerequisite",
+                description="source before target",
+                knowledge_document_id=1,
+                chapter_index=1,
+            )
+        ],
+        candidate_id_to_anchor={"n1": source_anchor, "n2": target_anchor},
+        anchors_by_name={source_name: [source_anchor], target_name: [target_anchor]},
+        anchors_by_normalized_name={
+            source_name.lower(): [source_anchor],
+            target_name.lower(): [target_anchor],
+        },
+        node_contexts_by_anchor={},
+        section_context=SectionExtractionContext(
+            section_index=1,
+            title=source_name,
+            header_path=source_name,
+            body_markdown="body",
+            primary_anchor=source_anchor,
+            primary_name=source_name,
+            primary_type="core_knowledge",
+        ),
+        diagnostics={
+            "section_count": 0,
+            "successful_section_count": 1,
+            "failed_section_count": 0,
+            "llm_section_count": 1,
+            "markdown_short_circuit_section_count": 0,
+            "llm_error_count": 0,
+            "empty_llm_result_count": 0,
+            "empty_repair_attempt_count": 0,
+            "empty_repair_success_count": 0,
+            "total_extracted_node_count": 2,
+            "total_extracted_edge_count": 1,
+        },
+    )
+
+
+def test_section_candidate_ids_are_local_when_payloads_are_combined() -> None:
+    _units, edges, _diagnostics = incremental_sync._combine_section_payloads(
+        markdown="",
+        structured_context={},
+        chapters=[],
+        sections=[],
+        extraction_tasks=[],
+        task_metrics={},
+        section_payloads=[
+            _edge_payload("ku_alpha", "ku_beta", source_name="Alpha", target_name="Beta"),
+            _edge_payload("ku_gamma", "ku_delta", source_name="Gamma", target_name="Delta"),
+        ],
+    )
+
+    edge_pairs = {(edge.source_anchor, edge.target_anchor) for edge in edges}
+
+    assert ("ku_alpha", "ku_beta") in edge_pairs
+    assert ("ku_gamma", "ku_delta") in edge_pairs
 
 
 def test_long_chapter_is_split_with_untruncated_body() -> None:
@@ -94,7 +190,7 @@ def test_many_chapters_keep_chapter_tasks_and_limit_parallel_lanes() -> None:
     tasks, metrics = _build_extraction_tasks(chapters, {})
 
     assert len(tasks) == len(chapters)
-    assert metrics["planned_task_limit"] == 16
+    assert metrics["planned_task_limit"] == incremental_sync._graph_llm_concurrency_cap()
     assert metrics["chapter_split_count"] == 0
 
 
@@ -164,7 +260,7 @@ def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> Non
     assert metrics["subsection_task_count"] == len(tasks)
 
 
-def test_invalid_remark_edge_type_is_normalized_before_validation() -> None:
+def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> None:
     result = ChunkExtractionResult.model_validate(
         {
             "nodes": [
@@ -187,14 +283,16 @@ def test_invalid_remark_edge_type_is_normalized_before_validation() -> None:
                     "target_name": "主成分分析前需标准化数据提醒",
                     "source_candidate_id": "method",
                     "target_candidate_id": "remark",
-                    "edge_type": "remark",
+                    "edge_type": "support",
                     "description": "提醒是方法实施的补充。",
                 }
             ],
         }
     )
 
-    assert result.edges[0].edge_type == "application"
+    assert result.nodes[0].knowledge_unit_type == "method_demo"
+    assert result.nodes[1].knowledge_unit_type == "explanation_support"
+    assert result.edges[0].edge_type == "explanation"
 
 
 def test_prefetched_section_payload_is_reused_and_context_is_finalized() -> None:
@@ -307,7 +405,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                 {
                     "candidate_id": f"n{index}",
                     "name": f"Node {index}",
-                    "knowledge_unit_type": "concept",
+                    "knowledge_unit_type": "core_knowledge",
                     "local_summary": "summary",
                 }
                 for index in range(12)
@@ -326,6 +424,49 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
 
     assert len(result.nodes) == 8
     assert len(result.edges) == 12
+
+
+def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
+    result = ChunkExtractionResult.model_validate(
+        {
+            "nodes": [
+                {
+                    "candidate_id": "core",
+                    "name": "核心对象",
+                    "knowledge_unit_type": "core_knowledge",
+                    "local_summary": "本节说明核心对象。",
+                },
+                {
+                    "candidate_id": "method",
+                    "name": "操作方法",
+                    "knowledge_unit_type": "method_demo",
+                    "local_summary": "本节给出操作方法。",
+                },
+            ],
+            "edges": [
+                {
+                    "source_name": "核心对象",
+                    "target_name": "操作方法",
+                    "edge_type": "application",
+                    "description": "核心对象用于操作方法。",
+                },
+                {
+                    "source_name": "核心对象",
+                    "target_name": "不存在的练习",
+                    "source_candidate_id": "core",
+                    "target_candidate_id": "fabricated",
+                    "edge_type": "training",
+                    "description": "端点不在本次节点中。",
+                },
+            ],
+        }
+    )
+
+    finalized = _assign_candidate_ids_and_edge_types(result)
+
+    assert len(finalized.edges) == 1
+    assert finalized.edges[0].source_candidate_id == "core"
+    assert finalized.edges[0].target_candidate_id == "method"
 
 
 def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> None:

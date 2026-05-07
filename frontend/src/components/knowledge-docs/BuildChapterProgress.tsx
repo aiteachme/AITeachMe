@@ -82,7 +82,7 @@ export function BuildChapterProgress({ chapters, className }: Props) {
               className={cn(
                 "rounded-2xl border px-3.5 py-3 transition-colors",
                 active
-                  ? "border-indigo-200 bg-indigo-50/70 dark:border-indigo-500/30 dark:bg-indigo-500/10"
+                  ? "border-blue-200 bg-blue-50/70 dark:border-blue-500/30 dark:bg-blue-500/10"
                   : stable
                     ? "border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-500/30 dark:bg-emerald-500/10"
                     : "border-stone-200/80 bg-stone-50/60 dark:border-slate-800 dark:bg-slate-900/70",
@@ -93,7 +93,7 @@ export function BuildChapterProgress({ chapters, className }: Props) {
                   className={cn(
                     "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-[11px] font-semibold",
                     active
-                      ? "border-indigo-200 bg-white text-indigo-700 dark:border-indigo-500/30 dark:bg-slate-950 dark:text-indigo-300"
+                      ? "border-blue-200 bg-white text-blue-700 dark:border-blue-500/30 dark:bg-slate-950 dark:text-blue-300"
                       : stable
                         ? "border-emerald-200 bg-white text-emerald-700 dark:border-emerald-500/30 dark:bg-slate-950 dark:text-emerald-300"
                         : "border-stone-200 bg-white text-stone-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400",
@@ -111,7 +111,7 @@ export function BuildChapterProgress({ chapters, className }: Props) {
                       className={cn(
                         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
                         active
-                          ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300"
                           : stable
                             ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                             : "bg-white text-stone-500 dark:bg-slate-950 dark:text-slate-400",

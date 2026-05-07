@@ -12,6 +12,7 @@ from app.workflows.digest.common.models import DigestMaterialContext
 
 EMPTY_DIGEST = "暂无资料正文上下文"
 EMPTY_HISTORY = "暂无补充意见"
+EMPTY_LATEST_FEEDBACK = "暂无本轮补充意见"
 EMPTY_LATEST_PLAN = "暂无上一版方案"
 EMPTY_FILES = "暂无已解析文件"
 EMPTY_EXISTING_DOC = "暂无已发布知识文档"
@@ -52,16 +53,37 @@ def render_message_history(message_history: list[str] | None, *, limit: int | No
     return "\n".join(f"- {item}" for item in selected) if selected else EMPTY_HISTORY
 
 
+def render_latest_feedback(latest_feedback: str | None) -> str:
+    return _clean(latest_feedback) or EMPTY_LATEST_FEEDBACK
+
+
 def render_latest_plan(latest_plan: dict[str, Any] | None) -> str:
     if not latest_plan:
         return EMPTY_LATEST_PLAN
     plan_summary = _clean(latest_plan.get("plan_summary"))
-    chapter_count = len(list(latest_plan.get("chapter_plan") or []))
+    raw_chapters = list(latest_plan.get("chapter_plan") or [])
+    chapter_count = len(raw_chapters)
     step_count = len(list(latest_plan.get("plan_steps") or []))
     lines = [f"上一版摘要：{plan_summary}"] if plan_summary else []
     if step_count:
         lines.append(f"上一版计划步骤数：{step_count}")
     lines.append(f"上一版章节数：{chapter_count}")
+    chapter_lines: list[str] = []
+    for index, chapter in enumerate(raw_chapters[:12], start=1):
+        if not isinstance(chapter, dict):
+            continue
+        title = _clean(chapter.get("title"))
+        if not title:
+            continue
+        required_elements = [
+            _clean(item)
+            for item in list(chapter.get("required_elements") or [])[:3]
+            if _clean(item)
+        ]
+        suffix = f"：{'；'.join(required_elements)}" if required_elements else ""
+        chapter_lines.append(f"{index}. {title}{suffix}")
+    if chapter_lines:
+        lines.extend(["上一版章节安排：", *chapter_lines])
     return "\n".join(lines)
 
 
@@ -84,6 +106,7 @@ def render_planner_context_mode(*, planner_context_mode: str, existing_doc_conte
 
 __all__ = [
     "render_existing_doc_context",
+    "render_latest_feedback",
     "render_latest_plan",
     "render_material_digest",
     "render_material_overview",

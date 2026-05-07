@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 
@@ -24,19 +25,8 @@ def _chapter_shape_hint(*, digest_mode: str) -> str:
 """.strip()
 
 
-def _presentation_contract() -> str:
-    return """
-使用标准 Markdown 表达教学结构：自然段讲清逻辑，表格/清单只在对比、分类、步骤或参数密集时使用。
-关键术语、条件、结论和易错边界可以加粗，但不要把整章写成高亮清单。
-教学提示块优先使用引用式提示块语法，关键处自然出现 2-4 个即可，不要每段都塞。
-提示块映射：`> [!IMPORTANT]` 用于核心结论/关键前提；`> [!TIP]` 用于快速抓手/关键线索/捷径；`> [!WARNING]` 用于易错点/陷阱/不能硬套；`> [!NOTE]` 用于本章定位/补充联系。
-提示块格式必须是：
-> [!TIP]
->
-> 💡 快速抓手：这里写真正有用的一句话或小清单。
-可以少量使用与小节、提示块或清单语义强绑定的表情符号 / 图标帮助识别，例如 💡、⚠️、🎯、📌、✅；不要堆叠装饰。公式、代码、命令和路径等字面内容保持原样。
-不要使用 HTML、内联样式或纯装饰性符号。
-""".strip()
+def _presentation_contract(*, digest_mode: str = "") -> str:
+    return build_presentation_contract_prompt(digest_mode=digest_mode)
 
 
 def _build_mode_contract(
@@ -58,7 +48,7 @@ def _build_mode_contract(
 这些只是参考侧重点，不是固定目录：{"、".join(profile.chapter_format)}。
 课程化节奏也只是参考：{"、".join(profile.course_flow_hints)}。
 请根据本章真实内容取舍和命名二级标题，优先体现本章主题、学习路径、例题价值与知识主线。
-二级标题要像真实教材或课程讲义目录，应该是内容名词短语，例如“条件概率与独立性”“期望与方差的计算”“进程调度与同步互斥”，不要写成提醒读者行动的口号或内部流程。
+二级标题要像真实教材或课程讲义目录，应该是从本章材料中自然抽出的内容名词短语，例如“核心对象与边界条件”“关键方法与使用步骤”“典型场景与错误诊断”，不要写成提醒读者行动的口号或内部流程。
 标题只表达语义，不承担编号或样式说明。
 不要为了凑齐参考模块而硬塞小节。{extra_contract}
 {chapter_specific}
@@ -91,6 +81,15 @@ def build_docgen_writer_messages(
     execution_contract = dict(execution_contract or {})
     media_quota = dict(execution_contract.get("media_quota") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
+    content_role_targets = dict(execution_contract.get("content_role_targets") or {})
+    example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
+    content_mix_policy = dict(execution_contract.get("content_mix_policy") or {})
+    coverage_policy = [
+        str(item).strip()
+        for item in list(execution_contract.get("coverage_policy") or [])
+        if str(item).strip()
+    ]
+    example_density_policy = dict(execution_contract.get("example_density_policy") or {})
     claim_targets = [
         str(item).strip()
         for item in list(execution_contract.get("claim_targets") or [])
@@ -109,13 +108,17 @@ def build_docgen_writer_messages(
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
         f"- 练习配额：例题解析 {practice_quota.get('worked_examples', 0)} / 简答 {practice_quota.get('short_answer', 0)} / 快速检测 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
+        f"- 例题密度策略：{example_density_policy.get('policy_text') or '例题、案例和任务必须服务当前知识点。'}\n"
+        f"- 内容角色目标：{content_role_targets}\n"
+        f"- 例题覆盖计划：{example_coverage_plan}\n"
+        f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按章节合同覆盖核心知识和例题。'}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按章节合同覆盖'}\n"
         f"- 需谨慎处理的冲突/低证据点：{'；'.join(conflict_warnings) if conflict_warnings else '无'}"
     )
     system_prompt = """
 你是 AITeachMe 的中文教学文档作者。
 你的任务是把研究材料写成可直接给学生阅读的高质量 Markdown 讲义。
-成品必须像真实课程讲义或冲刺讲义，不像聊天回复，不像研究笔记，也不像内部草稿。
+成品必须像真实课程讲义或速成课讲义，不像聊天回复，不像研究笔记，也不像内部草稿。
 禁止输出英文标题、禁止输出英文段落、禁止把材料机械拼接。
 遇到公式要解释公式在说什么、什么时候能用、最容易错在哪里。
 如果材料不足，要坦诚用现有材料做稳健整理，不能编造事实或来源。
@@ -141,8 +144,10 @@ def build_docgen_writer_messages(
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
 标题口径：二级标题来自本章知识对象、公式、方法、任务/题型或应用场景，避免学习动作口号、问答提示或内部修补口吻。
 版式口径：
-{_presentation_contract()}
+{_presentation_contract(digest_mode=normalized_mode)}
 练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
+例题优先级：例题、案例、操作示例、变式训练和自测是核心内容，不是附录。速成课要明显提高例题/任务密度，围绕高频题型、关键方法、识别信号、易错陷阱组织；系统课要保证每个核心知识点都有例题、案例或练习支撑。
+学习内容角色：正文需要自然覆盖核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织和应用拓展中的本章必要部分；这些是写作检查维度，不要求作为固定标题原样出现。
 
 参考写作路径，不要照抄为目录：
 {_chapter_shape_hint(digest_mode=normalized_mode)}
@@ -157,9 +162,11 @@ def build_docgen_writer_messages(
 7. 不要把研究材料原样贴出来，要改写成适合学生学习的讲义。
 8. 先讲清概念、条件和判断依据，再讲任务/题型、例子或应用，避免一上来堆技巧。
 9. 例题、练习、案例、任务、类比和应用必须来自本章课程语境，不要跨课程凑例子。
-10. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
-11. 不输出原始来源列表、内部课程标识、研究笔记标题或草稿修补痕迹。
-12. 不在章节正文里插入参考资料附录；来源调试信息由系统单独保存和清理。
+10. 速成课章节不能长时间只讲理论；每个重要方法后尽快接例题、案例、变式任务或错误诊断。
+11. 系统课章节不能只有理论覆盖；每个核心知识点都要能在正文里找到对应例题、案例、操作示例或练习任务。
+12. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
+13. 不输出原始来源列表、内部课程标识、研究笔记标题或草稿修补痕迹。
+14. 不在章节正文里插入参考资料附录；来源调试信息由系统单独保存和清理。
 
 研究材料：
 {dense_context}
@@ -236,7 +243,7 @@ def build_docgen_heading_repair_messages(
 写作口径：
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
 版式口径：
-{_presentation_contract()}
+{_presentation_contract(digest_mode=normalized_mode)}
 如果正文已有例题、案例或任务区，要保留“题目/案例、解析、易错点”这类学习价值，不要改成只有列表。
 
 参考写作路径，不要照抄为目录：
@@ -287,7 +294,7 @@ def build_docgen_research_purify_messages(
     user_prompt = f"""
 请把下面的研究素材提纯成“供章节写作直接使用”的中文研究笔记。
 
-章节标题：{chapter_title or "未命名章节"}
+章节标题：{chapter_title or "本章内容"}
 章节目标：{objective or "为本章提供可教学、可解释、可举例的可靠材料。"}
 文档模式：{mode_label}
 必须覆盖：{must_cover}
@@ -328,7 +335,7 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 2. 默认使用 `mindmap`；如果内容是前置依赖、流程、因果、方法步骤或概念关系，优先使用 `flowchart LR`。
 3. 如果使用 mindmap，根节点必须是主题本身；最多 3 层结构，保证清晰，不要过密。
 4. 节点文字优先用中文短语，单个节点尽量控制在 4 到 12 个字。
-5. 不要在节点里放公式、HTML、Markdown 链接、代码符号、复杂括号嵌套；不要在同一个图里混用多种 Mermaid 图类型。
+5. 不要在节点里放公式、比较符号（>、<、=）、HTML、Markdown 链接、代码符号、英文引号或复杂括号嵌套；如果必须表达公式关系，请改写成中文短语。
 6. 如果使用 flowchart，可以用 2-3 个简单 `classDef` 给核心概念、方法步骤、易错提醒区分颜色；不要使用 click、HTML、复杂 style 或外链。
 7. 如果上下文噪声很多，优先保留最核心的 3 到 6 个概念节点，宁可简洁也不要产出脏 Mermaid。
 8. 绝对不要复制上下文中的 Markdown 标题、正文段落、`---` 分隔线或反引号。
@@ -377,7 +384,7 @@ def build_docgen_sub_query_messages(
 2. 查询要彼此互补，不要只是同义改写。
 3. 优先覆盖：核心定义、推导/公式、应用案例/例题、易错点/常见误区。
 4. 如果主题更偏系统课，可适当补“前置知识”“适用条件”“概念关系”。
-5. 如果主题更偏冲刺课，可适当补“真题/真实案例”“常见任务/高频题型”“防坑提醒”。
+5. 如果主题更偏速成课，可适当补“真实任务/真实案例”“常见任务/高频题型”“防坑提醒”；只有材料明确包含考试或真题时才使用“真题”措辞。
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
 

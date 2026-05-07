@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.course import Course
 from app.utils.time import utcnow
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _MAX_INTENT_TEXT_CHARS = 4000
 _MAX_INTRO_TEXT_CHARS = 1200
@@ -28,6 +29,25 @@ _CHAPTER_LIST_FIELDS = (
     ("example_targets", 8, 120),
     ("pitfall_targets", 8, 140),
 )
+_LEARNING_NODE_TYPES = {
+    "core_knowledge": "核心知识",
+    "method_demo": "方法示范",
+    "explanation_support": "解释辅助",
+    "principle_reasoning": "原理推理",
+    "practice_assessment": "练习评估",
+    "knowledge_organization": "知识组织",
+    "application_extension": "应用拓展",
+}
+_LEARNING_EDGE_TYPES = {
+    "prerequisite": "前置",
+    "contains": "包含",
+    "reasoning": "推理",
+    "application": "应用",
+    "explanation": "说明",
+    "training": "训练",
+    "contrast": "对比",
+    "similar": "相似",
+}
 
 
 def _clean_text(value: Any, *, max_chars: int | None = None) -> str:
@@ -180,10 +200,13 @@ def _chapter_plan_lookup(docgen_artifacts: Mapping[str, Any]) -> dict[int, dict[
 def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
     backbone = _as_mapping(docgen_artifacts.get("document_backbone_snapshot"))
     return {
+        "role": "docgen_learning_backbone",
+        "description": "写作骨架与候选知识线索，不是已验证知识图谱。",
         "canonical_glossary": [
             {
                 "term": _clean_text(item.get("term"), max_chars=80),
                 "definition": _clean_text(item.get("definition"), max_chars=200),
+                "target_chapters": _clean_int_list(item.get("target_chapters"), limit=12),
             }
             for item in _mapping_items(backbone.get("canonical_glossary"), limit=20)
             if _clean_text(item.get("term"))
@@ -196,6 +219,16 @@ def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str
             }
             for item in _mapping_items(backbone.get("concept_dependency_graph"), limit=20)
         ],
+        "canonical_claim_pool": [
+            {
+                "claim_type": _clean_text(item.get("claim_type"), max_chars=40),
+                "claim_text": _clean_text(item.get("claim_text"), max_chars=220),
+                "target_chapter": _safe_int(item.get("target_chapter"), default=0),
+                "source_hint": _clean_text(item.get("source_hint"), max_chars=180),
+            }
+            for item in _mapping_items(backbone.get("canonical_claim_pool"), limit=60)
+            if _clean_text(item.get("claim_text"))
+        ],
         "confusion_map": [
             {
                 "topic": _clean_text(item.get("topic"), max_chars=80),
@@ -206,6 +239,116 @@ def _document_backbone_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str
             if _clean_text(item.get("topic"))
         ],
     }
+
+
+def _learning_taxonomy_snapshot() -> dict[str, Any]:
+    return {
+        "node_types": [
+            {"value": value, "label": label}
+            for value, label in _LEARNING_NODE_TYPES.items()
+        ],
+        "relation_types": [
+            {"value": value, "label": label}
+            for value, label in _LEARNING_EDGE_TYPES.items()
+        ],
+    }
+
+
+def _content_mix_policy_snapshot(*, digest_mode: str, docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
+    for chapter in _mapping_items(_as_mapping(docgen_artifacts.get("chapter_generation_plan")).get("chapters"), limit=1):
+        policy = _as_mapping(_as_mapping(chapter.get("practice_seed_policy")).get("content_mix_policy"))
+        density = _as_mapping(_as_mapping(chapter.get("practice_seed_policy")).get("example_density_policy"))
+        coverage = _clean_string_list(_as_mapping(chapter.get("practice_seed_policy")).get("coverage_policy"), limit=8)
+        if policy or density or coverage:
+            return {
+                "digest_mode": digest_mode,
+                "content_mix_policy": policy,
+                "example_density_policy": density,
+                "coverage_policy": coverage,
+            }
+    profile = get_docgen_mode_profile(digest_mode)
+    return {
+        "digest_mode": profile.mode,
+        "content_mix_policy": dict(profile.content_mix_policy),
+        "example_density_policy": dict(profile.example_density_policy),
+        "coverage_policy": list(profile.coverage_policy),
+    }
+
+
+def _role_coverage_snapshot(chapters: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_index = _safe_int(chapter.get("chapter_index"), default=0)
+        targets = _as_mapping(chapter.get("content_role_targets"))
+        role_targets = {
+            role: _clean_string_list(targets.get(role), limit=12, max_chars=120)
+            for role in _LEARNING_NODE_TYPES
+        }
+        role_targets = {role: values for role, values in role_targets.items() if values}
+        if not role_targets:
+            continue
+        items.append(
+            {
+                "chapter_index": chapter_index,
+                "title": _clean_text(chapter.get("title"), max_chars=160),
+                "role_targets": role_targets,
+                "role_target_counts": {role: len(values) for role, values in role_targets.items()},
+            }
+        )
+    return items
+
+
+def _example_coverage_snapshot(chapters: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_index = _safe_int(chapter.get("chapter_index"), default=0)
+        plans: list[dict[str, Any]] = []
+        for item in _mapping_items(chapter.get("example_coverage_plan"), limit=24):
+            target = _clean_text(item.get("target"), max_chars=160)
+            if not target:
+                continue
+            plans.append(
+                {
+                    "target": target,
+                    "example_type": _clean_text(item.get("example_type") or item.get("type"), max_chars=80),
+                    "purpose": _clean_text(item.get("purpose"), max_chars=220),
+                    "min_examples": _safe_int(item.get("min_examples"), default=1),
+                }
+            )
+        if plans:
+            items.append(
+                {
+                    "chapter_index": chapter_index,
+                    "title": _clean_text(chapter.get("title"), max_chars=160),
+                    "plans": plans,
+                    "planned_example_count": sum(max(1, _safe_int(item.get("min_examples"), default=1)) for item in plans),
+                }
+            )
+    return items
+
+
+def _intent_profile_v2_snapshot(intent_profile: Mapping[str, Any], *, learning_goal: str) -> dict[str, Any]:
+    return {
+        "learning_goal_text": _clean_text(intent_profile.get("learning_goal_text") or learning_goal, max_chars=700),
+        "audience_profile_text": _clean_text(intent_profile.get("audience_profile_text"), max_chars=700),
+        "content_strategy_text": _clean_text(intent_profile.get("content_strategy_text"), max_chars=900),
+        "example_practice_policy": _clean_text(intent_profile.get("example_practice_policy"), max_chars=700),
+        "source_usage_policy": _clean_text(intent_profile.get("source_usage_policy"), max_chars=700),
+        "teaching_intent": _clean_text(intent_profile.get("teaching_intent"), max_chars=500),
+        "example_ratio": _safe_float(intent_profile.get("example_ratio"), default=0.0),
+        "practice_ratio": _safe_float(intent_profile.get("practice_ratio"), default=0.0),
+        "evidence_strictness": _safe_float(intent_profile.get("evidence_strictness"), default=0.0),
+        "review_strictness": _safe_float(intent_profile.get("review_strictness"), default=0.0),
+        "avoid_list": _clean_string_list(intent_profile.get("avoid_list"), limit=10, max_chars=160),
+    }
+
+
+def _safe_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(1.0, parsed))
 
 
 def _source_file_metadata(
@@ -298,6 +441,23 @@ def _source_slices_snapshot(value: Any, *, limit: int = 12) -> list[dict[str, An
     return slices
 
 
+def _source_affinity_snapshot(value: Any, *, limit: int = 24) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in _mapping_items(value, limit=limit):
+        chapter_index = _safe_int(item.get("chapter_index"), default=0)
+        if chapter_index <= 0:
+            continue
+        items.append(
+            {
+                "chapter_index": chapter_index,
+                "file_ids": _clean_string_list(item.get("file_ids"), limit=30, max_chars=120),
+                "section_refs": _clean_string_list(item.get("section_refs"), limit=24, max_chars=180),
+                "source_slices": _source_slices_snapshot(item.get("source_slices"), limit=12),
+            }
+        )
+    return items
+
+
 def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
     plan = _as_mapping(docgen_artifacts.get("confirmed_plan"))
     if not plan:
@@ -379,6 +539,22 @@ def _build_chapter_snapshots(
         }
         for field_name, limit, max_chars in _CHAPTER_LIST_FIELDS:
             chapter_payload[field_name] = _clean_string_list(plan.get(field_name), limit=limit, max_chars=max_chars)
+        role_targets = _as_mapping(plan.get("content_role_targets"))
+        chapter_payload["content_role_targets"] = {
+            role: _clean_string_list(role_targets.get(role), limit=12, max_chars=120)
+            for role in _LEARNING_NODE_TYPES
+            if _clean_string_list(role_targets.get(role), limit=12, max_chars=120)
+        }
+        chapter_payload["example_coverage_plan"] = [
+            {
+                "target": _clean_text(item.get("target"), max_chars=160),
+                "example_type": _clean_text(item.get("example_type") or item.get("type"), max_chars=80),
+                "purpose": _clean_text(item.get("purpose"), max_chars=220),
+                "min_examples": _safe_int(item.get("min_examples"), default=1),
+            }
+            for item in _mapping_items(plan.get("example_coverage_plan"), limit=24)
+            if _clean_text(item.get("target"))
+        ]
         source_file_ids = _source_file_ids_for_chapter(chapter=chapter, assignment=assignment, doc=doc)
         chapter_payload.update(
             {
@@ -392,6 +568,134 @@ def _build_chapter_snapshots(
         )
         chapters.append(chapter_payload)
     return chapters
+
+
+def _quality_summary_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, Any]:
+    review_actions = _mapping_items(docgen_artifacts.get("review_actions"), limit=80)
+    repair_trace = _mapping_items(docgen_artifacts.get("repair_trace"), limit=80)
+    unresolved = _clean_string_list(docgen_artifacts.get("unresolved_warnings"), limit=20, max_chars=220)
+    presentation = _as_mapping(docgen_artifacts.get("presentation_quality_summary"))
+    action_counts: dict[str, int] = {}
+    for action in review_actions:
+        action_type = _clean_text(action.get("action_type"), max_chars=60) or "unknown"
+        action_counts[action_type] = action_counts.get(action_type, 0) + 1
+    applied_patch_count = sum(1 for item in repair_trace if _clean_text(item.get("status")) == "applied")
+    return {
+        "review_decision": _clean_text(docgen_artifacts.get("review_decision"), max_chars=80),
+        "review_action_count": len(review_actions),
+        "review_action_counts": action_counts,
+        "applied_patch_count": applied_patch_count,
+        "unresolved_warning_count": len(unresolved),
+        "unresolved_warnings": unresolved,
+        "presentation_issue_count": _safe_int(presentation.get("chapter_issue_count"))
+        + _safe_int(presentation.get("merged_issue_count")),
+        "presentation_top_issues": _clean_string_list(presentation.get("top_issues"), limit=12, max_chars=180),
+    }
+
+
+def _kg_candidate_hints_snapshot(
+    *,
+    chapters: Sequence[Mapping[str, Any]],
+    backbone: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    terms_by_chapter: dict[int, list[str]] = {}
+    for item in _mapping_items(backbone.get("canonical_glossary"), limit=80):
+        term = _clean_text(item.get("term"), max_chars=90)
+        if not term:
+            continue
+        for chapter_index in _clean_int_list(item.get("target_chapters"), limit=12):
+            terms_by_chapter.setdefault(chapter_index, []).append(term)
+
+    claims_by_chapter: dict[int, list[str]] = {}
+    for item in _mapping_items(backbone.get("canonical_claim_pool"), limit=120):
+        chapter_index = _safe_int(item.get("target_chapter"), default=0)
+        claim_text = _clean_text(item.get("claim_text"), max_chars=180)
+        if chapter_index > 0 and claim_text:
+            claims_by_chapter.setdefault(chapter_index, []).append(claim_text)
+
+    hints: list[dict[str, Any]] = []
+    for chapter in chapters:
+        chapter_index = _safe_int(chapter.get("chapter_index"), default=0)
+        if chapter_index <= 0:
+            continue
+        concept_candidates = _clean_string_list(
+            [
+                *list(chapter.get("concept_targets") or []),
+                *list(chapter.get("definition_targets") or []),
+                *list(chapter.get("formula_targets") or []),
+                *terms_by_chapter.get(chapter_index, []),
+            ],
+            limit=18,
+            max_chars=120,
+        )
+        task_candidates = _clean_string_list(
+            [
+                *list(chapter.get("example_targets") or []),
+                *list(chapter.get("pitfall_targets") or []),
+                *claims_by_chapter.get(chapter_index, []),
+            ],
+            limit=18,
+            max_chars=180,
+        )
+        role_targets = _as_mapping(chapter.get("content_role_targets"))
+        candidate_nodes = [
+            {
+                "node_type": role,
+                "label": _LEARNING_NODE_TYPES[role],
+                "names": _clean_string_list(role_targets.get(role), limit=10, max_chars=120),
+            }
+            for role in _LEARNING_NODE_TYPES
+            if _clean_string_list(role_targets.get(role), limit=10, max_chars=120)
+        ]
+        existing_node_types = {str(item.get("node_type") or "") for item in candidate_nodes}
+        if concept_candidates and "core_knowledge" not in existing_node_types:
+            candidate_nodes.append(
+                {
+                    "node_type": "core_knowledge",
+                    "label": _LEARNING_NODE_TYPES["core_knowledge"],
+                    "names": _clean_string_list(concept_candidates, limit=10, max_chars=120),
+                }
+            )
+        if task_candidates and "method_demo" not in existing_node_types:
+            candidate_nodes.append(
+                {
+                    "node_type": "method_demo",
+                    "label": _LEARNING_NODE_TYPES["method_demo"],
+                    "names": _clean_string_list(task_candidates, limit=8, max_chars=120),
+                }
+            )
+        example_targets = [
+            _clean_text(item.get("target"), max_chars=160)
+            for item in _mapping_items(chapter.get("example_coverage_plan"), limit=12)
+            if _clean_text(item.get("target"))
+        ]
+        candidate_edges: list[dict[str, Any]] = []
+        for target in _clean_string_list([*concept_candidates, *example_targets], limit=10, max_chars=140):
+            candidate_edges.append(
+                {
+                    "source_hint": target,
+                    "edge_type": "training",
+                    "target_type": "practice_assessment",
+                    "reason": "例题、练习或任务应训练并验证该知识点。",
+                }
+            )
+        if not concept_candidates and not task_candidates and not candidate_nodes:
+            continue
+        hints.append(
+            {
+                "chapter_index": chapter_index,
+                "title": _clean_text(chapter.get("title"), max_chars=160),
+                "candidate_terms": concept_candidates,
+                "candidate_claims": task_candidates,
+                "candidate_nodes": candidate_nodes,
+                "candidate_edges": candidate_edges[:12],
+                "example_coverage_targets": _clean_string_list(example_targets, limit=12, max_chars=160),
+                "source_file_ids": _clean_string_list(chapter.get("source_file_ids"), limit=30, max_chars=120),
+                "source_slices": _source_slices_snapshot(chapter.get("source_slices"), limit=8),
+                "evidence_policy": "hint_only_require_markdown_or_evidence_ledger_match",
+            }
+        )
+    return hints[:24]
 
 
 def build_course_learning_context_payload(
@@ -447,7 +751,13 @@ def build_course_learning_context_payload(
         source_file_lookup=source_file_lookup,
     )
     file_summaries = _file_summary_snapshot(docgen_artifacts, source_file_lookup=source_file_lookup)
+    source_affinity = _source_affinity_snapshot(docgen_artifacts.get("source_affinity_by_chapter"))
     backbone = _document_backbone_snapshot(docgen_artifacts)
+    intent_profile_v2 = _intent_profile_v2_snapshot(intent_profile, learning_goal="")
+    retrieval_policy = _as_mapping(document_context.get("retrieval_policy") or docgen_artifacts.get("retrieval_policy"))
+    course_profile_snapshot = _as_mapping(docgen_artifacts.get("course_profile"))
+    material_stats_snapshot = _as_mapping(docgen_artifacts.get("material_stats_profile"))
+    quality_summary = _quality_summary_snapshot(docgen_artifacts)
 
     top_terms = [
         item["term"]
@@ -463,9 +773,13 @@ def build_course_learning_context_payload(
     chapter_titles = [chapter["title"] for chapter in chapters if chapter.get("title")]
 
     learning_goal = _clean_text(
-        confirmed_plan.get("learning_goal") or course_user_intent or user_prompt,
+        confirmed_plan.get("learning_goal")
+        or intent_profile_v2.get("learning_goal_text")
+        or course_user_intent
+        or user_prompt,
         max_chars=700,
     )
+    intent_profile_v2 = _intent_profile_v2_snapshot(intent_profile, learning_goal=learning_goal)
     intent_lines = []
     if learning_goal:
         intent_lines.append(f"学习目标：{learning_goal}")
@@ -475,18 +789,14 @@ def build_course_learning_context_payload(
         intent_lines.append(f"构建范围：{plan_summary}")
     if chapter_titles:
         intent_lines.append("章节范围：" + "、".join(chapter_titles[:10]))
-    style_bits = _clean_string_list(
-        [
-            f"文档风格 {_clean_text(intent_profile.get('document_style'))}" if intent_profile.get("document_style") else "",
-            f"讲解深度 {_clean_text(intent_profile.get('explanation_depth'))}" if intent_profile.get("explanation_depth") else "",
-            f"定义深度 {_clean_text(intent_profile.get('definition_depth'))}" if intent_profile.get("definition_depth") else "",
-            f"例题偏好 {_clean_text(intent_profile.get('example_preference'))}" if intent_profile.get("example_preference") else "",
-        ],
-        limit=6,
-        max_chars=80,
-    )
-    if style_bits:
-        intent_lines.append("讲义偏好：" + "；".join(style_bits))
+    if intent_profile_v2.get("audience_profile_text"):
+        intent_lines.append(f"学习场景：{intent_profile_v2['audience_profile_text']}")
+    if intent_profile_v2.get("content_strategy_text"):
+        intent_lines.append(f"讲解策略：{intent_profile_v2['content_strategy_text']}")
+    if intent_profile_v2.get("example_practice_policy"):
+        intent_lines.append(f"例子与练习：{intent_profile_v2['example_practice_policy']}")
+    if intent_profile_v2.get("source_usage_policy"):
+        intent_lines.append(f"来源策略：{intent_profile_v2['source_usage_policy']}")
     avoid_list = _clean_string_list(intent_profile.get("avoid_list"), limit=8)
     if avoid_list:
         intent_lines.append("避免：" + "；".join(avoid_list))
@@ -502,9 +812,16 @@ def build_course_learning_context_payload(
         intro_bits.append("重点覆盖 " + "、".join(top_terms[:8]))
     course_intro_text = _clean_text("，".join(intro_bits) + "。", max_chars=_MAX_INTRO_TEXT_CHARS)
     source_file_ids = sorted({file_id for chapter in chapters for file_id in chapter.get("source_file_ids", [])})
+    kg_candidate_hints = _kg_candidate_hints_snapshot(chapters=chapters, backbone=backbone)
+    learning_taxonomy = _learning_taxonomy_snapshot()
+    content_mix_policy = _content_mix_policy_snapshot(digest_mode=digest_mode, docgen_artifacts=docgen_artifacts)
+    presentation_policy = _as_mapping(docgen_artifacts.get("presentation_policy"))
+    presentation_quality_summary = _as_mapping(docgen_artifacts.get("presentation_quality_summary"))
+    role_coverage_by_chapter = _role_coverage_snapshot(chapters)
+    example_coverage_by_chapter = _example_coverage_snapshot(chapters)
 
     summary_payload: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 3,
         "source": "docgen.publish",
         "generated_at": utcnow().isoformat(),
         "requested_at": requested_at.isoformat() if requested_at is not None else None,
@@ -518,6 +835,11 @@ def build_course_learning_context_payload(
         "planner_session_id": _clean_text(build_metadata.get("planner_session_id")),
         "confirmed_plan_id": _clean_text(build_metadata.get("confirmed_plan_id")),
         "digest_mode": digest_mode,
+        "retrieval_policy": retrieval_policy,
+        "learning_taxonomy": learning_taxonomy,
+        "content_mix_policy": content_mix_policy,
+        "presentation_policy": presentation_policy,
+        "presentation_quality_summary": presentation_quality_summary,
         "user_prompt": user_prompt,
         "docgen_user_prompt": user_prompt,
         "plan_summary": plan_summary,
@@ -529,9 +851,18 @@ def build_course_learning_context_payload(
             for file_id in source_file_ids
         ],
         "confirmed_plan": confirmed_plan,
+        "intent_profile_v2": intent_profile_v2,
+        "course_profile": course_profile_snapshot,
+        "material_stats_profile": material_stats_snapshot,
         "chapters": chapters,
         "file_summaries": file_summaries,
+        "source_affinity_by_chapter": source_affinity,
+        "role_coverage_by_chapter": role_coverage_by_chapter,
+        "example_coverage_by_chapter": example_coverage_by_chapter,
         "document_backbone": backbone,
+        "docgen_learning_backbone": backbone,
+        "kg_candidate_hints": kg_candidate_hints,
+        "quality_summary": quality_summary,
     }
 
     llm_context_text = render_course_llm_context(
@@ -551,6 +882,13 @@ def render_course_llm_context(
     chapters = _as_list(document_summary_json.get("chapters"))
     file_summaries = _as_list(document_summary_json.get("file_summaries"))
     backbone = _as_mapping(document_summary_json.get("document_backbone"))
+    intent_profile = _as_mapping(document_summary_json.get("intent_profile_v2"))
+    quality_summary = _as_mapping(document_summary_json.get("quality_summary"))
+    kg_candidate_hints = _as_list(document_summary_json.get("kg_candidate_hints"))
+    content_mix_policy = _as_mapping(document_summary_json.get("content_mix_policy"))
+    presentation_policy = _as_mapping(document_summary_json.get("presentation_policy"))
+    role_coverage = _as_list(document_summary_json.get("role_coverage_by_chapter"))
+    example_coverage = _as_list(document_summary_json.get("example_coverage_by_chapter"))
 
     lines: list[str] = []
     if course_intro_text:
@@ -569,6 +907,41 @@ def render_course_llm_context(
     plan_summary = _clean_text(document_summary_json.get("plan_summary"), max_chars=900)
     if plan_summary:
         lines.append(f"- 总体方案：{plan_summary}")
+    if intent_profile:
+        strategy = _clean_text(intent_profile.get("content_strategy_text"), max_chars=500)
+        example_policy = _clean_text(intent_profile.get("example_practice_policy"), max_chars=360)
+        source_policy = _clean_text(intent_profile.get("source_usage_policy"), max_chars=360)
+        if strategy or example_policy or source_policy:
+            lines.extend(["", "## 生成意图"])
+            if strategy:
+                lines.append(f"- 讲解策略：{strategy}")
+            if example_policy:
+                lines.append(f"- 例子与练习：{example_policy}")
+            if source_policy:
+                lines.append(f"- 来源策略：{source_policy}")
+    if content_mix_policy:
+        density = _as_mapping(content_mix_policy.get("example_density_policy"))
+        coverage = _clean_string_list(content_mix_policy.get("coverage_policy"), limit=4, max_chars=180)
+        lines.extend(["", "## 学习内容分类与例题策略"])
+        lines.append("- 节点分类：核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织、应用拓展。")
+        lines.append("- 关系分类：前置、包含、推理、应用、说明、训练、对比、相似。")
+        if density:
+            lines.append(f"- 例题策略：{_clean_text(density.get('policy_text'), max_chars=420)}")
+        if coverage:
+            lines.append("- 覆盖要求：" + "；".join(coverage))
+
+    if presentation_policy:
+        markdown_policy = _as_mapping(presentation_policy.get("markdown"))
+        lines.extend(["", "## 展示质量策略"])
+        heading_policy = _clean_text(markdown_policy.get("heading_levels"), max_chars=180)
+        highlight_policy = _clean_text(markdown_policy.get("highlight"), max_chars=180)
+        mermaid_policy = _clean_text(markdown_policy.get("mermaid"), max_chars=220)
+        if heading_policy:
+            lines.append(f"- 标题层级：{heading_policy}")
+        if highlight_policy:
+            lines.append(f"- 高亮策略：{highlight_policy}")
+        if mermaid_policy:
+            lines.append(f"- 图谱/Mermaid：{mermaid_policy}")
 
     if file_summaries:
         lines.extend(["", "## 资料摘要"])
@@ -596,6 +969,31 @@ def render_course_llm_context(
             point_text = f"；重点：{'、'.join(points)}" if points else ""
             lines.append(f"{_safe_int(item.get('chapter_index'))}. {title}：{summary}{point_text}".rstrip("："))
 
+    if example_coverage:
+        lines.extend(["", "## 例题覆盖计划"])
+        for item in example_coverage[:12]:
+            if not isinstance(item, Mapping):
+                continue
+            title = _clean_text(item.get("title"), max_chars=120)
+            plans = _mapping_items(item.get("plans"), limit=5)
+            targets = "、".join(_clean_text(plan.get("target"), max_chars=80) for plan in plans if _clean_text(plan.get("target")))
+            if targets:
+                lines.append(f"- {title}：{targets}")
+    if role_coverage:
+        lines.extend(["", "## 内容角色覆盖"])
+        for item in role_coverage[:8]:
+            if not isinstance(item, Mapping):
+                continue
+            title = _clean_text(item.get("title"), max_chars=120)
+            counts = _as_mapping(item.get("role_target_counts"))
+            count_text = "、".join(
+                f"{_LEARNING_NODE_TYPES.get(role, role)} {_safe_int(count)}"
+                for role, count in counts.items()
+                if _safe_int(count) > 0
+            )
+            if count_text:
+                lines.append(f"- {title}：{count_text}")
+
     glossary = [
         item
         for item in _as_list(backbone.get("canonical_glossary"))
@@ -607,6 +1005,31 @@ def render_course_llm_context(
             term = _clean_text(item.get("term"), max_chars=80)
             definition = _clean_text(item.get("definition"), max_chars=200)
             lines.append(f"- {term}：{definition}".rstrip("："))
+
+    if kg_candidate_hints:
+        lines.extend(["", "## 图谱候选线索"])
+        for item in kg_candidate_hints[:10]:
+            if not isinstance(item, Mapping):
+                continue
+            title = _clean_text(item.get("title"), max_chars=120)
+            terms = "、".join(_clean_string_list(item.get("candidate_terms"), limit=6, max_chars=80))
+            claims = "；".join(_clean_string_list(item.get("candidate_claims"), limit=3, max_chars=120))
+            if terms or claims:
+                parts = []
+                if terms:
+                    parts.append(f"候选术语 {terms}")
+                if claims:
+                    parts.append(f"候选主张 {claims}")
+                lines.append(f"- {title}：" + "；".join(parts))
+
+    if quality_summary:
+        unresolved_count = _safe_int(quality_summary.get("unresolved_warning_count"), default=0)
+        action_count = _safe_int(quality_summary.get("review_action_count"), default=0)
+        if action_count or unresolved_count:
+            lines.extend(["", "## 质量状态"])
+            lines.append(
+                f"- review 动作 {action_count} 条，未解决 warning {unresolved_count} 条。"
+            )
 
     return _truncate_text("\n".join(lines), max_chars=_MAX_LLM_CONTEXT_CHARS)
 

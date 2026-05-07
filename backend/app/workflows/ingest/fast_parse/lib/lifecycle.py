@@ -80,6 +80,7 @@ def dispatch_enhancement_if_needed(
                 kind="ingest.enhance",
                 course_id=registry_course,
                 name=f"ingest.enhance:{registry_course}:{file_id}",
+                dedupe_key=f"ingest.enhance:{registry_course}:{file_id}",
             )
             return True
         except Exception:

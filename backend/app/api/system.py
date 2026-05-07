@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Response
 
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, ok_response
-from app.schemas.system import FeedbackRequest, InitData, InitRequest, SettingsOverviewData, UpdateUserSettingsRequest
+from app.schemas.system import (
+    FeedbackRequest,
+    InitData,
+    InitRequest,
+    SettingsOverviewData,
+    UpdateUserSettingsRequest,
+)
 from app.workflows.support.system import (
     build_init_data,
     build_settings_overview_data,
+    read_community_wechat_qr_bytes,
     update_user_settings_overview_data,
 )
 
@@ -42,6 +49,29 @@ async def init_system(
             device_key=user.device_key,
             is_authenticated=user.is_authenticated,
         )
+    )
+
+
+@router.get(
+    "/community/wechat-qr",
+    summary="读取社区微信二维码",
+    description="从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。",
+    responses=build_error_responses([404, 500]),
+)
+async def get_community_wechat_qr() -> Response:
+    """读取社区微信二维码图片。"""
+
+    image_bytes = await read_community_wechat_qr_bytes()
+    if image_bytes is None:
+        raise HTTPException(status_code=404, detail="社区二维码暂不可用。")
+
+    return Response(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
 
 

@@ -26,7 +26,7 @@ let mockCourses: CourseItem[] = [
 const mockDemoCourses = [
   {
     filename: "demo-calculus",
-    course_name: "高数冲刺演示课",
+    course_name: "高数演示课",
     file_size_bytes: 1024 * 1024 * 6,
     exported_at: new Date("2026-04-01T00:00:00Z").toISOString(),
     stats: {

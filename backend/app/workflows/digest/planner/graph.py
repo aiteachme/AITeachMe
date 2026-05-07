@@ -15,11 +15,6 @@ from sqlmodel import Session
 
 from app.models.course import Course
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
-from app.shared.infra.observability.trace import (
-    langsmith_trace,
-    sanitize_langsmith_input,
-    sanitize_langsmith_output,
-)
 from app.shared.infra.llm_support.model_choices import (
     normalize_runtime_model_override,
     use_runtime_model_override,
@@ -73,7 +68,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "保证 Planner 能先产出可继续修改的临时方案。"
         ),
         "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
-        "writes": ["selected_file_ids", "material_context", "digest_mode"],
+        "writes": ["selected_file_ids", "material_context", "digest_mode", "planner_context_stats"],
         "input_keys": [
             "course_id",
             "user_id",
@@ -91,6 +86,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ],
         "output_keys": [
             "selected_file_ids",
+            "planner_context_stats",
             "material_context",
             "digest_mode",
             "prepare_ms",
@@ -102,9 +98,19 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "并行执行两个轻规划动作：一边流式生成用户可见的资料边界/学习目标判断，一边抽取内部 PlanIntent。"
             "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终章节合同。"
         ),
-        "reads": ["material_context", "user_prompt", "digest_mode", "message_history"],
+        "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
         "writes": ["planner_brief", "plan_intent"],
-        "input_keys": ["course_id", "material_context", "user_prompt", "digest_mode", "message_history", "planner_session_id", "model_override"],
+        "input_keys": [
+            "course_id",
+            "material_context",
+            "user_prompt",
+            "digest_mode",
+            "message_history",
+            "latest_plan",
+            "feedback_message",
+            "planner_session_id",
+            "model_override",
+        ],
         "output_keys": ["planner_brief", "plan_intent", "bootstrap_ms", "error"],
         "fanout": "internal_async_brief_and_intent",
         "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
@@ -348,69 +354,6 @@ def get_langgraph_dev_planner_graph() -> StateGraph:
     return build_planner_graph(context=create_langgraph_dev_context("digest.planner.langgraph_dev"))
 
 
-def _planner_trace_inputs(
-    *,
-    course_id: str,
-    file_ids: list[str],
-    user_prompt: str,
-    planner_session_id: str,
-    digest_mode: str,
-    model: str | None,
-    message_history: list[str],
-    user_id: str,
-    planner_operation: str,
-    requested_file_ids: list[str] | None,
-    session_title: str,
-    feedback_message: str,
-    latest_plan: dict | None,
-) -> dict[str, object]:
-    return sanitize_langsmith_input(
-        {
-            "course_id": course_id,
-            "user_id": user_id,
-            "planner_session_id": planner_session_id,
-            "planner_operation": normalize_planner_operation(planner_operation),
-            "file_id_count": len(file_ids),
-            "requested_file_id_count": len(requested_file_ids or []),
-            "digest_mode": digest_mode,
-            "model_override": model,
-            "message_history_count": len(message_history),
-            "session_title_preview": session_title[:120],
-            "user_prompt_preview": user_prompt[:240],
-            "feedback_preview": feedback_message[:240],
-            "has_latest_plan": bool(latest_plan),
-            "latest_plan_chapter_count": len(list((latest_plan or {}).get("chapter_plan") or [])),
-        },
-        field_name="planner_trace_inputs",
-    )
-
-
-def _planner_trace_outputs(result: WorkflowResult[BuildPlannerState]) -> dict[str, object]:
-    state = result.value if isinstance(result.value, dict) else {}
-    return sanitize_langsmith_output(
-        {
-            "failed": result.failed,
-            "error": str(result.error) if result.error else str(state.get("error") or ""),
-            "planner_session_id": str(state.get("planner_session_id") or ""),
-            "has_plan": bool(state.get("plan")),
-            "plan_chapter_count": len(list((state.get("plan") or {}).get("chapter_plan") or []))
-            if isinstance(state.get("plan"), dict)
-            else 0,
-            "workflow_elapsed_ms": int(state.get("workflow_elapsed_ms") or 0),
-        },
-        field_name="planner_trace_outputs",
-    )
-
-
-def _end_planner_root_trace(trace_run: object | None, result: WorkflowResult[BuildPlannerState]) -> None:
-    if trace_run is None:
-        return
-    try:
-        trace_run.end(outputs=_planner_trace_outputs(result))
-    except Exception:
-        logger.exception("planner_root_trace_end_failed")
-
-
 async def run_build_planner_workflow(
     *,
     course_id: str,
@@ -475,44 +418,13 @@ async def run_build_planner_workflow(
         progress_callback=progress_callback,
         token_callback=token_callback,
     )
-    with langsmith_trace(
-        name=run_name,
-        run_type="chain",
-        inputs=_planner_trace_inputs(
-            course_id=course_id,
-            user_id=user_id,
-            file_ids=file_ids,
-            user_prompt=user_prompt,
-            planner_session_id=planner_session_id,
-            digest_mode=digest_mode,
-            model=model_override,
-            message_history=message_history,
-            planner_operation=normalized_operation,
-            requested_file_ids=requested_file_ids,
-            session_title=session_title,
-            feedback_message=feedback_message,
-            latest_plan=latest_plan,
-        ),
-        course_id=course_id,
-        build_session_id=planner_session_id,
-        workflow="digest.planner",
-        lane="planner",
-        extra_metadata={
-            "planner_operation": normalized_operation,
-            "planner_session_id": planner_session_id,
-            "digest_mode": digest_mode,
-            "model_override": model_override,
-        },
-        extra_tags=[f"planner_operation:{normalized_operation}"],
-    ) as trace_run:
-        with use_runtime_model_override(model_override):
-            result = await run_state_graph(
-                workflow_name="digest.planner",
-                graph_builder=lambda: build_planner_graph(context=context),
-                initial_state=initial_state,
-                context=context,
-            )
-        _end_planner_root_trace(trace_run, result)
+    with use_runtime_model_override(model_override):
+        result = await run_state_graph(
+            workflow_name="digest.planner",
+            graph_builder=lambda: build_planner_graph(context=context),
+            initial_state=initial_state,
+            context=context,
+        )
     logger.info(
         "planner_workflow_finished",
         course_id=course_id,
@@ -656,49 +568,6 @@ def record_build_planner_adjust_click(
         user_id=user_id,
         session_id=session_id,
     )
-    run_name = planner_trace_run_name("adjust_click")
-    trace_inputs = sanitize_langsmith_input(
-        {
-            "event": "click_adjust_plan",
-            "course_id": course.id,
-            "user_id": user_id,
-            "planner_session_id": session_id,
-            "status": context.get("status"),
-            "digest_mode": context.get("digest_mode"),
-            "turn_count": context.get("turn_count"),
-            "has_latest_plan": context.get("has_latest_plan"),
-            "latest_plan_chapter_count": context.get("latest_plan_chapter_count"),
-        },
-        field_name="planner_adjust_click_inputs",
-    )
-    with langsmith_trace(
-        name=run_name,
-        run_type="chain",
-        inputs=trace_inputs,
-        course_id=course.id,
-        build_session_id=session_id,
-        workflow="digest.planner",
-        lane="planner",
-        extra_metadata={
-            "planner_operation": "adjust_click",
-            "planner_session_id": session_id,
-            "digest_mode": context.get("digest_mode"),
-            "ui_event": "click_adjust_plan",
-        },
-        extra_tags=["planner_operation:adjust_click", "ui_event:click_adjust_plan"],
-    ) as trace_run:
-        if trace_run is not None:
-            trace_run.end(
-                outputs=sanitize_langsmith_output(
-                    {
-                        "acknowledged": True,
-                        "planner_session_id": session_id,
-                        "status": context.get("status"),
-                        "has_latest_plan": context.get("has_latest_plan"),
-                    },
-                    field_name="planner_adjust_click_outputs",
-                )
-            )
     logger.info(
         "planner_adjust_click_recorded",
         course_id=course.id,

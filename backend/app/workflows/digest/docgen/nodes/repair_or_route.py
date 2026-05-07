@@ -13,11 +13,19 @@ from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 
+def _repair_trace_used_llm(item) -> bool:
+    return bool(getattr(item, "llm_attempted", False))
+
+
+def _repair_trace_llm_call_group(item) -> str:
+    return str(getattr(item, "llm_call_group", "") or "")
+
+
 def build_repair_or_route_node(*, context: WorkflowContext):
     """构建复核回流处理节点。
 
-    当前只自动执行安全的 surface/section patch；证据补强、整章重写和
-    重派发动作会进入 unresolved_warnings，等待有限回流阶段继续实现。
+    当前自动执行安全的 surface/section/evidence patch；整章重写和
+    重派发动作会进入 unresolved_warnings，等待更重的有限回流阶段继续实现。
     """
 
     async def repair_or_route_node(state: DocGenState) -> dict:
@@ -40,13 +48,25 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             status="running",
             stage="repairing_or_routing",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="正在处理复核回流动作：MVP 只执行安全表层修补，其余记录为 warning。",
+            current_stage_description="正在处理复核回流动作：执行安全局部修补，其余重动作记录为 warning。",
         )
-        # MVP 不在这里自动重写章节；复杂回流先结构化记录，避免修复阶段引入新的内容污染。
+        # 不在这里自动重写整章；复杂回流先结构化记录，避免修复阶段引入新的内容污染。
         repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,
         )
+        changed_count = sum(1 for item in repair_trace if item.changed)
+        llm_call_groups = {
+            _repair_trace_llm_call_group(item)
+            for item in repair_trace
+            if _repair_trace_used_llm(item) and _repair_trace_llm_call_group(item)
+        }
+        llm_attempt_count = len(llm_call_groups)
+        next_review_decision = str(state.get("review_decision") or "")
+        if unresolved:
+            next_review_decision = "publish_with_warnings"
+        elif changed_count:
+            next_review_decision = "repaired"
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
             state["course_id"],
@@ -54,14 +74,14 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             status="running",
             stage="repair_routed",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description=f"复核回流处理完成，已应用 {sum(1 for item in repair_trace if item.changed)} 项修补，待后续闭环处理 {len(unresolved)} 条。",
+            current_stage_description=f"复核回流处理完成，已应用 {changed_count} 项修补，待后续闭环处理 {len(unresolved)} 条。",
         )
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
             event={
                 "stage": "repair_routed",
-                "summary": f"复核回流动作已处理，实际修补 {sum(1 for item in repair_trace if item.changed)} 项，保留 warning {len(unresolved)} 条。",
+                "summary": f"复核回流动作已处理，实际修补 {changed_count} 项，保留 warning {len(unresolved)} 条。",
                 "created_at": utcnow(),
             },
         )
@@ -78,10 +98,11 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         return {
             "reviewed_chapter_drafts": [item.model_dump(mode="json") for item in repaired],
             "review_actions": [item.model_dump(mode="json") for item in updated_actions],
+            "review_decision": next_review_decision,
             "unresolved_warnings": unresolved,
             "repair_trace": [item.model_dump(mode="json") for item in repair_trace],
             "repair_ms": elapsed_ms,
-            "llm_calls_total": sum(1 for item in actions if item.action_type in {"surface_patch", "section_patch"}),
+            "llm_calls_total": llm_attempt_count,
         }
 
     return repair_or_route_node

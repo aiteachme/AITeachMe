@@ -8,7 +8,7 @@ from typing import Literal
 
 from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.workflows.digest.common.model_policy import compact_metadata
+from app.workflows.common.model_policy import compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 
@@ -28,7 +28,7 @@ class PlannerModelPolicy:
     call_purpose: LLMCallPurpose
     model: PlannerModelSlot
     max_tokens: int | None = None
-    temperature_override: float | None = None
+    temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self, *, model_override: str | None = None) -> dict[str, object]:
@@ -43,8 +43,8 @@ class PlannerModelPolicy:
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
-        if self.temperature_override is not None:
-            kwargs["temperature"] = self.temperature_override
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         return kwargs
 
     def metadata(self, *, model_override: str | None = None) -> dict[str, object]:
@@ -77,7 +77,8 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="stream",
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
-        max_tokens=900,
+        max_tokens=2200,
+        temperature=0.2,
         note="用户可见的资料边界判断，不负责最终合同，用 light 降低首屏等待。",
     ),
     PlannerModelStep.EXTRACT_INTENT: PlannerModelPolicy(
@@ -85,7 +86,8 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="structured",
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
-        max_tokens=700,
+        max_tokens=1800,
+        temperature=0.1,
         note="结构化抽取内部规划抓手，输出短，优先 light 提速。",
     ),
     PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
@@ -93,7 +95,8 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_type="stream",
         call_purpose=LLMCallPurpose.REASONING,
         model="light",
-        max_tokens=2600,
+        max_tokens=6000,
+        temperature=0.2,
         note="生成可确认课程方案和机器 JSON 合同，是 Planner 最核心的规划调用。",
     ),
     PlannerModelStep.COURSE_NAME: PlannerModelPolicy(
@@ -102,7 +105,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.GENERATE,
         model="light",
         max_tokens=40,
-        temperature_override=0.65,
+        temperature=0.65,
         note="短标题生成需要一定发散度，单独提高采样温度以减少同质化。",
     ),
     PlannerModelStep.COURSE_ICON: PlannerModelPolicy(
@@ -111,6 +114,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=20,
+        temperature=0.1,
         note="图标候选选择属于轻量分类任务。",
     ),
 }

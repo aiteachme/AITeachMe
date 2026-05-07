@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
 import { FeedbackModal } from "../ui/FeedbackModal";
 import { Modal } from "../ui/Modal";
 
@@ -131,9 +132,15 @@ export function TopBar({ className }: TopBarProps) {
           localStorage.removeItem("token");
         }
         setAuthUser(currentUser);
+        syncAnalyticsUserIdentity({
+          userId: currentUser?.user_id,
+          email: currentUser?.email,
+          isAuthenticated: currentUser?.is_authenticated,
+        });
       } catch {
         setAuthEnabled(false);
         setAuthUser(null);
+        syncAnalyticsUserIdentity(null);
       }
     };
 
@@ -220,8 +227,19 @@ export function TopBar({ className }: TopBarProps) {
         method: "POST",
         data: {},
       });
-      setAuthUser(response.data.current_user ?? null);
+      const currentUser = response.data.current_user ?? null;
+      trackAnalyticsEvent("auth_logout_succeeded", {
+        was_authenticated: Boolean(authUser?.is_authenticated),
+      });
+      resetAnalyticsIdentity();
+      syncAnalyticsUserIdentity({
+        userId: currentUser?.user_id,
+        email: currentUser?.email,
+        isAuthenticated: currentUser?.is_authenticated,
+      });
+      setAuthUser(currentUser);
     } catch {
+      resetAnalyticsIdentity();
       setAuthUser(null);
     }
     closeMenus();
@@ -305,7 +323,16 @@ export function TopBar({ className }: TopBarProps) {
       if (token) {
         localStorage.setItem("token", token);
       }
-      setAuthUser(response.data.current_user ?? null);
+      const currentUser = response.data.current_user ?? null;
+      syncAnalyticsUserIdentity({
+        userId: currentUser?.user_id,
+        email: currentUser?.email,
+        isAuthenticated: currentUser?.is_authenticated,
+      });
+      trackAnalyticsEvent(authMode === "login" ? "auth_login_succeeded" : "auth_register_succeeded", {
+        is_authenticated: Boolean(currentUser?.is_authenticated),
+      });
+      setAuthUser(currentUser);
       setIsAuthModalOpen(false);
       setAuthPassword("");
       setAuthVerificationCode("");
@@ -444,7 +471,7 @@ export function TopBar({ className }: TopBarProps) {
                   }}
                 >
                   <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <span>意见反馈</span>
+                  <span>反馈与联系</span>
                 </button>
               </div>
 
@@ -566,7 +593,7 @@ export function TopBar({ className }: TopBarProps) {
                 }}
               >
                 <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <span>意见反馈</span>
+                <span>反馈与联系</span>
               </button>
             </div>
 

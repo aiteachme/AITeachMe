@@ -21,6 +21,9 @@ app/data/*.db
 app/data/*.sqlite
 /playground/inputs/
 /playground/outputs/
+/playground/tmp_assets_check/
+/scripts/.generated_workflow_diagrams/
+/package-lock.json
 
 
 .env

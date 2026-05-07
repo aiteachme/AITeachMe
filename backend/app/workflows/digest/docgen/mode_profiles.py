@@ -64,6 +64,9 @@ class DocGenModeProfile:
     chapter_format: tuple[str, ...]
     course_flow_hints: tuple[str, ...]
     practice_focuses: tuple[str, ...]
+    content_mix_policy: dict[str, float]
+    example_density_policy: dict[str, float | int | str]
+    coverage_policy: tuple[str, ...]
     mode_writing_rule: str
     prompt_label: str
     prompt_priority: str
@@ -170,8 +173,29 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "变式训练",
         "易错辨析",
     ),
-    mode_writing_rule="冲刺模式要突出重点、快速抓手、典型任务/题型解析和易错辨析。",
-    prompt_label="冲刺型",
+    content_mix_policy={
+        "core_knowledge": 0.22,
+        "method_demo": 0.28,
+        "explanation_support": 0.10,
+        "principle_reasoning": 0.08,
+        "practice_assessment": 0.26,
+        "knowledge_organization": 0.06,
+        "application_extension": 0.16,
+    },
+    example_density_policy={
+        "minimum_practice_share": 0.5,
+        "worked_examples_per_chapter": 4,
+        "practice_tasks_per_chapter": 4,
+        "important_method_min_examples": 2,
+        "policy_text": "速成课模式必须高密度使用例题、案例、变式、自测或实践任务；理论只服务会做题、会操作、会判断、会避坑。",
+    },
+    coverage_policy=(
+        "优先覆盖高频题型、常见任务、关键方法和易错陷阱。",
+        "每个重要方法至少安排一个标准例题/案例和一个变式或错误诊断。",
+        "非考试主题把例题表达为操作案例、任务场景、错误诊断和检查标准。",
+    ),
+    mode_writing_rule="速成课模式要突出重点、快速抓手、典型任务/题型解析和易错辨析。",
+    prompt_label="速成课",
     prompt_priority="抓重点、抓常见任务/题型、抓易错点",
     prompt_opening_guidance="如果这是课程开篇，优先用直观场景、常见任务/题型或学习动机破题，再建立概念直觉。",
     prompt_closing_guidance="如果这是课程收束章，优先回收高价值主题、易错点和综合任务/例题解析。",
@@ -179,7 +203,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
     seed_target_length=950,
     fallback_teaching_outline=("先标出高价值主题和常见任务/题型", "用典型例子带出最短方法", "最后辨析易错边界"),
     gap_query_suffixes=("常见任务", "易错点", "典型例子"),
-    practice_style="exam",
+    practice_style="task_driven",
     coverage_threshold=0.6,
     evidence_support_threshold=0.48,
     repetition_tolerance=0.45,
@@ -218,8 +242,29 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
         "条件辨析",
         "迁移应用",
     ),
-    mode_writing_rule="系统模式要突出定义、结构、推理、例子和迁移。",
-    prompt_label="系统型",
+    content_mix_policy={
+        "core_knowledge": 0.30,
+        "method_demo": 0.16,
+        "explanation_support": 0.14,
+        "principle_reasoning": 0.18,
+        "practice_assessment": 0.14,
+        "knowledge_organization": 0.10,
+        "application_extension": 0.10,
+    },
+    example_density_policy={
+        "minimum_practice_share": 0.3,
+        "worked_examples_per_chapter": 3,
+        "practice_tasks_per_chapter": 3,
+        "important_method_min_examples": 2,
+        "policy_text": "系统课必须细讲核心知识，同时每个核心知识点都要有例题、案例、操作示例或练习任务支撑。",
+    },
+    coverage_policy=(
+        "每个核心知识点至少被一个例题、案例、操作示例或练习任务覆盖。",
+        "重要、易错或核心方法至少安排两个不同角度的例题或任务。",
+        "章节复核时检查知识点是否有例题覆盖，不允许只有理论没有落地。",
+    ),
+    mode_writing_rule="系统课模式要突出定义、结构、推理、例子和迁移。",
+    prompt_label="系统课",
     prompt_priority="定义、定理、推导、应用与章节之间的结构关系",
     prompt_opening_guidance="如果这是课程开篇，优先给出整体知识脉络。",
     prompt_closing_guidance="如果这是课程收束章，优先回收全文主线，并给出进一步深入学习的建议。",

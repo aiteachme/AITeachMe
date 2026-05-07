@@ -19,7 +19,7 @@ from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.course import (
-    resolve_course_build_vector_status,
+    get_runtime_embedding_config,
     should_generate_course_embeddings,
 )
 from app.shared.infra.storage import (
@@ -137,12 +137,13 @@ def import_course(
             _cleanup_import_artifacts(new_course_id, user_id=user_id)
             raise
 
-        _rebuild_imported_embeddings(
-            session,
-            course_id=new_course_id,
-            imported_counts=imported_counts,
-            warnings=warnings,
-        )
+        if options.rebuild_embeddings:
+            _rebuild_imported_embeddings(
+                session,
+                course_id=new_course_id,
+                imported_counts=imported_counts,
+                warnings=warnings,
+            )
 
         logger.info(
             "course_imported",
@@ -189,14 +190,10 @@ def _reconcile_imported_planner_metadata(
                     remapped_ids.append(new_id)
             meta["selected_file_ids"] = remapped_ids
 
-        confirmed_plan_id = meta.get("confirmed_plan_id")
-        if confirmed_plan_id is not None and plan_id_map:
-            meta["confirmed_plan_id"] = _lookup_imported_or_existing_id(confirmed_plan_id, plan_id_map)
-
-        confirmed_plan = meta.get("confirmed_plan")
-        if isinstance(confirmed_plan, dict) and file_id_map:
+        def reconcile_confirmed_plan(confirmed_plan: dict[str, Any]) -> dict[str, Any]:
+            confirmed_plan = dict(confirmed_plan)
             selected_file_ids = confirmed_plan.get("selected_file_ids_json")
-            if isinstance(selected_file_ids, list):
+            if isinstance(selected_file_ids, list) and file_id_map:
                 confirmed_plan["selected_file_ids_json"] = [
                     new_id
                     for old_id in selected_file_ids
@@ -204,8 +201,26 @@ def _reconcile_imported_planner_metadata(
                 ]
             plan_json = confirmed_plan.get("plan_json")
             if isinstance(plan_json, dict):
+                plan_json = dict(plan_json)
                 plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
-            meta["confirmed_plan"] = confirmed_plan
+                confirmed_plan["plan_json"] = plan_json
+            return confirmed_plan
+
+        confirmed_plan_id = meta.get("confirmed_plan_id")
+        if confirmed_plan_id is not None and plan_id_map:
+            meta["confirmed_plan_id"] = _lookup_imported_or_existing_id(confirmed_plan_id, plan_id_map)
+
+        confirmed_plan = meta.get("confirmed_plan")
+        if isinstance(confirmed_plan, dict):
+            meta["confirmed_plan"] = reconcile_confirmed_plan(confirmed_plan)
+
+        confirmed_plan_history = meta.get("confirmed_plan_history")
+        if isinstance(confirmed_plan_history, list):
+            meta["confirmed_plan_history"] = [
+                reconcile_confirmed_plan(item)
+                for item in confirmed_plan_history
+                if isinstance(item, dict)
+            ]
 
         item.meta_json = meta
         session.add(item)
@@ -270,6 +285,7 @@ def _import_legacy_confirmed_build_plans(
         meta["confirmed_plan_id"] = new_plan_id
         meta["confirmed_plan"] = {
             "id": new_plan_id,
+            "version_no": int(record.get("version_no") or 1),
             "course_id": course_id,
             "planner_session_id": str(new_session_id),
             "user_id": user_id,
@@ -284,6 +300,7 @@ def _import_legacy_confirmed_build_plans(
             "created_at": record.get("created_at"),
             "updated_at": record.get("updated_at"),
         }
+        meta["confirmed_plan_history"] = [dict(meta["confirmed_plan"])]
         session_item.meta_json = meta
         session.add(session_item)
         imported_count += 1
@@ -493,21 +510,6 @@ def _rebuild_imported_embeddings(
         warnings.append("embedding_rebuild: imported course not found after commit")
         return
 
-    try:
-        resolve_course_build_vector_status(
-            session,
-            course=course_record,
-            embedding_resolution=None,
-        )
-    except Exception as exc:
-        logger.warning(
-            "course_import_embedding_precheck_failed",
-            course_id=course_id,
-            error=str(exc),
-        )
-        warnings.append(f"embedding_rebuild: precheck failed: {exc}")
-        return
-
     if not should_generate_course_embeddings(session, course_id=course_id):
         logger.info(
             "course_import_embedding_skipped",
@@ -515,6 +517,7 @@ def _rebuild_imported_embeddings(
             reason="course_vectors_disabled_or_unavailable",
         )
         return
+    runtime = get_runtime_embedding_config()
 
     chunks = list(
         session.exec(
@@ -531,7 +534,13 @@ def _rebuild_imported_embeddings(
         return
 
     payloads = [f"{chunk.title}\n{chunk.content}".strip() for chunk in chunk_rows]
-    embeddings = _run_async(aembed_texts(payloads, soft_fail=True))
+    embeddings = _run_async(
+        aembed_texts(
+            payloads,
+            soft_fail=True,
+            model=runtime.embedding_model,
+        )
+    )
     if not embeddings:
         logger.warning(
             "course_import_embedding_soft_failed",
@@ -547,6 +556,7 @@ def _rebuild_imported_embeddings(
             course_id=course_id,
             chunk_ids=[int(chunk.id) for chunk in chunk_rows],
             embeddings=embeddings,
+            embedding_model=runtime.embedding_model,
         )
     except Exception as exc:
         logger.warning(
@@ -555,6 +565,79 @@ def _rebuild_imported_embeddings(
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: failed: {exc}")
+
+
+def _rebuild_imported_embeddings_with_new_session(
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+    warnings: list[str],
+) -> None:
+    from app.shared.infra.database import managed_session
+
+    with managed_session() as session:
+        _rebuild_imported_embeddings(
+            session,
+            course_id=course_id,
+            imported_counts=imported_counts,
+            warnings=warnings,
+        )
+
+
+async def rebuild_imported_embeddings_background(
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+) -> None:
+    """Rebuild imported course embeddings without holding up the import response."""
+
+    warnings: list[str] = []
+    await asyncio.to_thread(
+        _rebuild_imported_embeddings_with_new_session,
+        course_id=course_id,
+        imported_counts=dict(imported_counts),
+        warnings=warnings,
+    )
+    if warnings:
+        logger.warning(
+            "course_import_embedding_background_warnings",
+            course_id=course_id,
+            warnings=warnings,
+        )
+
+
+def spawn_imported_embedding_rebuild_background(
+    background_task_registry: Any | None,
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+) -> bool:
+    """Schedule imported-course embedding rebuild, returning whether it was queued."""
+
+    if int(imported_counts.get("retrieval_chunk", 0) or 0) <= 0:
+        return False
+    if background_task_registry is None:
+        logger.warning(
+            "course_import_embedding_background_registry_missing",
+            course_id=course_id,
+        )
+        return False
+
+    coroutine = rebuild_imported_embeddings_background(
+        course_id=course_id,
+        imported_counts=imported_counts,
+    )
+    try:
+        background_task_registry.spawn(
+            coroutine,
+            kind="course.import.embeddings",
+            course_id=course_id,
+            name=f"course.import.embeddings:{course_id}",
+        )
+    except Exception:
+        coroutine.close()
+        raise
+    return True
 
 
 def _run_async(coro):
@@ -573,4 +656,8 @@ def _run_async(coro):
     return asyncio.run(coro)
 
 
-__all__ = ["import_course"]
+__all__ = [
+    "import_course",
+    "rebuild_imported_embeddings_background",
+    "spawn_imported_embedding_rebuild_background",
+]

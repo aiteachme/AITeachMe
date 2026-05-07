@@ -13,7 +13,7 @@ on:
           - minor
           - major
       suffix:
-        description: Optional prerelease suffix
+        description: Optional prerelease channel; alpha/beta tags are auto-numbered as alpha.1, alpha.2, ...
         type: choice
         required: true
         default: none
@@ -25,7 +25,7 @@ on:
         description: 要打包并附加到 GitHub Release 的桌面端模式
         type: choice
         required: true
-        default: electron-local
+        default: tauri-local
         options:
           - electron-local
           - electron-remote
@@ -34,15 +34,15 @@ on:
           - all-local
           - all
       backend_port:
-        description: Electron local 桌面包后端端口；Tauri local 会自动分配，不使用此值
+        description: local 桌面包后端端口；留空则自动分配可用端口
         type: string
         required: false
-        default: "19020"
+        default: ""
       api_url:
         description: remote 桌面包使用的后端 API 地址
         type: string
         required: false
-        default: "https://aiteachme.onrender.com"
+        default: ""
       bundle_private_env:
         description: 是否把 Secret AITEACHME_BUNDLED_ENV_JSON 里的私有模型配置加密内置进 local 桌面包
         type: boolean
@@ -53,6 +53,11 @@ on:
         type: string
         required: false
         default: "bundled"
+      require_windows_signing:
+        description: Require Windows Authenticode signing before publishing installers
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: write
@@ -72,7 +77,7 @@ jobs:
       tag: ${{ steps.release_tag.outputs.tag }}
       version: ${{ steps.release_tag.outputs.version }}
       prerelease: ${{ steps.release_tag.outputs.prerelease }}
-      commit_sha: ${{ steps.version_commit.outputs.commit_sha }}
+      source_sha: ${{ steps.release_source.outputs.source_sha }}
 
     steps:
       - name: Checkout repository
@@ -112,15 +117,29 @@ jobs:
               ;;
           esac
 
+          TARGET_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           SUFFIX="${{ inputs.suffix }}"
           case "$SUFFIX" in
             none)
               PRERELEASE=false
-              TAG="v${MAJOR}.${MINOR}.${PATCH}"
+              TAG="v${TARGET_VERSION}"
               ;;
             alpha|beta)
               PRERELEASE=true
-              TAG="v${MAJOR}.${MINOR}.${PATCH}-${SUFFIX}"
+              PRERELEASE_PREFIX="v${TARGET_VERSION}-${SUFFIX}"
+              NEXT_PRERELEASE_NUMBER=1
+              for existing_tag in $(git tag -l "${PRERELEASE_PREFIX}.*"); do
+                existing_number="${existing_tag#${PRERELEASE_PREFIX}.}"
+                if [[ "$existing_number" =~ ^[0-9]+$ ]] && [ "$existing_number" -ge "$NEXT_PRERELEASE_NUMBER" ]; then
+                  NEXT_PRERELEASE_NUMBER=$((existing_number + 1))
+                fi
+              done
+
+              TAG="${PRERELEASE_PREFIX}.${NEXT_PRERELEASE_NUMBER}"
+              while git rev-parse "$TAG" >/dev/null 2>&1; do
+                NEXT_PRERELEASE_NUMBER=$((NEXT_PRERELEASE_NUMBER + 1))
+                TAG="${PRERELEASE_PREFIX}.${NEXT_PRERELEASE_NUMBER}"
+              done
               ;;
             *)
               echo "Unsupported release suffix: $SUFFIX"
@@ -130,8 +149,8 @@ jobs:
 
           RELEASE_VERSION="${TAG#v}"
 
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha|-beta)?$ ]]; then
-            echo "Tag '$TAG' does not match required format vX.X.X, vX.X.X-alpha, or vX.X.X-beta."
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
+            echo "Tag '$TAG' does not match required format vX.X.X or vX.X.X-alpha.N / vX.X.X-beta.N."
             exit 1
           fi
 
@@ -144,95 +163,10 @@ jobs:
           echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
-      - name: Update project versions
-        env:
-          RELEASE_VERSION: ${{ steps.release_tag.outputs.version }}
+      - name: Record release source commit
+        id: release_source
         run: |
-          node <<'NODE'
-          const fs = require('fs');
-
-          const version = process.env.RELEASE_VERSION;
-
-          function updateJson(path, updater) {
-            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
-            updater(data);
-            fs.writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
-          }
-
-          function replaceInFile(path, replacer) {
-            const before = fs.readFileSync(path, 'utf8');
-            const after = replacer(before);
-            fs.writeFileSync(path, after);
-          }
-
-          updateJson('frontend/package.json', (data) => {
-            data.version = version;
-          });
-
-          updateJson('frontend/package-lock.json', (data) => {
-            data.version = version;
-            if (data.packages && data.packages['']) {
-              data.packages[''].version = version;
-            }
-          });
-
-          updateJson('frontend/src-tauri/tauri.conf.json', (data) => {
-            data.version = version;
-          });
-
-          replaceInFile('frontend/src-tauri/Cargo.toml', (text) =>
-            text.replace(/^version = "([^"]+)"/m, `version = "${version}"`)
-          );
-
-          replaceInFile('frontend/src-tauri/Cargo.lock', (text) =>
-            text.replace(
-              /(\[\[package\]\]\r?\nname = "aiteachme-tauri"\r?\nversion = )"([^"]+)"/,
-              `$1"${version}"`
-            )
-          );
-
-          replaceInFile('backend/pyproject.toml', (text) =>
-            text.replace(/^version = "([^"]+)"/m, `version = "${version}"`)
-          );
-
-          replaceInFile('backend/uv.lock', (text) =>
-            text.replace(
-              /(\[\[package\]\]\r?\nname = "aiteachme-backend"\r?\nversion = )"([^"]+)"/,
-              `$1"${version}"`
-            )
-          );
-
-          replaceInFile('backend/app/shared/infra/runtime/mode.py', (text) =>
-            text.replace(/^APP_VERSION = "([^"]+)"/m, `APP_VERSION = "${version}"`)
-          );
-          NODE
-
-      - name: Commit version bump
-        id: version_commit
-        env:
-          TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-
-          if git diff --quiet; then
-            echo "Project versions already match '$TAG'; using current commit."
-          else
-            git add \
-              frontend/package.json \
-              frontend/package-lock.json \
-              frontend/src-tauri/tauri.conf.json \
-              frontend/src-tauri/Cargo.toml \
-              frontend/src-tauri/Cargo.lock \
-              backend/pyproject.toml \
-              backend/uv.lock \
-              backend/app/shared/infra/runtime/mode.py
-
-            git commit -m "chore: release $TAG"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
-
-          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build_desktop_installers:
     name: Build ${{ inputs.desktop_package_mode }} Windows installer
@@ -240,15 +174,43 @@ jobs:
     needs: release
     env:
       PYTHONUTF8: "1"
+      AITEACHME_RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      AITEACHME_WINDOWS_SIGNING_REQUIRED: ${{ inputs.require_windows_signing && '1' || '0' }}
+      AITEACHME_WINDOWS_SIGN_COMMAND: ${{ secrets.AITEACHME_WINDOWS_SIGN_COMMAND }}
+      AITEACHME_WINDOWS_PUBLISHER_NAME: ${{ vars.AITEACHME_WINDOWS_PUBLISHER_NAME || secrets.AITEACHME_WINDOWS_PUBLISHER_NAME }}
+      AITEACHME_WINDOWS_TIMESTAMP_URL: ${{ vars.AITEACHME_WINDOWS_TIMESTAMP_URL }}
+      AITEACHME_WINDOWS_AZURE_ENDPOINT: ${{ vars.AITEACHME_WINDOWS_AZURE_ENDPOINT || secrets.AITEACHME_WINDOWS_AZURE_ENDPOINT }}
+      AITEACHME_WINDOWS_AZURE_ACCOUNT_NAME: ${{ vars.AITEACHME_WINDOWS_AZURE_ACCOUNT_NAME || secrets.AITEACHME_WINDOWS_AZURE_ACCOUNT_NAME }}
+      AITEACHME_WINDOWS_AZURE_CERTIFICATE_PROFILE_NAME: ${{ vars.AITEACHME_WINDOWS_AZURE_CERTIFICATE_PROFILE_NAME || secrets.AITEACHME_WINDOWS_AZURE_CERTIFICATE_PROFILE_NAME }}
+      AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT || secrets.AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT }}
+      AITEACHME_WINDOWS_CERTIFICATE_SHA1: ${{ vars.AITEACHME_WINDOWS_CERTIFICATE_SHA1 || secrets.AITEACHME_WINDOWS_CERTIFICATE_SHA1 }}
+      AITEACHME_WINDOWS_CERTIFICATE_SUBJECT_NAME: ${{ vars.AITEACHME_WINDOWS_CERTIFICATE_SUBJECT_NAME || secrets.AITEACHME_WINDOWS_CERTIFICATE_SUBJECT_NAME }}
+      AITEACHME_WINDOWS_CERTIFICATE_FILE: ${{ secrets.AITEACHME_WINDOWS_CERTIFICATE_FILE }}
+      AITEACHME_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.AITEACHME_WINDOWS_CERTIFICATE_PASSWORD }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      WIN_CSC_SHA1_HASH: ${{ vars.WIN_CSC_SHA1_HASH || secrets.WIN_CSC_SHA1_HASH }}
+      WIN_CSC_NAME: ${{ vars.WIN_CSC_NAME || secrets.WIN_CSC_NAME }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY || secrets.TAURI_UPDATER_PUBKEY }}
 
     steps:
       - name: Enable long paths
         run: git config --global core.longpaths true
 
-      - name: Checkout release commit
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.commit_sha }}
+          ref: ${{ needs.release.outputs.source_sha }}
+
+      - name: Verify Windows signing configuration
+        shell: pwsh
+        run: |
+          . .\packaging\scripts\windows-signing-common.ps1
+          $signing = Get-AITeachMeWindowsSigningState
+          Assert-AITeachMeWindowsSigningReady -Signing $signing
+          Write-AITeachMeWindowsSigningSummary -Signing $signing
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -273,6 +235,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Apply release version for build
+        run: node packaging/scripts/apply-release-version.mjs "${{ needs.release.outputs.version }}"
+
       - name: Set up Rust
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
         uses: dtolnay/rust-toolchain@stable
@@ -289,7 +254,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-tauri-
 
-      - name: Install NSIS
+      - name: Install Windows installer tools
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
         shell: pwsh
         run: |
@@ -354,6 +319,10 @@ jobs:
             $arguments.BundledEnvArtifactSuffix = "${{ inputs.bundled_env_artifact_suffix }}"
           }
 
+          if ($arguments.PackageMode -in @("tauri-local", "all-local", "all")) {
+            $arguments.RequireTauriUpdater = $true
+          }
+
           .\packaging\scripts\build-desktop-mode.ps1 @arguments
 
       - name: Show release artifacts
@@ -363,11 +332,111 @@ jobs:
             Select-Object Name,@{Name='SizeMB';Expression={[math]::Round($_.Length / 1MB, 2)}} |
             Format-Table -AutoSize
 
+      - name: Verify Windows installer signatures
+        shell: pwsh
+        run: |
+          . .\packaging\scripts\windows-signing-common.ps1
+          $signing = Get-AITeachMeWindowsSigningState
+
+          $installers = @(Get-ChildItem -Path packaging\release -File |
+            Where-Object { $_.Extension -eq ".exe" })
+          if ($installers.Count -eq 0) {
+            throw "No Windows installer was produced under packaging\release."
+          }
+
+          $failed = @()
+          $unsigned = @()
+          foreach ($installer in $installers) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+            if ($signature.Status -ne "Valid") {
+              $status = "$($installer.Name): $($signature.Status)"
+              if ($signing.Enabled -or $signing.Required) {
+                $failed += $status
+              }
+              else {
+                $unsigned += $status
+              }
+              continue
+            }
+            $publisher = if ($signature.SignerCertificate) {
+              $signature.SignerCertificate.Subject
+            } else {
+              "unknown certificate subject"
+            }
+            Write-Host "Signed installer: $($installer.Name) :: $publisher"
+          }
+
+          if ($failed.Count -gt 0) {
+            throw "Unsigned or invalid Windows installer(s): $($failed -join '; ')"
+          }
+
+          if ($unsigned.Count -gt 0) {
+            Write-Host "Windows installer(s) are unsigned because signing is not configured: $($unsigned -join '; ')" -ForegroundColor Yellow
+            "Windows installer signing skipped: $($unsigned -join '; ')" >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Verify Tauri updater manifest
+        if: ${{ inputs.desktop_package_mode == 'tauri-local' || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
+        shell: pwsh
+        run: |
+          $manifestPath = "packaging\release\latest-tauri-local.json"
+          if (-not (Test-Path $manifestPath)) {
+            throw "Tauri local updater manifest was not produced: $manifestPath"
+          }
+
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $platform = $manifest.platforms.'windows-x86_64'
+          if ($null -eq $platform) {
+            throw "Tauri updater manifest is missing platforms.windows-x86_64."
+          }
+          if ([string]::IsNullOrWhiteSpace($platform.url)) {
+            throw "Tauri updater manifest is missing the Windows package URL."
+          }
+          if ([string]::IsNullOrWhiteSpace($platform.signature)) {
+            throw "Tauri updater manifest is missing the Windows package signature."
+          }
+
+          try {
+            $packageFileName = Split-Path ([Uri]$platform.url).AbsolutePath -Leaf
+          }
+          catch {
+            throw "Tauri updater manifest URL is not a valid absolute URL: $($platform.url)"
+          }
+          $isExe = $packageFileName.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)
+          if (-not $isExe) {
+            throw "Tauri local updater manifest should reference the NSIS setup executable, but got: $packageFileName"
+          }
+
+          $packagePath = Join-Path "packaging\release" $packageFileName
+          $signaturePath = "$packagePath.sig"
+          if (-not (Test-Path $packagePath)) {
+            throw "Tauri updater package referenced by manifest was not found: $packagePath"
+          }
+          if (-not (Test-Path $signaturePath)) {
+            throw "Tauri updater signature file was not found: $signaturePath"
+          }
+
+          $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
+          if ($signature -ne $platform.signature) {
+            throw "Tauri updater manifest signature does not match $signaturePath."
+          }
+
+          if ("${{ inputs.bundle_private_env }}" -eq "true") {
+            . .\packaging\scripts\bundled-env-common.ps1
+            $bundledSuffix = ConvertTo-BundledEnvArtifactSuffix -Value "${{ inputs.bundled_env_artifact_suffix }}"
+            $expectedPattern = "*-installer-tauri-$bundledSuffix.exe"
+            if ($packageFileName -notlike $expectedPattern) {
+              throw "Bundled Tauri updater manifest should reference '$expectedPattern', but got: $packageFileName"
+            }
+          }
+
+          Write-Host "Tauri updater manifest verified: $packageFileName"
+
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aiteachme-release-windows-installers
-          path: packaging/release/AiTeachMe-v${{ needs.release.outputs.version }}-installer*.exe
+          name: aiteachme-release-windows-assets
+          path: packaging/release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -379,27 +448,70 @@ jobs:
       - build_desktop_installers
 
     steps:
-      - name: Checkout release commit
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.commit_sha }}
+          ref: ${{ needs.release.outputs.source_sha }}
           fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Commit release version
+        id: release_commit
+        env:
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          node packaging/scripts/apply-release-version.mjs "$RELEASE_VERSION"
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          if git diff --quiet; then
+            echo "Project versions already match '$TAG'; using current commit."
+          else
+            git add \
+              frontend/package.json \
+              frontend/package-lock.json \
+              frontend/openapi.json \
+              backend/pyproject.toml \
+              backend/uv.lock
+
+            git commit -m "chore: release $TAG"
+          fi
+
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify branch still points to release source
+        env:
+          SOURCE_SHA: ${{ needs.release.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin "${GITHUB_REF_NAME}"
+          REMOTE_SHA="$(git rev-parse "origin/${GITHUB_REF_NAME}")"
+          if [ "$REMOTE_SHA" != "$SOURCE_SHA" ]; then
+            echo "Branch ${GITHUB_REF_NAME} moved during release: expected $SOURCE_SHA, got $REMOTE_SHA."
+            exit 1
+          fi
 
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
-          name: aiteachme-release-windows-installers
+          name: aiteachme-release-windows-assets
           path: release-assets
 
       - name: Create and push release tag
         env:
           TAG: ${{ needs.release.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.release.outputs.commit_sha }}
+          RELEASE_COMMIT: ${{ steps.release_commit.outputs.commit_sha }}
         run: |
           set -euo pipefail
-
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             EXISTING_COMMIT="$(git rev-list -n 1 "$TAG")"
@@ -436,3 +548,8 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             "${RELEASE_ARGS[@]}"
+
+      - name: Sync release commit to branch
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:${GITHUB_REF_NAME}"

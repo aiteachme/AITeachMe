@@ -57,6 +57,7 @@ def compute_material_stats(sections: list[SectionPacket]) -> MaterialStats:
     total_chars = 0
     formula_count = 0
     exercise_count = 0
+    concept_signal_count = 0
     image_count = 0
     table_count = 0
     noisy_sections = 0
@@ -73,6 +74,10 @@ def compute_material_stats(sections: list[SectionPacket]) -> MaterialStats:
         # 习题计数
         exercise_count += len(_EXERCISE_PATTERN.findall(content))
         exercise_count += len(_QUESTION_PATTERN.findall(content))
+
+        title_text = f"{section.title} {section.header_path} {' '.join(section.header_candidates)}"
+        if any(marker in title_text for marker in ("定义", "概念", "性质", "原理", "方法", "模型", "公式", "规则", "定理")):
+            concept_signal_count += 1
 
         # 图片
         image_count += len(_IMAGE_PATTERN.findall(content))
@@ -96,6 +101,7 @@ def compute_material_stats(sections: list[SectionPacket]) -> MaterialStats:
         formula_density=round(formula_count / n, 3),
         exercise_count=exercise_count,
         exercise_density=round(exercise_count / n, 3),
+        concept_density=round(concept_signal_count / n, 3),
         image_count=image_count,
         table_count=table_count,
         ocr_noise_ratio=round(noisy_sections / n, 3),
@@ -114,7 +120,7 @@ def _estimate_content_type(
         content = packet.normalized_content.lower()
 
         # 启发式判断
-        if stats.exercise_density > 0.4 or "试卷" in content or "考试" in content:
+        if "试卷" in content or "准考证" in content or ("满分" in content and "考试" in content):
             types["exam_paper"] = types.get("exam_paper", 0) + 1
         elif stats.formula_density > 0.3 and len(content) > 5000:
             types["textbook"] = types.get("textbook", 0) + 1
@@ -122,10 +128,44 @@ def _estimate_content_type(
             types["lecture_notes"] = types.get("lecture_notes", 0) + 1
         elif "讲义" in content or "总结" in content:
             types["study_guide"] = types.get("study_guide", 0) + 1
+        elif stats.exercise_density > 0.4:
+            types["practice_rich_material"] = types.get("practice_rich_material", 0) + 1
         else:
             types["mixed"] = types.get("mixed", 0) + 1
 
     return types if types else {"mixed": len(source_packets)}
+
+
+def _assessment_signals(source_packets: list[SourcePacket], stats: MaterialStats) -> list[str]:
+    signals: list[str] = []
+    combined = "\n".join(packet.normalized_content[:2000].lower() for packet in source_packets)
+    if stats.exercise_density > 0.18:
+        signals.append(f"练习密度 {stats.exercise_density:.2f}")
+    if any(marker in combined for marker in ("考试", "试卷", "考前", "真题", "分值")):
+        signals.append("出现考试/测评相关措辞")
+    if any(marker in combined for marker in ("选择题", "填空题", "简答题", "计算题", "证明题")):
+        signals.append("包含题型化内容")
+    return signals[:6]
+
+
+def _material_forms(source_packets: list[SourcePacket], stats: MaterialStats) -> list[str]:
+    forms: list[str] = []
+    if stats.formula_density > 0.2:
+        forms.append("公式/符号密集")
+    if stats.exercise_density > 0.18:
+        forms.append("含练习或题目")
+    if stats.concept_density > 0.2:
+        forms.append("概念/方法标题较多")
+    if stats.image_count > 0:
+        forms.append("含图片或图示")
+    if stats.table_count > 0:
+        forms.append("含表格")
+    for packet in source_packets:
+        text = packet.normalized_content[:2500].lower()
+        if "slides" in text or "ppt" in packet.filetype.lower():
+            forms.append("课件/幻灯片")
+            break
+    return list(dict.fromkeys(forms or ["混合资料"]))[:8]
 
 
 def decide_digest_mode(
@@ -143,11 +183,11 @@ def decide_digest_mode(
     if user_prompt:
         prompt_lower = user_prompt.lower()
         if any(kw in prompt_lower for kw in ["速成", "冲刺", "快速", "sprint", "考前"]):
-            evidence["user_prompt"] = "用户明确要求速成/冲刺模式"
+            evidence["user_prompt"] = "用户明确要求速成课模式"
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.95,
-                reason="用户明确要求速成/冲刺模式",
+                reason="用户明确要求速成课模式",
                 user_override=True,
                 evidence=evidence,
             )
@@ -169,7 +209,7 @@ def decide_digest_mode(
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.85,
-                reason="材料识别为试卷/考题，适合冲刺复习",
+                reason="材料识别为试卷/考题，适合速成课",
                 evidence=evidence,
             )
         if course_profile.difficulty_level == "advanced":
@@ -178,12 +218,12 @@ def decide_digest_mode(
     # === 优先级 3：材料自动识别 ===
     stats = profile.stats
 
-    if stats.exercise_density > 0.3:
+    if stats.exercise_density > 0.45 and "exam_paper" in profile.material_types:
         evidence["material"] = f"习题密度 {stats.exercise_density:.2f} 偏高"
         return DigestModeDecision(
             mode=DigestMode.SPRINT,
             confidence=0.80,
-            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合冲刺复习",
+            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合速成课",
             evidence=evidence,
         )
 
@@ -192,16 +232,16 @@ def decide_digest_mode(
         return DigestModeDecision(
             mode=DigestMode.SYSTEMATIC,
             confidence=0.80,
-            reason=f"教材类型且公式密集（密度 {stats.formula_density:.2f}），适合系统学习",
+            reason=f"教材类型且公式密集（密度 {stats.formula_density:.2f}），适合系统课学习",
             evidence=evidence,
         )
 
-    # 默认：系统模式
-    evidence["default"] = "未检测到强信号，默认系统模式"
+    # 默认：系统课模式
+    evidence["default"] = "未检测到强信号，默认系统课模式"
     return DigestModeDecision(
         mode=DigestMode.SYSTEMATIC,
         confidence=0.60,
-        reason="未检测到明确的模式信号，默认使用系统学习模式",
+        reason="未检测到明确的模式信号，默认使用系统课模式",
         evidence=evidence,
     )
 
@@ -217,6 +257,8 @@ def build_material_profile(
     """
     stats = compute_material_stats(section_packets)
     material_types = _estimate_content_type(source_packets, stats)
+    assessment_signals = _assessment_signals(source_packets, stats)
+    material_forms = _material_forms(source_packets, stats)
     semantic_course = ""
     if course_profile is not None:
         semantic_course = (
@@ -224,6 +266,10 @@ def build_material_profile(
             or course_profile.discipline
             or (course_profile.key_topics[0] if course_profile.key_topics else "")
         )
+    domain_hints = []
+    if course_profile is not None:
+        domain_hints.extend([course_profile.discipline, course_profile.sub_discipline, *course_profile.key_topics[:6]])
+    domain_hints = [item for item in dict.fromkeys(str(item or "").strip() for item in domain_hints) if item]
 
     profile = MaterialProfile(
         course_name=semantic_course,
@@ -232,6 +278,19 @@ def build_material_profile(
         stats=stats,
         discipline=course_profile.discipline if course_profile else "",
         difficulty_level=course_profile.difficulty_level if course_profile else "",
+        knowledge_domain_hints=domain_hints[:8],
+        material_forms=material_forms,
+        assessment_signals=assessment_signals,
+        confidence=0.72 if domain_hints else 0.45,
+        evidence={
+            "material_forms": "；".join(material_forms),
+            "assessment_signals": "；".join(assessment_signals),
+            "density": (
+                f"formula={stats.formula_density:.2f}; "
+                f"exercise={stats.exercise_density:.2f}; "
+                f"concept={stats.concept_density:.2f}"
+            ),
+        },
     )
 
     logger.info(

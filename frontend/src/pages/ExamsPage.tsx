@@ -131,7 +131,7 @@ interface ExamPrewarmStatusResponse {
   error_message?: string | null;
 }
 
-const EXAM_PAGE_SHELL_CLASS = "min-h-full px-4 pb-24 pt-20 sm:px-6 sm:pb-12 md:px-10 lg:px-12 lg:pt-10 xl:px-16";
+const EXAM_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-8 sm:px-6 lg:px-8 xl:px-10 lg:pt-10";
 const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
 
 
@@ -537,7 +537,7 @@ export function ExamsPage() {
                     }
                     className="flex w-full items-center gap-5 px-1 py-2 text-left"
                   >
-                    <h3 className="shrink-0 text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-100">
+                    <h3 className="shrink-0 text-lg font-semibold text-slate-950 dark:text-slate-100">
                       {group.title}({group.items.length})
                     </h3>
                     <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -551,11 +551,11 @@ export function ExamsPage() {
                   </button>
 
                   {expandedGroups[group.key] && (
-                    <div>
+                    <div className="mt-2 rounded-[24px] bg-white p-6 shadow-sm ring-1 ring-slate-900/5 dark:bg-slate-900/40 dark:ring-slate-800">
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
                       ) : (
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,250px),250px))] justify-start gap-5">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
                             const isDeleting = deleteExamMutation.isPending && deleteExamMutation.variables === item.id;
 
@@ -1422,7 +1422,7 @@ export function QuestionTypesPage() {
           ].map((group) => (
             <section key={group.title} className="space-y-4 px-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="inline-flex items-center gap-2 text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-slate-100">
+                <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-slate-950 dark:text-slate-100">
                   {group.icon}
                   {group.title}
                 </h2>

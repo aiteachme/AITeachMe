@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AiTeachMe",
-  "version": "0.0.1",
+  "version": "../package.json",
   "identifier": "com.aiteachme.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:5180",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:desktop"
   },
   "app": {
     "windows": [
@@ -21,7 +21,8 @@
         "minHeight": 680,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true
+        "decorations": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -39,6 +40,8 @@
     ],
     "windows": {
       "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser",
         "installerIcon": "../../docs/brand/app-icon.ico",
         "installerHooks": "windows/nsis-hooks.nsh"
       },

@@ -10,9 +10,39 @@ from app.shared.infra.knowledge.build_store import append_knowledge_build_recent
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files
 from app.workflows.digest.docgen.lib.intent import infer_intent_core
-from app.workflows.digest.docgen.lib.models import DocGenContext
+from app.workflows.digest.docgen.lib.models import DocGenContext, DocGenIntentProfile
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
+
+
+def _intent_payload_for_state(intent_core: DocGenIntentProfile) -> dict:
+    raw = intent_core.model_dump(mode="json")
+    legacy_keys = {
+        "document_style",
+        "depth_level",
+        "explanation_depth",
+        "example_preference",
+        "definition_depth",
+        "exam_orientation",
+        "review_orientation",
+        "chapter_style_hints",
+    }
+    legacy = {key: raw.get(key) for key in legacy_keys if key in raw}
+    return {
+        "learning_goal_text": raw.get("learning_goal_text", ""),
+        "audience_profile_text": raw.get("audience_profile_text", ""),
+        "content_strategy_text": raw.get("content_strategy_text", ""),
+        "example_practice_policy": raw.get("example_practice_policy", ""),
+        "source_usage_policy": raw.get("source_usage_policy", ""),
+        "teaching_intent": raw.get("teaching_intent", ""),
+        "example_ratio": raw.get("example_ratio", 0.0),
+        "practice_ratio": raw.get("practice_ratio", 0.0),
+        "evidence_strictness": raw.get("evidence_strictness", 0.0),
+        "review_strictness": raw.get("review_strictness", 0.0),
+        "avoid_list": raw.get("avoid_list", []),
+        "fallback_used": raw.get("fallback_used", False),
+        "legacy_compat": legacy,
+    }
 
 
 def build_prepare_global_seed_node(*, context: WorkflowContext):
@@ -121,9 +151,10 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
                 "intent_fallback_used": bool(intent_core.fallback_used),
             },
         )
+        intent_payload = _intent_payload_for_state(intent_core)
         return {
-            "intent_core": intent_core.model_dump(mode="json"),
-            "intent_profile": intent_core.model_dump(mode="json"),
+            "intent_core": intent_payload,
+            "intent_profile": intent_payload,
             "file_summaries": [item.model_dump(mode="json") for item in file_summaries],
             "source_affinity_by_chapter": [item.model_dump(mode="json") for item in source_affinity],
             "high_confidence_evidence_units": [item.model_dump(mode="json") for item in evidence_units],

@@ -1,4 +1,4 @@
-﻿"""Chapter-level enhancement, assets, and practice seeds."""
+"""Chapter-level enhancement, assets, and practice seeds."""
 
 from __future__ import annotations
 
@@ -9,9 +9,8 @@ from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     build_draft_excerpt,
-    normalize_markdown_rendering,
-    normalize_mermaid_blocks,
 )
+from app.workflows.digest.common.pedagogy import is_usable_resolved_chapter_title
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.asset_rendering import DocGenAssetRuntime
 from app.workflows.digest.docgen.lib.interactive_html import maybe_generate_interactive_html_asset
@@ -23,12 +22,11 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     PracticeManifest,
 )
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
-    normalize_educational_callouts,
-    normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
@@ -60,7 +58,7 @@ def _build_practice_questions(
     claim_ledger: ClaimLedger | None = None,
     document_backbone: DocumentBackbone | None = None,
 ) -> list[dict]:
-    title = draft.title
+    raw_title = draft.title
     mode_profile = get_docgen_mode_profile(digest_mode)
     claim_items = list((claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).items or [])
     claim_prompts = [item.claim_text for item in claim_items if item.claim_text][:3]
@@ -69,9 +67,12 @@ def _build_practice_questions(
         for item in list((document_backbone or DocumentBackbone()).confusion_map or [])
         if (not item.target_chapters or draft.chapter_index in item.target_chapters)
     ][:2]
+    title = raw_title if is_usable_resolved_chapter_title(raw_title) else (
+        choose_heading_focus([*claim_prompts, *confusion_items], fallback="本章核心内容") or "本章核心内容"
+    )
     if mode_profile.is_sprint:
         focus_terms = [*claim_prompts, title]
-        first_claim = claim_prompts[0] if claim_prompts else title or "核心考点"
+        first_claim = claim_prompts[0] if claim_prompts else title or "核心重点"
         second_claim = claim_prompts[1] if len(claim_prompts) > 1 else first_claim
         examples = [
             {
@@ -124,13 +125,30 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": "综合应用",
-                    "stem": f"把《{title}》中两个相关知识点合在一道小题里，说明解题顺序。",
+                    "stem": f"把《{title}》中两个相关知识点合在一个综合任务里，说明处理顺序。",
                     "analysis_steps": [
                         "先判断哪一个知识点是入口，哪一个知识点是后续计算或论证工具。",
                         "再按依赖顺序展开步骤，避免先用后证。",
                         "最后检查两个结论之间是否存在条件冲突。",
                     ],
-                    "pitfall": "综合题不是把公式堆在一起，而是要先确定使用顺序。",
+                    "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
+                }
+            )
+        while len(examples) < 4:
+            focus = focus_terms[min(len(examples) - 1, len(focus_terms) - 1)] if focus_terms else title
+            examples.append(
+                {
+                    "practice_id": f"ch{draft.chapter_index:02d}_p{len(examples) + 1:02d}",
+                    "chapter_index": draft.chapter_index,
+                    "type": "worked_example",
+                    "label": choose_heading_focus([focus], fallback=title),
+                    "stem": f"围绕“{focus}”设计一个速成课练习：给出条件、识别信号，并说明最短处理路径。",
+                    "analysis_steps": [
+                        "先判断任务属于哪类高频场景、常见题型或操作任务。",
+                        "再写出触发该方法的条件或关键词。",
+                        "最后按模板完成步骤，并做一次易错检查。",
+                    ],
+                    "pitfall": "速成课的关键是识别信号和方法边界，不能只背答案。",
                 }
             )
         return examples
@@ -189,10 +207,28 @@ def _build_practice_questions(
                 "pitfall": "边界题的关键不是背定义，而是抓住不能混用的条件。",
             }
         )
+    for claim in claim_prompts[1:4]:
+        if len(questions) >= 5:
+            break
+        questions.append(
+            {
+                "practice_id": f"ch{draft.chapter_index:02d}_p{len(questions) + 1:02d}",
+                "chapter_index": draft.chapter_index,
+                "type": "worked_example",
+                "label": choose_heading_focus([claim], fallback=title),
+                "stem": f"围绕“{claim}”补一个覆盖例题或应用案例，说明它如何落到具体任务中。",
+                "analysis_steps": [
+                    "先回到该知识点的定义、条件或结构。",
+                    "再构造一个能使用它的具体任务。",
+                    "最后说明例题中的哪一步体现了这个知识点。",
+                ],
+                "pitfall": "系统课的例题必须回扣知识点，不能只给一个孤立答案。",
+            }
+        )
     return questions
 
 
-_PRACTICE_HEADING_RE = re.compile(r"^##\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
+_PRACTICE_HEADING_RE = re.compile(r"^#{2,4}\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
 
 
 def _append_practice_section(markdown: str, questions: list[dict], *, digest_mode: str, title: str = "") -> str:
@@ -277,18 +313,15 @@ async def enhance_chapter_draft(
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
     markdown = validate_latex(markdown)
-    markdown = normalize_markdown_rendering(markdown)
-    markdown = normalize_mermaid_blocks(markdown)
-    markdown = normalize_textbook_headings(
+    markdown = normalize_docgen_presentation(
         markdown,
         digest_mode=digest_mode,
-        fallback_title=draft.title,
+        title=draft.title,
         focus_items=[
             *(item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text),
             draft.title,
         ],
     )
-    markdown = normalize_educational_callouts(markdown)
 
     interactive_asset: dict[str, object] | None = None
     if settings.docgen.generate_interactive_html:
@@ -318,7 +351,7 @@ async def enhance_chapter_draft(
         else []
     )
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
-    markdown = normalize_educational_callouts(markdown)
+    markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

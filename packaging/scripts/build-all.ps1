@@ -1,7 +1,7 @@
 param(
-    [string]$ApiUrl = "https://aiteachme.onrender.com",
+    [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
-    [string]$BackendPort = "19020",
+    [string]$BackendPort = "",
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
@@ -54,10 +54,15 @@ if ($ImportBundledEnv) {
 $buildTauri = $IncludeTauri -or $TauriOnly
 
 if (-not $TauriOnly) {
+    $electronLocalArgs = @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-HideElectronSuffix"))
+    if (-not [string]::IsNullOrWhiteSpace($BackendPort)) {
+        $electronLocalArgs += @("-BackendPort", $BackendPort)
+    }
+
     Invoke-BuildStep `
         -Name "Electron local installer" `
         -Script (Join-Path $scriptDir "build-electron.ps1") `
-        -Arguments @($commonArgs + $bundledEnvArgs + @("-Flavor", "local", "-BackendPort", $BackendPort, "-HideElectronSuffix"))
+        -Arguments $electronLocalArgs
 }
 
 if ($buildTauri) {

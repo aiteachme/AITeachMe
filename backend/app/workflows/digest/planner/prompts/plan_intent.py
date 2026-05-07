@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.planner.prompts.context import (
+    render_latest_feedback,
+    render_latest_plan,
     render_material_digest,
     render_material_overview,
     render_message_history,
@@ -24,24 +28,83 @@ def build_plan_intent_messages(
     digest_mode: str,
     material_context: DigestMaterialContext,
     message_history: list[str],
+    latest_feedback: str | None = None,
+    latest_plan: dict[str, Any] | None = None,
     existing_doc_context: str | None = None,
     planner_context_mode: str = "fresh_build",
 ) -> list[dict[str, str]]:
     # 这里只产出内部意图识别结果。它不直接展示给用户，只帮助计划合成器
     # 确定“用户想怎么学”和“该按什么问题去整理资料”。
     mode_label = planner_mode_label(digest_mode)
+    is_revision = bool(latest_plan and str(latest_feedback or "").strip())
     context_mode_block = render_planner_context_mode(
         planner_context_mode=planner_context_mode,
         existing_doc_context=existing_doc_context,
     )
+    revision_guidance = (
+        """
+修订优先级：
+- 这是对上一版方案的对话式修订，不是从零生成新方案。
+- 先把本轮最新输入理解为作用在上一版方案上的编辑意图；除非用户明确要求整体重建，否则只围绕被影响对象思考。
+- plan_queries 在修订场景下应写成修订检查抓手，例如定位上一版中的目标对象、应用本轮补丁、检查未改章节、形成完整修订大纲；不要提出新的全局章节主线。
+""".strip()
+        if is_revision
+        else ""
+    )
+    task_instruction = (
+        "请识别本轮对上一版方案的编辑意图，再把结果整理成内部修订意图合同。"
+        if is_revision
+        else "请先识别用户学习意图，再把结果整理成内部规划意图合同。"
+    )
+    contract_usage = (
+        "修订意图合同不是最终展示内容，也不是外部检索承诺；它只用于后续按上一版方案生成“计划说明 + 修订后完整大纲”。"
+        if is_revision
+        else "规划意图合同不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。"
+    )
+    query_shape_label = (
+        f"{PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条用于修订检查的编辑抓手"
+        if is_revision
+        else f"{PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条用于后续综合大纲的整理抓手"
+    )
+    field_requirements = (
+        f"""
+字段要求：
+1. plan_intent 不超过 140 字，必须同时说明：
+   - 编辑意图：本轮是局部编辑、整体重建、调整重点、改写风格，还是其他自然语言修改；
+   - 影响对象：本轮主要影响上一版中的哪些章节、字段、顺序或整体边界；
+   - 保留边界：没有被本轮修改影响的章节应保持不变，除非用户明确要求整体重建。
+2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给计划合成器的修订检查抓手。
+3. plan_queries 只写定位上一版对象、应用本轮补丁、检查未改章节、校验章节数量/顺序、确认完整修订大纲等编辑动作。
+4. plan_queries 不要扩展成新的知识簇、题型、方法、易错边界、应用场景或全局章节主线。
+5. 如果用户意图不明确，就基于最近对话和上一版方案保守判断，不要擅自整体重建。
+6. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
+""".strip()
+        if is_revision
+        else f"""
+字段要求：
+1. plan_intent 不超过 140 字，必须同时说明：
+   - 用户意图：短期复习、系统课学习、题型突破、速查复盘、入门理解等；
+   - 产出用途：用来备考、复习、补弱、建立体系或快速查漏；
+   - 组织主线：资料应该按知识簇、题型、概念依赖、易错点或应用场景来整理。
+2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给计划合成器的内部拆题抓手。
+3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
+4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
+5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
+6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
+7. 若当前规划模式为已有文档重建/调整，plan_intent 和 plan_queries 必须围绕已有版本如何改造。
+8. 如果本轮最新输入是在修改已有方案，必须判断这是对上一版的局部编辑还是整体重建；局部编辑只围绕被影响对象思考，不要扩展成未要求的全局合并或重排。
+9. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
+""".strip()
+    )
+    examples_block = "" if is_revision else f"\n示例：\n{render_plan_intent_examples()}"
     system_prompt = """
 你是 AITeachMe 的学习规划意图分析器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
 规划意图合同只服务后续计划合成，不是对用户的最终展示，也不是外部检索承诺。
 """.strip()
     prompt = f"""
-请先识别用户学习意图，再把结果整理成内部规划意图合同。
-规划意图合同不是最终展示内容，也不是外部检索承诺；它只用于后续生成“计划说明 + 初步大纲”。
+{task_instruction}
+{contract_usage}
 
 课程/主题：{course_name}
 用户提示：{user_prompt}
@@ -55,30 +118,26 @@ def build_plan_intent_messages(
 
 {context_mode_block}
 
+本轮最新输入/修改意见：
+{render_latest_feedback(latest_feedback)}
+
+上一版方案：
+{render_latest_plan(latest_plan)}
+
 最近对话：
 {render_message_history(message_history)}
+
+{revision_guidance}
 
 只输出合法 JSON：
 {{
   "plan_intent": "一小段内部规划意图",
-  "plan_queries": ["{PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条用于后续综合大纲的整理抓手"]
+  "plan_queries": ["{query_shape_label}"]
 }}
 
-字段要求：
-1. plan_intent 不超过 140 字，必须同时说明：
-   - 用户意图：冲刺复习、系统学习、题型突破、速查复盘、入门理解等；
-   - 产出用途：用来备考、复习、补弱、建立体系或快速查漏；
-   - 组织主线：资料应该按知识簇、题型、概念依赖、易错点或应用场景来整理。
-2. plan_queries 输出 {PLAN_QUERY_MIN}-{PLAN_QUERY_MAX} 条，是给计划合成器的内部拆题抓手。
-3. plan_queries 要服务意图识别结果，可以写知识簇、题型、方法、易错边界、应用场景或大纲拆分问题。
-4. plan_queries 不要写成网站搜索词、来源列表或最终章节标题。
-5. 如果用户意图不明确，就从资料形态和请求模式推断，但要保守表达。
-6. 如果没有上传资料，就基于用户提示做通用意图识别，不要说“已上传资料显示/资料中包含”。
-7. 若当前规划模式为已有文档重建/调整，plan_intent 和 plan_queries 必须围绕已有版本如何改造。
-8. 不要输出来源名单、网站名、论文名、长解释、内部课程标识或重复内容。
+{field_requirements}
 
-示例：
-{render_plan_intent_examples()}
+{examples_block}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -91,6 +150,9 @@ def build_plan_intent_messages(
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
             "message_history_count": len(message_history),
+            "latest_feedback_chars": len(latest_feedback or ""),
+            "has_latest_plan": latest_plan is not None,
+            "is_revision": is_revision,
             "material_digest_chars": len(material_context.material_digest or ""),
             "plan_query_min": PLAN_QUERY_MIN,
             "plan_query_max": PLAN_QUERY_MAX,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 import re
 from typing import Any
@@ -10,8 +9,11 @@ from typing import Any
 import structlog
 
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
-from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM
+from app.workflows.digest.common.pedagogy import (
+    clean_generated_chapter_title,
+    is_usable_resolved_chapter_title,
+    resolve_effective_chapter_title,
+)
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle, clean_text
 from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
@@ -19,9 +21,10 @@ from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_mess
 logger = structlog.get_logger(__name__)
 
 _TITLE_STOPWORDS = {
-    "数学",
     "知识",
     "学习",
+    "课程",
+    "主题",
     "章节",
     "核心",
     "内容",
@@ -34,14 +37,6 @@ _TITLE_STOPWORDS = {
     "讲解",
     "解析",
 }
-_TITLE_LOCK_SEMAPHORE: asyncio.Semaphore | None = None
-
-
-def get_title_lock_semaphore() -> asyncio.Semaphore:
-    global _TITLE_LOCK_SEMAPHORE
-    if _TITLE_LOCK_SEMAPHORE is None:
-        _TITLE_LOCK_SEMAPHORE = asyncio.Semaphore(max(1, int(DEFAULT_DOCGEN_TITLE_LOCK_PARALLELISM)))
-    return _TITLE_LOCK_SEMAPHORE
 
 
 def _title_terms(value: str) -> set[str]:
@@ -66,9 +61,12 @@ def _resolve_locked_title(
     confirmed_title: str,
     user_prompt: str,
     plan_summary: str,
+    chapter_anchor_text: str = "",
 ) -> tuple[str, str | None]:
     candidate = clean_generated_chapter_title(clean_text(candidate_title))
-    confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "未命名章节"
+    confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "本章内容"
+    if candidate and not is_usable_resolved_chapter_title(candidate):
+        return confirmed, f"标题 `{candidate}` 不是可发布语义标题，已回退到 `{confirmed}`。"
     if not candidate:
         return confirmed, None
     if len(candidate) > 32:
@@ -77,7 +75,7 @@ def _resolve_locked_title(
         return candidate, None
 
     user_terms = _title_terms(user_prompt)
-    plan_terms = _title_terms(" ".join([confirmed, plan_summary]))
+    plan_terms = _title_terms(" ".join([confirmed, plan_summary, chapter_anchor_text]))
     candidate_terms = _title_terms(candidate)
     if candidate_terms & user_terms:
         return candidate, None
@@ -86,14 +84,32 @@ def _resolve_locked_title(
     return confirmed, f"标题 `{candidate}` 与用户提示和 confirmed plan 锚点不一致，已回退到 `{confirmed}`。"
 
 
+def _chapter_title_anchor_text(chapter: Mapping[str, Any], *, fallback_title: str = "") -> str:
+    anchors: list[str] = [fallback_title]
+    for key in (
+        "title",
+        "resolved_title",
+        "objective",
+        "chapter_goal",
+        "summary",
+        "description",
+        "writing_instructions",
+    ):
+        value = chapter.get(key)
+        if value:
+            anchors.append(clean_text(value))
+    for key in ("required_elements", "content_points", "concept_targets", "formula_targets"):
+        values = chapter.get(key)
+        if isinstance(values, list):
+            anchors.extend(clean_text(item) for item in values[:6] if clean_text(item))
+    return " ".join(part for part in anchors if part).strip()
+
+
 def fallback_locked_title(
     chapter: Mapping[str, Any],
 ) -> LockedChapterTitle:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
-    confirmed_title = (
-        clean_generated_chapter_title(clean_text(chapter.get("title") or chapter.get("resolved_title") or ""))
-        or "未命名章节"
-    )
+    confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     return LockedChapterTitle(
         chapter_index=chapter_index,
         confirmed_title=confirmed_title,
@@ -114,24 +130,23 @@ async def lock_title_for_chapter(
 ) -> LockedChapterTitle:
     fallback = fallback_locked_title(chapter)
     try:
-        async with get_title_lock_semaphore():
-            response = await acompletion_with_fallback(
-                build_title_lock_messages(
-                    course_name=course_name,
-                    digest_mode=digest_mode,
-                    user_prompt=user_prompt,
-                    plan_summary=plan_summary,
-                    chapter=chapter,
-                    docgen_history_brief=docgen_history_brief,
-                ),
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.TITLE_LOCK,
-                    digest_mode=digest_mode,
-                    extra_metadata=extra_metadata,
-                    docgen_stage="lock_title_for_chapter",
-                ),
-                response_model=LockedChapterTitle,
-            )
+        response = await acompletion_with_fallback(
+            build_title_lock_messages(
+                course_name=course_name,
+                digest_mode=digest_mode,
+                user_prompt=user_prompt,
+                plan_summary=plan_summary,
+                chapter=chapter,
+                docgen_history_brief=docgen_history_brief,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.TITLE_LOCK,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                docgen_stage="lock_title_for_chapter",
+            ),
+            response_model=LockedChapterTitle,
+        )
     except Exception as exc:
         logger.warning("docgen_title_lock_failed", chapter_index=fallback.chapter_index, error=str(exc))
         return fallback
@@ -146,6 +161,7 @@ async def lock_title_for_chapter(
         confirmed_title=fallback.confirmed_title,
         user_prompt=user_prompt,
         plan_summary=plan_summary,
+        chapter_anchor_text=_chapter_title_anchor_text(chapter, fallback_title=fallback.confirmed_title),
     )
     locked.fallback_used = False
     if warning:

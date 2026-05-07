@@ -512,6 +512,7 @@ async def run_graph_docs_sync_auto_build(
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
+    background_task_registry: Any | None = None,
 ) -> None:
     """Run an automatic graph sync after DocGen without blocking the doc lane."""
 
@@ -524,17 +525,49 @@ async def run_graph_docs_sync_auto_build(
         metrics: dict[str, object],
     ) -> None:
         del metrics
-        task = asyncio.create_task(
-            _trigger_default_exam_prewarm_when_units_ready(
-                course_id=course_id,
-                min_build_revision_no=build_revision_no,
-                wait_for_units_timeout_s=0.0,
-                llm_snapshot=llm_snapshot,
-            ),
-            name=f"exam.prewarm.ready_units:{course_id}:{build_revision_no}",
-            context=contextvars.Context(),
+        coro = _trigger_default_exam_prewarm_when_units_ready(
+            course_id=course_id,
+            min_build_revision_no=build_revision_no,
+            wait_for_units_timeout_s=0.0,
+            llm_snapshot=llm_snapshot,
         )
+        task_name = f"exam.prewarm.ready_units:{course_id}:{build_revision_no}"
+
+        if background_task_registry is not None:
+            task = background_task_registry.spawn(
+                coro,
+                kind="exam.prewarm",
+                course_id=course_id,
+                name=task_name,
+                dedupe_key=f"exam.prewarm:{course_id}:default:{build_revision_no}",
+            )
+            exam_prewarm_tasks.append(task)
+            return
+
+        task = asyncio.create_task(coro, name=task_name, context=contextvars.Context())
         exam_prewarm_tasks.append(task)
+
+        def _log_exam_prewarm_result(finished_task: asyncio.Task[None]) -> None:
+            if finished_task.cancelled():
+                logger.info(
+                    "knowledge_graph_auto_exam_prewarm_cancelled",
+                    course_id=course_id,
+                    build_revision_no=build_revision_no,
+                )
+                return
+            try:
+                exc = finished_task.exception()
+            except asyncio.CancelledError:
+                return
+            if exc is not None:
+                logger.warning(
+                    "knowledge_graph_auto_exam_prewarm_task_failed",
+                    course_id=course_id,
+                    build_revision_no=build_revision_no,
+                    error=str(exc),
+                )
+
+        task.add_done_callback(_log_exam_prewarm_result)
 
     try:
         graph_status = await _run_graph_docs_sync_build(
@@ -554,14 +587,18 @@ async def run_graph_docs_sync_auto_build(
         )
         if graph_status == "failed":
             for task in exam_prewarm_tasks:
-                task.cancel()
-        if exam_prewarm_tasks:
-            await asyncio.gather(*exam_prewarm_tasks, return_exceptions=True)
+                if not task.done():
+                    task.cancel()
+            logger.info(
+                "knowledge_graph_auto_build_failed_after_exam_prewarm_dispatched",
+                course_id=course_id,
+                graph_status=graph_status,
+                exam_prewarm_task_count=len(exam_prewarm_tasks),
+            )
     except asyncio.CancelledError:
         for task in exam_prewarm_tasks:
-            task.cancel()
-        if exam_prewarm_tasks:
-            await asyncio.gather(*exam_prewarm_tasks, return_exceptions=True)
+            if not task.done():
+                task.cancel()
         raise
 
 

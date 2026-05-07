@@ -6,15 +6,92 @@ param(
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
-    [string]$BundledEnvArtifactSuffix = "bundled"
+    [string]$BundledEnvArtifactSuffix = "bundled",
+    [switch]$RequireUpdater
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")
 . (Join-Path $PSScriptRoot "bundled-env-common.ps1")
+. (Join-Path $PSScriptRoot "windows-signing-common.ps1")
 
 $repoRoot = Resolve-RepoRoot
 $frontendDir = Join-Path $repoRoot "frontend"
+$projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $npm = Resolve-CommandPath @("npm.cmd", "npm")
+$tauriLocalUpdaterEndpoints = @("https://github.com/aiteachme/AITeachMe/releases/latest/download/latest-tauri-local.json")
+
+function New-TauriLocalReleaseConfig {
+    param(
+        [string]$FrontendDir,
+        [string]$UpdaterPubkey,
+        [string[]]$Endpoints,
+        [bool]$EnableUpdater = $false,
+        [object]$WindowsSigningConfig = $null
+    )
+
+    $configPath = Join-Path $FrontendDir "src-tauri\tauri.local.release.conf.json"
+    $bundleConfig = [ordered]@{}
+    $bundleConfig["targets"] = @("nsis")
+    if ($EnableUpdater) {
+        $bundleConfig["createUpdaterArtifacts"] = $true
+    }
+    $bundleConfig["resources"] = [ordered]@{
+        "resources/backend/" = "backend"
+    }
+    if ($null -ne $WindowsSigningConfig) {
+        $bundleConfig["windows"] = $WindowsSigningConfig
+    }
+
+    $config = [ordered]@{
+        productName = "AiTeachMe Local"
+        identifier = "com.aiteachme.desktop.local"
+        mainBinaryName = "aiteachme-local"
+        build = [ordered]@{
+            devUrl = "http://127.0.0.1:5181"
+        }
+        bundle = $bundleConfig
+    }
+
+    if ($EnableUpdater) {
+        $config["plugins"] = [ordered]@{
+            updater = [ordered]@{
+                pubkey = $UpdaterPubkey
+                endpoints = @($Endpoints)
+                windows = [ordered]@{
+                    installMode = "passive"
+                }
+            }
+        }
+    }
+
+    $configJson = $config | ConvertTo-Json -Depth 8
+
+    Write-Utf8NoBomFile -Path $configPath -Content ($configJson + [Environment]::NewLine)
+    return $configPath
+}
+
+function New-TauriRemoteReleaseConfig {
+    param(
+        [string]$FrontendDir,
+        [object]$WindowsSigningConfig = $null
+    )
+
+    $configPath = Join-Path $FrontendDir "src-tauri\tauri.remote.release.conf.json"
+    $config = [ordered]@{
+        productName = "AiTeachMe Remote"
+        identifier = "com.aiteachme.desktop.remote"
+        mainBinaryName = "aiteachme-remote"
+    }
+    if ($null -ne $WindowsSigningConfig) {
+        $config["bundle"] = [ordered]@{
+            windows = $WindowsSigningConfig
+        }
+    }
+
+    $configJson = $config | ConvertTo-Json -Depth 8
+    Write-Utf8NoBomFile -Path $configPath -Content ($configJson + [Environment]::NewLine)
+    return $configPath
+}
 
 if ($Flavor -eq "remote") {
     if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
@@ -27,6 +104,16 @@ if ($Flavor -eq "remote") {
 }
 
 Assert-RustToolchain
+$windowsSigning = Get-AITeachMeWindowsSigningState
+Assert-AITeachMeWindowsSigningReady -Signing $windowsSigning
+$tauriWindowsSigningConfig = Get-AITeachMeTauriWindowsSigningConfig -Signing $windowsSigning
+if ($windowsSigning.Enabled -and $null -eq $tauriWindowsSigningConfig) {
+    $message = "Tauri Windows signing is enabled, but Tauri needs AITEACHME_WINDOWS_SIGN_COMMAND or AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT to sign during bundling."
+    if ($windowsSigning.Required) {
+        throw $message
+    }
+    Write-Host $message -ForegroundColor Yellow
+}
 
 $apiBaseUrl = if ($Flavor -eq "local") { "" } else { $ApiUrl.TrimEnd("/") }
 $releaseSuffix = if ($Flavor -eq "local") {
@@ -42,6 +129,7 @@ else {
 Write-Host "Repo: $repoRoot"
 Write-Host "Flavor: tauri-$Flavor"
 Write-Host "npm: $npm"
+Write-AITeachMeWindowsSigningSummary -Signing $windowsSigning
 if ($Flavor -eq "local") {
     Write-Host "API base URL: dynamic local loopback port (resolved at app startup)"
 }
@@ -53,6 +141,50 @@ if ($releaseSuffix) {
 }
 if ($ImportBundledEnv -and $Flavor -ne "local") {
     Write-Host "ImportBundledEnv is only used by local packages with an embedded backend; skipping for tauri-$Flavor." -ForegroundColor Yellow
+}
+
+$tauriLocalUpdaterEnabled = $false
+$tauriConfigArg = if ($Flavor -eq "local") { "src-tauri/tauri.local.release.conf.json" } else { "src-tauri/tauri.remote.conf.json" }
+if ($Flavor -eq "local") {
+    $updaterPubkey = [Environment]::GetEnvironmentVariable("TAURI_UPDATER_PUBKEY", "Process")
+    $signingPrivateKey = [Environment]::GetEnvironmentVariable("TAURI_SIGNING_PRIVATE_KEY", "Process")
+    $missingUpdaterVars = @()
+    if ([string]::IsNullOrWhiteSpace($updaterPubkey)) {
+        $missingUpdaterVars += "TAURI_UPDATER_PUBKEY"
+    }
+    if ([string]::IsNullOrWhiteSpace($signingPrivateKey)) {
+        $missingUpdaterVars += "TAURI_SIGNING_PRIVATE_KEY"
+    }
+    $tauriLocalUpdaterEnabled = $missingUpdaterVars.Count -eq 0
+    $trimmedUpdaterPubkey = if ([string]::IsNullOrWhiteSpace($updaterPubkey)) { "" } else { $updaterPubkey.Trim() }
+
+    $generatedConfigPath = New-TauriLocalReleaseConfig `
+        -FrontendDir $frontendDir `
+        -UpdaterPubkey $trimmedUpdaterPubkey `
+        -Endpoints $tauriLocalUpdaterEndpoints `
+        -EnableUpdater $tauriLocalUpdaterEnabled `
+        -WindowsSigningConfig $tauriWindowsSigningConfig
+    Write-Host "Tauri Windows target: NSIS .exe"
+    if ($tauriLocalUpdaterEnabled) {
+        Write-Host "Tauri updater endpoints:"
+        $tauriLocalUpdaterEndpoints | ForEach-Object {
+            Write-Host "  $_"
+        }
+    }
+    else {
+        if ($RequireUpdater) {
+            throw "Tauri updater is required for this build, but missing environment variable(s): $($missingUpdaterVars -join ', '). Configure TAURI_UPDATER_PUBKEY and TAURI_SIGNING_PRIVATE_KEY before publishing."
+        }
+        Write-Host "Tauri updater disabled; missing environment variable(s): $($missingUpdaterVars -join ', '). Installer build will continue without updater packages." -ForegroundColor Yellow
+    }
+    Write-Host "Generated Tauri release config: $generatedConfigPath"
+}
+elseif ($null -ne $tauriWindowsSigningConfig) {
+    $generatedConfigPath = New-TauriRemoteReleaseConfig `
+        -FrontendDir $frontendDir `
+        -WindowsSigningConfig $tauriWindowsSigningConfig
+    $tauriConfigArg = "src-tauri/tauri.remote.release.conf.json"
+    Write-Host "Generated Tauri release config: $generatedConfigPath"
 }
 
 if (-not $SkipInstall) {
@@ -89,11 +221,41 @@ try {
     Invoke-External -File $npm -Arguments @("exec", "--", "orval", "--config", "orval.config.js") -WorkingDirectory $frontendDir
 
     Remove-TauriBundleOutput -RepoRoot $repoRoot
-    $tauriBuildScript = if ($Flavor -eq "local") { "tauri:build:local:raw" } else { "tauri:build:remote" }
-    Invoke-External -File $npm -Arguments @("run", $tauriBuildScript) -WorkingDirectory $frontendDir
+    $tauriBuildArgs = @("exec", "--", "tauri", "build", "--config", $tauriConfigArg)
+    if ($Flavor -eq "local") {
+        $tauriBuildArgs += @("--features", "local-backend")
+    }
+    Invoke-External -File $npm -Arguments $tauriBuildArgs -WorkingDirectory $frontendDir
 }
 finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
 }
 
-Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix
+Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix -IncludeUpdater:$tauriLocalUpdaterEnabled
+
+$releaseDir = Join-Path $repoRoot "packaging\release"
+$tauriInstallers = @(Get-ChildItem -LiteralPath $releaseDir -File -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -like "AiTeachMe-v*-installer$releaseSuffix.*" -and
+            $_.Extension -eq ".exe"
+    })
+foreach ($installer in $tauriInstallers) {
+    $tauriUpdaterSignature = "$($installer.FullName).sig"
+    if (Test-Path $tauriUpdaterSignature) {
+        Write-AITeachMeSignatureStatus `
+            -Path $installer.FullName `
+            -Description "Tauri updater installer"
+
+        if (($windowsSigning.Enabled -or $windowsSigning.Required) -and -not (Test-AITeachMeSignatureValid -Path $installer.FullName)) {
+            throw "Tauri updater installer is not Authenticode signed before updater signature generation: $($installer.FullName). Configure AITEACHME_WINDOWS_SIGN_COMMAND or AITEACHME_WINDOWS_CERTIFICATE_THUMBPRINT so Tauri signs the installer during bundling."
+        }
+
+        continue
+    }
+
+    Invoke-AITeachMeWindowsSignFile `
+        -Signing $windowsSigning `
+        -Path $installer.FullName `
+        -Description "Tauri release installer" `
+        -SkipIfSigned
+}

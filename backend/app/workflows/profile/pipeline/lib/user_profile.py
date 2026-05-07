@@ -23,6 +23,20 @@ from app.utils.time import is_at_or_after, is_at_or_before, utcnow
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80
 
+_EXAM_MODE_LABELS = {
+    ExamMode.WEB_PRACTICE.value: "网页练习",
+    ExamMode.PAPER_EXAM.value: "整卷练习",
+}
+
+_QUESTION_TYPE_LABELS = {
+    "single_choice": "单选题",
+    "multiple_choice": "多选题",
+    "fill_blank": "填空题",
+    "short_answer": "简答题",
+    "calculation": "计算题",
+    "proof": "证明题",
+}
+
 
 def _parse_json_object(raw: str | None) -> dict[str, object]:
     if not raw:
@@ -172,12 +186,17 @@ def _build_notes(
     preferred_question_types: list[str],
 ) -> list[str]:
     notes = [
-        f"Active courses: {active_course_count}",
-        f"Dominant exam mode: {dominant_exam_mode}",
-        f"Due reviews across courses: {due_review_count}",
+        f"活跃课程：{active_course_count} 门",
+        f"常用练习模式：{_EXAM_MODE_LABELS.get(dominant_exam_mode, '网页练习')}",
+        f"跨课程到期复习：{due_review_count} 个",
     ]
     if preferred_question_types:
-        notes.append("Preferred question types: " + ", ".join(preferred_question_types))
+        notes.append(
+            "常练题型：" + "、".join(
+                _QUESTION_TYPE_LABELS.get(question_type, "其他题型")
+                for question_type in preferred_question_types
+            )
+        )
     return notes
 
 

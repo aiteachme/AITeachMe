@@ -1,7 +1,8 @@
 {
   "name": "aiteachme-frontend",
-  "version": "0.0.1",
+  "version": "0.0.9",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -9,7 +10,7 @@
     "desktop": "npm run electron:dev",
     "electron:dev": "concurrently -k \"npm run dev\" \"npm run electron:window\"",
     "electron:window": "node electron/wait-dev-server.cjs && electron . --dev",
-    "electron:preview": "npm run build && electron .",
+    "electron:preview": "npm run build:desktop && electron .",
     "electron:installer": "electron-builder --config ../packaging/scripts/electron-builder-config.cjs --win nsis",
     "electron:dist": "npm run electron:installer",
     "desktop:installer": "npm run electron:installer",
@@ -23,9 +24,9 @@
     "tauri:build:local": "npm run tauri:prepare:local && npm run tauri:build:local:raw",
     "tauri:build:local:raw": "tauri build --config src-tauri/tauri.local.conf.json --features local-backend",
     "build": "tsc && vite build",
+    "build:desktop": "tsc && vite build --base=./",
     "preview": "vite preview"
   },
-  "dependencies": {},
   "devDependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
@@ -33,7 +34,10 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-query-devtools": "^5.91.3",
+    "@tauri-apps/api": "2.10.1",
     "@tauri-apps/cli": "^2.10.1",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/d3": "^7.4.3",
     "@types/d3-cloud": "^1.2.9",
     "@types/katex": "^0.16.8",
@@ -54,7 +58,7 @@
     "lucide-react": "^0.468.0",
     "mermaid": "^11.14.0",
     "msw": "^2.12.11",
-    "orval": "^8.5.3",
+    "orval": "8.8.0",
     "postcss": "^8.4.49",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -130,5 +134,9 @@
     "workerDirectory": [
       "public"
     ]
+  },
+  "dependencies": {
+    "@posthog/react": "^1.9.0",
+    "posthog-js": "^1.372.8"
   }
 }

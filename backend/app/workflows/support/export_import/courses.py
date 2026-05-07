@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import posixpath
+import shutil
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -17,13 +18,12 @@ import httpx
 import structlog
 
 from app.schemas.export_import import CoursePackageItem
-from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import (
-    DemoCourseCatalogNotConfiguredError,
     DemoCourseCatalogUnavailableError,
     DemoCoursePackageNotFoundError,
     ImportPackageTooLargeError,
 )
+from app.shared.infra.runtime import get_runtime_data_dir
 from app.workflows.support.export_import.limits import (
     MAX_IMPORT_PACKAGE_BYTES,
     MAX_IMPORT_PACKAGE_SIZE_MB,
@@ -34,8 +34,10 @@ logger = structlog.get_logger()
 _DEFAULT_TIMEOUT_S = 15.0
 _PACKAGE_PROBE_TIMEOUT_S = 4.0
 _PACKAGE_PROBE_MAX_WORKERS = 6
-_DEMO_COURSES_ROOT = "demo-courses/"
+_CATALOG_CACHE_TTL_S = 60.0
+_DEMO_COURSES_BASE_URL = "https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/"
 _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
+_REMOTE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
 
 
 @dataclass(frozen=True)
@@ -60,22 +62,21 @@ class _RemoteCourseDescriptor:
 
 
 def list_available_courses() -> list[CoursePackageItem]:
-    """List remote demo courses declared in the configured OSS catalog."""
+    """List remote demo courses declared in the public assets catalog."""
 
-    if not _demo_courses_enabled():
+    try:
+        return [item.to_item() for item in _load_remote_course_descriptors()]
+    except DemoCourseCatalogUnavailableError as exc:
+        logger.warning(
+            "demo_course_catalog_unavailable",
+            catalog_url=get_demo_courses_index_url(),
+            error=str(exc),
+        )
         return []
-
-    catalog_url = get_demo_courses_index_url()
-    if not catalog_url:
-        return []
-    return [item.to_item() for item in _load_remote_course_descriptors()]
 
 
 def download_course_package(identifier: str) -> tuple[Path, str]:
     """Download one remote `.atmx` package into a temporary local file."""
-
-    if not _demo_courses_enabled():
-        raise DemoCourseCatalogNotConfiguredError()
 
     descriptor = get_remote_course_descriptor(identifier)
     if descriptor.file_size_bytes > MAX_IMPORT_PACKAGE_BYTES:
@@ -85,10 +86,20 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
 
+    cached_path = _get_valid_cached_package_path(descriptor)
+    if cached_path is not None:
+        shutil.copyfile(cached_path, tmp_path)
+        logger.info(
+            "demo_course_package_cache_hit",
+            identifier=descriptor.identifier,
+            package_filename=descriptor.package_filename,
+        )
+        return tmp_path, descriptor.package_filename
+
     try:
         timeout = _get_demo_courses_timeout_s()
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", descriptor.package_url) as response:
+            with client.stream("GET", _with_cache_buster(descriptor.package_url)) as response:
                 _raise_for_http_status(
                     response,
                     action=f"下载课程包 `{descriptor.identifier}`",
@@ -107,6 +118,7 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
                             fh.write(chunk)
                 if hasher is not None and hasher.hexdigest().lower() != descriptor.sha256:
                     raise DemoCourseCatalogUnavailableError(reason="课程包校验失败。")
+        _store_cached_package(descriptor, tmp_path)
         return tmp_path, descriptor.package_filename
     except Exception:
         tmp_path.unlink(missing_ok=True)
@@ -116,49 +128,50 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
 def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     """Resolve one demo course descriptor by its stable identifier."""
 
-    if not _demo_courses_enabled():
-        raise DemoCourseCatalogNotConfiguredError()
-
     normalized = str(identifier or "").strip()
     if not normalized:
         raise DemoCoursePackageNotFoundError(identifier)
 
-    for descriptor in _load_remote_course_descriptors():
+    for descriptor in _load_remote_course_descriptors(probe_packages=False):
         if normalized in {descriptor.identifier, descriptor.package_filename}:
             return descriptor
     raise DemoCoursePackageNotFoundError(normalized)
 
 
-def get_demo_courses_base_url() -> str | None:
-    """Return the fixed remote demo-course root under the existing public OSS base."""
+def get_demo_courses_base_url() -> str:
+    """Return the fixed public demo-course root in the project assets repo."""
 
-    value = (get_env("S3_PUBLIC_BASE_URL") or "").strip()
-    if not value:
-        return None
-    return urljoin(value.rstrip("/") + "/", _DEMO_COURSES_ROOT)
+    return _DEMO_COURSES_BASE_URL
 
 
-def get_demo_courses_index_url() -> str | None:
+def get_demo_courses_index_url() -> str:
     """Return the fixed remote `index.json` URL for demo courses."""
 
-    base_url = get_demo_courses_base_url()
-    if not base_url:
-        return None
-    return urljoin(base_url, _DEMO_COURSES_INDEX_PATH)
-
-
-def _demo_courses_enabled() -> bool:
-    return get_demo_courses_base_url() is not None
+    return urljoin(get_demo_courses_base_url(), _DEMO_COURSES_INDEX_PATH)
 
 
 def _get_demo_courses_timeout_s() -> float:
     return _DEFAULT_TIMEOUT_S
 
 
-def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
+def _load_remote_course_descriptors(*, probe_packages: bool = True) -> list[_RemoteCourseDescriptor]:
     catalog_url = get_demo_courses_index_url()
-    if not catalog_url:
-        raise DemoCourseCatalogNotConfiguredError()
+    descriptors = _load_catalog_descriptors(catalog_url)
+    if not probe_packages:
+        return descriptors
+    return _filter_available_remote_course_descriptors(descriptors)
+
+
+def _load_catalog_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
+    global _REMOTE_DESCRIPTOR_CACHE
+
+    now = time.monotonic()
+    if (
+        _REMOTE_DESCRIPTOR_CACHE is not None
+        and _REMOTE_DESCRIPTOR_CACHE[1] == catalog_url
+        and now - _REMOTE_DESCRIPTOR_CACHE[0] <= _CATALOG_CACHE_TTL_S
+    ):
+        return list(_REMOTE_DESCRIPTOR_CACHE[2])
 
     payload = _fetch_remote_catalog_payload(catalog_url)
     raw_items = _extract_catalog_items(payload)
@@ -175,7 +188,63 @@ def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
         if descriptor is None:
             continue
         descriptors.append(descriptor)
-    return _filter_available_remote_course_descriptors(descriptors)
+
+    _REMOTE_DESCRIPTOR_CACHE = (now, catalog_url, descriptors)
+    return list(descriptors)
+
+
+def _demo_course_package_cache_dir() -> Path:
+    cache_dir = get_runtime_data_dir() / "cache" / "demo-courses"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _cache_key_for_descriptor(descriptor: _RemoteCourseDescriptor) -> str | None:
+    if not descriptor.sha256:
+        return None
+    digest = descriptor.sha256.lower()
+    suffix = Path(descriptor.package_filename or "").suffix or ".atmx"
+    return f"{digest}{suffix}"
+
+
+def _get_valid_cached_package_path(descriptor: _RemoteCourseDescriptor) -> Path | None:
+    cache_key = _cache_key_for_descriptor(descriptor)
+    if not cache_key:
+        return None
+    cache_path = _demo_course_package_cache_dir() / cache_key
+    if not cache_path.is_file():
+        return None
+    if descriptor.file_size_bytes > 0 and cache_path.stat().st_size != descriptor.file_size_bytes:
+        cache_path.unlink(missing_ok=True)
+        return None
+    if descriptor.sha256 and _sha256_file(cache_path) != descriptor.sha256.lower():
+        cache_path.unlink(missing_ok=True)
+        return None
+    return cache_path
+
+
+def _store_cached_package(descriptor: _RemoteCourseDescriptor, package_path: Path) -> None:
+    cache_key = _cache_key_for_descriptor(descriptor)
+    if not cache_key:
+        return
+    cache_path = _demo_course_package_cache_dir() / cache_key
+    try:
+        shutil.copyfile(package_path, cache_path)
+    except Exception as exc:  # pragma: no cover - cache best effort
+        logger.warning(
+            "demo_course_package_cache_store_failed",
+            identifier=descriptor.identifier,
+            error=str(exc),
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            if chunk:
+                hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _filter_available_remote_course_descriptors(
@@ -466,15 +535,16 @@ def _validate_remote_content_length(response: httpx.Response) -> None:
 
 def _remote_package_exists(package_url: str) -> bool:
     timeout = _PACKAGE_PROBE_TIMEOUT_S
+    url = _with_cache_buster(package_url)
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            response = client.head(package_url)
+            response = client.head(url)
             if response.status_code < 400:
                 return True
             if response.status_code in {404, 410}:
                 return False
 
-            with client.stream("GET", package_url, headers={"Range": "bytes=0-0"}) as fallback:
+            with client.stream("GET", url, headers={"Range": "bytes=0-0"}) as fallback:
                 if fallback.status_code in {404, 410}:
                     return False
                 return fallback.status_code < 400

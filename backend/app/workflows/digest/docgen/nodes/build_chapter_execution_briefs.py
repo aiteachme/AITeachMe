@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
@@ -82,7 +83,11 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
             )
             return brief.model_dump(mode="json")
 
-        chapter_briefs = list(await asyncio.gather(*(_build_one(task_seed) for task_seed in task_seeds)))
+        chapter_briefs = await gather_with_concurrency(
+            task_seeds,
+            _build_one,
+            limit=get_llm_concurrency_limit(),
+        )
         chapter_briefs.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         await publish_docgen_progress(

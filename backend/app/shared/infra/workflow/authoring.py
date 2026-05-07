@@ -62,6 +62,7 @@ class WorkflowTraceBinding:
         handler: Any,
         *,
         name: str,
+        display_name: str | None = None,
         description: str | None = None,
         timing_field: str | None = None,
         input_keys: Sequence[str] | None = None,
@@ -74,13 +75,22 @@ class WorkflowTraceBinding:
             raise TypeError("workflow_tracer().node(...) requires a handler argument.")
         workflow_name = self.workflow
         lane = self.lane
-        tag_node_name = f"{lane}.{name}" if lane else name
+        node_name = str(name or "").strip()
+        if not node_name:
+            raise ValueError("workflow_tracer().node(...) requires a non-empty `name`.")
+        trace_metadata = dict(metadata or {})
+        resolved_display_name = str(
+            display_name or trace_metadata.get("node_display_name") or node_name
+        )
+        resolved_description = str(description or trace_metadata.get("node_description") or "")
+        tag_node_name = f"{lane}.{node_name}" if lane else node_name
         node_extra_metadata = {
-            "node_display_name": name,
-            "node_description": description,
+            "node_key": trace_metadata.get("node_key") or node_name,
+            "node_display_name": resolved_display_name,
+            "node_description": resolved_description,
             "state_inputs": list(input_keys or []),
             "state_outputs": list(output_keys or []),
-            **dict(metadata or {}),
+            **trace_metadata,
         }
 
         @functools.wraps(handler)
@@ -94,7 +104,7 @@ class WorkflowTraceBinding:
                 build_session_id=build_session_id,
                 workflow=workflow_name,
                 lane=lane,
-                node=name,
+                node=node_name,
                 extra_metadata=node_extra_metadata,
             )
             node_tags = build_langsmith_tags(
@@ -112,7 +122,7 @@ class WorkflowTraceBinding:
                     build_session_id=build_session_id,
                     workflow=workflow_name,
                     lane=lane,
-                    node=name,
+                    node=node_name,
                 ):
                     try:
                         result = handler(state)
@@ -123,7 +133,7 @@ class WorkflowTraceBinding:
                         logger.bind(
                             workflow=workflow_name,
                             lane=lane,
-                            node=name,
+                            node=node_name,
                             course_id=course_id,
                             build_session_id=build_session_id,
                         ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
@@ -137,7 +147,7 @@ class WorkflowTraceBinding:
             logger.bind(
                 workflow=workflow_name,
                 lane=lane,
-                node=name,
+                node=node_name,
                 course_id=course_id,
                 build_session_id=build_session_id,
             ).info(

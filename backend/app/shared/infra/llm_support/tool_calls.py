@@ -16,7 +16,7 @@ from .common import (
     build_completion_context,
     effective_call_timeout_s,
     extract_usage,
-    get_semaphore,
+    get_llm_concurrency_limiter,
     logger,
     log_attempt_cancelled,
     log_attempt_failed,
@@ -58,7 +58,7 @@ async def acompletion_with_tools(
     call_started_at = time.monotonic()
     tracked_model = context.model
 
-    async with get_semaphore():
+    async with get_llm_concurrency_limiter():
         for attempt in range(1, context.profile.max_retries + 1):
             prepared = prepare_completion_attempt(
                 context=context,

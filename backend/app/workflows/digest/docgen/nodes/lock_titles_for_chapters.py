@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.runtime import gather_with_concurrency
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -66,7 +67,11 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
             )
             return locked.model_dump(mode="json")
 
-        locked_titles = list(await asyncio.gather(*(_lock_one(chapter) for chapter in chapters)))
+        locked_titles = await gather_with_concurrency(
+            chapters,
+            _lock_one,
+            limit=get_llm_concurrency_limit(),
+        )
         locked_titles.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         await publish_docgen_progress(

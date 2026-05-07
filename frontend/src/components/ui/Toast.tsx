@@ -124,9 +124,15 @@ function ToastCard({
       <span className={`mt-0.5 shrink-0 ${variant.iconColor}`}>{variant.icon}</span>
 
       <div className="min-w-0 flex-1">
-        <p className={`text-sm font-semibold leading-5 ${variant.title}`}>{item.title}</p>
+        <p className={`min-w-0 break-words text-sm font-semibold leading-5 [overflow-wrap:anywhere] ${variant.title}`}>
+          {item.title}
+        </p>
         {item.description ? (
-          <p className={`mt-0.5 text-xs leading-4 ${variant.description}`}>{item.description}</p>
+          <p
+            className={`mt-0.5 min-w-0 whitespace-pre-wrap break-words text-xs leading-4 [overflow-wrap:anywhere] ${variant.description}`}
+          >
+            {item.description}
+          </p>
         ) : null}
       </div>
 

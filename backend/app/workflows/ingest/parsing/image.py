@@ -12,10 +12,13 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_choice
 from app.shared.infra.exceptions import FileParseError, LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
-from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, USER
+from app.workflows.ingest.parsing.lib.model_policy import (
+    IngestParsingModelStep,
+    ingest_parsing_completion_kwargs_with_metadata,
+)
 from app.workflows.ingest.parsing.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
 from app.workflows.ingest.parsing.prompts import get_image_parse_prompt
@@ -103,16 +106,18 @@ async def parse_image_bytes_with_llm_vision(
     ]
 
     try:
-        completion_kwargs = {
-            "temperature": 0.3,
-        }
+        completion_kwargs = ingest_parsing_completion_kwargs_with_metadata(
+            IngestParsingModelStep.IMAGE_TO_MARKDOWN,
+            model_selector=model_selector,
+            mime_type=mime_type,
+            language_mode=language_mode,
+        )
         if base_url:
             completion_kwargs["api_base"] = base_url
         if api_key is not None:
             completion_kwargs["api_key"] = api_key
         text = await acompletion(
             messages=messages,
-            task_type=TaskType.VISION,
             model=resolved_model,
             **completion_kwargs,
         )

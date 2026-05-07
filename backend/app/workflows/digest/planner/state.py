@@ -29,6 +29,7 @@ class BuildPlannerState(TypedDict, total=False):
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
+    planner_context_stats: dict[str, Any]
     existing_doc_context: str
     planner_context_mode: str
 
@@ -91,9 +92,11 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "plan",
         "plan_summary",
         "digest_mode",
+        "model_override",
         "selected_file_ids",
         "planner_record",
         "planner_turns",
+        "planner_context_stats",
         "workflow_elapsed_ms",
         "prepare_ms",
         "bootstrap_ms",

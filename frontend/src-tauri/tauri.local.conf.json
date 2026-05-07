@@ -7,7 +7,7 @@
   },
   "bundle": {
     "resources": {
-      "resources/backend/aiteachme-backend.bin": "backend/aiteachme-backend.bin"
+      "resources/backend/": "backend"
     }
   }
 }

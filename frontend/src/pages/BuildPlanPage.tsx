@@ -5,14 +5,17 @@ import {
   AlertCircle,
   ArrowUp,
   BookOpen,
+  Check,
   CheckCircle2,
   FileCode,
   FileImage,
   FileText,
   FileType,
+  FolderOpen,
   Loader2,
   Paperclip,
   RefreshCw,
+  Search,
   Square,
   Sparkles,
   X,
@@ -44,10 +47,9 @@ import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import {
   ChatModelSelect,
-  DEFAULT_CHAT_MODEL_CHOICE,
-  type ChatModelChoice,
   toChatModelChoice,
   toChatRequestModel,
+  useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
 import {
@@ -137,6 +139,15 @@ interface PlannerOutlineItem {
 
 type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
   runtime_stats?: PlannerRuntimeStats | null;
+  model_override?: string | null;
+};
+
+type PlannerTurnWithPlan = NonNullable<BuildPlannerSessionResponse["turns"]>[number] & {
+  plan_json?: Record<string, unknown> | null;
+};
+
+type ConfirmResponseWithVersion = BuildPlannerConfirmResponse & {
+  version_no?: number | null;
 };
 
 function createMessage(
@@ -174,7 +185,16 @@ function createInitialMessages(): ChatMessage[] {
 }
 
 function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.filter(
+  return messages.map((message) => {
+    if (message.role !== "assistant" || !message.plan || hasUsablePlannerPlan(message.plan)) {
+      return message;
+    }
+    return {
+      ...message,
+      plan: null,
+      content: message.content?.trim() || "这次生成结果缺少章节大纲，请继续补充要求后重新生成。",
+    };
+  }).filter(
     (message) =>
       !(
         message.role === "assistant" &&
@@ -186,6 +206,17 @@ function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
         TRANSIENT_PLANNER_ERROR_SNIPPETS.some((snippet) => message.content.includes(snippet))
       ),
   );
+}
+
+function hasUsablePlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): plan is BuildPlannerPlanResponse {
+  return Boolean(
+    plan &&
+      (plan.chapter_plan ?? []).some((chapter) => String(chapter.title ?? "").trim()),
+  );
+}
+
+function usablePlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): BuildPlannerPlanResponse | null {
+  return hasUsablePlannerPlan(plan) ? plan : null;
 }
 
 function appendUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
@@ -254,6 +285,7 @@ function readPersistedPlannerState(courseId: string): PersistedPlannerState | nu
     return {
       ...parsed,
       messages: sanitizePlannerMessages(parsed.messages ?? []),
+      currentPlan: usablePlannerPlan(parsed.currentPlan),
     };
   } catch {
     logPlannerDebug("read_persisted_state_failed", { courseId });
@@ -270,6 +302,7 @@ function persistPlannerState(courseId: string, value: PersistedPlannerState) {
     ...value,
     version: PLANNER_STATE_VERSION,
     messages: sanitizePlannerMessages(value.messages),
+    currentPlan: usablePlannerPlan(value.currentPlan),
   });
   window.localStorage.setItem(key, serialized);
   window.sessionStorage.setItem(key, serialized);
@@ -318,6 +351,40 @@ function isAbortError(error: unknown): boolean {
 function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): PlannerRuntimeStats | null {
   const candidate = (response as PlannerSessionWithRuntime).runtime_stats;
   return candidate ?? null;
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
+}
+
+function planFromTurn(
+  session: BuildPlannerSessionResponse,
+  turn: PlannerTurnWithPlan,
+): BuildPlannerPlanResponse | null {
+  const raw = turn.plan_json;
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const latest = session.latest_plan;
+  const buildConstraints = isRecord(raw.build_constraints) ? raw.build_constraints : {};
+  return usablePlannerPlan({
+    course_id: String(raw.course_id ?? raw.course ?? latest?.course_id ?? session.course_id ?? ""),
+    selected_file_ids: asStringList(raw.selected_file_ids).length
+      ? asStringList(raw.selected_file_ids)
+      : [...(latest?.selected_file_ids ?? [])],
+    user_prompt: String(raw.user_prompt ?? latest?.user_prompt ?? ""),
+    digest_mode: String(raw.digest_mode ?? latest?.digest_mode ?? "systematic"),
+    chapter_plan: Array.isArray(raw.chapter_plan)
+      ? raw.chapter_plan as NonNullable<BuildPlannerPlanResponse["chapter_plan"]>
+      : [],
+    build_constraints: buildConstraints,
+    plan_summary: String(raw.plan_summary ?? ""),
+    status: typeof raw.status === "string" ? raw.status : session.status,
+    planner_session_id: String(raw.planner_session_id ?? session.session_id ?? ""),
+    confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
+  });
 }
 
 function formatPlannerNodeLabel(stepName: string): string {
@@ -416,6 +483,11 @@ function PlannerOutlineCard({
             资料已变化
           </span>
         ) : null}
+        {publishedDocReady ? (
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+            将生成新版本
+          </span>
+        ) : null}
         <div className="flex-1" />
         {publishedDocReady ? (
           <button
@@ -431,8 +503,9 @@ function PlannerOutlineCard({
           type="button"
           onClick={onAdjust}
           disabled={isDisabled}
-          className="min-h-11 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
+          <RefreshCw className="h-4 w-4" />
           调整
         </button>
         <button
@@ -441,7 +514,13 @@ function PlannerOutlineCard({
           disabled={isDisabled}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
         >
-          {isBuilding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {isBuilding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : publishedDocReady ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
           {publishedDocReady ? "重新构建" : "开始构建"}
         </button>
       </div>
@@ -465,14 +544,14 @@ function BuildInProgressBubble({
   return (
     <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
           {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-slate-100">
-                {isActive ? <span className="build-live-dot h-2 w-2 text-indigo-500" aria-hidden="true" /> : null}
+                {isActive ? <span className="build-live-dot h-2 w-2 text-blue-500" aria-hidden="true" /> : null}
                 {isActive ? "知识库正在构建" : "知识库构建状态"}
               </p>
               <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
@@ -492,7 +571,7 @@ function BuildInProgressBubble({
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isActive ? "build-loading-progress-fill" : ""
-              } ${isActive ? "bg-indigo-600" : "bg-zinc-950 dark:bg-slate-100"}`}
+              } ${isActive ? "bg-blue-600" : "bg-zinc-950 dark:bg-slate-100"}`}
               style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
             />
           </div>
@@ -529,7 +608,7 @@ function fileMeta(file: FileRecord) {
   }
   return { 
     label: "正在解析文件...", 
-    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-indigo-500" />
+    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-blue-500" />
   };
 }
 
@@ -537,10 +616,222 @@ function fileIcon(file: FileRecord) {
   const ext = file.filetype?.toLowerCase();
   if (ext === "pdf") return <FileText className="h-3.5 w-3.5 text-red-400" />;
   if (["png", "jpg", "jpeg", "webp"].includes(ext ?? "")) return <FileImage className="h-3.5 w-3.5 text-emerald-400" />;
-  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-indigo-400" />;
-  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-indigo-400" />;
+  if (["md", "markdown"].includes(ext ?? "")) return <FileCode className="h-3.5 w-3.5 text-blue-400" />;
+  if (["docx", "doc"].includes(ext ?? "")) return <FileText className="h-3.5 w-3.5 text-blue-400" />;
   if (["ppt", "pptx"].includes(ext ?? "")) return <FileType className="h-3.5 w-3.5 text-orange-400" />;
   return <FileText className="h-3.5 w-3.5 text-zinc-400" />;
+}
+
+function normalizeFileExt(filetype?: string | null): string {
+  return String(filetype ?? "").trim().toLowerCase().replace(/^\./, "");
+}
+
+function LibraryPickerModal({
+  linkedFileIds,
+  isSubmitting,
+  onClose,
+  onConfirm,
+}: {
+  linkedFileIds: string[];
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: (fileIds: string[]) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const linkedSet = useMemo(() => new Set(linkedFileIds), [linkedFileIds]);
+  const filesQuery = useQuery({
+    queryKey: ["files-library"],
+    queryFn: fetchUserLibraryFiles,
+    refetchInterval: (query) => {
+      const data = query.state.data as FilesData | undefined;
+      return (data?.processing_count ?? 0) > 0 ? 2000 : false;
+    },
+  });
+
+  const files = filesQuery.data?.items ?? [];
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleFiles = useMemo(() => {
+    if (!normalizedSearchTerm) return files;
+    return files.filter((file) => {
+      const ext = normalizeFileExt(file.filetype);
+      return file.filename.toLowerCase().includes(normalizedSearchTerm) || ext.includes(normalizedSearchTerm);
+    });
+  }, [files, normalizedSearchTerm]);
+  const selectedCount = selected.size;
+
+  const toggleFileId = (fileId: string) => {
+    if (linkedSet.has(fileId)) return;
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+      <button type="button" aria-label="关闭资料库选择" className="absolute inset-0 modal-backdrop border-0 p-0" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="从资料库选择"
+        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
+              <FolderOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">从资料库选择</h3>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">把已有资料加入当前课程构建</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            title="关闭"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 px-5 py-3 dark:border-slate-800/80">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="搜索文件名或格式"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void filesQuery.refetch()}
+              disabled={filesQuery.isFetching}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className={`h-4 w-4 ${filesQuery.isFetching ? "animate-spin" : ""}`} />
+              刷新
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-[260px] flex-1 overflow-y-auto px-5 py-4">
+          {filesQuery.isLoading ? (
+            <div className="flex min-h-[240px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在加载资料库...
+            </div>
+          ) : null}
+
+          {!filesQuery.isLoading && files.length === 0 ? (
+            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center dark:border-slate-800 dark:bg-slate-800/30">
+              <FolderOpen className="h-8 w-8 text-slate-400" />
+              <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">资料库还没有文件</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">先上传资料后，就可以在这里选择。</p>
+            </div>
+          ) : null}
+
+          {!filesQuery.isLoading && files.length > 0 && visibleFiles.length === 0 ? (
+            <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+              没有匹配的资料
+            </div>
+          ) : null}
+
+          {visibleFiles.length > 0 ? (
+            <div className="space-y-2">
+              {visibleFiles.map((file) => {
+                const linked = linkedSet.has(file.id);
+                const checked = linked || selected.has(file.id);
+                const meta = fileMeta(file);
+                return (
+                  <label
+                    key={file.id}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition ${
+                      linked
+                        ? "cursor-default border-blue-100 bg-blue-50/60 dark:border-blue-500/30 dark:bg-blue-500/10"
+                        : checked
+                          ? "cursor-pointer border-slate-900 bg-slate-50 shadow-sm dark:border-slate-500 dark:bg-slate-800/70"
+                          : "cursor-pointer border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={checked}
+                      disabled={linked}
+                      onChange={() => toggleFileId(file.id)}
+                    />
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${
+                        checked
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                          : "border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900"
+                      }`}
+                    >
+                      {checked ? <Check className="h-3.5 w-3.5" /> : null}
+                    </span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                      {fileIcon(file)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {file.filename}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span>{normalizeFileExt(file.filetype).toUpperCase() || "FILE"}</span>
+                        <span className="inline-flex items-center gap-1">
+                          {meta.icon}
+                          {meta.label}
+                        </span>
+                      </span>
+                    </span>
+                    {linked ? (
+                      <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                        已在课程中
+                      </span>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">已选 {selectedCount} 份资料</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(Array.from(selected))}
+              disabled={selectedCount === 0 || isSubmitting}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+            >
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              加入课程
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 async function fetchFiles(course: string): Promise<FilesData> {
@@ -550,6 +841,21 @@ async function fetchFiles(course: string): Promise<FilesData> {
   });
   return response.data ?? {
     course_id: course,
+    total: 0,
+    ready_count: 0,
+    processing_count: 0,
+    failed_count: 0,
+    items: [],
+  };
+}
+
+async function fetchUserLibraryFiles(): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: "/api/v1/files",
+  });
+  return response.data ?? {
+    course_id: null,
     total: 0,
     ready_count: 0,
     processing_count: 0,
@@ -568,6 +874,22 @@ async function uploadFiles(course: string, files: File[]): Promise<FilesUploadDa
     data,
   });
   return response.data ?? { course_id: course, filenames: [], uploaded_items: [], started_parse_count: 0 };
+}
+
+async function linkUserLibraryFilesToCourse(course: string, fileIds: string[]): Promise<FilesData> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "POST",
+    url: `/api/v1/courses/${course}/files/link`,
+    data: { file_ids: fileIds },
+  });
+  return response.data ?? {
+    course_id: course,
+    total: 0,
+    ready_count: 0,
+    processing_count: 0,
+    failed_count: 0,
+    items: [],
+  };
 }
 
 async function deleteFile(course: string, id: string) {
@@ -737,13 +1059,19 @@ export function BuildPlanPage() {
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [inputValue, setInputValue] = useState(navState?.initialPrompt ?? "");
-  const [chatModel, setChatModel] = useState<ChatModelChoice>(() => toChatModelChoice(navState?.model ?? DEFAULT_CHAT_MODEL_CHOICE));
+  const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [plannerNeedsRefresh, setPlannerNeedsRefresh] = useState(false);
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
-  const [isRevisingPlan, setIsRevisingPlan] = useState(false);
+
+  useEffect(() => {
+    if (navState?.model !== undefined) {
+      setChatModel(toChatModelChoice(navState.model));
+    }
+  }, [navState?.model, setChatModel]);
 
   const filesQuery = useQuery({
     queryKey: ["files", courseId],
@@ -827,6 +1155,7 @@ export function BuildPlanPage() {
   const files = filesQuery.data?.items ?? [];
   const plannerFiles = useMemo(() => files.filter((item) => item.status !== "failed"), [files]);
   const readyFiles = useMemo(() => files.filter((item) => item.markdown_ready), [files]);
+  const courseFileIds = useMemo(() => files.map((item) => item.id), [files]);
   const plannerFileIds = useMemo(() => plannerFiles.map((item) => item.id), [plannerFiles]);
   const readyFileIds = useMemo(() => readyFiles.map((item) => item.id), [readyFiles]);
   const plannerEffectiveFileIds = useMemo(
@@ -908,11 +1237,10 @@ export function BuildPlanPage() {
       });
       setMessages(sanitizePlannerMessages(persisted.messages));
       setPlannerSessionId(persisted.plannerSessionId);
-      setCurrentPlan(persisted.currentPlan ?? null);
+      setCurrentPlan(usablePlannerPlan(persisted.currentPlan));
       setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setHasAutoUploaded(false);
-      setIsRevisingPlan(false);
       hydratedCourseRef.current = courseId;
       return;
     }
@@ -939,7 +1267,6 @@ export function BuildPlanPage() {
           setInputValue(navState?.initialPrompt ?? "");
           setPlannerNeedsRefresh(false);
           setHasAutoUploaded(false);
-          setIsRevisingPlan(false);
           hydratedCourseRef.current = courseId;
           return;
         }
@@ -953,21 +1280,29 @@ export function BuildPlanPage() {
           chapterCount: session.latest_plan?.chapter_plan?.length ?? 0,
         });
         const restored: ChatMessage[] = [];
-        for (const turn of session.turns) {
+        const lastAssistantIndex = session.turns
+          .map((turn, index) => ({ turn, index }))
+          .reverse()
+          .find(({ turn }) => turn.role === "assistant")?.index;
+        for (const [index, turn] of session.turns.entries()) {
+          const turnPlan =
+            turn.role === "assistant"
+              ? planFromTurn(session, turn as PlannerTurnWithPlan)
+                ?? (index === lastAssistantIndex ? usablePlannerPlan(session.latest_plan) : null)
+              : null;
           restored.push(createMessage(
             turn.role as ChatRole,
             turn.content,
-            turn.role === "assistant" ? session.latest_plan : null,
+            turnPlan,
           ));
         }
 
         setPlannerSessionId(session.session_id);
-        setCurrentPlan(session.latest_plan);
+        setCurrentPlan(usablePlannerPlan(session.latest_plan));
         setMessages(sanitizePlannerMessages(restored));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
-        setIsRevisingPlan(false);
         hydratedCourseRef.current = courseId;
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
@@ -979,7 +1314,6 @@ export function BuildPlanPage() {
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setHasAutoUploaded(false);
-        setIsRevisingPlan(false);
         hydratedCourseRef.current = courseId;
       }
     }
@@ -1057,7 +1391,7 @@ export function BuildPlanPage() {
 
     void (async () => {
       try {
-        const selectedModel = toChatRequestModel(chatModel);
+        const selectedModel = navState.model?.trim() || toChatRequestModel(chatModel);
         const response = await createPlannerSessionStream(
           courseId,
           { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
@@ -1137,6 +1471,36 @@ export function BuildPlanPage() {
     },
   });
 
+  const linkLibraryMutation = useMutation({
+    mutationFn: (fileIds: string[]) => linkUserLibraryFilesToCourse(courseId, fileIds),
+    onSuccess: (data, fileIds) => {
+      queryClient.setQueryData(["files", courseId], data);
+      void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
+      void queryClient.invalidateQueries({ queryKey: ["files-library"] });
+      markPlannerLocalInteraction();
+      setLibraryPickerOpen(false);
+      if (hasUsablePlannerPlan(currentPlanRef.current)) {
+        setPlannerNeedsRefresh(true);
+      }
+      setMessages((prev) => [
+        ...prev,
+        createMessage(
+          "system",
+          `已从资料库加入 ${fileIds.length} 份资料，资料就绪后可以继续规划或启动构建。`,
+        ),
+      ]);
+    },
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, "资料库文件加入课程失败，请稍后重试。");
+      toast({
+        title: "加入失败",
+        description: message,
+        variant: "error",
+      });
+      setMessages((prev) => [...prev, createMessage("system", message)]);
+    },
+  });
+
   const queueUploadFiles = useCallback((candidateFiles: File[]) => {
     if (!candidateFiles.length) {
       return;
@@ -1186,9 +1550,11 @@ export function BuildPlanPage() {
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeDocStateQueryKey(courseId) });
       void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
       toast({
-        title: "已开始构建知识文档",
+        title: hasLiveDocMarkdown ? "已开始重新构建知识文档" : "已开始构建知识文档",
         description:
-          readyFileIds.length > 0
+          hasLiveDocMarkdown
+            ? "会基于当前确认方案生成新的文档版本，正在跳转到知识文档页查看进度。"
+            : readyFileIds.length > 0
             ? "正在跳转到知识文档页查看真实构建进度。"
             : "当前将直接进入联网研究模式，正在跳转到知识文档页查看构建进度。",
         variant: "success",
@@ -1267,7 +1633,6 @@ export function BuildPlanPage() {
         });
       });
     }
-    setIsRevisingPlan(true);
     setInputValue((prev) => (prev.trim() ? prev : "请帮我调整方案："));
     focusComposer();
   }, [currentPlan, focusComposer, plannerSessionId, courseId]);
@@ -1284,18 +1649,18 @@ export function BuildPlanPage() {
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
       const runtimeStats = parsePlannerRuntimeStats(response);
       const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
+      const latestPlan = usablePlannerPlan(response.latest_plan);
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
-      setCurrentPlan(response.latest_plan);
+      setCurrentPlan(latestPlan);
       setPlannerNeedsRefresh(false);
-      setIsRevisingPlan(false);
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {
         if (pendingId) {
           const replaced = replaceMessageById(prev, pendingId, (message) => ({
             ...message,
             content: resolvedContent,
-            plan: response.latest_plan,
+            plan: latestPlan,
             runtimeStats,
             streaming: false,
           }));
@@ -1308,7 +1673,7 @@ export function BuildPlanPage() {
           createMessage(
             "assistant",
             resolvedContent,
-            response.latest_plan,
+            latestPlan,
             runtimeStats,
           ),
         ];
@@ -1357,7 +1722,7 @@ export function BuildPlanPage() {
       return;
     }
 
-    const shouldCreateSession = !plannerSessionId || !currentPlan || plannerNeedsRefresh;
+    const shouldCreateSession = !plannerSessionId || !hasUsablePlannerPlan(currentPlan) || plannerNeedsRefresh;
     logPlannerDebug("send_plan_message_start", {
       courseId,
       mode: shouldCreateSession ? "create" : "revise",
@@ -1372,7 +1737,6 @@ export function BuildPlanPage() {
       createStreamingAssistantMessage(pendingAssistantId),
     ]);
     setInputValue("");
-    setIsRevisingPlan(false);
     setPlannerStreaming(true);
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
@@ -1509,10 +1873,17 @@ export function BuildPlanPage() {
       plannerNeedsRefresh,
       readyFileCount: readyFileIds.length,
     });
-    if (!plannerSessionId || !currentPlan || isPlannerPending || isBuilding) {
+    if (!plannerSessionId || !hasUsablePlannerPlan(currentPlan) || isPlannerPending || isBuilding) {
       logPlannerDebug("confirm_build_blocked", {
-        reason: !plannerSessionId ? "missing_session" : !currentPlan ? "missing_plan" : isPlannerPending ? "planner_pending" : "building",
+        reason: !plannerSessionId ? "missing_session" : !hasUsablePlannerPlan(currentPlan) ? "missing_plan_outline" : isPlannerPending ? "planner_pending" : "building",
       });
+      if (plannerSessionId && !hasUsablePlannerPlan(currentPlan)) {
+        setCurrentPlan(null);
+        setMessages((prev) => [
+          ...sanitizePlannerMessages(prev),
+          createMessage("system", "当前方案缺少章节大纲，请再输入一次学习目标，我会重新生成完整方案。"),
+        ]);
+      }
       return;
     }
 
@@ -1531,9 +1902,17 @@ export function BuildPlanPage() {
         courseId,
         plannerSessionId,
         confirmedPlanId: response.confirmed_plan_id,
+        versionNo: (response as ConfirmResponseWithVersion).version_no,
       });
-      setCurrentPlan(currentPlanRef.current);
-      setIsRevisingPlan(false);
+      const confirmedCurrentPlan = currentPlanRef.current
+        ? {
+            ...currentPlanRef.current,
+            confirmed_plan_id: response.confirmed_plan_id,
+            status: response.status || currentPlanRef.current.status,
+          }
+        : currentPlanRef.current;
+      setCurrentPlan(confirmedCurrentPlan);
+      currentPlanRef.current = confirmedCurrentPlan;
       knowledgeBuild.submitBuild({
         confirmed_plan_id: response.confirmed_plan_id,
         file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
@@ -1580,19 +1959,17 @@ export function BuildPlanPage() {
     queueUploadFiles,
   ]);
 
-  const inputPlaceholder = currentPlan
-    ? isRevisingPlan
-      ? "例如：压缩为 4 章，强化真题变式，并增加公式推导和图示"
-      : "继续补充你想调整的章节、风格、重点或题型"
+  const inputPlaceholder = hasUsablePlannerPlan(currentPlan)
+    ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
     : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
     isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown;
-  const hasRenderedPlannerPlan = messages.some((message) => Boolean(message.plan));
+  const hasRenderedPlannerPlan = messages.some((message) => hasUsablePlannerPlan(message.plan));
   const hasRenderedStreamingPlannerMessage = messages.some(
     (message) => message.role === "assistant" && message.streaming && !message.plan,
   );
-  const shouldShowCurrentPlanFallback = Boolean(currentPlan && !hasRenderedPlannerPlan && !plannerStreaming);
+  const shouldShowCurrentPlanFallback = Boolean(hasUsablePlannerPlan(currentPlan) && !hasRenderedPlannerPlan && !plannerStreaming);
   const shouldShowPlannerStreamingFallback = plannerStreaming && !hasRenderedStreamingPlannerMessage;
   const shouldShowPlannerEmptyState =
     messages.length === 0 &&
@@ -1609,6 +1986,22 @@ export function BuildPlanPage() {
         }}
         disabled={uploadMutation.isPending}
       />
+      {libraryPickerOpen ? (
+        <LibraryPickerModal
+          linkedFileIds={courseFileIds}
+          isSubmitting={linkLibraryMutation.isPending}
+          onClose={() => {
+            if (!linkLibraryMutation.isPending) {
+              setLibraryPickerOpen(false);
+            }
+          }}
+          onConfirm={(fileIds) => {
+            if (fileIds.length > 0) {
+              linkLibraryMutation.mutate(fileIds);
+            }
+          }}
+        />
+      ) : null}
 
       <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
@@ -1704,7 +2097,7 @@ export function BuildPlanPage() {
                         </div>
                       ) : null}
 
-                      {message.plan ? (
+                      {hasUsablePlannerPlan(message.plan) ? (
                         <PlannerOutlineCard
                           plan={message.plan}
                           needsRefresh={plannerNeedsRefresh}
@@ -1778,22 +2171,6 @@ export function BuildPlanPage() {
 
         <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
-            {isRevisingPlan ? (
-              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  <span>调整模式已开启，直接告诉我你想改哪些章节、风格、难度、题型或重点。</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsRevisingPlan(false)}
-                  className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100"
-                >
-                  取消
-                </button>
-              </div>
-            ) : null}
-
             <div className="w-full rounded-2xl border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
               <textarea
                 ref={inputRef}
@@ -1872,15 +2249,31 @@ export function BuildPlanPage() {
                     />
                     <label
                       htmlFor="files-page-upload"
-                    className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      aria-label={uploadMutation.isPending ? "上传中" : "上传资料"}
+                      title={uploadMutation.isPending ? "上传中" : "上传资料"}
+                      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-within:ring-slate-100/10"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Paperclip className="h-4 w-4" />
                       )}
-                      {uploadMutation.isPending ? "上传中" : "添加资料"}
+                      <span>{uploadMutation.isPending ? "上传中" : "上传"}</span>
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryPickerOpen(true)}
+                      disabled={isBuilding || plannerStreaming || linkLibraryMutation.isPending}
+                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                      title="从我的资料库选择已有文件"
+                    >
+                      {linkLibraryMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FolderOpen className="h-4 w-4" />
+                      )}
+                      <span>资料库</span>
+                    </button>
 
                     {plannerNeedsRefresh && (
                       <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700">
@@ -1894,7 +2287,7 @@ export function BuildPlanPage() {
                       value={chatModel}
                       onChange={setChatModel}
                       disabled={isBuilding || plannerStreaming}
-                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                      className="flex-1 sm:flex-none sm:w-[128px]"
                     />
                     <button
                       type="button"

@@ -22,9 +22,8 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
-from app.shared.infra.env_support import get_env_int
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
@@ -70,7 +69,6 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
-_DEFAULT_DOCS_SYNC_CHAPTER_CONCURRENCY_LIMIT = 16
 _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 16
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
 _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400
@@ -97,6 +95,17 @@ class _ExtractionTask:
     chunk: MarkdownSectionChunk
     chapter_context: ChapterSourceContext
     source_kind: str
+
+
+@dataclass(slots=True)
+class _UnitLookupCache:
+    by_anchor: dict[str, KnowledgeUnit]
+    by_type_name: dict[tuple[str, str], KnowledgeUnit]
+
+
+@dataclass(slots=True)
+class _EdgeLookupCache:
+    by_key: dict[tuple[int, int, str], KnowledgeEdge]
 
 
 def _as_mapping(value: object) -> dict[str, object]:
@@ -214,6 +223,7 @@ def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> 
             lookup.setdefault(chapter_index, []).append(payload)
 
     _add_items(summary.get("chapters"))
+    _add_items(summary.get("kg_candidate_hints"))
     _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapter_plan"))
     _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapter_plan"))
     _add_items(_as_mapping(manifest.get("chapter_generation_plan_seed")).get("chapters"))
@@ -268,17 +278,43 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
         "required_elements",
         "key_points",
         "knowledge_points",
+        "candidate_terms",
         limit=8,
         max_chars=90,
     )
     if concept_targets:
-        hints.append("候选概念线索：" + "、".join(concept_targets))
+        hints.append("核心知识线索：" + "、".join(concept_targets))
+    role_targets: list[str] = []
+    for payload in payloads:
+        role_payload = _as_mapping(payload.get("content_role_targets"))
+        for role_name in (
+            "core_knowledge",
+            "method_demo",
+            "principle_reasoning",
+            "explanation_support",
+            "practice_assessment",
+            "knowledge_organization",
+            "application_extension",
+        ):
+            role_targets.extend(_clean_context_list(role_payload.get(role_name), limit=4, max_chars=90))
+    role_targets = _clean_context_list(role_targets, limit=10, max_chars=90)
+    if role_targets:
+        hints.append("学习内容角色线索：" + "、".join(role_targets))
     formula_targets = _merged_context_values(payloads, "formula_targets", "definition_targets", limit=6, max_chars=90)
     if formula_targets:
-        hints.append("定义/公式线索：" + "、".join(formula_targets))
+        hints.append("核心知识细节线索：" + "、".join(formula_targets))
     example_targets = _merged_context_values(payloads, "example_targets", "pitfall_targets", limit=6, max_chars=110)
+    for payload in payloads:
+        for item in _as_list(payload.get("example_coverage_plan")):
+            target = _source_quote(str(_as_mapping(item).get("target") or ""), max_chars=110)
+            if target:
+                example_targets.append(target)
+    example_targets = _clean_context_list(example_targets, limit=8, max_chars=110)
     if example_targets:
-        hints.append("例题/易错线索：" + "、".join(example_targets))
+        hints.append("例题覆盖线索：" + "、".join(example_targets))
+    candidate_claims = _merged_context_values(payloads, "candidate_claims", limit=5, max_chars=140)
+    if candidate_claims:
+        hints.append("候选主张线索：" + "；".join(candidate_claims))
     outline = _merged_context_values(payloads, "teaching_outline", limit=4, max_chars=120)
     if outline:
         hints.append("讲解路径：" + "；".join(outline))
@@ -319,7 +355,7 @@ def _document_backbone_payload(structured_context: dict[str, object]) -> dict[st
     if backbone:
         return backbone
     summary = _as_mapping(structured_context.get("document_summary_json"))
-    return _as_mapping(summary.get("document_backbone"))
+    return _as_mapping(summary.get("docgen_learning_backbone") or summary.get("document_backbone"))
 
 
 def sync_markdown_knowledge_graph(
@@ -636,6 +672,7 @@ def persist_knowledge_graph_units_early(
     sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
     created_unit_ids: list[int] = []
     updated_unit_ids: list[int] = []
+    lookup_cache = _build_unit_lookup_cache(session, course_id=run_context.course_id)
     for item in payload.units:
         unit, created = _upsert_unit(
             session,
@@ -643,6 +680,7 @@ def persist_knowledge_graph_units_early(
             item=item,
             build_revision_no=run_context.build_revision_no,
             enable_rag_dedup=enable_rag_dedup,
+            lookup_cache=lookup_cache,
         )
         if unit.id is None:
             continue
@@ -684,6 +722,7 @@ def _apply_extracted_graph_items(
     report: KnowledgeSyncReport,
 ) -> None:
     unit_by_anchor: dict[str, KnowledgeUnit] = {}
+    unit_lookup_cache = _build_unit_lookup_cache(session, course_id=course_id)
     for item in units:
         unit, created = _upsert_unit(
             session,
@@ -691,6 +730,7 @@ def _apply_extracted_graph_items(
             item=item,
             build_revision_no=build_revision_no,
             enable_rag_dedup=enable_rag_dedup,
+            lookup_cache=unit_lookup_cache,
         )
         if unit.id is None:
             continue
@@ -702,6 +742,7 @@ def _apply_extracted_graph_items(
         if _create_source_ref_for_unit(session, sync_run=sync_run, course_id=course_id, unit=unit, item=item):
             report.source_ref_count += 1
 
+    edge_lookup_cache = _build_edge_lookup_cache(session, course_id=course_id)
     seen_edge_keys: set[tuple[int, int, str]] = set()
     for extracted_edge in extracted_edges:
         source = unit_by_anchor.get(extracted_edge.source_anchor)
@@ -730,6 +771,7 @@ def _apply_extracted_graph_items(
             edge_type=extracted_edge.edge_type,
             description=extracted_edge.description,
             build_revision_no=build_revision_no,
+            lookup_cache=edge_lookup_cache,
         )
         if edge.id is not None:
             seen_edge_keys.add((edge.source_node_id, edge.target_node_id, edge.edge_type))
@@ -807,7 +849,6 @@ def _create_source_ref_for_unit(
         confidence=_source_confidence_for_kind(item.source_kind),
     )
     session.add(source_ref)
-    session.flush()
     return True
 
 
@@ -835,7 +876,6 @@ def _create_source_ref_for_edge(
         confidence=_source_confidence_for_kind(extracted_edge.source_kind),
     )
     session.add(source_ref)
-    session.flush()
     return True
 
 
@@ -888,24 +928,17 @@ def _max_parallel_extractions() -> int:
         )
         or _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS
     )
-    if configured <= 0:
-        configured = get_env_int("KG_DOC_SYNC_MAX_PARALLEL_EXTRACTIONS", _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS)
-    return max(1, min(int(configured), _graph_llm_concurrency_cap()))
+    return max(1, min(max(1, int(configured)), _graph_llm_concurrency_cap()))
 
 
 def _graph_llm_concurrency_cap() -> int:
-    """Keep graph extraction from occupying all shared LLM call slots."""
+    """Use the shared LLM concurrency setting as the graph extraction cap."""
 
-    llm_limit = get_env_int("LLM_CONCURRENCY_LIMIT", DEFAULT_LLM_CONCURRENCY_LIMIT)
-    normalized_limit = max(1, int(llm_limit or DEFAULT_LLM_CONCURRENCY_LIMIT))
-    reserved_slots = max(1, min(4, normalized_limit // 4))
-    return max(1, normalized_limit - reserved_slots)
+    return get_llm_concurrency_limit()
 
 
 def _chapter_concurrency_limit() -> int:
-    max_parallel = _max_parallel_extractions()
-    configured = get_env_int("KG_DOC_SYNC_CHAPTER_CONCURRENCY_LIMIT", max_parallel)
-    return max(1, min(max_parallel, int(configured or max_parallel)))
+    return _max_parallel_extractions()
 
 
 def _effective_concurrency_limit(task_count: int, *, override: int | None = None) -> int:
@@ -1332,8 +1365,9 @@ def _combine_section_payloads(
     diagnostics_totals.update(dict(prefetch_stats or {}))
     used_anchors: set[str] = set()
 
-    for payload in section_payloads:
+    for payload_index, payload in enumerate(section_payloads):
         payload = _make_payload_anchors_unique(payload, used_anchors)
+        payload = _namespace_payload_candidate_ids(payload, namespace=f"s{payload_index}")
         units.extend(payload.units)
         pending_edges.extend(payload.pending_edges)
         candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
@@ -1637,6 +1671,41 @@ def _make_payload_anchors_unique(
     )
 
 
+def _namespace_payload_candidate_ids(
+    payload: SectionExtractionPayload,
+    *,
+    namespace: str,
+) -> SectionExtractionPayload:
+    if not payload.candidate_id_to_anchor:
+        return payload
+
+    def _remap_candidate_id(candidate_id: str | None) -> str | None:
+        if not candidate_id:
+            return candidate_id
+        return f"{namespace}:{candidate_id}"
+
+    return SectionExtractionPayload(
+        units=payload.units,
+        pending_edges=[
+            replace(
+                edge,
+                source_candidate_id=_remap_candidate_id(edge.source_candidate_id),
+                target_candidate_id=_remap_candidate_id(edge.target_candidate_id),
+            )
+            for edge in payload.pending_edges
+        ],
+        candidate_id_to_anchor={
+            _remap_candidate_id(candidate_id) or candidate_id: anchor
+            for candidate_id, anchor in payload.candidate_id_to_anchor.items()
+        },
+        anchors_by_name=payload.anchors_by_name,
+        anchors_by_normalized_name=payload.anchors_by_normalized_name,
+        node_contexts_by_anchor=payload.node_contexts_by_anchor,
+        section_context=payload.section_context,
+        diagnostics=payload.diagnostics,
+    )
+
+
 def _build_backbone_graph_items(
     *,
     structured_context: dict[str, object],
@@ -1737,7 +1806,7 @@ def _build_structural_heading_edges(
         if not source_anchor or not parent_anchor or source_anchor == parent_anchor:
             continue
 
-        key = (source_anchor, parent_anchor, "derivation")
+        key = (parent_anchor, source_anchor, "contains")
         if key in seen:
             continue
         seen.add(key)
@@ -1745,9 +1814,9 @@ def _build_structural_heading_edges(
             PendingMarkdownExtractedEdge(
                 source_candidate_id=None,
                 target_candidate_id=None,
-                source_name=section.title,
-                target_name=parent_title,
-                edge_type="derivation",
+                source_name=parent_title,
+                target_name=section.title,
+                edge_type="contains",
                 description=f"{section.title} 属于主题 {parent_title}。",
                 source_kind="structural_heading",
                 quote_text=section.header_path,
@@ -1761,18 +1830,21 @@ def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) 
     text = normalize_name(body_markdown or "")
     if not text:
         return None
+    normalized_primary_type = normalize_knowledge_unit_type(primary_type)
+    if normalized_primary_type == "practice_assessment":
+        return "training"
+    if normalized_primary_type == "explanation_support":
+        return "explanation"
     if any(token in text for token in ("前提", "基础", "先学", "先掌握", "依赖")):
         return "prerequisite"
     if any(token in text for token in ("由", "推出", "推得", "可得", "基于", "建立在")):
-        return "derivation"
+        return "reasoning"
     if any(token in text for token in ("利用", "应用", "借助", "结合", "使用")):
         return "application"
     if any(token in text for token in ("区别", "对比", "比较", "不同于", "相反")):
         return "contrast"
     if any(token in text for token in ("类似", "相似", "同理")):
         return "similar"
-    if normalize_knowledge_unit_type(primary_type) in {"example", "exercise"}:
-        return "example_of"
     return None
 
 
@@ -1820,7 +1892,7 @@ def _build_cross_section_semantic_edges(
 
     for source_anchor, context in node_contexts_by_anchor.items():
         source_name = str(context.get("name") or "").strip()
-        source_type = str(context.get("knowledge_unit_type") or "concept").strip()
+        source_type = str(context.get("knowledge_unit_type") or "core_knowledge").strip()
         source_section_index = int(context.get("section_index", -1) or -1)
         for hint_field in ("parent_entity_name", "taxonomy_hint"):
             hint_name = str(context.get(hint_field) or "").strip()
@@ -1838,10 +1910,16 @@ def _build_cross_section_semantic_edges(
             target_context = node_contexts_by_anchor.get(target_anchor, {})
             if int(target_context.get("section_index", -1) or -1) == source_section_index:
                 continue
+            relation = default_relation_for_unit_type(source_type)
+            target_name = str(target_context.get("name") or hint_name)
+            if relation in {"contains", "application", "explanation", "training"}:
+                edge_source, edge_target = target_name, source_name
+            else:
+                edge_source, edge_target = source_name, target_name
             _push_edge(
-                source_name,
-                str(target_context.get("name") or hint_name),
-                default_relation_for_unit_type(source_type),
+                edge_source,
+                edge_target,
+                relation,
                 f"{source_name} 通过 {hint_field} 指向跨小节主题 {hint_name}。",
                 source_context=context,
             )
@@ -1861,12 +1939,12 @@ def _build_cross_section_semantic_edges(
             normalized_other_name = normalize_name(other.primary_name)
             if not normalized_other_name or normalized_other_name not in body_text:
                 continue
-            if relation == "example_of":
+            if relation == "training":
                 _push_edge(
-                    context.primary_name,
                     other.primary_name,
+                    context.primary_name,
                     relation,
-                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的例证出现。",
+                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的训练或评估任务出现。",
                     source_context={
                         "knowledge_document_id": context.knowledge_document_id,
                         "section_index": context.section_index,
@@ -2173,6 +2251,50 @@ def _resolve_edge_anchor(
     return None
 
 
+def _build_unit_lookup_cache(session: Session, *, course_id: str) -> _UnitLookupCache:
+    units = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == course_id,
+            KnowledgeUnit.status.in_(["active", "pending", "deprecated"]),
+        )
+    ).all()
+    cache = _UnitLookupCache(by_anchor={}, by_type_name={})
+    for unit in units:
+        _remember_unit_lookup(cache, unit)
+    return cache
+
+
+def _remember_unit_lookup(cache: _UnitLookupCache, unit: KnowledgeUnit) -> None:
+    if unit.id is None:
+        return
+    for key, cached in list(cache.by_type_name.items()):
+        if cached.id == unit.id:
+            cache.by_type_name.pop(key, None)
+    if unit.status in {"active", "pending"} and unit.normalized_name:
+        cache.by_type_name[(normalize_knowledge_unit_type(unit.knowledge_unit_type), unit.normalized_name)] = unit
+    for alias in _load_aliases(unit.aliases_json):
+        if alias.get("source") != _ANCHOR_ALIAS_SOURCE:
+            continue
+        anchor = str(alias.get("normalized_alias") or "").strip()
+        if anchor:
+            cache.by_anchor[anchor] = unit
+
+
+def _build_edge_lookup_cache(session: Session, *, course_id: str) -> _EdgeLookupCache:
+    edges = session.exec(
+        select(KnowledgeEdge).where(
+            KnowledgeEdge.course_id == course_id,
+            KnowledgeEdge.status.in_(["active", "pending", "deprecated"]),
+        )
+    ).all()
+    return _EdgeLookupCache(
+        by_key={
+            (edge.source_node_id, edge.target_node_id, normalize_relation_type(edge.edge_type)): edge
+            for edge in edges
+        }
+    )
+
+
 def _upsert_unit(
     session: Session,
     *,
@@ -2180,16 +2302,25 @@ def _upsert_unit(
     item: MarkdownKnowledgeUnit,
     build_revision_no: int,
     enable_rag_dedup: bool = False,
+    lookup_cache: _UnitLookupCache | None = None,
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
-    unit = _find_unit_by_anchor(session, course_id=course_id, anchor=item.anchor)
+    unit = (
+        lookup_cache.by_anchor.get(item.anchor)
+        if lookup_cache is not None
+        else _find_unit_by_anchor(session, course_id=course_id, anchor=item.anchor)
+    )
     if unit is None:
-        unit = _find_unit_by_exact_name(
-            session,
-            course_id=course_id,
-            item=item,
-            knowledge_unit_type=knowledge_unit_type,
+        unit = (
+            lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+            if lookup_cache is not None
+            else _find_unit_by_exact_name(
+                session,
+                course_id=course_id,
+                item=item,
+                knowledge_unit_type=knowledge_unit_type,
+            )
         )
     if unit is None and enable_rag_dedup:
         unit = _find_unit_with_rag(
@@ -2198,15 +2329,19 @@ def _upsert_unit(
             item=item,
             knowledge_unit_type=knowledge_unit_type,
         )
-    name_conflict_unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
-        session,
-        course_id,
-        normalized_name,
-        knowledge_unit_type,
+    name_conflict_unit = (
+        lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+        if lookup_cache is not None
+        else knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
+            session,
+            course_id,
+            normalized_name,
+            knowledge_unit_type,
+        )
     )
     if name_conflict_unit is not None and (unit is None or name_conflict_unit.id != unit.id):
         unit = name_conflict_unit
-    if unit is None:
+    if unit is None and lookup_cache is None:
         unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
             session,
             course_id,
@@ -2238,6 +2373,8 @@ def _upsert_unit(
     else:
         session.add(unit)
     session.flush()
+    if lookup_cache is not None:
+        _remember_unit_lookup(lookup_cache, unit)
     return unit, created
 
 
@@ -2250,13 +2387,19 @@ def _upsert_edge(
     edge_type: str,
     description: str,
     build_revision_no: int,
+    lookup_cache: _EdgeLookupCache | None = None,
 ) -> tuple[KnowledgeEdge, bool]:
     normalized_type = normalize_relation_type(edge_type)
-    existing = knowledge_relation_repo.find_edge(
-        session,
-        source_node_id,
-        target_node_id,
-        normalized_type,
+    edge_key = (source_node_id, target_node_id, normalized_type)
+    existing = (
+        lookup_cache.by_key.get(edge_key)
+        if lookup_cache is not None
+        else knowledge_relation_repo.find_edge(
+            session,
+            source_node_id,
+            target_node_id,
+            normalized_type,
+        )
     )
     created = existing is None
     edge = existing or KnowledgeEdge(
@@ -2276,6 +2419,8 @@ def _upsert_edge(
     else:
         session.add(edge)
     session.flush()
+    if lookup_cache is not None and edge.id is not None:
+        lookup_cache.by_key[edge_key] = edge
     return edge, created
 
 

@@ -26,7 +26,9 @@ class DocGenState(TypedDict, total=False):
     confirmed_plan_id: str
     confirmed_plan: dict[str, Any] | None
     digest_mode: str
+    model_override: str | None
     retrieval_profile: str
+    retrieval_policy: dict[str, Any]
     teaching_action: str
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]
@@ -56,11 +58,16 @@ class DocGenState(TypedDict, total=False):
     chapter_tasks: list[dict[str, Any]]
     chapter_task: dict[str, Any]
     enhanced_chapter_draft: dict[str, Any]
+    review_chapter_task: dict[str, Any]
+    review_claim_ledger: dict[str, Any]
+    review_claim_evidence_map: dict[str, Any]
+    review_conflict_report: dict[str, Any]
     total_chapters: int
 
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     enhanced_chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_draft_items: Annotated[list[dict[str, Any]], operator.add]
+    reviewed_chapter_overlay_items: Annotated[list[dict[str, Any]], operator.add]
     chapter_review_report_items: Annotated[list[dict[str, Any]], operator.add]
     review_action_items: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_drafts: list[dict[str, Any]]

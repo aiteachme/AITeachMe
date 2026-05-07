@@ -22,6 +22,7 @@ class PlannerRuntimeConfig:
     """Planner-facing teaching defaults."""
 
     default_digest_mode: str
+    history_turns: int
     sprint: PlannerModeRuntimeConfig
     systematic: PlannerModeRuntimeConfig
 
@@ -47,6 +48,7 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
     return TeachingRuntimeConfig(
         planner=PlannerRuntimeConfig(
             default_digest_mode=settings.planner.default_digest_mode,
+            history_turns=max(1, int(settings.planner.history_turns or 10)),
             sprint=PlannerModeRuntimeConfig(
                 min_chapters=settings.planner.sprint.min_chapters,
                 max_chapters=max(
