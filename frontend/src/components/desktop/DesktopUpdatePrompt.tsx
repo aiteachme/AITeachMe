@@ -14,6 +14,7 @@ const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 type UpdateStatus = "available" | "downloading" | "installing" | "restarting" | "failed";
 
 let pendingDesktopUpdateCheck: Promise<Update | null> | null = null;
+let pendingDesktopVersionRead: Promise<string | null> | null = null;
 
 export function isTauriLocalRuntime(): boolean {
   if (typeof window === "undefined") {
@@ -54,6 +55,11 @@ function formatBytes(bytes: number): string {
     return "0 MB";
   }
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export function formatDesktopAppVersion(version: string | null | undefined): string {
+  const normalized = version?.trim().replace(/^v/i, "");
+  return normalized ? `v${normalized}` : "未知";
 }
 
 function formatUpdateDate(value: string | undefined): string {
@@ -100,6 +106,28 @@ async function checkDesktopUpdate(): Promise<Update | null> {
   return pendingDesktopUpdateCheck;
 }
 
+async function readDesktopAppVersion(): Promise<string | null> {
+  if (!isTauriLocalRuntime()) {
+    return null;
+  }
+
+  if (pendingDesktopVersionRead) {
+    return pendingDesktopVersionRead;
+  }
+
+  pendingDesktopVersionRead = (async () => {
+    try {
+      const { getVersion } = await import("@tauri-apps/api/app");
+      const version = (await getVersion()).trim();
+      return version || null;
+    } finally {
+      pendingDesktopVersionRead = null;
+    }
+  })();
+
+  return pendingDesktopVersionRead;
+}
+
 function isDesktopUpdateAvailableEvent(event: Event): event is CustomEvent<Update> {
   return event instanceof CustomEvent && Boolean(event.detail);
 }
@@ -122,20 +150,66 @@ interface DesktopUpdateModalProps {
   errorText: string;
   downloadedBytes: number;
   contentLength: number | null;
+  currentVersion: string | null;
   onClose: () => void;
   onInstall: () => void;
 }
 
 export function useDesktopUpdateDialog() {
   const { toast } = useToast();
+  const isSupported = isTauriLocalRuntime();
   const [open, setOpen] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
   const [status, setStatus] = useState<UpdateStatus>("available");
   const [errorText, setErrorText] = useState("");
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [contentLength, setContentLength] = useState<number | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  const [isVersionLoading, setIsVersionLoading] = useState(false);
+  const [versionError, setVersionError] = useState("");
 
   const isBusy = status === "downloading" || status === "installing" || status === "restarting";
+
+  useEffect(() => {
+    if (!isSupported) {
+      setCurrentVersion(null);
+      setIsVersionLoading(false);
+      setVersionError("");
+      return;
+    }
+
+    let cancelled = false;
+    setIsVersionLoading(true);
+    setVersionError("");
+
+    void readDesktopAppVersion()
+      .then((version) => {
+        if (cancelled) {
+          return;
+        }
+        setCurrentVersion(version);
+        setVersionError(version ? "" : "无法读取当前版本");
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        if (import.meta.env.DEV) {
+          console.info("Tauri app version read failed.", error);
+        }
+        setCurrentVersion(null);
+        setVersionError("无法读取当前版本");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsVersionLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSupported]);
 
   const applyAvailableUpdate = useCallback((availableUpdate: Update, openDialog: boolean) => {
     setUpdate(availableUpdate);
@@ -165,7 +239,7 @@ export function useDesktopUpdateDialog() {
   }, [applyAvailableUpdate]);
 
   const checkForUpdate = useCallback(async ({ silent = false }: CheckForUpdateOptions = {}) => {
-    if (!isTauriLocalRuntime()) {
+    if (!isSupported) {
       if (!silent) {
         toast({
           title: "当前环境不支持在线更新",
@@ -216,7 +290,7 @@ export function useDesktopUpdateDialog() {
       });
       return null;
     }
-  }, [applyAvailableUpdate, toast]);
+  }, [applyAvailableUpdate, isSupported, toast]);
 
   const closeUpdateDialog = useCallback(() => {
     if (!isBusy) {
@@ -267,7 +341,10 @@ export function useDesktopUpdateDialog() {
     downloadedBytes,
     contentLength,
     isBusy,
-    isSupported: isTauriLocalRuntime(),
+    isSupported,
+    currentVersion,
+    isVersionLoading,
+    versionError,
     checkForUpdate,
     closeUpdateDialog,
     showUpdateDialog,
@@ -282,6 +359,7 @@ export function DesktopUpdateModal({
   errorText,
   downloadedBytes,
   contentLength,
+  currentVersion,
   onClose,
   onInstall,
 }: DesktopUpdateModalProps) {
@@ -306,7 +384,10 @@ export function DesktopUpdateModal({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                AiTeachMe {update.version}
+                AiTeachMe {formatDesktopAppVersion(update.version)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                当前版本 {formatDesktopAppVersion(currentVersion)}，可更新到 {formatDesktopAppVersion(update.version)}
               </p>
               {updateDate ? (
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">发布于 {updateDate}</p>
@@ -372,13 +453,15 @@ export function DesktopUpdateModal({
 interface DesktopUpdateIndicatorProps {
   update: Update;
   isBusy: boolean;
+  currentVersion: string | null;
   onOpen: () => void;
 }
 
-function DesktopUpdateIndicator({ update, isBusy, onOpen }: DesktopUpdateIndicatorProps) {
+function DesktopUpdateIndicator({ update, isBusy, currentVersion, onOpen }: DesktopUpdateIndicatorProps) {
   const updateDate = formatUpdateDate(update.date);
   const tooltip = [
-    `最新版本：AiTeachMe ${update.version}`,
+    `当前版本：AiTeachMe ${formatDesktopAppVersion(currentVersion)}`,
+    `最新版本：AiTeachMe ${formatDesktopAppVersion(update.version)}`,
     updateDate ? `发布于：${updateDate}` : "",
     "点击查看更新",
   ].filter(Boolean).join("\n");
@@ -390,7 +473,7 @@ function DesktopUpdateIndicator({ update, isBusy, onOpen }: DesktopUpdateIndicat
         onClick={onOpen}
         disabled={isBusy}
         title={tooltip}
-        aria-label={`发现新版本 AiTeachMe ${update.version}`}
+        aria-label={`发现新版本 AiTeachMe ${formatDesktopAppVersion(update.version)}`}
         className="group relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200/80 bg-white/92 text-emerald-700 shadow-[0_12px_32px_-20px_rgba(15,23,42,0.65)] backdrop-blur-md transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 dark:border-emerald-500/30 dark:bg-slate-950/88 dark:text-emerald-300 dark:hover:border-emerald-400/50 dark:hover:bg-emerald-500/10"
       >
         <Download className="h-4.5 w-4.5" />
@@ -436,6 +519,7 @@ export function DesktopUpdatePrompt() {
         <DesktopUpdateIndicator
           update={updater.update}
           isBusy={updater.isBusy}
+          currentVersion={updater.currentVersion}
           onOpen={updater.showUpdateDialog}
         />
       ) : null}
@@ -446,6 +530,7 @@ export function DesktopUpdatePrompt() {
         errorText={updater.errorText}
         downloadedBytes={updater.downloadedBytes}
         contentLength={updater.contentLength}
+        currentVersion={updater.currentVersion}
         onClose={updater.closeUpdateDialog}
         onInstall={updater.installUpdate}
       />

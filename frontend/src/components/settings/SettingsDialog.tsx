@@ -6,7 +6,7 @@ import { Loader2, RefreshCw, X } from "lucide-react";
 import { useTheme, type Theme } from "../providers/ThemeProvider";
 
 import { useExamResultDisplayPreference } from "../../lib/examResultDisplayPreference";
-import { DesktopUpdateModal, useDesktopUpdateDialog } from "../desktop/DesktopUpdatePrompt";
+import { DesktopUpdateModal, formatDesktopAppVersion, useDesktopUpdateDialog } from "../desktop/DesktopUpdatePrompt";
 import { Button } from "../ui/Button";
 import { FieldLabelBlock, SelectInput, SwitchRow } from "./SettingsFields";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
@@ -47,6 +47,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     contentLength: desktopUpdateContentLength,
     isBusy: isDesktopUpdating,
     isSupported: isDesktopUpdateSupported,
+    currentVersion: desktopCurrentVersion,
+    isVersionLoading: isDesktopVersionLoading,
+    versionError: desktopVersionError,
     checkForUpdate: checkForDesktopUpdate,
     closeUpdateDialog,
     installUpdate,
@@ -109,6 +112,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
   const activeSectionConfig = sections.find((section) => section.id === activeSection) ?? sections[0];
   const isUpdateCheckBusy = isCheckingUpdate || isDesktopUpdating;
+  const desktopVersionDisplay = isDesktopVersionLoading
+    ? "读取中..."
+    : desktopVersionError
+      ? "读取失败"
+      : formatDesktopAppVersion(desktopCurrentVersion);
 
   const handleManualUpdateCheck = useCallback(async () => {
     if (isUpdateCheckBusy) {
@@ -200,6 +208,17 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                             <FieldLabelBlock
                               label="桌面更新"
                               description="手动检查新版本，发现更新后再确认安装。"
+                              helper={
+                                <span
+                                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                                  title={desktopVersionError || undefined}
+                                >
+                                  <span className="shrink-0">当前安装版本</span>
+                                  <span className="min-w-0 truncate font-mono font-semibold text-zinc-900 dark:text-slate-100">
+                                    {desktopVersionDisplay}
+                                  </span>
+                                </span>
+                              }
                             />
 
                             <div className="flex flex-1 items-center justify-start md:justify-end">
@@ -265,6 +284,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         errorText={desktopUpdateErrorText}
         downloadedBytes={desktopUpdateDownloadedBytes}
         contentLength={desktopUpdateContentLength}
+        currentVersion={desktopCurrentVersion}
         onClose={closeUpdateDialog}
         onInstall={installUpdate}
       />
