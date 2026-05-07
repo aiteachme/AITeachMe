@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2, RefreshCw } from "lucide-react";
-import type { Update } from "@tauri-apps/plugin-updater";
+import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
@@ -8,13 +8,14 @@ import { useToast } from "../ui/Toast";
 const CHECK_DELAY_MS = 1800;
 const CHECK_TIMEOUT_MS = 30_000;
 const CHECK_WATCHDOG_MS = 45_000;
-const STARTUP_CHECK_SESSION_KEY = "aiteachme:tauri-local-update-startup-check";
+const DOWNLOAD_PROGRESS_UPDATE_INTERVAL_MS = 250;
 const DESKTOP_UPDATE_AVAILABLE_EVENT = "aiteachme:desktop-update-available";
 
 type UpdateStatus = "available" | "downloading" | "installing" | "restarting" | "failed";
 
 let pendingDesktopUpdateCheck: Promise<Update | null> | null = null;
 let pendingDesktopVersionRead: Promise<string | null> | null = null;
+let hasQueuedStartupUpdateCheck = false;
 
 export function isTauriLocalRuntime(): boolean {
   if (typeof window === "undefined") {
@@ -315,7 +316,42 @@ export function useDesktopUpdateDialog() {
     setContentLength(null);
 
     try {
-      await update.downloadAndInstall();
+      let nextDownloadedBytes = 0;
+      let nextContentLength: number | null = null;
+      let lastProgressUpdateAt = 0;
+
+      const flushProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressUpdateAt < DOWNLOAD_PROGRESS_UPDATE_INTERVAL_MS) {
+          return;
+        }
+        lastProgressUpdateAt = now;
+        setDownloadedBytes(nextDownloadedBytes);
+        setContentLength(nextContentLength);
+      };
+
+      await update.downloadAndInstall((event: DownloadEvent) => {
+        if (event.event === "Started") {
+          nextDownloadedBytes = 0;
+          nextContentLength = event.data.contentLength ?? null;
+          flushProgress(true);
+          return;
+        }
+
+        if (event.event === "Progress") {
+          nextDownloadedBytes += event.data.chunkLength;
+          flushProgress();
+          return;
+        }
+
+        if (event.event === "Finished") {
+          if (nextContentLength !== null) {
+            nextDownloadedBytes = Math.max(nextDownloadedBytes, nextContentLength);
+          }
+          flushProgress(true);
+          setStatus("installing");
+        }
+      });
 
       setStatus("restarting");
       const { relaunch } = await import("@tauri-apps/plugin-process");
@@ -369,6 +405,9 @@ export function DesktopUpdateModal({
     }
     return Math.min(100, Math.round((downloadedBytes / contentLength) * 100));
   }, [contentLength, downloadedBytes]);
+  const progressBarWidth = status === "installing" || status === "restarting"
+    ? 100
+    : progressPercent ?? (downloadedBytes > 0 ? 45 : 25);
 
   const updateDate = formatUpdateDate(update?.date);
   const isBusy = status === "downloading" || status === "installing" || status === "restarting";
@@ -409,13 +448,15 @@ export function DesktopUpdateModal({
             <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
               <div
                 className="h-full rounded-full bg-slate-900 transition-all dark:bg-slate-100"
-                style={{ width: `${progressPercent ?? 35}%` }}
+                style={{ width: `${progressBarWidth}%` }}
               />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {status === "downloading"
                 ? progressPercent === null
-                  ? "正在下载更新包..."
+                  ? downloadedBytes > 0
+                    ? `正在下载更新包，已下载 ${formatBytes(downloadedBytes)}`
+                    : "正在下载更新包..."
                   : `正在下载更新包，${progressPercent}%（${formatBytes(downloadedBytes)} / ${formatBytes(contentLength ?? 0)}）`
                 : status === "installing"
                   ? "正在安装更新，应用会自动关闭并完成覆盖安装..."
@@ -487,30 +528,27 @@ function DesktopUpdateIndicator({ update, isBusy, currentVersion, onOpen }: Desk
 }
 
 export function DesktopUpdatePrompt() {
-  const hasStartedRef = useRef(false);
   const updater = useDesktopUpdateDialog();
   const { checkForUpdate } = updater;
 
   useEffect(() => {
-    if (hasStartedRef.current || !isTauriLocalRuntime()) {
+    if (hasQueuedStartupUpdateCheck || !isTauriLocalRuntime()) {
       return;
     }
-    hasStartedRef.current = true;
+    hasQueuedStartupUpdateCheck = true;
 
-    try {
-      if (window.sessionStorage.getItem(STARTUP_CHECK_SESSION_KEY) === "1") {
-        return;
-      }
-      window.sessionStorage.setItem(STARTUP_CHECK_SESSION_KEY, "1");
-    } catch {
-      // Session storage is only used to avoid duplicate startup prompts.
-    }
-
+    let didStartCheck = false;
     const timer = window.setTimeout(() => {
+      didStartCheck = true;
       void checkForUpdate({ silent: true });
     }, CHECK_DELAY_MS);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (!didStartCheck) {
+        hasQueuedStartupUpdateCheck = false;
+      }
+    };
   }, [checkForUpdate]);
 
   return (
