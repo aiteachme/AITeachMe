@@ -2,9 +2,57 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+from importlib import metadata
+from pathlib import Path
+import sys
+import tomllib
+
 from app.shared.infra.env_support import get_env, get_env_optional_bool
 
-APP_VERSION = "0.0.7"
+_BACKEND_DISTRIBUTION_NAME = "aiteachme-backend"
+_UNKNOWN_APP_VERSION = "0.0.0"
+
+
+def _read_pyproject_version() -> str | None:
+    roots: list[Path] = []
+    bundled_root = getattr(sys, "_MEIPASS", None)
+    if bundled_root:
+        roots.append(Path(str(bundled_root)).resolve())
+
+    current_path = Path(__file__).resolve()
+    roots.extend(current_path.parents)
+
+    for root in roots:
+        pyproject_path = root / "pyproject.toml"
+        if not pyproject_path.is_file():
+            continue
+
+        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        project = data.get("project")
+        if not isinstance(project, dict):
+            continue
+
+        version = project.get("version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+
+    return None
+
+
+def _read_distribution_version() -> str | None:
+    try:
+        return metadata.version(_BACKEND_DISTRIBUTION_NAME)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+@lru_cache(maxsize=1)
+def get_app_version() -> str:
+    return _read_pyproject_version() or _read_distribution_version() or _UNKNOWN_APP_VERSION
+
+
+APP_VERSION = get_app_version()
 
 
 def resolve_app_mode() -> str:
@@ -27,10 +75,6 @@ def resolve_auth_enabled() -> bool:
     if explicit_value is not None:
         return explicit_value
     return is_cloud_mode()
-
-
-def get_app_version() -> str:
-    return APP_VERSION
 
 
 def get_guest_cookie_name() -> str:

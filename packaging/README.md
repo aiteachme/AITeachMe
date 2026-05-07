@@ -104,6 +104,8 @@ Tauri local 更新源固定为 GitHub Release `releases/latest` 通道，不再�
 
 Tauri local 安装包不依赖在线更新密钥；缺少密钥时会继续生成普通安装包，并跳过 updater 包和更新清单。
 GitHub Release 发布 Tauri local 时会强制要求 updater 密钥，避免正式发布出无法被旧版本自动发现的安装包。
+GitHub Release 可通过 `require_windows_signing` 输入参数强制要求 Windows Authenticode 签名；当前未配置证书时保持关闭，安装包会是未签名状态。
+带预绑定私有配置的安装包不能发布为 stable Release，因为 stable Release 会被 `releases/latest` 在线更新通道自动推送给旧版本用户；需要验证时使用 alpha/beta，或另建受控分发通道。
 
 如需同时生成在线更新产物，发布包前需要配置：
 

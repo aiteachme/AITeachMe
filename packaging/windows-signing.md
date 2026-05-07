@@ -13,7 +13,7 @@ Windows 安装包如果没有 Authenticode 代码签名，或者刚发布还没�
 
 没有配置签名环境变量时，Electron/Tauri 打包继续生成未签名安装包，不会因为缺少证书而失败。打包脚本会输出签名状态提示。
 
-GitHub Release 发布流水线会强制要求 Windows Authenticode 签名，并在上传前检查 `packaging\release` 下所有 `.exe` 的签名状态。未签名或签名无效的安装包不会被上传到 Release。
+GitHub Release 发布流水线提供 `require_windows_signing` 输入参数。未启用时允许发布未签名安装包；启用后会在上传前检查 `packaging\release` 下所有 `.exe` 的签名状态，未签名或签名无效的安装包不会被上传到 Release。
 
 如需在发布流水线中强制要求签名：
 

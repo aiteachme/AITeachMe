@@ -29,27 +29,13 @@ updateJson("frontend/package-lock.json", (data) => {
   }
 });
 
-replaceInFile("frontend/openapi.json", (text) =>
-  text.replace(
-    /("info"\s*:\s*\{\s*"title"\s*:\s*"[^"]+"\s*,\s*"description"\s*:\s*"[^"]+"\s*,\s*"version"\s*:\s*)"([^"]+)"/,
-    `$1"${version}"`,
-  ),
-);
-
-updateJson("frontend/src-tauri/tauri.conf.json", (data) => {
-  data.version = version;
+replaceInFile("frontend/openapi.json", (text) => {
+  const infoVersionPattern = /("info"\s*:\s*\{[\s\S]*?"version"\s*:\s*)"([^"]+)"/;
+  if (!infoVersionPattern.test(text)) {
+    throw new Error("Cannot find frontend/openapi.json info.version");
+  }
+  return text.replace(infoVersionPattern, `$1"${version}"`);
 });
-
-replaceInFile("frontend/src-tauri/Cargo.toml", (text) =>
-  text.replace(/^version = "([^"]+)"/m, `version = "${version}"`),
-);
-
-replaceInFile("frontend/src-tauri/Cargo.lock", (text) =>
-  text.replace(
-    /(\[\[package\]\]\r?\nname = "aiteachme-tauri"\r?\nversion = )"([^"]+)"/,
-    `$1"${version}"`,
-  ),
-);
 
 replaceInFile("backend/pyproject.toml", (text) =>
   text.replace(/^version = "([^"]+)"/m, `version = "${version}"`),
@@ -60,8 +46,4 @@ replaceInFile("backend/uv.lock", (text) =>
     /(\[\[package\]\]\r?\nname = "aiteachme-backend"\r?\nversion = )"([^"]+)"/,
     `$1"${version}"`,
   ),
-);
-
-replaceInFile("backend/app/shared/infra/runtime/mode.py", (text) =>
-  text.replace(/^APP_VERSION = "([^"]+)"/m, `APP_VERSION = "${version}"`),
 );

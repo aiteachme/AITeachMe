@@ -168,6 +168,14 @@ jobs:
         run: |
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Guard stable bundled releases
+        if: ${{ inputs.bundle_private_env == true && inputs.suffix == 'none' }}
+        run: |
+          echo "Stable GitHub Releases feed the public Tauri latest updater channel."
+          echo "Do not publish bundled private-env installers to the stable latest channel."
+          echo "Use alpha/beta for private validation, or publish a normal tauri-local stable release."
+          exit 1
+
   build_desktop_installers:
     name: Build ${{ inputs.desktop_package_mode }} Windows installer
     runs-on: windows-latest
@@ -469,12 +477,9 @@ jobs:
             git add \
               frontend/package.json \
               frontend/package-lock.json \
-              frontend/src-tauri/tauri.conf.json \
-              frontend/src-tauri/Cargo.toml \
-              frontend/src-tauri/Cargo.lock \
+              frontend/openapi.json \
               backend/pyproject.toml \
-              backend/uv.lock \
-              backend/app/shared/infra/runtime/mode.py
+              backend/uv.lock
 
             git commit -m "chore: release $TAG"
           fi
