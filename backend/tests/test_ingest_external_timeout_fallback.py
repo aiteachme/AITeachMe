@@ -40,8 +40,18 @@ async def test_paddle_timeout_falls_back_directly_to_local_parse(monkeypatch, tm
             needs_asset_ocr=False,
         )
 
+    def fake_build_parse_plan(**kwargs):
+        del kwargs
+        return ParsePlan(
+            mode="local_markitdown",
+            parser_chain=["markitdown"],
+            decision_reason="test local fallback",
+            options=ParserRunOptions(),
+        )
+
     monkeypatch.setattr(parse_lib, "_run_paddle_ocr_external_parse", fake_paddle_external_parse)
     monkeypatch.setattr(parse_lib, "_run_mineru_external_parse", fake_mineru_external_parse)
+    monkeypatch.setattr(parse_lib, "build_parse_plan", fake_build_parse_plan)
     monkeypatch.setattr(parse_lib, "fast_parse_file", fake_local_parse)
 
     node = parse_lib.build_parse_file_node(
