@@ -2726,11 +2726,8 @@ async def exam_history(
         limit=size,
         offset=PageParams(page=page, size=size).offset,
     )
-    items_by_paper_id = {
-        int(paper.id or 0): exams_repo.list_items_by_paper(session, int(paper.id or 0))
-        for paper in rows
-        if paper.id is not None
-    }
+    paper_ids = [int(paper.id or 0) for paper in rows if paper.id is not None]
+    items_by_paper_id = exams_repo.list_items_by_papers(session, paper_ids)
     all_items = [item for items in items_by_paper_id.values() for item in items]
     links_by_item_id = _links_for_items(session, all_items)
     knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)

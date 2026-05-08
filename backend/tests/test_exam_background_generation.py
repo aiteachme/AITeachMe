@@ -5,7 +5,13 @@ from datetime import timedelta
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.api.exams import _reserve_exam_prewarm_paper
-from app.models import ExamPaper, ExamStudyGuideCache
+from app.models import (
+    ExamPaper,
+    ExamPaperItem,
+    ExamStudyGuideCache,
+    QuestionKnowledgeUnitLink,
+    QuestionTemplate,
+)
 from app.repositories import exams_repo
 from app.utils.time import utcnow
 
@@ -14,7 +20,13 @@ def _engine():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
     SQLModel.metadata.create_all(
         engine,
-        tables=[ExamPaper.__table__, ExamStudyGuideCache.__table__],
+        tables=[
+            QuestionTemplate.__table__,
+            ExamPaper.__table__,
+            ExamPaperItem.__table__,
+            QuestionKnowledgeUnitLink.__table__,
+            ExamStudyGuideCache.__table__,
+        ],
     )
     return engine
 
@@ -268,3 +280,138 @@ def test_study_guide_cache_upserts_by_exam_paper() -> None:
 
         assert second.id == first.id
         assert exams_repo.get_study_guide_cache(session, exam_paper_id=int(paper.id or 0)).guide_json == '{"overall_summary":"new"}'
+
+
+def test_list_items_by_papers_batches_and_preserves_order() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        template = exams_repo.create_question_template(
+            session,
+            QuestionTemplate(
+                course_id="course_math00000000",
+                question_type="single_choice",
+                difficulty="easy",
+                stem="template stem",
+                stem_hash="template-hash",
+                answer="A",
+                explanation="explain",
+            ),
+        )
+        first_paper = ExamPaper(
+            course_id="course_math00000000",
+            user_id="user-a",
+            exam_mode="web_practice",
+            status="ready",
+            visibility="visible",
+            total_items=2,
+        )
+        second_paper = ExamPaper(
+            course_id="course_math00000000",
+            user_id="user-a",
+            exam_mode="web_practice",
+            status="ready",
+            visibility="visible",
+            total_items=1,
+        )
+        session.add(first_paper)
+        session.add(second_paper)
+        session.commit()
+        session.refresh(first_paper)
+        session.refresh(second_paper)
+
+        session.add_all([
+            ExamPaperItem(
+                exam_paper_id=int(first_paper.id or 0),
+                question_template_id=int(template.id or 0),
+                item_order=2,
+                stem_snapshot="second",
+                answer_snapshot="B",
+                explanation_snapshot="explain",
+                difficulty="medium",
+                question_type="single_choice",
+            ),
+            ExamPaperItem(
+                exam_paper_id=int(first_paper.id or 0),
+                question_template_id=int(template.id or 0),
+                item_order=1,
+                stem_snapshot="first",
+                answer_snapshot="A",
+                explanation_snapshot="explain",
+                difficulty="easy",
+                question_type="single_choice",
+            ),
+            ExamPaperItem(
+                exam_paper_id=int(second_paper.id or 0),
+                question_template_id=int(template.id or 0),
+                item_order=1,
+                stem_snapshot="only",
+                answer_snapshot="C",
+                explanation_snapshot="explain",
+                difficulty="hard",
+                question_type="fill_blank",
+            ),
+        ])
+        session.commit()
+
+        grouped = exams_repo.list_items_by_papers(
+            session,
+            [int(second_paper.id or 0), int(first_paper.id or 0), int(first_paper.id or 0), 0],
+        )
+
+        assert list(grouped) == [int(first_paper.id or 0), int(second_paper.id or 0)]
+        assert [item.item_order for item in grouped[int(first_paper.id or 0)]] == [1, 2]
+        assert [item.stem_snapshot for item in grouped[int(second_paper.id or 0)]] == ["only"]
+
+
+def test_find_template_by_stem_hash_respects_course_and_unit_link() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        course_template = exams_repo.create_question_template(
+            session,
+            QuestionTemplate(
+                course_id="course_math00000000",
+                question_type="single_choice",
+                difficulty="easy",
+                stem="shared stem",
+                stem_hash="same-hash",
+                answer="A",
+                explanation="explain",
+            ),
+        )
+        other_course_template = exams_repo.create_question_template(
+            session,
+            QuestionTemplate(
+                course_id="course_physics000000",
+                question_type="single_choice",
+                difficulty="easy",
+                stem="shared stem",
+                stem_hash="same-hash",
+                answer="B",
+                explanation="explain",
+            ),
+        )
+        exams_repo.replace_question_template_links(
+            session,
+            template_id=int(course_template.id or 0),
+            refs=[{"knowledge_unit_id": 1, "coverage_weight": 1.0}],
+        )
+        exams_repo.replace_question_template_links(
+            session,
+            template_id=int(other_course_template.id or 0),
+            refs=[{"knowledge_unit_id": 2, "coverage_weight": 1.0}],
+        )
+
+        matched = exams_repo.find_template_by_stem_hash(
+            session,
+            "course_math00000000",
+            1,
+            "same-hash",
+        )
+        assert matched is not None
+        assert matched.id == course_template.id
+        assert exams_repo.find_template_by_stem_hash(
+            session,
+            "course_math00000000",
+            2,
+            "same-hash",
+        ) is None

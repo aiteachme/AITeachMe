@@ -276,26 +276,21 @@ def find_template_by_stem_hash(
     unit_id: int,
     stem_hash: str,
 ) -> QuestionTemplate | None:
-    stmt = select(QuestionTemplate).where(
-        QuestionTemplate.course_id == course_id,
-        QuestionTemplate.stem_hash == stem_hash,
+    stmt = (
+        select(QuestionTemplate)
+        .join(
+            QuestionKnowledgeUnitLink,
+            QuestionKnowledgeUnitLink.question_template_id == QuestionTemplate.id,
+        )
+        .where(
+            QuestionTemplate.course_id == course_id,
+            QuestionTemplate.stem_hash == stem_hash,
+            QuestionKnowledgeUnitLink.knowledge_unit_id == unit_id,
+        )
+        .order_by(QuestionTemplate.id.asc())
+        .limit(1)
     )
-    rows = list(session.exec(stmt).all())
-    if not rows:
-        return None
-    template_ids = [int(item.id or 0) for item in rows]
-    linked_ids = {
-        int(item)
-        for item in session.exec(
-            select(QuestionKnowledgeUnitLink.question_template_id)
-            .where(
-                QuestionKnowledgeUnitLink.question_template_id.in_(template_ids),
-                QuestionKnowledgeUnitLink.knowledge_unit_id == unit_id,
-            )
-        ).all()
-        if item is not None
-    }
-    return next((item for item in rows if int(item.id or 0) in linked_ids), None)
+    return session.exec(stmt).first()
 
 
 def find_knowledge_unit_links_by_template(session: Session, template_id: int) -> list[dict[str, object]]:
@@ -345,6 +340,24 @@ def list_items_by_paper(session: Session, paper_id: int) -> list[ExamPaperItem]:
         .order_by(ExamPaperItem.item_order.asc())
     )
     return list(session.exec(stmt).all())
+
+
+def list_items_by_papers(session: Session, paper_ids: list[int]) -> dict[int, list[ExamPaperItem]]:
+    ids = sorted({int(item) for item in paper_ids if int(item or 0) > 0})
+    if not ids:
+        return {}
+
+    rows = list(
+        session.exec(
+            select(ExamPaperItem)
+            .where(ExamPaperItem.exam_paper_id.in_(ids))
+            .order_by(ExamPaperItem.exam_paper_id.asc(), ExamPaperItem.item_order.asc())
+        ).all()
+    )
+    grouped: dict[int, list[ExamPaperItem]] = {paper_id: [] for paper_id in ids}
+    for item in rows:
+        grouped.setdefault(int(item.exam_paper_id), []).append(item)
+    return grouped
 
 
 def list_exam_papers(
