@@ -22,7 +22,11 @@ from app.shared.infra.llm_support.defaults import (
     DEFAULT_LLM_CONCURRENCY_LIMIT,
     MAX_LLM_CONCURRENCY_LIMIT,
 )
-from app.shared.infra.llm_support.routing import LLMCallProfile, LLMCallPurpose, get_call_profile
+from app.shared.infra.llm_support.routing import (
+    LLMCallProfile,
+    get_task_profile,
+    normalize_task_type,
+)
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 from app.shared.infra.settings.support import (
@@ -62,7 +66,7 @@ class LLMRuntimeSnapshot:
 class CompletionContext:
     """Resolved configuration shared by one LLM helper invocation."""
 
-    call_purpose: LLMCallPurpose
+    task_type: str
     settings: Settings
     base_url: str | None
     provider: str | None
@@ -71,12 +75,6 @@ class CompletionContext:
     profile: LLMCallProfile
     model: str
     model_selector: str
-
-    @property
-    def task_type(self) -> LLMCallPurpose:
-        """Backward-compatible alias for older logging code."""
-
-        return self.call_purpose
 
 
 @dataclass(frozen=True)
@@ -262,25 +260,20 @@ def resolve_settings_model(settings: Settings, model: str | None = None) -> tupl
     return selector, selector
 
 
-def resolve_call_purpose(
-    *,
-    call_purpose: LLMCallPurpose | None = None,
-    task_type: LLMCallPurpose | None = None,
-) -> LLMCallPurpose:
-    """Resolve the new ``call_purpose`` name and legacy ``task_type`` name."""
+def resolve_task_type(task_type: object | None = None) -> str:
+    """Resolve the coarse LLM task label used for fallback profiles and stats."""
 
-    return call_purpose or task_type or LLMCallPurpose.DEFAULT
+    return normalize_task_type(task_type)
 
 
 def build_completion_context(
-    task_type: LLMCallPurpose | None = None,
+    task_type: object | None = None,
     *,
-    call_purpose: LLMCallPurpose | None = None,
     model: str | None = None,
 ) -> CompletionContext:
     """Resolve config and credentials for one task-scoped LLM call."""
 
-    resolved_purpose = resolve_call_purpose(call_purpose=call_purpose, task_type=task_type)
+    resolved_task_type = resolve_task_type(task_type)
     snapshot = get_llm_runtime_snapshot()
     settings = snapshot.settings
     base_url = snapshot.base_url
@@ -293,13 +286,13 @@ def build_completion_context(
         )
     resolved_model, model_selector = resolve_settings_model(settings, model)
     return CompletionContext(
-        call_purpose=resolved_purpose,
+        task_type=resolved_task_type,
         settings=settings,
         base_url=base_url,
         provider=provider,
         api_version=snapshot.api_version,
         api_key=api_key,
-        profile=get_call_profile(resolved_purpose),
+        profile=get_task_profile(resolved_task_type),
         model=resolved_model,
         model_selector=model_selector,
     )
@@ -326,6 +319,19 @@ def effective_call_timeout_s(context: CompletionContext, call_kwargs: Mapping[st
     except (TypeError, ValueError):
         return context.profile.timeout_s
     return timeout_s if timeout_s > 0 else context.profile.timeout_s
+
+
+def effective_max_retries(context: CompletionContext, call_kwargs: Mapping[str, Any] | None = None) -> int:
+    """Return explicit per-call retries, falling back to the purpose profile."""
+
+    raw_retries = (call_kwargs or {}).get("max_retries")
+    if raw_retries in (None, ""):
+        return context.profile.max_retries
+    try:
+        max_retries = int(float(raw_retries))
+    except (TypeError, ValueError):
+        return context.profile.max_retries
+    return max(1, min(10, max_retries))
 
 
 def context_request_timeout_s(
@@ -441,6 +447,7 @@ def build_completion_kwargs(
         "model": context.model,
         "messages": messages,
     }
+    remaining_kwargs.pop("max_retries", None)
     temperature = remaining_kwargs.pop("temperature", None)
     if temperature is not None:
         completion_kwargs["temperature"] = temperature
@@ -508,7 +515,7 @@ def log_attempt_started(
         event,
         attempt=attempt.attempt,
         model=attempt.tracked_model,
-        task_type=context.task_type.value,
+        task_type=context.task_type,
         timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
     )
@@ -528,7 +535,7 @@ def log_attempt_timeout(
         attempt=attempt.attempt,
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
-        task_type=context.task_type.value,
+        task_type=context.task_type,
         timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
         **trace_log_fields(),
@@ -549,7 +556,7 @@ def log_attempt_cancelled(
         attempt=attempt.attempt,
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
-        task_type=context.task_type.value,
+        task_type=context.task_type,
         **dict(extra or {}),
         **trace_log_fields(),
     )
@@ -572,7 +579,7 @@ def log_attempt_failed(
         attempt=attempt.attempt,
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
-        task_type=context.task_type.value,
+        task_type=context.task_type,
         error=str(error),
         **dict(extra or {}),
         **trace_log_fields(),
@@ -587,7 +594,7 @@ async def sleep_before_retry(attempt: int) -> None:
 
 def track_call(
     *,
-    task_type: LLMCallPurpose,
+    task_type: object,
     model: str,
     start: float,
     success: bool,
@@ -603,8 +610,9 @@ def track_call(
         return
 
     trace_context = get_llm_trace_context()
+    task_label = normalize_task_type(task_type)
     record = LLMCallRecord(
-        task_type=task_type.value,
+        task_type=task_label,
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,

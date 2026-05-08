@@ -56,7 +56,7 @@ AITeachMe 的 AI 工程分三层：
 
 注意：
 
-- `TaskType` 表示业务语义、温度、超时、重试和观测分类。
+- `TaskType` 只保留为底层兜底超时/重试和粗粒度观测标签；workflow 的具体请求预算应写在各自 `model_policy.py`。
 - 模型选择优先显式传 `model="reason" / "primary" / "light"`。
 - `extract` 现在只保留为兼容别名，内部默认回退到 `light`，不再作为独立模型分类继续扩展。
 - Mermaid 不再有独立模型配置，直接走普通轻量文本模型。

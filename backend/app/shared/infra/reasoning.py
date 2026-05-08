@@ -73,7 +73,7 @@ class ReasoningEngine:
         messages: list[dict],
         *,
         config: ReasoningConfig | None = None,
-        task_type: TaskType = TaskType.REASONING,
+        task_type: str = TaskType.REASONING,
     ) -> ReasoningResult:
         from app.shared.infra.llm_support import acompletion
 

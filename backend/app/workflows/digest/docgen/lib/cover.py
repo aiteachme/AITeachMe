@@ -295,6 +295,8 @@ async def generate_docgen_cover_artifact(
                 model=str(model_policy.model or "image_generation"),
                 size=size,
                 n=1,
+                timeout=model_policy.timeout_s,
+                max_retries=model_policy.max_retries,
                 extra_metadata={
                     **model_policy.metadata(),
                     "docgen_stage": "cover_generation",

@@ -45,7 +45,7 @@ class AgentLoopConfig:
     max_iterations: int = 10
     max_tool_calls_per_turn: int = 5
     tool_timeout_s: int = 30
-    task_type: TaskType = TaskType.CHAT
+    task_type: str = TaskType.CHAT
     model: str = "primary"
     result_max_chars: int = 2000
     llm_kwargs: dict[str, Any] = field(default_factory=dict)

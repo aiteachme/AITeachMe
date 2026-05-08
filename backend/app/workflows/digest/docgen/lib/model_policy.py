@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Literal
 
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
@@ -35,9 +34,10 @@ class DocGenModelStep(str, Enum):
 class DocGenModelPolicy:
     step: DocGenModelStep
     call_type: Literal["structured", "text", "image"]
-    call_purpose: LLMCallPurpose | None
     model: DocGenModelSlot | None
     max_tokens: int | None = None
+    timeout_s: int | None = None
+    max_retries: int = 3
     temperature: float | None = None
     note: str = ""
 
@@ -45,12 +45,13 @@ class DocGenModelPolicy:
         """Return kwargs for text/structured completion call sites."""
 
         kwargs: dict[str, object] = {}
-        if self.call_purpose is not None:
-            kwargs["call_purpose"] = self.call_purpose
         if self.model is not None and self.model != "image_generation":
             kwargs["model"] = self.model
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
+        if self.timeout_s is not None:
+            kwargs["timeout"] = self.timeout_s
+        kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
         return kwargs
@@ -62,6 +63,8 @@ class DocGenModelPolicy:
             "docgen_model_step": self.step.value,
             "docgen_model_slot": self.model or "",
             "docgen_call_type": self.call_type,
+            "docgen_timeout_s": self.timeout_s or 0,
+            "docgen_max_retries": self.max_retries,
         }
 
     def completion_kwargs_with_metadata(
@@ -78,125 +81,125 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
     DocGenModelStep.INTENT_CORE: DocGenModelPolicy(
         step=DocGenModelStep.INTENT_CORE,
         call_type="structured",
-        call_purpose=LLMCallPurpose.CLASSIFY,
         model="reason",
         max_tokens=1400,
+        timeout_s=90,
         temperature=0.1,
         note="文档级短意图判断，保留策略推理能力。",
     ),
     DocGenModelStep.FILE_SUMMARY: DocGenModelPolicy(
         step=DocGenModelStep.FILE_SUMMARY,
         call_type="structured",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
         max_tokens=12000,
+        timeout_s=240,
         temperature=0.1,
         note="文件级摘要容易被长 JSON 截断，输入已采样但输出预算仍保持宽松。",
     ),
     DocGenModelStep.TITLE_LOCK: DocGenModelPolicy(
         step=DocGenModelStep.TITLE_LOCK,
         call_type="structured",
-        call_purpose=LLMCallPurpose.REASONING,
         model="reason",
         max_tokens=700,
+        timeout_s=60,
         temperature=0.1,
         note="标题输出极短，但要守住 confirmed plan 语义。",
     ),
     DocGenModelStep.CHAPTER_EXECUTION_BRIEF: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
         call_type="structured",
-        call_purpose=LLMCallPurpose.REASONING,
         model="reason",
         max_tokens=1400,
+        timeout_s=120,
         temperature=0.1,
         note="章级最小执行 brief，需要稳定抽取教学目标。",
     ),
     DocGenModelStep.QUERY_PLANNING: DocGenModelPolicy(
         step=DocGenModelStep.QUERY_PLANNING,
         call_type="structured",
-        call_purpose=LLMCallPurpose.REASONING,
         model="reason",
         max_tokens=2200,
+        timeout_s=120,
         temperature=0.2,
         note="研究查询拆解需要覆盖缺口判断。",
     ),
     DocGenModelStep.RESEARCH_PURIFY: DocGenModelPolicy(
         step=DocGenModelStep.RESEARCH_PURIFY,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
         max_tokens=6000,
+        timeout_s=180,
         temperature=0.1,
         note="清洗 dense context，不做重推理。",
     ),
     DocGenModelStep.WRITER: DocGenModelPolicy(
         step=DocGenModelStep.WRITER,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN,
         model="reason",
         max_tokens=12000,
+        timeout_s=360,
         temperature=0.5,
         note="实际 model slot 由 digest mode profile 决定。",
     ),
     DocGenModelStep.HEADING_REPAIR: DocGenModelPolicy(
         step=DocGenModelStep.HEADING_REPAIR,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
         max_tokens=9000,
+        timeout_s=180,
         temperature=0.1,
         note="只修结构和标题层级。",
     ),
     DocGenModelStep.CHAPTER_REWRITE: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_REWRITE,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
         max_tokens=12000,
+        timeout_s=300,
         temperature=0.5,
         note="章节质量不足时的 bounded rewrite。",
     ),
     DocGenModelStep.MERMAID_PLACEHOLDER: DocGenModelPolicy(
         step=DocGenModelStep.MERMAID_PLACEHOLDER,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
         max_tokens=4500,
+        timeout_s=120,
         temperature=0.1,
         note="辅助资产生成，优先低成本。",
     ),
     DocGenModelStep.INTERACTIVE_HTML: DocGenModelPolicy(
         step=DocGenModelStep.INTERACTIVE_HTML,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
         max_tokens=12000,
+        timeout_s=300,
         temperature=0.1,
         note="交互页需要较完整的 HTML 生成能力。",
     ),
     DocGenModelStep.CHAPTER_REVIEW: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_REVIEW,
         call_type="structured",
-        call_purpose=LLMCallPurpose.DOCGEN_LIGHT,
         model="light",
         max_tokens=4500,
+        timeout_s=180,
         temperature=0.1,
         note="并行结构化审稿，优先速度与成本。",
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
         step=DocGenModelStep.REPAIR_PATCH,
         call_type="text",
-        call_purpose=LLMCallPurpose.DOCGEN,
         model="primary",
         max_tokens=1800,
+        timeout_s=120,
         temperature=0.5,
         note="只生成局部补丁片段，代码负责插入原章节。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(
         step=DocGenModelStep.COVER_IMAGE,
         call_type="image",
-        call_purpose=LLMCallPurpose.IMAGE_GENERATION,
         model="image_generation",
+        timeout_s=600,
         temperature=0.7,
         note="图片模型由 settings.models.image_generation 决定。",
     ),

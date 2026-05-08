@@ -179,22 +179,22 @@ await acompletion_with_fallback(messages, model="primary")
 await acompletion_with_fallback(messages, model="light")
 ```
 
-这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`call_purpose` 可用于超时、重试和观测归类，但不应作为业务代码选择模型或采样参数的主要方式。旧参数名 `task_type` 仅保留给存量调用兼容使用。
+这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`task_type` 仅作为底层兜底超时/重试画像和粗粒度观测分类保留，不应作为业务代码选择模型、采样参数或请求预算的主要方式。
 
 ### LLM 全局并发
 
 所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 调用都共享 `app.shared.infra.llm_support` 内的进程级 limiter。
 运行时上限只由 `settings.llm.concurrency_limit` 控制，默认 `16`。workflow 内部可以继续设置本链路自己的 fan-out 上限，但实际发给上游的请求数仍会被全局 limiter 压住。
 
-### LLM call purpose 与业务 model policy
+### LLM 兜底 profile 与业务 model policy
 
-`call_purpose` 和 workflow 自己的 `model_policy.py` 分工必须保持清楚：
+底层 profile 和 workflow 自己的 `model_policy.py` 分工必须保持清楚：
 
-- `call_purpose` 是 infra 级调用画像，只负责 `timeout / max_retries` 以及观测归类。默认值维护在 `app.shared.infra.llm_support.routing`。
-- 默认 `timeout / max_retries` 应偏宽松，优先避免长文档生成、结构化修复、网络抖动导致的非业务失败；线上可用 `LLM_TIMEOUT_<PURPOSE>_S` 和 `LLM_MAX_RETRIES_<PURPOSE>` 覆盖。
-- `model=` 是模型槽位选择，业务 workflow 应显式传 `reason / primary / light`，不要指望 `call_purpose` 替你选模型。
-- workflow 的 `model_policy.py` 负责“这个业务步骤用哪个模型槽位、调用类型、必要的 token 上限、temperature、稳定 metadata”。采样参数应跟业务步骤走，不跟 `call_purpose` 走。
-- 如果发现非 workflow 临时调用需要采样参数，应在调用点显式传 `temperature`；不要把新的 temperature 默认塞回 `call_purpose` profile。
+- `TaskType` 是 infra 级轻量标签，只提供兜底 `timeout / max_retries` 以及粗粒度观测归类。默认值维护在 `app.shared.infra.llm_support.routing`。
+- 这些兜底 `timeout / max_retries` 应偏宽松，优先避免长文档生成、结构化修复、网络抖动导致的非业务失败；线上仍可用 `LLM_TIMEOUT_<TASK>_S` 和 `LLM_MAX_RETRIES_<TASK>` 覆盖存量调用。
+- `model=` 是模型槽位选择，业务 workflow 应显式传 `reason / primary / light`，不要指望 `task_type` 替你选模型。
+- workflow 的 `model_policy.py` 负责“这个业务步骤用哪个模型槽位、调用类型、必要的 token 上限、temperature、timeout、max_retries、稳定 metadata”。请求预算和采样参数应跟业务步骤走，不跟 `task_type` 走。
+- 如果发现非 workflow 临时调用需要采样参数，应在调用点显式传 `temperature`；不要把新的 temperature 默认塞回 task profile。
 - 业务观测字段如 `planner_model_step / docgen_model_step` 应从 workflow 的 model policy 统一生成，再与运行时 metadata 合并，避免每个调用点手写一套。
 
 ## 什么不该放进 Infra

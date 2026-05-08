@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.schemas.llm import ChatMessage
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support.routing import normalize_task_type
 from app.shared.infra.observability.trace import (
     get_llm_trace_context,
     langsmith_capture_inputs_enabled,
@@ -233,16 +233,16 @@ def _end_langsmith_trace(
 
 def _langsmith_llm_metadata(
     *,
-    task_type: LLMCallPurpose,
+    task_type: object,
     provider: str,
     model_name: str,
     invocation_params: Mapping[str, Any] | None = None,
     attempt: int | None = None,
     mode: str,
 ) -> dict[str, Any]:
+    task_label = normalize_task_type(task_type)
     metadata: dict[str, Any] = {
-        "call_purpose": task_type.value,
-        "task_type": task_type.value,
+        "task_type": task_label,
         "mode": mode,
         "model": model_name,
         "ls_provider": provider,
@@ -264,7 +264,7 @@ def _langsmith_llm_metadata(
 
 def _langsmith_trace_kwargs(
     *,
-    task_type: LLMCallPurpose,
+    task_type: object,
     call_model: str,
     provider: str,
     model_name: str,
@@ -278,6 +278,7 @@ def _langsmith_trace_kwargs(
 ) -> dict[str, Any]:
     trace_context = get_llm_trace_context()
     invocation_params = _langsmith_invocation_params(call_kwargs or {})
+    task_label = normalize_task_type(task_type)
     metadata = {
         **dict(extra_metadata or {}),
         **_langsmith_llm_metadata(
@@ -297,5 +298,5 @@ def _langsmith_trace_kwargs(
         "lane": trace_context.lane,
         "node": trace_context.node,
         "extra_metadata": metadata,
-        "extra_tags": [f"purpose:{task_type.value}", f"task:{task_type.value}", *(extra_tags or [])],
+        "extra_tags": [f"task:{task_label}", *(extra_tags or [])],
     }

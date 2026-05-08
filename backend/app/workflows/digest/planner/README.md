@@ -133,7 +133,7 @@ after understand_goal
 
 ### 1.2 当前模型槽位总览
 
-Planner 的 `call_purpose + model slot + max_tokens + metadata` 统一由 `lib/model_policy.py` 维护。节点不应各自硬编码模型策略。
+Planner 的 `model slot + max_tokens + timeout_s + max_retries + metadata` 统一由 `lib/model_policy.py` 维护。节点不应各自硬编码模型策略。
 
 当前默认逻辑槽位：
 
@@ -152,14 +152,14 @@ light   -> settings.models.light
 
 当前 LLM 调用：
 
-| 阶段 / 子步骤 | 调用类型 | call_purpose | 逻辑模型槽位 | 默认用途 |
-| --- | --- | --- | --- | --- |
-| `stream_planner_brief` | stream | `GENERATE` | `light` | 用户可见的资料边界判断和规划思考 |
-| `extract_plan_intent` | structured | `CLASSIFY` | `light` | 内部 plan_intent 与 plan_queries |
-| `stream_and_parse_plan_draft.compose_plan` | stream | `REASONING` | `light` | 可见计划说明 + 隐藏 JSON 初步大纲 |
-| `stream_and_parse_plan_draft.repair` | structured | `REASONING` | `light` | 修复不完整 `<PLAN_JSON>` |
-| `generate_course_name` | text | `GENERATE` | `light` | 课程短标题 |
-| `select_course_icon` | text | `CLASSIFY` | `light` | 课程图标候选 |
+| 阶段 / 子步骤 | 调用类型 | 逻辑模型槽位 | 默认用途 |
+| --- | --- | --- | --- |
+| `stream_planner_brief` | stream | `light` | 用户可见的资料边界判断和规划思考 |
+| `extract_plan_intent` | structured | `light` | 内部 plan_intent 与 plan_queries |
+| `stream_and_parse_plan_draft.compose_plan` | stream | `light` | 可见计划说明 + 隐藏 JSON 初步大纲 |
+| `stream_and_parse_plan_draft.repair` | structured | `light` | 修复不完整 `<PLAN_JSON>` |
+| `generate_course_name` | text | `light` | 课程短标题 |
+| `select_course_icon` | text | `light` | 课程图标候选 |
 
 ## 2. 长流程执行合同
 

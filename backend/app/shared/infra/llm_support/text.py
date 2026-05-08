@@ -9,12 +9,12 @@ from typing import Any
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
     build_completion_context,
     effective_call_timeout_s,
+    effective_max_retries,
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
@@ -35,8 +35,7 @@ from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
 async def acompletion(
     messages: list[ChatMessage],
     *,
-    call_purpose: LLMCallPurpose | None = None,
-    task_type: LLMCallPurpose | None = None,
+    task_type: object | None = None,
     model: str | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
@@ -46,15 +45,15 @@ async def acompletion(
     litellm = load_litellm()
     context = build_completion_context(
         task_type=task_type,
-        call_purpose=call_purpose,
         model=model,
     )
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = context.model
+    max_retries = effective_max_retries(context, kwargs)
 
     async with get_llm_concurrency_limiter():
-        for attempt in range(1, context.profile.max_retries + 1):
+        for attempt in range(1, max_retries + 1):
             prepared = prepare_completion_attempt(
                 context=context,
                 messages=messages,
@@ -101,7 +100,7 @@ async def acompletion(
                     attempt=prepared.attempt,
                     elapsed_s=round(time.monotonic() - prepared.started_at, 2),
                     model=tracked_model,
-                    task_type=context.task_type.value,
+                    task_type=context.task_type,
                 )
                 track_call(
                     task_type=context.task_type,
@@ -146,7 +145,7 @@ async def acompletion(
                     error=exc,
                 )
 
-            if attempt < context.profile.max_retries:
+            if attempt < max_retries:
                 await sleep_before_retry(attempt)
 
     track_call(

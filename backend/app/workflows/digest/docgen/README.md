@@ -117,7 +117,8 @@ image_generation -> settings.models.image_generation（默认未配置）
 - 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
 - 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
 - `docgen` 当前没有使用 `extract` 槽位。
-- DocGen 的 `call_purpose + model slot` 分配统一由 `lib/model_policy.py` 维护；节点和 lib 不应各自硬编码模型槽位。
+- DocGen 的模型槽位、输出预算、步骤级 `timeout_s` 和 `max_retries` 统一由 `lib/model_policy.py` 维护；节点和 lib 不应各自硬编码模型策略。
+- DocGen 不再依赖通用 `DOCGEN / DOCGEN_LIGHT` profile 来决定工作流请求超时，避免单个卡住的模型请求长时间拖住整条后台构建。
 
 按当前代码，DocGen 各阶段的大模型使用如下：
 
@@ -302,12 +303,12 @@ prepare_global_seed
   作用：把前置阶段收口成“全局轻准备”，不再在这里生成整本执行大纲。
   当前模型方案：
     - `infer_intent_core`
-      - `call_purpose=CLASSIFY`
       - `model="reason"`
+      - `timeout_s=90`，`max_retries=3`
       - 默认映射到 `qwen-max`
     - `summarize_files`
-      - `call_purpose=DOCGEN_LIGHT`
       - `model="light"`
+      - `timeout_s=240`，`max_retries=3`
       - 默认映射到 `qwen-flash`
       - 同时接收 section catalog，让 LLM 为后续章节写作选择原文切片，而不是只做文件级摘要。
 
@@ -323,8 +324,8 @@ lock_titles_for_chapters
     - 不生成 retrieval queries。
     - 不生成 media requests。
   当前模型方案：
-    - `call_purpose=REASONING`
     - `model="reason"`
+    - `timeout_s=60`，`max_retries=3`
     - 默认映射到 `qwen-max`
 
 confirm_and_seed_backbone
@@ -372,8 +373,8 @@ build_chapter_execution_briefs
     - 不输出 media_requests。
     - 不输出 practice_seed_policy。
   当前模型方案：
-    - `call_purpose=REASONING`
     - `model="reason"`
+    - `timeout_s=120`，`max_retries=3`
     - 默认映射到 `qwen-max`
 
 assemble_chapter_tasks
@@ -410,15 +411,15 @@ generate_chapters
     2. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
        当前模型方案：
          - 子查询规划 `generate_sub_queries` / `generate_gap_queries`
-         - `call_purpose=REASONING`
          - `model="reason"`
+         - `timeout_s=120`，`max_retries=3`
          - 默认映射到 `qwen-max`
     3. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
        当前模型方案：
          - 当前主要依赖检索、reader、compressor 规则链。
          - 若触发 `research_purify`，使用：
-           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
+           - `timeout_s=180`，`max_retries=3`
            - 默认映射到 `qwen-flash`
     4. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
     5. align_evidence：把 ClaimLedger 映射到 evidence_units，生成 ClaimEvidenceMap 和 EvidenceLedger。
@@ -426,20 +427,20 @@ generate_chapters
     7. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
        当前模型方案：
          - writer 主调用：
-           - `call_purpose=DOCGEN`
            - `digest_mode=systematic -> model="reason"`
            - `digest_mode=sprint -> model="primary"`
+           - `timeout_s=360`，`max_retries=3`
          - 默认映射到 `qwen-max / qwen-flash`
          - heading repair：
-           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
+           - `timeout_s=180`，`max_retries=3`
            - 默认映射到 `qwen-flash`
     8. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
        当前模型方案：
          - critic 本身是规则判断，不调模型
          - 若触发 rewrite：
-           - `call_purpose=DOCGEN`
            - `model="primary"`
+           - `timeout_s=300`，`max_retries=3`
            - 默认映射到 `qwen-flash`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
     - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析”节奏。
@@ -460,12 +461,12 @@ enhance_chapters
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：
          - Mermaid 占位生成：
-           - `call_purpose=DOCGEN_LIGHT`
            - `model="light"`
+           - `timeout_s=120`，`max_retries=3`
            - 默认映射到 `qwen-flash`
          - interactive HTML sidecar：
-           - `call_purpose=DOCGEN`
            - `model="primary"`
+           - `timeout_s=300`，`max_retries=3`
            - 默认映射到 `qwen-flash`
          - image 当前不走大模型生成正文资产
     2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
@@ -517,8 +518,8 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
   当前模型方案：
     - `review_chapter`
-      - `call_purpose=DOCGEN`
       - `model="light"`
+      - `timeout_s=180`，`max_retries=3`
       - 默认映射到 `qwen-flash`
     - `document_consistency_review`
       - 当前无 LLM 调用；纯规则一致性检查。
@@ -547,8 +548,8 @@ repair_or_route
       - 三轮后仍未覆盖的同章 patch 动作记录为 unresolved warning，等待下一次用户触发或后续更明确的有限回流。
   当前模型方案：
     - `surface_patch / section_patch / evidence_patch`
-      - `call_purpose=DOCGEN`
       - `model="primary"`
+      - `timeout_s=120`，`max_retries=3`
       - 默认映射到 `qwen-flash`
     - `regenerate_chapter`
       - 当前降级使用 `section_patch` 的单章局部修补路径

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 
 ProfileModelSlot = Literal["light", "primary", "reason"]
@@ -21,17 +20,19 @@ class ProfileModelStep(str, Enum):
 class ProfileModelPolicy:
     step: ProfileModelStep
     call_type: Literal["text"]
-    call_purpose: LLMCallPurpose
     model: ProfileModelSlot
     max_tokens: int
+    timeout_s: int
+    max_retries: int = 3
     temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
         kwargs: dict[str, object] = {
-            "call_purpose": self.call_purpose,
             "model": self.model,
             "max_tokens": self.max_tokens,
+            "timeout": self.timeout_s,
+            "max_retries": self.max_retries,
         }
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
@@ -52,6 +53,8 @@ class ProfileModelPolicy:
                 "profile_model_slot": self.model,
                 "profile_call_type": self.call_type,
                 "profile_max_tokens": self.max_tokens,
+                "profile_timeout_s": self.timeout_s,
+                "profile_max_retries": self.max_retries,
             },
         )
         return kwargs
@@ -61,9 +64,9 @@ _POLICIES: dict[ProfileModelStep, ProfileModelPolicy] = {
     ProfileModelStep.REPORT_SUGGESTIONS: ProfileModelPolicy(
         step=ProfileModelStep.REPORT_SUGGESTIONS,
         call_type="text",
-        call_purpose=LLMCallPurpose.SUMMARIZE,
         model="light",
         max_tokens=1800,
+        timeout_s=240,
         temperature=0.5,
         note="学习建议是轻量总结，但设置明确输出预算避免 provider 默认过小。",
     ),

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 
 QuestionBuildModelSlot = Literal["light", "primary", "reason"]
@@ -25,9 +24,10 @@ class QuestionBuildModelStep(str, Enum):
 class QuestionBuildModelPolicy:
     step: QuestionBuildModelStep
     call_type: Literal["structured"]
-    call_purpose: LLMCallPurpose
     model: QuestionBuildModelSlot
     max_tokens: int | None = None
+    timeout_s: int | None = None
+    max_retries: int = 3
     min_tokens: int | None = None
     tokens_per_question: int | None = None
     max_tokens_cap: int | None = None
@@ -61,12 +61,14 @@ class QuestionBuildModelPolicy:
         attempt: int | None = None,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {
-            "call_purpose": self.call_purpose,
             "model": self.model,
         }
         max_tokens = self.resolved_max_tokens(question_count=question_count, attempt=attempt)
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if self.timeout_s is not None:
+            kwargs["timeout"] = self.timeout_s
+        kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
         return kwargs
@@ -85,6 +87,8 @@ class QuestionBuildModelPolicy:
                 question_count=question_count,
                 attempt=attempt,
             ),
+            "question_build_timeout_s": self.timeout_s,
+            "question_build_max_retries": self.max_retries,
         }
 
     def completion_kwargs_with_metadata(
@@ -108,17 +112,17 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.FILTER_UNITS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.FILTER_UNITS,
         call_type="structured",
-        call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
         max_tokens=3600,
+        timeout_s=120,
         temperature=0.1,
         note="知识点候选池筛选需要返回排序、理由和兜底提示，避免长图谱下 JSON 被截断。",
     ),
     QuestionBuildModelStep.ALLOCATE_BLUEPRINTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.ALLOCATE_BLUEPRINTS,
         call_type="structured",
-        call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
+        timeout_s=120,
         min_tokens=4200,
         tokens_per_question=700,
         max_tokens_cap=14000,
@@ -128,8 +132,8 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.PLAN_REQUIREMENTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.PLAN_REQUIREMENTS,
         call_type="structured",
-        call_purpose=LLMCallPurpose.CLASSIFY,
         model="light",
+        timeout_s=120,
         min_tokens=2600,
         tokens_per_question=420,
         max_tokens_cap=12000,
@@ -139,8 +143,8 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.GENERATE_ONE: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.GENERATE_ONE,
         call_type="structured",
-        call_purpose=LLMCallPurpose.GENERATE,
         model="reason",
+        timeout_s=300,
         attempt_max_tokens=(6000, 9000),
         temperature=0.65,
         note="单题生成第二次重试给更大的结构化输出空间。",
@@ -148,8 +152,8 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.PLAYGROUND_BATCH: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.PLAYGROUND_BATCH,
         call_type="structured",
-        call_purpose=LLMCallPurpose.GENERATE,
         model="reason",
+        timeout_s=300,
         min_tokens=6000,
         tokens_per_question=900,
         max_tokens_cap=14000,

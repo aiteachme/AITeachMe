@@ -16,4 +16,4 @@
 
 - 该链路负责把知识单元与考试规格转换成结构化题目草稿。
 - API 和上层 workflow 应优先通过 `app.workflows.examine` 或 `question_build.__init__` 的稳定导出进入。
-- LLM 调用的 `call_purpose`、模型槽位、动态 `max_tokens` 和 metadata 统一由 `lib/model_policy.py` 维护。
+- LLM 调用的模型槽位、动态 `max_tokens`、`timeout_s`、`max_retries` 和 metadata 统一由 `lib/model_policy.py` 维护。

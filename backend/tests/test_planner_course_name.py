@@ -10,6 +10,9 @@ def test_course_name_policy_uses_creative_temperature() -> None:
 
     assert kwargs["temperature"] == 0.65
     assert kwargs["max_tokens"] == 40
+    assert kwargs["timeout"] == 300
+    assert kwargs["max_retries"] == 3
+    assert "task_type" not in kwargs
 
 
 def test_course_name_prompt_has_diverse_examples_and_anti_generic_rule() -> None:

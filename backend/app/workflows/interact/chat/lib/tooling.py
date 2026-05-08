@@ -16,7 +16,6 @@ from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.model_policy import (
     INTERACT_MODEL_SELECTOR,
     InteractModelStep,
-    get_interact_model_policy,
     interact_llm_kwargs,
 )
 from app.workflows.interact.chat.lib.types import RetrievedContext
@@ -88,7 +87,6 @@ def build_agent_loop_config(
         max_iterations=tool_plan.max_iterations,
         max_tool_calls_per_turn=tool_plan.max_tool_calls_per_turn,
         tool_timeout_s=tool_plan.tool_timeout_s,
-        task_type=get_interact_model_policy(InteractModelStep.RESPONSE_STREAM).call_purpose,
         model=model_selector or tool_plan.model_selector,
         llm_kwargs=interact_llm_kwargs(InteractModelStep.RESPONSE_STREAM),
         tool_context=AgentToolContext(
