@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
@@ -26,10 +25,10 @@ class KGDocSyncModelStep(str, Enum):
 class KGDocSyncModelPolicy:
     step: KGDocSyncModelStep
     call_type: Literal["structured"]
-    call_purpose: LLMCallPurpose
     model: KGDocSyncModelSlot
     max_tokens: int | None = None
     timeout_s: int | None = None
+    max_retries: int = 3
     max_content_chars: int | None = None
     course_context_max_chars: int | None = None
     temperature: float | None = None
@@ -39,13 +38,13 @@ class KGDocSyncModelPolicy:
         """Return kwargs shared by KG docs-sync structured call sites."""
 
         kwargs: dict[str, object] = {
-            "call_purpose": self.call_purpose,
             "model": self.model,
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
             kwargs["timeout"] = self.timeout_s
+        kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
         return kwargs
@@ -59,6 +58,7 @@ class KGDocSyncModelPolicy:
             "kg_doc_sync_call_type": self.call_type,
             "kg_doc_sync_max_tokens": self.max_tokens,
             "kg_doc_sync_timeout_s": self.timeout_s,
+            "kg_doc_sync_max_retries": self.max_retries,
         }
 
     def completion_kwargs_with_metadata(
@@ -75,7 +75,6 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
     KGDocSyncModelStep.SECTION_GRAPH: KGDocSyncModelPolicy(
         step=KGDocSyncModelStep.SECTION_GRAPH,
         call_type="structured",
-        call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
         max_tokens=7000,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,
@@ -87,7 +86,6 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
     KGDocSyncModelStep.EMPTY_REPAIR: KGDocSyncModelPolicy(
         step=KGDocSyncModelStep.EMPTY_REPAIR,
         call_type="structured",
-        call_purpose=LLMCallPurpose.EXTRACT,
         model="light",
         max_tokens=3600,
         timeout_s=_SECTION_GRAPH_TIMEOUT_S,

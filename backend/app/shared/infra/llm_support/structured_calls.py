@@ -13,13 +13,13 @@ from typing import TypeVar
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_context,
     effective_call_timeout_s,
+    effective_max_retries,
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
@@ -150,8 +150,7 @@ async def acompletion_structured(
     response_model: type[T],
     messages: list[ChatMessage],
     *,
-    call_purpose: LLMCallPurpose | None = None,
-    task_type: LLMCallPurpose | None = None,
+    task_type: object | None = None,
     model: str | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
@@ -162,26 +161,26 @@ async def acompletion_structured(
     instructor = _load_instructor()
     context = build_completion_context(
         task_type=task_type,
-        call_purpose=call_purpose,
         model=model,
     )
     use_instructor = instructor is not None
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = context.model
+    max_retries = effective_max_retries(context, kwargs)
 
     if not use_instructor:
         logger.warning(
             "llm_structured_instructor_unavailable",
             response_model=response_model.__name__,
             model=tracked_model,
-            task_type=context.task_type.value,
+            task_type=context.task_type,
             fallback_mode="json_prompt",
             **trace_log_fields(),
         )
 
     async with get_llm_concurrency_limiter():
-        for attempt in range(1, context.profile.max_retries + 1):
+        for attempt in range(1, max_retries + 1):
             prepared = prepare_completion_attempt(
                 context=context,
                 messages=messages,
@@ -315,7 +314,7 @@ async def acompletion_structured(
                     elapsed_s=round(time.monotonic() - prepared.started_at, 2),
                     response_model=response_model.__name__,
                     model=tracked_model,
-                    task_type=context.task_type.value,
+                    task_type=context.task_type,
                     mode=mode_label,
                 )
                 track_call(
@@ -373,7 +372,7 @@ async def acompletion_structured(
                     },
                 )
 
-            if attempt < context.profile.max_retries:
+            if attempt < max_retries:
                 await sleep_before_retry(attempt)
 
     track_call(

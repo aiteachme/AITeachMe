@@ -9,7 +9,6 @@ from typing import Any, AsyncGenerator
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
@@ -71,8 +70,7 @@ async def _stream_chunks_with_timeout(
 async def acompletion_stream(
     messages: list[ChatMessage],
     *,
-    call_purpose: LLMCallPurpose | None = None,
-    task_type: LLMCallPurpose | None = None,
+    task_type: object | None = None,
     model: str | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
     **kwargs,
@@ -82,7 +80,6 @@ async def acompletion_stream(
     litellm = load_litellm()
     context = build_completion_context(
         task_type=task_type,
-        call_purpose=call_purpose,
         model=model,
     )
     start = time.monotonic()
@@ -149,7 +146,7 @@ async def acompletion_stream(
                     logger.info(
                         "llm_stream_usage_calculation_failed_ignored",
                         model=tracked_model,
-                        task_type=context.task_type.value,
+                        task_type=context.task_type,
                         error=str(exc),
                     )
                 prompt_t, completion_t, total_t = usage
@@ -164,7 +161,7 @@ async def acompletion_stream(
                 "llm_stream_complete",
                 elapsed_s=round(time.monotonic() - start, 2),
                 model=tracked_model,
-                task_type=context.task_type.value,
+                task_type=context.task_type,
             )
             prompt_t, completion_t, total_t = usage
             track_call(

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 
 IngestParsingModelSlot = Literal["vision", "ocr"]
@@ -21,16 +20,18 @@ class IngestParsingModelStep(str, Enum):
 class IngestParsingModelPolicy:
     step: IngestParsingModelStep
     call_type: Literal["vision"]
-    call_purpose: LLMCallPurpose
     model: IngestParsingModelSlot | None
     max_tokens: int
+    timeout_s: int
+    max_retries: int = 3
     temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
         kwargs: dict[str, object] = {
-            "call_purpose": self.call_purpose,
             "max_tokens": self.max_tokens,
+            "timeout": self.timeout_s,
+            "max_retries": self.max_retries,
         }
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
@@ -52,6 +53,8 @@ class IngestParsingModelPolicy:
                 "ingest_model_slot": model_selector or self.model or "",
                 "ingest_call_type": self.call_type,
                 "ingest_max_tokens": self.max_tokens,
+                "ingest_timeout_s": self.timeout_s,
+                "ingest_max_retries": self.max_retries,
             },
         )
         return kwargs
@@ -61,9 +64,9 @@ _POLICIES: dict[IngestParsingModelStep, IngestParsingModelPolicy] = {
     IngestParsingModelStep.IMAGE_TO_MARKDOWN: IngestParsingModelPolicy(
         step=IngestParsingModelStep.IMAGE_TO_MARKDOWN,
         call_type="vision",
-        call_purpose=LLMCallPurpose.VISION,
         model=None,
         max_tokens=9000,
+        timeout_s=480,
         temperature=0.3,
         note="单页图片 OCR 需要保留公式、表格和标题层级，输出预算不依赖 provider 默认值。",
     ),

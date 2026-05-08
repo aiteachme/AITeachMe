@@ -9,8 +9,7 @@ import structlog
 
 from app.schemas.llm import ChatMessage
 from app.shared.infra.llm_support.common import normalize_model_selector
-from app.shared.infra.llm_support.common import resolve_call_purpose
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support.common import resolve_task_type
 
 from .structured_calls import acompletion_structured
 from .text import acompletion
@@ -23,8 +22,7 @@ T = TypeVar("T")
 async def acompletion_with_fallback(
     messages: list[ChatMessage],
     *,
-    call_purpose: LLMCallPurpose | None = None,
-    task_type: LLMCallPurpose | None = None,
+    task_type: object | None = None,
     model: str | None = None,
     response_model: type[T] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
@@ -32,7 +30,7 @@ async def acompletion_with_fallback(
 ) -> str | T:
     """Run one text or structured completion with strict failure semantics."""
 
-    resolved_purpose = resolve_call_purpose(call_purpose=call_purpose, task_type=task_type)
+    resolved_task_type = resolve_task_type(task_type)
     model_selector = normalize_model_selector(model) or "primary"
     from app.shared.infra.observability.trace import (
         get_llm_trace_context,
@@ -42,7 +40,7 @@ async def acompletion_with_fallback(
     trace = get_llm_trace_context()
     metadata = {
         "llm_model_selector": model_selector,
-        "llm_call_purpose": resolved_purpose.value,
+        "llm_task_type": resolved_task_type,
         "llm_strict_mode": True,
         **dict(extra_metadata or {}),
     }
@@ -60,14 +58,14 @@ async def acompletion_with_fallback(
                 return await acompletion_structured(
                     response_model,
                     messages,
-                    call_purpose=resolved_purpose,
+                    task_type=resolved_task_type,
                     model=model_selector,
                     extra_metadata=metadata,
                     **kwargs,
                 )
             return await acompletion(
                 messages,
-                call_purpose=resolved_purpose,
+                task_type=resolved_task_type,
                 model=model_selector,
                 extra_metadata=metadata,
                 **kwargs,
@@ -75,7 +73,7 @@ async def acompletion_with_fallback(
     except Exception as exc:  # pragma: no cover - integration-heavy behavior
         logger.warning(
             "llm_call_failed",
-            requested_call_purpose=resolved_purpose.value,
+            requested_task_type=resolved_task_type,
             requested_model=model_selector,
             error=str(exc),
             course_id=trace.course_id,

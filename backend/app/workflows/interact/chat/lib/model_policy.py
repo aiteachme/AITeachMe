@@ -8,7 +8,6 @@ from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.shared.infra.llm_support.routing import LLMCallPurpose
 from app.workflows.common.model_policy import compact_metadata
 
 InteractModelSlot = Literal["light", "primary", "reason"]
@@ -25,29 +24,35 @@ class InteractModelStep(str, Enum):
 class InteractModelPolicy:
     step: InteractModelStep
     call_type: Literal["stream", "text"]
-    call_purpose: LLMCallPurpose
     model: InteractModelSlot
     max_tokens: int | None = None
+    timeout_s: int | None = None
+    max_retries: int = 3
     temperature: float | None = None
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
         kwargs: dict[str, object] = {
-            "call_purpose": self.call_purpose,
             "model": self.model,
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
+        if self.timeout_s is not None:
+            kwargs["timeout"] = self.timeout_s
+        kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
         return kwargs
 
     def llm_kwargs(self) -> dict[str, object]:
-        """Return only LiteLLM kwargs used by shared infra wrappers."""
+        """Return LLM helper kwargs used by shared infra wrappers."""
 
         kwargs: dict[str, object] = {}
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
+        if self.timeout_s is not None:
+            kwargs["timeout"] = self.timeout_s
+        kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
         return kwargs
@@ -58,6 +63,8 @@ class InteractModelPolicy:
             "chat_model_slot": self.model,
             "chat_call_type": self.call_type,
             "chat_max_tokens": self.max_tokens,
+            "chat_timeout_s": self.timeout_s,
+            "chat_max_retries": self.max_retries,
         }
         resolved_override = normalize_runtime_model_override(model_override)
         if resolved_override:
@@ -84,27 +91,27 @@ _POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
     InteractModelStep.RESPONSE_STREAM: InteractModelPolicy(
         step=InteractModelStep.RESPONSE_STREAM,
         call_type="stream",
-        call_purpose=LLMCallPurpose.CHAT,
         model=INTERACT_MODEL_SELECTOR,
         max_tokens=12000,
+        timeout_s=240,
         temperature=0.7,
         note="伴读最终回答可长可短，给足输出空间避免流式回答被过早截断。",
     ),
     InteractModelStep.SESSION_TITLE: InteractModelPolicy(
         step=InteractModelStep.SESSION_TITLE,
         call_type="text",
-        call_purpose=LLMCallPurpose.SUMMARIZE,
         model="light",
         max_tokens=128,
+        timeout_s=240,
         temperature=0.2,
         note="会话标题仍是短输出，但给模型留出清洗前的冗余空间。",
     ),
     InteractModelStep.HOME_INTAKE_INTENT: InteractModelPolicy(
         step=InteractModelStep.HOME_INTAKE_INTENT,
         call_type="text",
-        call_purpose=LLMCallPurpose.CHAT,
         model="light",
         max_tokens=1800,
+        timeout_s=240,
         temperature=0.1,
         note="首页入口需要 JSON 意图和可直接展示的追问文案。",
     ),

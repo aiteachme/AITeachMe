@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
-from app.shared.infra.llm_support.routing import LLMCallPurpose
+from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.observability.trace import langsmith_trace
 from app.shared.infra.settings.support import (
     get_llm_api_version,
@@ -24,6 +24,7 @@ from app.shared.infra.settings.support import (
 from .common import (
     build_completion_context,
     context_request_timeout_s,
+    effective_max_retries,
     get_llm_concurrency_limiter,
     logger,
     raise_last_error,
@@ -325,7 +326,7 @@ def _build_litellm_image_kwargs(
             call_kwargs["api_version"] = api_version
 
     for key, value in dict(extra_kwargs).items():
-        if value is None or key in {"api_base", "api_key", "timeout", "api_version"}:
+        if value is None or key in {"api_base", "api_key", "timeout", "api_version", "max_retries"}:
             continue
         call_kwargs[str(key)] = value
     return call_kwargs
@@ -369,7 +370,7 @@ async def agenerate_image(
     if not prompt_text:
         raise LLMCallError(reason="image prompt is empty")
     context = build_completion_context(
-        call_purpose=LLMCallPurpose.IMAGE_GENERATION,
+        task_type=TaskType.IMAGE_GENERATION,
         model=model or "image_generation",
     )
     if (model is None or model == "image_generation") and not context.settings.image_generation_enabled:
@@ -388,6 +389,7 @@ async def agenerate_image(
     api_base = kwargs.pop("api_base", None) or get_env("LLM_BASE_URL") or None
     api_key = kwargs.pop("api_key", None) or context.api_key
     raw_timeout_s = int(kwargs.pop("timeout", context.profile.timeout_s) or context.profile.timeout_s)
+    max_retries = effective_max_retries(context, kwargs)
     timeout_s = raw_timeout_s if should_enforce_request_timeout(context) else None
     prediction_input = kwargs.pop("prediction_input", None)
     kwargs.pop("endpoint_mode", None)
@@ -414,7 +416,7 @@ async def agenerate_image(
     call_started_at = time.monotonic()
     tracked_model = str(call_kwargs["model"])
     async with get_llm_concurrency_limiter():
-        for attempt in range(1, context.profile.max_retries + 1):
+        for attempt in range(1, max_retries + 1):
             start = time.monotonic()
             logger.info(
                 "llm_image_generation_started",
@@ -436,8 +438,7 @@ async def agenerate_image(
                         "n": call_kwargs["n"],
                     },
                     extra_metadata={
-                        "call_purpose": LLMCallPurpose.IMAGE_GENERATION.value,
-                        "task_type": LLMCallPurpose.IMAGE_GENERATION.value,
+                        "task_type": TaskType.IMAGE_GENERATION,
                         "mode": "image_generation",
                         "model": tracked_model,
                         "runtime_provider": runtime_provider,
@@ -469,7 +470,7 @@ async def agenerate_image(
                     **trace_log_fields(),
                 )
                 track_call(
-                    task_type=LLMCallPurpose.IMAGE_GENERATION,
+                    task_type=TaskType.IMAGE_GENERATION,
                     model=tracked_model,
                     start=call_started_at,
                     success=True,
@@ -486,7 +487,7 @@ async def agenerate_image(
                 )
             except asyncio.CancelledError:
                 track_call(
-                    task_type=LLMCallPurpose.IMAGE_GENERATION,
+                    task_type=TaskType.IMAGE_GENERATION,
                     model=tracked_model,
                     start=call_started_at,
                     success=False,
@@ -503,11 +504,11 @@ async def agenerate_image(
                     error=str(exc),
                     **trace_log_fields(),
                 )
-            if attempt < context.profile.max_retries:
+            if attempt < max_retries:
                 await asyncio.sleep(attempt * 2)
 
     track_call(
-        task_type=LLMCallPurpose.IMAGE_GENERATION,
+        task_type=TaskType.IMAGE_GENERATION,
         model=tracked_model,
         start=call_started_at,
         success=False,

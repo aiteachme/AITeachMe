@@ -188,25 +188,25 @@ image_generation -> settings.models.image_generation（默认未配置）
 
 - 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
 - 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
-- KG docs-sync 当前使用 `light` 槽位；抽取任务意图由 `call_purpose=EXTRACT` 表达。
+- KG docs-sync 当前使用 `light` 槽位；抽取请求的 timeout/retry 不再依赖共享 profile，直接由本链路的 model policy 表达。
 - 路由层仍保留 `extract` 兼容别名，但新代码不应继续把它当模型槽位使用。
-- `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`call_purpose + model slot + max_tokens + timeout + prompt 输入截断预算` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
+- `kg_doc_sync` 的 LangGraph 节点本身不直接写死模型，LLM 调用集中在复用的 extractor 内部；`model slot + max_tokens + timeout + max_retries + prompt 输入截断预算` 统一由 `kg_doc_sync/lib/model_policy.py` 维护。
 - Prompt 文件按真实调用拆分：章节图谱抽取在 `prompts/section_graph.py`，导出聚合在 `prompts/registry.py`；提示词正文必须以中文教学语境为主。
 - 核心 lib 按职责拆分：`models.py` 放 state/report 数据合同，`sync_runs.py` 放同步批次状态写入，`question_blocks.py` 只用于题目块识别和抽取辅助判断，不再生成兜底知识点。
 
 按当前代码，KG docs-sync 各阶段的大模型使用如下：
 
-| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | call_purpose | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `trigger_graph_docs_sync_manual_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 手动图谱重建入口；由 API 完成鉴权后调用，校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
-| `docgen kg_prefetch sidecar` | `kg_doc_sync/lib/prefetch.py` | 间接 LLM | `EXTRACT` | `light` | `qwen-flash` | DocGen 增强章节完成后后台预抽取 section payload，只进内存缓存，不落库 |
-| `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，消费并停止同 build 的预抽取 sidecar |
-| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 无 | 读取发布文档、写 graph lane runtime，并把可复用预抽取 payload 传入 `digest.kg_doc_sync` |
-| `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
-| `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 无 | 校验 `course` 和合并 Markdown |
-| `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
-| `persist_seed_units` | `kg_doc_sync/nodes/persist_seed_units_node.py` | 无 LLM | 无 | 无 | 无 | 只把已命中最终文档的 DocGen LLM 预抽取节点提前写入；没有预抽取时不写非 LLM 种子节点 |
-| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由内部 extractor 决定 | 由 policy 决定 | 见下方 | 加载课程上下文，按章节并发抽取图谱候选并合并 backbone/结构边 |
+| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 |
+| --- | --- | --- | --- | --- | --- |
+| `trigger_graph_docs_sync_manual_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 手动图谱重建入口；由 API 完成鉴权后调用，校验已有发布文档，写 graph lane accepted runtime，并注册可取消的后台任务 |
+| `docgen kg_prefetch sidecar` | `kg_doc_sync/lib/prefetch.py` | 间接 LLM | `light` | `qwen-flash` | DocGen 增强章节完成后后台预抽取 section payload，只进内存缓存，不落库 |
+| `run_graph_docs_sync_auto_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | DocGen 发布完成后独立注册的自动图谱后台任务，消费并停止同 build 的预抽取 sidecar |
+| `run_graph_docs_sync_after_doc_build` | `kg_doc_sync/builds.py` | 无 LLM | 无 | 无 | 读取发布文档、写 graph lane runtime，并把可复用预抽取 payload 传入 `digest.kg_doc_sync` |
+| `load_knowledge_doc_sync_input` | `kg_doc_sync/inputs.py` | 无 LLM | 无 | 无 | 读取 `KnowledgeDoc` rows、DocGen manifest、文档摘要和章节来源映射 |
+| `prepare` | `kg_doc_sync/nodes/prepare_node.py` | 无 LLM | 无 | 无 | 校验 `course` 和合并 Markdown |
+| `init_run` | `kg_doc_sync/nodes/init_run_node.py` | 无 LLM | 无 | 无 | 校验 Markdown anchors，创建 `knowledge_graph_sync_run`，确定 revision/doc_version |
+| `persist_seed_units` | `kg_doc_sync/nodes/persist_seed_units_node.py` | 无 LLM | 无 | 无 | 只把已命中最终文档的 DocGen LLM 预抽取节点提前写入；没有预抽取时不写非 LLM 种子节点 |
+| `extract` | `kg_doc_sync/nodes/extract_node.py` | 间接 LLM | 由 policy 决定 | 见下方 | 加载课程上下文，按章节并发抽取图谱候选并合并 backbone/结构边 |
 | `persist_units` | `kg_doc_sync/nodes/persist_units_node.py` | 无 LLM | 无 | 无 | 无 | 把本轮 LLM extraction payload 中的 KnowledgeUnit 提前写入，关系和 source_ref 仍由最终 persist 收口 |
 | `stitch_relations` | `kg_doc_sync/nodes/stitch_node.py` | 无 LLM | 无 | 无 | 无 | 在写库前用同小节关系和显式正文引用补少量保守边，并计算孤立率、连通分量等健康指标 |
 | `persist` | `kg_doc_sync/nodes/persist_node.py` | 无 LLM | 无 | 无 | 无 | 写入节点、关系、source_ref，标记旧同步实体 deprecated，并完成 sync run |
@@ -635,8 +635,8 @@ _extract_chapter_with_retries
     - section_context：本章主节点和来源上下文。
     - diagnostics：本章抽取计数。
   当前模型方案：
-    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=7000`，`timeout_s=300`，并限制单片段最多 8 个节点、10 条关系。
-    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `call_purpose=EXTRACT + model="light"`，`max_tokens=3600`，`timeout_s=300`。
+    - 主抽取走 `KGDocSyncModelStep.SECTION_GRAPH`，即 `model="light"`，`max_tokens=7000`，`timeout_s=300`，`max_retries=3`，并限制单片段最多 8 个节点、10 条关系。
+    - docs 空结果修复走 `KGDocSyncModelStep.EMPTY_REPAIR`，即 `model="light"`，`max_tokens=3600`，`timeout_s=300`，`max_retries=3`。
     - 结构化抽取失败会按任务重试；重试耗尽后该分片写入失败诊断并返回空 payload，不再用标题或题目关键词本地生成 KnowledgeUnit。
 
 _extract_chapter_graph_items
@@ -1257,7 +1257,7 @@ none           -> 没有可同步输入
 ## 4. 当前仍需关注的问题
 
 1. 旧 `kg_file_ingest` workflow 已删除；`kg_doc_sync/lib/extraction.py` 是 docs-sync 的正式抽取实现入口。
-2. docs-sync 的 LLM 主抽取默认走 `call_purpose=EXTRACT + model="light"`，速度可控，但复杂课程的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
+2. docs-sync 的 LLM 主抽取默认走 `model="light"`，速度可控，但复杂课程的概念归并仍可能偏保守。后续如果要提高质量，应增加一个“章级候选审稿/归并”步骤，而不是放开所有候选直接入图。
 3. 当前不再用语义词表过滤候选节点；如果持续出现某类坏节点，优先修 extractor prompt、DocGen 辅助上下文或增加 LLM 审稿/归并步骤。
 4. `aliases_json/evidence_refs_json` 仍是兼容字段。新查询应优先使用 `knowledge_graph_source_ref`，等图谱查询稳定后再考虑数据规模化优化。
 5. 历史 run 曾出现 LLM 局部 candidate id 跨分片覆盖，导致 `llm_relation` 端点错配；当前合并阶段已给 candidate id 加分片命名空间，重新同步后才能刷新旧错误边。
