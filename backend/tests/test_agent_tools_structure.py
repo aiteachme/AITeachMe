@@ -42,6 +42,9 @@ def test_agent_tool_policy_scopes_tools_by_context() -> None:
         AgentToolPolicyRequest(course_id="course_123")
     ) == ["search_kb"]
     assert resolve_agent_tool_names(
+        AgentToolPolicyRequest(scene="web_research", course_id="course_123")
+    ) == ["web_search", "recall_info", "search_kb"]
+    assert resolve_agent_tool_names(
         AgentToolPolicyRequest(source="home_intake", course_id="global")
     ) == ["web_search", "recall_info"]
     assert resolve_agent_tool_names(

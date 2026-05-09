@@ -59,7 +59,8 @@ def _pending_write_tool_names(
         return []
     if not is_global_course(request.course_id):
         return []
-    if not is_global_assistant_source(request.source):
+    scene = (request.scene or "").strip()
+    if scene not in {"global_assistant", "home_intake"} and not is_global_assistant_source(request.source):
         return []
     active = set(visible_names)
     return [name for name in GLOBAL_WRITE_TOOLS if name not in active]

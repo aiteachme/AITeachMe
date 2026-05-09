@@ -12,7 +12,9 @@ GLOBAL_WRITE_TOOLS = ("remember_info", "create_course_from_home_intake")
 BUILD_TOOLS: tuple[str, ...] = ()
 EDITING_TOOLS: tuple[str, ...] = ()
 
-_GLOBAL_ASSISTANT_SOURCES = frozenset({"home", "home_intake", "global_assistant"})
+_GLOBAL_ASSISTANT_SOURCES = frozenset({"home", "home_intake", "global_assistant", "web_research"})
+_GLOBAL_QUERY_SCENES = frozenset({"global_assistant", "web_research"})
+_WEB_RESEARCH_SCENE = "web_research"
 _BUILD_SOURCES = frozenset({"build_assistant"})
 _EDITING_SOURCES = frozenset({"course_editor", "content_editor"})
 
@@ -21,6 +23,7 @@ _EDITING_SOURCES = frozenset({"course_editor", "content_editor"})
 class AgentToolPolicyRequest:
     """Inputs used to decide which tools one model turn can see."""
 
+    scene: str | None = None
     source: str | None = None
     course_id: str | None = None
     allow_write_tools: bool = False
@@ -34,18 +37,23 @@ def resolve_agent_tool_names(
     """Return tool names visible to one agent turn."""
 
     resolved = request or AgentToolPolicyRequest(**kwargs)
+    scene = (resolved.scene or "").strip()
     source = (resolved.source or "").strip()
     course_id = (resolved.course_id or "").strip()
     has_course = bool(course_id and not is_global_course(course_id))
 
     tool_names: list[str] = []
-    if has_course:
+    if scene == _WEB_RESEARCH_SCENE:
+        tool_names.extend(GLOBAL_QUERY_TOOLS)
+        if has_course:
+            tool_names.extend(COURSE_LEARNING_TOOLS)
+    elif has_course:
         tool_names.extend(COURSE_LEARNING_TOOLS)
         if source in _BUILD_SOURCES:
             tool_names.extend(BUILD_TOOLS)
         if source in _EDITING_SOURCES and resolved.allow_write_tools:
             tool_names.extend(EDITING_TOOLS)
-    elif is_global_assistant_source(source):
+    elif scene in _GLOBAL_QUERY_SCENES or is_global_assistant_source(source):
         tool_names.extend(GLOBAL_QUERY_TOOLS)
 
     if resolved.allow_write_tools:

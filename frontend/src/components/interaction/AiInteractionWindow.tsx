@@ -249,6 +249,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
       mode: "fullscreen",
       scope: nextScope,
       sessionId: activeConversationSessionId ?? sidebarRequest?.sessionId,
+      scene: sidebarRequest?.scene,
       source: sidebarRequest?.source,
       anchorId: sidebarRequest?.anchorId,
       selectedText: sidebarRequest?.selectedText,
@@ -271,6 +272,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
     sidebarRequest?.selectionContext,
     sidebarRequest?.sessionId,
     sidebarRequest?.showSelectionContext,
+    sidebarRequest?.scene,
     sidebarRequest?.source,
   ]);
 
@@ -302,6 +304,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
       mode: "sidebar",
       scope: fullscreenConversationScope,
       sessionId: nextSessionId,
+      scene: options?.scene !== undefined ? options.scene : fullscreenRequest?.scene,
       source: options?.source !== undefined ? options.source : fullscreenRequest?.source,
       anchorId: options?.anchorId !== undefined ? options.anchorId : fullscreenRequest?.anchorId,
       selectedText: options?.selectedText !== undefined ? options.selectedText : fullscreenRequest?.selectedText,
@@ -321,6 +324,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
     fullscreenRequest?.selectionContext,
     fullscreenRequest?.sessionId,
     fullscreenRequest?.showSelectionContext,
+    fullscreenRequest?.scene,
     fullscreenRequest?.source,
     lastNonAssistantPath,
     navigate,

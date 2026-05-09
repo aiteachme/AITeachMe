@@ -1,7 +1,7 @@
 import pytest
 
 from app.workflows.interact.chat.lib import home_intake
-from app.workflows.interact.chat.lib.intent import should_use_course_grounding
+from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene, should_use_course_grounding
 
 
 def test_home_intake_source_skips_course_grounding() -> None:
@@ -9,6 +9,33 @@ def test_home_intake_source_skips_course_grounding() -> None:
         question="请讲解一下这门课的重点",
         source="home_intake",
         has_primary_context=False,
+    )
+
+
+def test_explicit_chat_scene_controls_prompt_scene() -> None:
+    assert resolve_prompt_scene(
+        question="帮我查询最新基础教育课程改革政策",
+        scene="web_research",
+        source="web_research",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.WEB_RESEARCH
+
+    assert resolve_prompt_scene(
+        question="这段是什么意思？",
+        scene="document_selection",
+        source="quick_chat",
+        course_id="course_1",
+        has_primary_context=True,
+    ) == ChatPromptScene.DOCUMENT_SELECTION
+
+
+def test_course_keyword_alone_does_not_trigger_home_intake() -> None:
+    assert not home_intake.should_use_home_intake_flow(
+        scene="global_assistant",
+        source="global_assistant",
+        course_id="global",
+        question="基础教育课程改革有哪些最新政策变化？",
     )
 
 

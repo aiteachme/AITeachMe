@@ -11,8 +11,11 @@ from app.workflows.interact.chat.lib.execution import (
 )
 from app.workflows.interact.chat.lib.intent import (
     ChatPromptScene,
+    ChatScene,
+    has_external_research_intent,
     has_entry_context,
     has_explicit_learning_intent,
+    parse_chat_scene,
     resolve_prompt_scene,
     should_use_course_grounding,
 )
@@ -40,6 +43,7 @@ __all__ = [
     "INTERACT_MODEL_SELECTOR",
     "InteractToolPlan",
     "ChatPromptScene",
+    "ChatScene",
     "MistakeSummary",
     "RecentMessage",
     "RetrievedContext",
@@ -47,8 +51,10 @@ __all__ = [
     "WeakPointSummary",
     "build_agent_loop_config",
     "format_sse_event",
+    "has_external_research_intent",
     "has_entry_context",
     "has_explicit_learning_intent",
+    "parse_chat_scene",
     "retrieve_context",
     "resolve_prompt_scene",
     "resolve_interact_tool_plan",

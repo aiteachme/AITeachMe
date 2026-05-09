@@ -50,6 +50,7 @@ class ChatSendRequest(BaseModel):
             "example": {
                 "question": "什么是条件概率？",
                 "session_id": "dbe63613-08f6-4818-8317-cdf8d7a794a8",
+                "scene": "document_selection",
                 "source": "quick_chat",
                 "anchor_id": "chapter-1",
                 "selected_text": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",
@@ -71,6 +72,13 @@ class ChatSendRequest(BaseModel):
 
     question: str = Field(description="Current user question.")
     session_id: str | None = Field(default=None, description="Optional session ID. Auto-created when omitted.")
+    scene: str | None = Field(
+        default=None,
+        description=(
+            "Explicit product scene for prompt/tool routing, e.g. global_assistant, course_chat, "
+            "document_selection, exam_question, build_assistant, home_intake, or web_research."
+        ),
+    )
     source: str | None = Field(default=None, description="Optional source tag, e.g. quick_chat, exam_question, or build_assistant.")
     model: str | None = Field(default=None, description="Optional per-message chat model. Omit or use settings for configured defaults.")
     anchor_id: str | None = Field(default=None, description="Optional doc heading or exam-question anchor for highlighted QA.")

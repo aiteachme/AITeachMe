@@ -32,8 +32,15 @@ import {
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
 import { useAiInteraction } from "../AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail, OpenAiInteractionOptions } from "../types";
+import type { AiConversationScene, AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail, OpenAiInteractionOptions } from "../types";
 import {
+  AI_SCENE_BUILD_ASSISTANT,
+  AI_SCENE_COURSE_CHAT,
+  AI_SCENE_DOCUMENT_SELECTION,
+  AI_SCENE_EXAM_QUESTION,
+  AI_SCENE_GLOBAL_ASSISTANT,
+  AI_SCENE_HOME_INTAKE,
+  AI_SCENE_WEB_RESEARCH,
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
@@ -55,6 +62,7 @@ type QuickChatSyncPhase = "start" | "session" | "token" | "status" | "done" | "e
 type ConversationHistoryKind = "general" | "document" | "question" | "builder";
 
 interface QuickChatInputContext {
+  scene: AiConversationScene;
   source: string;
   anchorId: string;
   selectedText: string;
@@ -64,6 +72,7 @@ interface PendingAutoSendRequest {
   key: number;
   question: string;
   model: string | null;
+  scene: AiConversationScene | null;
   source: string | null;
   attachedFileIds: string[];
 }
@@ -78,17 +87,29 @@ const HOME_INTAKE_CREATE_KEYWORDS = [
   "\u6784\u5efa",
   "\u751f\u6210",
   "\u89c4\u5212",
-  "\u5b66\u79d1",
-  "\u8bfe\u7a0b",
+  "\u5efa\u4e00\u4e2a",
+  "\u505a\u4e00\u4e2a",
   "\u5b66\u4e60\u7a7a\u95f4",
+  "\u77e5\u8bc6\u5e93",
 ];
-const HOME_INTAKE_CONFIRM_KEYWORDS = [
-  "\u786e\u8ba4",
-  "\u786e\u5b9a",
-  "\u53ef\u4ee5",
-  "\u5f00\u59cb",
-  "ok",
-  "yes",
+const WEB_RESEARCH_KEYWORDS = [
+  "\u6700\u65b0",
+  "\u67e5\u8be2",
+  "\u641c\u7d22",
+  "\u67e5\u4e00\u4e0b",
+  "\u641c\u4e00\u4e0b",
+  "\u8054\u7f51",
+  "\u653f\u7b56",
+  "\u65b0\u95fb",
+  "\u8fdb\u5c55",
+  "\u6700\u8fd1",
+  "\u4eca\u5e74",
+  "\u4eca\u5929",
+  "\u5f53\u524d",
+  "\u76ee\u524d",
+  "latest",
+  "recent",
+  "search",
 ];
 const HISTORY_KIND_META: Record<ConversationHistoryKind, {
   label: string;
@@ -124,7 +145,7 @@ function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext
   if (source !== AI_SOURCE_DOCUMENT_SELECTION || !anchorId || !selectedText) {
     return null;
   }
-  return { source, anchorId, selectedText };
+  return { scene: AI_SCENE_DOCUMENT_SELECTION, source, anchorId, selectedText };
 }
 
 function looksLikeHomeIntakeTurn(value: string): boolean {
@@ -132,9 +153,120 @@ function looksLikeHomeIntakeTurn(value: string): boolean {
   if (!text) {
     return false;
   }
-  return [...HOME_INTAKE_CREATE_KEYWORDS, ...HOME_INTAKE_CONFIRM_KEYWORDS].some((keyword) =>
+  return HOME_INTAKE_CREATE_KEYWORDS.some((keyword) =>
     text.includes(keyword.toLowerCase()),
   );
+}
+
+function looksLikeWebResearchTurn(value: string): boolean {
+  const text = value.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return WEB_RESEARCH_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+function normalizeScene(value: string | null | undefined): AiConversationScene | null {
+  const scene = value?.trim();
+  if (
+    scene === AI_SCENE_GLOBAL_ASSISTANT ||
+    scene === AI_SCENE_COURSE_CHAT ||
+    scene === AI_SCENE_DOCUMENT_SELECTION ||
+    scene === AI_SCENE_EXAM_QUESTION ||
+    scene === AI_SCENE_BUILD_ASSISTANT ||
+    scene === AI_SCENE_HOME_INTAKE ||
+    scene === AI_SCENE_WEB_RESEARCH
+  ) {
+    return scene;
+  }
+  return null;
+}
+
+function sceneFromSource(source: string | null | undefined, hasSelectionContext = false): AiConversationScene | null {
+  const normalizedSource = source?.trim() ?? "";
+  if (normalizedSource === AI_SOURCE_EXAM_QUESTION) {
+    return AI_SCENE_EXAM_QUESTION;
+  }
+  if (normalizedSource === AI_SOURCE_DOCUMENT_SELECTION && hasSelectionContext) {
+    return AI_SCENE_DOCUMENT_SELECTION;
+  }
+  if (normalizedSource === "home_intake") {
+    return AI_SCENE_HOME_INTAKE;
+  }
+  if (normalizedSource === "web_research") {
+    return AI_SCENE_WEB_RESEARCH;
+  }
+  if (normalizedSource === "global_assistant") {
+    return AI_SCENE_GLOBAL_ASSISTANT;
+  }
+  if (normalizedSource === "course_chat") {
+    return AI_SCENE_COURSE_CHAT;
+  }
+  if (normalizedSource === "build_assistant" || normalizedSource === "build_planner" || normalizedSource.includes("build")) {
+    return AI_SCENE_BUILD_ASSISTANT;
+  }
+  return null;
+}
+
+function sourceForScene(scene: AiConversationScene): string | null {
+  if (scene === AI_SCENE_DOCUMENT_SELECTION) {
+    return AI_SOURCE_DOCUMENT_SELECTION;
+  }
+  if (scene === AI_SCENE_EXAM_QUESTION) {
+    return AI_SOURCE_EXAM_QUESTION;
+  }
+  if (scene === AI_SCENE_HOME_INTAKE) {
+    return "home_intake";
+  }
+  if (scene === AI_SCENE_WEB_RESEARCH) {
+    return "web_research";
+  }
+  if (scene === AI_SCENE_GLOBAL_ASSISTANT) {
+    return "global_assistant";
+  }
+  if (scene === AI_SCENE_COURSE_CHAT) {
+    return "course_chat";
+  }
+  if (scene === AI_SCENE_BUILD_ASSISTANT) {
+    return "build_assistant";
+  }
+  return null;
+}
+
+function resolveConversationScene(input: {
+  scope: AiConversationScope | null;
+  question: string;
+  hasAttachedFiles: boolean;
+  selectionContext: PendingSelectionContext | null;
+  requestedScene?: AiConversationScene | null;
+  requestedSource?: string | null;
+  selectedSessionSource?: string | null;
+}): AiConversationScene {
+  if (input.selectionContext) {
+    return input.selectionContext.scene;
+  }
+  const requestedScene = normalizeScene(input.requestedScene);
+  if (requestedScene) {
+    return requestedScene;
+  }
+  const sourceScene = sceneFromSource(input.requestedSource, false) ?? sceneFromSource(input.selectedSessionSource, false);
+  if (sourceScene) {
+    return sourceScene;
+  }
+  if (
+    input.scope?.type === "global" &&
+    (
+      input.hasAttachedFiles ||
+      input.selectedSessionSource?.trim() === "home_intake" ||
+      looksLikeHomeIntakeTurn(input.question)
+    )
+  ) {
+    return AI_SCENE_HOME_INTAKE;
+  }
+  if (looksLikeWebResearchTurn(input.question)) {
+    return AI_SCENE_WEB_RESEARCH;
+  }
+  return input.scope?.type === "course" ? AI_SCENE_COURSE_CHAT : AI_SCENE_GLOBAL_ASSISTANT;
 }
 
 function normalizeQuickChatSelectionText(value: string | null | undefined): string {
@@ -664,6 +796,7 @@ export const AiConversationView = memo(function AiConversationView({
       sessionId: nextSessionId,
       draft,
       model: toChatRequestModel(chatModel),
+      scene: context?.scene ?? request?.scene ?? null,
       source: context?.source ?? request?.source ?? null,
       anchorId: context?.anchorId ?? request?.anchorId ?? null,
       selectedText: context?.selectedText ?? request?.selectedText ?? null,
@@ -687,6 +820,7 @@ export const AiConversationView = memo(function AiConversationView({
     request?.selectionContext,
     request?.sessionId,
     request?.showSelectionContext,
+    request?.scene,
     request?.source,
     selectedSessionId,
   ]);
@@ -990,6 +1124,7 @@ export const AiConversationView = memo(function AiConversationView({
         key: request.key,
         question: request.draft.trim(),
         model: request.model?.trim() || null,
+        scene: normalizeScene(request.scene) ?? sceneFromSource(request.source, false),
         source: request.source?.trim() || null,
         attachedFileIds: Array.from(new Set((request.attachedFileIds ?? []).map((item) => item.trim()).filter(Boolean))),
       });
@@ -1095,7 +1230,9 @@ export const AiConversationView = memo(function AiConversationView({
     }
 
     if (selectedText) {
+      const nextScene = normalizeScene(request.scene) ?? sceneFromSource(requestSource, true) ?? AI_SCENE_DOCUMENT_SELECTION;
       const nextContext = {
+        scene: nextScene,
         source: requestSource,
         anchorId: requestAnchorId,
         selectedText,
@@ -1213,6 +1350,13 @@ export const AiConversationView = memo(function AiConversationView({
       question: autoRequest.question,
       model: requestModel,
       session_id: undefined,
+      scene: autoRequest.scene ?? resolveConversationScene({
+        scope,
+        question: autoRequest.question,
+        hasAttachedFiles: autoRequest.attachedFileIds.length > 0,
+        selectionContext: null,
+        requestedSource: autoRequest.source,
+      }),
       source: autoRequest.source,
       attached_file_ids: autoRequest.attachedFileIds,
     });
@@ -1241,6 +1385,7 @@ export const AiConversationView = memo(function AiConversationView({
     reloadSessions,
     sendMessage,
     setActiveConversationSessionId,
+    scope,
   ]);
 
   useEffect(() => {
@@ -1264,21 +1409,22 @@ export const AiConversationView = memo(function AiConversationView({
       pendingSelectionSubmittedRef.current = true;
     }
     const selectedSessionSource = selectedSession?.source?.trim() ?? "";
-    const shouldUseHomeIntakeSource =
-      scope?.type === "global" &&
-      !selectionContext &&
-      (
-        hasAttachedFiles ||
-        selectedSessionSource === "home_intake" ||
-        looksLikeHomeIntakeTurn(question)
-      );
+    const resolvedScene = resolveConversationScene({
+      scope,
+      question,
+      hasAttachedFiles,
+      selectionContext,
+      selectedSessionSource,
+    });
+    const resolvedSource = selectionContext?.source ?? sourceForScene(resolvedScene) ?? undefined;
     setDraft("");
     const result = await sendMessage(
       {
         question,
         model: toChatRequestModel(chatModel),
         session_id: pendingSelectionContext ? undefined : selectedSessionId ?? undefined,
-        source: selectionContext?.source ?? (shouldUseHomeIntakeSource ? "home_intake" : undefined),
+        scene: resolvedScene,
+        source: resolvedSource,
         anchor_id: selectionContext?.anchorId,
         selected_text: selectionContext?.selectedText,
         selected_context: selectionContext?.selectedText,

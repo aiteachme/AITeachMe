@@ -22,10 +22,12 @@ def build_prompt_node(*, context: WorkflowContext):
             execution_mode=state["execution_mode"],
             course_id=course_id,
             retrieval_results=state.get("retrieval_results", []),
+            scene=state.get("scene"),
             source=state.get("source"),
         )
         agent_tool_catalog = build_agent_tool_catalog(
             AgentToolPolicyRequest(
+                scene=state.get("scene"),
                 source=state.get("source"),
                 course_id=course_id,
                 allow_write_tools=False,
@@ -41,6 +43,7 @@ def build_prompt_node(*, context: WorkflowContext):
             weak_points=state.get("weak_points", []),
             recent_mistakes=state.get("recent_mistakes", []),
             question=state["question"],
+            scene=state.get("scene"),
             source=state.get("source"),
             selected_context=state.get("selected_context"),
             selection_context=state.get("selection_context"),

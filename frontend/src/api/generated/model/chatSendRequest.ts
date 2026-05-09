@@ -14,6 +14,8 @@ export interface ChatSendRequest {
   question: string;
   /** Optional session ID. Auto-created when omitted. */
   session_id?: string | null;
+  /** Explicit product scene for prompt/tool routing, e.g. global_assistant, course_chat, document_selection, exam_question, build_assistant, home_intake, or web_research. */
+  scene?: string | null;
   /** Optional source tag, e.g. quick_chat, exam_question, or build_assistant. */
   source?: string | null;
   /** Optional per-message chat model. Omit or use settings for configured defaults. */

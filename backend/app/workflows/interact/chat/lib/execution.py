@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 
 from app.shared.infra.strategies import StrategyMode
+from app.workflows.interact.chat.lib.intent import ChatScene, has_external_research_intent, parse_chat_scene
 from app.workflows.interact.chat.lib.types import RetrievedContext
 
 
@@ -50,18 +51,23 @@ def select_execution_mode(
     selected_context: str | None,
     strategy_mode: StrategyMode,
     retrieval_results: list[RetrievedContext],
+    scene: str | None = None,
     allow_course_tools: bool = True,
 ) -> InteractExecutionMode:
     """Choose a bounded execution mode without another model call."""
 
     if selected_context and selected_context.strip():
         return InteractExecutionMode.SINGLE_PASS
+    if parse_chat_scene(scene) == ChatScene.WEB_RESEARCH:
+        return InteractExecutionMode.PLAN_EXECUTE
     if not allow_course_tools:
-        return InteractExecutionMode.SINGLE_PASS
+        return InteractExecutionMode.PLAN_EXECUTE if has_external_research_intent(question) else InteractExecutionMode.SINGLE_PASS
 
     normalized_question = str(question or "").lower()
     retrieval_count = len(retrieval_results or [])
 
+    if has_external_research_intent(question):
+        return InteractExecutionMode.PLAN_EXECUTE
     if strategy_mode in {StrategyMode.PLANNING, StrategyMode.SOCRATIC}:
         return InteractExecutionMode.PLAN_EXECUTE
     if _contains_any(normalized_question, _PLANNING_KEYWORDS):

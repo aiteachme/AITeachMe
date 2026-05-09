@@ -114,6 +114,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       draft: options?.draft,
       autoSend: options?.autoSend,
       model: options?.model,
+      scene: options?.scene,
       source: options?.source,
       anchorId: options?.anchorId,
       selectedText: options?.selectedText,

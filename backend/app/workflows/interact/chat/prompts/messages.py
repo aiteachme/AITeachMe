@@ -67,6 +67,7 @@ def build_chat_messages(
     recent_mistakes: list[MistakeSummary],
     question: str,
     course_context: CourseContextSummary | None = None,
+    scene: str | None = None,
     source: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
@@ -81,10 +82,12 @@ def build_chat_messages(
     has_primary_context = bool(primary_context.strip() and primary_context.strip() != "无。")
     prompt_scene = resolve_prompt_scene(
         question=question,
+        scene=scene,
         source=source,
+        course_id=course_id,
         has_primary_context=has_primary_context,
     )
-    use_course_grounding = prompt_scene != ChatPromptScene.GENERAL
+    use_course_grounding = _uses_course_grounding(prompt_scene)
     focus_text = _build_focus_text(
         question=question,
         selected_context=selected_context,
@@ -105,8 +108,8 @@ def build_chat_messages(
         ),
         teaching_strategy=(
             get_strategy_instruction(strategy_mode)
-            if prompt_scene != ChatPromptScene.GENERAL
-            else "通用对话模式：先回应用户当下感受；可以轻松陪聊或给一个很小的可选行动，不主动讲授课程知识。"
+            if use_course_grounding
+            else "通用助手模式：先回应用户当下需求；如果信息已经足够，就主动推进，最多只做一次必要澄清。"
         ),
         weak_points_context=(
             _format_weak_points_context(
@@ -150,6 +153,15 @@ def build_chat_messages(
         chat_history=history_messages,
         user_query=question,
     )
+
+
+def _uses_course_grounding(scene: ChatPromptScene) -> bool:
+    return scene in {
+        ChatPromptScene.COURSE_LEARNING,
+        ChatPromptScene.DOCUMENT_SELECTION,
+        ChatPromptScene.EXAM_QUESTION,
+        ChatPromptScene.BUILD_ASSISTANT,
+    }
 
 
 def _append_agent_tool_catalog(system_prompt: str, agent_tool_catalog: str | None) -> str:
@@ -478,7 +490,7 @@ def _format_course_background(
 
 
 def _course_background_mode(scene: ChatPromptScene) -> _CourseBackgroundMode:
-    if scene == ChatPromptScene.GENERAL:
+    if scene in {ChatPromptScene.GENERAL, ChatPromptScene.GLOBAL_ASSISTANT, ChatPromptScene.WEB_RESEARCH}:
         return "chat_scope"
     if scene in {ChatPromptScene.DOCUMENT_SELECTION, ChatPromptScene.EXAM_QUESTION}:
         return "entry_context"
@@ -633,6 +645,16 @@ def _format_interaction_entry(source: str | None, *, scene: ChatPromptScene) -> 
         return "考卷题目触发。回答时优先围绕当前题目、题干、选项、用户答案或批改结果。"
     if scene == ChatPromptScene.BUILD_ASSISTANT:
         return "知识库构建过程触发。回答时优先解释当前构建阶段、资料处理或知识文档生成结果。"
+    if scene == ChatPromptScene.WEB_RESEARCH:
+        return (
+            "外部信息查询场景：用户需要当前、最新或公开来源信息。"
+            "如果 `web_search` 工具可用，应先搜索再回答；不要把课程知识库当作实时信息来源。"
+        )
+    if scene == ChatPromptScene.GLOBAL_ASSISTANT:
+        return (
+            "全局助手场景：当前没有绑定某一段课程材料。可以帮助用户搜索、规划、整理目标或创建学习空间；"
+            "用户需求已经足够明确时直接推进，最多只做一次必要澄清。"
+        )
     if scene == ChatPromptScene.COURSE_LEARNING and normalized == "quick_chat":
         return "普通侧边栏学习对话：当前没有划选主证据；可以使用当前学习空间背景，但不要虚构具体划选内容。"
     if scene == ChatPromptScene.COURSE_LEARNING and normalized:

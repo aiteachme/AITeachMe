@@ -20,6 +20,7 @@ import {
   reportBackendConnectionIssue,
 } from "../../api/client";
 import {
+  AI_SCENE_EXAM_QUESTION,
   AI_SOURCE_EXAM_QUESTION,
   EXAM_QUESTION_JUMP_EVENT,
   buildExamQuestionAnchorId,
@@ -482,6 +483,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       scope: { type: "course", courseId },
       sessionId: null,
       draft: buildQuestionAiDraft(item, isReviewStage),
+      scene: AI_SCENE_EXAM_QUESTION,
       source: AI_SOURCE_EXAM_QUESTION,
       anchorId,
       selectedText,

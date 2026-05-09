@@ -16,6 +16,7 @@ from app.agent_tools.policy import AgentToolPolicyRequest, is_global_assistant_s
 from app.shared.infra.agent_loop import AgentLoopConfig
 from app.utils.course import is_global_course
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
+from app.workflows.interact.chat.lib.intent import ChatScene, parse_chat_scene
 from app.workflows.interact.chat.lib.model_policy import (
     INTERACT_MODEL_SELECTOR,
     InteractModelStep,
@@ -46,6 +47,7 @@ def resolve_interact_tool_plan(
     execution_mode: InteractExecutionMode,
     course_id: str,
     retrieval_results: list[RetrievedContext],
+    scene: str | None = None,
     source: str | None = None,
     allow_write_tools: bool = False,
     approved_tool_names: set[str] | None = None,
@@ -58,14 +60,17 @@ def resolve_interact_tool_plan(
     """
 
     policy_request = AgentToolPolicyRequest(
+        scene=scene,
         source=source,
         course_id=course_id,
         allow_write_tools=allow_write_tools,
         approved_tool_names=frozenset(approved_tool_names or set()),
     )
     tool_names = resolve_agent_tool_names(policy_request)
+    parsed_scene = parse_chat_scene(scene)
     if execution_mode != InteractExecutionMode.PLAN_EXECUTE and not (
-        is_global_course(course_id) and is_global_assistant_source(source)
+        parsed_scene == ChatScene.WEB_RESEARCH
+        or (is_global_course(course_id) and (parsed_scene == ChatScene.GLOBAL_ASSISTANT or is_global_assistant_source(source)))
     ):
         return InteractToolPlan(tool_names=[])
     _ = retrieval_results

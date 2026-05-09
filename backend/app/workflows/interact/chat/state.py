@@ -24,6 +24,7 @@ class InteractWorkflowState(TypedDict, total=False):
     session_title: str | None
     session_created: bool
     question: str
+    scene: str | None
     source: str | None
     model_override: str | None
     anchor_id: str | None

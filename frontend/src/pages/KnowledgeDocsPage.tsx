@@ -26,7 +26,7 @@ import {
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
-import { useAiInteraction } from "../components/interaction";
+import { AI_SCENE_DOCUMENT_SELECTION, useAiInteraction } from "../components/interaction";
 import { useResizablePanel } from "../hooks/useResizablePanel";
 import {
   BuildView,
@@ -3462,6 +3462,7 @@ export function KnowledgeDocsPage() {
         `/api/v1/courses/${course}/chats/send`,
         {
           question: text,
+          scene: AI_SCENE_DOCUMENT_SELECTION,
           source: "quick_chat",
           session_id: threadSessionIds[threadId] ?? undefined,
           anchor_id: anchorId,
@@ -3563,6 +3564,7 @@ export function KnowledgeDocsPage() {
       scope: { type: "course", courseId },
       sessionId: null,
       draft: "",
+      scene: AI_SCENE_DOCUMENT_SELECTION,
       source: "quick_chat",
       anchorId: toolbar.anchorId,
       selectedText: toolbar.selectedText,
@@ -4628,6 +4630,7 @@ export function KnowledgeDocsPage() {
         openAiInteraction({
           scope: { type: "course", courseId },
           sessionId: targetSessionId,
+          scene: AI_SCENE_DOCUMENT_SELECTION,
           source: "quick_chat",
           anchorId,
           selectedText,
@@ -4644,6 +4647,7 @@ export function KnowledgeDocsPage() {
         scope: { type: "course", courseId },
         sessionId: null,
         draft: "",
+        scene: AI_SCENE_DOCUMENT_SELECTION,
         source: "quick_chat",
         anchorId,
         selectedText,

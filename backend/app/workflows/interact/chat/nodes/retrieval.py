@@ -43,6 +43,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
         )
         if not should_use_course_grounding(
             question=state["question"],
+            scene=state.get("scene"),
             source=state.get("source"),
             has_primary_context=has_primary_context,
         ):

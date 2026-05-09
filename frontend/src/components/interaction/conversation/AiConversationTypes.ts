@@ -1,6 +1,8 @@
 import type { ChatSelectionContext } from "../../../api/generated/model";
+import type { AiConversationScene } from "../types";
 
 export interface PendingSelectionContext {
+  scene: AiConversationScene;
   source: string;
   anchorId: string | null;
   selectedText: string;

@@ -20,6 +20,7 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
         )
         execution_mode = select_execution_mode(
             question=state["question"],
+            scene=state.get("scene"),
             selected_context=(
                 state.get("selected_context")
                 or _selection_text(state.get("selection_context"))
@@ -28,6 +29,7 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
             retrieval_results=state.get("retrieval_results", []),
             allow_course_tools=should_use_course_grounding(
                 question=state["question"],
+                scene=state.get("scene"),
                 source=state.get("source"),
                 has_primary_context=has_primary_context,
             ),

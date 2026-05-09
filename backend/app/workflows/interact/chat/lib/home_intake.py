@@ -43,8 +43,6 @@ _CREATE_INTENT_KEYWORDS = (
     "规划",
     "建一个",
     "做一个",
-    "学科",
-    "课程",
     "学习空间",
     "知识库",
 )
@@ -87,10 +85,15 @@ def is_home_intake_source(source: str | None) -> bool:
 
 def should_use_home_intake_flow(
     *,
+    scene: str | None = None,
     source: str | None,
     course_id: str | None,
     question: str | None,
 ) -> bool:
+    if (scene or "").strip() == HOME_INTAKE_SOURCE:
+        return True
+    if (scene or "").strip() and (scene or "").strip() != HOME_INTAKE_SOURCE:
+        return False
     if is_home_intake_source(source):
         return True
     if not is_global_course(course_id):
@@ -179,6 +182,7 @@ async def _classify_home_intake_intent(
     try:
         tool_catalog = build_agent_tool_catalog(
             AgentToolPolicyRequest(
+                scene=HOME_INTAKE_SOURCE,
                 source=HOME_INTAKE_SOURCE,
                 course_id=GLOBAL_COURSE,
                 allow_write_tools=False,

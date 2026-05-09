@@ -1,6 +1,14 @@
 import type { ChatSelectionContext } from "../../api/generated/model";
 
 export type AiInteractionDisplayMode = "sidebar" | "fullscreen";
+export type AiConversationScene =
+  | "global_assistant"
+  | "course_chat"
+  | "document_selection"
+  | "exam_question"
+  | "build_assistant"
+  | "home_intake"
+  | "web_research";
 
 export type AiConversationScope =
   | { type: "global" }
@@ -8,6 +16,13 @@ export type AiConversationScope =
 
 export const AI_SOURCE_DOCUMENT_SELECTION = "quick_chat";
 export const AI_SOURCE_EXAM_QUESTION = "exam_question";
+export const AI_SCENE_GLOBAL_ASSISTANT: AiConversationScene = "global_assistant";
+export const AI_SCENE_COURSE_CHAT: AiConversationScene = "course_chat";
+export const AI_SCENE_DOCUMENT_SELECTION: AiConversationScene = "document_selection";
+export const AI_SCENE_EXAM_QUESTION: AiConversationScene = "exam_question";
+export const AI_SCENE_BUILD_ASSISTANT: AiConversationScene = "build_assistant";
+export const AI_SCENE_HOME_INTAKE: AiConversationScene = "home_intake";
+export const AI_SCENE_WEB_RESEARCH: AiConversationScene = "web_research";
 export const EXAM_QUESTION_JUMP_EVENT = "aiteachme:exam-question-jump";
 
 export interface ExamQuestionJumpDetail {
@@ -45,6 +60,7 @@ export interface OpenAiInteractionOptions {
   draft?: string;
   autoSend?: boolean;
   model?: string | null;
+  scene?: AiConversationScene | null;
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;
@@ -61,6 +77,7 @@ export interface AiInteractionOpenRequest {
   draft?: string;
   autoSend?: boolean;
   model?: string | null;
+  scene?: AiConversationScene | null;
   source?: string | null;
   anchorId?: string | null;
   selectedText?: string | null;

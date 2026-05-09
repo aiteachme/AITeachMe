@@ -162,6 +162,7 @@ def _build_response_stream(
         execution_mode=execution_mode,
         course_id=course_id,
         retrieval_results=state.get("retrieval_results", []),
+        scene=state.get("scene"),
         source=state.get("source"),
     )
     if tool_plan.uses_tools:
@@ -206,6 +207,7 @@ def build_stream_answer_node(
         collected_tokens: list[str] = []
         course_id = str(state.get("course_id") or context.course_id or "")
         if should_use_home_intake_flow(
+            scene=state.get("scene"),
             source=state.get("source"),
             course_id=course_id,
             question=state.get("question"),
@@ -257,6 +259,7 @@ def build_stream_answer_node(
             execution_mode=execution_mode,
             course_id=course_id,
             retrieval_results=state.get("retrieval_results", []),
+            scene=state.get("scene"),
             source=state.get("source"),
         )
         await _emit_status(
