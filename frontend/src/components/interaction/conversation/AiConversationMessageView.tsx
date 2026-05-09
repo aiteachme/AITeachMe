@@ -31,7 +31,7 @@ export function AiConversationMessageView({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      className="min-h-0 flex-1 overflow-y-auto pt-2"
+      className="min-h-0 flex-1 overflow-y-auto bg-white pt-2 dark:bg-slate-950"
     >
       {messages.length > 0 && (!selectedSessionId || historyLoaded || isStreaming) ? (
         <ChatTranscript

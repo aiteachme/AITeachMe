@@ -404,6 +404,8 @@ export interface SseDonePayload {
   session_id?: string;
   session_title?: string;
   contexts?: unknown;
+  elapsed_ms?: number;
+  elapsed_s?: number;
   client_actions?: unknown;
 }
 

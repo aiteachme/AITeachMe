@@ -23,6 +23,8 @@ export interface ChatSessionMessage {
   turnId: string | null;
   contexts: ChatContextItem[] | null;
   createdAt: string | null;
+  completedAt?: string | null;
+  elapsedMs?: number | null;
   status: ChatMessageStatus;
   statusDetail?: string | null;
   errorDetail: string | null;
@@ -62,6 +64,7 @@ interface ChatMessageStatusPayload {
   sessionId: string | null;
   stage: string;
   detail: string;
+  elapsedMs: number | null;
   toolName: string | null;
   toolDisplayName: string | null;
 }
@@ -73,6 +76,7 @@ interface ChatMessageDonePayload {
   sessionId: string | null;
   sessionTitle: string | null;
   turnId: string;
+  elapsedMs: number | null;
   clientActions: ChatClientAction[];
 }
 
@@ -205,7 +209,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           setHistoryError(null);
           return;
         }
-        setMessages(items.map(mapHistoryItemToSessionMessage));
+        setMessages(mapHistoryItemsToSessionMessages(items));
         setMessagesSessionId(requestedSessionId);
         setHistoryError(null);
       } catch (error: unknown) {
@@ -256,6 +260,8 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       turnId: null,
       contexts: null,
       createdAt: now,
+      completedAt: now,
+      elapsedMs: null,
       status: "ready",
       errorDetail: null,
     };
@@ -266,6 +272,8 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       turnId: null,
       contexts: null,
       createdAt: now,
+      completedAt: null,
+      elapsedMs: null,
       status: "streaming",
       errorDetail: null,
     };
@@ -342,6 +350,15 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
                 sessionId: streamSessionId,
               });
             }
+            const elapsedMs = parseChatElapsedMs(payload);
+            if (elapsedMs !== null) {
+              setMessages((current) =>
+                updateMessage(current, assistantLocalId, (message) => ({
+                  ...message,
+                  elapsedMs,
+                })),
+              );
+            }
             const progressStatus = parseChatProgressStatus(payload);
             if (!progressStatus) {
               return;
@@ -350,6 +367,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
                 statusDetail: progressStatus.detail,
+                elapsedMs: progressStatus.elapsedMs ?? message.elapsedMs ?? null,
               })),
             );
             onMessageStatus?.({
@@ -362,6 +380,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           },
           onDone: (payload) => {
             const donePayload = parseChatDonePayload(payload);
+            const completedAt = new Date().toISOString();
             terminalEventReceived = true;
             streamSessionId = donePayload.sessionId ?? streamSessionId;
             activeStreamSessionIdRef.current = streamSessionId;
@@ -378,6 +397,8 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
                 statusDetail: null,
                 errorDetail: null,
                 createdAt: message.createdAt ?? new Date().toISOString(),
+                completedAt,
+                elapsedMs: donePayload.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
               })),
             );
             onMessageDone?.({
@@ -387,18 +408,22 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               sessionId: streamSessionId,
               sessionTitle: donePayload.sessionTitle,
               turnId: donePayload.turnId,
+              elapsedMs: donePayload.elapsedMs ?? null,
               clientActions: donePayload.clientActions,
             });
           },
           onError: (payload) => {
             terminalEventReceived = true;
             streamFailedDetail = parseChatErrorDetail(payload);
+            const completedAt = new Date().toISOString();
             setMessages((current) =>
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
                 status: "error",
                 statusDetail: null,
                 errorDetail: streamFailedDetail,
+                completedAt,
+                elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
               })),
             );
             onMessageError?.({
@@ -418,12 +443,15 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
 
       if (!terminalEventReceived && !controller.signal.aborted) {
         const detail = streamFailedDetail ?? "服务端没有返回完成事件，请稍后重试。";
+        const completedAt = new Date().toISOString();
         setMessages((current) =>
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
             statusDetail: null,
             errorDetail: detail,
+            completedAt,
+            elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
           })),
         );
         onMessageError?.({
@@ -436,12 +464,15 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       }
     } catch (error: unknown) {
       if (controller.signal.aborted) {
+        const completedAt = new Date().toISOString();
         setMessages((current) =>
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "interrupted",
             statusDetail: null,
             errorDetail: "已停止生成",
+            completedAt,
+            elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
           })),
         );
         onMessageError?.({
@@ -453,12 +484,15 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
         });
       } else {
         const detail = getApiErrorMessage(error, "发送消息失败");
+        const completedAt = new Date().toISOString();
         setMessages((current) =>
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
             statusDetail: null,
             errorDetail: detail,
+            completedAt,
+            elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
           })),
         );
         onMessageError?.({
@@ -544,7 +578,16 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
   };
 }
 
-function mapHistoryItemToSessionMessage(item: ChatMessageItem): ChatSessionMessage {
+function mapHistoryItemsToSessionMessages(items: ChatMessageItem[]): ChatSessionMessage[] {
+  return items.map((item, index) => mapHistoryItemToSessionMessage(item, items[index - 1] ?? null));
+}
+
+function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: ChatMessageItem | null): ChatSessionMessage {
+  const completedAt = item.role === "assistant" ? item.created_at : null;
+  const elapsedMs = item.role === "assistant" && previousItem?.role === "user"
+    ? computeElapsedMs(previousItem.created_at, item.created_at)
+    : null;
+
   return {
     localId: `history-${item.id}`,
     role: item.role,
@@ -552,6 +595,8 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem): ChatSessionMessa
     turnId: item.turn_id,
     contexts: item.contexts ?? null,
     createdAt: item.created_at,
+    completedAt,
+    elapsedMs,
     status: "ready",
     errorDetail: null,
   };
@@ -573,11 +618,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function computeElapsedMs(startAt: string | null | undefined, endAt: string | null | undefined): number | null {
+  if (!startAt || !endAt) {
+    return null;
+  }
+  const start = Date.parse(startAt);
+  const end = Date.parse(endAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return null;
+  }
+  return end - start;
+}
+
+function parseChatElapsedMs(payload: unknown): number | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+  if (typeof payload.elapsed_ms === "number" && Number.isFinite(payload.elapsed_ms) && payload.elapsed_ms >= 0) {
+    return Math.round(payload.elapsed_ms);
+  }
+  if (typeof payload.elapsed_s === "number" && Number.isFinite(payload.elapsed_s) && payload.elapsed_s >= 0) {
+    return Math.round(payload.elapsed_s * 1000);
+  }
+  return null;
+}
+
 function parseChatDonePayload(payload: unknown): {
   turnId: string;
   sessionId: string | null;
   sessionTitle: string | null;
   contexts: ChatContextItem[] | null;
+  elapsedMs: number | null;
   clientActions: ChatClientAction[];
 } {
   if (!isRecord(payload)) {
@@ -586,6 +657,7 @@ function parseChatDonePayload(payload: unknown): {
       sessionId: null,
       sessionTitle: null,
       contexts: null,
+      elapsedMs: null,
       clientActions: [],
     };
   }
@@ -595,6 +667,7 @@ function parseChatDonePayload(payload: unknown): {
     sessionId: typeof payload.session_id === "string" ? payload.session_id : null,
     sessionTitle: typeof payload.session_title === "string" ? payload.session_title : null,
     contexts: Array.isArray(payload.contexts) ? (payload.contexts as ChatContextItem[]) : null,
+    elapsedMs: parseChatElapsedMs(payload),
     clientActions: parseClientActions(payload.client_actions ?? payload.actions),
   };
 }
@@ -622,6 +695,7 @@ function parseChatStatusSessionId(payload: unknown): string | null {
 function parseChatProgressStatus(payload: unknown): {
   stage: string;
   detail: string;
+  elapsedMs: number | null;
   toolName: string | null;
   toolDisplayName: string | null;
 } | null {
@@ -642,7 +716,7 @@ function parseChatProgressStatus(payload: unknown): {
   const toolDisplayName = typeof payload.tool_display_name === "string" && payload.tool_display_name.trim()
     ? payload.tool_display_name.trim()
     : null;
-  return { stage, detail, toolName, toolDisplayName };
+  return { stage, detail, elapsedMs: parseChatElapsedMs(payload), toolName, toolDisplayName };
 }
 
 function parseChatErrorDetail(payload: unknown): string {
