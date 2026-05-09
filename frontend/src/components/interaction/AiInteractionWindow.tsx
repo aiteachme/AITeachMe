@@ -1,14 +1,23 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type TransitionEvent,
+} from "react";
 import { Bot } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useResizablePanel } from "../../hooks/useResizablePanel";
+import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
 import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest } from "./types";
+import type { AiConversationScope, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
 
 interface AiInteractionWindowProps {
-  variant: "sidebar" | "fullscreen";
   scope?: AiConversationScope | null;
   className?: string;
 }
@@ -19,11 +28,84 @@ interface AiConversationViewLoaderProps {
   active: boolean;
   presentation: "sidebar" | "fullscreen";
   onClose?: () => void;
+  onReturnToSidebar?: (options?: OpenAiInteractionOptions) => void;
   className?: string;
 }
 
-const SIDEBAR_TRANSITION_MS = 220;
+type AiWindowDisplayMode = "closed" | "sidebar" | "fullscreen";
+type OpenAiWindowDisplayMode = Exclude<AiWindowDisplayMode, "closed">;
+
+const WINDOW_TRANSITION_MS = 220;
+const SIDEBAR_BOUNDARY_ACTION_THRESHOLD = 160;
 const KNOWLEDGE_GRAPH_DRAWER_EVENT = "aiteachme:knowledge-graph-drawer";
+const DEFAULT_GLOBAL_SCOPE: AiConversationScope = { type: "global" };
+const BUILD_PAGE_PATTERN = /^\/courses?\/[^/?#]+\/build\b/;
+
+function getViewportWidth() {
+  return typeof window !== "undefined" ? window.innerWidth : 1200;
+}
+
+function getVisibleAppSidebarWidth() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return 0;
+  }
+
+  const sidebar = document.querySelector<HTMLElement>("[data-app-sidebar='true']");
+  if (!sidebar) {
+    return 0;
+  }
+
+  const rect = sidebar.getBoundingClientRect();
+  const style = window.getComputedStyle(sidebar);
+  if (
+    style.display === "none" ||
+    style.visibility === "hidden" ||
+    rect.width <= 0 ||
+    rect.right <= 0 ||
+    rect.left >= window.innerWidth
+  ) {
+    return 0;
+  }
+
+  return Math.min(rect.width, window.innerWidth);
+}
+
+function getPathnameOnly(path: string) {
+  return path.split(/[?#]/)[0] || "/";
+}
+
+function clampSidebarPanelWidth(width: number, minWidth: number, maxWidth: number) {
+  if (typeof window === "undefined") {
+    return Math.max(minWidth, Math.min(maxWidth, width));
+  }
+
+  const maxAllowed = Math.min(maxWidth, window.innerWidth);
+  const minAllowed = Math.min(minWidth, maxAllowed);
+  return Math.max(minAllowed, Math.min(maxAllowed, width));
+}
+
+function getSidebarReturnPath(targetScope: AiConversationScope, lastNonAssistantPath: string) {
+  const fallbackPath = targetScope.type === "course"
+    ? buildCoursePath(targetScope.courseId, "knowledge-docs")
+    : "/";
+  const candidatePath = lastNonAssistantPath.trim() || fallbackPath;
+  if (!candidatePath.startsWith("/")) {
+    return fallbackPath;
+  }
+
+  const candidatePathname = getPathnameOnly(candidatePath);
+  if (candidatePathname === "/assistant" || BUILD_PAGE_PATTERN.test(candidatePathname)) {
+    return fallbackPath;
+  }
+
+  if (targetScope.type === "course") {
+    return getCourseIdFromPathname(candidatePathname) === targetScope.courseId
+      ? candidatePath
+      : fallbackPath;
+  }
+
+  return candidatePath;
+}
 
 const LazyAiConversationView = lazy(() =>
   import("./conversation/AiConversationView").then((module) => ({
@@ -39,13 +121,17 @@ function AiConversationViewFallback() {
   );
 }
 
-export function AiInteractionWindow({ variant, scope, className }: AiInteractionWindowProps) {
-  const { pathname } = useLocation();
+export function AiInteractionWindow({ scope, className }: AiInteractionWindowProps) {
+  const location = useLocation();
+  const { pathname } = location;
+  const navigate = useNavigate();
   const panelShellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const outsidePointerRef = useRef<{ x: number; y: number; selectedText: string } | null>(null);
-  const [isSidebarMounted, setIsSidebarMounted] = useState(false);
-  const [isSidebarVisible, setIsSidebarVisible] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(getViewportWidth);
+  const [appSidebarWidth, setAppSidebarWidth] = useState(getVisibleAppSidebarWidth);
+  const [isWindowMounted, setIsWindowMounted] = useState(false);
+  const [lastOpenDisplayMode, setLastOpenDisplayMode] = useState<OpenAiWindowDisplayMode>("sidebar");
   const [isKnowledgeGraphDrawerOpen, setIsKnowledgeGraphDrawerOpen] = useState(() => (
     typeof document !== "undefined" && document.body.dataset.knowledgeGraphDrawerOpen === "true"
   ));
@@ -55,56 +141,220 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
     fullscreenScope,
     sidebarRequest,
     fullscreenRequest,
+    displayMode: requestedDisplayMode,
     isSidebarOpen,
     isSidebarStreaming,
+    activeConversationSessionId,
+    sidebarPanelWidth,
+    lastNonAssistantPath,
     openAiInteraction,
     closeAiInteraction,
+    setSidebarPanelWidth,
   } = useAiInteraction();
 
-  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
-  const isNarrowInitialViewport = initialViewportWidth < 640;
-  const defaultSidebarWidth = isNarrowInitialViewport
-    ? initialViewportWidth
-    : Math.min(680, Math.max(460, initialViewportWidth * 0.34));
-  const maxSidebarWidth = isNarrowInitialViewport
-    ? initialViewportWidth
-    : Math.min(820, initialViewportWidth * 0.5);
-  const isBuildPage = /\/courses?\/[^/]+\/build\b/.test(pathname);
-  const isAssistantPage = pathname === "/assistant";
-  const canShowSidebar = variant === "sidebar" && Boolean(activeScope) && !isBuildPage && !isAssistantPage;
-  const panelScope = sidebarScope ?? activeScope;
-  const shouldShowSidebarPanel = isSidebarOpen && Boolean(panelScope) && canShowSidebar;
-  const shouldReserveSidebarWidth = shouldShowSidebarPanel || isSidebarMounted;
-  const shouldRenderSidebarPanel = canShowSidebar && (shouldReserveSidebarWidth || isSidebarStreaming);
-  const isSidebarVisuallyOpen = shouldShowSidebarPanel && isSidebarVisible;
-  const shouldShowFloatingTrigger = canShowSidebar && !shouldReserveSidebarWidth && !isSidebarStreaming && !isKnowledgeGraphDrawerOpen;
-  const { width: panelWidth, isDragging, handleMouseDown } = useResizablePanel({
-    defaultWidth: defaultSidebarWidth,
-    minWidth: isNarrowInitialViewport ? initialViewportWidth : 400,
-    maxWidth: maxSidebarWidth,
-    liveResizeRef: panelShellRef,
-    liveResizeEnabled: shouldRenderSidebarPanel,
-  });
+  const updateLayoutMeasurements = useCallback(() => {
+    setViewportWidth(getViewportWidth());
+    setAppSidebarWidth(getVisibleAppSidebarWidth());
+  }, []);
 
   useEffect(() => {
-    if (!canShowSidebar) {
-      setIsSidebarMounted(false);
-      setIsSidebarVisible(false);
+    updateLayoutMeasurements();
+    window.addEventListener("resize", updateLayoutMeasurements);
+
+    const appSidebar = document.querySelector<HTMLElement>("[data-app-sidebar='true']");
+    const resizeObserver = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(updateLayoutMeasurements)
+      : null;
+    if (appSidebar) {
+      resizeObserver?.observe(appSidebar);
+      appSidebar.addEventListener("transitionend", updateLayoutMeasurements);
+    }
+    const appShell = panelShellRef.current?.parentElement;
+    if (appShell) {
+      resizeObserver?.observe(appShell);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateLayoutMeasurements);
+      resizeObserver?.disconnect();
+      appSidebar?.removeEventListener("transitionend", updateLayoutMeasurements);
+    };
+  }, [updateLayoutMeasurements]);
+
+  const isNarrowViewport = viewportWidth < 640;
+  const defaultSidebarWidth = isNarrowViewport
+    ? viewportWidth
+    : Math.min(680, Math.max(460, viewportWidth * 0.34));
+  const minSidebarWidth = isNarrowViewport ? viewportWidth : 400;
+  const maxSidebarWidth = isNarrowViewport
+    ? viewportWidth
+    : Math.min(820, viewportWidth * 0.5);
+  const resolvedSidebarPanelWidth = clampSidebarPanelWidth(
+    sidebarPanelWidth ?? defaultSidebarWidth,
+    minSidebarWidth,
+    maxSidebarWidth,
+  );
+
+  const isBuildPage = /\/courses?\/[^/]+\/build\b/.test(pathname);
+  const isAssistantPage = pathname === "/assistant";
+  const canUseWindow = Boolean(activeScope) && !isBuildPage;
+  const canUseSidebar = canUseWindow && (!isAssistantPage || requestedDisplayMode === "sidebar");
+  const panelScope = sidebarScope ?? activeScope;
+  const fullscreenConversationScope = scope ?? fullscreenScope ?? activeScope ?? DEFAULT_GLOBAL_SCOPE;
+  const wantsFullscreen = requestedDisplayMode === "fullscreen" || (!requestedDisplayMode && isAssistantPage);
+  const wantsSidebar = requestedDisplayMode === "sidebar" && isSidebarOpen && Boolean(panelScope);
+  const displayMode: AiWindowDisplayMode = canUseWindow && wantsFullscreen
+    ? "fullscreen"
+    : canUseSidebar && wantsSidebar
+    ? "sidebar"
+    : "closed";
+  const isWindowOpen = displayMode !== "closed";
+  const renderMode: OpenAiWindowDisplayMode = displayMode === "closed" ? lastOpenDisplayMode : displayMode;
+  const renderedScope = renderMode === "fullscreen" ? fullscreenConversationScope : panelScope;
+  const renderedRequest = renderMode === "fullscreen" ? fullscreenRequest : sidebarRequest;
+  const shouldRenderWindowContent = Boolean(renderedScope) && (isWindowOpen || isWindowMounted || isSidebarStreaming);
+  const shouldShowFloatingTrigger = canUseSidebar &&
+    displayMode === "closed" &&
+    !isWindowMounted &&
+    !isSidebarStreaming &&
+    !isKnowledgeGraphDrawerOpen;
+  const fullscreenShellWidth = Math.max(0, viewportWidth - appSidebarWidth);
+  const shellWidth = displayMode === "fullscreen"
+    ? fullscreenShellWidth
+    : displayMode === "sidebar"
+    ? resolvedSidebarPanelWidth
+    : 0;
+
+  useEffect(() => {
+    if (displayMode !== "closed") {
+      setIsWindowMounted(true);
+      setLastOpenDisplayMode(displayMode);
       return;
     }
 
-    if (shouldShowSidebarPanel) {
-      setIsSidebarMounted(true);
-      const frame = window.requestAnimationFrame(() => setIsSidebarVisible(true));
-      return () => window.cancelAnimationFrame(frame);
+    const timeoutId = window.setTimeout(() => {
+      setIsWindowMounted(false);
+    }, WINDOW_TRANSITION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [displayMode]);
+
+  const handleExpandSidebarToFullscreen = useCallback(() => {
+    const nextScope = panelScope ?? activeScope;
+    if (displayMode !== "sidebar" || !nextScope) {
+      return;
     }
 
-    setIsSidebarVisible(false);
-    const timeoutId = window.setTimeout(() => {
-      setIsSidebarMounted(false);
-    }, SIDEBAR_TRANSITION_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [canShowSidebar, shouldShowSidebarPanel]);
+    setSidebarPanelWidth(clampSidebarPanelWidth(maxSidebarWidth, minSidebarWidth, maxSidebarWidth));
+    openAiInteraction({
+      mode: "fullscreen",
+      scope: nextScope,
+      sessionId: activeConversationSessionId ?? sidebarRequest?.sessionId,
+      source: sidebarRequest?.source,
+      anchorId: sidebarRequest?.anchorId,
+      selectedText: sidebarRequest?.selectedText,
+      selectionContext: sidebarRequest?.selectionContext,
+      clientThreadId: sidebarRequest?.clientThreadId,
+      showSelectionContext: sidebarRequest?.showSelectionContext,
+    });
+  }, [
+    activeConversationSessionId,
+    activeScope,
+    displayMode,
+    maxSidebarWidth,
+    minSidebarWidth,
+    openAiInteraction,
+    panelScope,
+    setSidebarPanelWidth,
+    sidebarRequest?.anchorId,
+    sidebarRequest?.clientThreadId,
+    sidebarRequest?.selectedText,
+    sidebarRequest?.selectionContext,
+    sidebarRequest?.sessionId,
+    sidebarRequest?.showSelectionContext,
+    sidebarRequest?.source,
+  ]);
+
+  const handleCollapseSidebarFromDrag = useCallback(() => {
+    if (displayMode === "sidebar") {
+      closeAiInteraction();
+    }
+  }, [closeAiInteraction, displayMode]);
+
+  const { width: panelWidth, isDragging, handleMouseDown, resetWidth } = useResizablePanel({
+    defaultWidth: resolvedSidebarPanelWidth,
+    minWidth: minSidebarWidth,
+    maxWidth: maxSidebarWidth,
+    onResize: setSidebarPanelWidth,
+    boundaryActionThreshold: SIDEBAR_BOUNDARY_ACTION_THRESHOLD,
+    onDragBeyondMax: handleExpandSidebarToFullscreen,
+    onDragBeyondMin: handleCollapseSidebarFromDrag,
+    liveResizeRef: panelShellRef,
+    liveResizeEnabled: displayMode === "sidebar",
+  });
+
+  const handleReturnFullscreenToSidebar = useCallback((options?: OpenAiInteractionOptions) => {
+    const nextSessionId = options?.sessionId !== undefined
+      ? options.sessionId
+      : activeConversationSessionId ?? fullscreenRequest?.sessionId;
+
+    openAiInteraction({
+      ...options,
+      mode: "sidebar",
+      scope: fullscreenConversationScope,
+      sessionId: nextSessionId,
+      source: options?.source !== undefined ? options.source : fullscreenRequest?.source,
+      anchorId: options?.anchorId !== undefined ? options.anchorId : fullscreenRequest?.anchorId,
+      selectedText: options?.selectedText !== undefined ? options.selectedText : fullscreenRequest?.selectedText,
+      selectionContext: options?.selectionContext !== undefined ? options.selectionContext : fullscreenRequest?.selectionContext,
+      clientThreadId: options?.clientThreadId !== undefined ? options.clientThreadId : fullscreenRequest?.clientThreadId,
+      showSelectionContext: options?.showSelectionContext !== undefined
+        ? options.showSelectionContext
+        : fullscreenRequest?.showSelectionContext,
+    });
+    navigate(getSidebarReturnPath(fullscreenConversationScope, lastNonAssistantPath), { replace: true });
+  }, [
+    activeConversationSessionId,
+    fullscreenConversationScope,
+    fullscreenRequest?.anchorId,
+    fullscreenRequest?.clientThreadId,
+    fullscreenRequest?.selectedText,
+    fullscreenRequest?.selectionContext,
+    fullscreenRequest?.sessionId,
+    fullscreenRequest?.showSelectionContext,
+    fullscreenRequest?.source,
+    lastNonAssistantPath,
+    navigate,
+    openAiInteraction,
+  ]);
+
+  const handleWindowTransitionEnd = useCallback((event: TransitionEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.propertyName !== "width") {
+      return;
+    }
+    if (displayMode === "closed") {
+      setIsWindowMounted(false);
+    }
+  }, [displayMode]);
+
+  useEffect(() => {
+    if (isDragging || sidebarPanelWidth === null) {
+      return;
+    }
+
+    const nextWidth = clampSidebarPanelWidth(sidebarPanelWidth, minSidebarWidth, maxSidebarWidth);
+    if (typeof panelWidth === "number" && Math.abs(panelWidth - nextWidth) < 1) {
+      return;
+    }
+
+    resetWidth(nextWidth);
+  }, [
+    isDragging,
+    maxSidebarWidth,
+    minSidebarWidth,
+    panelWidth,
+    resetWidth,
+    sidebarPanelWidth,
+  ]);
 
   useEffect(() => {
     const syncFromBody = () => {
@@ -139,7 +389,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
   }, []);
 
   useEffect(() => {
-    if (!shouldShowSidebarPanel) {
+    if (displayMode !== "sidebar") {
       outsidePointerRef.current = null;
       return;
     }
@@ -197,29 +447,7 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("pointercancel", clearPointer, true);
     };
-  }, [closeAiInteraction, isInsideAppSidebar, isInsidePanel, shouldShowSidebarPanel]);
-
-  if (variant === "fullscreen") {
-    const fullscreenConversationScope = scope ?? fullscreenScope ?? activeScope ?? { type: "global" };
-
-    return (
-      <section
-        className={cn(
-          "flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-transparent",
-          className,
-        )}
-      >
-        <Suspense fallback={<AiConversationViewFallback />}>
-          <LazyAiConversationView
-            scope={fullscreenConversationScope}
-            request={fullscreenRequest}
-            active
-            presentation="fullscreen"
-          />
-        </Suspense>
-      </section>
-    );
-  }
+  }, [closeAiInteraction, displayMode, isInsideAppSidebar, isInsidePanel]);
 
   return (
     <>
@@ -237,38 +465,45 @@ export function AiInteractionWindow({ variant, scope, className }: AiInteraction
       <div
         ref={panelShellRef}
         data-ai-interaction-window="true"
+        data-ai-interaction-display={displayMode}
         className={cn(
           "relative z-[85] h-full min-h-0 shrink-0 overflow-hidden [contain:layout_paint_style]",
-          shouldShowSidebarPanel ? "pointer-events-auto" : "pointer-events-none",
+          !isDragging && "transition-[width] ease-[cubic-bezier(0.2,0.8,0.2,1)]",
+          isWindowOpen ? "pointer-events-auto" : "pointer-events-none",
         )}
-        style={{ width: shouldReserveSidebarWidth ? panelWidth : 0 }}
-        aria-hidden={!shouldShowSidebarPanel}
+        style={{ width: shellWidth, transitionDuration: `${WINDOW_TRANSITION_MS}ms` }}
+        aria-hidden={!isWindowOpen}
+        onTransitionEnd={handleWindowTransitionEnd}
       >
-        {shouldRenderSidebarPanel ? (
+        {shouldRenderWindowContent ? (
           <div
             ref={panelRef}
             className={cn(
-              "absolute bottom-0 right-0 top-0 flex transform-gpu border-l border-zinc-200/80 bg-white shadow-[0_0_40px_rgba(0,0,0,0.1)] will-change-transform dark:border-slate-800/80 dark:bg-slate-950 dark:shadow-[0_0_50px_rgba(0,0,0,0.55)]",
-              isSidebarVisuallyOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
-              !isDragging && "transition-[transform,opacity] ease-[cubic-bezier(0.2,0.8,0.2,1)]",
+              "absolute bottom-0 right-0 top-0 flex min-w-0 overflow-hidden",
+              renderMode === "sidebar"
+                ? "border-l border-zinc-200/80 bg-white shadow-[0_0_40px_rgba(0,0,0,0.1)] dark:border-slate-800/80 dark:bg-slate-950 dark:shadow-[0_0_50px_rgba(0,0,0,0.55)]"
+                : "bg-[#fafafa] dark:bg-[#0b0f19]",
               className,
             )}
-            style={{ width: "100%", transitionDuration: `${SIDEBAR_TRANSITION_MS}ms` }}
+            style={{ width: "100%" }}
           >
-            <div
-              className={cn(
-                "absolute bottom-0 left-0 top-0 z-50 -ml-[0.5px] hidden w-1.5 cursor-col-resize transition-colors hover:bg-indigo-500/50 sm:block",
-                isDragging && "bg-indigo-500/50",
-              )}
-              onMouseDown={handleMouseDown}
-            />
+            {displayMode === "sidebar" ? (
+              <div
+                className={cn(
+                  "absolute bottom-0 left-0 top-0 z-50 -ml-[0.5px] hidden w-1.5 cursor-col-resize transition-colors hover:bg-indigo-500/50 sm:block",
+                  isDragging && "bg-indigo-500/50",
+                )}
+                onMouseDown={handleMouseDown}
+              />
+            ) : null}
             <Suspense fallback={<AiConversationViewFallback />}>
               <LazyAiConversationView
-                scope={panelScope}
-                request={sidebarRequest}
-                active={shouldShowSidebarPanel}
-                presentation="sidebar"
-                onClose={closeAiInteraction}
+                scope={renderedScope}
+                request={renderedRequest}
+                active={isWindowOpen}
+                presentation={renderMode}
+                onClose={displayMode === "sidebar" ? closeAiInteraction : undefined}
+                onReturnToSidebar={renderMode === "fullscreen" ? handleReturnFullscreenToSidebar : undefined}
               />
             </Suspense>
           </div>

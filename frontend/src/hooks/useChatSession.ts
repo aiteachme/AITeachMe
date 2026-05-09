@@ -24,6 +24,7 @@ export interface ChatSessionMessage {
   contexts: ChatContextItem[] | null;
   createdAt: string | null;
   status: ChatMessageStatus;
+  statusDetail?: string | null;
   errorDetail: string | null;
 }
 
@@ -52,6 +53,17 @@ interface ChatMessageTokenPayload {
   assistantLocalId: string;
   sessionId: string | null;
   content: string;
+}
+
+interface ChatMessageStatusPayload {
+  input: ChatSendRequest;
+  localThreadId: string;
+  assistantLocalId: string;
+  sessionId: string | null;
+  stage: string;
+  detail: string;
+  toolName: string | null;
+  toolDisplayName: string | null;
 }
 
 interface ChatMessageDonePayload {
@@ -95,6 +107,7 @@ interface UseChatSessionOptions {
   onMessageStart?: (payload: ChatMessageLifecyclePayload) => void;
   onMessageSessionResolved?: (payload: ChatMessageSessionPayload) => void;
   onMessageToken?: (payload: ChatMessageTokenPayload) => void;
+  onMessageStatus?: (payload: ChatMessageStatusPayload) => void;
   onMessageDone?: (payload: ChatMessageDonePayload) => void;
   onMessageError?: (payload: ChatMessageErrorPayload) => void;
   onMessageSettled?: (payload: ChatMessageSettledPayload) => void;
@@ -109,6 +122,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
   const onMessageStart = options.onMessageStart;
   const onMessageSessionResolved = options.onMessageSessionResolved;
   const onMessageToken = options.onMessageToken;
+  const onMessageStatus = options.onMessageStatus;
   const onMessageDone = options.onMessageDone;
   const onMessageError = options.onMessageError;
   const onMessageSettled = options.onMessageSettled;
@@ -303,6 +317,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               return updateMessage(baseMessages, assistantLocalId, (message) => ({
                 ...message,
                 content: `${message.content}${event.content}`,
+                statusDetail: null,
               }));
             });
             onMessageToken?.({
@@ -315,18 +330,34 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           },
           onStatus: (payload) => {
             const statusSessionId = parseChatStatusSessionId(payload);
-            if (!statusSessionId || statusSessionId === streamSessionId) {
+            if (statusSessionId && statusSessionId !== streamSessionId) {
+              streamSessionId = statusSessionId;
+              activeStreamSessionIdRef.current = streamSessionId;
+              setMessagesSessionId(streamSessionId);
+              onSessionResolved?.(streamSessionId);
+              onMessageSessionResolved?.({
+                input,
+                localThreadId,
+                assistantLocalId,
+                sessionId: streamSessionId,
+              });
+            }
+            const progressStatus = parseChatProgressStatus(payload);
+            if (!progressStatus) {
               return;
             }
-            streamSessionId = statusSessionId;
-            activeStreamSessionIdRef.current = streamSessionId;
-            setMessagesSessionId(streamSessionId);
-            onSessionResolved?.(streamSessionId);
-            onMessageSessionResolved?.({
+            setMessages((current) =>
+              updateMessage(current, assistantLocalId, (message) => ({
+                ...message,
+                statusDetail: progressStatus.detail,
+              })),
+            );
+            onMessageStatus?.({
               input,
               localThreadId,
               assistantLocalId,
               sessionId: streamSessionId,
+              ...progressStatus,
             });
           },
           onDone: (payload) => {
@@ -344,6 +375,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
                 turnId: donePayload.turnId,
                 contexts: donePayload.contexts,
                 status: "ready",
+                statusDetail: null,
                 errorDetail: null,
                 createdAt: message.createdAt ?? new Date().toISOString(),
               })),
@@ -365,6 +397,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
                 status: "error",
+                statusDetail: null,
                 errorDetail: streamFailedDetail,
               })),
             );
@@ -389,6 +422,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
+            statusDetail: null,
             errorDetail: detail,
           })),
         );
@@ -406,6 +440,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "interrupted",
+            statusDetail: null,
             errorDetail: "已停止生成",
           })),
         );
@@ -422,6 +457,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
           updateMessage(current, assistantLocalId, (message) => ({
             ...message,
             status: "error",
+            statusDetail: null,
             errorDetail: detail,
           })),
         );
@@ -581,6 +617,32 @@ function parseChatStatusSessionId(payload: unknown): string | null {
   }
   const sessionId = payload.session_id;
   return typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
+}
+
+function parseChatProgressStatus(payload: unknown): {
+  stage: string;
+  detail: string;
+  toolName: string | null;
+  toolDisplayName: string | null;
+} | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+  const stage = typeof payload.stage === "string" ? payload.stage.trim() : "";
+  if (!stage.startsWith("tool_call_")) {
+    return null;
+  }
+  const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+  if (!detail) {
+    return null;
+  }
+  const toolName = typeof payload.tool_name === "string" && payload.tool_name.trim()
+    ? payload.tool_name.trim()
+    : null;
+  const toolDisplayName = typeof payload.tool_display_name === "string" && payload.tool_display_name.trim()
+    ? payload.tool_display_name.trim()
+    : null;
+  return { stage, detail, toolName, toolDisplayName };
 }
 
 function parseChatErrorDetail(payload: unknown): string {

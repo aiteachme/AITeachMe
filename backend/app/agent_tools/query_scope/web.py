@@ -8,6 +8,10 @@ from app.shared.infra.tools.decorator import tool
 @tool(
     "web_search",
     "Search the web for recent or external information not covered by course materials.",
+    usage=(
+        "Use for current events, changing facts, external references, or questions that cannot be answered "
+        "reliably from local course material or conversation context alone."
+    ),
     tags=["query", "web"],
     source="agent_tools.query_scope",
     risk_level="low",

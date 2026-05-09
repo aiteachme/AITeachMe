@@ -8,6 +8,10 @@ from app.shared.infra.tools.decorator import tool
 @tool(
     "search_kb",
     "Search the active course knowledge base for passages relevant to the question.",
+    usage=(
+        "Use when the answer should be grounded in the current course materials, uploaded documents, "
+        "or generated knowledge base, especially when the prompt lacks enough evidence."
+    ),
     tags=["query", "knowledge", "course"],
     source="agent_tools.query_scope",
     risk_level="low",

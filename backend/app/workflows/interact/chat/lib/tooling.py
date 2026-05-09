@@ -7,11 +7,14 @@ own the global tool registry.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from app.agent_tools.context import AgentToolContext
-from app.agent_tools.policy import AgentToolPolicyRequest, resolve_agent_tool_names
+from app.agent_tools.policy import AgentToolPolicyRequest, is_global_assistant_source, resolve_agent_tool_names
 from app.shared.infra.agent_loop import AgentLoopConfig
+from app.utils.course import is_global_course
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.model_policy import (
     INTERACT_MODEL_SELECTOR,
@@ -54,19 +57,19 @@ def resolve_interact_tool_plan(
     them in the stream node.
     """
 
-    if execution_mode != InteractExecutionMode.PLAN_EXECUTE:
+    policy_request = AgentToolPolicyRequest(
+        source=source,
+        course_id=course_id,
+        allow_write_tools=allow_write_tools,
+        approved_tool_names=frozenset(approved_tool_names or set()),
+    )
+    tool_names = resolve_agent_tool_names(policy_request)
+    if execution_mode != InteractExecutionMode.PLAN_EXECUTE and not (
+        is_global_course(course_id) and is_global_assistant_source(source)
+    ):
         return InteractToolPlan(tool_names=[])
     _ = retrieval_results
-    return InteractToolPlan(
-        tool_names=resolve_agent_tool_names(
-            AgentToolPolicyRequest(
-                source=source,
-                course_id=course_id,
-                allow_write_tools=allow_write_tools,
-                approved_tool_names=frozenset(approved_tool_names or set()),
-            )
-        )
-    )
+    return InteractToolPlan(tool_names=tool_names)
 
 
 def build_agent_loop_config(
@@ -79,6 +82,7 @@ def build_agent_loop_config(
     attached_file_ids: list[str] | None = None,
     approved_tool_names: set[str] | None = None,
     model_selector: str | None = None,
+    tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None,
     extra_metadata: dict[str, object] | None = None,
 ) -> AgentLoopConfig:
     """Build the shared AgentLoop configuration for Interact."""
@@ -98,6 +102,7 @@ def build_agent_loop_config(
             approved_tool_names=frozenset(approved_tool_names or set()),
         ),
         approved_tool_names=set(approved_tool_names or set()),
+        tool_event_handler=tool_event_handler,
         extra_metadata=dict(extra_metadata or {}),
     )
 

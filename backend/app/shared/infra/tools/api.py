@@ -79,6 +79,7 @@ def list_agent_tools() -> list[dict[str, object]]:
         {
             "name": definition.name,
             "description": definition.description,
+            "usage": definition.usage,
             "tags": list(definition.tags),
             "source": definition.source,
             "risk_level": definition.risk_level,

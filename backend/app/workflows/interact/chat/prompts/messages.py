@@ -71,6 +71,7 @@ def build_chat_messages(
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
     source_chunk_id: int | None = None,
+    agent_tool_catalog: str | None = None,
     context_window: ContextWindowManager | None = None,
 ) -> list[ChatMessage]:
     """Build the full LLM message list for one tutoring turn."""
@@ -127,6 +128,7 @@ def build_chat_messages(
         ),
         selected_context=primary_context,
     )
+    system_prompt = _append_agent_tool_catalog(system_prompt, agent_tool_catalog)
     history_messages = [
         {
             "role": ASSISTANT if item.role == "assistant" else USER,
@@ -147,6 +149,22 @@ def build_chat_messages(
         retrieval_chunks=retrieval_chunks,
         chat_history=history_messages,
         user_query=question,
+    )
+
+
+def _append_agent_tool_catalog(system_prompt: str, agent_tool_catalog: str | None) -> str:
+    catalog = (agent_tool_catalog or "").strip()
+    if not catalog:
+        return system_prompt
+    return (
+        f"{system_prompt}\n\n"
+        "Registered agent tool catalog:\n"
+        "Use this catalog as the source of truth when the user asks what you can do. "
+        "Do not invent tools. Only call tools that are present in this turn's function schema. "
+        "Tools marked `available_by_policy` describe supported capabilities but may not be callable in this exact turn. "
+        "Tools marked `requires_user_confirmation` are capabilities you may prepare, "
+        "but you must not claim completion until the user confirms and the tool result succeeds.\n"
+        f"{catalog}"
     )
 
 

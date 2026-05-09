@@ -8,6 +8,10 @@ from app.shared.infra.tools.decorator import tool
 @tool(
     "recall_info",
     "Recall user-specific background or learning information relevant to a query.",
+    usage=(
+        "Use when remembered user preferences, goals, strengths, weaknesses, or background details "
+        "would make the answer more personalized."
+    ),
     tags=["query", "memory"],
     source="agent_tools.query_scope",
     risk_level="low",

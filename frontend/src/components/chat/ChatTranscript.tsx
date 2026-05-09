@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { AlertCircle, UserRound } from "lucide-react";
+import { AlertCircle, Loader2, UserRound } from "lucide-react";
 import type { ChatContextItem } from "../../api/generated/model";
 import { type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
@@ -59,6 +59,12 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
                     <MarkdownViewer content={message.content || " "} />
                     {message.status === "streaming" ? (
                       <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-slate-500 align-middle dark:bg-slate-400" />
+                    ) : null}
+                    {message.status === "streaming" && message.statusDetail ? (
+                      <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        <span className="truncate">{message.statusDetail}</span>
+                      </div>
                     ) : null}
                   </div>
                 ) : (

@@ -12,9 +12,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
@@ -52,6 +53,7 @@ class AgentLoopConfig:
     tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     tool_context: Any | None = None
     approved_tool_names: set[str] = field(default_factory=set)
+    tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None
     extra_metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -328,6 +330,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         args = {}
     if not isinstance(args, dict):
         args = {}
+    visible_args = dict(args)
     context_args = _resolve_context_tool_args(
         cfg.tool_context,
         tool_name=func_name,
@@ -342,6 +345,13 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         }
 
     start = time.monotonic()
+    await _emit_tool_event(
+        cfg,
+        phase="started",
+        tool_name=func_name,
+        tool_call_id=str(getattr(tool_call, "id", "") or ""),
+        argument_names=sorted(str(name) for name in visible_args.keys()),
+    )
     try:
         raw_result = await asyncio.wait_for(
             registry.execute(
@@ -360,6 +370,14 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             elapsed_s=elapsed,
             result_len=len(result_str),
         )
+        await _emit_tool_event(
+            cfg,
+            phase="completed",
+            tool_name=func_name,
+            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            elapsed_s=elapsed,
+            success=True,
+        )
         return ToolCallRecord(
             tool_name=func_name,
             arguments=args,
@@ -370,6 +388,15 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         elapsed = round(time.monotonic() - start, 3)
         error_msg = f"工具 `{func_name}` 执行超时（{cfg.tool_timeout_s}s）"
         logger.warning("tool_timeout", tool=func_name, timeout_s=cfg.tool_timeout_s)
+        await _emit_tool_event(
+            cfg,
+            phase="failed",
+            tool_name=func_name,
+            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            elapsed_s=elapsed,
+            success=False,
+            error=error_msg,
+        )
         return ToolCallRecord(
             tool_name=func_name,
             arguments=args,
@@ -382,6 +409,15 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         elapsed = round(time.monotonic() - start, 3)
         error_msg = f"工具 `{func_name}` 执行失败：{exc}"
         logger.warning("tool_failed", tool=func_name, error=str(exc))
+        await _emit_tool_event(
+            cfg,
+            phase="failed",
+            tool_name=func_name,
+            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            elapsed_s=elapsed,
+            success=False,
+            error=str(exc),
+        )
         return ToolCallRecord(
             tool_name=func_name,
             arguments=args,
@@ -390,6 +426,18 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             success=False,
             error=str(exc),
         )
+
+
+async def _emit_tool_event(cfg: AgentLoopConfig, **payload: Any) -> None:
+    handler = cfg.tool_event_handler
+    if handler is None:
+        return
+    try:
+        result = handler(payload)
+        if inspect.isawaitable(result):
+            await result
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("tool_event_handler_failed", error=str(exc))
 
 
 def _resolve_context_tool_args(

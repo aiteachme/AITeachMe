@@ -5,6 +5,9 @@ interface UseResizablePanelProps {
   minWidth?: number;
   maxWidth?: number;
   onResize?: (width: number) => void;
+  onDragBeyondMin?: () => void;
+  onDragBeyondMax?: () => void;
+  boundaryActionThreshold?: number;
   direction?: "left" | "right";
   liveResizeRef?: RefObject<HTMLElement | null>;
   liveResizeEnabled?: boolean;
@@ -12,15 +15,20 @@ interface UseResizablePanelProps {
   commitResizeOnDragEnd?: boolean;
 }
 
-function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
+function getPanelWidthBounds(minWidth: number, maxWidth: number) {
   if (typeof window === "undefined") {
-    return Math.max(minWidth, Math.min(maxWidth, width));
+    return { minAllowed: minWidth, maxAllowed: maxWidth };
   }
 
   const viewportWidth = window.innerWidth;
   const maxAllowed = Math.min(maxWidth, viewportWidth);
   const minAllowed = Math.min(minWidth, maxAllowed);
 
+  return { minAllowed, maxAllowed };
+}
+
+function clampPanelWidth(width: number, minWidth: number, maxWidth: number) {
+  const { minAllowed, maxAllowed } = getPanelWidthBounds(minWidth, maxWidth);
   return Math.max(minAllowed, Math.min(maxAllowed, width));
 }
 
@@ -29,6 +37,9 @@ export function useResizablePanel({
   minWidth = 320,
   maxWidth = 800,
   onResize,
+  onDragBeyondMin,
+  onDragBeyondMax,
+  boundaryActionThreshold = 64,
   direction = "right",
   liveResizeRef,
   liveResizeEnabled = true,
@@ -45,6 +56,7 @@ export function useResizablePanel({
   const widthRef = useRef<number | string>(width);
   const pendingWidthRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
+  const boundaryActionTriggeredRef = useRef(false);
 
   useEffect(() => {
     isDraggingRef.current = isDragging;
@@ -90,6 +102,7 @@ export function useResizablePanel({
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     pendingWidthRef.current = null;
+    boundaryActionTriggeredRef.current = false;
 
     if (liveResizeRef?.current && typeof widthRef.current !== "number") {
       const measuredWidth = liveResizeRef.current.getBoundingClientRect().width;
@@ -185,6 +198,18 @@ export function useResizablePanel({
         newWidth = e.clientX;
       }
 
+      if (!boundaryActionTriggeredRef.current) {
+        const { minAllowed, maxAllowed } = getPanelWidthBounds(minWidth, maxWidth);
+        const triggerOffset = Math.max(0, boundaryActionThreshold);
+        if (newWidth >= maxAllowed + triggerOffset) {
+          boundaryActionTriggeredRef.current = true;
+          onDragBeyondMax?.();
+        } else if (newWidth <= minAllowed - triggerOffset) {
+          boundaryActionTriggeredRef.current = true;
+          onDragBeyondMin?.();
+        }
+      }
+
       newWidth = clampPanelWidth(newWidth, minWidth, maxWidth);
       scheduleWidth(newWidth);
     };
@@ -232,6 +257,9 @@ export function useResizablePanel({
     liveResizeRef,
     maxWidth,
     minWidth,
+    boundaryActionThreshold,
+    onDragBeyondMax,
+    onDragBeyondMin,
     onResize,
     positionDragGuide,
   ]);

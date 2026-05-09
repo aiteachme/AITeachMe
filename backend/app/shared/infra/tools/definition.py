@@ -15,6 +15,7 @@ class ToolDefinition:
     description: str
     parameters: dict                # JSON Schema
     handler: Callable[..., Any]
+    usage: str = ""
     is_async: bool = False
     tags: list[str] = field(default_factory=list)
     source: str = "python"
@@ -33,10 +34,20 @@ class ToolDefinition:
             "type": "function",
             "function": {
                 "name": self.name,
-                "description": self.description,
+                "description": _description_with_usage(self.description, self.usage),
                 "parameters": parameters,
             },
         }
+
+
+def _description_with_usage(description: str, usage: str) -> str:
+    cleaned_description = str(description or "").strip()
+    cleaned_usage = str(usage or "").strip()
+    if not cleaned_usage:
+        return cleaned_description
+    if not cleaned_description:
+        return f"Usage: {cleaned_usage}"
+    return f"{cleaned_description}\n\nUsage: {cleaned_usage}"
 
 
 def _without_hidden_args(parameters: dict, hidden_args: list[str]) -> dict:

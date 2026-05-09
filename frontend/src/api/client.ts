@@ -417,8 +417,15 @@ export interface SseStatusPayload {
   detail?: string;
   step?: string;
   elapsed_ms?: number;
+  elapsed_s?: number;
   session_id?: string;
   session_title?: string;
+  tool_name?: string;
+  tool_display_name?: string;
+  tool_phase?: string;
+  tool_call_id?: string;
+  success?: boolean;
+  argument_names?: string[];
 }
 
 export interface PostSseJsonOptions {

@@ -79,7 +79,7 @@ export function Layout() {
               )}
             </main>
           </div>
-          <AiInteractionWindow variant="sidebar" />
+          <AiInteractionWindow />
         </div>
       </AiInteractionProvider>
 

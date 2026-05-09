@@ -17,6 +17,11 @@ from app.workflows.support.courses import (
 @tool(
     "create_course_from_home_intake",
     "Create a new learning course from the homepage intake conversation after the user has confirmed.",
+    usage=(
+        "Use only after the user explicitly confirms creating a course or subject. "
+        "Collect the course name, learning goal, optional planner prompt, and optional attached files first. "
+        "Do not say the course has been created until this tool succeeds."
+    ),
     tags=["global", "course", "write", "home_intake"],
     source="agent_tools.global_scope",
     risk_level="medium",

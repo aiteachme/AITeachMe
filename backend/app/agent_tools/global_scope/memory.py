@@ -8,6 +8,10 @@ from app.shared.infra.tools.decorator import tool
 @tool(
     "remember_info",
     "Remember one user-specific learning preference, background fact, strength, weakness, or note.",
+    usage=(
+        "Use only when the user clearly asks you to remember something, or when they explicitly confirm "
+        "that a stable learning preference or background fact should be saved for future personalization."
+    ),
     tags=["global", "memory", "write"],
     source="agent_tools.global_scope",
     risk_level="medium",

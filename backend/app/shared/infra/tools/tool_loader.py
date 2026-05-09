@@ -169,6 +169,7 @@ def _register_toolpack_result(
             description=str(result.get("description") or "").strip(),
             parameters=dict(result.get("parameters") or {}),
             handler=result["handler"],
+            usage=str(result.get("usage") or ""),
             is_async=bool(result.get("is_async", False)),
             tags=list(result.get("tags") or []),
             source=str(result.get("source") or source_label),

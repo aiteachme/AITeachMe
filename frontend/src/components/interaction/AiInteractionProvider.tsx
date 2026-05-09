@@ -8,10 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type { ChatSessionMessage } from "../../hooks/useChatSession";
-import type { AiConversationScope, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
+import type { AiConversationScope, AiInteractionDisplayMode, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
 import { getAiConversationScopeKey } from "./types";
 
 interface AiInteractionProviderProps {
@@ -31,15 +31,19 @@ interface AiInteractionContextValue {
   fullscreenScope: AiConversationScope | null;
   sidebarRequest: AiInteractionOpenRequest | null;
   fullscreenRequest: AiInteractionOpenRequest | null;
+  displayMode: AiInteractionDisplayMode | null;
   isSidebarOpen: boolean;
   isSidebarStreaming: boolean;
   activeConversationSessionId: string | null;
   activeConversationSelectionTarget: AiConversationSelectionTargetState | null;
+  sidebarPanelWidth: number | null;
+  lastNonAssistantPath: string;
   sessionListVersion: number;
   openAiInteraction: (options?: OpenAiInteractionOptions) => void;
   closeAiInteraction: () => void;
   setActiveConversationSessionId: (sessionId: string | null) => void;
   setActiveConversationSelectionTarget: (target: AiConversationSelectionTargetState | null) => void;
+  setSidebarPanelWidth: (width: number) => void;
   setSidebarStreaming: (isStreaming: boolean) => void;
   getQuickChatSessionId: (clientThreadId: string | null | undefined) => string | null;
   bindQuickChatSession: (clientThreadId: string | null | undefined, sessionId: string | null | undefined) => void;
@@ -53,9 +57,11 @@ const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
 
 export function AiInteractionProvider({ activeScope, children }: AiInteractionProviderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const requestSeqRef = useRef(0);
   const quickChatMessagesRef = useRef<Record<string, ChatSessionMessage[]>>({});
   const quickChatSessionIdsRef = useRef<Record<string, string>>({});
+  const [displayMode, setDisplayMode] = useState<AiInteractionDisplayMode | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarStreaming, setIsSidebarStreaming] = useState(false);
   const [sidebarScope, setSidebarScope] = useState<AiConversationScope | null>(activeScope);
@@ -64,9 +70,20 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
   const [fullscreenRequest, setFullscreenRequest] = useState<AiInteractionOpenRequest | null>(null);
   const [activeConversationSessionId, setActiveConversationSessionId] = useState<string | null>(null);
   const [activeConversationSelectionTarget, setActiveConversationSelectionTarget] = useState<AiConversationSelectionTargetState | null>(null);
+  const [sidebarPanelWidth, setSidebarPanelWidthState] = useState<number | null>(null);
+  const [lastNonAssistantPath, setLastNonAssistantPath] = useState("/");
   const [sessionListVersion, setSessionListVersion] = useState(0);
 
   const activeScopeKey = getAiConversationScopeKey(activeScope);
+
+  useEffect(() => {
+    if (location.pathname === "/assistant") {
+      setDisplayMode("fullscreen");
+      return;
+    }
+    setDisplayMode((current) => (current === "fullscreen" ? null : current));
+    setLastNonAssistantPath(`${location.pathname}${location.search}${location.hash}`);
+  }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     setActiveConversationSessionId(null);
@@ -75,6 +92,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
 
   useEffect(() => {
     if (!activeScope) {
+      setDisplayMode(null);
       setIsSidebarOpen(false);
       setSidebarScope(null);
       return;
@@ -108,6 +126,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
   }, []);
 
   const closeAiInteraction = useCallback(() => {
+    setDisplayMode(null);
     setIsSidebarOpen(false);
     setActiveConversationSelectionTarget(null);
     if (typeof window !== "undefined") {
@@ -126,6 +145,13 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
 
   const setSidebarStreaming = useCallback((nextValue: boolean) => {
     setIsSidebarStreaming(nextValue);
+  }, []);
+
+  const setSidebarPanelWidth = useCallback((nextWidth: number) => {
+    if (!Number.isFinite(nextWidth) || nextWidth <= 0) {
+      return;
+    }
+    setSidebarPanelWidthState(Math.round(nextWidth));
   }, []);
 
   const getCachedQuickChatMessages = useCallback((clientThreadId: string | null | undefined) => {
@@ -191,6 +217,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     const mode = options?.mode ?? "sidebar";
 
     if (mode === "fullscreen") {
+      setDisplayMode("fullscreen");
       setFullscreenScope(nextScope);
       setFullscreenRequest(request);
       const nextAnchorId = options?.anchorId?.trim() ?? "";
@@ -210,8 +237,11 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       return;
     }
 
+    setDisplayMode("sidebar");
     setSidebarScope(nextScope);
     setSidebarRequest(request);
+    setFullscreenScope(null);
+    setFullscreenRequest(null);
     const nextAnchorId = options?.anchorId?.trim() ?? "";
     const nextSelectedText = options?.selectedText?.trim() ?? "";
     setActiveConversationSelectionTarget(nextAnchorId && nextSelectedText
@@ -233,15 +263,19 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     fullscreenScope,
     sidebarRequest,
     fullscreenRequest,
+    displayMode,
     isSidebarOpen,
     isSidebarStreaming,
     activeConversationSessionId,
     activeConversationSelectionTarget,
+    sidebarPanelWidth,
+    lastNonAssistantPath,
     sessionListVersion,
     openAiInteraction,
     closeAiInteraction,
     setActiveConversationSessionId,
     setActiveConversationSelectionTarget,
+    setSidebarPanelWidth,
     setSidebarStreaming,
     getQuickChatSessionId,
     bindQuickChatSession,
@@ -254,13 +288,17 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     fullscreenScope,
     sidebarRequest,
     fullscreenRequest,
+    displayMode,
     isSidebarOpen,
     isSidebarStreaming,
     activeConversationSessionId,
     activeConversationSelectionTarget,
+    sidebarPanelWidth,
+    lastNonAssistantPath,
     sessionListVersion,
     openAiInteraction,
     closeAiInteraction,
+    setSidebarPanelWidth,
     setSidebarStreaming,
     getQuickChatSessionId,
     bindQuickChatSession,

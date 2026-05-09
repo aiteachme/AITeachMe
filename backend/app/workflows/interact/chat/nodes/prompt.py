@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from app.agent_tools.catalog import build_agent_tool_catalog
+from app.agent_tools.policy import AgentToolPolicyRequest
 from app.schemas.llm import ChatMessage, SYSTEM
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.interact.chat.lib.tooling import resolve_interact_tool_plan
 from app.workflows.interact.chat.prompts import build_chat_messages, get_execution_instruction
 from app.workflows.interact.chat.state import InteractWorkflowState
 
@@ -14,8 +17,23 @@ def build_prompt_node(*, context: WorkflowContext):
     workflow_logger = context.get_logger()
 
     def build_prompt(state: InteractWorkflowState) -> InteractWorkflowState:
+        course_id = state["course_id"] or "global"
+        tool_plan = resolve_interact_tool_plan(
+            execution_mode=state["execution_mode"],
+            course_id=course_id,
+            retrieval_results=state.get("retrieval_results", []),
+            source=state.get("source"),
+        )
+        agent_tool_catalog = build_agent_tool_catalog(
+            AgentToolPolicyRequest(
+                source=state.get("source"),
+                course_id=course_id,
+                allow_write_tools=False,
+            ),
+            active_tool_names=tool_plan.tool_names,
+        )
         messages = build_chat_messages(
-            course_id=state["course_id"] or "global",
+            course_id=course_id,
             strategy_mode=state["strategy_mode"],
             retrieval_results=state.get("retrieval_results", []),
             recent_messages=state.get("recent_messages", []),
@@ -27,6 +45,7 @@ def build_prompt_node(*, context: WorkflowContext):
             selected_context=state.get("selected_context"),
             selection_context=state.get("selection_context"),
             source_chunk_id=state.get("source_chunk_id"),
+            agent_tool_catalog=agent_tool_catalog,
         )
         execution_instruction = get_execution_instruction(state["execution_mode"])
         if execution_instruction:

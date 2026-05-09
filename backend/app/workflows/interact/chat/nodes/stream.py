@@ -8,6 +8,9 @@ Idempotency: non-idempotent external LLM stream; on rerun it generates a fresh a
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from fastapi import Request
 
 from app.shared.infra.agent_loop import run_agent_loop_stream
@@ -17,8 +20,8 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.home_intake import (
-    is_home_intake_source,
     run_home_intake_turn,
+    should_use_home_intake_flow,
 )
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.workflows.interact.chat.lib.tooling import (
@@ -31,6 +34,15 @@ from app.workflows.interact.chat.lib.model_policy import (
     get_interact_model_policy,
     interact_completion_kwargs_with_metadata,
 )
+
+
+_TOOL_DISPLAY_NAMES = {
+    "web_search": "联网搜索",
+    "recall_info": "回忆用户信息",
+    "remember_info": "记住用户信息",
+    "search_kb": "检索课程知识库",
+    "create_course_from_home_intake": "创建学科",
+}
 
 
 async def _is_disconnected(request: Request | None) -> bool:
@@ -54,6 +66,52 @@ async def _emit_status(
     if emitter is None:
         return
     await emitter.emit_status(stage=stage, detail=detail, **extra)
+
+
+def _build_tool_event_handler(
+    emitter: SSEEventEmitter | None,
+) -> Callable[[dict[str, Any]], Awaitable[None]] | None:
+    if emitter is None:
+        return None
+
+    async def handle_tool_event(event: dict[str, Any]) -> None:
+        phase = str(event.get("phase") or "").strip()
+        tool_name = str(event.get("tool_name") or "").strip()
+        if not phase or not tool_name:
+            return
+        display_name = _TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+        stage = {
+            "started": "tool_call_started",
+            "completed": "tool_call_completed",
+            "failed": "tool_call_failed",
+        }.get(phase)
+        if stage is None:
+            return
+        detail = _tool_status_detail(phase, display_name)
+        await _emit_status(
+            emitter,
+            stage,
+            detail,
+            tool_name=tool_name,
+            tool_display_name=display_name,
+            tool_phase=phase,
+            tool_call_id=str(event.get("tool_call_id") or ""),
+            elapsed_s=event.get("elapsed_s"),
+            success=event.get("success"),
+            argument_names=event.get("argument_names") if phase == "started" else None,
+        )
+
+    return handle_tool_event
+
+
+def _tool_status_detail(phase: str, display_name: str) -> str:
+    if phase == "started":
+        return f"正在调用工具：{display_name}"
+    if phase == "completed":
+        return f"工具调用完成：{display_name}"
+    if phase == "failed":
+        return f"工具调用失败：{display_name}"
+    return f"工具状态更新：{display_name}"
 
 
 def _build_stream_state(
@@ -87,7 +145,13 @@ def _chat_model_trace_metadata(*, model_selector: str, model_override: str | Non
     return metadata
 
 
-def _build_response_stream(state: InteractWorkflowState, *, course_id: str, model_selector: str):
+def _build_response_stream(
+    state: InteractWorkflowState,
+    *,
+    course_id: str,
+    model_selector: str,
+    emitter: SSEEventEmitter | None = None,
+):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
     model_override = normalize_runtime_model_override(state.get("model_override"))
     trace_metadata = _chat_model_trace_metadata(
@@ -111,6 +175,7 @@ def _build_response_stream(state: InteractWorkflowState, *, course_id: str, mode
                 session_id=state.get("session_id"),
                 source=state.get("source"),
                 model_selector=model_selector,
+                tool_event_handler=_build_tool_event_handler(emitter),
                 extra_metadata=trace_metadata,
             ),
         )
@@ -139,7 +204,12 @@ def build_stream_answer_node(
             return state
 
         collected_tokens: list[str] = []
-        if is_home_intake_source(state.get("source")):
+        course_id = str(state.get("course_id") or context.course_id or "")
+        if should_use_home_intake_flow(
+            source=state.get("source"),
+            course_id=course_id,
+            question=state.get("question"),
+        ):
             await _emit_status(
                 emitter,
                 "home_intake",
@@ -155,6 +225,7 @@ def build_stream_answer_node(
                 result = await run_home_intake_turn(
                     state,
                     background_task_registry=background_task_registry,
+                    tool_event_handler=_build_tool_event_handler(emitter),
                 )
                 if await _is_disconnected(request):
                     workflow_logger.info("home_intake_stream_disconnected")
@@ -180,7 +251,6 @@ def build_stream_answer_node(
                     error=str(exc),
                 )
 
-        course_id = str(state.get("course_id") or context.course_id or "")
         model_selector = INTERACT_MODEL_SELECTOR
         execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
         tool_plan = resolve_interact_tool_plan(
@@ -198,7 +268,12 @@ def build_stream_answer_node(
             model=model_selector,
             model_override=normalize_runtime_model_override(state.get("model_override")),
         )
-        stream = _build_response_stream(state, course_id=course_id, model_selector=model_selector)
+        stream = _build_response_stream(
+            state,
+            course_id=course_id,
+            model_selector=model_selector,
+            emitter=emitter,
+        )
         try:
             async for token in stream:
                 if await _is_disconnected(request):

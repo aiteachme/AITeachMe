@@ -29,6 +29,7 @@ def tool(
     name: str,
     description: str,
     *,
+    usage: str | None = None,
     tags: list[str] | None = None,
     source: str = "python",
     risk_level: str = "low",
@@ -50,6 +51,7 @@ def tool(
         td = ToolDefinition(
             name=name, description=description,
             parameters=_build_schema(func), handler=func,
+            usage=usage or "",
             is_async=asyncio.iscoroutinefunction(func),
             tags=list(tags or []),
             source=source,

@@ -1,4 +1,4 @@
-import { ChevronRight, MapPin, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, MapPin, PanelRightOpen, Plus, Trash2 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
 import type { ChatSessionSelectionTarget } from "./AiConversationTypes";
@@ -8,6 +8,7 @@ interface AiConversationHeaderProps {
   title: string;
   selectionTarget: ChatSessionSelectionTarget | null;
   onClose?: () => void;
+  onReturnToSidebar?: () => void;
   onStartNewSession: () => void;
   onClearCurrentSession: () => void;
   onJumpToSelectionTarget: (target: ChatSessionSelectionTarget) => void;
@@ -15,10 +16,39 @@ interface AiConversationHeaderProps {
   selectedSessionId: string | null;
 }
 
+interface AiConversationReturnToSidebarButtonProps {
+  onClick: () => void;
+  className?: string;
+  showLabel?: boolean;
+}
+
+export function AiConversationReturnToSidebarButton({
+  onClick,
+  className,
+  showLabel = false,
+}: AiConversationReturnToSidebarButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        className,
+      )}
+      aria-label="回到侧边栏"
+      title="回到侧边栏"
+    >
+      <PanelRightOpen className="h-4 w-4 shrink-0" />
+      {showLabel ? <span className="text-[13px] font-medium">侧边栏</span> : null}
+    </button>
+  );
+}
+
 export function AiConversationHeader({
   title,
   selectionTarget,
   onClose,
+  onReturnToSidebar,
   onStartNewSession,
   onClearCurrentSession,
   onJumpToSelectionTarget,
@@ -79,6 +109,9 @@ export function AiConversationHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {onReturnToSidebar ? (
+          <AiConversationReturnToSidebarButton onClick={onReturnToSidebar} />
+        ) : null}
         <button
           type="button"
           onClick={onStartNewSession}

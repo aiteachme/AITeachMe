@@ -45,7 +45,7 @@ def resolve_agent_tool_names(
             tool_names.extend(BUILD_TOOLS)
         if source in _EDITING_SOURCES and resolved.allow_write_tools:
             tool_names.extend(EDITING_TOOLS)
-    elif source in _GLOBAL_ASSISTANT_SOURCES:
+    elif is_global_assistant_source(source):
         tool_names.extend(GLOBAL_QUERY_TOOLS)
 
     if resolved.allow_write_tools:
@@ -56,6 +56,13 @@ def resolve_agent_tool_names(
         )
 
     return _dedupe(tool_names)
+
+
+def is_global_assistant_source(source: str | None) -> bool:
+    """Return whether a source tag should behave as the global assistant lane."""
+
+    normalized = (source or "").strip()
+    return not normalized or normalized in _GLOBAL_ASSISTANT_SOURCES
 
 
 def _dedupe(names: list[str]) -> list[str]:

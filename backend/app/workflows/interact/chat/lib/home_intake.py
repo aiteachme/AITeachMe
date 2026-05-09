@@ -9,17 +9,21 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 
+from app.agent_tools.catalog import build_agent_tool_catalog
 from app.agent_tools.global_scope.course_management import create_course_from_home_intake_tool
+from app.agent_tools.policy import AgentToolPolicyRequest
 from app.models import ChatSession
 from app.repositories.chats_repo import get_chat_session
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support import acompletion
-from app.utils.course import GLOBAL_COURSE
+from app.utils.course import GLOBAL_COURSE, is_global_course
 from app.workflows.interact.chat.lib.model_policy import (
     InteractModelStep,
     interact_completion_kwargs_with_metadata,
@@ -30,6 +34,7 @@ from app.workflows.interact.chat.state import InteractWorkflowState
 logger = structlog.get_logger(__name__)
 
 HOME_INTAKE_SOURCE = "home_intake"
+_GLOBAL_HOME_INTAKE_SOURCES = frozenset({"", "home", "global_assistant", HOME_INTAKE_SOURCE})
 _CREATE_INTENT_KEYWORDS = (
     "创建",
     "新建",
@@ -80,10 +85,30 @@ def is_home_intake_source(source: str | None) -> bool:
     return (source or "").strip() == HOME_INTAKE_SOURCE
 
 
+def should_use_home_intake_flow(
+    *,
+    source: str | None,
+    course_id: str | None,
+    question: str | None,
+) -> bool:
+    if is_home_intake_source(source):
+        return True
+    if not is_global_course(course_id):
+        return False
+    if (source or "").strip() not in _GLOBAL_HOME_INTAKE_SOURCES:
+        return False
+    return (
+        _looks_like_create_intent(question or "")
+        or _looks_like_confirmation(question or "")
+        or _looks_like_cancel(question or "")
+    )
+
+
 async def run_home_intake_turn(
     state: InteractWorkflowState,
     *,
     background_task_registry: object | None = None,
+    tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None,
 ) -> HomeIntakeResult:
     """Run one homepage intake turn without exposing write tools by default."""
 
@@ -108,6 +133,7 @@ async def run_home_intake_turn(
             user_id=user_id,
             model=str(state.get("model_override") or ""),
             background_task_registry=background_task_registry,
+            tool_event_handler=tool_event_handler,
         )
 
     intent = await _classify_home_intake_intent(
@@ -151,12 +177,21 @@ async def _classify_home_intake_intent(
             ready_to_create=False,
         )
     try:
+        tool_catalog = build_agent_tool_catalog(
+            AgentToolPolicyRequest(
+                source=HOME_INTAKE_SOURCE,
+                course_id=GLOBAL_COURSE,
+                allow_write_tools=False,
+            ),
+            active_tool_names=[],
+        )
         raw = await acompletion(
             _build_intent_messages(
                 question=question,
                 attached_file_ids=attached_file_ids,
                 recent_messages=recent_messages,
                 pending_action=pending_action,
+                tool_catalog=tool_catalog,
             ),
             **interact_completion_kwargs_with_metadata(
                 InteractModelStep.HOME_INTAKE_INTENT,
@@ -182,6 +217,7 @@ def _build_intent_messages(
     attached_file_ids: list[str],
     recent_messages: list[RecentMessage],
     pending_action: dict[str, Any] | None,
+    tool_catalog: str | None = None,
 ) -> list[dict[str, str]]:
     recent_text = "\n".join(
         f"{message.role}: {message.content[:240]}"
@@ -199,7 +235,7 @@ def _build_intent_messages(
                 "course_name，description，user_intent，planner_prompt，assistant_reply。"
                 "当且仅当用户明确表达创建/构建学科且目标足够清楚时 ready_to_create=true；"
                 "否则 assistant_reply 用自然中文追问或回答。"
-            ),
+            ) + _format_intent_tool_catalog(tool_catalog),
         },
         {
             "role": "user",
@@ -214,6 +250,20 @@ def _build_intent_messages(
             ),
         },
     ]
+
+
+def _format_intent_tool_catalog(tool_catalog: str | None) -> str:
+    catalog = (tool_catalog or "").strip()
+    if not catalog:
+        return ""
+    return (
+        "\n\nRegistered agent tool catalog:\n"
+        "Use this catalog as the source of truth when answering capability/tool questions in assistant_reply. "
+        "Do not invent tools. Tools marked `available_by_policy` describe supported capabilities but may not be callable in this exact turn. "
+        "Tools marked `requires_user_confirmation` can be prepared after explicit user confirmation, "
+        "but must not be reported as completed until the tool succeeds.\n"
+        f"{catalog}"
+    )
 
 
 def _intent_from_payload(
@@ -295,6 +345,7 @@ async def _create_from_pending_action(
     user_id: str,
     model: str,
     background_task_registry: object | None,
+    tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None,
 ) -> HomeIntakeResult:
     file_ids = list(
         dict.fromkeys(
@@ -303,6 +354,14 @@ async def _create_from_pending_action(
                 *current_file_ids,
             ]
         )
+    )
+    start = time.monotonic()
+    await _emit_tool_event(
+        tool_event_handler,
+        phase="started",
+        tool_name="create_course_from_home_intake",
+        tool_call_id="home_intake_create_course",
+        argument_names=["name", "description", "user_intent", "planner_prompt"],
     )
     try:
         result = await create_course_from_home_intake_tool(
@@ -315,9 +374,28 @@ async def _create_from_pending_action(
             background_task_registry=background_task_registry,
         )
     except Exception as exc:  # noqa: BLE001
+        elapsed = round(time.monotonic() - start, 3)
+        await _emit_tool_event(
+            tool_event_handler,
+            phase="failed",
+            tool_name="create_course_from_home_intake",
+            tool_call_id="home_intake_create_course",
+            elapsed_s=elapsed,
+            success=False,
+            error=str(exc),
+        )
         logger.warning("home_intake_create_course_failed", error=str(exc))
         return HomeIntakeResult(f"创建学科时遇到问题：{exc}")
 
+    elapsed = round(time.monotonic() - start, 3)
+    await _emit_tool_event(
+        tool_event_handler,
+        phase="completed",
+        tool_name="create_course_from_home_intake",
+        tool_call_id="home_intake_create_course",
+        elapsed_s=elapsed,
+        success=True,
+    )
     _save_pending_action(session_id=session_id, user_id=user_id, pending_action=None)
     data = result.get("data") if isinstance(result, dict) else {}
     course_name = str((data or {}).get("course_name") or pending_action.get("name") or "新学科")
@@ -331,6 +409,17 @@ async def _create_from_pending_action(
         assistant_response=f"已创建「{course_name}」，正在打开构建规划页。",
         client_actions=actions,
     )
+
+
+async def _emit_tool_event(
+    handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None,
+    **payload: Any,
+) -> None:
+    if handler is None:
+        return
+    result = handler(payload)
+    if hasattr(result, "__await__"):
+        await result
 
 
 def _load_pending_action(*, session_id: str, user_id: str) -> dict[str, Any] | None:

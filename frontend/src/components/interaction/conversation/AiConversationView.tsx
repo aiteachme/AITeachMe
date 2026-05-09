@@ -23,11 +23,11 @@ import {
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationDraftPage } from "./AiConversationDraftPage";
-import { AiConversationHeader } from "./AiConversationHeader";
+import { AiConversationHeader, AiConversationReturnToSidebarButton } from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
 import { useAiInteraction } from "../AiInteractionProvider";
-import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail } from "../types";
+import type { AiConversationScope, AiInteractionOpenRequest, ExamQuestionJumpDetail, OpenAiInteractionOptions } from "../types";
 import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
@@ -42,10 +42,11 @@ interface AiConversationViewProps {
   active: boolean;
   presentation: "sidebar" | "fullscreen";
   onClose?: () => void;
+  onReturnToSidebar?: (options?: OpenAiInteractionOptions) => void;
   className?: string;
 }
 
-type QuickChatSyncPhase = "start" | "session" | "token" | "done" | "error" | "settled";
+type QuickChatSyncPhase = "start" | "session" | "token" | "status" | "done" | "error" | "settled";
 type ConversationHistoryKind = "general" | "document" | "question" | "builder";
 
 interface QuickChatInputContext {
@@ -66,6 +67,24 @@ const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
 const HISTORY_KIND_ORDER: ConversationHistoryKind[] = ["general", "document", "question", "builder"];
+const HOME_INTAKE_CREATE_KEYWORDS = [
+  "\u521b\u5efa",
+  "\u65b0\u5efa",
+  "\u6784\u5efa",
+  "\u751f\u6210",
+  "\u89c4\u5212",
+  "\u5b66\u79d1",
+  "\u8bfe\u7a0b",
+  "\u5b66\u4e60\u7a7a\u95f4",
+];
+const HOME_INTAKE_CONFIRM_KEYWORDS = [
+  "\u786e\u8ba4",
+  "\u786e\u5b9a",
+  "\u53ef\u4ee5",
+  "\u5f00\u59cb",
+  "ok",
+  "yes",
+];
 const HISTORY_KIND_META: Record<ConversationHistoryKind, {
   label: string;
   icon: typeof MessageSquareText;
@@ -101,6 +120,16 @@ function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext
     return null;
   }
   return { source, anchorId, selectedText };
+}
+
+function looksLikeHomeIntakeTurn(value: string): boolean {
+  const text = value.trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return [...HOME_INTAKE_CREATE_KEYWORDS, ...HOME_INTAKE_CONFIRM_KEYWORDS].some((keyword) =>
+    text.includes(keyword.toLowerCase()),
+  );
 }
 
 function normalizeQuickChatSelectionText(value: string | null | undefined): string {
@@ -250,6 +279,7 @@ export const AiConversationView = memo(function AiConversationView({
   active,
   presentation,
   onClose,
+  onReturnToSidebar,
   className,
 }: AiConversationViewProps) {
   const navigate = useNavigate();
@@ -486,9 +516,19 @@ export const AiConversationView = memo(function AiConversationView({
         updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
           ...message,
           content: `${message.content}${payload.content}`,
+          statusDetail: null,
         })),
       );
       dispatchQuickChatSync("token", payload);
+    },
+    onMessageStatus: (payload) => {
+      updateRememberedQuickChatMessages(payload.localThreadId, payload.sessionId, (current) =>
+        updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
+          ...message,
+          statusDetail: payload.detail,
+        })),
+      );
+      dispatchQuickChatSync("status", payload);
     },
     onMessageDone: (payload) => {
       bindQuickChatSession(payload.localThreadId, payload.sessionId);
@@ -497,6 +537,7 @@ export const AiConversationView = memo(function AiConversationView({
           ...message,
           turnId: payload.turnId,
           status: "ready",
+          statusDetail: null,
           errorDetail: null,
         })),
       );
@@ -510,6 +551,7 @@ export const AiConversationView = memo(function AiConversationView({
         updateQuickChatCachedMessage(current, payload.assistantLocalId, (message) => ({
           ...message,
           status: "error",
+          statusDetail: null,
           errorDetail: payload.detail,
         })),
       );
@@ -573,6 +615,43 @@ export const AiConversationView = memo(function AiConversationView({
     () => getSessionSelectionTarget(selectedSession) ?? getContextSelectionTarget(activeQuickChatContext),
     [activeQuickChatContext, selectedSession],
   );
+  const handleReturnToSidebar = useCallback(() => {
+    if (!onReturnToSidebar) {
+      return;
+    }
+
+    const context = pendingSelectionContext ?? activeQuickChatContext;
+    const nextSessionId = selectedSessionId ?? messagesSessionId ?? request?.sessionId ?? null;
+    onReturnToSidebar({
+      sessionId: nextSessionId,
+      draft,
+      model: toChatRequestModel(chatModel),
+      source: context?.source ?? request?.source ?? null,
+      anchorId: context?.anchorId ?? request?.anchorId ?? null,
+      selectedText: context?.selectedText ?? request?.selectedText ?? null,
+      selectionContext: context?.selectionContext ?? request?.selectionContext ?? null,
+      attachedFileIds: draftAttachedFileIds,
+      clientThreadId: context?.clientThreadId ?? request?.clientThreadId ?? null,
+      newSession: !nextSessionId,
+      showSelectionContext: context ? true : request?.showSelectionContext,
+    });
+  }, [
+    activeQuickChatContext,
+    chatModel,
+    draft,
+    draftAttachedFileIds,
+    messagesSessionId,
+    onReturnToSidebar,
+    pendingSelectionContext,
+    request?.anchorId,
+    request?.clientThreadId,
+    request?.selectedText,
+    request?.selectionContext,
+    request?.sessionId,
+    request?.showSelectionContext,
+    request?.source,
+    selectedSessionId,
+  ]);
   const historyGroups = useMemo(() =>
     HISTORY_KIND_ORDER
       .map((kind) => ({
@@ -1117,13 +1196,22 @@ export const AiConversationView = memo(function AiConversationView({
     if (pendingSelectionContext) {
       pendingSelectionSubmittedRef.current = true;
     }
+    const selectedSessionSource = selectedSession?.source?.trim() ?? "";
+    const shouldUseHomeIntakeSource =
+      scope?.type === "global" &&
+      !selectionContext &&
+      (
+        hasAttachedFiles ||
+        selectedSessionSource === "home_intake" ||
+        looksLikeHomeIntakeTurn(question)
+      );
     setDraft("");
     const result = await sendMessage(
       {
         question,
         model: toChatRequestModel(chatModel),
         session_id: pendingSelectionContext ? undefined : selectedSessionId ?? undefined,
-        source: selectionContext?.source ?? (hasAttachedFiles ? "home_intake" : undefined),
+        source: selectionContext?.source ?? (shouldUseHomeIntakeSource ? "home_intake" : undefined),
         anchor_id: selectionContext?.anchorId,
         selected_text: selectionContext?.selectedText,
         selected_context: selectionContext?.selectedText,
@@ -1266,6 +1354,15 @@ export const AiConversationView = memo(function AiConversationView({
 
       {shouldShowFullscreenDraftHome ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {onReturnToSidebar ? (
+            <div className="pointer-events-none absolute right-4 top-4 z-30 flex justify-end">
+              <AiConversationReturnToSidebarButton
+                onClick={handleReturnToSidebar}
+                showLabel
+                className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:bg-slate-950"
+              />
+            </div>
+          ) : null}
           {historyError || sessionsError ? (
             <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
               {historyError ?? sessionsError}
@@ -1298,6 +1395,7 @@ export const AiConversationView = memo(function AiConversationView({
             title={panelTitle}
             selectionTarget={currentSelectionTarget}
             onClose={onClose}
+            onReturnToSidebar={onReturnToSidebar ? handleReturnToSidebar : undefined}
             onStartNewSession={handleStartNewSession}
             onClearCurrentSession={() => void handleClearCurrentSession()}
             onJumpToSelectionTarget={jumpToSelectionTarget}
