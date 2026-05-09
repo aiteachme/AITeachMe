@@ -73,6 +73,24 @@ class ToolCallRecord:
 
 
 @dataclass
+class StreamingToolCall:
+    """Tool call reconstructed from streaming delta chunks."""
+
+    id: str
+    type: str
+    function_name: str
+    arguments: str
+
+
+@dataclass
+class StreamingToolIteration:
+    """One streamed assistant turn, including any requested tool calls."""
+
+    content: str
+    tool_calls: list[StreamingToolCall] = field(default_factory=list)
+
+
+@dataclass
 class AgentLoopResult:
     """Agent Loop 执行结果。"""
 
@@ -199,26 +217,9 @@ async def run_agent_loop_stream(
     tools: list[str] | None = None,
     config: AgentLoopConfig | None = None,
 ) -> AsyncGenerator[str, None]:
-    """流式 Agent Loop — 工具调用阶段静默，最终回答阶段流式输出。
+    """Stream an agent turn while allowing the model to request tools mid-stream."""
 
-    适用于 Interact 伴读引擎等需要实时响应的场景。
-
-    Args:
-        messages: 初始消息列表。
-        tools: 可用工具名称列表。
-        config: 循环配置。
-
-    Yields:
-        str — 最终回答的文本片段。
-
-    Example::
-
-        from app.shared.infra.agent_loop import run_agent_loop_stream
-        async for chunk in run_agent_loop_stream(messages, tools=["search_kb"]):
-            print(chunk, end="")
-    """
-
-    from app.shared.infra.llm_support import acompletion_stream, acompletion_with_tools
+    from app.shared.infra.llm_support import acompletion_stream
     from app.shared.infra.tools.api import ensure_project_tool_modules_loaded
     from app.shared.infra.tools.registry import get_tool_registry
 
@@ -241,34 +242,25 @@ async def run_agent_loop_stream(
     current_messages = list(messages)
 
     for iteration in range(1, cfg.max_iterations + 1):
-        # 非流式调用以检测 tool_calls
-        response = await acompletion_with_tools(
+        logger.info("agent_loop_stream_iteration", iteration=iteration, max=cfg.max_iterations)
+        streamed: StreamingToolIteration | None = None
+        async for event in _stream_one_tool_iteration(
             current_messages,
             tools=available_tools,
-            task_type=cfg.task_type,
-            model=cfg.model,
-            extra_metadata=cfg.extra_metadata,
-            **cfg.llm_kwargs,
-        )
+            cfg=cfg,
+        ):
+            if isinstance(event, StreamingToolIteration):
+                streamed = event
+            else:
+                yield event
 
-        message = response.choices[0].message
-        tool_calls = getattr(message, "tool_calls", None)
-
-        if not tool_calls:
-            # 工具选择使用非流式调用；最终回答必须重新走流式补全，保证前端拿到真实 token SSE。
-            async for chunk in acompletion_stream(
-                current_messages,
-                task_type=cfg.task_type,
-                model=cfg.model,
-                extra_metadata=cfg.extra_metadata,
-                **cfg.llm_kwargs,
-            ):
-                yield chunk
+        if streamed is None:
+            return
+        if not streamed.tool_calls:
             return
 
-        # 执行工具
-        current_messages.append(_assistant_msg_to_dict(message))
-        for tc in tool_calls[: cfg.max_tool_calls_per_turn]:
+        current_messages.append(_streaming_assistant_msg_to_dict(streamed))
+        for tc in streamed.tool_calls[: cfg.max_tool_calls_per_turn]:
             record = await _execute_one_tool(registry, tc, cfg)
             current_messages.append({
                 "role": "tool",
@@ -276,7 +268,7 @@ async def run_agent_loop_stream(
                 "content": record.result,
             })
 
-    # 安全阀 → 流式获取最终回答
+    logger.warning("agent_loop_stream_max_iterations", max=cfg.max_iterations)
     async for chunk in acompletion_stream(
         current_messages,
         task_type=cfg.task_type,
@@ -287,7 +279,267 @@ async def run_agent_loop_stream(
         yield chunk
 
 
-# ── 内部辅助函数 ──────────────────────────────────────────────
+# ---------------- internal helpers ----------------
+
+
+async def _stream_one_tool_iteration(
+    messages: list[dict],
+    *,
+    tools: list[dict],
+    cfg: AgentLoopConfig,
+) -> AsyncGenerator[str | StreamingToolIteration, None]:
+    """Stream one assistant turn and reconstruct tool calls from deltas."""
+
+    from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
+    from app.shared.infra.llm_support.common import (
+        build_completion_context,
+        context_request_timeout_s,
+        effective_call_timeout_s,
+        extract_usage,
+        get_llm_concurrency_limiter,
+        log_attempt_cancelled,
+        log_attempt_failed,
+        log_attempt_started,
+        log_attempt_timeout,
+        merge_usage,
+        prepare_completion_attempt,
+        track_call,
+    )
+    from app.shared.infra.llm_support.litellm_loader import load_litellm
+    from app.shared.infra.llm_support.observability import (
+        _end_langsmith_trace,
+        _langsmith_trace_kwargs,
+        _record_new_token_event,
+    )
+    from app.shared.infra.llm_support.stream import _stream_chunks_with_timeout
+    from app.shared.infra.observability.trace import langsmith_trace
+
+    litellm = load_litellm()
+    context = build_completion_context(task_type=cfg.task_type, model=cfg.model)
+    start = time.monotonic()
+    tracked_model = context.model
+    prepared = prepare_completion_attempt(
+        context=context,
+        messages=messages,
+        extra_kwargs=cfg.llm_kwargs,
+        attempt=1,
+        override_kwargs=_tool_stream_override_kwargs(tools),
+    )
+
+    async with get_llm_concurrency_limiter():
+        try:
+            tracked_model = prepared.tracked_model
+            log_attempt_started(
+                "llm_tools_stream_started",
+                attempt=prepared,
+                context=context,
+                extra={"tool_count": len(tools)},
+            )
+            usage = (0, 0, 0)
+            content_parts: list[str] = []
+            tool_call_parts: dict[int, dict[str, str]] = {}
+            first_token_seen = False
+            with langsmith_trace(
+                name="LLM: stream with tools",
+                run_type="llm",
+                **_langsmith_trace_kwargs(
+                    task_type=context.task_type,
+                    call_model=prepared.call_model,
+                    provider=prepared.provider,
+                    model_name=tracked_model,
+                    mode="tools_stream",
+                    messages=messages,
+                    call_kwargs=prepared.call_kwargs,
+                    tools=tools,
+                    extra_metadata=cfg.extra_metadata,
+                ),
+            ) as trace_run:
+                response = await asyncio.wait_for(
+                    litellm.acompletion(**prepared.call_kwargs),
+                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
+                )
+                usage = merge_usage(usage, extract_usage(response))
+                async for chunk in _stream_chunks_with_timeout(
+                    response,
+                    timeout_s=context_request_timeout_s(context, prepared.call_kwargs),
+                ):
+                    usage = merge_usage(usage, extract_usage(chunk))
+                    choices = getattr(chunk, "choices", None) or []
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    if delta is None:
+                        continue
+                    content = getattr(delta, "content", None)
+                    if content:
+                        if not first_token_seen:
+                            _record_new_token_event(trace_run)
+                            first_token_seen = True
+                        content_parts.append(content)
+                        yield content
+                    _accumulate_streaming_tool_calls(
+                        tool_call_parts,
+                        getattr(delta, "tool_calls", None),
+                    )
+                tool_calls = _finalize_streaming_tool_calls(tool_call_parts)
+                prompt_t, completion_t, total_t = usage
+                _end_langsmith_trace(
+                    trace_run,
+                    text="".join(content_parts),
+                    tool_calls=[
+                        {
+                            "id": item.id,
+                            "type": item.type,
+                            "function": {
+                                "name": item.function_name,
+                                "arguments": item.arguments,
+                            },
+                        }
+                        for item in tool_calls
+                    ],
+                    prompt_tokens=prompt_t,
+                    completion_tokens=completion_t,
+                    total_tokens=total_t,
+                )
+            logger.info(
+                "llm_tools_stream_complete",
+                elapsed_s=round(time.monotonic() - start, 2),
+                model=tracked_model,
+                task_type=context.task_type,
+                has_tool_calls=bool(tool_calls),
+            )
+            prompt_t, completion_t, total_t = usage
+            track_call(
+                task_type=context.task_type,
+                model=tracked_model,
+                start=start,
+                success=True,
+                prompt_tokens=prompt_t,
+                completion_tokens=completion_t,
+                total_tokens=total_t,
+            )
+            yield StreamingToolIteration(content="".join(content_parts), tool_calls=tool_calls)
+        except asyncio.TimeoutError:
+            log_attempt_timeout("llm_tools_stream_timeout", attempt=prepared, context=context)
+            track_call(
+                task_type=context.task_type,
+                model=tracked_model,
+                start=start,
+                success=False,
+                error="timeout",
+            )
+            raise LLMTimeoutError(timeout_s=effective_call_timeout_s(context, prepared.call_kwargs))
+        except asyncio.CancelledError:
+            log_attempt_cancelled("llm_tools_stream_cancelled", attempt=prepared, context=context)
+            track_call(
+                task_type=context.task_type,
+                model=tracked_model,
+                start=start,
+                success=False,
+                error="cancelled",
+            )
+            raise
+        except Exception as exc:
+            track_call(
+                task_type=context.task_type,
+                model=tracked_model,
+                start=start,
+                success=False,
+                error=str(exc),
+            )
+            log_attempt_failed(
+                "llm_tools_stream_failed",
+                attempt=prepared,
+                context=context,
+                error=exc,
+                level="error",
+            )
+            raise LLMCallError(reason=str(exc)) from exc
+
+
+def _accumulate_streaming_tool_calls(
+    parts: dict[int, dict[str, str]],
+    deltas: object,
+) -> None:
+    if not deltas:
+        return
+    for fallback_index, delta in enumerate(deltas):
+        index = _coerce_int(_get_attr_or_key(delta, "index"), fallback=fallback_index)
+        item = parts.setdefault(
+            index,
+            {"id": "", "type": "function", "name": "", "arguments": ""},
+        )
+        call_id = _get_attr_or_key(delta, "id")
+        if call_id:
+            item["id"] = str(call_id)
+        call_type = _get_attr_or_key(delta, "type")
+        if call_type:
+            item["type"] = str(call_type)
+        function = _get_attr_or_key(delta, "function")
+        if function is None:
+            continue
+        function_name = _get_attr_or_key(function, "name")
+        if function_name:
+            item["name"] += str(function_name)
+        arguments = _get_attr_or_key(function, "arguments")
+        if arguments:
+            item["arguments"] += str(arguments)
+
+
+def _finalize_streaming_tool_calls(parts: dict[int, dict[str, str]]) -> list[StreamingToolCall]:
+    tool_calls: list[StreamingToolCall] = []
+    for index in sorted(parts):
+        item = parts[index]
+        function_name = item.get("name", "").strip()
+        if not function_name:
+            continue
+        tool_calls.append(
+            StreamingToolCall(
+                id=item.get("id", "").strip() or f"call_{index}",
+                type=item.get("type", "").strip() or "function",
+                function_name=function_name,
+                arguments=item.get("arguments", ""),
+            )
+        )
+    return tool_calls
+
+
+def _streaming_assistant_msg_to_dict(iteration: StreamingToolIteration) -> dict:
+    msg: dict = {"role": "assistant", "content": iteration.content or ""}
+    if iteration.tool_calls:
+        msg["tool_calls"] = [
+            {
+                "id": item.id,
+                "type": item.type or "function",
+                "function": {
+                    "name": item.function_name,
+                    "arguments": item.arguments,
+                },
+            }
+            for item in iteration.tool_calls
+        ]
+    return msg
+
+
+def _tool_stream_override_kwargs(tools: list[dict]) -> dict[str, Any]:
+    return {
+        "stream": True,
+        "tools": tools,
+        "parallel_tool_calls": False,
+    }
+
+
+def _get_attr_or_key(value: object, key: str) -> object:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _coerce_int(value: object, *, fallback: int) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _get_tool_definitions(registry, tool_names: list[str] | None) -> list[dict]:
@@ -322,10 +574,21 @@ def _assistant_msg_to_dict(message) -> dict:
 async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCallRecord:
     """执行一次工具调用并返回记录。"""
 
-    func_name = tool_call.function.name
+    function = getattr(tool_call, "function", None)
+    func_name = str(
+        getattr(function, "name", None)
+        or getattr(tool_call, "function_name", "")
+    )
     tool_definition = registry.get(func_name)
+    raw_arguments = (
+        getattr(function, "arguments", None)
+        if function is not None
+        else None
+    )
+    if raw_arguments is None:
+        raw_arguments = getattr(tool_call, "arguments", "")
     try:
-        args = json.loads(tool_call.function.arguments)
+        args = json.loads(raw_arguments)
     except (json.JSONDecodeError, TypeError):
         args = {}
     if not isinstance(args, dict):

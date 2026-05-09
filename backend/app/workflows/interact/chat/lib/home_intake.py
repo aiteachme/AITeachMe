@@ -89,10 +89,12 @@ def should_use_home_intake_flow(
     source: str | None,
     course_id: str | None,
     question: str | None,
+    recent_messages: list[RecentMessage] | None = None,
 ) -> bool:
-    if (scene or "").strip() == HOME_INTAKE_SOURCE:
+    scene_value = (scene or "").strip()
+    if scene_value == HOME_INTAKE_SOURCE:
         return True
-    if (scene or "").strip() and (scene or "").strip() != HOME_INTAKE_SOURCE:
+    if scene_value and scene_value != "global_assistant":
         return False
     if is_home_intake_source(source):
         return True
@@ -104,6 +106,7 @@ def should_use_home_intake_flow(
         _looks_like_create_intent(question or "")
         or _looks_like_confirmation(question or "")
         or _looks_like_cancel(question or "")
+        or _recent_assistant_asked_for_creation_detail(recent_messages or [])
     )
 
 
@@ -178,6 +181,22 @@ async def _classify_home_intake_intent(
             intent="create_course",
             assistant_reply="资料已经准备好了。你想用这些资料创建哪门学科？也可以补充一下学习目标。",
             ready_to_create=False,
+        )
+    if (
+        _recent_assistant_asked_for_creation_detail(recent_messages)
+        and not _looks_like_cancel(question)
+        and not _looks_like_confirmation(question)
+        and _looks_like_creation_detail_answer(question)
+    ):
+        course_name = _guess_course_name(question)
+        return HomeIntakeIntent(
+            intent="create_course",
+            assistant_reply="",
+            ready_to_create=True,
+            course_name=course_name,
+            description=f"围绕「{course_name}」创建的学习空间。",
+            user_intent=question,
+            planner_prompt=f"为「{course_name}」构建系统学习路径。",
         )
     try:
         tool_catalog = build_agent_tool_catalog(
@@ -511,6 +530,41 @@ def _looks_like_confirmation(text: str) -> bool:
 def _looks_like_cancel(text: str) -> bool:
     normalized = str(text or "").casefold().strip()
     return any(keyword.casefold() in normalized for keyword in _CANCEL_KEYWORDS)
+
+
+def _recent_assistant_asked_for_creation_detail(recent_messages: list[RecentMessage]) -> bool:
+    for message in reversed(recent_messages[-4:]):
+        if message.role != "assistant":
+            continue
+        content = re.sub(r"\s+", "", message.content)
+        if not content:
+            return False
+        mentions_creation = any(keyword in content for keyword in ("创建", "新建", "构建", "学科", "课程", "学习空间"))
+        asks_for_detail = any(
+            keyword in content
+            for keyword in (
+                "想创建哪",
+                "创建哪",
+                "创建什么",
+                "叫什么",
+                "学习目标",
+                "学习方向",
+                "重点帮你解决",
+                "我先确认一下",
+            )
+        )
+        return mentions_creation and asks_for_detail
+    return False
+
+
+def _looks_like_creation_detail_answer(text: str) -> bool:
+    normalized = re.sub(r"\s+", "", str(text or "")).strip()
+    if len(normalized) < 2:
+        return False
+    vague_answers = {"不知道", "随便", "都行", "你看着办", "不清楚", "还没想好", "没有"}
+    if normalized in vague_answers:
+        return False
+    return not normalized.endswith(("?", "？"))
 
 
 def _has_enough_creation_detail(

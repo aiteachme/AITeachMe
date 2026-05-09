@@ -7,7 +7,12 @@ from types import SimpleNamespace
 from app.agent_tools.context import AgentToolContext
 from app.agent_tools.policy import AgentToolPolicyRequest, resolve_agent_tool_names
 from app.agent_tools.registry import register_agent_tools
-from app.shared.infra.agent_loop import AgentLoopConfig, _execute_one_tool
+from app.shared.infra.agent_loop import (
+    AgentLoopConfig,
+    StreamingToolCall,
+    _execute_one_tool,
+    _tool_stream_override_kwargs,
+)
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
 
@@ -115,3 +120,42 @@ def test_agent_loop_injects_hidden_args_and_requires_approval() -> None:
     assert allowed.success
     assert allowed.result == "ok:user_a"
     assert allowed.arguments["user_id"] == "user_a"
+
+    streamed = asyncio.run(
+        _execute_one_tool(
+            registry,
+            StreamingToolCall(
+                id="call_2",
+                type="function",
+                function_name="write_test",
+                arguments=json.dumps({"value": "stream"}),
+            ),
+            AgentLoopConfig(
+                tool_context=AgentToolContext(
+                    user_id="user_a",
+                    approved_tool_names=frozenset({"write_test"}),
+                ),
+            ),
+        )
+    )
+    assert streamed.success
+    assert streamed.result == "stream:user_a"
+
+
+def test_streaming_tool_loop_disables_parallel_tool_calls() -> None:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "search",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+    kwargs = _tool_stream_override_kwargs(tools)
+
+    assert kwargs["stream"] is True
+    assert kwargs["tools"] is tools
+    assert kwargs["parallel_tool_calls"] is False

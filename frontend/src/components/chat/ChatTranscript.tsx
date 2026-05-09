@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
-import { AlertCircle, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, ChevronRight, Loader2, SquareTerminal } from "lucide-react";
 import type { ChatContextItem } from "../../api/generated/model";
-import { type ChatSessionMessage } from "../../hooks/useChatSession";
+import { type ChatMessageToolRun, type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { ChatCitationList } from "./ChatCitationList";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -36,6 +36,9 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
 
         if (isAssistant) {
           const learningStatus = getAssistantLearningStatus(message, nowMs);
+          const showStatusDetail = Boolean(
+            message.statusDetail && !message.statusStage?.startsWith("tool_call_"),
+          );
 
           return (
             <div key={message.localId} className="flex w-full justify-start">
@@ -48,9 +51,9 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
                   {learningStatus.elapsed ? (
                     <span>{learningStatus.elapsed}</span>
                   ) : null}
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                  {message.statusDetail ? (
+                  {showStatusDetail ? (
                     <>
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                       <span className="mx-1 h-1 w-1 shrink-0 rounded-full bg-zinc-300 dark:bg-slate-600" />
                       <span className="truncate">{message.statusDetail}</span>
                     </>
@@ -58,7 +61,7 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
                 </div>
 
                 <div className="max-w-none text-[15px] leading-7 text-zinc-900 dark:text-slate-100">
-                  <MarkdownViewer content={message.content || " "} />
+                  <AssistantMessageBody message={message} />
                   {message.status === "streaming" ? (
                     <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-zinc-500 align-middle dark:bg-slate-400" />
                   ) : null}
@@ -117,6 +120,170 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
   );
 });
 
+function AssistantMessageBody({ message }: { message: ChatSessionMessage }) {
+  const parts = splitContentWithToolRuns(message.content, message.toolRuns ?? []);
+  if (!parts.length) {
+    return <MarkdownViewer content=" " />;
+  }
+  return (
+    <>
+      {parts.map((part) => {
+        if (part.type === "tool") {
+          return (
+            <ToolRunMarker
+              key={`tool-${part.position}-${part.runs.map((run) => run.id).join("-")}`}
+              runs={part.runs}
+            />
+          );
+        }
+        return <MarkdownViewer key={`text-${part.index}`} content={part.content || " "} />;
+      })}
+    </>
+  );
+}
+
+type AssistantBodyPart =
+  | { type: "text"; index: number; content: string }
+  | { type: "tool"; position: number; runs: ChatMessageToolRun[] };
+
+function splitContentWithToolRuns(content: string, toolRuns: ChatMessageToolRun[]): AssistantBodyPart[] {
+  const sortedRuns = [...toolRuns]
+    .filter((run) => Number.isFinite(run.position))
+    .sort((a, b) => a.position - b.position);
+  if (!sortedRuns.length) {
+    return content ? [{ type: "text", index: 0, content }] : [];
+  }
+
+  const parts: AssistantBodyPart[] = [];
+  let cursor = 0;
+  let textIndex = 0;
+  let index = 0;
+  while (index < sortedRuns.length) {
+    const position = clampPosition(sortedRuns[index].position, content.length);
+    if (position > cursor) {
+      parts.push({ type: "text", index: textIndex, content: content.slice(cursor, position) });
+      textIndex += 1;
+    }
+    const runsAtPosition: ChatMessageToolRun[] = [];
+    while (index < sortedRuns.length && clampPosition(sortedRuns[index].position, content.length) === position) {
+      runsAtPosition.push(sortedRuns[index]);
+      index += 1;
+    }
+    parts.push({ type: "tool", position, runs: runsAtPosition });
+    cursor = position;
+  }
+  if (cursor < content.length) {
+    parts.push({ type: "text", index: textIndex, content: content.slice(cursor) });
+  }
+  return parts;
+}
+
+function clampPosition(position: number, contentLength: number): number {
+  return Math.max(0, Math.min(contentLength, Math.round(position)));
+}
+
+function ToolRunMarker({ runs }: { runs: ChatMessageToolRun[] }) {
+  const label = getToolRunMarkerLabel(runs);
+  return (
+    <div
+      className="my-3 inline-flex max-w-full items-center gap-1.5 text-[13px] leading-none text-zinc-400 dark:text-slate-500"
+      title={label}
+    >
+      <SquareTerminal className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+function getToolRunMarkerLabel(runs: ChatMessageToolRun[]): string {
+  if (runs.some((run) => run.detail?.trim() || run.toolDisplayName?.trim() || run.toolName?.trim())) {
+    return getDetailedToolRunMarkerLabel(runs);
+  }
+  const runningCount = runs.filter((run) => run.status === "running").length;
+  const failedCount = runs.filter((run) => run.status === "failed").length;
+  const completedCount = runs.filter((run) => run.status === "completed").length;
+  if (runningCount > 0) {
+    return runningCount > 1 ? `正在运行 ${runningCount} 个工具` : "正在运行工具";
+  }
+  if (failedCount > 0 && completedCount === 0) {
+    return failedCount > 1 ? `${failedCount} 个工具运行失败` : "工具运行失败";
+  }
+  const total = completedCount + failedCount;
+  return total > 1 ? `已运行 ${total} 个工具` : "已运行工具";
+}
+
+const TOOL_DISPLAY_NAME_FALLBACKS: Record<string, string> = {
+  web_search: "\u8054\u7f51\u641c\u7d22",
+  recall_info: "\u56de\u5fc6\u7528\u6237\u4fe1\u606f",
+  remember_info: "\u8bb0\u4f4f\u7528\u6237\u4fe1\u606f",
+  search_kb: "\u68c0\u7d22\u8bfe\u7a0b\u77e5\u8bc6\u5e93",
+  create_course_from_home_intake: "\u521b\u5efa\u5b66\u79d1",
+};
+
+function getDetailedToolRunMarkerLabel(runs: ChatMessageToolRun[]): string {
+  if (runs.length === 0) {
+    return "\u5de5\u5177\u8c03\u7528";
+  }
+  if (runs.length === 1) {
+    return getSingleToolRunMarkerLabel(runs[0]);
+  }
+
+  const runningCount = runs.filter((run) => run.status === "running").length;
+  const failedCount = runs.filter((run) => run.status === "failed").length;
+  const completedCount = runs.filter((run) => run.status === "completed").length;
+  const total = runningCount + failedCount + completedCount;
+  const toolNames = summarizeToolRunNames(runs);
+  if (runningCount > 0) {
+    return `\u6b63\u5728\u6267\u884c ${runningCount} \u4e2a\u5de5\u5177\uff1a${toolNames}`;
+  }
+  if (failedCount > 0 && completedCount === 0) {
+    return `\u6267\u884c\u5931\u8d25 ${failedCount} \u4e2a\u5de5\u5177\uff1a${toolNames}`;
+  }
+  if (failedCount > 0) {
+    return `\u5df2\u5b8c\u6210 ${completedCount} \u4e2a\u5de5\u5177\uff0c${failedCount} \u4e2a\u5931\u8d25\uff1a${toolNames}`;
+  }
+  return `\u5df2\u5b8c\u6210 ${total} \u4e2a\u5de5\u5177\uff1a${toolNames}`;
+}
+
+function getSingleToolRunMarkerLabel(run: ChatMessageToolRun): string {
+  const detail = run.detail?.trim();
+  if (detail) {
+    return detail;
+  }
+  const toolName = getToolRunActionLabel(run);
+  if (run.status === "running") {
+    return `\u6b63\u5728\u6267\u884c\uff1a${toolName}`;
+  }
+  if (run.status === "failed") {
+    return `\u6267\u884c\u5931\u8d25\uff1a${toolName}`;
+  }
+  return `\u5df2\u5b8c\u6210\uff1a${toolName}`;
+}
+
+function summarizeToolRunNames(runs: ChatMessageToolRun[]): string {
+  const names = Array.from(new Set(runs.map(getToolRunActionLabel))).filter(Boolean);
+  if (names.length === 0) {
+    return "\u5de5\u5177\u8c03\u7528";
+  }
+  const visibleNames = names.slice(0, 3);
+  const suffix = names.length > visibleNames.length
+    ? `\u7b49 ${names.length} \u4e2a`
+    : "";
+  return `${visibleNames.join("\u3001")}${suffix}`;
+}
+
+function getToolRunActionLabel(run: ChatMessageToolRun): string {
+  const displayName = run.toolDisplayName?.trim();
+  if (displayName) {
+    return displayName;
+  }
+  const toolName = run.toolName?.trim();
+  if (toolName) {
+    return TOOL_DISPLAY_NAME_FALLBACKS[toolName] ?? toolName;
+  }
+  return "\u5de5\u5177\u8c03\u7528";
+}
+
 function getAssistantLearningStatus(
   message: ChatSessionMessage,
   nowMs: number,
@@ -125,6 +292,27 @@ function getAssistantLearningStatus(
   const elapsed = formatElapsed(elapsedMs);
 
   if (message.status === "streaming") {
+    if (message.content.trim()) {
+      return { label: "正在生成回答", elapsed };
+    }
+    if (message.statusStage === "tool_call_started") {
+      return { label: formatToolStatusLabel("正在", message.activeToolDisplayName), elapsed };
+    }
+    if (message.statusStage === "tool_call_completed") {
+      return { label: formatToolStatusLabel("已完成", message.activeToolDisplayName), elapsed };
+    }
+    if (message.statusStage === "tool_call_failed") {
+      return { label: formatToolStatusLabel("未完成", message.activeToolDisplayName), elapsed };
+    }
+    if (message.statusStage === "answering" && message.statusDetail?.includes("联网")) {
+      return { label: "准备联网检索", elapsed };
+    }
+    if (message.statusStage === "answering" && message.statusDetail?.includes("课程")) {
+      return { label: "准备检索资料", elapsed };
+    }
+    if (message.statusStage === "home_intake") {
+      return { label: "正在理解需求", elapsed };
+    }
     return { label: "正在梳理", elapsed };
   }
   if (message.status === "interrupted") {
@@ -134,6 +322,11 @@ function getAssistantLearningStatus(
     return { label: "梳理遇到问题", elapsed };
   }
   return { label: "已梳理", elapsed };
+}
+
+function formatToolStatusLabel(prefix: string, toolDisplayName: string | null | undefined): string {
+  const toolName = toolDisplayName?.trim();
+  return toolName ? `${prefix}${toolName}` : `${prefix}使用工具`;
 }
 
 function getAssistantElapsedMs(message: ChatSessionMessage, nowMs: number): number | null {

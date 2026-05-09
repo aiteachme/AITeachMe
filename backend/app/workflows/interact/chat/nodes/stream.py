@@ -106,12 +106,22 @@ def _build_tool_event_handler(
 
 def _tool_status_detail(phase: str, display_name: str) -> str:
     if phase == "started":
-        return f"正在调用工具：{display_name}"
+        return f"正在{display_name}"
     if phase == "completed":
-        return f"工具调用完成：{display_name}"
+        return f"已完成{display_name}"
     if phase == "failed":
-        return f"工具调用失败：{display_name}"
-    return f"工具状态更新：{display_name}"
+        return f"{display_name}失败"
+    return f"{display_name}状态更新"
+
+
+def _answering_status_detail(tool_names: list[str]) -> str:
+    if not tool_names:
+        return "正在组织回答..."
+    if "web_search" in tool_names:
+        return "正在判断是否需要联网检索..."
+    if "search_kb" in tool_names:
+        return "正在检索课程资料..."
+    return "正在准备可用工具..."
 
 
 def _build_stream_state(
@@ -211,6 +221,7 @@ def build_stream_answer_node(
             source=state.get("source"),
             course_id=course_id,
             question=state.get("question"),
+            recent_messages=state.get("recent_messages", []),
         ):
             await _emit_status(
                 emitter,
@@ -265,7 +276,7 @@ def build_stream_answer_node(
         await _emit_status(
             emitter,
             "answering",
-            "正在组织回答..." if not tool_plan.uses_tools else "正在结合知识库工具整理回答...",
+            _answering_status_detail(tool_plan.tool_names),
             execution_mode=execution_mode.value,
             tools=tool_plan.tool_names,
             model=model_selector,

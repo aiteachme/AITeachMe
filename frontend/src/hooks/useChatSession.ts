@@ -27,8 +27,31 @@ export interface ChatSessionMessage {
   elapsedMs?: number | null;
   status: ChatMessageStatus;
   statusDetail?: string | null;
+  statusStage?: string | null;
+  activeToolName?: string | null;
+  activeToolDisplayName?: string | null;
+  toolRunCount?: number;
+  toolRunningCount?: number;
+  runningToolCallIds?: string[];
+  completedToolCallIds?: string[];
+  toolRuns?: ChatMessageToolRun[];
   errorDetail: string | null;
 }
+
+export interface ChatMessageToolRun {
+  id: string;
+  position: number;
+  status: "running" | "completed" | "failed";
+  toolName: string | null;
+  toolDisplayName: string | null;
+  detail: string | null;
+}
+
+const HOME_INTAKE_CREATE_TOOL_RUN_ID = "home_intake_create_course";
+const HOME_INTAKE_CREATE_TOOL_NAME = "create_course_from_home_intake";
+const HOME_INTAKE_CREATE_TOOL_DISPLAY_NAME = "\u521b\u5efa\u5b66\u79d1";
+const OPEN_BUILD_PLANNER_ACTION_TYPE = "open_build_planner";
+const HOME_INTAKE_CREATE_RESPONSE_RE = /^\s*\u5df2\u521b\u5efa\u300c[^\u300d]+\u300d\uff0c\u6b63\u5728\u6253\u5f00\u6784\u5efa\u89c4\u5212\u9875\u3002?\s*$/;
 
 interface SendMessageResult {
   accepted: boolean;
@@ -65,6 +88,7 @@ interface ChatMessageStatusPayload {
   stage: string;
   detail: string;
   elapsedMs: number | null;
+  toolCallId: string | null;
   toolName: string | null;
   toolDisplayName: string | null;
 }
@@ -263,6 +287,14 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       completedAt: now,
       elapsedMs: null,
       status: "ready",
+      statusStage: null,
+      activeToolName: null,
+      activeToolDisplayName: null,
+      toolRunCount: 0,
+      toolRunningCount: 0,
+      runningToolCallIds: [],
+      completedToolCallIds: [],
+      toolRuns: [],
       errorDetail: null,
     };
     const assistantMessage: ChatSessionMessage = {
@@ -275,6 +307,14 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       completedAt: null,
       elapsedMs: null,
       status: "streaming",
+      statusStage: null,
+      activeToolName: null,
+      activeToolDisplayName: null,
+      toolRunCount: 0,
+      toolRunningCount: 0,
+      runningToolCallIds: [],
+      completedToolCallIds: [],
+      toolRuns: [],
       errorDetail: null,
     };
 
@@ -367,6 +407,10 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               updateMessage(current, assistantLocalId, (message) => ({
                 ...message,
                 statusDetail: progressStatus.detail,
+                statusStage: progressStatus.stage,
+                activeToolName: progressStatus.toolName,
+                activeToolDisplayName: progressStatus.toolDisplayName,
+                ...deriveToolRunState(message, progressStatus),
                 elapsedMs: progressStatus.elapsedMs ?? message.elapsedMs ?? null,
               })),
             );
@@ -389,17 +433,24 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
               onSessionResolved?.(donePayload.sessionId);
             }
             setMessages((current) =>
-              updateMessage(current, assistantLocalId, (message) => ({
-                ...message,
-                turnId: donePayload.turnId,
-                contexts: donePayload.contexts,
-                status: "ready",
-                statusDetail: null,
-                errorDetail: null,
-                createdAt: message.createdAt ?? new Date().toISOString(),
-                completedAt,
-                elapsedMs: donePayload.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
-              })),
+              updateMessage(current, assistantLocalId, (message) => {
+                const clientActionToolState = deriveClientActionToolRunState(message, donePayload.clientActions);
+                return {
+                  ...message,
+                  ...clientActionToolState,
+                  turnId: donePayload.turnId,
+                  contexts: donePayload.contexts,
+                  status: "ready",
+                  statusDetail: null,
+                  statusStage: null,
+                  activeToolName: null,
+                  activeToolDisplayName: null,
+                  errorDetail: null,
+                  createdAt: message.createdAt ?? new Date().toISOString(),
+                  completedAt,
+                  elapsedMs: donePayload.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
+                };
+              }),
             );
             onMessageDone?.({
               input,
@@ -421,6 +472,9 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
                 ...message,
                 status: "error",
                 statusDetail: null,
+                statusStage: null,
+                activeToolName: null,
+                activeToolDisplayName: null,
                 errorDetail: streamFailedDetail,
                 completedAt,
                 elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
@@ -449,6 +503,9 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
             ...message,
             status: "error",
             statusDetail: null,
+            statusStage: null,
+            activeToolName: null,
+            activeToolDisplayName: null,
             errorDetail: detail,
             completedAt,
             elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
@@ -470,6 +527,9 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
             ...message,
             status: "interrupted",
             statusDetail: null,
+            statusStage: null,
+            activeToolName: null,
+            activeToolDisplayName: null,
             errorDetail: "已停止生成",
             completedAt,
             elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
@@ -490,6 +550,9 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
             ...message,
             status: "error",
             statusDetail: null,
+            statusStage: null,
+            activeToolName: null,
+            activeToolDisplayName: null,
             errorDetail: detail,
             completedAt,
             elapsedMs: message.elapsedMs ?? computeElapsedMs(message.createdAt, completedAt),
@@ -588,7 +651,7 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     ? computeElapsedMs(previousItem.created_at, item.created_at)
     : null;
 
-  return {
+  const mappedMessage: ChatSessionMessage = {
     localId: `history-${item.id}`,
     role: item.role,
     content: item.content,
@@ -598,7 +661,26 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     completedAt,
     elapsedMs,
     status: "ready",
+    statusStage: null,
+    activeToolName: null,
+    activeToolDisplayName: null,
+    toolRunCount: 0,
+    toolRunningCount: 0,
+    runningToolCallIds: [],
+    completedToolCallIds: [],
+    toolRuns: [],
     errorDetail: null,
+  };
+  return restorePersistedToolRunState(mappedMessage);
+}
+
+function restorePersistedToolRunState(message: ChatSessionMessage): ChatSessionMessage {
+  if (message.role !== "assistant" || !HOME_INTAKE_CREATE_RESPONSE_RE.test(message.content)) {
+    return message;
+  }
+  return {
+    ...message,
+    ...deriveClientActionToolRunState(message, [{ type: OPEN_BUILD_PLANNER_ACTION_TYPE }]),
   };
 }
 
@@ -696,6 +778,7 @@ function parseChatProgressStatus(payload: unknown): {
   stage: string;
   detail: string;
   elapsedMs: number | null;
+  toolCallId: string | null;
   toolName: string | null;
   toolDisplayName: string | null;
 } | null {
@@ -703,7 +786,10 @@ function parseChatProgressStatus(payload: unknown): {
     return null;
   }
   const stage = typeof payload.stage === "string" ? payload.stage.trim() : "";
-  if (!stage.startsWith("tool_call_")) {
+  if (
+    !stage ||
+    (stage !== "answering" && stage !== "home_intake" && !stage.startsWith("tool_call_"))
+  ) {
     return null;
   }
   const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
@@ -716,7 +802,127 @@ function parseChatProgressStatus(payload: unknown): {
   const toolDisplayName = typeof payload.tool_display_name === "string" && payload.tool_display_name.trim()
     ? payload.tool_display_name.trim()
     : null;
-  return { stage, detail, elapsedMs: parseChatElapsedMs(payload), toolName, toolDisplayName };
+  const toolCallId = typeof payload.tool_call_id === "string" && payload.tool_call_id.trim()
+    ? payload.tool_call_id.trim()
+    : null;
+  return { stage, detail, elapsedMs: parseChatElapsedMs(payload), toolCallId, toolName, toolDisplayName };
+}
+
+function deriveToolRunState(
+  message: ChatSessionMessage,
+  progressStatus: {
+    stage: string;
+    detail: string;
+    toolCallId: string | null;
+    toolName: string | null;
+    toolDisplayName: string | null;
+  },
+): Partial<ChatSessionMessage> {
+  if (!progressStatus.stage.startsWith("tool_call_")) {
+    return {};
+  }
+  const existingCompleted = message.completedToolCallIds ?? [];
+  const existingRunning = message.runningToolCallIds ?? [];
+  const fallbackKey = progressStatus.toolName || "tool";
+  const toolCallId = progressStatus.toolCallId
+    || (
+      (progressStatus.stage === "tool_call_completed" || progressStatus.stage === "tool_call_failed")
+      && existingRunning.length === 1
+      ? existingRunning[0]
+      : `${fallbackKey}-${existingCompleted.length + existingRunning.length + 1}`
+    );
+  let runningToolCallIds = existingRunning;
+  let completedToolCallIds = existingCompleted;
+  let toolRuns = message.toolRuns ?? [];
+
+  if (progressStatus.stage === "tool_call_started") {
+    runningToolCallIds = addUnique(existingRunning, toolCallId);
+    toolRuns = upsertToolRun(toolRuns, {
+      id: toolCallId,
+      position: message.content.length,
+      status: "running",
+      toolName: progressStatus.toolName,
+      toolDisplayName: progressStatus.toolDisplayName,
+      detail: progressStatus.detail,
+    });
+  }
+  if (progressStatus.stage === "tool_call_completed" || progressStatus.stage === "tool_call_failed") {
+    runningToolCallIds = existingRunning.filter((item) => item !== toolCallId);
+    completedToolCallIds = addUnique(existingCompleted, toolCallId);
+    toolRuns = upsertToolRun(toolRuns, {
+      id: toolCallId,
+      position: message.content.length,
+      status: progressStatus.stage === "tool_call_failed" ? "failed" : "completed",
+      toolName: progressStatus.toolName,
+      toolDisplayName: progressStatus.toolDisplayName,
+      detail: progressStatus.detail,
+    });
+  }
+
+  return {
+    runningToolCallIds,
+    completedToolCallIds,
+    toolRunningCount: runningToolCallIds.length,
+    toolRunCount: completedToolCallIds.length,
+    toolRuns,
+  };
+}
+
+function deriveClientActionToolRunState(
+  message: ChatSessionMessage,
+  clientActions: ChatClientAction[],
+): Partial<ChatSessionMessage> {
+  if (!clientActions.some((action) => action.type === OPEN_BUILD_PLANNER_ACTION_TYPE)) {
+    return {};
+  }
+
+  const existingToolRun = (message.toolRuns ?? []).find((run) => run.id === HOME_INTAKE_CREATE_TOOL_RUN_ID);
+  const runningToolCallIds = (message.runningToolCallIds ?? []).filter(
+    (id) => id !== HOME_INTAKE_CREATE_TOOL_RUN_ID,
+  );
+  const completedToolCallIds = addUnique(message.completedToolCallIds ?? [], HOME_INTAKE_CREATE_TOOL_RUN_ID);
+  const toolRuns = upsertToolRun(message.toolRuns ?? [], {
+    id: HOME_INTAKE_CREATE_TOOL_RUN_ID,
+    position: existingToolRun?.position ?? 0,
+    status: "completed",
+    toolName: HOME_INTAKE_CREATE_TOOL_NAME,
+    toolDisplayName: HOME_INTAKE_CREATE_TOOL_DISPLAY_NAME,
+    detail: "\u5df2\u5b8c\u6210\u521b\u5efa\u5b66\u79d1",
+  });
+
+  return {
+    runningToolCallIds,
+    completedToolCallIds,
+    toolRunningCount: runningToolCallIds.length,
+    toolRunCount: completedToolCallIds.length,
+    toolRuns,
+  };
+}
+
+function addUnique(values: string[], value: string): string[] {
+  return values.includes(value) ? values : [...values, value];
+}
+
+function upsertToolRun(
+  runs: ChatMessageToolRun[],
+  nextRun: ChatMessageToolRun,
+): ChatMessageToolRun[] {
+  const existingIndex = runs.findIndex((run) => run.id === nextRun.id);
+  if (existingIndex < 0) {
+    return [...runs, nextRun];
+  }
+  return runs.map((run, index) => {
+    if (index !== existingIndex) {
+      return run;
+    }
+    return {
+      ...run,
+      status: nextRun.status,
+      toolName: nextRun.toolName ?? run.toolName,
+      toolDisplayName: nextRun.toolDisplayName ?? run.toolDisplayName,
+      detail: nextRun.detail ?? run.detail,
+    };
+  });
 }
 
 function parseChatErrorDetail(payload: unknown): string {

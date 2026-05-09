@@ -2,6 +2,7 @@ import pytest
 
 from app.workflows.interact.chat.lib import home_intake
 from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene, should_use_course_grounding
+from app.workflows.interact.chat.lib.types import RecentMessage
 
 
 def test_home_intake_source_skips_course_grounding() -> None:
@@ -37,6 +38,56 @@ def test_course_keyword_alone_does_not_trigger_home_intake() -> None:
         course_id="global",
         question="基础教育课程改革有哪些最新政策变化？",
     )
+
+
+def test_creation_followup_routes_short_answer_to_home_intake() -> None:
+    assert home_intake.should_use_home_intake_flow(
+        scene="global_assistant",
+        source="global_assistant",
+        course_id="global",
+        question="一年级上册",
+        recent_messages=[
+            RecentMessage(
+                role="assistant",
+                content="可以，我先确认一下：你想创建哪门学科？希望它重点帮你解决什么学习目标？",
+            )
+        ],
+    )
+
+
+@pytest.mark.anyio
+async def test_home_intake_short_followup_saves_pending_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved_actions: list[dict | None] = []
+
+    async def fail_if_called(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("LLM classifier should not be needed for a creation follow-up answer")
+
+    monkeypatch.setattr(home_intake, "_load_pending_action", lambda **_: None)
+    monkeypatch.setattr(
+        home_intake,
+        "_save_pending_action",
+        lambda **kwargs: saved_actions.append(kwargs["pending_action"]),
+    )
+    monkeypatch.setattr(home_intake, "acompletion", fail_if_called)
+
+    result = await home_intake.run_home_intake_turn(
+        {
+            "question": "一年级上册",
+            "session_id": "session_1",
+            "user_id": "user_1",
+            "attached_file_ids": [],
+            "recent_messages": [
+                RecentMessage(
+                    role="assistant",
+                    content="可以，我先确认一下：你想创建哪门学科？希望它重点帮你解决什么学习目标？",
+                )
+            ],
+        },
+    )
+
+    assert "确认创建" in result.assistant_response
+    assert "已创建" not in result.assistant_response
+    assert saved_actions[0]["name"] == "一年级上册"
 
 
 @pytest.mark.anyio
