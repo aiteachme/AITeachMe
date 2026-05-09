@@ -9,6 +9,7 @@ import {
 import { ArrowUp, Loader2, Send, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ChatModelSelect, type ChatModelChoice } from "./ChatModelSelect";
+import { FileDropOverlay, useFileDropZone } from "../ui/FileDropZone";
 
 interface ChatComposerProps {
   value: string;
@@ -27,6 +28,7 @@ interface ChatComposerProps {
   homeToolbarActions?: ReactNode;
   homeHighlighted?: boolean;
   onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
+  onFilesDrop?: (files: File[]) => void;
 }
 
 const TEXTAREA_MIN_HEIGHT = 52;
@@ -51,12 +53,17 @@ export function ChatComposer({
   homeToolbarActions,
   homeHighlighted = false,
   onPaste,
+  onFilesDrop,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const shouldShowModelSelect = Boolean(modelValue && onModelChange);
   const textareaMinHeight = layout === "home" ? HOME_TEXTAREA_MIN_HEIGHT : TEXTAREA_MIN_HEIGHT;
   const textareaMaxHeight = layout === "home" ? HOME_TEXTAREA_MAX_HEIGHT : TEXTAREA_MAX_HEIGHT;
   const canSubmit = canSend ?? Boolean(value.trim());
+  const { isDragActive: isFileDragActive, dropZoneHandlers: fileDropHandlers } = useFileDropZone<HTMLDivElement>({
+    disabled: disabled || isStreaming,
+    onDropFiles: onFilesDrop,
+  });
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -90,6 +97,8 @@ export function ChatComposer({
       onSend();
     }
   }
+
+  const fileDropOverlay = isFileDragActive ? <FileDropOverlay /> : null;
 
   const actionButton = isStreaming ? (
     <button
@@ -148,11 +157,14 @@ export function ChatComposer({
       <div className="w-full bg-transparent">
         <div className="mx-auto w-full max-w-[800px]">
           <div
+            {...fileDropHandlers}
             className={cn(
-              "w-full overflow-hidden rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] backdrop-blur-xl transition-all hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90 dark:focus-within:border-indigo-500/50",
+              "relative w-full overflow-hidden rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] backdrop-blur-xl transition-all hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90 dark:focus-within:border-indigo-500/50",
               (value.trim() || homeHighlighted) && "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgba(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgba(99,102,241,0.2)]",
+              isFileDragActive && "border-zinc-900 bg-white ring-4 ring-zinc-900/10 dark:border-slate-100 dark:bg-slate-900 dark:ring-slate-100/10",
             )}
           >
+            {fileDropOverlay}
             <textarea
               ref={textareaRef}
               rows={3}
@@ -177,7 +189,7 @@ export function ChatComposer({
                       value={modelValue!}
                       onChange={onModelChange!}
                       disabled={disabled || isStreaming}
-                      className="min-w-0 flex-1 sm:flex-none sm:w-[148px]"
+                      className="shrink-0"
                     />
                   ) : <span />}
                   {homeActionButton}
@@ -200,7 +212,14 @@ export function ChatComposer({
   return (
     <div className="w-full bg-gradient-to-t from-white via-white to-white/80 px-4 pb-5 pt-3 dark:from-slate-950 dark:via-slate-950 dark:to-slate-950/80 md:px-8">
       <div className="mx-auto w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
-        <div className="rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950">
+        <div
+          {...fileDropHandlers}
+          className={cn(
+            "relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950",
+            isFileDragActive && "border-zinc-900 bg-white ring-4 ring-zinc-900/10 dark:border-slate-100 dark:bg-slate-950 dark:ring-slate-100/10",
+          )}
+        >
+          {fileDropOverlay}
           <div className="px-3 py-2.5">
             <div className="flex items-end gap-2 sm:gap-3">
               <textarea
@@ -220,7 +239,7 @@ export function ChatComposer({
                   value={modelValue!}
                   onChange={onModelChange!}
                   disabled={disabled || isStreaming}
-                  className="mb-1 hidden sm:inline-flex"
+                  className="mb-1 hidden shrink-0 sm:inline-flex"
                 />
               ) : null}
 
@@ -234,7 +253,7 @@ export function ChatComposer({
                     value={modelValue!}
                     onChange={onModelChange!}
                     disabled={disabled || isStreaming}
-                    className="min-w-0 flex-1"
+                    className="shrink-0"
                   />
                 ) : null}
               </div>

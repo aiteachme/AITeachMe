@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Network } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -130,7 +130,6 @@ export function ChatModelSelect({
   const [highlightedValue, setHighlightedValue] = useState<ChatModelChoice>(value);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const meta = CHAT_MODEL_META[value];
-  const isExplicitModel = value !== DEFAULT_CHAT_MODEL_CHOICE;
 
   const updateMenuPosition = () => {
     const triggerRect = triggerRef.current?.getBoundingClientRect();
@@ -294,7 +293,7 @@ export function ChatModelSelect({
               )}
               aria-hidden="true"
             >
-              <Bot className="h-3.5 w-3.5" />
+              <Network className="h-3.5 w-3.5" />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] leading-4">{optionMeta.menuLabel}</span>
@@ -323,7 +322,7 @@ export function ChatModelSelect({
         title={`选择全局模型：${meta.title}`}
         onKeyDown={handleKeyDown}
         className={cn(
-          "relative inline-flex h-9 min-w-[118px] max-w-full",
+          "relative inline-flex h-7 w-auto min-w-0 max-w-full",
           disabled && "cursor-not-allowed opacity-55",
           className,
         )}
@@ -344,36 +343,26 @@ export function ChatModelSelect({
             }
           }}
           className={cn(
-            "group inline-flex h-full w-full items-center gap-2 rounded-xl border px-2.5 text-left transition-all active:scale-[0.98]",
-            "border-zinc-200/80 bg-white/92 text-zinc-700 shadow-[0_1px_2px_rgba(24,24,27,0.04),inset_0_1px_0_rgba(255,255,255,0.88)] hover:border-zinc-300 hover:bg-white hover:text-zinc-950",
-            "focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:border-slate-700/75 dark:bg-slate-900/86 dark:text-slate-200 dark:shadow-none dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:hover:text-slate-50 dark:focus:ring-slate-100/10",
-            isExplicitModel && "border-violet-200 bg-violet-50/85 text-violet-950 shadow-[0_1px_2px_rgba(109,40,217,0.08),inset_0_1px_0_rgba(255,255,255,0.88)] hover:border-violet-300 hover:bg-violet-50 hover:text-violet-950 focus:ring-violet-500/15 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50 dark:hover:border-violet-300/60 dark:hover:bg-violet-500/20 dark:focus:ring-violet-300/15",
-            open && "border-zinc-400 bg-white text-zinc-950 ring-4 ring-zinc-900/10 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-100/10",
-            open && isExplicitModel && "border-violet-400 bg-violet-50 text-violet-950 ring-violet-500/15 dark:border-violet-300/70 dark:bg-violet-500/20 dark:text-violet-50 dark:ring-violet-300/15",
+            "group inline-flex h-full w-auto max-w-[128px] items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium leading-none text-zinc-500 transition-colors active:scale-[0.98]",
+            "hover:bg-zinc-100/70 hover:text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100 dark:focus:ring-slate-100/10",
+            open && "bg-zinc-100/80 text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
             disabled && "cursor-not-allowed active:scale-100",
           )}
         >
-          <Bot
-            className={cn(
-              "h-4 w-4 shrink-0 transition-colors",
-              isExplicitModel
-                ? "text-violet-600 group-hover:text-violet-700 dark:text-violet-200 dark:group-hover:text-violet-100"
-                : "text-zinc-500 group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-100",
-            )}
+          <Network
+            className="h-3.5 w-3.5 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-100"
             aria-hidden="true"
           />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold leading-none">{meta.triggerLabel}</span>
+          <span className="inline-flex min-w-0 items-baseline">
+            <span className="truncate font-semibold text-zinc-700 dark:text-slate-200">{meta.triggerLabel}</span>
             <span id={descriptionId} className="sr-only">
               {meta.caption}
             </span>
           </span>
           <ChevronDown
             className={cn(
-              "h-3.5 w-3.5 shrink-0 text-zinc-400 transition-all group-hover:text-zinc-700 dark:text-slate-500 dark:group-hover:text-slate-200",
-              isExplicitModel && "text-violet-500 group-hover:text-violet-700 dark:text-violet-200 dark:group-hover:text-violet-100",
-              open && "rotate-180 text-zinc-700 dark:text-slate-200",
-              open && isExplicitModel && "text-violet-700 dark:text-violet-100",
+              "h-3 w-3 shrink-0 text-zinc-400 transition-all group-hover:text-zinc-600 dark:text-slate-500 dark:group-hover:text-slate-200",
+              open && "rotate-180 text-zinc-600 dark:text-slate-200",
             )}
             aria-hidden="true"
           />

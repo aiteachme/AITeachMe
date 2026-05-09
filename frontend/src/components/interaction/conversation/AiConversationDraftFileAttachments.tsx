@@ -21,7 +21,6 @@ import {
   FileUp,
   FolderOpen,
   Loader2,
-  Paperclip,
   RefreshCw,
   Search,
   X,
@@ -38,6 +37,7 @@ import {
 } from "../../../lib/fileUpload";
 import { cn } from "../../../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../../../types/files";
+import { FileDropOverlay, useFileDropZone } from "../../ui/FileDropZone";
 import { resolveFileProcessingLabel } from "../../knowledge-docs";
 import { useToast } from "../../ui/Toast";
 
@@ -59,6 +59,7 @@ interface AiConversationDraftFileAttachmentsProps {
     hasFiles: boolean;
     isUploading: boolean;
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+    onFilesDrop: (files: File[]) => void;
   }) => ReactNode;
 }
 
@@ -139,13 +140,25 @@ function LibraryPickerModal({
   selectedFileIds,
   onClose,
   onConfirm,
+  onUploadLocalFiles,
+  onDropFiles,
+  isUploading,
+  disabled = false,
 }: {
   selectedFileIds: string[];
   onClose: () => void;
   onConfirm: (fileIds: string[], files: FileRecord[]) => void;
+  onUploadLocalFiles: () => void;
+  onDropFiles: (files: File[]) => void;
+  isUploading: boolean;
+  disabled?: boolean;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedFileIds));
+  const { isDragActive, dropZoneHandlers } = useFileDropZone<HTMLDivElement>({
+    disabled: disabled || isUploading,
+    onDropFiles,
+  });
 
   useEffect(() => {
     setSelected(new Set(selectedFileIds));
@@ -205,8 +218,15 @@ function LibraryPickerModal({
         role="dialog"
         aria-modal="true"
         aria-label="从资料库选择"
-        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        {...dropZoneHandlers}
+        className={cn(
+          "relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl transition-colors dark:bg-slate-900",
+          isDragActive
+            ? "border-slate-900 ring-4 ring-slate-900/10 dark:border-slate-100 dark:ring-slate-100/10"
+            : "border-slate-200 dark:border-slate-800",
+        )}
       >
+        {isDragActive ? <FileDropOverlay /> : null}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
@@ -240,6 +260,16 @@ function LibraryPickerModal({
             </div>
             <button
               type="button"
+              onClick={onUploadLocalFiles}
+              disabled={disabled || isUploading}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+              title="上传本地文件到资料库"
+            >
+              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              上传本地文件
+            </button>
+            <button
+              type="button"
               onClick={() => void filesQuery.refetch()}
               disabled={filesQuery.isFetching}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -263,6 +293,15 @@ function LibraryPickerModal({
               <FolderOpen className="h-8 w-8 text-slate-400" />
               <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">资料库还没有文件</p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">先上传资料后，就可以在这里选择。</p>
+              <button
+                type="button"
+                onClick={onUploadLocalFiles}
+                disabled={disabled || isUploading}
+                className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+              >
+                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+                上传本地文件
+              </button>
             </div>
           ) : null}
 
@@ -600,22 +639,13 @@ export function AiConversationDraftFileAttachments({
       />
       <button
         type="button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={disabled || isUploading}
-        className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-      >
-        {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
-        添加资料
-      </button>
-      <button
-        type="button"
         onClick={() => setLibraryPickerOpen(true)}
-        disabled={disabled || isUploading}
+        disabled={disabled}
         className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-        title="从我的资料库选择已有文件"
+        title="从资料库选择或上传本地文件"
       >
-        <FolderOpen className="h-3.5 w-3.5" />
-        从资料库选
+        {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
+        资料库
       </button>
     </>
   );
@@ -625,6 +655,10 @@ export function AiConversationDraftFileAttachments({
       selectedFileIds={fileIds}
       onClose={() => setLibraryPickerOpen(false)}
       onConfirm={handleSelectLibraryFiles}
+      onUploadLocalFiles={() => fileInputRef.current?.click()}
+      onDropFiles={(droppedFiles) => void uploadPendingFiles(droppedFiles)}
+      isUploading={isUploading}
+      disabled={disabled}
     />
   ) : null;
 
@@ -637,6 +671,7 @@ export function AiConversationDraftFileAttachments({
         hasFiles,
         isUploading,
         onPaste: handlePaste,
+        onFilesDrop: (droppedFiles) => void uploadPendingFiles(droppedFiles),
       })}
     </>
   );

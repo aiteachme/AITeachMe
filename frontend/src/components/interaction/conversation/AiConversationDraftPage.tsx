@@ -86,6 +86,7 @@ export function AiConversationDraftPage({
               hasFiles,
               isUploading,
               onPaste,
+              onFilesDrop,
             }) => (
               <>
                 <AiConversationComposerDock
@@ -107,6 +108,7 @@ export function AiConversationDraftPage({
                   homeToolbarActions={toolbarActions}
                   homeHighlighted={hasFiles}
                   onPaste={onPaste}
+                  onFilesDrop={onFilesDrop}
                 />
                 {modalContent}
               </>
