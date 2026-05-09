@@ -26,7 +26,6 @@ import { AiConversationDraftPage } from "./AiConversationDraftPage";
 import {
   AiConversationCollapseButton,
   AiConversationHeader,
-  AiConversationHistoryButton,
   AiConversationReturnToSidebarButton,
 } from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
@@ -424,6 +423,7 @@ export const AiConversationView = memo(function AiConversationView({
   const { pathname } = useLocation();
   const {
     sessionListVersion,
+    openAiInteraction,
     setActiveConversationSessionId,
     setActiveConversationSelectionTarget,
     setSidebarStreaming,
@@ -823,6 +823,54 @@ export const AiConversationView = memo(function AiConversationView({
     request?.showSelectionContext,
     request?.scene,
     request?.source,
+    selectedSessionId,
+  ]);
+  const handleTogglePresentation = useCallback(() => {
+    if (isFullscreen) {
+      handleReturnToSidebar();
+      return;
+    }
+    if (!scope) {
+      return;
+    }
+
+    const context = pendingSelectionContext ?? activeQuickChatContext;
+    const nextSessionId = selectedSessionId ?? messagesSessionId ?? request?.sessionId ?? null;
+    openAiInteraction({
+      mode: "fullscreen",
+      scope,
+      sessionId: nextSessionId,
+      draft,
+      model: toChatRequestModel(chatModel),
+      scene: context?.scene ?? request?.scene ?? null,
+      source: context?.source ?? request?.source ?? null,
+      anchorId: context?.anchorId ?? request?.anchorId ?? null,
+      selectedText: context?.selectedText ?? request?.selectedText ?? null,
+      selectionContext: context?.selectionContext ?? request?.selectionContext ?? null,
+      attachedFileIds: draftAttachedFileIds,
+      clientThreadId: context?.clientThreadId ?? request?.clientThreadId ?? null,
+      newSession: !nextSessionId,
+      showSelectionContext: context ? true : request?.showSelectionContext,
+    });
+  }, [
+    activeQuickChatContext,
+    chatModel,
+    draft,
+    draftAttachedFileIds,
+    handleReturnToSidebar,
+    isFullscreen,
+    messagesSessionId,
+    openAiInteraction,
+    pendingSelectionContext,
+    request?.anchorId,
+    request?.clientThreadId,
+    request?.selectedText,
+    request?.selectionContext,
+    request?.sessionId,
+    request?.showSelectionContext,
+    request?.scene,
+    request?.source,
+    scope,
     selectedSessionId,
   ]);
   const historyGroups = useMemo(() =>
@@ -1650,23 +1698,34 @@ export const AiConversationView = memo(function AiConversationView({
 
       {shouldShowDraftHome ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="pointer-events-none absolute right-4 top-4 z-30 flex justify-end gap-1.5">
-            {onReturnToSidebar ? (
-              <AiConversationReturnToSidebarButton
-                onClick={handleReturnToSidebar}
-                className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
-              />
-            ) : onClose ? (
-              <AiConversationCollapseButton
-                onClick={onClose}
-                className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
-              />
-            ) : null}
-            <AiConversationHistoryButton
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex h-10 items-center justify-between px-2">
+            <button
+              type="button"
               onClick={handleToggleFullscreenHistory}
-              active={isFullscreenHistoryPanelOpen}
-              className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
-            />
+              data-ai-conversation-history-trigger="true"
+              className={cn(
+                "pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
+                isFullscreenHistoryPanelOpen && "bg-zinc-100 text-zinc-700 dark:bg-slate-800 dark:text-slate-200",
+              )}
+              aria-label="查询历史对话"
+              title="查询历史对话"
+              aria-pressed={isFullscreenHistoryPanelOpen}
+            >
+              <Search className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <div className="flex items-center justify-end gap-1.5">
+              {onReturnToSidebar ? (
+                <AiConversationReturnToSidebarButton
+                  onClick={handleReturnToSidebar}
+                  className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
+                />
+              ) : onClose ? (
+                <AiConversationCollapseButton
+                  onClick={onClose}
+                  className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
+                />
+              ) : null}
+            </div>
           </div>
           {historyError || sessionsError ? (
             <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
@@ -1704,7 +1763,9 @@ export const AiConversationView = memo(function AiConversationView({
             onStartNewSession={handleStartNewSession}
             onJumpToSelectionTarget={jumpToSelectionTarget}
             onToggleHistory={handleToggleFullscreenHistory}
+            onTogglePresentation={handleTogglePresentation}
             isHistoryOpen={isFullscreenHistoryPanelOpen}
+            isFullscreen={isFullscreen}
             isStreaming={isStreaming}
           />
 
