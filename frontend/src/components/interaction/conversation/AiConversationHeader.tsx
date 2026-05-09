@@ -32,7 +32,8 @@ export function AiConversationReturnToSidebarButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        showLabel ? "gap-1.5 px-2" : "w-8",
         className,
       )}
       aria-label="回到侧边栏"
@@ -60,7 +61,8 @@ export function AiConversationCollapseButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        showLabel ? "gap-1.5 px-2" : "w-8",
         className,
       )}
       aria-label="收起"
@@ -91,7 +93,8 @@ export function AiConversationHistoryButton({
       onClick={onClick}
       data-ai-conversation-history-trigger="true"
       className={cn(
-        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        showLabel ? "gap-1.5 px-2" : "w-8",
         active && "bg-zinc-100 text-zinc-900 dark:bg-slate-800 dark:text-slate-100",
         className,
       )}

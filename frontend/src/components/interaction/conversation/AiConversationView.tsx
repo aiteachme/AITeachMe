@@ -1504,21 +1504,18 @@ export const AiConversationView = memo(function AiConversationView({
             {onReturnToSidebar ? (
               <AiConversationReturnToSidebarButton
                 onClick={handleReturnToSidebar}
-                showLabel
-                className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:bg-slate-950"
+                className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
               />
             ) : onClose ? (
               <AiConversationCollapseButton
                 onClick={onClose}
-                showLabel
-                className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:bg-slate-950"
+                className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
               />
             ) : null}
             <AiConversationHistoryButton
               onClick={handleToggleFullscreenHistory}
               active={isFullscreenHistoryPanelOpen}
-              showLabel
-              className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white"
+              className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
             />
           </div>
           {historyError || sessionsError ? (
