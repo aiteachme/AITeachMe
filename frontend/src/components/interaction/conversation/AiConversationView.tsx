@@ -11,6 +11,7 @@ import type {
   ChatSessionItem,
 } from "../../../api/generated/model";
 import { type ChatClientAction, type ChatSessionMessage, useChatSession } from "../../../hooks/useChatSession";
+import { useCourseDisplayName } from "../../../hooks/useCourseDisplayName";
 import { buildCoursePath, buildCourseSubPath, isCourseRouteActive } from "../../../lib/courseNavigation";
 import { cn } from "../../../lib/utils";
 import type { FileRecord } from "../../../types/files";
@@ -21,7 +22,7 @@ import {
   useGlobalChatModelChoice,
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
-import { AiConversationFullscreenDraft } from "./AiConversationFullscreenDraft";
+import { AiConversationDraftPage } from "./AiConversationDraftPage";
 import { AiConversationHeader } from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
@@ -267,6 +268,7 @@ export const AiConversationView = memo(function AiConversationView({
   } = useAiInteraction();
   const courseId = getAiConversationBackendCourseId(scope);
   const docsCourseId = scope?.type === "course" ? scope.courseId : null;
+  const { courseName } = useCourseDisplayName(docsCourseId);
   const isKnowledgeDocsPage = Boolean(docsCourseId && isCourseRouteActive(pathname, docsCourseId, "knowledge-docs"));
 
   const [draft, setDraft] = useState("");
@@ -528,14 +530,24 @@ export const AiConversationView = memo(function AiConversationView({
   const messagesBelongToCurrentSession = messagesSessionId === currentMessagesSessionId || hasLocalStreamingMessages;
   const visibleMessages = messagesBelongToCurrentSession ? messages : [];
   const currentHistoryLoaded = hasLocalStreamingMessages || (historyLoaded && messagesBelongToCurrentSession);
-  const shouldShowGlobalFullscreenDraft =
+  const shouldShowFullscreenDraftHome =
     isFullscreen &&
-    scope?.type === "global" &&
     !selectedSessionId &&
     visibleMessages.length === 0 &&
     !pendingSelectionContext &&
     !activeQuickChatContext &&
     !isStreaming;
+  const shouldShowSidebarDraftHome =
+    !isFullscreen &&
+    !selectedSessionId &&
+    visibleMessages.length === 0 &&
+    !pendingSelectionContext &&
+    !activeQuickChatContext &&
+    !isStreaming;
+  const draftHomeTitle =
+    scope?.type === "course"
+      ? `你想问“${courseName?.trim() || "当前课程"}”什么？`
+      : "我们该做什么？";
   const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
@@ -1155,7 +1167,7 @@ export const AiConversationView = memo(function AiConversationView({
     <div
       className={cn(
         "relative flex h-full min-h-0 w-full overflow-hidden",
-        shouldShowGlobalFullscreenDraft
+        shouldShowFullscreenDraftHome
           ? "bg-[#fafafa] dark:bg-[#0b0f19]"
           : isFullscreen
           ? "border border-zinc-200/80 bg-white/85 shadow-sm dark:border-slate-800 dark:bg-slate-950"
@@ -1252,15 +1264,15 @@ export const AiConversationView = memo(function AiConversationView({
         </aside>
       ) : null}
 
-      {shouldShowGlobalFullscreenDraft ? (
+      {shouldShowFullscreenDraftHome ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {historyError || sessionsError ? (
             <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
               {historyError ?? sessionsError}
             </div>
           ) : null}
-          <AiConversationFullscreenDraft
-            animationKey={emptyAnimationKey}
+          <AiConversationDraftPage
+            title={draftHomeTitle}
             draft={draft}
             onDraftChange={setDraft}
             onSend={() => void handleSend()}
@@ -1277,6 +1289,7 @@ export const AiConversationView = memo(function AiConversationView({
             attachedFiles={draftAttachedFiles}
             onAttachedFilesChange={handleDraftAttachedFilesChange}
             onUploadingChange={setIsDraftUploadingFiles}
+            enableAttachments={scope?.type === "global"}
           />
         </div>
       ) : (
@@ -1297,31 +1310,51 @@ export const AiConversationView = memo(function AiConversationView({
               {historyError ?? sessionsError}
             </div>
           ) : null}
-          <AiConversationMessageView
-            scrollRef={messageScrollRef}
-            onScroll={handleMessageScroll}
-            messages={visibleMessages}
-            selectedSessionId={selectedSessionId}
-            historyLoaded={currentHistoryLoaded}
-            isStreaming={isStreaming}
-            emptyAnimationKey={emptyAnimationKey}
-            onOpenCitation={handleOpenCitation}
-          />
+          {shouldShowSidebarDraftHome ? (
+            <AiConversationDraftPage
+              title={draftHomeTitle}
+              draft={draft}
+              onDraftChange={setDraft}
+              onSend={() => void handleSend()}
+              onAbort={abortStream}
+              isStreaming={isStreaming}
+              disabled={!courseId || isPlannerConversation}
+              autoFocusKey={composerFocusKey}
+              modelValue={chatModel}
+              onModelChange={setChatModel}
+              isPlannerConversation={isPlannerConversation}
+              pendingSelectionContext={pendingSelectionContext}
+              onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+            />
+          ) : (
+            <>
+              <AiConversationMessageView
+                scrollRef={messageScrollRef}
+                onScroll={handleMessageScroll}
+                messages={visibleMessages}
+                selectedSessionId={selectedSessionId}
+                historyLoaded={currentHistoryLoaded}
+                isStreaming={isStreaming}
+                emptyAnimationKey={emptyAnimationKey}
+                onOpenCitation={handleOpenCitation}
+              />
 
-          <AiConversationComposerDock
-            draft={draft}
-            onDraftChange={setDraft}
-            onSend={() => void handleSend()}
-            onAbort={abortStream}
-            isStreaming={isStreaming}
-            disabled={!courseId || isPlannerConversation}
-            autoFocusKey={composerFocusKey}
-            modelValue={chatModel}
-            onModelChange={setChatModel}
-            isPlannerConversation={isPlannerConversation}
-            pendingSelectionContext={pendingSelectionContext}
-            onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-          />
+              <AiConversationComposerDock
+                draft={draft}
+                onDraftChange={setDraft}
+                onSend={() => void handleSend()}
+                onAbort={abortStream}
+                isStreaming={isStreaming}
+                disabled={!courseId || isPlannerConversation}
+                autoFocusKey={composerFocusKey}
+                modelValue={chatModel}
+                onModelChange={setChatModel}
+                isPlannerConversation={isPlannerConversation}
+                pendingSelectionContext={pendingSelectionContext}
+                onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+              />
+            </>
+          )}
         </div>
       )}
 
