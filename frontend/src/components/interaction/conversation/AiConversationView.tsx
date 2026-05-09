@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
-import { BookOpen, FileText, MessageSquareText, Plus, Sparkles } from "lucide-react";
+import { BookOpen, FileText, MessageSquareText, Plus, Search, Sparkles } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import type {
@@ -23,7 +23,12 @@ import {
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationDraftPage } from "./AiConversationDraftPage";
-import { AiConversationHeader, AiConversationReturnToSidebarButton } from "./AiConversationHeader";
+import {
+  AiConversationCollapseButton,
+  AiConversationHeader,
+  AiConversationHistoryButton,
+  AiConversationReturnToSidebarButton,
+} from "./AiConversationHeader";
 import { AiConversationMessageView } from "./AiConversationMessageView";
 import type { ChatSessionSelectionTarget, PendingSelectionContext } from "./AiConversationTypes";
 import { useAiInteraction } from "../AiInteractionProvider";
@@ -309,6 +314,8 @@ export const AiConversationView = memo(function AiConversationView({
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [isFullscreenHistoryPanelOpen, setIsFullscreenHistoryPanelOpen] = useState(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [selectedCitation, setSelectedCitation] = useState<ChatContextItem | null>(null);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<PendingSelectionContext | null>(null);
   const [pendingAutoSendRequest, setPendingAutoSendRequest] = useState<PendingAutoSendRequest | null>(null);
@@ -328,6 +335,7 @@ export const AiConversationView = memo(function AiConversationView({
   const activeQuickChatContextRef = useRef<PendingSelectionContext | null>(null);
   const activeQuickChatThreadIdRef = useRef("");
   const messageScrollRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenHistoryPanelRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const lastMessageScrollKeyRef = useRef("");
   const lastStreamingRef = useRef(false);
@@ -461,7 +469,6 @@ export const AiConversationView = memo(function AiConversationView({
     isStreaming,
     sendMessage,
     abortStream,
-    clearHistory,
     replaceMessages,
   } = useChatSession(courseId ?? "", {
     sessionId: selectedSessionId,
@@ -579,6 +586,36 @@ export const AiConversationView = memo(function AiConversationView({
     !pendingSelectionContext &&
     !activeQuickChatContext &&
     !isStreaming;
+
+  useEffect(() => {
+    if (!isFullscreenHistoryPanelOpen || typeof document === "undefined") {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (fullscreenHistoryPanelRef.current?.contains(target)) {
+        return;
+      }
+      if (
+        target instanceof Element &&
+        target.closest('[data-ai-conversation-history-trigger="true"]')
+      ) {
+        return;
+      }
+
+      setIsFullscreenHistoryPanelOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [isFullscreenHistoryPanelOpen]);
+
   const shouldShowSidebarDraftHome =
     !isFullscreen &&
     !selectedSessionId &&
@@ -586,6 +623,7 @@ export const AiConversationView = memo(function AiConversationView({
     !pendingSelectionContext &&
     !activeQuickChatContext &&
     !isStreaming;
+  const shouldShowDraftHome = shouldShowFullscreenDraftHome || shouldShowSidebarDraftHome;
   const draftHomeTitle =
     scope?.type === "course"
       ? `你想问“${courseName?.trim() || "当前课程"}”什么？`
@@ -660,7 +698,26 @@ export const AiConversationView = memo(function AiConversationView({
       }))
       .filter((group) => group.sessions.length > 0),
   [sessions]);
-  const historyTitle = "课程历史";
+  const filteredHistorySessions = useMemo(() => {
+    const query = historySearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return sessions;
+    }
+
+    return sessions.filter((session) => {
+      const title = session.title ?? "";
+      const selectedText = session.selected_text ?? "";
+      const date = formatSessionDate(session.last_message_at || session.updated_at);
+      const kindLabel = HISTORY_KIND_META[getHistoryKind(session)].label;
+
+      return [title, selectedText, date, kindLabel].some((value) =>
+        value.toLowerCase().includes(query),
+      );
+    });
+  }, [historySearchQuery, sessions]);
+  const hasAnyHistorySessions = sessions.length > 0;
+  const historyTitle = scope?.type === "global" ? "全局历史" : "课程历史";
 
   useEffect(() => {
     if (presentation !== "sidebar") {
@@ -1107,6 +1164,7 @@ export const AiConversationView = memo(function AiConversationView({
     requestedSessionIdRef.current = null;
     replaceMessages([], null);
     setActiveConversationSessionId(null);
+    setIsFullscreenHistoryPanelOpen(false);
   }, [replaceMessages, setActiveConversationSessionId]);
 
   const handleSelectHistorySession = useCallback((session: ChatSessionItem) => {
@@ -1127,6 +1185,15 @@ export const AiConversationView = memo(function AiConversationView({
     setSelectedSessionId(nextSessionId);
     setActiveConversationSessionId(nextSessionId);
   }, [isStreaming, setActiveConversationSessionId]);
+
+  const handleSelectHistoryPanelSession = useCallback((session: ChatSessionItem) => {
+    handleSelectHistorySession(session);
+    setIsFullscreenHistoryPanelOpen(false);
+  }, [handleSelectHistorySession]);
+
+  const handleToggleFullscreenHistory = useCallback(() => {
+    setIsFullscreenHistoryPanelOpen((open) => !open);
+  }, []);
 
   const sendAutoRequest = useCallback(async (autoRequest: PendingAutoSendRequest) => {
     if (!courseId || isStreaming || isPlannerConversation) {
@@ -1245,17 +1312,11 @@ export const AiConversationView = memo(function AiConversationView({
     void reloadSessions(nextSessionId);
   }
 
-  async function handleClearCurrentSession() {
-    await clearHistory();
-    notifyConversationSessionsChanged();
-    void reloadSessions(selectedSessionId);
-  }
-
   return (
     <div
       className={cn(
         "relative flex h-full min-h-0 w-full overflow-hidden",
-        shouldShowFullscreenDraftHome
+        shouldShowDraftHome
           ? "bg-[#fafafa] dark:bg-[#0b0f19]"
           : isFullscreen
           ? "border border-zinc-200/80 bg-white/85 shadow-sm dark:border-slate-800 dark:bg-slate-950"
@@ -1352,17 +1413,114 @@ export const AiConversationView = memo(function AiConversationView({
         </aside>
       ) : null}
 
-      {shouldShowFullscreenDraftHome ? (
+      {isFullscreenHistoryPanelOpen ? (
+        <div
+          className="pointer-events-none absolute right-4 top-14 z-40"
+          style={{ width: "min(26rem, calc(100% - 2rem))" }}
+        >
+          <div
+            ref={fullscreenHistoryPanelRef}
+            className="pointer-events-auto overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-[0_18px_48px_-28px_rgba(15,23,42,0.45)] ring-1 ring-slate-950/[0.03] backdrop-blur-xl"
+          >
+            <div className="border-b border-slate-100 p-3">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={historySearchQuery}
+                  onChange={(event) => setHistorySearchQuery(event.target.value)}
+                  placeholder="搜索最近对话"
+                  className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200/70"
+                />
+              </label>
+            </div>
+
+            <div
+              className="overflow-y-auto p-2 scrollbar-thin scrollbar-webkit"
+              style={{ maxHeight: "min(28rem, calc(100vh - 10rem))" }}
+            >
+              {sessionsError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] leading-4 text-red-600">
+                  {sessionsError}
+                </p>
+              ) : null}
+
+              {!sessionsError && !hasAnyHistorySessions ? (
+                <p className="rounded-md px-2 py-6 text-center text-[12px] leading-5 text-slate-400">
+                  暂无历史对话
+                </p>
+              ) : null}
+
+              {!sessionsError && hasAnyHistorySessions && filteredHistorySessions.length === 0 ? (
+                <p className="rounded-md px-2 py-6 text-center text-[12px] leading-5 text-slate-400">
+                  没有匹配的历史对话
+                </p>
+              ) : null}
+
+              {filteredHistorySessions.map((session) => {
+                const sessionId = getChatSessionItemId(session);
+                const isSelected = Boolean(sessionId && sessionId === selectedSessionId);
+                const sessionDate = formatSessionDate(session.last_message_at || session.updated_at);
+                const previewText = session.selected_text?.trim();
+                return (
+                  <button
+                    key={sessionId ?? `${session.title}-${session.last_message_at}`}
+                    type="button"
+                    onClick={() => handleSelectHistoryPanelSession(session)}
+                    disabled={!sessionId || isStreaming}
+                    className={cn(
+                      "group flex w-full flex-col rounded-md px-2.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60",
+                      isSelected
+                        ? "bg-slate-100 text-slate-950"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-950",
+                    )}
+                    title={session.title || "未命名对话"}
+                  >
+                    <span className="flex w-full min-w-0 items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                        {session.title || "未命名对话"}
+                      </span>
+                      {sessionDate ? (
+                        <span className="shrink-0 text-[11px] font-normal text-slate-400">
+                          {sessionDate}
+                        </span>
+                      ) : null}
+                    </span>
+                    {previewText ? (
+                      <span className="mt-1 line-clamp-1 max-w-full text-[12px] text-slate-400">
+                        {previewText}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {shouldShowDraftHome ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {onReturnToSidebar ? (
-            <div className="pointer-events-none absolute right-4 top-4 z-30 flex justify-end">
+          <div className="pointer-events-none absolute right-4 top-4 z-30 flex justify-end gap-1.5">
+            {onReturnToSidebar ? (
               <AiConversationReturnToSidebarButton
                 onClick={handleReturnToSidebar}
                 showLabel
                 className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:bg-slate-950"
               />
-            </div>
-          ) : null}
+            ) : onClose ? (
+              <AiConversationCollapseButton
+                onClick={onClose}
+                showLabel
+                className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white dark:border-slate-800/80 dark:bg-slate-950/80 dark:hover:bg-slate-950"
+              />
+            ) : null}
+            <AiConversationHistoryButton
+              onClick={handleToggleFullscreenHistory}
+              active={isFullscreenHistoryPanelOpen}
+              showLabel
+              className="pointer-events-auto border border-slate-200/70 bg-white/85 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.55)] backdrop-blur-md hover:bg-white"
+            />
+          </div>
           {historyError || sessionsError ? (
             <div className="shrink-0 border-b border-red-100 bg-red-50/80 px-4 py-2 text-[13px] text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
               {historyError ?? sessionsError}
@@ -1397,10 +1555,10 @@ export const AiConversationView = memo(function AiConversationView({
             onClose={onClose}
             onReturnToSidebar={onReturnToSidebar ? handleReturnToSidebar : undefined}
             onStartNewSession={handleStartNewSession}
-            onClearCurrentSession={() => void handleClearCurrentSession()}
             onJumpToSelectionTarget={jumpToSelectionTarget}
+            onToggleHistory={handleToggleFullscreenHistory}
+            isHistoryOpen={isFullscreenHistoryPanelOpen}
             isStreaming={isStreaming}
-            selectedSessionId={selectedSessionId}
           />
 
           {historyError || sessionsError ? (
@@ -1408,51 +1566,31 @@ export const AiConversationView = memo(function AiConversationView({
               {historyError ?? sessionsError}
             </div>
           ) : null}
-          {shouldShowSidebarDraftHome ? (
-            <AiConversationDraftPage
-              title={draftHomeTitle}
-              draft={draft}
-              onDraftChange={setDraft}
-              onSend={() => void handleSend()}
-              onAbort={abortStream}
-              isStreaming={isStreaming}
-              disabled={!courseId || isPlannerConversation}
-              autoFocusKey={composerFocusKey}
-              modelValue={chatModel}
-              onModelChange={setChatModel}
-              isPlannerConversation={isPlannerConversation}
-              pendingSelectionContext={pendingSelectionContext}
-              onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-            />
-          ) : (
-            <>
-              <AiConversationMessageView
-                scrollRef={messageScrollRef}
-                onScroll={handleMessageScroll}
-                messages={visibleMessages}
-                selectedSessionId={selectedSessionId}
-                historyLoaded={currentHistoryLoaded}
-                isStreaming={isStreaming}
-                emptyAnimationKey={emptyAnimationKey}
-                onOpenCitation={handleOpenCitation}
-              />
+          <AiConversationMessageView
+            scrollRef={messageScrollRef}
+            onScroll={handleMessageScroll}
+            messages={visibleMessages}
+            selectedSessionId={selectedSessionId}
+            historyLoaded={currentHistoryLoaded}
+            isStreaming={isStreaming}
+            emptyAnimationKey={emptyAnimationKey}
+            onOpenCitation={handleOpenCitation}
+          />
 
-              <AiConversationComposerDock
-                draft={draft}
-                onDraftChange={setDraft}
-                onSend={() => void handleSend()}
-                onAbort={abortStream}
-                isStreaming={isStreaming}
-                disabled={!courseId || isPlannerConversation}
-                autoFocusKey={composerFocusKey}
-                modelValue={chatModel}
-                onModelChange={setChatModel}
-                isPlannerConversation={isPlannerConversation}
-                pendingSelectionContext={pendingSelectionContext}
-                onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-              />
-            </>
-          )}
+          <AiConversationComposerDock
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={() => void handleSend()}
+            onAbort={abortStream}
+            isStreaming={isStreaming}
+            disabled={!courseId || isPlannerConversation}
+            autoFocusKey={composerFocusKey}
+            modelValue={chatModel}
+            onModelChange={setChatModel}
+            isPlannerConversation={isPlannerConversation}
+            pendingSelectionContext={pendingSelectionContext}
+            onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+          />
         </div>
       )}
 

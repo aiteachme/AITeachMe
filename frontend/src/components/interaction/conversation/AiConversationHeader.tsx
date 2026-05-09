@@ -1,4 +1,4 @@
-import { ChevronRight, MapPin, PanelRightOpen, Plus, Trash2 } from "lucide-react";
+import { History, MapPin, PanelRightClose, Plus } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
 import type { ChatSessionSelectionTarget } from "./AiConversationTypes";
@@ -9,11 +9,11 @@ interface AiConversationHeaderProps {
   selectionTarget: ChatSessionSelectionTarget | null;
   onClose?: () => void;
   onReturnToSidebar?: () => void;
+  onToggleHistory?: () => void;
   onStartNewSession: () => void;
-  onClearCurrentSession: () => void;
   onJumpToSelectionTarget: (target: ChatSessionSelectionTarget) => void;
   isStreaming: boolean;
-  selectedSessionId: string | null;
+  isHistoryOpen?: boolean;
 }
 
 interface AiConversationReturnToSidebarButtonProps {
@@ -38,8 +38,68 @@ export function AiConversationReturnToSidebarButton({
       aria-label="回到侧边栏"
       title="回到侧边栏"
     >
-      <PanelRightOpen className="h-4 w-4 shrink-0" />
+      <PanelRightClose className="h-4 w-4 shrink-0" />
       {showLabel ? <span className="text-[13px] font-medium">侧边栏</span> : null}
+    </button>
+  );
+}
+
+interface AiConversationCollapseButtonProps {
+  onClick: () => void;
+  className?: string;
+  showLabel?: boolean;
+}
+
+export function AiConversationCollapseButton({
+  onClick,
+  className,
+  showLabel = false,
+}: AiConversationCollapseButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        className,
+      )}
+      aria-label="收起"
+      title="收起"
+    >
+      <PanelRightClose className="h-4 w-4 shrink-0" />
+      {showLabel ? <span className="text-[13px] font-medium">收起</span> : null}
+    </button>
+  );
+}
+
+interface AiConversationHistoryButtonProps {
+  onClick: () => void;
+  className?: string;
+  showLabel?: boolean;
+  active?: boolean;
+}
+
+export function AiConversationHistoryButton({
+  onClick,
+  className,
+  showLabel = false,
+  active = false,
+}: AiConversationHistoryButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-ai-conversation-history-trigger="true"
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+        active && "bg-zinc-100 text-zinc-900 dark:bg-slate-800 dark:text-slate-100",
+        className,
+      )}
+      aria-label="历史对话"
+      title="历史对话"
+    >
+      <History className="h-4 w-4 shrink-0" />
+      {showLabel ? <span className="text-[13px] font-medium">历史</span> : null}
     </button>
   );
 }
@@ -49,30 +109,15 @@ export function AiConversationHeader({
   selectionTarget,
   onClose,
   onReturnToSidebar,
+  onToggleHistory,
   onStartNewSession,
-  onClearCurrentSession,
   onJumpToSelectionTarget,
   isStreaming,
-  selectedSessionId,
+  isHistoryOpen = false,
 }: AiConversationHeaderProps) {
   return (
     <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/60 bg-white px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950">
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        {onClose ? (
-          <>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-              aria-label="收起"
-            >
-              <ChevronRight className="h-4 w-4 shrink-0" />
-              <span className="hidden whitespace-nowrap text-[13px] font-medium lg:inline">收起</span>
-            </button>
-            <div className="mx-1 h-4 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
-          </>
-        ) : null}
-
         <div className="min-w-0 flex-1 pr-2">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="truncate text-[14px] font-semibold tracking-tight text-zinc-900 dark:text-slate-100">
@@ -111,6 +156,11 @@ export function AiConversationHeader({
       <div className="flex shrink-0 items-center gap-1">
         {onReturnToSidebar ? (
           <AiConversationReturnToSidebarButton onClick={onReturnToSidebar} />
+        ) : onClose ? (
+          <AiConversationCollapseButton onClick={onClose} />
+        ) : null}
+        {onToggleHistory ? (
+          <AiConversationHistoryButton onClick={onToggleHistory} active={isHistoryOpen} />
         ) : null}
         <button
           type="button"
@@ -121,16 +171,6 @@ export function AiConversationHeader({
           title="新建会话"
         >
           <Plus className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onClearCurrentSession}
-          disabled={!selectedSessionId || isStreaming}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-          aria-label="清空记录"
-          title="清空记录"
-        >
-          <Trash2 className="h-4 w-4" />
         </button>
       </div>
     </div>
