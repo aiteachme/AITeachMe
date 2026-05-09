@@ -15,6 +15,7 @@ interface AiConversationMessageViewProps {
   isStreaming: boolean;
   emptyAnimationKey: number;
   onOpenCitation: (context: ChatContextItem) => void;
+  onSubmitClientActionOption?: (value: string) => void;
 }
 
 export function AiConversationMessageView({
@@ -26,6 +27,7 @@ export function AiConversationMessageView({
   isStreaming,
   emptyAnimationKey,
   onOpenCitation,
+  onSubmitClientActionOption,
 }: AiConversationMessageViewProps) {
   return (
     <div
@@ -37,6 +39,7 @@ export function AiConversationMessageView({
         <ChatTranscript
           messages={messages}
           onOpenCitation={onOpenCitation}
+          onSubmitClientActionOption={onSubmitClientActionOption}
         />
       ) : !selectedSessionId ? (
         <AiConversationDraftHome

@@ -28,6 +28,7 @@ from app.workflows.interact.chat.lib.model_policy import (
     InteractModelStep,
     interact_completion_kwargs_with_metadata,
 )
+from app.workflows.interact.chat.lib.tooling import is_explicit_ask_user_options_request
 from app.workflows.interact.chat.lib.types import RecentMessage
 from app.workflows.interact.chat.state import InteractWorkflowState
 
@@ -91,6 +92,8 @@ def should_use_home_intake_flow(
     question: str | None,
     recent_messages: list[RecentMessage] | None = None,
 ) -> bool:
+    if is_explicit_ask_user_options_request(question):
+        return False
     scene_value = (scene or "").strip()
     if scene_value == HOME_INTAKE_SOURCE:
         return True

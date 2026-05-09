@@ -8,6 +8,7 @@ from app.utils.course import is_global_course
 
 COURSE_LEARNING_TOOLS = ("search_kb",)
 GLOBAL_QUERY_TOOLS = ("web_search", "recall_info")
+USER_INTERACTION_TOOLS = ("ask_user_options",)
 GLOBAL_WRITE_TOOLS = ("remember_info", "create_course_from_home_intake")
 BUILD_TOOLS: tuple[str, ...] = ()
 EDITING_TOOLS: tuple[str, ...] = ()
@@ -47,14 +48,17 @@ def resolve_agent_tool_names(
         tool_names.extend(GLOBAL_QUERY_TOOLS)
         if has_course:
             tool_names.extend(COURSE_LEARNING_TOOLS)
+        tool_names.extend(USER_INTERACTION_TOOLS)
     elif has_course:
         tool_names.extend(COURSE_LEARNING_TOOLS)
+        tool_names.extend(USER_INTERACTION_TOOLS)
         if source in _BUILD_SOURCES:
             tool_names.extend(BUILD_TOOLS)
         if source in _EDITING_SOURCES and resolved.allow_write_tools:
             tool_names.extend(EDITING_TOOLS)
     elif scene in _GLOBAL_QUERY_SCENES or is_global_assistant_source(source):
         tool_names.extend(GLOBAL_QUERY_TOOLS)
+        tool_names.extend(USER_INTERACTION_TOOLS)
 
     if resolved.allow_write_tools:
         tool_names.extend(

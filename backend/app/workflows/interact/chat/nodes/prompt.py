@@ -24,6 +24,7 @@ def build_prompt_node(*, context: WorkflowContext):
             retrieval_results=state.get("retrieval_results", []),
             scene=state.get("scene"),
             source=state.get("source"),
+            question=state.get("question"),
         )
         agent_tool_catalog = build_agent_tool_catalog(
             AgentToolPolicyRequest(

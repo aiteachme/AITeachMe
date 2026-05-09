@@ -53,7 +53,10 @@ class AgentLoopConfig:
     tool_argument_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     tool_context: Any | None = None
     approved_tool_names: set[str] = field(default_factory=set)
+    tool_choice: str | dict[str, Any] | None = None
     tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None
+    client_action_handler: Callable[[list[dict[str, Any]], dict[str, Any]], Awaitable[None] | None] | None = None
+    terminal_client_action_types: set[str] = field(default_factory=lambda: {"ask_user_options"})
     extra_metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -70,6 +73,7 @@ class ToolCallRecord:
     elapsed_s: float = 0.0
     success: bool = True
     error: str | None = None
+    client_actions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -97,6 +101,7 @@ class AgentLoopResult:
     final_answer: str
     iterations: int = 0
     tool_calls_made: list[ToolCallRecord] = field(default_factory=list)
+    client_actions: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ── 核心函数 ──────────────────────────────────────────────────
@@ -153,6 +158,7 @@ async def run_agent_loop(
         return AgentLoopResult(final_answer=answer, iterations=1)
 
     all_tool_calls: list[ToolCallRecord] = []
+    all_client_actions: list[dict[str, Any]] = []
     current_messages = list(messages)
 
     for iteration in range(1, cfg.max_iterations + 1):
@@ -165,7 +171,7 @@ async def run_agent_loop(
             task_type=cfg.task_type,
             model=cfg.model,
             extra_metadata=cfg.extra_metadata,
-            **cfg.llm_kwargs,
+            **_tool_iteration_llm_kwargs(cfg, iteration),
         )
 
         message = response.choices[0].message
@@ -177,6 +183,7 @@ async def run_agent_loop(
                 final_answer=message.content or "",
                 iterations=iteration,
                 tool_calls_made=all_tool_calls,
+                client_actions=all_client_actions,
             )
 
         # 3. 有 tool_calls → 执行工具，结果回传
@@ -186,12 +193,20 @@ async def run_agent_loop(
         for tc in tool_calls[: cfg.max_tool_calls_per_turn]:
             record = await _execute_one_tool(registry, tc, cfg)
             all_tool_calls.append(record)
+            all_client_actions.extend(record.client_actions)
             # 按 OpenAI 格式回传工具结果
             current_messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
                 "content": record.result,
             })
+            if _has_terminal_client_action(record, cfg):
+                return AgentLoopResult(
+                    final_answer=message.content or "",
+                    iterations=iteration,
+                    tool_calls_made=all_tool_calls,
+                    client_actions=all_client_actions,
+                )
 
     # 安全阀：达到最大迭代次数
     logger.warning("agent_loop_max_iterations", max=cfg.max_iterations)
@@ -208,6 +223,7 @@ async def run_agent_loop(
         final_answer=final_answer,
         iterations=cfg.max_iterations,
         tool_calls_made=all_tool_calls,
+        client_actions=all_client_actions,
     )
 
 
@@ -248,6 +264,7 @@ async def run_agent_loop_stream(
             current_messages,
             tools=available_tools,
             cfg=cfg,
+            tool_choice=cfg.tool_choice if iteration == 1 else None,
         ):
             if isinstance(event, StreamingToolIteration):
                 streamed = event
@@ -267,6 +284,8 @@ async def run_agent_loop_stream(
                 "tool_call_id": tc.id,
                 "content": record.result,
             })
+            if _has_terminal_client_action(record, cfg):
+                return
 
     logger.warning("agent_loop_stream_max_iterations", max=cfg.max_iterations)
     async for chunk in acompletion_stream(
@@ -287,6 +306,7 @@ async def _stream_one_tool_iteration(
     *,
     tools: list[dict],
     cfg: AgentLoopConfig,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> AsyncGenerator[str | StreamingToolIteration, None]:
     """Stream one assistant turn and reconstruct tool calls from deltas."""
 
@@ -323,7 +343,7 @@ async def _stream_one_tool_iteration(
         messages=messages,
         extra_kwargs=cfg.llm_kwargs,
         attempt=1,
-        override_kwargs=_tool_stream_override_kwargs(tools),
+        override_kwargs=_tool_stream_override_kwargs_with_choice(tools, tool_choice),
     )
 
     async with get_llm_concurrency_limiter():
@@ -522,11 +542,44 @@ def _streaming_assistant_msg_to_dict(iteration: StreamingToolIteration) -> dict:
 
 
 def _tool_stream_override_kwargs(tools: list[dict]) -> dict[str, Any]:
-    return {
+    return _tool_stream_override_kwargs_with_choice(tools)
+
+
+def _tool_stream_override_kwargs_with_choice(
+    tools: list[dict],
+    tool_choice: str | dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
         "stream": True,
         "tools": tools,
         "parallel_tool_calls": False,
     }
+    normalized_choice = _normalize_tool_choice(tool_choice)
+    if normalized_choice is not None:
+        kwargs["tool_choice"] = normalized_choice
+    return kwargs
+
+
+def _tool_iteration_llm_kwargs(cfg: AgentLoopConfig, iteration: int) -> dict[str, Any]:
+    kwargs = dict(cfg.llm_kwargs)
+    if iteration == 1:
+        normalized_choice = _normalize_tool_choice(cfg.tool_choice)
+        if normalized_choice is not None:
+            kwargs["tool_choice"] = normalized_choice
+    return kwargs
+
+
+def _normalize_tool_choice(tool_choice: str | dict[str, Any] | None) -> dict[str, Any] | str | None:
+    if tool_choice is None:
+        return None
+    if isinstance(tool_choice, dict):
+        return tool_choice
+    name = str(tool_choice).strip()
+    if not name:
+        return None
+    if name in {"auto", "none", "required"}:
+        return name
+    return {"type": "function", "function": {"name": name}}
 
 
 def _get_attr_or_key(value: object, key: str) -> object:
@@ -625,6 +678,14 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             ),
             timeout=cfg.tool_timeout_s,
         )
+        client_actions = _extract_tool_client_actions(raw_result)
+        if client_actions:
+            await _emit_client_actions(
+                cfg,
+                client_actions,
+                tool_name=func_name,
+                tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            )
         result_str = str(raw_result)[: cfg.result_max_chars]
         elapsed = round(time.monotonic() - start, 3)
         logger.info(
@@ -646,6 +707,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             arguments=args,
             result=result_str,
             elapsed_s=elapsed,
+            client_actions=client_actions,
         )
     except asyncio.TimeoutError:
         elapsed = round(time.monotonic() - start, 3)
@@ -701,6 +763,58 @@ async def _emit_tool_event(cfg: AgentLoopConfig, **payload: Any) -> None:
             await result
     except Exception as exc:  # noqa: BLE001
         logger.debug("tool_event_handler_failed", error=str(exc))
+
+
+async def _emit_client_actions(
+    cfg: AgentLoopConfig,
+    client_actions: list[dict[str, Any]],
+    **metadata: Any,
+) -> None:
+    handler = cfg.client_action_handler
+    if handler is None or not client_actions:
+        return
+    try:
+        result = handler(client_actions, metadata)
+        if inspect.isawaitable(result):
+            await result
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("client_action_handler_failed", error=str(exc))
+
+
+def _extract_tool_client_actions(raw_result: Any) -> list[dict[str, Any]]:
+    payload = raw_result
+    if hasattr(raw_result, "to_dict") and callable(raw_result.to_dict):
+        try:
+            payload = raw_result.to_dict()
+        except Exception:  # noqa: BLE001
+            payload = raw_result
+    if not isinstance(payload, Mapping):
+        return []
+    actions = payload.get("client_actions")
+    if not isinstance(actions, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for action in actions:
+        if not isinstance(action, Mapping):
+            continue
+        action_type = str(action.get("type") or "").strip()
+        if not action_type:
+            continue
+        payload_value = action.get("payload")
+        normalized.append(
+            {
+                "type": action_type,
+                "payload": dict(payload_value) if isinstance(payload_value, Mapping) else {},
+            }
+        )
+    return normalized
+
+
+def _has_terminal_client_action(record: ToolCallRecord, cfg: AgentLoopConfig) -> bool:
+    terminal_types = {str(item).strip() for item in cfg.terminal_client_action_types if str(item).strip()}
+    if not terminal_types:
+        return False
+    return any(str(action.get("type") or "").strip() in terminal_types for action in record.client_actions)
 
 
 def _resolve_context_tool_args(

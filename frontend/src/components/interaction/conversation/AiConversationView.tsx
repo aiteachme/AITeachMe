@@ -677,6 +677,7 @@ export const AiConversationView = memo(function AiConversationView({
           turnId: payload.turnId,
           status: "ready",
           statusDetail: null,
+          clientActions: payload.clientActions,
           errorDetail: null,
         })),
       );
@@ -1395,9 +1396,10 @@ export const AiConversationView = memo(function AiConversationView({
     void sendAutoRequest(pendingAutoSendRequest);
   }, [pendingAutoSendRequest, sendAutoRequest]);
 
-  async function handleSend() {
-    const trimmedQuestion = draft.trim();
-    const attachedFileIds = scope?.type === "global" ? draftAttachedFileIds : [];
+  async function handleSend(questionOverride?: string) {
+    const hasQuestionOverride = typeof questionOverride === "string";
+    const trimmedQuestion = (hasQuestionOverride ? questionOverride : draft).trim();
+    const attachedFileIds = !hasQuestionOverride && scope?.type === "global" ? draftAttachedFileIds : [];
     const hasAttachedFiles = attachedFileIds.length > 0;
     const question = trimmedQuestion || (hasAttachedFiles ? "我已经选择了这些资料，请先帮我判断下一步。" : "");
     if (!question || !courseId || isStreaming || isPlannerConversation || isDraftUploadingFiles) {
@@ -1437,7 +1439,9 @@ export const AiConversationView = memo(function AiConversationView({
     );
     if (!result.accepted) {
       pendingSelectionSubmittedRef.current = false;
-      setDraft(trimmedQuestion);
+      if (!hasQuestionOverride) {
+        setDraft(trimmedQuestion);
+      }
       return;
     }
     if (hasAttachedFiles) {
@@ -1718,6 +1722,7 @@ export const AiConversationView = memo(function AiConversationView({
             isStreaming={isStreaming}
             emptyAnimationKey={emptyAnimationKey}
             onOpenCitation={handleOpenCitation}
+            onSubmitClientActionOption={(value) => void handleSend(value)}
           />
 
           <AiConversationComposerDock

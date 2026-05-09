@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ChevronRight, Loader2, SquareTerminal } from "lucide-react";
 import type { ChatContextItem } from "../../api/generated/model";
-import { type ChatMessageToolRun, type ChatSessionMessage } from "../../hooks/useChatSession";
+import { type ChatClientAction, type ChatMessageToolRun, type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
 import { ChatCitationList } from "./ChatCitationList";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
@@ -9,9 +9,14 @@ import { MarkdownViewer } from "../ui/MarkdownViewer";
 interface ChatTranscriptProps {
   messages: ChatSessionMessage[];
   onOpenCitation: (context: ChatContextItem) => void;
+  onSubmitClientActionOption?: (value: string) => void;
 }
 
-export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCitation }: ChatTranscriptProps) {
+export const ChatTranscript = memo(function ChatTranscript({
+  messages,
+  onOpenCitation,
+  onSubmitClientActionOption,
+}: ChatTranscriptProps) {
   const hasStreamingAssistant = useMemo(
     () => messages.some((message) => message.role === "assistant" && message.status === "streaming"),
     [messages],
@@ -66,6 +71,11 @@ export const ChatTranscript = memo(function ChatTranscript({ messages, onOpenCit
                     <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-zinc-500 align-middle dark:bg-slate-400" />
                   ) : null}
                 </div>
+
+                <AssistantClientActions
+                  actions={message.clientActions ?? []}
+                  onSubmitOption={onSubmitClientActionOption}
+                />
 
                 {message.errorDetail ? (
                   <div
@@ -140,6 +150,157 @@ function AssistantMessageBody({ message }: { message: ChatSessionMessage }) {
       })}
     </>
   );
+}
+
+function AssistantClientActions({
+  actions,
+  onSubmitOption,
+}: {
+  actions: ChatClientAction[];
+  onSubmitOption?: (value: string) => void;
+}) {
+  const askActions = actions
+    .map(parseAskUserOptionsAction)
+    .filter((action): action is AskUserOptionsAction => action !== null);
+  if (!askActions.length) {
+    return null;
+  }
+  return (
+    <div className="mt-3 space-y-3">
+      {askActions.map((action, index) => (
+        <AskUserOptionsPanel
+          key={`${action.question}-${index}`}
+          action={action}
+          onSubmitOption={onSubmitOption}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface AskUserOptionsAction {
+  question: string;
+  options: AskUserOption[];
+  allowCustomResponse: boolean;
+}
+
+interface AskUserOption {
+  id: string;
+  label: string;
+  value: string;
+  description: string;
+}
+
+function AskUserOptionsPanel({
+  action,
+  onSubmitOption,
+}: {
+  action: AskUserOptionsAction;
+  onSubmitOption?: (value: string) => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  return (
+    <div className="max-w-xl space-y-2">
+      {action.question ? (
+        <div className="text-[13px] leading-5 text-zinc-500 dark:text-slate-400">
+          {action.question}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {action.options.map((option) => {
+          const selected = selectedId === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={!onSubmitOption || selectedId !== null}
+              onClick={() => {
+                setSelectedId(option.id);
+                onSubmitOption?.(option.value || option.label);
+              }}
+              className={cn(
+                "inline-flex max-w-full flex-col rounded-lg border px-3 py-2 text-left text-[13px] leading-5 transition",
+                selected
+                  ? "border-zinc-950 bg-zinc-950 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950"
+                  : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300 hover:bg-white disabled:cursor-default disabled:opacity-70 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-900",
+              )}
+              title={option.description || option.label}
+            >
+              <span className="truncate font-medium">{option.label}</span>
+              {option.description ? (
+                <span className={cn(
+                  "mt-0.5 max-w-full truncate text-[12px]",
+                  selected ? "text-white/75 dark:text-slate-700" : "text-zinc-400 dark:text-slate-500",
+                )}>
+                  {option.description}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      {action.allowCustomResponse ? (
+        <div className="text-[12px] leading-5 text-zinc-400 dark:text-slate-500">
+          {"\u4e5f\u53ef\u4ee5\u76f4\u63a5\u5728\u8f93\u5165\u6846\u91cc\u56de\u590d\u5176\u4ed6\u60f3\u6cd5"}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function parseAskUserOptionsAction(action: ChatClientAction): AskUserOptionsAction | null {
+  if (action.type !== "ask_user_options" || !isRecord(action.payload)) {
+    return null;
+  }
+  const question = typeof action.payload.question === "string" ? action.payload.question.trim() : "";
+  const options = parseAskUserOptions(action.payload.options);
+  if (options.length === 0) {
+    return null;
+  }
+  return {
+    question,
+    options,
+    allowCustomResponse: action.payload.allow_custom_response !== false,
+  };
+}
+
+function parseAskUserOptions(value: unknown): AskUserOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item, index): AskUserOption | null => {
+      if (typeof item === "string") {
+        const label = item.trim();
+        return label
+          ? { id: `option_${index + 1}`, label, value: label, description: "" }
+          : null;
+      }
+      if (!isRecord(item)) {
+        return null;
+      }
+      const label = stringField(item, "label") ?? stringField(item, "text") ?? stringField(item, "value");
+      if (!label) {
+        return null;
+      }
+      return {
+        id: stringField(item, "id") ?? `option_${index + 1}`,
+        label,
+        value: stringField(item, "value") ?? label,
+        description: stringField(item, "description") ?? stringField(item, "detail") ?? "",
+      };
+    })
+    .filter((item): item is AskUserOption => item !== null)
+    .slice(0, 6);
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 type AssistantBodyPart =
@@ -218,6 +379,7 @@ const TOOL_DISPLAY_NAME_FALLBACKS: Record<string, string> = {
   remember_info: "\u8bb0\u4f4f\u7528\u6237\u4fe1\u606f",
   search_kb: "\u68c0\u7d22\u8bfe\u7a0b\u77e5\u8bc6\u5e93",
   create_course_from_home_intake: "\u521b\u5efa\u5b66\u79d1",
+  ask_user_options: "\u8be2\u95ee\u7528\u6237",
 };
 
 function getDetailedToolRunMarkerLabel(runs: ChatMessageToolRun[]): string {

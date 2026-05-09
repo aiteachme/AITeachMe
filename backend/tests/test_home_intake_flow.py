@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.workflows.interact.chat.lib import home_intake
 from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene, should_use_course_grounding
+from app.workflows.interact.chat.nodes import persist as persist_node
 from app.workflows.interact.chat.lib.types import RecentMessage
 
 
@@ -53,6 +56,49 @@ def test_creation_followup_routes_short_answer_to_home_intake() -> None:
             )
         ],
     )
+
+
+def test_explicit_ask_user_options_bypasses_home_intake() -> None:
+    assert not home_intake.should_use_home_intake_flow(
+        scene="home_intake",
+        source="home_intake",
+        course_id="global",
+        question="使用ask_user_options问我问题",
+    )
+
+
+def test_client_action_only_turn_can_persist(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict] = []
+
+    def fake_create_message_pair(_session, **kwargs):  # noqa: ANN001
+        calls.append(kwargs)
+        return SimpleNamespace(), SimpleNamespace(turn_id="turn_action")
+
+    logger = SimpleNamespace(
+        info=lambda *args, **kwargs: None,
+        warning=lambda *args, **kwargs: None,
+        error=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(persist_node, "create_message_pair", fake_create_message_pair)
+
+    persist_turn = persist_node.build_persist_turn_node(
+        context=SimpleNamespace(get_logger=lambda: logger),
+        session=object(),
+    )
+    result = persist_turn(
+        {
+            "course_id": "global",
+            "user_id": "user_1",
+            "session_id": "session_1",
+            "question": "使用ask_user_options问我问题",
+            "assistant_response": "",
+            "client_actions": [{"type": "ask_user_options", "payload": {"question": "选一个"}}],
+            "contexts": None,
+        }
+    )
+
+    assert result["turn_id"] == "turn_action"
+    assert calls[0]["assistant_content"] == ""
 
 
 @pytest.mark.anyio

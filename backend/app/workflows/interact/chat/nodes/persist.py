@@ -43,7 +43,7 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
             return state
 
         assistant_response = state.get("assistant_response", "").strip()
-        if not assistant_response:
+        if not assistant_response and not state.get("client_actions"):
             workflow_logger.warning("interact_empty_response")
             return {
                 **state,

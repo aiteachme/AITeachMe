@@ -37,6 +37,7 @@ from app.workflows.interact.chat.lib.model_policy import (
 
 
 _TOOL_DISPLAY_NAMES = {
+    "ask_user_options": "\u8be2\u95ee\u7528\u6237",
     "web_search": "联网搜索",
     "recall_info": "回忆用户信息",
     "remember_info": "记住用户信息",
@@ -161,6 +162,7 @@ def _build_response_stream(
     course_id: str,
     model_selector: str,
     emitter: SSEEventEmitter | None = None,
+    client_action_handler: Callable[[list[dict[str, Any]], dict[str, Any]], Awaitable[None] | None] | None = None,
 ):
     execution_mode = state.get("execution_mode", InteractExecutionMode.SINGLE_PASS)
     model_override = normalize_runtime_model_override(state.get("model_override"))
@@ -174,6 +176,7 @@ def _build_response_stream(
         retrieval_results=state.get("retrieval_results", []),
         scene=state.get("scene"),
         source=state.get("source"),
+        question=state.get("question"),
     )
     if tool_plan.uses_tools:
         return run_agent_loop_stream(
@@ -187,6 +190,7 @@ def _build_response_stream(
                 source=state.get("source"),
                 model_selector=model_selector,
                 tool_event_handler=_build_tool_event_handler(emitter),
+                client_action_handler=client_action_handler,
                 extra_metadata=trace_metadata,
             ),
         )
@@ -272,6 +276,7 @@ def build_stream_answer_node(
             retrieval_results=state.get("retrieval_results", []),
             scene=state.get("scene"),
             source=state.get("source"),
+            question=state.get("question"),
         )
         await _emit_status(
             emitter,
@@ -282,11 +287,20 @@ def build_stream_answer_node(
             model=model_selector,
             model_override=normalize_runtime_model_override(state.get("model_override")),
         )
+        agent_client_actions: list[dict[str, Any]] = []
+
+        async def collect_client_actions(
+            actions: list[dict[str, Any]],
+            _metadata: dict[str, Any],
+        ) -> None:
+            agent_client_actions.extend(actions)
+
         stream = _build_response_stream(
             state,
             course_id=course_id,
             model_selector=model_selector,
             emitter=emitter,
+            client_action_handler=collect_client_actions,
         )
         try:
             async for token in stream:
@@ -321,6 +335,7 @@ def build_stream_answer_node(
             state,
             collected_tokens,
             stream_interrupted=False,
+            client_actions=agent_client_actions or None,
         )
 
     return stream_answer

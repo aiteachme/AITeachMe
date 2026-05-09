@@ -35,6 +35,7 @@ export interface ChatSessionMessage {
   runningToolCallIds?: string[];
   completedToolCallIds?: string[];
   toolRuns?: ChatMessageToolRun[];
+  clientActions?: ChatClientAction[];
   errorDetail: string | null;
 }
 
@@ -295,6 +296,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       runningToolCallIds: [],
       completedToolCallIds: [],
       toolRuns: [],
+      clientActions: [],
       errorDetail: null,
     };
     const assistantMessage: ChatSessionMessage = {
@@ -315,6 +317,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       runningToolCallIds: [],
       completedToolCallIds: [],
       toolRuns: [],
+      clientActions: [],
       errorDetail: null,
     };
 
@@ -445,6 +448,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
                   statusStage: null,
                   activeToolName: null,
                   activeToolDisplayName: null,
+                  clientActions: donePayload.clientActions,
                   errorDetail: null,
                   createdAt: message.createdAt ?? new Date().toISOString(),
                   completedAt,
@@ -669,6 +673,7 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     runningToolCallIds: [],
     completedToolCallIds: [],
     toolRuns: [],
+    clientActions: [],
     errorDetail: null,
   };
   return restorePersistedToolRunState(mappedMessage);
