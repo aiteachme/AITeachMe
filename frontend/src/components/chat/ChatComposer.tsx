@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { motion } from "framer-motion";
-import { ArrowUp, AudioLines, Loader2, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, Plus, Square } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ChatModelSelect, type ChatModelChoice } from "./ChatModelSelect";
 import { FileDropOverlay, useFileDropZone } from "../ui/FileDropZone";
@@ -145,24 +145,14 @@ export function ChatComposer({
     >
       <Square className="h-3.5 w-3.5 fill-current stroke-0" />
     </button>
-  ) : !canSubmit ? (
-    <button
-      type="button"
-      disabled
-      aria-label="语音输入暂未开放"
-      title="语音输入暂未开放"
-      className="inline-flex h-9 w-9 shrink-0 cursor-default items-center justify-center rounded-full bg-zinc-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
-    >
-      <AudioLines className="h-4 w-4" />
-    </button>
   ) : (
     <button
       type="button"
       onClick={onSend}
-      disabled={disabled}
+      disabled={!canSubmit || disabled}
       className={cn(
         "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[14px] font-medium transition-all active:scale-[0.95] focus:outline-none focus:ring-4 focus:ring-zinc-900/10",
-        !disabled
+        canSubmit && !disabled
           ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600",
       )}
@@ -186,18 +176,6 @@ export function ChatComposer({
       )}
     >
       <Plus className="h-5 w-5" />
-    </button>
-  );
-
-  const voiceButton = (
-    <button
-      type="button"
-      disabled
-      aria-label="语音输入暂未开放"
-      title="语音输入暂未开放"
-      className="inline-flex h-8 w-8 shrink-0 cursor-default items-center justify-center rounded-full text-zinc-700 dark:text-slate-200"
-    >
-      <Mic className="h-4 w-4" />
     </button>
   );
 
@@ -234,8 +212,8 @@ export function ChatComposer({
           <div
             {...fileDropHandlers}
             className={cn(
-              "relative w-full overflow-hidden rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] backdrop-blur-xl transition-all hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90 dark:focus-within:border-indigo-500/50",
-              (value.trim() || homeHighlighted) && "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgba(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgba(99,102,241,0.2)]",
+              "relative w-full overflow-hidden rounded-[30px] border-[1.5px] border-zinc-200/80 bg-white/70 shadow-[0_6px_20px_rgba(0,0,0,0.035)] backdrop-blur-xl transition-all hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_24px_rgba(0,0,0,0.055)] focus-within:border-indigo-300 focus-within:shadow-[0_8px_26px_rgba(99,102,241,0.10)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90 dark:focus-within:border-indigo-500/50",
+              (value.trim() || homeHighlighted) && "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_24px_rgba(99,102,241,0.08)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_24px_rgba(99,102,241,0.14)]",
               isFileDragActive && "border-zinc-900 bg-white ring-4 ring-zinc-900/10 dark:border-slate-100 dark:bg-slate-900 dark:ring-slate-100/10",
             )}
           >
@@ -272,13 +250,6 @@ export function ChatComposer({
               </div>
             </div>
           </div>
-
-          <div className="mt-2.5 flex items-center justify-end gap-3 px-2 text-[12px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
-            <span className="inline-flex items-center gap-1.5">
-              {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              AI 可能会出错，请核实关键结论
-            </span>
-          </div>
         </div>
       </div>
     );
@@ -291,7 +262,7 @@ export function ChatComposer({
           {...fileDropHandlers}
           style={{ borderRadius: 26 }}
           className={cn(
-            "relative overflow-hidden border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_8px_24px_-8px_rgba(0,0,0,0.12),0_16px_48px_-16px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow,background-color] duration-200 ease-out focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.16),0_24px_64px_-20px_rgba(0,0,0,0.16)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.72)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950",
+            "relative overflow-hidden border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_6px_18px_-12px_rgba(0,0,0,0.24),0_10px_28px_-22px_rgba(0,0,0,0.22)] transition-[border-color,box-shadow,background-color] duration-200 ease-out focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_8px_22px_-14px_rgba(0,0,0,0.22),0_14px_34px_-26px_rgba(0,0,0,0.20)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_12px_28px_-22px_rgba(0,0,0,0.70)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950",
             isFileDragActive && "border-zinc-900 bg-white ring-4 ring-zinc-900/10 dark:border-slate-100 dark:bg-slate-950 dark:ring-slate-100/10",
           )}
         >
@@ -353,18 +324,9 @@ export function ChatComposer({
                   className="shrink-0"
                 />
               ) : null}
-              {voiceButton}
               {actionButton}
             </motion.div>
           </motion.div>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between gap-3 px-2 text-[12px] font-medium tracking-wide text-zinc-400 dark:text-slate-500">
-          <span className="hidden sm:inline-block">Enter 发送，Shift + Enter 换行</span>
-          <span className="inline-flex items-center gap-1.5 ml-auto">
-            {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            AI 可能会出错，请核实关键结论
-          </span>
         </div>
       </div>
     </div>
