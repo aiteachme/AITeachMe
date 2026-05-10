@@ -29,6 +29,21 @@ from app.workflows.digest.docgen.lib.textbook_style import build_textbook_headin
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")
+_STATIC_HTML_FIGURE_HINT_TERMS = (
+    "函数",
+    "图像",
+    "坐标",
+    "几何",
+    "三角形",
+    "四边形",
+    "圆",
+    "数轴",
+    "波形",
+    "单位换算",
+    "面积",
+    "周长",
+    "斜率",
+)
 
 
 def _priority_files_for_chapter(
@@ -92,9 +107,12 @@ def _suggest_visual_placeholder_requests(
     """Suggest chapter-level asset placeholders before writer generation."""
 
     visual_terms = " ".join([title, *required_elements, *concept_targets])
-    if not any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS):
-        return []
-    return [{"kind": "mermaid", "description": f"{title} 的结构关系图"}]
+    requests: list[dict[str, str]] = []
+    if any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS):
+        requests.append({"kind": "mermaid", "description": f"{title} 的结构关系图"})
+    if any(marker in visual_terms for marker in _STATIC_HTML_FIGURE_HINT_TERMS):
+        requests.append({"kind": "static_html_figure", "description": f"{title} 的静态题图或概念图示"})
+    return requests
 
 
 def _fallback_role_targets(

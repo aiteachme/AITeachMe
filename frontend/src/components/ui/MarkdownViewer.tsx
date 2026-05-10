@@ -1954,11 +1954,12 @@ function InteractiveHtmlEmbed({
   preview: InteractiveHtmlPreview;
   label: ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const isStaticFigure = preview.kind === "figure";
+  const [expanded, setExpanded] = useState(isStaticFigure);
   const [generatedPreview, setGeneratedPreview] = useState<InteractiveHtmlPreview | null>(null);
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingLabel, setLoadingLabel] = useState("正在加载交互页...");
+  const [loadingLabel, setLoadingLabel] = useState(isStaticFigure ? "正在加载图示..." : "正在加载交互页...");
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const activePreview = generatedPreview ?? preview;
@@ -1968,13 +1969,20 @@ function InteractiveHtmlEmbed({
     setHtml("");
     setError(null);
     setLoading(false);
-  }, [preview.previewUrl]);
+    setExpanded(isStaticFigure);
+  }, [isStaticFigure, preview.previewUrl]);
 
   useEffect(() => {
     if (!expanded || html) return;
     const controller = new AbortController();
     setLoading(true);
-    setLoadingLabel(preview.mode === "auto" && !generatedPreview ? "正在生成交互页..." : "正在加载交互页...");
+    setLoadingLabel(
+      isStaticFigure
+        ? "正在加载图示..."
+        : preview.mode === "auto" && !generatedPreview
+          ? "正在生成交互页..."
+          : "正在加载交互页..."
+    );
     setError(null);
 
     const loadInteractiveHtml = async () => {
@@ -2057,6 +2065,7 @@ function InteractiveHtmlEmbed({
   }, [
     expanded,
     html,
+    isStaticFigure,
     preview.anchorId,
     preview.assetUrl,
     preview.courseId,
@@ -2070,6 +2079,71 @@ function InteractiveHtmlEmbed({
   ]);
 
   const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
+
+  if (isStaticFigure) {
+    return (
+      <figure
+        data-doc-html-figure="true"
+        data-doc-interactive-asset={preview.assetPath}
+        className="my-5 overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm dark:border-sky-500/20 dark:bg-slate-950"
+      >
+        <figcaption className="flex items-center justify-between gap-3 border-b border-sky-100 bg-sky-50/55 px-4 py-2.5 text-left dark:border-sky-500/20 dark:bg-sky-500/10">
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {preview.title || label || "静态图示"}
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">静态图示，辅助理解题目条件与图形关系。</span>
+          </span>
+          {activePreview.mode === "asset" && (
+            <button
+              type="button"
+              onClick={() => window.open(activePreview.previewUrl, "_blank", "noopener,noreferrer")}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-500/50 dark:hover:text-sky-200"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              打开
+            </button>
+          )}
+        </figcaption>
+        <div className="bg-slate-50/55 p-3 dark:bg-slate-900/35">
+          {loading ? (
+            <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {loadingLabel}
+            </div>
+          ) : error ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">图示暂时不可预览</p>
+              <p className="max-w-md text-xs leading-6 text-amber-800/80 dark:text-amber-200/80">{error}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setHtml("");
+                  setError(null);
+                  setRetryKey((value) => value + 1);
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-medium text-white transition hover:bg-amber-700"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                重试加载
+              </button>
+            </div>
+          ) : patchedHtml ? (
+            <iframe
+              title={preview.title || "静态图示"}
+              srcDoc={patchedHtml}
+              sandbox=""
+              className="h-[min(520px,64vh)] min-h-[300px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+            />
+          ) : (
+            <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+              正在准备图示
+            </div>
+          )}
+        </div>
+      </figure>
+    );
+  }
 
   return (
     <details

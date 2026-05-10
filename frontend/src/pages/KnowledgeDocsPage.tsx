@@ -4985,6 +4985,9 @@ export function KnowledgeDocsPage() {
     setCollapsedTocIds(new Set(collapsibleTocIds));
   }, [collapsibleTocIds]);
 
+  const canExpandAllTocLevels = collapsedTocIds.size > 0;
+  const canCollapseAllTocLevels = collapsibleTocIds.size > 0 && collapsedTocIds.size < collapsibleTocIds.size;
+
   const renderTocNodes = useCallback((nodes: TocTreeNode[], depth: number = 0): React.ReactNode => {
     return nodes.map((node) => {
       const { item } = node;
@@ -5104,29 +5107,30 @@ export function KnowledgeDocsPage() {
         onScroll={handleTocNavScroll}
       >
         {tocTree.length > 0 && (
-          <div className="sticky top-0 z-10 mb-1 flex items-center justify-end gap-1 bg-white/95 px-1 pb-1 pt-0.5 backdrop-blur dark:bg-slate-950/95">
-            <button
-              type="button"
-              onClick={expandAllTocLevels}
-              disabled={collapsedTocIds.size === 0}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
-              aria-label="展开所有目录层级"
-              title="展开所有层级"
-            >
-              <ChevronDown className="h-3.5 w-3.5" />
-              展开
-            </button>
-            <button
-              type="button"
-              onClick={collapseAllTocLevels}
-              disabled={collapsibleTocIds.size === 0}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
-              aria-label="收起所有目录层级"
-              title="收起所有层级"
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-              收起
-            </button>
+          <div className="sticky top-0 z-10 mb-1 flex items-center justify-end bg-gradient-to-b from-white via-white/95 to-white/65 px-1 pb-2 pt-0.5 backdrop-blur dark:from-slate-950 dark:via-slate-950/95 dark:to-slate-950/65">
+            <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/85 p-0.5 shadow-sm shadow-slate-200/40 dark:border-slate-800 dark:bg-slate-900/85 dark:shadow-none">
+              <button
+                type="button"
+                onClick={expandAllTocLevels}
+                disabled={!canExpandAllTocLevels}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
+                aria-label="展开所有目录层级"
+                title="展开所有层级"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              <span className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-slate-700" />
+              <button
+                type="button"
+                onClick={collapseAllTocLevels}
+                disabled={!canCollapseAllTocLevels}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
+                aria-label="收起所有目录层级"
+                title="收起所有层级"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         )}
         {tocTree.length > 0 ? (

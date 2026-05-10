@@ -238,6 +238,7 @@ def build_docgen_lane_summary(
     asset_summary = {
         "mermaid": mermaid_block_count or sum(1 for asset in asset_items if asset.get("kind") == "mermaid"),
         "image": image_block_count or sum(1 for asset in asset_items if asset.get("kind") == "image"),
+        "static_html_figure": sum(1 for asset in asset_items if asset.get("kind") == "static_html_figure"),
         "animation": int(
             ((state.get("asset_summary") or {}) if isinstance(state.get("asset_summary"), Mapping) else {}).get(
                 "animation", 0

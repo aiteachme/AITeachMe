@@ -143,6 +143,10 @@ function App() {
                     element={withRouteFallback(<KnowledgeInteractivePage />)}
                   />
                   <Route
+                    path="courses/:courseId/knowledge-docs/html-figure"
+                    element={withRouteFallback(<KnowledgeInteractivePage />)}
+                  />
+                  <Route
                     path="courses/:courseId/exams/question-templates"
                     element={withRouteFallback(<QuestionTemplatesPage />)}
                   />
@@ -177,6 +181,14 @@ function App() {
                     element={
                       <LegacyCourseRouteRedirect
                         buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "interactive")}
+                      />
+                    }
+                  />
+                  <Route
+                    path="course/:courseId/knowledge-docs/html-figure"
+                    element={
+                      <LegacyCourseRouteRedirect
+                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "html-figure")}
                       />
                     }
                   />

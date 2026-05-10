@@ -24,6 +24,7 @@ class DocGenModelStep(str, Enum):
     HEADING_REPAIR = "generate_chapters.heading_repair"
     CHAPTER_REWRITE = "generate_chapters.rewrite"
     MERMAID_PLACEHOLDER = "enhance_chapters.mermaid_placeholder"
+    STATIC_HTML_FIGURE = "enhance_chapters.static_html_figure"
     INTERACTIVE_HTML = "enhance_chapters.interactive_html_sidecar"
     CHAPTER_REVIEW = "review_content.review_chapter"
     REPAIR_PATCH = "repair_or_route.surface_section_patch"
@@ -167,6 +168,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         timeout_s=120,
         temperature=0.1,
         note="辅助资产生成，优先低成本。",
+    ),
+    DocGenModelStep.STATIC_HTML_FIGURE: DocGenModelPolicy(
+        step=DocGenModelStep.STATIC_HTML_FIGURE,
+        call_type="text",
+        model="light",
+        max_tokens=7000,
+        timeout_s=180,
+        temperature=0.1,
+        note="静态 HTML 图示用于补足题目/函数/几何等教材插图。",
     ),
     DocGenModelStep.INTERACTIVE_HTML: DocGenModelPolicy(
         step=DocGenModelStep.INTERACTIVE_HTML,

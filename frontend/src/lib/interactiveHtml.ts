@@ -1,5 +1,6 @@
 export interface InteractiveHtmlPreview {
   mode: "asset" | "auto";
+  kind: "interactive" | "figure";
   previewUrl: string;
   assetUrl: string;
   assetPath: string;
@@ -42,10 +43,11 @@ export function parseInteractivePreviewHref(
 
   if (url.origin !== baseUrl) return null;
   const match = url.pathname.match(/^\/courses\/([^/]+)\/knowledge-docs\/interactive\/?$/);
+  const figureMatch = url.pathname.match(/^\/courses\/([^/]+)\/knowledge-docs\/html-figure\/?$/);
   const autoMatch = url.pathname.match(/^\/courses\/([^/]+)\/knowledge-docs\/interactive-auto\/?$/);
-  if (!match && !autoMatch) return null;
+  if (!match && !figureMatch && !autoMatch) return null;
 
-  const courseId = (options.fallbackCourseId || decodeURIComponent((match ?? autoMatch)?.[1] ?? "")).trim();
+  const courseId = (options.fallbackCourseId || decodeURIComponent((match ?? figureMatch ?? autoMatch)?.[1] ?? "")).trim();
   if (!courseId) return null;
 
   const title = (url.searchParams.get("title") || "交互演示").trim();
@@ -58,6 +60,7 @@ export function parseInteractivePreviewHref(
     if (!planId || !anchorId || !selectedText) return null;
     return {
       mode: "auto",
+      kind: "interactive",
       previewUrl,
       assetUrl: "",
       assetPath: `auto/${planId}`,
@@ -77,6 +80,7 @@ export function parseInteractivePreviewHref(
 
   return {
     mode: "asset",
+    kind: figureMatch ? "figure" : "interactive",
     previewUrl,
     assetUrl,
     assetPath,

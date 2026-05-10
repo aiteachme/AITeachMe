@@ -1,23 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { getApiErrorMessage, runTrackedApiFetch } from "../api/client";
 import { parseInteractivePreviewHref, patchHtmlForIframe } from "../lib/interactiveHtml";
 
 export function KnowledgeInteractivePage() {
   const { courseId } = useParams<{ courseId: string }>();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const title = (searchParams.get("title") || "知识文档交互演示").trim();
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const assetUrl = useMemo(() => {
-    const preview = parseInteractivePreviewHref(`/courses/${courseId ?? ""}/knowledge-docs/interactive?${searchParams.toString()}`, {
+  const preview = useMemo(() => {
+    return parseInteractivePreviewHref(`${location.pathname}?${searchParams.toString()}`, {
       fallbackCourseId: courseId,
     });
-    return preview?.assetUrl ?? "";
-  }, [courseId, searchParams]);
+  }, [courseId, location.pathname, searchParams]);
+
+  const assetUrl = preview?.assetUrl ?? "";
+  const pageLabel = preview?.kind === "figure" ? "静态图示" : "交互演示";
 
   const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
 
@@ -31,7 +34,7 @@ export function KnowledgeInteractivePage() {
 
     async function loadHtml() {
       if (!assetUrl) {
-        setError("缺少可预览的交互资产地址。");
+        setError("缺少可预览的资产地址。");
         setLoading(false);
         return;
       }
@@ -55,7 +58,7 @@ export function KnowledgeInteractivePage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(getApiErrorMessage(err, err instanceof Error ? err.message : "交互页加载失败"));
+          setError(getApiErrorMessage(err, err instanceof Error ? err.message : "资产加载失败"));
           setLoading(false);
         }
       }
@@ -73,7 +76,7 @@ export function KnowledgeInteractivePage() {
       <div className="mx-auto flex min-h-dvh w-full max-w-[1680px] flex-col px-3 py-3 sm:px-5 sm:py-5">
         <header className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-indigo-600 dark:text-indigo-300">交互演示</p>
+            <p className="text-xs font-medium text-indigo-600 dark:text-indigo-300">{pageLabel}</p>
             <h1 className="mt-1 truncate text-lg font-semibold text-slate-950 dark:text-slate-50">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -90,17 +93,17 @@ export function KnowledgeInteractivePage() {
 
         <main className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
           {loading ? (
-            <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">正在加载交互页…</div>
+            <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">正在加载{pageLabel}…</div>
           ) : error ? (
             <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="text-base font-medium text-slate-900 dark:text-slate-100">交互页加载失败</p>
+              <p className="text-base font-medium text-slate-900 dark:text-slate-100">{pageLabel}加载失败</p>
               <p className="text-sm text-slate-500">{error}</p>
             </div>
           ) : (
             <iframe
               title={title}
               srcDoc={patchedHtml}
-              sandbox="allow-scripts"
+              sandbox={preview?.kind === "figure" ? "" : "allow-scripts"}
               className="h-[calc(100dvh-7.5rem)] min-h-[520px] w-full border-0 bg-white"
             />
           )}

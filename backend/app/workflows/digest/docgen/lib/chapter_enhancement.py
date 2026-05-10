@@ -23,6 +23,7 @@ from app.workflows.digest.docgen.lib.models import (
     PracticeManifest,
 )
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
+from app.workflows.digest.docgen.lib.static_html_figure import generate_static_html_figure_assets
 from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
@@ -250,7 +251,7 @@ def _append_practice_section(markdown: str, questions: list[dict], *, digest_mod
     return markdown.rstrip() + "\n\n" + section + "\n"
 
 
-def _append_interactive_blocks(markdown: str, assets: list[dict[str, object]]) -> str:
+def _insert_asset_links(markdown: str, assets: list[dict[str, object]]) -> str:
     if not assets:
         return markdown
     updated = markdown
@@ -337,6 +338,22 @@ async def enhance_chapter_draft(
         ],
     )
 
+    static_figure_assets: list[dict[str, object]] = []
+    try:
+        traced_context.asset_kind = "static_html_figure"
+        static_figure_assets = await generate_static_html_figure_assets(
+            draft=draft,
+            traced_context=traced_context,
+            digest_mode=digest_mode,
+            claim_ledger=claim_ledger,
+            markdown=markdown,
+        )
+        if static_figure_assets:
+            markdown = _insert_asset_links(markdown, static_figure_assets)
+            assets.extend(static_figure_assets)
+    except Exception as exc:
+        warnings.append(f"静态图示生成失败，已跳过图示增强：{str(exc)[:120]}")
+
     interactive_assets: list[dict[str, object]] = []
     if settings.docgen.generate_interactive_html:
         try:
@@ -347,7 +364,7 @@ async def enhance_chapter_draft(
                 markdown=markdown,
             )
             if interactive_assets:
-                markdown = _append_interactive_blocks(markdown, interactive_assets)
+                markdown = _insert_asset_links(markdown, interactive_assets)
                 assets.extend(interactive_assets)
         except Exception as exc:
             warnings.append(f"交互页生成失败，已跳过交互增强：{str(exc)[:120]}")
