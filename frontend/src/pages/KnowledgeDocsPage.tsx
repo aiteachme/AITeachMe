@@ -447,6 +447,20 @@ function buildTocTree(items: TocItem[]): TocTreeNode[] {
   return roots;
 }
 
+function collectCollapsibleTocIds(nodes: TocTreeNode[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (items: TocTreeNode[]) => {
+    for (const node of items) {
+      if (node.children.length > 0) {
+        ids.add(node.item.id);
+        visit(node.children);
+      }
+    }
+  };
+  visit(nodes);
+  return ids;
+}
+
 function findTocPath(roots: TocTreeNode[], targetId: string): TocTreeNode[] {
   const path: TocTreeNode[] = [];
   const search = (nodes: TocTreeNode[]): boolean => {
@@ -4822,6 +4836,16 @@ export function KnowledgeDocsPage() {
     });
   }, []);
 
+  const collapsibleTocIds = useMemo(() => collectCollapsibleTocIds(tocTree), [tocTree]);
+
+  const expandAllTocLevels = useCallback(() => {
+    setCollapsedTocIds(new Set());
+  }, []);
+
+  const collapseAllTocLevels = useCallback(() => {
+    setCollapsedTocIds(new Set(collapsibleTocIds));
+  }, [collapsibleTocIds]);
+
   const renderTocNodes = useCallback((nodes: TocTreeNode[], depth: number = 0): React.ReactNode => {
     return nodes.map((node) => {
       const { item } = node;
@@ -4940,6 +4964,32 @@ export function KnowledgeDocsPage() {
         onPointerDown={handleTocManualScrollStart}
         onScroll={handleTocNavScroll}
       >
+        {tocTree.length > 0 && (
+          <div className="sticky top-0 z-10 mb-1 flex items-center justify-end gap-1 bg-white/95 px-1 pb-1 pt-0.5 backdrop-blur dark:bg-slate-950/95">
+            <button
+              type="button"
+              onClick={expandAllTocLevels}
+              disabled={collapsedTocIds.size === 0}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
+              aria-label="展开所有目录层级"
+              title="展开所有层级"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+              展开
+            </button>
+            <button
+              type="button"
+              onClick={collapseAllTocLevels}
+              disabled={collapsibleTocIds.size === 0}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-400"
+              aria-label="收起所有目录层级"
+              title="收起所有层级"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+              收起
+            </button>
+          </div>
+        )}
         {tocTree.length > 0 ? (
           renderTocNodes(tocTree)
         ) : (
