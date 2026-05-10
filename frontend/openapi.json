@@ -13976,6 +13976,23 @@
             ],
             "title": "Client Reference Id"
           },
+          "force_regenerate": {
+            "type": "boolean",
+            "title": "Force Regenerate",
+            "default": false
+          },
+          "replace_overlay_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replace Overlay Id"
+          },
           "selection_context": {
             "anyOf": [
               {

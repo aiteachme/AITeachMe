@@ -84,6 +84,7 @@ from app.workflows.digest.docgen.lib.interactive_overlays import (
     build_overlay_markdown_block,
     find_interactive_overlay_by_client_reference,
     interactive_overlay_reference_guard,
+    overlay_preview_url,
 )
 
 router = APIRouter(tags=["knowledge"])
@@ -92,7 +93,7 @@ logger = structlog.get_logger(__name__)
 
 def _interactive_generation_origin(client_reference_id: str | None) -> str:
     normalized = str(client_reference_id or "").strip()
-    return "planned_auto" if normalized else "selection"
+    return "planned_auto" if normalized.startswith("ch") and "_interactive_" in normalized else "selection"
 
 
 def _interactive_selection_response_from_overlay(
@@ -101,12 +102,18 @@ def _interactive_selection_response_from_overlay(
     fallback_version_no: int,
 ) -> KnowledgeDocInteractiveSelectionResponse | None:
     asset_path = str(overlay.get("asset_path") or "").strip()
-    preview_url = str(overlay.get("preview_url") or "").strip()
+    preview_url = overlay_preview_url(
+        str(overlay.get("preview_url") or "").strip(),
+        client_reference_id=str(overlay.get("client_reference_id") or "").strip(),
+        overlay_id=str(overlay.get("overlay_id") or "").strip(),
+        anchor_id=str(overlay.get("anchor_id") or "").strip(),
+        selected_text=str(overlay.get("selected_text") or "").strip(),
+    )
     if not asset_path or not preview_url:
         return None
-    link_markdown = str(overlay.get("link_markdown") or "").strip()
-    if not link_markdown:
-        link_markdown = build_overlay_markdown_block(overlay)
+    normalized_overlay = dict(overlay)
+    normalized_overlay["preview_url"] = preview_url
+    link_markdown = build_overlay_markdown_block(normalized_overlay)
     return KnowledgeDocInteractiveSelectionResponse(
         overlay_id=str(overlay.get("overlay_id") or ""),
         anchor_id=str(overlay.get("anchor_id") or ""),
@@ -791,8 +798,9 @@ async def knowledge_docs_interactive_selection(
         )
 
     version_no = int(manifest.version_no or 0)
-    client_reference_id = str(body.client_reference_id or "").strip()
-    interactive_origin = _interactive_generation_origin(client_reference_id)
+    requested_client_reference_id = str(body.client_reference_id or "").strip()
+    client_reference_id = requested_client_reference_id or f"selection:{uuid.uuid4().hex[:16]}"
+    interactive_origin = _interactive_generation_origin(requested_client_reference_id)
     interactive_batch_id = f"{normalized}:knowledge-docs:v{version_no}:interactive-html"
     build_session_id = (
         f"auto-interactive-v{version_no}"
@@ -812,6 +820,8 @@ async def knowledge_docs_interactive_selection(
             "interactive_batch_id": interactive_batch_id,
             "interactive_origin": interactive_origin,
             "version_no": version_no,
+            "force_regenerate": body.force_regenerate,
+            "replace_overlay_id": body.replace_overlay_id or "",
         },
     )
     traced_context = TracedExecutionContext(
@@ -826,6 +836,8 @@ async def knowledge_docs_interactive_selection(
             "interactive_batch_id": interactive_batch_id,
             "interactive_origin": interactive_origin,
             "version_no": version_no,
+            "force_regenerate": body.force_regenerate,
+            "replace_overlay_id": body.replace_overlay_id or "",
         },
     )
 
@@ -844,6 +856,8 @@ async def knowledge_docs_interactive_selection(
                 "prompt": body.prompt or "",
                 "client_reference_id": client_reference_id,
                 "interactive_origin": interactive_origin,
+                "force_regenerate": body.force_regenerate,
+                "replace_overlay_id": body.replace_overlay_id or "",
             },
             field_name="interactive_html_generation_inputs",
         )
@@ -907,7 +921,7 @@ async def knowledge_docs_interactive_selection(
             version_no=version_no,
             client_reference_id=client_reference_id,
         )
-        if existing_overlay is not None:
+        if existing_overlay is not None and not body.force_regenerate:
             existing_response = _interactive_selection_response_from_overlay(
                 existing_overlay,
                 fallback_version_no=version_no,
@@ -948,6 +962,13 @@ async def knowledge_docs_interactive_selection(
             handle.forget()
 
         overlay_id = f"interactive-{uuid.uuid4().hex}"
+        preview_url = overlay_preview_url(
+            str(asset["preview_url"]),
+            client_reference_id=client_reference_id,
+            overlay_id=overlay_id,
+            anchor_id=body.anchor_id,
+            selected_text=body.selected_text,
+        )
         overlay = {
             "overlay_id": overlay_id,
             "version_no": version_no,
@@ -959,12 +980,16 @@ async def knowledge_docs_interactive_selection(
             "client_reference_id": client_reference_id,
             "title": str(asset["title"]),
             "asset_path": str(asset["asset_path"]),
-            "preview_url": str(asset["preview_url"]),
+            "preview_url": preview_url,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         link_markdown = build_overlay_markdown_block(overlay)
         overlay["link_markdown"] = link_markdown
-        await append_interactive_overlay(course_scope, overlay=overlay)
+        await append_interactive_overlay(
+            course_scope,
+            overlay=overlay,
+            replace_overlay_id=body.replace_overlay_id,
+        )
 
         return ok_response(
             KnowledgeDocInteractiveSelectionResponse(
@@ -972,7 +997,7 @@ async def knowledge_docs_interactive_selection(
                 anchor_id=body.anchor_id,
                 title=str(asset["title"]),
                 asset_path=str(asset["asset_path"]),
-                preview_url=str(asset["preview_url"]),
+                preview_url=preview_url,
                 link_markdown=link_markdown,
                 version_no=version_no,
             )

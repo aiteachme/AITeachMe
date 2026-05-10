@@ -22,5 +22,7 @@ export interface KnowledgeDocInteractiveSelectionRequest {
   selected_text: string;
   prompt?: string | null;
   client_reference_id?: string | null;
+  force_regenerate?: boolean;
+  replace_overlay_id?: string | null;
   selection_context?: KnowledgeDocSelectionContext | null;
 }

@@ -469,6 +469,8 @@ class KnowledgeDocInteractiveSelectionRequest(BaseModel):
     selected_text: str = Field(min_length=1, max_length=2000)
     prompt: str | None = Field(default=None, max_length=1000)
     client_reference_id: str | None = Field(default=None, max_length=160)
+    force_regenerate: bool = False
+    replace_overlay_id: str | None = Field(default=None, max_length=180)
     selection_context: KnowledgeDocSelectionContext | None = None
 
     @model_validator(mode="after")
@@ -477,6 +479,7 @@ class KnowledgeDocInteractiveSelectionRequest(BaseModel):
         self.selected_text = self.selected_text.strip()
         self.prompt = (self.prompt or "").strip() or None
         self.client_reference_id = (self.client_reference_id or "").strip() or None
+        self.replace_overlay_id = (self.replace_overlay_id or "").strip() or None
         if not self.anchor_id:
             raise ValueError("anchor_id must not be empty")
         if not self.selected_text:

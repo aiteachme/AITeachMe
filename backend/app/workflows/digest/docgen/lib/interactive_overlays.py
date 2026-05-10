@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.shared.infra.storage import CourseStorageScope, get_content_store, run_store_sync
 from app.workflows.digest.docgen.lib.interactive_html import build_interactive_markdown_link
@@ -113,6 +114,37 @@ def _matches_client_reference(
     )
 
 
+def overlay_preview_url(
+    preview_url: str,
+    *,
+    client_reference_id: str | None = None,
+    overlay_id: str | None = None,
+    anchor_id: str | None = None,
+    selected_text: str | None = None,
+) -> str:
+    """Attach stable replacement metadata to a local preview URL."""
+
+    url = str(preview_url or "").strip()
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    existing_keys = {key for key, _value in query}
+    reference_id = str(client_reference_id or "").strip()
+    stable_overlay_id = str(overlay_id or "").strip()
+    stable_anchor_id = str(anchor_id or "").strip()
+    stable_selected_text = str(selected_text or "").strip()
+    if reference_id and "ref" not in existing_keys:
+        query.append(("ref", reference_id))
+    if stable_overlay_id and "overlay" not in existing_keys:
+        query.append(("overlay", stable_overlay_id))
+    if stable_anchor_id and "anchor" not in existing_keys:
+        query.append(("anchor", stable_anchor_id))
+    if stable_selected_text and "selected" not in existing_keys:
+        query.append(("selected", stable_selected_text[:900]))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
 async def read_interactive_overlays(course_scope: CourseStorageScope) -> list[dict[str, Any]]:
     raw = await get_content_store().read_json_raw(interactive_overlays_key(course_scope))
     return _normalize_items(raw)
@@ -152,13 +184,21 @@ async def append_interactive_overlay(
     course_scope: CourseStorageScope,
     *,
     overlay: Mapping[str, Any],
+    replace_overlay_id: str | None = None,
 ) -> list[dict[str, Any]]:
     key = interactive_overlays_key(course_scope)
     lock = _get_overlay_lock(key)
     async with lock:
         existing = await read_interactive_overlays(course_scope)
         reference_id = str(overlay.get("client_reference_id") or "").strip()
+        replacement_id = str(replace_overlay_id or "").strip()
         version_no = int(overlay.get("version_no") or 0)
+        if replacement_id:
+            existing = [
+                item
+                for item in existing
+                if str(item.get("overlay_id") or "").strip() != replacement_id
+            ]
         if reference_id:
             existing = [
                 item
@@ -184,7 +224,13 @@ async def append_interactive_overlay(
 def build_overlay_markdown_block(overlay: Mapping[str, Any]) -> str:
     overlay_id = str(overlay.get("overlay_id") or "").strip()
     title = str(overlay.get("title") or "交互演示").strip()
-    preview_url = str(overlay.get("preview_url") or "").strip()
+    preview_url = overlay_preview_url(
+        str(overlay.get("preview_url") or "").strip(),
+        client_reference_id=str(overlay.get("client_reference_id") or "").strip(),
+        overlay_id=overlay_id,
+        anchor_id=str(overlay.get("anchor_id") or "").strip(),
+        selected_text=str(overlay.get("selected_text") or "").strip(),
+    )
     if not preview_url:
         return ""
     link_block = build_interactive_markdown_link(preview_url=preview_url, link_label=title)
@@ -276,5 +322,6 @@ __all__ = [
     "interactive_overlay_reference_guard",
     "interactive_overlays_key",
     "load_current_interactive_overlays",
+    "overlay_preview_url",
     "read_interactive_overlays",
 ]

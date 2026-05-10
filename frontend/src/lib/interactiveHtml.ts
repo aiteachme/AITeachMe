@@ -7,6 +7,8 @@ export interface InteractiveHtmlPreview {
   courseId: string;
   title: string;
   planId?: string;
+  clientReferenceId?: string;
+  overlayId?: string;
   anchorId?: string;
   selectedText?: string;
   prompt?: string;
@@ -67,6 +69,7 @@ export function parseInteractivePreviewHref(
       courseId,
       title,
       planId,
+      clientReferenceId: planId,
       anchorId,
       selectedText,
       prompt: String(url.searchParams.get("prompt") || "").trim(),
@@ -77,6 +80,8 @@ export function parseInteractivePreviewHref(
   if (!assetPath) return null;
 
   const assetUrl = `/api/v1/courses/${encodeURIComponent(courseId)}/files/assets/${encodePathSegments(assetPath)}`;
+  const anchorId = String(url.searchParams.get("anchor") || "").trim();
+  const selectedText = String(url.searchParams.get("selected") || "").trim();
 
   return {
     mode: "asset",
@@ -86,6 +91,10 @@ export function parseInteractivePreviewHref(
     assetPath,
     courseId,
     title,
+    clientReferenceId: String(url.searchParams.get("ref") || "").trim() || undefined,
+    overlayId: String(url.searchParams.get("overlay") || "").trim() || undefined,
+    anchorId: anchorId || undefined,
+    selectedText: selectedText || undefined,
   };
 }
 

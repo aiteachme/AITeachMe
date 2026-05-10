@@ -1977,8 +1977,15 @@ function InteractiveHtmlEmbed({
   const loadingStepLabel = isStaticFigure ? "正在读取静态图示资产" : INTERACTIVE_LOADING_STEPS[loadingStepIndex % INTERACTIVE_LOADING_STEPS.length];
 
   const requestInteractiveAsset = useCallback(
-    async (options: { signal: AbortSignal; prompt?: string; clientReferenceId?: string }) => {
+    async (options: {
+      signal: AbortSignal;
+      prompt?: string;
+      clientReferenceId?: string;
+      forceRegenerate?: boolean;
+      replaceOverlayId?: string;
+    }) => {
       const selectedText = preview.selectedText || preview.title;
+      const clientReferenceId = options.clientReferenceId || preview.clientReferenceId || preview.planId;
       const generated = await runTrackedApiFetch(
         `/api/v1/courses/${encodeURIComponent(preview.courseId)}/knowledge/docs/interactive-selections`,
         {
@@ -1989,7 +1996,9 @@ function InteractiveHtmlEmbed({
             anchor_id: preview.anchorId,
             selected_text: selectedText,
             prompt: options.prompt?.trim() || undefined,
-            client_reference_id: options.clientReferenceId || preview.planId,
+            client_reference_id: clientReferenceId || undefined,
+            force_regenerate: options.forceRegenerate || undefined,
+            replace_overlay_id: options.replaceOverlayId || undefined,
             selection_context: {
               selected_text: selectedText,
               anchor_id: preview.anchorId,
@@ -2019,7 +2028,7 @@ function InteractiveHtmlEmbed({
       }
       return parsed;
     },
-    [preview.anchorId, preview.courseId, preview.planId, preview.selectedText, preview.title],
+    [preview.anchorId, preview.clientReferenceId, preview.courseId, preview.planId, preview.selectedText, preview.title],
   );
 
   useEffect(() => {
@@ -2132,8 +2141,15 @@ function InteractiveHtmlEmbed({
     const controller = new AbortController();
     regenerateControllerRef.current = controller;
     const prompt = regeneratePrompt.trim() || "请换一种更清晰、更贴合当前内容的交互形式重新生成。";
-    const referenceSeed = preview.planId || preview.assetPath || "interactive";
-    const clientReferenceId = `${referenceSeed}:regen:${Date.now().toString(36)}`.slice(0, 160);
+    const referenceSeed =
+      preview.clientReferenceId ||
+      preview.planId ||
+      generatedPreview?.clientReferenceId ||
+      preview.assetPath ||
+      generatedPreview?.assetPath ||
+      "interactive";
+    const clientReferenceId = referenceSeed.slice(0, 160);
+    const replaceOverlayId = preview.overlayId || generatedPreview?.overlayId;
     setHtml("");
     setError(null);
     setLoading(true);
@@ -2143,6 +2159,8 @@ function InteractiveHtmlEmbed({
         signal: controller.signal,
         prompt,
         clientReferenceId,
+        forceRegenerate: true,
+        replaceOverlayId,
       });
       setGeneratedPreview(parsed);
       setLoadingLabel("正在加载交互页...");
@@ -2176,8 +2194,13 @@ function InteractiveHtmlEmbed({
     }
   }, [
     canRegenerate,
+    generatedPreview?.assetPath,
+    generatedPreview?.clientReferenceId,
+    generatedPreview?.overlayId,
     loading,
     preview.assetPath,
+    preview.clientReferenceId,
+    preview.overlayId,
     preview.planId,
     regeneratePrompt,
     requestInteractiveAsset,
