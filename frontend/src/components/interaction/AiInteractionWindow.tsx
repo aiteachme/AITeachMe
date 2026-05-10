@@ -391,11 +391,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
     const element = target instanceof Element ? target : null;
     return Boolean(element?.closest("[data-app-sidebar='true']"));
   }, []);
-  const hasContextualSidebarRequest = Boolean(
-    sidebarRequest?.showSelectionContext ||
-    sidebarRequest?.selectedText?.trim() ||
-    sidebarRequest?.selectionContext,
-  );
+  const shouldKeepSelectionContextOpen = sidebarRequest?.showSelectionContext === true;
 
   useEffect(() => {
     if (displayMode !== "sidebar") {
@@ -440,7 +436,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
       if (moved > 6 || pointer.selectedText || readSelectionText()) {
         return;
       }
-      if (hasContextualSidebarRequest) {
+      if (shouldKeepSelectionContextOpen) {
         return;
       }
 
@@ -459,7 +455,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("pointercancel", clearPointer, true);
     };
-  }, [closeAiInteraction, displayMode, hasContextualSidebarRequest, isInsideAppSidebar, isInsidePanel]);
+  }, [closeAiInteraction, displayMode, shouldKeepSelectionContextOpen, isInsideAppSidebar, isInsidePanel]);
 
   return (
     <>
