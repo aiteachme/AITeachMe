@@ -19,6 +19,7 @@ from app.models import (
 )
 from app.schemas.profile import CourseProfileSummary, UserProfileSummary
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
+from app.workflows.profile.pipeline.lib.conversation_memory import build_conversation_profile_signals
 
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80
@@ -248,6 +249,11 @@ def build_user_profile_summary(
     preferred_question_types = _pick_top_keys(question_type_totals, limit=3)
     preferred_exam_modes = _pick_top_keys(exam_mode_totals, limit=3)
     dominant_exam_mode = preferred_exam_modes[0] if preferred_exam_modes else ExamMode.WEB_PRACTICE.value
+    conversation_signals = build_conversation_profile_signals(
+        session,
+        user_id=user_id,
+        limit=80,
+    )
 
     return UserProfileSummary(
         user_id=user_id,
@@ -258,7 +264,7 @@ def build_user_profile_summary(
         preferred_question_types=preferred_question_types,
         preferred_exam_modes=preferred_exam_modes,
         dominant_exam_mode=dominant_exam_mode,
-        explanation_style=_pick_explanation_style(question_type_totals),
+        explanation_style=conversation_signals.explanation_style or _pick_explanation_style(question_type_totals),
         pace_preference=_pick_pace_preference(
             recent_papers=recent_papers,
             generated_at=generated_at,
@@ -269,12 +275,15 @@ def build_user_profile_summary(
         ),
         pending_review_count=len(pending_reviews),
         due_review_count=due_review_count,
-        notes=_build_notes(
-            active_course_count=len(courses),
-            dominant_exam_mode=dominant_exam_mode,
-            due_review_count=due_review_count,
-            preferred_question_types=preferred_question_types,
-        ),
+        notes=[
+            *_build_notes(
+                active_course_count=len(courses),
+                dominant_exam_mode=dominant_exam_mode,
+                due_review_count=due_review_count,
+                preferred_question_types=preferred_question_types,
+            ),
+            *conversation_signals.notes,
+        ],
     )
 
 

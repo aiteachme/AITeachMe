@@ -75,7 +75,9 @@ workflows/<module>/
 - `interact/chat`
 - `examine/question_build`
 - `examine/exam_grade`
-- `profile/pipeline`
+- `profile/update`
+- `profile/snapshot`
+- `profile/study_plan`
 
 如果新增链路，必须先判断它属于现有引擎子 lane，还是属于 `support/` 的 API-facing 用例。不要为了一个函数新增顶层目录。
 
@@ -482,8 +484,14 @@ planner -> docgen -> kg_doc_sync
   系统初始化与设置总览位置
 - `ingest/intake/catalog.py`、`ingest/intake/uploads.py`、`ingest/intake/parse_dispatch.py`、`ingest/intake/deletion.py`
   文件模块按用例拆分后的位置
+- `profile/update/graph.py`
+  Profile 的判卷后画像更新链路，统一通过 LangGraph / LangSmith root trace 运行
+- `profile/snapshot/graph.py`
+  Profile 页只读画像快照链路，统一通过 LangGraph / LangSmith root trace 运行
+- `profile/study_plan/graph.py`
+  Profile 主动学习计划链路，生成复习、练习和伴读复盘建议；不替代 `digest/planner`
 - `profile/pipeline/lib/`
-  Profile 的掌握度、复习调度、画像摘要与报告建议 helper 落点
+  Profile 的掌握度、复习调度、画像摘要、对话信号与报告建议 helper 落点
 - `interact/chat/use_cases.py`
   Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点
 - `support/auth/identity.py`、`support/auth/sessions.py`、`support/auth/smtp.py`

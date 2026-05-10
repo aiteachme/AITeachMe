@@ -11,6 +11,7 @@ from app.models import ExamMode, ExamPaper, ExamPaperItem, Course, UserKnowledge
 from app.repositories import profile_repo
 from app.schemas.profile import CourseProfileSummary
 from app.utils.time import is_at_or_before, utcnow
+from app.workflows.profile.pipeline.lib.conversation_memory import build_conversation_profile_signals
 
 _WEAK_THRESHOLD = 0.8
 _RECENT_EXAM_ITEM_LIMIT = 200
@@ -256,6 +257,13 @@ def build_course_profile_summary(
         difficulty_accuracy=difficulty_accuracy,
     )
 
+    conversation_signals = build_conversation_profile_signals(
+        session,
+        user_id=user_id,
+        course_id=course_id,
+        limit=40,
+    )
+
     return CourseProfileSummary(
         course_id=course_id,
         generated_at=now,
@@ -275,13 +283,16 @@ def build_course_profile_summary(
         focus_knowledge_unit_ids=_pick_focus_knowledge_unit_ids(knowledge_unit_states),
         question_type_accuracy=question_type_accuracy,
         difficulty_accuracy=difficulty_accuracy,
-        notes=_build_notes(
-            weak_knowledge_unit_count=weak_knowledge_unit_count,
-            due_review_count=due_review_count,
-            recommended_exam_mode=recommended_exam_mode,
-            recommended_question_types=recommended_question_types,
-            difficulty_focus=difficulty_focus,
-        ),
+        notes=[
+            *_build_notes(
+                weak_knowledge_unit_count=weak_knowledge_unit_count,
+                due_review_count=due_review_count,
+                recommended_exam_mode=recommended_exam_mode,
+                recommended_question_types=recommended_question_types,
+                difficulty_focus=difficulty_focus,
+            ),
+            *conversation_signals.notes,
+        ],
     )
 
 

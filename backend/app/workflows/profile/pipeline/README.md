@@ -1,19 +1,23 @@
-# Profile Pipeline 链路说明
+# Profile Pipeline 兼容层说明
 
-最后更新：2026-04-15
+最后更新：2026-05-11
 
-`profile/pipeline/` 是 profile 模块的 canonical lane。
+`profile/pipeline/` 现在只是旧路径兼容层，不再是新的功能落点。
 
-目录角色：
+新的真实 lane：
 
-- `graph.py`：pipeline 图入口
-- `state.py`：状态定义
-- `lib/`：掌握度、复习、画像、报告建议等 helper
-- `prompts/`：画像相关 prompt 门面
-- `nodes/`：节点门面
+```text
+profile/update/       # 判卷后画像更新，写掌握度/复习/画像摘要
+profile/snapshot/     # Profile 页只读快照，组装 mastery overview / course profile / user profile
+profile/study_plan/   # 主动学习计划，生成复习+练习+伴读的执行建议
+```
 
-当前口径：
+`pipeline/graph.py` 会继续导出旧名称：
 
-- LangGraph 定义、运行入口与 workflow export 已统一收口到 `pipeline/graph.py`
-- API / schema 需要的画像与掌握度辅助对象统一从 `pipeline/lib/` 提供
-- LLM 调用的模型槽位、输出 token 预算和 metadata 统一由 `lib/model_policy.py` 维护。
+- `build_profile_pipeline_graph`
+- `run_profile_pipeline_workflow`
+- `create_profile_initial_state`
+
+这些名称都转发到 `profile/update`，避免旧 import 立即断掉。
+
+新代码不要继续往 `pipeline/` 里加业务链路。确实需要共享 helper 时，先判断是否已经有两个以上 lane 真实复用；如果是，再按 `workflows/README.md` 的规则提升到 `profile/common/`。

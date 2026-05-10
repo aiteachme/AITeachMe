@@ -25,6 +25,7 @@ import type {
 
 import type {
   ApiResponseListReviewTaskResponse,
+  ApiResponseListStudyPlanStepResponse,
   ApiResponseMasteryOverviewResponse,
   ApiResponseReviewTaskResponse,
   ErrorResponse,
@@ -162,6 +163,140 @@ export function useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet<TData = 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryOptions(courseId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+/**
+ * @summary Generate current study plan
+ */
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse200 = {
+  data: ApiResponseListStudyPlanStepResponse
+  status: 200
+}
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponseSuccess = (studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse200) & {
+  headers: Headers;
+};
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponseError = (studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse400 | studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse404 | studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse422 | studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse500) & {
+  headers: Headers;
+};
+
+export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse = (studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponseSuccess | studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponseError)
+
+export const getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/profile/study-plan`
+}
+
+export const studyPlanApiV1CoursesCourseIdProfileStudyPlanGet = async (courseId: string, options?: RequestInit): Promise<studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse> => {
+
+  return orvalApiClient<studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse>(getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetUrl(courseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryKey = (courseId: string,) => {
+    return [
+    `/api/v1/courses/${courseId}/profile/study-plan`
+    ] as const;
+    }
+
+
+export const getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryOptions = <TData = Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError = ErrorResponse | HTTPValidationError>(courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryKey(courseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>> = ({ signal }) => studyPlanApiV1CoursesCourseIdProfileStudyPlanGet(courseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type StudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryResult = NonNullable<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>>
+export type StudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet<TData = Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>,
+          TError,
+          Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet<TData = Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>,
+          TError,
+          Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet<TData = Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Generate current study plan
+ */
+
+export function useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet<TData = Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryOptions(courseId,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

@@ -68,6 +68,15 @@ class MasteryOverviewResponse(BaseModel):
     user_profile: UserProfileSummary | None = None
 
 
+class StudyPlanStepResponse(BaseModel):
+    key: str
+    title: str
+    detail: str
+    action: str
+    priority: int
+    source: str
+
+
 class ReviewTaskResponse(BaseModel):
     id: int
     user_id: str

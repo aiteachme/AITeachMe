@@ -56,7 +56,7 @@ from app.workflows.examine import (
     run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
-from app.workflows.profile import schedule_reviews, update_mastery_from_exam
+from app.workflows.profile import run_profile_update_workflow
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.support.courses.learning_context import load_course_llm_context
 
@@ -2399,13 +2399,30 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     session.commit()
     session.refresh(paper)
 
-    mastery = update_mastery_from_exam(session, paper.id or 0)
-    reviews = schedule_reviews(
-        session,
+    profile_result = await run_profile_update_workflow(
+        exam_paper_id=paper.id or 0,
         user_id=paper.user_id,
         course_id=paper.course_id,
-        updated_state_ids=mastery.updated_state_ids,
     )
+    profile_state = {}
+    profile_update_error: str | None = None
+    if profile_result.failed:
+        profile_update_error = str(profile_result.error or "unknown profile workflow failure")
+    else:
+        profile_state = dict(profile_result.require_value() or {})
+        profile_update_error = str(profile_state.get("error") or "").strip() or None
+    if profile_update_error:
+        logger.warning(
+            "exam_profile_update_degraded",
+            course_id=paper.course_id,
+            user_id=paper.user_id,
+            exam_paper_id=paper.id,
+            error=profile_update_error,
+            mastery_updated=bool(profile_state.get("mastery_result")),
+            review_scheduled=bool(profile_state.get("review_scheduled")),
+        )
+    mastery = dict(profile_state.get("mastery_result") or {})
+    review_task_ids = list(profile_state.get("review_task_ids") or [])
     return ExamGradeResponse(
         id=paper.id or 0,
         status="completed",
@@ -2414,9 +2431,9 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
         updated_at=paper.updated_at,
         exam_paper_id=paper.id or 0,
         score=score_obtained,
-        states_updated=mastery.states_updated,
-        tasks_created=len(reviews),
-        mastery_consumed=True,
+        states_updated=int(mastery.get("states_updated") or 0),
+        tasks_created=len(review_task_ids),
+        mastery_consumed=bool(mastery),
     )
 
 
