@@ -65,6 +65,12 @@ from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.knowledge.build_store import read_knowledge_manifest
 from app.shared.infra.llm_support import submit_llm_task
+from app.shared.infra.observability.trace import (
+    langsmith_trace,
+    llm_trace_scope,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
     format_sse_event,
@@ -80,6 +86,11 @@ from app.workflows.digest.docgen.lib.interactive_overlays import (
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+
+def _interactive_generation_origin(client_reference_id: str | None) -> str:
+    normalized = str(client_reference_id or "").strip()
+    return "planned_auto" if normalized else "selection"
 
 
 def _storage_scope_for_course_record(course: Course) -> CourseStorageScope:
@@ -754,7 +765,15 @@ async def knowledge_docs_interactive_selection(
             if item.strip()
         )
 
-    build_session_id = f"selection-{uuid.uuid4().hex[:12]}"
+    version_no = int(manifest.version_no or 0)
+    client_reference_id = str(body.client_reference_id or "").strip()
+    interactive_origin = _interactive_generation_origin(client_reference_id)
+    interactive_batch_id = f"{normalized}:knowledge-docs:v{version_no}:interactive-html"
+    build_session_id = (
+        f"auto-interactive-v{version_no}"
+        if interactive_origin == "planned_auto"
+        else f"selection-{uuid.uuid4().hex[:12]}"
+    )
     workflow_context = WorkflowContext(
         workflow_name="digest.docgen.selection_interactive",
         course_id=normalized,
@@ -764,6 +783,10 @@ async def knowledge_docs_interactive_selection(
             "user_id": user.user_id,
             "asset_kind": "interactive_html",
             "anchor_id": body.anchor_id,
+            "client_reference_id": client_reference_id,
+            "interactive_batch_id": interactive_batch_id,
+            "interactive_origin": interactive_origin,
+            "version_no": version_no,
         },
     )
     traced_context = TracedExecutionContext(
@@ -772,21 +795,93 @@ async def knowledge_docs_interactive_selection(
         workflow_context=workflow_context,
         teaching_action="selection_interactive_html",
         asset_kind="interactive_html",
-        extra_metadata={"anchor_id": body.anchor_id},
+        extra_metadata={
+            "anchor_id": body.anchor_id,
+            "client_reference_id": client_reference_id,
+            "interactive_batch_id": interactive_batch_id,
+            "interactive_origin": interactive_origin,
+            "version_no": version_no,
+        },
     )
-    handle = submit_llm_task(
-        lambda: generate_selection_interactive_html_asset(
+
+    async def _generate_interactive_asset() -> dict[str, object]:
+        trace_metadata = traced_context.trace_metadata(
+            docgen_stage="interactive_html_generation",
+            selected_chars=len(body.selected_text or ""),
+            prompt_chars=len(body.prompt or ""),
+        )
+        trace_inputs = sanitize_langsmith_input(
+            {
+                "anchor_id": body.anchor_id,
+                "anchor_title": str(anchor_title or ""),
+                "heading_path": heading_path,
+                "selected_text_preview": body.selected_text[:800],
+                "prompt": body.prompt or "",
+                "client_reference_id": client_reference_id,
+                "interactive_origin": interactive_origin,
+            },
+            field_name="interactive_html_generation_inputs",
+        )
+        with llm_trace_scope(
             course_id=normalized,
-            course_scope=course_scope,
-            traced_context=traced_context,
-            anchor_title=str(anchor_title or ""),
-            heading_path=heading_path,
-            selected_text=body.selected_text,
-            user_prompt=body.prompt or "",
-            section_excerpt=nearby_context[:5000],
-        ),
+            build_session_id=build_session_id,
+            workflow=workflow_context.workflow_name,
+            lane="docgen",
+            node="knowledge_docs.interactive_html_generation",
+        ):
+            with langsmith_trace(
+                name=(
+                    "DocGen：默认交互 HTML 懒加载"
+                    if interactive_origin == "planned_auto"
+                    else "DocGen：划选交互 HTML 生成"
+                ),
+                run_type="chain",
+                inputs=trace_inputs,
+                course_id=normalized,
+                build_session_id=build_session_id,
+                workflow=workflow_context.workflow_name,
+                lane="docgen",
+                node="knowledge_docs.interactive_html_generation",
+                extra_metadata=trace_metadata,
+                extra_tags=[
+                    "docgen:interactive_html",
+                    f"interactive_origin:{interactive_origin}",
+                ],
+            ) as trace_run:
+                asset = await generate_selection_interactive_html_asset(
+                    course_id=normalized,
+                    course_scope=course_scope,
+                    traced_context=traced_context,
+                    anchor_title=str(anchor_title or ""),
+                    heading_path=heading_path,
+                    selected_text=body.selected_text,
+                    user_prompt=body.prompt or "",
+                    section_excerpt=nearby_context[:5000],
+                )
+                if trace_run is not None:
+                    trace_run.end(
+                        outputs=sanitize_langsmith_output(
+                            {
+                                "title": asset.get("title"),
+                                "asset_path": asset.get("asset_path"),
+                                "preview_url": asset.get("preview_url"),
+                                "validation_issue_count": len(asset.get("validation_issues") or []),
+                            },
+                            field_name="interactive_html_generation_outputs",
+                        )
+                    )
+                return asset
+
+    handle = submit_llm_task(
+        _generate_interactive_asset,
         label="docgen.selection_interactive_html",
-        metadata={"course_id": normalized, "anchor_id": body.anchor_id},
+        metadata={
+            "course_id": normalized,
+            "anchor_id": body.anchor_id,
+            "client_reference_id": client_reference_id,
+            "interactive_batch_id": interactive_batch_id,
+            "interactive_origin": interactive_origin,
+        },
     )
     try:
         asset = await handle.result()
@@ -810,7 +905,6 @@ async def knowledge_docs_interactive_selection(
         handle.forget()
 
     overlay_id = f"interactive-{uuid.uuid4().hex}"
-    version_no = int(manifest.version_no or 0)
     overlay = {
         "overlay_id": overlay_id,
         "version_no": version_no,
@@ -819,7 +913,7 @@ async def knowledge_docs_interactive_selection(
         "heading_path": heading_path,
         "selected_text": body.selected_text,
         "user_prompt": body.prompt or "",
-        "client_reference_id": body.client_reference_id or "",
+        "client_reference_id": client_reference_id,
         "title": str(asset["title"]),
         "asset_path": str(asset["asset_path"]),
         "preview_url": str(asset["preview_url"]),
