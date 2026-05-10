@@ -3814,18 +3814,27 @@ export function KnowledgeDocsPage() {
   ]);
 
   useEffect(() => {
+    const shouldIgnoreSelectionEventTarget = (target: EventTarget | null) => {
+      const targetNode = target instanceof Node ? target : null;
+      const targetElement = targetNode instanceof Element ? targetNode : targetNode?.parentElement ?? null;
+      if (targetElement?.closest("[data-app-sidebar='true']")) return true;
+      if (targetElement?.closest("[data-ai-interaction-window='true']")) return true;
+      if (targetElement?.closest("input, textarea, select, [contenteditable]")) return true;
+      if (targetNode && commentPanelRef.current?.contains(targetNode)) return true;
+      if (targetNode && floatingRef.current?.contains(targetNode)) return true;
+      if (targetNode && floatingComposerCardRef.current?.contains(targetNode)) return true;
+      return false;
+    };
+
     const handleDocumentMouseUp = (event: MouseEvent) => {
       const target = event.target as Node;
-      const targetElement = event.target instanceof Element ? event.target : null;
-      if (targetElement?.closest("[data-app-sidebar='true']")) return;
-      if (targetElement?.closest("[data-ai-interaction-window='true']")) return;
-      if (commentPanelRef.current?.contains(target)) return;
-      if (floatingRef.current?.contains(target)) return;
+      if (shouldIgnoreSelectionEventTarget(target)) return;
       window.requestAnimationFrame(() => {
         handleTextSelect();
       });
     };
-    const handleDocumentKeyUp = () => {
+    const handleDocumentKeyUp = (event: KeyboardEvent) => {
+      if (shouldIgnoreSelectionEventTarget(event.target)) return;
       window.requestAnimationFrame(() => {
         handleTextSelect();
       });
