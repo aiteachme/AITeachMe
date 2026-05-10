@@ -372,14 +372,27 @@ jobs:
           base_url="${FRONTEND_PUBLIC_URL%/}"
           root_url="${base_url}/"
           health_url="${base_url}/api/health"
+          upload_url="${base_url}/api/v1/files/upload"
+          upload_probe="/tmp/aiteachme-upload-body-probe.bin"
+          python3 -c 'from pathlib import Path; Path("/tmp/aiteachme-upload-body-probe.bin").write_bytes(b"0" * (2 * 1024 * 1024))'
 
           for attempt in {1..12}; do
             root_status="$(curl -sS -o /tmp/frontend-root.out -w "%{http_code}" "${root_url}" || true)"
             health_status="$(curl -sS -o /tmp/frontend-health.out -w "%{http_code}" "${health_url}" || true)"
+            upload_status="$(
+              curl -sS \
+                -o /tmp/frontend-upload-body.out \
+                -w "%{http_code}" \
+                --max-time 30 \
+                -H "Expect:" \
+                -F "files=@${upload_probe};filename=upload-body-probe.bin;type=application/octet-stream" \
+                "${upload_url}" \
+                || true
+            )"
 
-            echo "Frontend smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}"
+            echo "Frontend smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}, 2MiB upload body -> ${upload_status}"
 
-            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ]; then
+            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ] && [ "${upload_status}" != "000" ] && [ "${upload_status}" != "413" ]; then
               exit 0
             fi
             sleep 10
@@ -391,6 +404,9 @@ jobs:
           echo "" >&2
           echo "Last frontend health response:" >&2
           tail -c 1000 /tmp/frontend-health.out >&2 || true
+          echo "" >&2
+          echo "Last 2MiB upload-body response:" >&2
+          tail -c 1000 /tmp/frontend-upload-body.out >&2 || true
           echo "" >&2
           exit 1
 
