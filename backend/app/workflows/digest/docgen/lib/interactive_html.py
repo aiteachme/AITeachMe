@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Literal
 
 import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import acompletion_with_fallback
-from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
+from app.shared.infra.storage import CourseStorageScope, get_content_store, resolve_course_storage_scope
 from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
-from app.workflows.digest.docgen.prompts.interactive_html import build_interactive_html_messages
+from app.workflows.digest.docgen.prompts.interactive_html import (
+    build_interactive_html_messages,
+    build_selection_interactive_html_messages,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -150,6 +155,14 @@ def _sanitize_generated_html(html: str, *, title: str) -> str:
 {body}
 </body>
 </html>"""
+    if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", cleaned, re.IGNORECASE):
+        cleaned = re.sub(
+            r"(<head(?:\s[^>]*)?>)",
+            r'\1\n  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE,
+        )
     return cleaned.strip() + "\n"
 
 
@@ -171,6 +184,75 @@ def _build_markdown_link(*, preview_url: str, link_label: str) -> str:
             "> 在新标签页打开预览页；页面会在沙箱 iframe 中加载。",
         ]
     )
+
+
+def build_interactive_markdown_link(*, preview_url: str, link_label: str) -> str:
+    return _build_markdown_link(preview_url=preview_url, link_label=link_label)
+
+
+def _selection_title(*, anchor_title: str, selected_text: str, user_prompt: str) -> str:
+    seed = (user_prompt or selected_text or anchor_title or "交互演示").strip()
+    seed = re.sub(r"\s+", " ", seed)
+    if len(seed) > 28:
+        seed = seed[:28].rstrip() + "..."
+    return seed or "交互演示"
+
+
+async def generate_selection_interactive_html_asset(
+    *,
+    course_id: str,
+    course_scope: CourseStorageScope | None = None,
+    traced_context: TracedExecutionContext,
+    anchor_title: str,
+    heading_path: Sequence[str],
+    selected_text: str,
+    user_prompt: str,
+    section_excerpt: str,
+) -> dict[str, object]:
+    title = _selection_title(
+        anchor_title=anchor_title,
+        selected_text=selected_text,
+        user_prompt=user_prompt,
+    )
+    html = await acompletion_with_fallback(
+        build_selection_interactive_html_messages(
+            anchor_title=anchor_title,
+            heading_path=heading_path,
+            selected_text=selected_text,
+            user_prompt=user_prompt,
+            section_excerpt=section_excerpt,
+        ),
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.INTERACTIVE_HTML,
+            digest_mode=traced_context.digest_mode or "",
+            extra_metadata=traced_context.trace_metadata(
+                docgen_stage="interactive_html_selection",
+                asset_kind="interactive_html",
+            ),
+        ),
+    )
+    cleaned_html = _sanitize_generated_html(str(html), title=title)
+    validation_issues = validate_single_file_html(cleaned_html)
+    if validation_issues:
+        raise ValueError("generated interactive HTML failed validation: " + "; ".join(validation_issues))
+
+    cs = get_content_store()
+    course_scope = course_scope or resolve_course_storage_scope(course_id)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    filename = f"selection_interactive_{timestamp}_{uuid.uuid4().hex[:8]}_{sanitize_doc_title(title)}.html"
+    storage_key = f"{course_scope.namespace}/assets/docgen/interactive/{filename}"
+    asset_path = f"docgen/interactive/{filename}"
+    await cs.write_text(storage_key, cleaned_html)
+    preview_url = _build_preview_url(course_id=course_id, asset_path=asset_path, title=title)
+    return {
+        "title": title,
+        "storage_key": storage_key,
+        "asset_path": asset_path,
+        "asset_url": f"/api/v1/courses/{course_id}/files/assets/{asset_path}",
+        "preview_url": preview_url,
+        "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=title),
+        "validation_issues": validation_issues,
+    }
 
 
 async def maybe_generate_interactive_html_asset(
@@ -245,7 +327,9 @@ async def maybe_generate_interactive_html_asset(
 
 
 __all__ = [
+    "build_interactive_markdown_link",
     "choose_interactive_mode",
+    "generate_selection_interactive_html_asset",
     "maybe_generate_interactive_html_asset",
     "should_generate_interactive_html",
 ]

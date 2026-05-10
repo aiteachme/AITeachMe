@@ -2,34 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { getApiErrorMessage, runTrackedApiFetch } from "../api/client";
-
-function encodePathSegments(path: string): string {
-  return path
-    .split("/")
-    .filter(Boolean)
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-}
-
-function normalizeAssetPath(raw: string | null): string {
-  const normalized = String(raw ?? "").replace(/\\/g, "/").trim().replace(/^\/+/, "");
-  if (!normalized || normalized.includes("..")) return "";
-  return normalized;
-}
+import { parseInteractivePreviewHref, patchHtmlForIframe } from "../lib/interactiveHtml";
 
 export function KnowledgeInteractivePage() {
   const { courseId } = useParams<{ courseId: string }>();
   const [searchParams] = useSearchParams();
-  const assetPath = normalizeAssetPath(searchParams.get("asset"));
   const title = (searchParams.get("title") || "知识文档交互演示").trim();
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const assetUrl = useMemo(() => {
-    if (!courseId || !assetPath) return "";
-    return `/api/v1/courses/${encodeURIComponent(courseId)}/files/assets/${encodePathSegments(assetPath)}`;
-  }, [assetPath, courseId]);
+    const preview = parseInteractivePreviewHref(`/courses/${courseId ?? ""}/knowledge-docs/interactive?${searchParams.toString()}`, {
+      fallbackCourseId: courseId,
+    });
+    return preview?.assetUrl ?? "";
+  }, [courseId, searchParams]);
+
+  const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
 
   useEffect(() => {
     document.title = `${title} - AITeachMe`;
@@ -110,7 +100,7 @@ export function KnowledgeInteractivePage() {
           ) : (
             <iframe
               title={title}
-              srcDoc={html}
+              srcDoc={patchedHtml}
               sandbox="allow-scripts"
               className="h-[78vh] w-full border-0 bg-white"
             />

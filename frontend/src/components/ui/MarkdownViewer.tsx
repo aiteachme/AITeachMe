@@ -1,4 +1,4 @@
-import { Children, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -7,14 +7,20 @@ import rehypeKatex from "rehype-katex";
 import {
   BadgeCheck,
   ChevronRight,
+  ExternalLink,
   Info,
   Lightbulb,
+  Loader2,
+  Maximize2,
+  MousePointer2,
   OctagonAlert,
+  RefreshCw,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
-import { runTrackedApiFetch } from "../../api/client";
+import { getApiErrorMessage, runTrackedApiFetch } from "../../api/client";
+import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -1934,6 +1940,156 @@ function MarkdownImage({
   );
 }
 
+function InteractiveHtmlEmbed({
+  preview,
+  label,
+}: {
+  preview: InteractiveHtmlPreview;
+  label: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [html, setHtml] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    if (!expanded || html) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    runTrackedApiFetch(
+      preview.assetUrl,
+      {
+        method: "GET",
+        signal: controller.signal,
+      },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.text();
+      },
+      "interactive_asset_disconnect",
+    )
+      .then((text) => {
+        if (controller.signal.aborted) return;
+        setHtml(text);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setError(getApiErrorMessage(err, "交互页暂时不可用，可能仍在生成。"));
+        setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [expanded, html, preview.assetUrl, retryKey]);
+
+  const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
+
+  return (
+    <details
+      data-doc-interactive-embed="true"
+      data-doc-interactive-asset={preview.assetPath}
+      className="group my-5 overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-sm dark:border-indigo-500/25 dark:bg-slate-950"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-indigo-50/55 focus-visible:ring-2 focus-visible:ring-indigo-500/35 dark:hover:bg-indigo-500/10 [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+            <MousePointer2 className="h-4 w-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+              <span className="truncate">{preview.title || label || "交互演示"}</span>
+              <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                交互网页
+              </span>
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+              展开后在文档内加载，支持保留上下文学习。
+            </span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              window.open(preview.previewUrl, "_blank", "noopener,noreferrer");
+            }}
+            className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+            全屏打开
+          </button>
+          <ChevronRight className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-90" />
+        </span>
+      </summary>
+      <div className="border-t border-indigo-100 bg-slate-50/70 p-3 dark:border-indigo-500/20 dark:bg-slate-900/45">
+        {loading ? (
+          <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            正在加载交互页...
+          </div>
+        ) : error ? (
+          <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">交互页还不能预览</p>
+            <p className="max-w-md text-xs leading-6 text-amber-800/80 dark:text-amber-200/80">{error}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setHtml("");
+                setError(null);
+                setRetryKey((value) => value + 1);
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-medium text-white transition hover:bg-amber-700"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              重试加载
+            </button>
+          </div>
+        ) : patchedHtml ? (
+          <iframe
+            title={preview.title || "交互演示"}
+            srcDoc={patchedHtml}
+            sandbox="allow-scripts"
+            className="h-[min(620px,76vh)] min-h-[420px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+          />
+        ) : (
+          <div className="flex min-h-[260px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            展开后加载交互页
+          </div>
+        )}
+        <a
+          href={preview.previewUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          全屏打开
+        </a>
+      </div>
+    </details>
+  );
+}
+
+function containsInteractiveEmbed(children: ReactNode): boolean {
+  return Children.toArray(children).some(
+    (child) => isValidElement(child) && child.type === InteractiveHtmlEmbed,
+  );
+}
+
 function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode[] } | null {
   const nodes = Children.toArray(children).filter((item) => item !== "\n");
   if (nodes.length === 0) {
@@ -2137,7 +2293,11 @@ export function MarkdownViewer({
             </section>
           );
         },
-        p: ({ children }) => <p className={styles.paragraph}>{children}</p>,
+        p: ({ children }) => (
+          containsInteractiveEmbed(children)
+            ? <div className="my-4">{children}</div>
+            : <p className={styles.paragraph}>{children}</p>
+        ),
         ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
         ol: ({ children }) => <ol className={styles.orderedList}>{children}</ol>,
         li: ({ children }) => <li className={styles.listItem}>{children}</li>,
@@ -2209,11 +2369,17 @@ export function MarkdownViewer({
         th: ({ children }) => <th className={styles.th}>{children}</th>,
         td: ({ children }) => <td className={styles.td}>{children}</td>,
         hr: () => <hr className={styles.hr} />,
-        a: ({ href, children }) => (
-          <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          const preview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
+          if (preview) {
+            return <InteractiveHtmlEmbed preview={preview} label={children} />;
+          }
+          return (
+            <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        },
         strong: ({ children }) => <strong className={styles.strong}>{children}</strong>,
         em: ({ children }) => <em className={styles.em}>{children}</em>,
         mark: ({ children }) => <mark className={styles.highlight}>{children}</mark>,

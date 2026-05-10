@@ -447,6 +447,53 @@ class DocGenGetResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
+class KnowledgeDocSelectionContext(BaseModel):
+    """Context captured around one selected knowledge-doc fragment."""
+
+    selected_text: str = Field(default="", max_length=2000)
+    anchor_id: str = Field(default="", max_length=160)
+    anchor_title: str | None = Field(default=None, max_length=240)
+    heading_path: list[str] = Field(default_factory=list)
+    before_text: str | None = Field(default=None, max_length=1000)
+    after_text: str | None = Field(default=None, max_length=1000)
+    section_title: str | None = Field(default=None, max_length=240)
+    section_excerpt: str | None = Field(default=None, max_length=5000)
+    section_truncated: bool = False
+    local_context_truncated: bool = False
+
+
+class KnowledgeDocInteractiveSelectionRequest(BaseModel):
+    """Generate an interactive HTML block from a document text selection."""
+
+    anchor_id: str = Field(min_length=1, max_length=160)
+    selected_text: str = Field(min_length=1, max_length=2000)
+    prompt: str | None = Field(default=None, max_length=1000)
+    selection_context: KnowledgeDocSelectionContext | None = None
+
+    @model_validator(mode="after")
+    def _normalize_selection(self) -> "KnowledgeDocInteractiveSelectionRequest":
+        self.anchor_id = self.anchor_id.strip()
+        self.selected_text = self.selected_text.strip()
+        self.prompt = (self.prompt or "").strip() or None
+        if not self.anchor_id:
+            raise ValueError("anchor_id must not be empty")
+        if not self.selected_text:
+            raise ValueError("selected_text must not be empty")
+        return self
+
+
+class KnowledgeDocInteractiveSelectionResponse(BaseModel):
+    """Generated interactive HTML asset anchored back into a knowledge-doc section."""
+
+    overlay_id: str
+    anchor_id: str
+    title: str
+    asset_path: str
+    preview_url: str
+    link_markdown: str
+    version_no: int = 0
+
+
 class KnowledgeUnitResponse(BaseModel):
     """KnowledgeUnit list item."""
 

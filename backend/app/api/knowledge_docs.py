@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
+from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Body, Depends, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -31,6 +33,8 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     DocGenGetResponse,
     KnowledgeBuildRuntimeResponse,
+    KnowledgeDocInteractiveSelectionRequest,
+    KnowledgeDocInteractiveSelectionResponse,
     KnowledgeGraphBuildData,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
@@ -58,12 +62,21 @@ from app.workflows.digest.kg_doc_sync import (
 from app.workflows.support.courses import get_course_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
+from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.knowledge.build_store import read_knowledge_manifest
+from app.shared.infra.llm_support import submit_llm_task
 from app.shared.infra.workflow.live_stream import (
     WorkflowStreamEvent,
     format_sse_event,
     subscribe_workflow_stream,
 )
 from app.shared.infra.storage import CourseStorageScope, build_course_storage_scope
+from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.docgen.lib.interactive_html import generate_selection_interactive_html_asset
+from app.workflows.digest.docgen.lib.interactive_overlays import (
+    append_interactive_overlay,
+    build_overlay_markdown_block,
+)
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
@@ -696,6 +709,125 @@ async def knowledge_docs(
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
     return ok_response(get_docgen_result(course_id=normalized, course_scope=course_scope))
+
+
+@router.post(
+    "/docs/interactive-selections",
+    response_model=ApiResponse[KnowledgeDocInteractiveSelectionResponse],
+    summary="Generate an interactive HTML block from a knowledge-doc text selection",
+    responses=build_error_responses([400, 404, 409, 422, 500]),
+)
+async def knowledge_docs_interactive_selection(
+    course_id: str = Path(...),
+    body: KnowledgeDocInteractiveSelectionRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[KnowledgeDocInteractiveSelectionResponse]:
+    normalized = normalize_course_id(course_id)
+    course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    course_scope = _storage_scope_for_course_record(course_record)
+    manifest = read_knowledge_manifest(normalized, course_scope=course_scope)
+    if manifest is None:
+        raise HTTPException(status_code=409, detail="请先完成知识文档生成后再创建交互演示。")
+
+    selection_context = body.selection_context
+    heading_path = [
+        str(item).strip()[:240]
+        for item in (selection_context.heading_path if selection_context else [])[:12]
+        if str(item).strip()
+    ]
+    anchor_title = (
+        (selection_context.anchor_title if selection_context else None)
+        or (selection_context.section_title if selection_context else None)
+        or (heading_path[-1] if heading_path else "")
+    )
+    nearby_context = ""
+    if selection_context is not None:
+        nearby_context = "\n\n".join(
+            item
+            for item in [
+                selection_context.before_text or "",
+                body.selected_text,
+                selection_context.after_text or "",
+                selection_context.section_excerpt or "",
+            ]
+            if item.strip()
+        )
+
+    build_session_id = f"selection-{uuid.uuid4().hex[:12]}"
+    workflow_context = WorkflowContext(
+        workflow_name="digest.docgen.selection_interactive",
+        course_id=normalized,
+        metadata={
+            "lane": "docgen",
+            "course_id": normalized,
+            "user_id": user.user_id,
+            "asset_kind": "interactive_html",
+            "anchor_id": body.anchor_id,
+        },
+    )
+    traced_context = TracedExecutionContext(
+        course_id=normalized,
+        build_session_id=build_session_id,
+        workflow_context=workflow_context,
+        teaching_action="selection_interactive_html",
+        asset_kind="interactive_html",
+        extra_metadata={"anchor_id": body.anchor_id},
+    )
+    handle = submit_llm_task(
+        lambda: generate_selection_interactive_html_asset(
+            course_id=normalized,
+            course_scope=course_scope,
+            traced_context=traced_context,
+            anchor_title=str(anchor_title or ""),
+            heading_path=heading_path,
+            selected_text=body.selected_text,
+            user_prompt=body.prompt or "",
+            section_excerpt=nearby_context[:5000],
+        ),
+        label="docgen.selection_interactive_html",
+        metadata={"course_id": normalized, "anchor_id": body.anchor_id},
+    )
+    try:
+        asset = await handle.result()
+    except asyncio.CancelledError:
+        handle.cancel()
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        handle.forget()
+
+    overlay_id = f"interactive-{uuid.uuid4().hex}"
+    version_no = int(manifest.version_no or 0)
+    overlay = {
+        "overlay_id": overlay_id,
+        "version_no": version_no,
+        "anchor_id": body.anchor_id,
+        "anchor_title": str(anchor_title or ""),
+        "heading_path": heading_path,
+        "selected_text": body.selected_text,
+        "user_prompt": body.prompt or "",
+        "title": str(asset["title"]),
+        "asset_path": str(asset["asset_path"]),
+        "preview_url": str(asset["preview_url"]),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    link_markdown = build_overlay_markdown_block(overlay)
+    overlay["link_markdown"] = link_markdown
+    await append_interactive_overlay(course_scope, overlay=overlay)
+
+    return ok_response(
+        KnowledgeDocInteractiveSelectionResponse(
+            overlay_id=overlay_id,
+            anchor_id=body.anchor_id,
+            title=str(asset["title"]),
+            asset_path=str(asset["asset_path"]),
+            preview_url=str(asset["preview_url"]),
+            link_markdown=link_markdown,
+            version_no=version_no,
+        )
+    )
 
 
 @router.post(

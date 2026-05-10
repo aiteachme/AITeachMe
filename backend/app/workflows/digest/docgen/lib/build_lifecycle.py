@@ -79,6 +79,10 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.docgen.lib.interactive_overlays import (
+    apply_interactive_overlays_to_markdown,
+    load_current_interactive_overlays,
+)
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
@@ -1103,6 +1107,22 @@ def get_docgen_result(
             error=str(exc),
         )
         markdown, published_updated_at = "", None
+    else:
+        try:
+            markdown = apply_interactive_overlays_to_markdown(
+                markdown,
+                overlays=load_current_interactive_overlays(
+                    course_scope,
+                    version_no=(manifest.version_no if manifest is not None else 0),
+                ),
+            )
+        except Exception as exc:
+            logger.warning(
+                "docgen_result_interactive_overlays_degraded",
+                course_id=course_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
     draft_markdown = sanitize_public_markdown(
         normalize_mermaid_blocks(
             normalize_markdown_rendering(run_store_sync(cs.read_text, draft_key, default="") or "")

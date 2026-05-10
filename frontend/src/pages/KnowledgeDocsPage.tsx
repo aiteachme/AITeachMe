@@ -24,7 +24,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { getApiErrorMessage, postSseJson } from "../api/client";
+import { getApiErrorMessage, LONG_RUNNING_API_TIMEOUT_MS, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { AI_SCENE_DOCUMENT_SELECTION, useAiInteraction } from "../components/interaction";
 import { useResizablePanel } from "../hooks/useResizablePanel";
@@ -52,6 +52,7 @@ interface TocItem {
   id: string;
   text: string;
   level: number;
+  hasInteractive?: boolean;
 }
 
 interface TocTreeNode {
@@ -100,6 +101,14 @@ interface FloatingToolbar {
   left: number;
   selectionViewportTop: number;
   selectionContentTop: number;
+}
+
+interface FloatingInteractiveComposer {
+  anchorId: string;
+  selectedText: string;
+  top: number;
+  left: number;
+  selectionContext: SelectionContextPayload;
 }
 
 interface HighlightSegment {
@@ -151,6 +160,16 @@ interface TocScrollThumbStyle {
 interface ApiResponse<T> {
   code: number;
   data: T;
+}
+
+interface KnowledgeDocInteractiveSelectionResponse {
+  overlay_id: string;
+  anchor_id: string;
+  title: string;
+  asset_path: string;
+  preview_url: string;
+  link_markdown: string;
+  version_no: number;
 }
 
 interface PaginatedData<T> {
@@ -345,7 +364,8 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
     if (
       a[i].id !== b[i].id ||
       a[i].text !== b[i].text ||
-      a[i].level !== b[i].level
+      a[i].level !== b[i].level ||
+      Boolean(a[i].hasInteractive) !== Boolean(b[i].hasInteractive)
     ) {
       return false;
     }
@@ -383,7 +403,8 @@ function compactTocItems(items: TocItem[]): TocItem[] {
     if (
       previous &&
       previous.text.trim() === item.text.trim() &&
-      item.level === previous.level + 1
+      item.level === previous.level + 1 &&
+      !item.hasInteractive
     ) {
       continue;
     }
@@ -537,6 +558,12 @@ function findDirectSectionHeading(section: HTMLElement): HTMLElement | null {
     }
   }
   return null;
+}
+
+function sectionHasOwnInteractiveEmbed(section: HTMLElement): boolean {
+  return Array.from(section.querySelectorAll<HTMLElement>("[data-doc-interactive-embed]")).some(
+    (embed) => embed.closest<HTMLElement>("[data-heading-section-id]") === section,
+  );
 }
 
 function findNearestVisibleHeadingForTarget(heading: HTMLElement): HTMLElement | null {
@@ -1851,6 +1878,10 @@ export function KnowledgeDocsPage() {
   // Floating selection toolbar state
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
   const [floatingComment, setFloatingComment] = useState<FloatingComment | null>(null);
+  const [floatingInteractive, setFloatingInteractive] = useState<FloatingInteractiveComposer | null>(null);
+  const [interactivePrompt, setInteractivePrompt] = useState("");
+  const [isGeneratingInteractive, setIsGeneratingInteractive] = useState(false);
+  const [interactiveError, setInteractiveError] = useState<string | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
   const [floatingComposerHeight, setFloatingComposerHeight] = useState(236);
   const [viewportWidth, setViewportWidth] = useState(() =>
@@ -2306,13 +2337,15 @@ export function KnowledgeDocsPage() {
       if (!container) return;
       const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
       const nextToc = compactTocItems(Array.from(headingNodes)
-        .map((node) => {
+        .map((node): TocItem | null => {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
           const level = Number(node.tagName.replace("H", ""));
           if (!Number.isInteger(level) || level < 1 || level > 3) return null;
           const text = node.textContent?.trim() || id;
-          return { id, text, level };
+          const section = findHeadingSectionElement(node);
+          const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
+          return { id, text, level, hasInteractive };
         })
         .filter((item): item is TocItem => item !== null));
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
@@ -3108,6 +3141,9 @@ export function KnowledgeDocsPage() {
       clearSelectionHighlight();
       setFloatingToolbar(null);
       setFloatingComment(null);
+      setFloatingInteractive(null);
+      setInteractivePrompt("");
+      setInteractiveError(null);
       setFloatingInput("");
       setActiveCommentThreadId(null);
       setPinnedThreadId(null);
@@ -3580,11 +3616,96 @@ export function KnowledgeDocsPage() {
     clearSelectionHighlight({ keepStoredRange: true });
   }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, courseId]);
 
+  const openInteractiveComposer = useCallback(() => {
+    if (!floatingToolbar || !courseId) return;
+    const toolbar = floatingToolbar;
+    const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
+    const container = scrollRef.current;
+    const composerWidth = 360;
+    const composerLeft = container
+      ? Math.max(
+        container.scrollLeft + 12,
+        Math.min(
+          toolbar.left,
+          container.scrollLeft + container.clientWidth - composerWidth - 12,
+        ),
+      )
+      : toolbar.left;
+    setFloatingInteractive({
+      anchorId: toolbar.anchorId,
+      selectedText: toolbar.selectedText,
+      top: toolbar.top + 48,
+      left: composerLeft,
+      selectionContext,
+    });
+    setInteractivePrompt("");
+    setInteractiveError(null);
+    setFloatingToolbar(null);
+    setFloatingComment(null);
+    clearSelectionHighlight({ keepStoredRange: true });
+  }, [clearSelectionHighlight, courseId, floatingToolbar]);
+
+  const cancelInteractiveComposer = useCallback(() => {
+    setFloatingInteractive(null);
+    setInteractivePrompt("");
+    setInteractiveError(null);
+    clearSelectionHighlight();
+  }, [clearSelectionHighlight]);
+
+  const submitInteractiveComposer = useCallback(async () => {
+    if (!courseId || !floatingInteractive || isGeneratingInteractive) return;
+    setIsGeneratingInteractive(true);
+    setInteractiveError(null);
+    try {
+      await apiClient<ApiResponse<KnowledgeDocInteractiveSelectionResponse>>({
+        url: `/api/v1/courses/${courseId}/knowledge/docs/interactive-selections`,
+        method: "POST",
+        timeout: LONG_RUNNING_API_TIMEOUT_MS,
+        data: {
+          anchor_id: floatingInteractive.anchorId,
+          selected_text: floatingInteractive.selectedText,
+          prompt: interactivePrompt.trim() || undefined,
+          selection_context: floatingInteractive.selectionContext,
+        },
+      });
+      toast({
+        title: "交互演示已生成",
+        description: "新的交互块已添加到当前章节下方。",
+        variant: "success",
+      });
+      setFloatingInteractive(null);
+      setInteractivePrompt("");
+      clearSelectionHighlight();
+      await docMarkdownQuery.refetch();
+    } catch (error) {
+      const message = getApiErrorMessage(error, "生成交互演示失败，请稍后重试。");
+      setInteractiveError(message);
+      toast({
+        title: "生成交互演示失败",
+        description: message,
+        variant: "error",
+      });
+    } finally {
+      setIsGeneratingInteractive(false);
+    }
+  }, [
+    clearSelectionHighlight,
+    courseId,
+    docMarkdownQuery,
+    floatingInteractive,
+    interactivePrompt,
+    isGeneratingInteractive,
+    toast,
+  ]);
+
   // Feishu-style: detect text selection and show a small ask-AI action first.
   const handleTextSelect = useCallback(() => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) {
       setFloatingToolbar(null);
+      if (!isGeneratingInteractive) {
+        setFloatingInteractive(null);
+      }
       selectedRangeRef.current = null;
       selectedRangeThreadIdRef.current = null;
       return;
@@ -3638,7 +3759,7 @@ export function KnowledgeDocsPage() {
 
     const contentTop = rect.top - containerRect.top + container.scrollTop;
     const selectionViewportTop = rect.top + rect.height / 2;
-    const toolbarWidth = 112;
+    const toolbarWidth = 240;
     const contentLeft = (contentAreaRect?.left ?? containerRect.left) - containerRect.left + container.scrollLeft;
     const contentRight = (contentAreaRect?.right ?? containerRect.right) - containerRect.left + container.scrollLeft;
     const minToolbarLeft = Math.max(container.scrollLeft + 12, contentLeft + 8);
@@ -3658,6 +3779,10 @@ export function KnowledgeDocsPage() {
     );
 
     setFloatingComment(null);
+    if (!isGeneratingInteractive) {
+      setFloatingInteractive(null);
+      setInteractiveError(null);
+    }
     setFloatingToolbar({
       anchorId: headingId,
       selectedText,
@@ -3671,6 +3796,7 @@ export function KnowledgeDocsPage() {
   }, [
     activeHeading,
     captureRangeSegments,
+    isGeneratingInteractive,
   ]);
 
   useEffect(() => {
@@ -4760,6 +4886,15 @@ export function KnowledgeDocsPage() {
             </button>
 
             {/* Comment count badge */}
+            {item.hasInteractive && (
+              <span
+                className="mr-1 inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-indigo-100 px-1.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                title="本章节包含交互网页"
+              >
+                <SlidersHorizontal className="h-2.5 w-2.5" />
+                交互
+              </span>
+            )}
             {count > 0 && (
               <span className="shrink-0 w-4 h-4 mr-1 rounded-full bg-indigo-100 text-indigo-600 text-[10px] flex items-center justify-center font-medium">
                 {count}
@@ -5453,19 +5588,86 @@ export function KnowledgeDocsPage() {
               }}
               onMouseUp={(e) => e.stopPropagation()}
             >
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={openCommentComposer}
-                className="group inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/90 bg-white/96 px-2.5 pr-3 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)] dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
-                title="基于选中内容问问 AI"
-                aria-label="基于选中内容问问 AI"
-              >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover:bg-indigo-600">
-                  <Sparkles className="h-3.5 w-3.5" />
-                </span>
-                问问 AI
-              </button>
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/90 bg-white/96 p-1 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)]">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={openCommentComposer}
+                  className="group inline-flex h-8 items-center gap-1.5 rounded-full px-2 pr-2.5 transition hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
+                  title="基于选中内容问问 AI"
+                  aria-label="基于选中内容问问 AI"
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover:bg-indigo-600">
+                    <Sparkles className="h-3 w-3" />
+                  </span>
+                  问问 AI
+                </button>
+                <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={openInteractiveComposer}
+                  className="group inline-flex h-8 items-center gap-1.5 rounded-full px-2 pr-2.5 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
+                  title="基于选中内容生成交互演示"
+                  aria-label="基于选中内容生成交互演示"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  生成交互
+                </button>
+              </div>
+            </div>
+          )}
+          {floatingInteractive && (
+            <div
+              ref={floatingRef}
+              className="absolute z-50 w-[min(360px,calc(100vw-32px))] rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_24px_64px_-28px_rgba(15,23,42,0.9)] dark:border-slate-700 dark:bg-slate-950"
+              style={{
+                top: floatingInteractive.top,
+                left: floatingInteractive.left,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">生成交互演示</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    {floatingInteractive.selectedText}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelInteractiveComposer}
+                  disabled={isGeneratingInteractive}
+                  className="shrink-0 rounded-full px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                >
+                  取消
+                </button>
+              </div>
+              <textarea
+                value={interactivePrompt}
+                onChange={(event) => setInteractivePrompt(event.target.value)}
+                disabled={isGeneratingInteractive}
+                rows={3}
+                maxLength={1000}
+                placeholder="可选：输入你想要的交互形式，例如用滑块演示变化、用步骤展示推导、用图形对比概念。"
+                className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-emerald-500/50 dark:focus:bg-slate-950 dark:focus:ring-emerald-500/10"
+              />
+              {interactiveError && (
+                <p className="mt-2 text-xs leading-5 text-red-600 dark:text-red-300">{interactiveError}</p>
+              )}
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">会添加到当前章节下方</span>
+                <button
+                  type="button"
+                  onClick={submitInteractiveComposer}
+                  disabled={isGeneratingInteractive}
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-slate-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-wait disabled:opacity-70 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-emerald-200"
+                >
+                  {isGeneratingInteractive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SlidersHorizontal className="h-3.5 w-3.5" />}
+                  {isGeneratingInteractive ? "生成中..." : "生成"}
+                </button>
+              </div>
             </div>
           )}
         </div>

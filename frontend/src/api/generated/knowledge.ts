@@ -34,6 +34,7 @@ import type {
   ApiResponseDocGenGetResponse,
   ApiResponseFullGraphResponse,
   ApiResponseKnowledgeBuildRuntimeResponse,
+  ApiResponseKnowledgeDocInteractiveSelectionResponse,
   ApiResponseKnowledgeGraphBuildData,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseKnowledgePathResponse,
@@ -50,6 +51,7 @@ import type {
   DocGenBuildRequest,
   ErrorResponse,
   HTTPValidationError,
+  KnowledgeDocInteractiveSelectionRequest,
   KnowledgeOverviewRequest,
   KnowledgeRelationExplanationRequest,
   KnowledgeSubgraphRequest,
@@ -1466,6 +1468,116 @@ export const useKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = <TError = E
         TContext
       > => {
       return useMutation(getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary Generate an interactive HTML block from a knowledge-doc text selection
+ */
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse200 = {
+  data: ApiResponseKnowledgeDocInteractiveSelectionResponse
+  status: 200
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponseSuccess = (knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponseError = (knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse400 | knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse404 | knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse409 | knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse422 | knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse = (knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponseSuccess | knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponseError)
+
+export const getKnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/docs/interactive-selections`
+}
+
+export const knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost = async (courseId: string,
+    knowledgeDocInteractiveSelectionRequest: KnowledgeDocInteractiveSelectionRequest, options?: RequestInit): Promise<knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse> => {
+
+  return orvalApiClient<knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse>(getKnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostUrl(courseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      knowledgeDocInteractiveSelectionRequest,)
+  }
+);}
+
+
+
+
+export const getKnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>, TError,{courseId: string;data: KnowledgeDocInteractiveSelectionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>, TError,{courseId: string;data: KnowledgeDocInteractiveSelectionRequest}, TContext> => {
+
+const mutationKey = ['knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>, {courseId: string;data: KnowledgeDocInteractiveSelectionRequest}> = (props) => {
+          const {courseId,data} = props ?? {};
+
+          return  knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost(courseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>>
+    export type KnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostMutationBody = KnowledgeDocInteractiveSelectionRequest
+    export type KnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostMutationError = ErrorResponse
+
+    /**
+ * @summary Generate an interactive HTML block from a knowledge-doc text selection
+ */
+export const useKnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>, TError,{courseId: string;data: KnowledgeDocInteractiveSelectionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPost>>,
+        TError,
+        {courseId: string;data: KnowledgeDocInteractiveSelectionRequest},
+        TContext
+      > => {
+      return useMutation(getKnowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostMutationOptions(options), queryClient);
     }
     /**
  * @summary Fetch aggregated knowledge overview

@@ -2804,6 +2804,99 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/knowledge/docs/interactive-selections": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Generate an interactive HTML block from a knowledge-doc text selection",
+        "operationId": "knowledge_docs_interactive_selection_api_v1_courses__course_id__knowledge_docs_interactive_selections_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeDocInteractiveSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDocInteractiveSelectionResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/knowledge/overview": {
       "post": {
         "tags": [
@@ -7531,6 +7624,40 @@
         },
         "type": "object",
         "title": "ApiResponse[KnowledgeBuildRuntimeResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeDocInteractiveSelectionResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocInteractiveSelectionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeDocInteractiveSelectionResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -13700,6 +13827,191 @@
         ],
         "title": "KnowledgeBuildStatusResponse",
         "description": "Minimal runtime metadata exposed to clients for docs polling."
+      },
+      "KnowledgeDocInteractiveSelectionRequest": {
+        "properties": {
+          "anchor_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Anchor Id"
+          },
+          "selected_text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Selected Text"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "selection_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocSelectionContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "anchor_id",
+          "selected_text"
+        ],
+        "title": "KnowledgeDocInteractiveSelectionRequest",
+        "description": "Generate an interactive HTML block from a document text selection."
+      },
+      "KnowledgeDocInteractiveSelectionResponse": {
+        "properties": {
+          "overlay_id": {
+            "type": "string",
+            "title": "Overlay Id"
+          },
+          "anchor_id": {
+            "type": "string",
+            "title": "Anchor Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "asset_path": {
+            "type": "string",
+            "title": "Asset Path"
+          },
+          "preview_url": {
+            "type": "string",
+            "title": "Preview Url"
+          },
+          "link_markdown": {
+            "type": "string",
+            "title": "Link Markdown"
+          },
+          "version_no": {
+            "type": "integer",
+            "title": "Version No",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "overlay_id",
+          "anchor_id",
+          "title",
+          "asset_path",
+          "preview_url",
+          "link_markdown"
+        ],
+        "title": "KnowledgeDocInteractiveSelectionResponse",
+        "description": "Generated interactive HTML asset anchored back into a knowledge-doc section."
+      },
+      "KnowledgeDocSelectionContext": {
+        "properties": {
+          "selected_text": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Selected Text",
+            "default": ""
+          },
+          "anchor_id": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Anchor Id",
+            "default": ""
+          },
+          "anchor_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Title"
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Heading Path"
+          },
+          "before_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Text"
+          },
+          "after_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Text"
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title"
+          },
+          "section_excerpt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Excerpt"
+          },
+          "section_truncated": {
+            "type": "boolean",
+            "title": "Section Truncated",
+            "default": false
+          },
+          "local_context_truncated": {
+            "type": "boolean",
+            "title": "Local Context Truncated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeDocSelectionContext",
+        "description": "Context captured around one selected knowledge-doc fragment."
       },
       "KnowledgeGraphBuildData": {
         "properties": {

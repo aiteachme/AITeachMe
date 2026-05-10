@@ -1389,17 +1389,30 @@ def validate_single_file_html(html: str) -> list[str]:
     issues: list[str] = []
     if not lower.startswith("<!doctype html>"):
         issues.append("HTML sidecar 缺少 <!doctype html>。")
+    if len(re.findall(r"<!doctype\s+html", text, re.IGNORECASE)) != 1:
+        issues.append("HTML sidecar 必须只包含一个 <!doctype html>。")
     for tag in ("<html", "<head", "<body"):
         if tag not in lower:
             issues.append(f"HTML sidecar 缺少 {tag}> 结构。")
+    for tag in ("<html", "<head", "<body"):
+        if len(re.findall(tag, lower)) > 1:
+            issues.append(f"HTML sidecar 包含重复的 {tag}> 结构。")
     for tag in ("</html>", "</head>", "</body>"):
         if tag not in lower:
             issues.append(f"HTML sidecar 缺少 {tag}。")
+    if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", text, re.IGNORECASE):
+        issues.append("HTML sidecar 缺少移动端 viewport meta。")
     if re.search(r"<script[^>]+src\s*=", text, re.IGNORECASE):
         issues.append("HTML sidecar 包含外部脚本引用。")
     if re.search(r"<link[^>]+href\s*=\s*['\"]https?://", text, re.IGNORECASE):
         issues.append("HTML sidecar 包含外部样式、字体或资源引用。")
-    if re.search(r"\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage)\s*\(", text):
+    if re.search(r"<img[^>]+src\s*=\s*['\"]https?://", text, re.IGNORECASE):
+        issues.append("HTML sidecar 包含远程图片资源。")
+    if re.search(r"@import\b", text, re.IGNORECASE):
+        issues.append("HTML sidecar 包含外部样式 import。")
+    if re.search(r"url\s*\(\s*['\"]?https?://", text, re.IGNORECASE):
+        issues.append("HTML sidecar 包含远程样式资源。")
+    if re.search(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", text) or re.search(r"\b(localStorage|sessionStorage)\b", text):
         issues.append("HTML sidecar 包含不允许的联网或持久化 API。")
     return list(dict.fromkeys(issues))
 

@@ -558,9 +558,16 @@ def test_presentation_normalizes_safe_highlight_spacing_and_summarizes() -> None
 
 
 def test_single_file_html_validator_reports_sidecar_risks() -> None:
-    html = "<html><head></head><body><script src=\"https://example.com/x.js\"></script></body></html>"
+    html = (
+        "<html><head><style>@import \"https://example.com/x.css\";"
+        ".hero{background-image:url(https://example.com/a.png)}</style></head>"
+        "<body><script src=\"https://example.com/x.js\"></script><script>localStorage.getItem('x')</script></body></html>"
+    )
 
     issues = validate_single_file_html(html)
 
     assert "HTML sidecar 缺少 <!doctype html>。" in issues
     assert "HTML sidecar 包含外部脚本引用。" in issues
+    assert "HTML sidecar 包含外部样式 import。" in issues
+    assert "HTML sidecar 包含远程样式资源。" in issues
+    assert "HTML sidecar 包含不允许的联网或持久化 API。" in issues
