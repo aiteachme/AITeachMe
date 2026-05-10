@@ -376,9 +376,32 @@ jobs:
           upload_probe="/tmp/aiteachme-upload-body-probe.bin"
           python3 -c 'from pathlib import Path; Path("/tmp/aiteachme-upload-body-probe.bin").write_bytes(b"0" * (2 * 1024 * 1024))'
 
+          readiness_ok=false
           for attempt in {1..12}; do
             root_status="$(curl -sS -o /tmp/frontend-root.out -w "%{http_code}" "${root_url}" || true)"
             health_status="$(curl -sS -o /tmp/frontend-health.out -w "%{http_code}" "${health_url}" || true)"
+
+            echo "Frontend readiness smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}"
+
+            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ]; then
+              readiness_ok=true
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "${readiness_ok}" != "true" ]; then
+            echo "Sealos frontend readiness smoke check did not pass: ${base_url}" >&2
+            echo "Last frontend root response:" >&2
+            tail -c 1000 /tmp/frontend-root.out >&2 || true
+            echo "" >&2
+            echo "Last frontend health response:" >&2
+            tail -c 1000 /tmp/frontend-health.out >&2 || true
+            echo "" >&2
+            exit 1
+          fi
+
+          for attempt in {1..18}; do
             upload_status="$(
               curl -sS \
                 -o /tmp/frontend-upload-body.out \
@@ -390,21 +413,15 @@ jobs:
                 || true
             )"
 
-            echo "Frontend smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}, 2MiB upload body -> ${upload_status}"
+            echo "Frontend upload body smoke attempt ${attempt}/18: 2MiB multipart -> ${upload_status}"
 
-            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ] && [ "${upload_status}" != "000" ] && [ "${upload_status}" != "413" ]; then
+            if [ "${upload_status}" = "422" ]; then
               exit 0
             fi
             sleep 10
           done
 
-          echo "Sealos frontend smoke check did not pass: ${base_url}" >&2
-          echo "Last frontend root response:" >&2
-          tail -c 1000 /tmp/frontend-root.out >&2 || true
-          echo "" >&2
-          echo "Last frontend health response:" >&2
-          tail -c 1000 /tmp/frontend-health.out >&2 || true
-          echo "" >&2
+          echo "Sealos frontend upload body smoke check did not pass: ${upload_url}" >&2
           echo "Last 2MiB upload-body response:" >&2
           tail -c 1000 /tmp/frontend-upload-body.out >&2 || true
           echo "" >&2
