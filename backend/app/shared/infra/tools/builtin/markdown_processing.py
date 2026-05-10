@@ -1392,6 +1392,10 @@ def _html_structure_text(html: str) -> str:
     return _HTML_SCRIPT_STYLE_RE.sub(lambda match: f"<{match.group('tag')}></{match.group('tag')}>", text)
 
 
+def _html_tag_count(html: str, tag: str) -> int:
+    return len(re.findall(rf"<{re.escape(tag)}\b", html, re.IGNORECASE))
+
+
 def validate_single_file_html(html: str) -> list[str]:
     """Check an interactive sidecar HTML document without executing it."""
 
@@ -1402,12 +1406,13 @@ def validate_single_file_html(html: str) -> list[str]:
         issues.append("HTML sidecar 缺少 <!doctype html>。")
     if len(re.findall(r"<!doctype\s+html", structure_lower, re.IGNORECASE)) != 1:
         issues.append("HTML sidecar 必须只包含一个 <!doctype html>。")
-    for tag in ("<html", "<head", "<body"):
-        if tag not in structure_lower:
-            issues.append(f"HTML sidecar 缺少 {tag}> 结构。")
-    for tag in ("<html", "<head", "<body"):
-        if len(re.findall(tag, structure_lower)) > 1:
-            issues.append(f"HTML sidecar 包含重复的 {tag}> 结构。")
+    for tag in ("html", "head", "body"):
+        count = _html_tag_count(structure_lower, tag)
+        tag_label = f"<{tag}"
+        if count == 0:
+            issues.append(f"HTML sidecar 缺少 {tag_label}> 结构。")
+        elif count > 1:
+            issues.append(f"HTML sidecar 包含重复的 {tag_label}> 结构。")
     for tag in ("</html>", "</head>", "</body>"):
         if tag not in structure_lower:
             issues.append(f"HTML sidecar 缺少 {tag}。")

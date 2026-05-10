@@ -591,6 +591,23 @@ def test_single_file_html_validator_ignores_script_and_style_literals() -> None:
     assert validate_single_file_html(html) == []
 
 
+def test_single_file_html_validator_does_not_count_header_as_head() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>demo</title>
+</head>
+<body>
+  <header><h1>函数图像交互演示</h1></header>
+  <main><section>正文</section></main>
+</body>
+</html>"""
+
+    assert validate_single_file_html(html) == []
+
+
 def test_normalize_single_file_html_rebuilds_nested_document_shells() -> None:
     raw = """<!DOCTYPE html>
 <html>
