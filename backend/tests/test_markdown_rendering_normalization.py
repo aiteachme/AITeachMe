@@ -625,3 +625,24 @@ def test_normalize_single_file_html_rebuilds_nested_document_shells() -> None:
     assert cleaned.split("<body>", 1)[0].lower().count("<head") == 1
     assert "<main>正文</main>" in cleaned
     assert 'const sample = "<head><body></body></head>";' in cleaned
+
+
+def test_normalize_single_file_html_keeps_forbidden_apis_rejectable() -> None:
+    raw = """<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body>
+  <button id="load">加载</button>
+  <script>
+    document.getElementById("load").addEventListener("click", () => {
+      fetch("/api/demo").then(() => localStorage.setItem("x", "1"));
+    });
+  </script>
+</body>
+</html>"""
+
+    cleaned = normalize_single_file_html(raw, title="交互演示", allow_scripts=True)
+
+    assert "fetch(" in cleaned
+    assert "localStorage.setItem" in cleaned
+    assert "HTML sidecar 包含不允许的联网或持久化 API。" in validate_single_file_html(cleaned)
