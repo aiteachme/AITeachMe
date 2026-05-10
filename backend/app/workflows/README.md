@@ -490,7 +490,7 @@ planner -> docgen -> kg_doc_sync
   Profile 页只读画像快照链路，统一通过 LangGraph / LangSmith root trace 运行
 - `profile/study_plan/graph.py`
   Profile 主动学习计划链路，生成复习、练习和伴读复盘建议；不替代 `digest/planner`
-- `profile/pipeline/lib/`
+- `profile/common/lib/`
   Profile 的掌握度、复习调度、画像摘要、对话信号与报告建议 helper 落点
 - `interact/chat/use_cases.py`
   Interact 面向 API 的聊天会话、历史记录与 SSE streaming 外壳落点

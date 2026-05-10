@@ -127,7 +127,9 @@ shared.infra -> shared.kernel
 入口：
 
 - `api/profile.py`
-- `workflows/profile/pipeline/`
+- `workflows/profile/update/`
+- `workflows/profile/snapshot/`
+- `workflows/profile/study_plan/`
 
 职责：
 

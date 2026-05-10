@@ -11,7 +11,7 @@ from app.models import ExamMode, ExamPaper, ExamPaperItem, Course, UserKnowledge
 from app.repositories import profile_repo
 from app.schemas.profile import CourseProfileSummary
 from app.utils.time import is_at_or_before, utcnow
-from app.workflows.profile.pipeline.lib.conversation_memory import build_conversation_profile_signals
+from app.workflows.profile.common.lib.conversation_memory import build_conversation_profile_signals
 
 _WEAK_THRESHOLD = 0.8
 _RECENT_EXAM_ITEM_LIMIT = 200

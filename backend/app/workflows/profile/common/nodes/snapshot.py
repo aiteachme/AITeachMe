@@ -11,8 +11,8 @@ from sqlmodel import Session, select
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import profile_repo
 from app.schemas.profile import MasteryStateResponse
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def _knowledge_unit_map(

@@ -1,7 +1,7 @@
-"""State contract for Profile pipeline graphs.
+"""Shared state contract for Profile graph node builders.
 
-This TypedDict is shared by the exam-driven pipeline and the read-only
-snapshot graph. It does not describe HTTP schemas or database models.
+This TypedDict covers the keys shared by update, snapshot, and study-plan
+node adapters. It does not describe HTTP schemas or database models.
 """
 
 from __future__ import annotations

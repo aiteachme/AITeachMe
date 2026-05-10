@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.schemas.profile import CourseProfileSummary, UserProfileSummary
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
-from app.workflows.profile.pipeline.lib.conversation_memory import build_conversation_profile_signals
+from app.workflows.profile.common.lib.conversation_memory import build_conversation_profile_signals
 
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80

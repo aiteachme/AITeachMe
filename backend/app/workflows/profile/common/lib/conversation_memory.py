@@ -1,4 +1,4 @@
-"""Conversation-derived profile signals for the Profile pipeline.
+"""Conversation-derived profile signals for Profile summaries.
 
 This module reads existing chat messages and turns them into lightweight,
 explainable profile hints. It does not persist long-term memory or call an LLM.

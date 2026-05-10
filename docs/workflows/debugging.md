@@ -33,14 +33,18 @@
 - `interact_chat`
 - `examine_question_build`
 - `examine_exam_grade`
-- `profile_pipeline`
+- `profile_update`
+- `profile_snapshot`
+- `profile_study_plan`
 
 其中已经切到 canonical lane 路径的有：
 
 - `interact/chat/graph.py`
 - `examine/question_build/graph.py`
 - `examine/exam_grade/graph.py`
-- `profile/pipeline/graph.py`
+- `profile/update/graph.py`
+- `profile/snapshot/graph.py`
+- `profile/study_plan/graph.py`
 
 ## 3. 运行方式
 
@@ -127,7 +131,9 @@ Examine：
 
 Profile：
 
-- graph: `backend/app/workflows/profile/pipeline/graph.py`
+- graph: `backend/app/workflows/profile/update/graph.py`
+- graph: `backend/app/workflows/profile/snapshot/graph.py`
+- graph: `backend/app/workflows/profile/study_plan/graph.py`
 
 ## 6. 一句话建议
 

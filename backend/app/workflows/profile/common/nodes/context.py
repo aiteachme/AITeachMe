@@ -9,8 +9,8 @@ from __future__ import annotations
 from sqlmodel import Session, select
 
 from app.models import Course, ExamPaper
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def build_resolve_exam_profile_context_node(*, session: Session | None = None):

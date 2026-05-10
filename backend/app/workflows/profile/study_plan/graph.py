@@ -18,7 +18,7 @@ from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.profile.common import ProfileNodeTracer, profile_dev_context, route_after_error
-from app.workflows.profile.pipeline.prompts import PROMPTS
+from app.workflows.profile.common.prompts import PROMPTS
 from app.workflows.profile.study_plan.nodes import (
     build_load_profile_context_node,
     build_study_plan_node,

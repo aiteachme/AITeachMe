@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.profile.pipeline.lib.weakness import WeaknessItem, analyze_weakness
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.lib.weakness import WeaknessItem, analyze_weakness
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def serialize_weaknesses(items: list[WeaknessItem]) -> list[dict[str, object]]:
