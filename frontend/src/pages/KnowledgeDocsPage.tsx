@@ -1,4 +1,5 @@
 import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -109,6 +110,13 @@ interface FloatingInteractiveComposer {
   top: number;
   left: number;
   selectionContext: SelectionContextPayload;
+}
+
+interface PendingInteractiveBlock {
+  id: string;
+  anchorId: string;
+  title: string;
+  selectedText: string;
 }
 
 interface HighlightSegment {
@@ -258,8 +266,6 @@ function formatDocTimestamp(value: string | null | undefined): string | null {
 
 const TOC_DRAWER_BREAKPOINT = 960;
 const COMMENT_DRAWER_BREAKPOINT = 1280;
-const AI_ASSISTANT_DOCKED_BREAKPOINT = 1440;
-const AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT = 1680;
 const THREAD_HISTORY_PAGE_SIZE = 100;
 const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 2;
 const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
@@ -647,6 +653,74 @@ function findHeadingFromCollapseSource(contentRoot: HTMLElement | null, headingI
     return heading;
   }
   return findHeadingById(contentRoot, headingId);
+}
+
+function PendingInteractiveBlockPortal({
+  block,
+  contentRoot,
+}: {
+  block: PendingInteractiveBlock;
+  contentRoot: HTMLElement | null;
+}) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!contentRoot) {
+      setHost(null);
+      return;
+    }
+    const heading = findHeadingById(contentRoot, block.anchorId);
+    const section = heading ? findHeadingSectionElement(heading) : null;
+    const sectionBody = section?.querySelector<HTMLElement>(':scope > [data-heading-section-body="true"]') ?? null;
+    const target = sectionBody ?? section ?? heading?.parentElement ?? contentRoot;
+    const node = document.createElement("div");
+    node.dataset.pendingInteractiveId = block.id;
+    node.dataset.docInteractiveEmbed = "true";
+    target.appendChild(node);
+    setHost(node);
+    return () => {
+      node.remove();
+      setHost(null);
+    };
+  }, [block.anchorId, block.id, contentRoot]);
+
+  if (!host) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="my-5 overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-sm dark:border-emerald-500/25 dark:bg-slate-950">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+            {block.title || "正在生成交互演示"}
+          </span>
+          <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+            正在把划选内容转换成可操作的 HTML 微实验，完成后会在这里加载。
+          </span>
+        </span>
+      </div>
+      <div className="border-t border-emerald-100 bg-slate-50/70 p-3 dark:border-emerald-500/20 dark:bg-slate-900/45">
+        <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-emerald-200 bg-white text-sm text-emerald-700 dark:border-emerald-500/25 dark:bg-slate-950 dark:text-emerald-300">
+          <span className="flex max-w-md flex-col items-center px-5 text-center">
+            <span className="inline-flex items-center">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在生成交互页...
+            </span>
+            {block.selectedText && (
+              <span className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {block.selectedText}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>,
+    host,
+  );
 }
 
 function applyDocHeadingCollapseDomState(contentRoot: HTMLElement | null, headingId: string, collapsed: boolean): boolean {
@@ -1893,6 +1967,7 @@ export function KnowledgeDocsPage() {
   const [floatingToolbar, setFloatingToolbar] = useState<FloatingToolbar | null>(null);
   const [floatingComment, setFloatingComment] = useState<FloatingComment | null>(null);
   const [floatingInteractive, setFloatingInteractive] = useState<FloatingInteractiveComposer | null>(null);
+  const [pendingInteractiveBlocks, setPendingInteractiveBlocks] = useState<PendingInteractiveBlock[]>([]);
   const [interactivePrompt, setInteractivePrompt] = useState("");
   const [isGeneratingInteractive, setIsGeneratingInteractive] = useState(false);
   const [interactiveError, setInteractiveError] = useState<string | null>(null);
@@ -2002,10 +2077,6 @@ export function KnowledgeDocsPage() {
     !isCommentCollapsed &&
     !shouldHideCommentPanelForAssistant;
   const pageWideMode = viewPrefs.widePage;
-  const shouldAutoCollapseTocForAssistant =
-    isAssistantOpen &&
-    viewportWidth >= AI_ASSISTANT_DOCKED_BREAKPOINT &&
-    viewportWidth < AI_ASSISTANT_AUTO_COLLAPSE_TOC_BREAKPOINT;
 
   const updateViewPrefs = useCallback((updater: (prev: KnowledgeDocsViewPrefs) => KnowledgeDocsViewPrefs) => {
     setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
@@ -2428,16 +2499,6 @@ export function KnowledgeDocsPage() {
   }, [activeDrawer, isAssistantOpen]);
 
   useEffect(() => {
-    if (!shouldAutoCollapseTocForAssistant || isCompactToc || !viewPrefs.showToc) {
-      return;
-    }
-    setIsTocCollapsed(true);
-    if (activeDrawer === "toc") {
-      setActiveDrawer(null);
-    }
-  }, [activeDrawer, isCompactToc, shouldAutoCollapseTocForAssistant, viewPrefs.showToc]);
-
-  useEffect(() => {
     if (!isSettingsPanelOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (settingsPanelRef.current?.contains(event.target as Node)) return;
@@ -2729,6 +2790,44 @@ export function KnowledgeDocsPage() {
     container.scrollTo({ top: targetTop, behavior: "smooth" });
     flashHeading(el);
   }, [expandCollapsedDocHeadingSections, flashHeading]);
+
+  const scrollElementIntoDocView = useCallback((element: HTMLElement, behavior: ScrollBehavior = "smooth") => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const elementTop = container.scrollTop + (elementRect.top - containerRect.top);
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScrollTop, elementTop - 88));
+    container.scrollTo({ top: targetTop, behavior });
+  }, []);
+
+  const scrollToPendingInteractiveBlock = useCallback((pendingId: string, anchorId: string) => {
+    const root = contentAreaRef.current;
+    const pending = root?.querySelector<HTMLElement>(
+      `[data-pending-interactive-id="${escapeCssAttributeValue(pendingId)}"]`,
+    );
+    if (pending) {
+      scrollElementIntoDocView(pending);
+      return;
+    }
+    scrollToHeading(anchorId);
+  }, [scrollElementIntoDocView, scrollToHeading]);
+
+  const scrollToInteractiveAsset = useCallback((assetPath: string, anchorId: string) => {
+    const root = contentAreaRef.current;
+    const embed = root?.querySelector<HTMLElement>(
+      `[data-doc-interactive-asset="${escapeCssAttributeValue(assetPath)}"]`,
+    );
+    if (embed) {
+      if (embed instanceof HTMLDetailsElement && !embed.open) {
+        embed.open = true;
+      }
+      scrollElementIntoDocView(embed);
+      return;
+    }
+    scrollToHeading(anchorId);
+  }, [scrollElementIntoDocView, scrollToHeading]);
 
 
   const captureRangeSegments = useCallback((range: Range): HighlightSegment[] => {
@@ -3668,18 +3767,39 @@ export function KnowledgeDocsPage() {
 
   const submitInteractiveComposer = useCallback(async () => {
     if (!courseId || !floatingInteractive || isGeneratingInteractive) return;
+    const composer = floatingInteractive;
+    const prompt = interactivePrompt.trim();
+    const pendingId = `pending-interactive-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const pendingBlock: PendingInteractiveBlock = {
+      id: pendingId,
+      anchorId: composer.anchorId,
+      title: prompt || "正在生成交互演示",
+      selectedText: composer.selectedText,
+    };
     setIsGeneratingInteractive(true);
     setInteractiveError(null);
+    setPendingInteractiveBlocks((prev) => [...prev, pendingBlock]);
+    setFloatingInteractive(null);
+    setInteractivePrompt("");
+    setFloatingToolbar(null);
+    clearSelectionHighlight();
+    if (!isCompactToc && viewPrefs.showToc) {
+      setIsTocCollapsed(false);
+    }
+    window.requestAnimationFrame(() => {
+      scrollToPendingInteractiveBlock(pendingId, composer.anchorId);
+      window.setTimeout(() => scrollToPendingInteractiveBlock(pendingId, composer.anchorId), 80);
+    });
     try {
-      await apiClient<ApiResponse<KnowledgeDocInteractiveSelectionResponse>>({
+      const response = await apiClient<ApiResponse<KnowledgeDocInteractiveSelectionResponse>>({
         url: `/api/v1/courses/${courseId}/knowledge/docs/interactive-selections`,
         method: "POST",
         timeout: LONG_RUNNING_API_TIMEOUT_MS,
         data: {
-          anchor_id: floatingInteractive.anchorId,
-          selected_text: floatingInteractive.selectedText,
-          prompt: interactivePrompt.trim() || undefined,
-          selection_context: floatingInteractive.selectionContext,
+          anchor_id: composer.anchorId,
+          selected_text: composer.selectedText,
+          prompt: prompt || undefined,
+          selection_context: composer.selectionContext,
         },
       });
       toast({
@@ -3687,13 +3807,19 @@ export function KnowledgeDocsPage() {
         description: "新的交互块已添加到当前章节下方。",
         variant: "success",
       });
-      setFloatingInteractive(null);
-      setInteractivePrompt("");
-      clearSelectionHighlight();
       await docMarkdownQuery.refetch();
+      setPendingInteractiveBlocks((prev) => prev.filter((item) => item.id !== pendingId));
+      const created = response.data;
+      window.requestAnimationFrame(() => {
+        scrollToInteractiveAsset(created.asset_path, created.anchor_id);
+        window.setTimeout(() => scrollToInteractiveAsset(created.asset_path, created.anchor_id), 120);
+      });
     } catch (error) {
       const message = getApiErrorMessage(error, "生成交互演示失败，请稍后重试。");
       setInteractiveError(message);
+      setPendingInteractiveBlocks((prev) => prev.filter((item) => item.id !== pendingId));
+      setFloatingInteractive(composer);
+      setInteractivePrompt(prompt);
       toast({
         title: "生成交互演示失败",
         description: message,
@@ -3708,8 +3834,12 @@ export function KnowledgeDocsPage() {
     docMarkdownQuery,
     floatingInteractive,
     interactivePrompt,
+    isCompactToc,
     isGeneratingInteractive,
+    scrollToInteractiveAsset,
+    scrollToPendingInteractiveBlock,
     toast,
+    viewPrefs.showToc,
   ]);
 
   // Feishu-style: detect text selection and show a small ask-AI action first.
@@ -5566,6 +5696,13 @@ export function KnowledgeDocsPage() {
                         headingNumbering={viewPrefs.autoHeadingNumbering}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
+                      {pendingInteractiveBlocks.map((block) => (
+                        <PendingInteractiveBlockPortal
+                          key={block.id}
+                          block={block}
+                          contentRoot={contentAreaRef.current}
+                        />
+                      ))}
                     </>
                   )}
                 </article>

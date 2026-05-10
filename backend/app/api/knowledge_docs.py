@@ -808,6 +808,7 @@ async def knowledge_docs_interactive_selection(
         "heading_path": heading_path,
         "selected_text": body.selected_text,
         "user_prompt": body.prompt or "",
+        "client_reference_id": body.client_reference_id or "",
         "title": str(asset["title"]),
         "asset_path": str(asset["asset_path"]),
         "preview_url": str(asset["preview_url"]),

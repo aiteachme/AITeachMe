@@ -69,19 +69,18 @@ export function KnowledgeInteractivePage() {
   }, [assetUrl]);
 
   return (
-    <div className="min-h-dvh bg-slate-950 text-slate-100">
-      <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3 py-4 sm:px-6 sm:py-6">
-        <header className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4 sm:px-5">
+    <div className="min-h-dvh bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div className="mx-auto flex min-h-dvh w-full max-w-[1680px] flex-col px-3 py-3 sm:px-5 sm:py-5">
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Interactive Sidecar</p>
-            <h1 className="mt-1 truncate text-lg font-semibold text-white">{title}</h1>
-            <p className="mt-1 text-sm text-slate-400">本页使用沙箱 iframe 预览交互资产，避免直接把原始 HTML 当同源页面打开。</p>
+            <p className="text-xs font-medium text-indigo-600 dark:text-indigo-300">交互演示</p>
+            <h1 className="mt-1 truncate text-lg font-semibold text-slate-950 dark:text-slate-50">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200"
             >
               <RefreshCw className="h-4 w-4" />
               刷新
@@ -89,11 +88,11 @@ export function KnowledgeInteractivePage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden rounded-2xl border border-slate-800 bg-white dark:bg-slate-950">
+        <main className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
           {loading ? (
-            <div className="flex h-[78vh] items-center justify-center text-sm text-slate-500">正在加载交互页…</div>
+            <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">正在加载交互页…</div>
           ) : error ? (
-            <div className="flex h-[78vh] flex-col items-center justify-center gap-3 px-6 text-center">
+            <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] flex-col items-center justify-center gap-3 px-6 text-center">
               <p className="text-base font-medium text-slate-900 dark:text-slate-100">交互页加载失败</p>
               <p className="text-sm text-slate-500">{error}</p>
             </div>
@@ -102,7 +101,7 @@ export function KnowledgeInteractivePage() {
               title={title}
               srcDoc={patchedHtml}
               sandbox="allow-scripts"
-              className="h-[78vh] w-full border-0 bg-white"
+              className="h-[calc(100dvh-7.5rem)] min-h-[520px] w-full border-0 bg-white"
             />
           )}
         </main>

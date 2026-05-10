@@ -13854,6 +13854,18 @@
             ],
             "title": "Prompt"
           },
+          "client_reference_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference Id"
+          },
           "selection_context": {
             "anyOf": [
               {

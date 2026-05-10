@@ -52,6 +52,7 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
 };
 const CALLOUT_LEADING_ICON_RE =
   /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
+const INTERACTIVE_MARKER_RE = /<!--\s*ATM_INTERACTIVE_(?:OVERLAY|PLAN):[\s\S]*?-->\s*/g;
 
 type MarkdownAstNode = {
   type?: string;
@@ -1397,7 +1398,13 @@ export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
       protectTableInlineMathPipesForRender(
-        repairMathDelimitersForRender(preprocessLaTeX(normalizeHighlightSyntaxForRender(preprocessCalloutSyntax(content)))),
+        repairMathDelimitersForRender(
+          preprocessLaTeX(
+            normalizeHighlightSyntaxForRender(
+              preprocessCalloutSyntax(content.replace(INTERACTIVE_MARKER_RE, "")),
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -1948,31 +1955,91 @@ function InteractiveHtmlEmbed({
   label: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [generatedPreview, setGeneratedPreview] = useState<InteractiveHtmlPreview | null>(null);
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("正在加载交互页...");
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const activePreview = generatedPreview ?? preview;
+
+  useEffect(() => {
+    setGeneratedPreview(null);
+    setHtml("");
+    setError(null);
+    setLoading(false);
+  }, [preview.previewUrl]);
 
   useEffect(() => {
     if (!expanded || html) return;
     const controller = new AbortController();
     setLoading(true);
+    setLoadingLabel(preview.mode === "auto" && !generatedPreview ? "正在生成交互页..." : "正在加载交互页...");
     setError(null);
 
-    runTrackedApiFetch(
-      preview.assetUrl,
-      {
-        method: "GET",
-        signal: controller.signal,
-      },
-      async (response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+    const loadInteractiveHtml = async () => {
+      let resolvedPreview = generatedPreview ?? preview;
+      if (preview.mode === "auto" && !generatedPreview) {
+        const generated = await runTrackedApiFetch(
+          `/api/v1/courses/${encodeURIComponent(preview.courseId)}/knowledge/docs/interactive-selections`,
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              anchor_id: preview.anchorId,
+              selected_text: preview.selectedText || preview.title,
+              prompt: preview.prompt || undefined,
+              client_reference_id: preview.planId,
+              selection_context: {
+                selected_text: preview.selectedText || preview.title,
+                anchor_id: preview.anchorId,
+                anchor_title: preview.title,
+                heading_path: [preview.title],
+                section_title: preview.title,
+                section_excerpt: preview.selectedText || preview.title,
+              },
+            }),
+          },
+          async (response) => {
+            const payload = await response.json().catch(() => null) as {
+              data?: { preview_url?: string };
+              detail?: string;
+              message?: string;
+            } | null;
+            if (!response.ok) {
+              throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
+            }
+            return payload?.data?.preview_url || "";
+          },
+          "interactive_autoload_disconnect",
+        );
+        const parsed = parseInteractivePreviewHref(generated, { fallbackCourseId: preview.courseId });
+        if (!parsed || parsed.mode !== "asset") {
+          throw new Error("生成完成但没有返回可预览的交互页。");
         }
-        return response.text();
-      },
-      "interactive_asset_disconnect",
-    )
+        resolvedPreview = parsed;
+        setGeneratedPreview(parsed);
+        setLoadingLabel("正在加载交互页...");
+      }
+
+      return runTrackedApiFetch(
+        resolvedPreview.assetUrl,
+        {
+          method: "GET",
+          signal: controller.signal,
+        },
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.text();
+        },
+        "interactive_asset_disconnect",
+      );
+    };
+
+    loadInteractiveHtml()
       .then((text) => {
         if (controller.signal.aborted) return;
         setHtml(text);
@@ -1987,7 +2054,20 @@ function InteractiveHtmlEmbed({
     return () => {
       controller.abort();
     };
-  }, [expanded, html, preview.assetUrl, retryKey]);
+  }, [
+    expanded,
+    html,
+    preview.anchorId,
+    preview.assetUrl,
+    preview.courseId,
+    preview.mode,
+    preview.planId,
+    preview.previewUrl,
+    preview.prompt,
+    preview.selectedText,
+    preview.title,
+    retryKey,
+  ]);
 
   const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
 
@@ -2011,27 +2091,29 @@ function InteractiveHtmlEmbed({
               </span>
             </span>
             <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-              展开后在文档内加载，支持保留上下文学习。
+              {preview.mode === "auto" && !generatedPreview ? "展开后现场生成并加载，不阻塞正文阅读。" : "展开后在文档内加载，支持保留上下文学习。"}
             </span>
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              window.open(preview.previewUrl, "_blank", "noopener,noreferrer");
-            }}
-            className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-            全屏打开
-          </button>
+          {activePreview.mode === "asset" && (
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                window.open(activePreview.previewUrl, "_blank", "noopener,noreferrer");
+              }}
+              className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              全屏打开
+            </button>
+          )}
           <ChevronRight className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-90" />
         </span>
       </summary>
@@ -2039,7 +2121,7 @@ function InteractiveHtmlEmbed({
         {loading ? (
           <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            正在加载交互页...
+            {loadingLabel}
           </div>
         ) : error ? (
           <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -2070,24 +2152,33 @@ function InteractiveHtmlEmbed({
             展开后加载交互页
           </div>
         )}
-        <a
-          href={preview.previewUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          全屏打开
-        </a>
+        {activePreview.mode === "asset" && (
+          <a
+            href={activePreview.previewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            全屏打开
+          </a>
+        )}
       </div>
     </details>
   );
 }
 
 function containsInteractiveEmbed(children: ReactNode): boolean {
-  return Children.toArray(children).some(
-    (child) => isValidElement(child) && child.type === InteractiveHtmlEmbed,
-  );
+  return Children.toArray(children).some((child) => {
+    if (!isValidElement(child)) {
+      return false;
+    }
+    if (child.type === InteractiveHtmlEmbed) {
+      return true;
+    }
+    const props = child.props as { children?: ReactNode };
+    return containsInteractiveEmbed(props.children);
+  });
 }
 
 function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode[] } | null {
@@ -2308,6 +2399,9 @@ export function MarkdownViewer({
             : parseCallout(children);
           if (!callout) {
             return <blockquote className={styles.blockquote}>{children}</blockquote>;
+          }
+          if (containsInteractiveEmbed(callout.body)) {
+            return <div className="my-4">{callout.body}</div>;
           }
 
           const tone = CALLOUT_STYLES[variant][callout.kind];

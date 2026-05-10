@@ -1,9 +1,14 @@
 export interface InteractiveHtmlPreview {
+  mode: "asset" | "auto";
   previewUrl: string;
   assetUrl: string;
   assetPath: string;
   courseId: string;
   title: string;
+  planId?: string;
+  anchorId?: string;
+  selectedText?: string;
+  prompt?: string;
 }
 
 function encodePathSegments(path: string): string {
@@ -37,19 +42,41 @@ export function parseInteractivePreviewHref(
 
   if (url.origin !== baseUrl) return null;
   const match = url.pathname.match(/^\/courses\/([^/]+)\/knowledge-docs\/interactive\/?$/);
-  if (!match) return null;
+  const autoMatch = url.pathname.match(/^\/courses\/([^/]+)\/knowledge-docs\/interactive-auto\/?$/);
+  if (!match && !autoMatch) return null;
 
-  const assetPath = normalizeInteractiveAssetPath(url.searchParams.get("asset"));
-  if (!assetPath) return null;
-
-  const courseId = (options.fallbackCourseId || decodeURIComponent(match[1] ?? "")).trim();
+  const courseId = (options.fallbackCourseId || decodeURIComponent((match ?? autoMatch)?.[1] ?? "")).trim();
   if (!courseId) return null;
 
   const title = (url.searchParams.get("title") || "交互演示").trim();
   const previewUrl = `${url.pathname}${url.search}`;
+
+  if (autoMatch) {
+    const planId = String(url.searchParams.get("plan") || "").trim();
+    const anchorId = String(url.searchParams.get("anchor") || "").trim();
+    const selectedText = String(url.searchParams.get("selected") || title).trim();
+    if (!planId || !anchorId || !selectedText) return null;
+    return {
+      mode: "auto",
+      previewUrl,
+      assetUrl: "",
+      assetPath: `auto/${planId}`,
+      courseId,
+      title,
+      planId,
+      anchorId,
+      selectedText,
+      prompt: String(url.searchParams.get("prompt") || "").trim(),
+    };
+  }
+
+  const assetPath = normalizeInteractiveAssetPath(url.searchParams.get("asset"));
+  if (!assetPath) return null;
+
   const assetUrl = `/api/v1/courses/${encodeURIComponent(courseId)}/files/assets/${encodePathSegments(assetPath)}`;
 
   return {
+    mode: "asset",
     previewUrl,
     assetUrl,
     assetPath,

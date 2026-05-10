@@ -13,7 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 from app.workflows.digest.common.pedagogy import is_usable_resolved_chapter_title
 from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block, extract_asset_request_descriptions, strip_asset_requests
 from app.workflows.digest.docgen.lib.asset_rendering import DocGenAssetRuntime
-from app.workflows.digest.docgen.lib.interactive_html import maybe_generate_interactive_html_asset
+from app.workflows.digest.docgen.lib.interactive_html import plan_interactive_html_assets
 from app.workflows.digest.docgen.lib.models import (
     AssetManifest,
     ChapterDraft,
@@ -250,13 +250,27 @@ def _append_practice_section(markdown: str, questions: list[dict], *, digest_mod
     return markdown.rstrip() + "\n\n" + section + "\n"
 
 
-def _append_interactive_block(markdown: str, asset: dict[str, object] | None) -> str:
-    if not asset:
+def _append_interactive_blocks(markdown: str, assets: list[dict[str, object]]) -> str:
+    if not assets:
         return markdown
-    link_markdown = str(asset.get("link_markdown") or "").strip()
-    if not link_markdown:
-        return markdown
-    return markdown.rstrip() + "\n\n" + link_markdown + "\n"
+    updated = markdown
+    insertions: list[tuple[int, int, str]] = []
+    fallback_at = len(markdown)
+    for order, asset in enumerate(assets):
+        link_markdown = str(asset.get("link_markdown") or "").strip()
+        if not link_markdown:
+            continue
+        try:
+            insert_at = int(asset.get("insert_at") or fallback_at)
+        except (TypeError, ValueError):
+            insert_at = fallback_at
+        insert_at = max(0, min(len(markdown), insert_at))
+        insertions.append((insert_at, order, link_markdown))
+    for insert_at, _order, link_markdown in sorted(insertions, key=lambda item: (item[0], item[1]), reverse=True):
+        prefix = updated[:insert_at].rstrip()
+        suffix = updated[insert_at:].lstrip("\n")
+        updated = f"{prefix}\n\n{link_markdown}\n\n{suffix}".rstrip() + "\n"
+    return updated
 
 
 async def enhance_chapter_draft(
@@ -323,20 +337,18 @@ async def enhance_chapter_draft(
         ],
     )
 
-    interactive_asset: dict[str, object] | None = None
+    interactive_assets: list[dict[str, object]] = []
     if settings.docgen.generate_interactive_html:
         try:
             traced_context.asset_kind = "interactive"
-            interactive_asset = await maybe_generate_interactive_html_asset(
+            interactive_assets = plan_interactive_html_assets(
                 draft=draft,
-                traced_context=traced_context,
-                digest_mode=digest_mode,
-                claim_ledger=claim_ledger,
-                document_backbone=document_backbone,
+                course_id=traced_context.course_id,
+                markdown=markdown,
             )
-            if interactive_asset is not None:
-                markdown = _append_interactive_block(markdown, interactive_asset)
-                assets.append(interactive_asset)
+            if interactive_assets:
+                markdown = _append_interactive_blocks(markdown, interactive_assets)
+                assets.extend(interactive_assets)
         except Exception as exc:
             warnings.append(f"交互页生成失败，已跳过交互增强：{str(exc)[:120]}")
 

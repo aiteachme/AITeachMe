@@ -14,7 +14,9 @@ from app.workflows.digest.docgen.lib.interactive_html import build_interactive_m
 
 _OVERLAYS_FILENAME = "interactive_overlays.json"
 _OVERLAY_MARKER_PREFIX = "ATM_INTERACTIVE_OVERLAY"
+_PLAN_MARKER_PREFIX = "ATM_INTERACTIVE_PLAN"
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+_PLAN_MARKER_RE = re.compile(rf"^\s*<!--\s*{_PLAN_MARKER_PREFIX}:(?P<plan_id>[^>]+?)\s*-->\s*$")
 _SLUG_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
 _LOCK_GUARD = Lock()
 _LOCKS: dict[str, asyncio.Lock] = {}
@@ -123,10 +125,7 @@ def build_overlay_markdown_block(overlay: Mapping[str, Any]) -> str:
     if not preview_url:
         return ""
     link_block = build_interactive_markdown_link(preview_url=preview_url, link_label=title)
-    selected_text = re.sub(r"\s+", " ", str(overlay.get("selected_text") or "").strip())
-    excerpt = selected_text[:80].rstrip()
-    details = f"\n> 划选片段：{excerpt}" if excerpt else ""
-    return f"<!-- {_OVERLAY_MARKER_PREFIX}:{overlay_id} -->\n{link_block}{details}".strip()
+    return f"<!-- {_OVERLAY_MARKER_PREFIX}:{overlay_id} -->\n{link_block}".strip()
 
 
 def _section_end_for_heading(headings: Sequence[dict[str, Any]], index: int, markdown_len: int) -> int:
@@ -138,6 +137,35 @@ def _section_end_for_heading(headings: Sequence[dict[str, Any]], index: int, mar
     return markdown_len
 
 
+def _strip_resolved_plan_blocks(markdown: str, *, overlays: Sequence[Mapping[str, Any]]) -> str:
+    resolved_plan_ids = {
+        str(item.get("client_reference_id") or "").strip()
+        for item in overlays
+        if str(item.get("client_reference_id") or "").strip()
+    }
+    if not resolved_plan_ids:
+        return markdown
+
+    lines = markdown.splitlines()
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        marker = _PLAN_MARKER_RE.match(lines[index])
+        plan_id = marker.group("plan_id").strip() if marker else ""
+        if plan_id and plan_id in resolved_plan_ids:
+            index += 1
+            while index < len(lines) and not lines[index].strip():
+                index += 1
+            if index < len(lines) and "knowledge-docs/interactive-auto" in lines[index]:
+                index += 1
+            while index < len(lines) and not lines[index].strip():
+                index += 1
+            continue
+        kept.append(lines[index])
+        index += 1
+    return "\n".join(kept).rstrip() + "\n"
+
+
 def apply_interactive_overlays_to_markdown(
     markdown: str,
     *,
@@ -145,6 +173,7 @@ def apply_interactive_overlays_to_markdown(
 ) -> str:
     if not markdown.strip() or not overlays:
         return markdown
+    markdown = _strip_resolved_plan_blocks(markdown, overlays=overlays)
     headings = _iter_headings(markdown)
     if not headings:
         blocks = [build_overlay_markdown_block(item) for item in overlays]
