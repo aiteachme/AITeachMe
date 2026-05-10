@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   Gauge,
+  MessageCircle,
   Sparkles,
   Target,
   Trophy,
@@ -17,11 +18,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey,
   getReviewTasksApiV1CoursesCourseIdProfileReviewsGetQueryKey,
+  getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryKey,
   useCompleteReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePost,
   useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet,
   useReviewTasksApiV1CoursesCourseIdProfileReviewsGet,
+  useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet,
 } from "../api/generated/profile";
-import type { MasteryOverviewResponse, ReviewTaskResponse } from "../api/generated/model";
+import type { MasteryOverviewResponse, ReviewTaskResponse, StudyPlanStepResponse } from "../api/generated/model";
 import { getApiErrorMessage } from "../api/client";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
@@ -31,6 +34,7 @@ import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 import { buildCoursePath } from "../lib/courseNavigation";
 import {
   AccuracyRows,
+  LearningPlanPanel,
   MasteryDistribution,
   Panel,
   PreferenceRow,
@@ -40,11 +44,10 @@ import {
   formatDateTime,
   formatPercent,
   formatToken,
-  isReviewDueSoon,
 } from "../components/profile";
 
 const surfaceClass = PROFILE_SURFACE_CLASS;
-const pageShellClass = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-8 sm:px-6 lg:px-8 xl:px-10 lg:pt-10";
+const pageShellClass = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-20 sm:px-6 sm:pt-8 lg:px-8 xl:px-10 lg:pt-10";
 
 export function ProfilePage() {
   const { courseId } = useParams();
@@ -56,6 +59,7 @@ export function ProfilePage() {
 
   const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(courseId ?? "");
   const reviewsQuery = useReviewTasksApiV1CoursesCourseIdProfileReviewsGet(courseId ?? "");
+  const studyPlanQuery = useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet(courseId ?? "");
 
   const mastery = useMemo<MasteryOverviewResponse | null>(
     () => unwrapOrvalResponse<MasteryOverviewResponse>(masteryQuery.data),
@@ -64,6 +68,10 @@ export function ProfilePage() {
   const reviewTasks = useMemo<ReviewTaskResponse[]>(
     () => unwrapOrvalResponse<ReviewTaskResponse[]>(reviewsQuery.data) ?? [],
     [reviewsQuery.data],
+  );
+  const studyPlan = useMemo<StudyPlanStepResponse[]>(
+    () => unwrapOrvalResponse<StudyPlanStepResponse[]>(studyPlanQuery.data) ?? [],
+    [studyPlanQuery.data],
   );
   const reviewTaskById = useMemo(() => new Map(reviewTasks.map((task) => [task.id, task])), [reviewTasks]);
   const pendingReviewTaskIds = useMemo(() => new Set(reviewTasks.map((task) => task.id)), [reviewTasks]);
@@ -94,6 +102,9 @@ export function ProfilePage() {
           }),
           queryClient.invalidateQueries({
             queryKey: getReviewTasksApiV1CoursesCourseIdProfileReviewsGetQueryKey(courseId),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryKey(courseId ?? ""),
           }),
         ]);
         toast({
@@ -126,7 +137,6 @@ export function ProfilePage() {
   const sortedReviewTasks = [...reviewTasks]
     .sort((left, right) => right.priority - left.priority)
     .slice(0, 8);
-  const dueSoonCount = reviewTasks.filter(isReviewDueSoon).length;
   const totalAttempts = states.reduce((sum, state) => sum + state.total_attempts, 0);
   const correctAttempts = states.reduce((sum, state) => sum + state.correct_attempts, 0);
   const attemptAccuracy = totalAttempts > 0 ? correctAttempts / totalAttempts : null;
@@ -134,19 +144,17 @@ export function ProfilePage() {
   const latestState = [...states]
     .filter((state) => state.last_attempt_at)
     .sort((left, right) => new Date(right.last_attempt_at ?? 0).getTime() - new Date(left.last_attempt_at ?? 0).getTime())[0];
-  const profileNotes = [
+  const profileNotes = Array.from(new Set([
     ...(courseProfile?.notes ?? []),
     ...(userProfile?.notes ?? []),
-  ].map(buildNoteText);
+  ].map(buildNoteText)));
+  const conversationNotes = profileNotes
+    .filter((note) => /^(近期对话|对话偏好|资料使用|学习意图)：/.test(note))
+    .slice(0, 3);
   const visibleProfileNotes = profileNotes
-    .filter((note) => !/：0\s*(个|项)/.test(note))
+    .filter((note) => !/：0\s*(个|项)/.test(note) && !conversationNotes.includes(note))
     .slice(0, 4);
   const hasProfileSignals = states.length > 0 || reviewTasks.length > 0 || visibleCompletedReviews.length > 0;
-  const primaryAction = dueSoonCount > 0
-    ? "先处理到期复习"
-    : (mastery?.weak_knowledge_unit_count ?? 0) > 0
-      ? "先补强薄弱知识点"
-      : "做一次综合练习";
   const statItems = [
     {
       label: "掌握度",
@@ -187,38 +195,40 @@ export function ProfilePage() {
   return (
     <div className={pageShellClass}>
       <div className="flex w-full flex-col gap-7">
-        <section className={cn(surfaceClass, "p-5 sm:p-6")}>
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
-                <BarChart3 className="h-3.5 w-3.5" />
-                学习画像
-              </div>
-              <h1 className="mt-4 break-words text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
+        <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
+              <BarChart3 className="h-3.5 w-3.5" />
+              学习画像
+            </div>
+            <div>
+              <h1 className="break-words text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
                 {courseName ?? "当前课程"}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                下一步：{primaryAction} · {formatToken(courseProfile?.recommended_exam_mode, "网页练习")} · 约 {courseProfile?.recommended_question_count ?? 10} 题。
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+                根据测验、复习和近期对话更新学习节奏，只保留当前最值得执行的动作。
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-                className="h-10 px-4"
-              >
-                去练习
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-                className="h-10 px-4"
-              >
-                看知识库
-              </Button>
-            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
+            <Button
+              type="button"
+              size="lg"
+              onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+              className="w-full rounded-[10px] px-6 text-sm font-semibold sm:w-auto"
+            >
+              去练习
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+              className="w-full rounded-[10px] px-6 text-sm font-semibold sm:w-auto"
+            >
+              看知识库
+            </Button>
           </div>
         </section>
 
@@ -244,6 +254,15 @@ export function ProfilePage() {
                 </div>
               ))}
             </section>
+
+            <LearningPlanPanel
+              courseProfile={courseProfile}
+              states={states}
+              reviewTasks={reviewTasks}
+              studyPlan={studyPlan}
+              onStartPractice={() => navigate(buildCoursePath(courseId, "exams"))}
+              onOpenKnowledgeDocs={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+            />
 
             <Panel title="本周学习重点" description="默认只展示最需要处理的知识点和复习任务。">
               <div className="mt-5 grid gap-8 lg:grid-cols-2">
@@ -386,6 +405,11 @@ export function ProfilePage() {
                     label="讲解风格"
                     value={formatToken(userProfile?.explanation_style, "平衡讲解")}
                     icon={<Sparkles className="h-4 w-4" />}
+                  />
+                  <PreferenceRow
+                    label="对话记忆"
+                    value={conversationNotes.length ? conversationNotes.join("；") : "暂无足够对话信号"}
+                    icon={<MessageCircle className="h-4 w-4" />}
                   />
                   {visibleProfileNotes.map((note) => (
                     <p key={note} className="rounded-lg bg-slate-50/80 px-3 py-2 text-sm leading-6 text-slate-600 dark:bg-slate-950/40 dark:text-slate-300">

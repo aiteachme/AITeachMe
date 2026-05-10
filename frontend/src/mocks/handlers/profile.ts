@@ -158,6 +158,33 @@ const mockReviewTasks = [
   },
 ];
 
+const mockStudyPlan = [
+  {
+    key: "review",
+    title: "先稳住遗忘风险",
+    detail: "先处理 2 个高优先级复习任务，避免遗忘继续扩大。",
+    action: "review",
+    priority: 1,
+    source: "review_state",
+  },
+  {
+    key: "practice",
+    title: "再做定向练习",
+    detail: "网页练习 · 约 10 题 · 中等难度 · 单选题、简答题。",
+    action: "practice",
+    priority: 1,
+    source: "course_profile",
+  },
+  {
+    key: "reflect",
+    title: "最后复盘讲解",
+    detail: "复盘错题时同时记录原因和下一次检查点。",
+    action: "interact",
+    priority: 3,
+    source: "user_profile",
+  },
+];
+
 export const profileHandlers = [
   http.post("/api/v1/courses/:course/profile/list", () => {
     return HttpResponse.json({
@@ -179,6 +206,10 @@ export const profileHandlers = [
 
   http.get("/api/v1/courses/:course/profile/mastery", () => {
     return HttpResponse.json({ code: 0, data: mockMasteryOverview });
+  }),
+
+  http.get("/api/v1/courses/:course/profile/study-plan", () => {
+    return HttpResponse.json({ code: 0, data: mockStudyPlan });
   }),
 
   http.get("/api/v1/courses/:course/profile/reviews", () => {

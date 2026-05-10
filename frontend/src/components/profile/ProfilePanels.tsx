@@ -9,7 +9,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import type { MasteryOverviewResponse, MasteryStateResponse, ReviewTaskResponse } from "../../api/generated/model";
+import type {
+  MasteryOverviewResponse,
+  MasteryStateResponse,
+  ReviewTaskResponse,
+  StudyPlanStepResponse,
+} from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import {
@@ -22,7 +27,7 @@ import {
 } from "./profileDisplay";
 
 export const PROFILE_SURFACE_CLASS =
-  "rounded-lg border border-slate-200/80 bg-white/88 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/82";
+  "rounded-lg border border-slate-200/80 bg-white/90 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80";
 
 export function MetricTile({
   label,
@@ -90,7 +95,7 @@ export function NextActionCard({
   onStartPractice: () => void;
 }) {
   const primaryAction = dueCount > 0
-    ? "先处理到期复习"
+    ? "先处理高优先级复习"
     : weakCount > 0
       ? "先补强薄弱知识点"
       : "进入综合练习";
@@ -115,7 +120,7 @@ export function NextActionCard({
             ))}
             {dueCount > 0 ? (
               <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                到期 {dueCount} 项
+                高优先级 {dueCount} 项
               </span>
             ) : null}
           </div>
@@ -126,6 +131,114 @@ export function NextActionCard({
         </div>
       </div>
     </div>
+  );
+}
+
+export type LearningPlanStep = StudyPlanStepResponse;
+
+const PLAN_LABEL_BY_KEY: Record<string, string> = {
+  review: "复习",
+  practice: "训练",
+  reflect: "复盘",
+};
+
+export function LearningPlanPanel({
+  courseProfile,
+  states,
+  reviewTasks,
+  studyPlan,
+  onStartPractice,
+  onOpenKnowledgeDocs,
+}: {
+  courseProfile: MasteryOverviewResponse["course_profile"];
+  states: MasteryStateResponse[];
+  reviewTasks: ReviewTaskResponse[];
+  studyPlan?: LearningPlanStep[];
+  onStartPractice: () => void;
+  onOpenKnowledgeDocs: () => void;
+}) {
+  const dueTasks = reviewTasks.filter(isReviewDueSoon);
+  const weakStates = [...states]
+    .sort((left, right) => left.mastery_score - right.mastery_score || right.review_priority - left.review_priority)
+    .slice(0, 3);
+  const focusNames = weakStates
+    .map((state) => getKnowledgeUnitLabel(state))
+    .slice(0, 2)
+    .join("、");
+  const questionTypes = courseProfile?.recommended_question_types?.slice(0, 2).map((item) => formatToken(item)).join("、");
+  const fallbackPlanItems = [
+    {
+      key: "locate",
+      label: "定位",
+      title: dueTasks.length ? "先处理高优先级复习" : "锁定薄弱知识点",
+      detail: dueTasks.length
+        ? `优先完成 ${Math.min(dueTasks.length, 3)} 个高优先级复习任务，避免遗忘继续扩大。`
+        : focusNames
+          ? `先看 ${focusNames}，确认这几个点是否真的理解。`
+          : "先做一次短练习，让系统拿到可诊断的数据。",
+    },
+    {
+      key: "practice",
+      label: "训练",
+      title: "做一轮专项练习",
+      detail: `${formatToken(courseProfile?.recommended_exam_mode, "网页练习")} · 约 ${courseProfile?.recommended_question_count ?? 10} 题 · ${formatToken(courseProfile?.difficulty_focus, "中等")}难度${questionTypes ? ` · ${questionTypes}` : ""}。`,
+    },
+    {
+      key: "reflect",
+      label: "复盘",
+      title: "带着错题回到知识库",
+      detail: "练完后把错题、卡点或划选内容拿去伴读追问，画像会继续沉淀你的讲解偏好。",
+    },
+  ];
+  const planItems = studyPlan?.length
+    ? studyPlan.map((item) => ({
+      key: item.key,
+      label: PLAN_LABEL_BY_KEY[item.key] ?? "计划",
+      title: item.title,
+      detail: item.detail,
+    }))
+    : fallbackPlanItems;
+
+  return (
+    <Panel
+      title="今日学习计划"
+      description="按复习、练习、伴读排出下一步，保留可直接执行的部分。"
+      action={(
+        <Button type="button" size="sm" onClick={onStartPractice} className="hidden h-8 shrink-0 px-3 text-xs sm:inline-flex">
+          开始练习
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    >
+      <ol className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
+        {planItems.map((item, index) => (
+          <li
+            key={item.key}
+            className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-start"
+          >
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-[11px] font-semibold tabular-nums text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span>{item.label}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold text-slate-950 dark:text-slate-100">{item.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{item.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="mt-4 flex flex-wrap gap-2 sm:hidden">
+        <Button type="button" size="sm" onClick={onStartPractice} className="h-8 px-3 text-xs">
+          开始练习
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onOpenKnowledgeDocs} className="h-8 px-3 text-xs">
+          打开知识库
+        </Button>
+      </div>
+    </Panel>
   );
 }
 

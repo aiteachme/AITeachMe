@@ -1,7 +1,8 @@
-"""State contract for Profile pipeline graphs.
+"""State contract for the exam-driven Profile update lane.
 
-This TypedDict is shared by the exam-driven pipeline and the read-only
-snapshot graph. It does not describe HTTP schemas or database models.
+This state is used after exam grading to update mastery, schedule reviews,
+rank weaknesses, and refresh persisted profile summaries. It does not describe
+Profile page read-only snapshots or study-plan output.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 
-class ProfileWorkflowState(TypedDict, total=False):
+class ProfileUpdateState(TypedDict, total=False):
     course_id: str
     user_id: str
     exam_paper_id: int
@@ -18,8 +19,6 @@ class ProfileWorkflowState(TypedDict, total=False):
     updated_state_ids: list[int]
     review_task_ids: list[int]
     weaknesses: list[dict[str, object]]
-    knowledge_unit_states: list[dict[str, object]]
-    weak_knowledge_unit_count: int
     course_profile: dict[str, object] | None
     user_profile: dict[str, object] | None
     mastery_updated: bool
@@ -32,9 +31,8 @@ class ProfileWorkflowState(TypedDict, total=False):
     analyze_weakness_ms: int
     refresh_course_profile_ms: int
     refresh_user_profile_ms: int
-    validate_snapshot_ms: int
-    load_mastery_overview_ms: int
-    build_course_profile_ms: int
-    build_user_profile_ms: int
     workflow_elapsed_ms: int
     error: str | None
+
+
+__all__ = ["ProfileUpdateState"]
