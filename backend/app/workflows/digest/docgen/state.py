@@ -115,6 +115,7 @@ class DocGenState(TypedDict, total=False):
     repair_ms: int
     merge_review_ms: int
     finalize_ms: int
+    file_summary_llm_calls: Annotated[int, operator.add]
     llm_calls_total: Annotated[int, operator.add]
     llm_calls_skipped: Annotated[int, operator.add]
     timing_summary: dict[str, Any]

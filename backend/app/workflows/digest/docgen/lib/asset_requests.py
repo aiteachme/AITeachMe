@@ -1,4 +1,4 @@
-﻿"""Internal asset request placeholders for DocGen.
+"""Internal asset request placeholders for DocGen.
 
 These blocks are not user-facing Markdown. They are an internal protocol
 inserted by DocGen code after the writer returns, then consumed during the
@@ -13,8 +13,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TypeVar
 
-from app.shared.infra.llm_support import get_llm_concurrency_limit
-from app.shared.infra.runtime import gather_with_concurrency
+from app.shared.infra.llm_support import run_llm_tasks
 
 ASSET_REQUEST_LANGUAGE = "atm-docgen-internal-asset-request-v1"
 ASSET_REQUEST_BEGIN = "ATM_DOCGEN_ASSET_REQUEST_V1_BEGIN::7A9F2E19E30B4B9DA0D2A9B1F6C8E7D3"
@@ -200,7 +199,7 @@ async def replace_asset_requests_with_results(
     parts.append(text[last_index:])
 
     rendered_results = (
-        await gather_with_concurrency(render_requests, renderer, limit=get_llm_concurrency_limit())
+        await run_llm_tasks(render_requests, renderer)
         if render_requests
         else []
     )

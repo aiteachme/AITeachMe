@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 import structlog
@@ -18,11 +17,11 @@ from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
     build_litellm_provider_kwargs,
-    get_llm_concurrency_limit,
     get_llm_concurrency_limiter,
     get_llm_runtime_snapshot,
 )
 from app.shared.infra.llm_support.litellm_loader import load_litellm
+from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 
 logger = structlog.get_logger()
@@ -135,41 +134,36 @@ async def aembed_texts(
     all_vectors: list[list[float]] = []
     total_batches = (len(texts) + batch_size - 1) // batch_size
 
-    # Run batches concurrently for throughput; each upstream call still goes through the global LLM limiter.
-    max_concurrent = min(total_batches, get_llm_concurrency_limit())
-    semaphore = asyncio.Semaphore(max_concurrent)
-
     async def _embed_batch(batch_idx: int) -> tuple[int, list[list[float]]]:
         batch_start = batch_idx * batch_size
         batch_end = min(batch_start + batch_size, len(texts))
         batch = texts[batch_start:batch_end]
-        async with semaphore:
-            try:
-                batch_vectors = await _call_embedding(
-                    model=resolved_model,
-                    batch=batch,
-                    api_base=api_base,
-                    api_key=api_key,
-                )
-                return batch_idx, batch_vectors
-            except LLMCallError as exc:
-                logger.error(
-                    "embedding_batch_failed",
-                    batch_idx=batch_idx,
-                    batch_size=len(batch),
-                    model=resolved_model,
-                    error=str(exc),
-                )
-                raise
-            except Exception as exc:
-                logger.error(
-                    "embedding_batch_failed",
-                    batch_idx=batch_idx,
-                    batch_size=len(batch),
-                    model=resolved_model,
-                    error=str(exc),
-                )
-                raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
+        try:
+            batch_vectors = await _call_embedding(
+                model=resolved_model,
+                batch=batch,
+                api_base=api_base,
+                api_key=api_key,
+            )
+            return batch_idx, batch_vectors
+        except LLMCallError as exc:
+            logger.error(
+                "embedding_batch_failed",
+                batch_idx=batch_idx,
+                batch_size=len(batch),
+                model=resolved_model,
+                error=str(exc),
+            )
+            raise
+        except Exception as exc:
+            logger.error(
+                "embedding_batch_failed",
+                batch_idx=batch_idx,
+                batch_size=len(batch),
+                model=resolved_model,
+                error=str(exc),
+            )
+            raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
 
     try:
         if total_batches <= 1:
@@ -177,7 +171,7 @@ async def aembed_texts(
             _, vectors = await _embed_batch(0)
             all_vectors = vectors
         else:
-            results = await asyncio.gather(*(_embed_batch(i) for i in range(total_batches)))
+            results = await run_llm_tasks(range(total_batches), _embed_batch)
             # Re-order by batch index
             results_sorted = sorted(results, key=lambda r: r[0])
             for _, vectors in results_sorted:

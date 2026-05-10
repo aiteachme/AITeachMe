@@ -329,6 +329,7 @@ def build_docgen_lane_summary(
         "research_avg_ms": round(raw_timing_ms["research_ms"] / chapter_count, 2) if chapter_count else 0.0,
         "draft_avg_ms": round(raw_timing_ms["draft_ms"] / chapter_count, 2) if chapter_count else 0.0,
         "llm_calls_total": int(state.get("llm_calls_total", 0)),
+        "file_summary_llm_calls": int(state.get("file_summary_llm_calls", 0)),
         "llm_calls_skipped": int(state.get("llm_calls_skipped", 0)),
         "draft_available": bool(final_markdown.strip()),
         "staged_chapter_count": len(chapter_metadatas),

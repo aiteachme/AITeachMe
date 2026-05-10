@@ -23,7 +23,7 @@ from app.models.knowledge_taxonomy import (
 )
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.embedding import aembed_texts
-from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.llm_support import run_llm_tasks, get_llm_concurrency_limit
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
@@ -1287,8 +1287,9 @@ async def _collect_section_payloads_async(
         prefetch_hash_lookup.pop(content_hash, None)
     used_prefetch_keys: set[tuple[str, str]] = set()
     prefetch_enabled = prefetched_records is not None
-    semaphore = asyncio.Semaphore(
-        _effective_concurrency_limit(len(extraction_tasks), override=concurrency_limit)
+    extraction_limit = _effective_concurrency_limit(
+        len(extraction_tasks),
+        override=concurrency_limit,
     )
 
     async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
@@ -1298,34 +1299,37 @@ async def _collect_section_payloads_async(
             used_prefetch_keys.add((prefetched.section_key, prefetched.content_hash))
             return _apply_task_context_to_payload(prefetched.payload, task)
 
-        async with semaphore:
-            try:
-                payload = await _extract_chapter_with_retries(
-                    task.task_index,
-                    task.chunk,
-                    course_context=course_context,
-                    chapter_context=task.chapter_context,
-                    source_chapter_index=task.source_chapter_index,
-                    source_kind=task.source_kind,
-                )
-                record = _section_record_for_task(task, payload=payload)
-            except Exception as exc:
-                logger.warning(
-                    "knowledge_docs_sync_section_extraction_failed",
-                    task_index=task.task_index,
-                    chunk_title=task.chunk.title,
-                    header_path=task.chunk.header_path,
-                    source_chapter_index=task.source_chapter_index,
-                    source_kind=task.source_kind,
-                    error_type=type(exc).__name__,
-                )
-                payload = _empty_failed_section_payload(task, exc)
-                record = _section_record_for_task(task, payload=payload, error=str(exc))
-            if callable(on_record):
-                on_record(record)
-            return payload
+        try:
+            payload = await _extract_chapter_with_retries(
+                task.task_index,
+                task.chunk,
+                course_context=course_context,
+                chapter_context=task.chapter_context,
+                source_chapter_index=task.source_chapter_index,
+                source_kind=task.source_kind,
+            )
+            record = _section_record_for_task(task, payload=payload)
+        except Exception as exc:
+            logger.warning(
+                "knowledge_docs_sync_section_extraction_failed",
+                task_index=task.task_index,
+                chunk_title=task.chunk.title,
+                header_path=task.chunk.header_path,
+                source_chapter_index=task.source_chapter_index,
+                source_kind=task.source_kind,
+                error_type=type(exc).__name__,
+            )
+            payload = _empty_failed_section_payload(task, exc)
+            record = _section_record_for_task(task, payload=payload, error=str(exc))
+        if callable(on_record):
+            on_record(record)
+        return payload
 
-    payloads = await asyncio.gather(*[_extract_with_queue(task) for task in extraction_tasks])
+    payloads = await run_llm_tasks(
+        extraction_tasks,
+        _extract_with_queue,
+        limit=extraction_limit,
+    )
     stats = {
         "prefetch_section_count": len(list(prefetched_records or [])),
         "prefetch_reused_section_count": len(used_prefetch_keys),

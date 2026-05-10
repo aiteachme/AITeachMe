@@ -339,6 +339,7 @@ class FileMaterialSummary(DocGenBaseModel):
     source_quality: float = 0.5
     summary_mode: str = "fallback"
     fallback_used: bool = False
+    llm_call_count: int = 0
 
     @field_validator("filename", "summary", "summary_mode", mode="before")
     @classmethod
@@ -378,6 +379,14 @@ class FileMaterialSummary(DocGenBaseModel):
     @classmethod
     def _source_quality(cls, value: Any) -> float:
         return clean_unit_float(value, default=0.5)
+
+    @field_validator("llm_call_count", mode="before")
+    @classmethod
+    def _llm_call_count(cls, value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
 
 
 class FileMaterialSummaryBatch(DocGenBaseModel):

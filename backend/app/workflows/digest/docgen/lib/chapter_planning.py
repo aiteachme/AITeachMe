@@ -28,6 +28,8 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.lib.textbook_style import build_textbook_heading, choose_heading_focus
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
+_MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")
+
 
 def _priority_files_for_chapter(
     *,
@@ -79,6 +81,20 @@ def _briefs_by_index(
     briefs: Sequence[ChapterExecutionBrief],
 ) -> dict[int, ChapterExecutionBrief]:
     return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
+
+
+def _suggest_visual_placeholder_requests(
+    *,
+    title: str,
+    required_elements: Sequence[str],
+    concept_targets: Sequence[str],
+) -> list[dict[str, str]]:
+    """Suggest chapter-level asset placeholders before writer generation."""
+
+    visual_terms = " ".join([title, *required_elements, *concept_targets])
+    if not any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS):
+        return []
+    return [{"kind": "mermaid", "description": f"{title} 的结构关系图"}]
 
 
 def _fallback_role_targets(
@@ -317,10 +333,11 @@ def assemble_chapter_generation_plan(
             priority_file_ids = seed.priority_file_ids
         if seed.source_slices:
             source_slices = list(seed.source_slices)
-        placeholder_requests: list[dict[str, str]] = []
-        visual_terms = " ".join([locked.enhanced_title, *seed.required_elements, *brief.concept_targets])
-        if any(marker in visual_terms for marker in ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")):
-            placeholder_requests.append({"kind": "mermaid", "description": f"{locked.enhanced_title} 的结构关系图"})
+        placeholder_requests = _suggest_visual_placeholder_requests(
+            title=locked.enhanced_title or confirmed_title,
+            required_elements=seed.required_elements,
+            concept_targets=brief.concept_targets,
+        )
         content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
         if not content_role_targets:
             content_role_targets = _fallback_role_targets(

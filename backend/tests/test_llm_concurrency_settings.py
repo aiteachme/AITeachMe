@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
 
-from app.shared.infra.llm_support import get_llm_concurrency_limit, get_llm_concurrency_limiter
+from app.shared.infra.llm_support import (
+    get_llm_scheduler,
+    run_llm_tasks,
+    get_llm_concurrency_limit,
+    get_llm_concurrency_limiter,
+    submit_llm_task,
+)
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.settings import (
     get_settings,
@@ -126,3 +133,192 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_is_process_wide_across_event_loops() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    holder_inside = asyncio.Event()
+    release_holder = asyncio.Event()
+    thread_entered = threading.Event()
+    thread_done = threading.Event()
+
+    async def holder() -> None:
+        async with limiter:
+            holder_inside.set()
+            await release_holder.wait()
+
+    def run_in_thread() -> None:
+        async def attempt() -> None:
+            async with limiter:
+                thread_entered.set()
+
+        asyncio.run(attempt())
+        thread_done.set()
+
+    holder_task = asyncio.create_task(holder())
+    await asyncio.wait_for(holder_inside.wait(), timeout=1)
+
+    thread = threading.Thread(target=run_in_thread, name="llm-limiter-cross-loop-test")
+    thread.start()
+    await asyncio.sleep(0.1)
+    assert not thread_entered.is_set()
+
+    release_holder.set()
+    await holder_task
+    assert await asyncio.to_thread(thread_done.wait, 1)
+    thread.join(timeout=1)
+    assert thread_entered.is_set()
+
+
+@pytest.mark.anyio
+async def test_run_llm_tasks_uses_shared_fanout_limit() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 2}})
+    active = 0
+    max_active = 0
+    completed: list[tuple[int, int, int]] = []
+
+    async def worker(value: int) -> int:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            await asyncio.sleep(0.01)
+            return value * 2
+        finally:
+            active -= 1
+
+    async def on_result(index: int, item: int, result: int) -> None:
+        completed.append((index, item, result))
+
+    results = await run_llm_tasks(range(6), worker, on_result=on_result)
+
+    assert max_active <= 2
+    assert results == [0, 2, 4, 6, 8, 10]
+    assert sorted(completed) == [
+        (0, 0, 0),
+        (1, 1, 2),
+        (2, 2, 4),
+        (3, 3, 6),
+        (4, 4, 8),
+        (5, 5, 10),
+    ]
+
+
+@pytest.mark.anyio
+async def test_llm_task_scheduler_accepts_dynamic_submissions() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 2}})
+    scheduler = get_llm_scheduler()
+    active = 0
+    max_active = 0
+    started: list[int] = []
+    first_two_started = asyncio.Event()
+    release_jobs = asyncio.Event()
+
+    async def worker(value: int) -> int:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        started.append(value)
+        if len(started) == 2:
+            first_two_started.set()
+        try:
+            await release_jobs.wait()
+            return value
+        finally:
+            active -= 1
+
+    first = scheduler.submit(lambda: worker(1), label="test.first")
+    second = scheduler.submit(lambda: worker(2), label="test.second")
+    third = scheduler.submit(lambda: worker(3), label="test.third")
+
+    await asyncio.wait_for(first_two_started.wait(), timeout=1)
+    assert max_active == 2
+    assert third.snapshot() is not None
+    assert third.snapshot().status == "queued"
+
+    fourth = scheduler.submit(lambda: worker(4), label="test.fourth")
+    assert fourth.update(metadata={"source": "late-submit"}) is True
+    assert fourth.snapshot() is not None
+    assert fourth.snapshot().metadata["source"] == "late-submit"
+
+    release_jobs.set()
+
+    results = await asyncio.gather(
+        first.result(),
+        second.result(),
+        third.result(),
+        fourth.result(),
+    )
+
+    assert sorted(results) == [1, 2, 3, 4]
+    assert max_active <= 2
+    assert all(handle.snapshot().status == "succeeded" for handle in [first, second, third, fourth])
+
+
+@pytest.mark.anyio
+async def test_run_llm_tasks_local_limit_does_not_occupy_global_slots() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 2}})
+    gather_started = asyncio.Event()
+    release_gather = asyncio.Event()
+    late_started = asyncio.Event()
+
+    async def gather_worker(value: int) -> int:
+        gather_started.set()
+        await release_gather.wait()
+        return value
+
+    gather_task = asyncio.create_task(
+        run_llm_tasks(range(3), gather_worker, limit=1)
+    )
+    await asyncio.wait_for(gather_started.wait(), timeout=1)
+
+    late = submit_llm_task(lambda: _return_after_event(late_started, 99))
+    assert await asyncio.wait_for(late.result(), timeout=1) == 99
+
+    release_gather.set()
+    assert await gather_task == [0, 1, 2]
+
+
+@pytest.mark.anyio
+async def test_run_llm_tasks_can_be_nested_without_deadlock() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+
+    async def inner_worker(value: int) -> int:
+        await asyncio.sleep(0)
+        return value * 10
+
+    async def outer_worker(_value: int) -> list[int]:
+        return await run_llm_tasks([1, 2], inner_worker)
+
+    result = await asyncio.wait_for(
+        run_llm_tasks([0], outer_worker),
+        timeout=1,
+    )
+
+    assert result == [[10, 20]]
+
+
+@pytest.mark.anyio
+async def test_submit_llm_task_can_be_awaited_inside_run_llm_tasks() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+
+    async def outer_worker(_value: int) -> int:
+        handle = submit_llm_task(lambda: _return_after_event(asyncio.Event(), 42))
+        try:
+            return await handle.result()
+        finally:
+            handle.forget()
+
+    result = await asyncio.wait_for(
+        run_llm_tasks([0], outer_worker),
+        timeout=1,
+    )
+
+    assert result == [42]
+
+
+async def _return_after_event(event: asyncio.Event, value: int) -> int:
+    event.set()
+    return value

@@ -1,6 +1,6 @@
 # Workflows 说明
 
-最后更新：2026-04-19
+最后更新：2026-05-10
 
 `backend/app/workflows/` 是 AITeachMe 后端当前唯一的业务层。这里承接五大引擎的 workflow 编排，也承接直接面向 API 的业务用例。
 
@@ -271,8 +271,58 @@ from app.workflows.interact import stream_chat_workflow
 - LangSmith 展示名、前端阶段文案、文档可用中文。
 - 条件路由函数如果要展示中文名，用明确 helper 命名，不要散落改 `__name__` / `__qualname__`。
 - 需要并行展示的阶段必须使用 LangGraph `Send` fan-out，不要只在单个节点里 `asyncio.gather`。
+- 工作流内部如果要并行跑多次 LLM 调用，统一使用 `app.shared.infra.llm_support.run_llm_tasks(...)`；需要动态提交后台 LLM 任务时使用 `submit_llm_task(...)`。单次 `acompletion*` / `agenerate_image` 调用不需要再包调度器，底层已有全局 limiter 兜底。
 - Prompt builder 应在 LangSmith 中以 `run_type="prompt"` 记录，LLM 调用本身继续以 `run_type="llm"` 记录。
 - 长链路必须有 timing/token summary，失败路径也要输出摘要。
+
+## LLM 并行规范
+
+`llm.concurrency_limit` 是后端进程内所有模型请求的统一并发预算。workflow 作者不要在业务代码里重新发明 LLM 并发池。
+
+批量 LLM 调用必须使用统一调度入口：
+
+```python
+from app.shared.infra.llm_support import run_llm_tasks
+
+results = await run_llm_tasks(items, lambda item: build_one_item_with_llm(item))
+```
+
+适用场景：
+
+- 多章节并行润色、标题锁定、复核、修补。
+- 多题目生成、多题目评分。
+- 多文件、多切片、多 section 的摘要、路由、抽取。
+- 同一节点里同时跑多个互不依赖的 LLM 子任务。
+
+禁止写法：
+
+- 不要用 `asyncio.gather(...)` 直接并行跑多个 `acompletion*` / `acompletion_with_fallback(...)` / `agenerate_image(...)`。
+- 不要在 workflow 里自建 `asyncio.Semaphore(get_llm_concurrency_limit())` 控制 LLM 并发。
+- 不要把 `DEFAULT_LLM_CONCURRENCY_LIMIT` 当成“切片数上限”或“批次数上限”。切片粒度按资料规模和 prompt 质量决定，并发度由调度器决定。
+- 不要在外层按文件并行、内层又按切片并行且各自拿一整份并发额度。应该把实际 LLM job 展平成一个 `run_llm_tasks(...)` 批次，或让嵌套调用继续走统一调度器。
+
+单次 LLM 调用不需要额外包装：
+
+```python
+result = await acompletion_with_fallback(messages, extra_metadata=metadata)
+```
+
+原因是 `acompletion*`、`acompletion_with_fallback(...)`、`acompletion_structured(...)`、`acompletion_stream(...)`、`agenerate_image(...)` 和 embedding helper 底层都会进入共享 provider limiter。`run_llm_tasks(...)` 负责上层批量任务排队和动态调度，底层 limiter 负责最终模型请求兜底。
+
+如果需要在运行中追加、取消或查询后台 LLM 任务，使用：
+
+```python
+from app.shared.infra.llm_support import submit_llm_task
+
+handle = submit_llm_task(lambda: build_one_item_with_llm(item), label="docgen.repair")
+result = await handle.result()
+```
+
+LangSmith 规范：
+
+- 每个 worker 里的实际 LLM helper 仍要传 `extra_metadata`，例如 `docgen_stage`、`chapter_index`、`file_id`、`section_batch_index`。
+- `run_llm_tasks(...)` 不替代 LLM span；它只负责调度。真正的 prompt / model / token / result 仍由底层 LLM helper 上报。
+- 如果这个并行阶段需要在 LangSmith 图上展示为多个 workflow node，使用 LangGraph `Send` fan-out；如果只是单个节点内部的批量模型工作，用 `run_llm_tasks(...)`。
 
 ## LangSmith 规范
 

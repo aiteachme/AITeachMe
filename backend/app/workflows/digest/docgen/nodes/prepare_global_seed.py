@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
+from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
@@ -106,21 +106,18 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             return result, int((perf_counter() - step_started_at) * 1000)
 
         async def _run_file_summaries():
-            result = await (
-                summarize_files(
-                    shared_inputs,
-                    chapters=chapters,
-                    digest_mode=docgen_context.digest_mode,
-                    extra_metadata=extra,
-                )
-                if shared_inputs is not None
-                else asyncio.sleep(0, result=[])
+            if shared_inputs is None:
+                return []
+            return await summarize_files(
+                shared_inputs,
+                chapters=chapters,
+                digest_mode=docgen_context.digest_mode,
+                extra_metadata=extra,
             )
-            return result
 
-        (intent_core, intent_core_ms), file_summaries = await asyncio.gather(
-            _run_intent_core(),
-            _run_file_summaries(),
+        (intent_core, intent_core_ms), file_summaries = await run_llm_tasks(
+            [_run_intent_core, _run_file_summaries],
+            lambda task: task(),
         )
         if shared_inputs is not None:
             source_affinity, evidence_units = derive_source_affinity_and_evidence(
@@ -130,6 +127,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             )
         else:
             source_affinity, evidence_units = [], []
+        file_summary_llm_calls = sum(int(getattr(item, "llm_call_count", 0) or 0) for item in file_summaries)
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         append_knowledge_build_recent_event(
             state["course_id"],
@@ -160,7 +158,8 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             "high_confidence_evidence_units": [item.model_dump(mode="json") for item in evidence_units],
             "prepare_ms": elapsed_ms,
             "intent_core_ms": intent_core_ms,
-            "llm_calls_total": 1 + len(file_summaries),
+            "file_summary_llm_calls": file_summary_llm_calls,
+            "llm_calls_total": 1 + file_summary_llm_calls,
         }
 
     return prepare_global_seed_node

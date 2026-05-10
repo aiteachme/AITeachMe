@@ -11,7 +11,7 @@ from urllib.parse import unquote
 from pydantic import BaseModel
 import structlog
 
-from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.llm_support import run_llm_tasks
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.image import parse_image_bytes_with_llm_vision
 from app.workflows.ingest.parsing.markdown_pages import MarkdownPageSection, join_markdown_pages, split_markdown_pages
@@ -186,11 +186,8 @@ async def _ocr_asset_paths(
     consecutive_failures = 0
     stop_event = asyncio.Event()
     failure_lock = asyncio.Lock()
-    pending_queue: asyncio.Queue[tuple[int, Path]] = asyncio.Queue()
     results: list[AssetOCRItem | None] = [None] * len(asset_paths)
-
-    for index, asset_path in enumerate(asset_paths):
-        pending_queue.put_nowait((index, asset_path))
+    started_count = 0
 
     async def _record_failure(*, reason: str, asset_name: str, error: str | None = None) -> None:
         nonlocal consecutive_failures
@@ -208,7 +205,7 @@ async def _ocr_asset_paths(
                 "ocr_circuit_breaker_triggered",
                 reason=reason,
                 failed_count=consecutive_failures,
-                remaining_skipped=pending_queue.qsize(),
+                remaining_skipped=max(0, len(asset_paths) - started_count),
                 hint=(
                     "文档 OCR 模型可能不支持图片输入，请检查 settings.models.ocr 配置。"
                     if reason == "vision_model_refused"
@@ -253,18 +250,23 @@ async def _ocr_asset_paths(
             page_number=_extract_asset_page_number(asset_path.name),
         )
 
-    async def _worker() -> None:
-        while not stop_event.is_set():
-            try:
-                index, asset_path = pending_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                return
-            if stop_event.is_set():
-                return
-            await _run_one(index, asset_path)
+    async def _run_indexed(indexed_asset: tuple[int, Path]) -> None:
+        nonlocal started_count
+        if stop_event.is_set():
+            return
+        async with failure_lock:
+            started_count += 1
+        index, asset_path = indexed_asset
+        if stop_event.is_set():
+            return
+        await _run_one(index, asset_path)
 
-    worker_count = max(1, min(int(concurrency or 1), get_llm_concurrency_limit(), len(asset_paths)))
-    await asyncio.gather(*(_worker() for _ in range(worker_count)))
+    worker_count = max(1, min(int(concurrency or 1), len(asset_paths)))
+    await run_llm_tasks(
+        list(enumerate(asset_paths)),
+        _run_indexed,
+        limit=worker_count,
+    )
     return [item for item in results if item is not None]
 
 

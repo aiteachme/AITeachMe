@@ -9,9 +9,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.models import ExamPaperItem
-from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.observability.trace import traceable_with_context
-from app.shared.infra.runtime import gather_with_concurrency
 from app.workflows.examine.exam_grade.lib.model_policy import (
     ExamGradeModelStep,
     exam_grade_completion_kwargs_with_metadata,
@@ -295,10 +294,9 @@ async def grade_exam_items_with_workflow(
         # Unknown question types degrade to subjective handling.
         return await _grade_subjective_item(course_name, item)
 
-    return await gather_with_concurrency(
+    return await run_llm_tasks(
         items,
         _grade_item,
-        limit=get_llm_concurrency_limit(),
     )
 
 

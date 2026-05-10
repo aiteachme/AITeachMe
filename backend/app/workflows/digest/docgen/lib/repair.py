@@ -1,4 +1,4 @@
-﻿"""MVP repair/router for DocGen review actions."""
+"""MVP repair/router for DocGen review actions."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
-from app.shared.infra.runtime import gather_with_concurrency
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import DocGenBaseModel, RepairTraceItem, ReviewAction, ReviewedChapterDraft
@@ -582,10 +581,9 @@ async def repair_or_route_review_actions(
             (chapters_by_index[chapter_index], indexed_actions)
             for chapter_index, indexed_actions in sorted(patch_actions_by_chapter.items())
         ]
-        patch_results = await gather_with_concurrency(
+        patch_results = await run_llm_tasks(
             patch_jobs,
             lambda job: _process_patch_actions_for_chapter(job[0], job[1]),
-            limit=get_llm_concurrency_limit(),
         )
         for patched_chapter, action_results in patch_results:
             chapters_by_index[patched_chapter.chapter_index] = patched_chapter

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.model_policy import (
     PlannerModelStep,
@@ -193,9 +192,12 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
             course_id=state.get("course_id", ""),
         )
         empty_brief = build_empty_planner_brief()
-        brief, plan_intent = await asyncio.gather(
-            _stream_planner_brief(state, empty_brief),
-            _extract_plan_intent(state),
+        brief, plan_intent = await run_llm_tasks(
+            [
+                lambda: _stream_planner_brief(state, empty_brief),
+                lambda: _extract_plan_intent(state),
+            ],
+            lambda task: task(),
         )
         await emit_planner_event(
             state,

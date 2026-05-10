@@ -134,6 +134,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "high_confidence_evidence_units",
             "plan_mismatch_warnings",
             "prepare_ms",
+            "file_summary_llm_calls",
+            "llm_calls_total",
         ],
     },
     NODE_GENERATE_COVER: {

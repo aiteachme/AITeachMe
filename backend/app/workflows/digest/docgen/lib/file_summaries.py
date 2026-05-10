@@ -1,15 +1,16 @@
-﻿"""DocGen-oriented source file summaries."""
+"""DocGen-oriented source file summaries."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from math import ceil
 from typing import Any
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_with_fallback, get_llm_concurrency_limit
-from app.shared.infra.runtime import gather_with_concurrency
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib.models import (
@@ -32,7 +33,39 @@ _FILE_SUMMARY_MAX_EXCERPT_CHARS = 36_000
 _FILE_SUMMARY_HEAD_CHARS = 12_000
 _FILE_SUMMARY_TAIL_CHARS = 8_000
 _FILE_SUMMARY_SECTION_SAMPLE_CHARS = 900
+# Single-call excerpt sampling only; parallel batch fan-out uses run_llm_tasks().
 _FILE_SUMMARY_SECTION_SAMPLE_COUNT = 16
+_FILE_SUMMARY_LONG_BATCH_TARGET_CHARS = 24_000
+_FILE_SUMMARY_LONG_BATCH_EXCERPT_CHARS = 18_000
+_FILE_SUMMARY_MAX_SECTIONS_PER_BATCH = 80
+_FILE_SUMMARY_MAX_MERGED_CHAPTER_SLICES = 48
+
+
+@dataclass(frozen=True)
+class _FileSectionBatch:
+    """One ordered section batch used to parallelize long-file summaries."""
+
+    batch_index: int
+    total_batches: int
+    sections: list[SectionPacket]
+
+
+@dataclass(frozen=True)
+class _FileSummaryJob:
+    """One LLM summary job under the shared DocGen file-summary concurrency gate."""
+
+    packet: SourcePacket
+    sections: list[SectionPacket]
+    batch: _FileSectionBatch | None = None
+
+
+@dataclass(frozen=True)
+class _FileSummaryJobResult:
+    """One completed file-summary job, ready to regroup by source file."""
+
+    file_id: str
+    summary: FileMaterialSummary
+    batch_mode: bool
 
 
 def _sections_for_file(sections: Sequence[SectionPacket], file_id: str) -> list[SectionPacket]:
@@ -88,6 +121,96 @@ def _build_file_summary_excerpt(packet: SourcePacket, sections: Sequence[Section
         return sampled
     omitted = "\n\n...[文件摘要采样已截断，完整切片请以切片目录为准]..."
     return sampled[: max(1, _FILE_SUMMARY_MAX_EXCERPT_CHARS - len(omitted))].rstrip() + omitted
+
+
+def _build_section_batch_excerpt(
+    batch: _FileSectionBatch,
+    *,
+    max_chars: int = _FILE_SUMMARY_LONG_BATCH_EXCERPT_CHARS,
+) -> str:
+    """Render exact section-batch excerpts for long-file routing."""
+
+    sections = list(batch.sections)
+    if not sections:
+        return ""
+    per_section_chars = max(260, min(1400, int(max_chars / max(1, len(sections)))))
+    blocks: list[str] = []
+    used_chars = 0
+    for section in sections:
+        excerpt = _cap_text(section.normalized_content, per_section_chars)
+        if not excerpt:
+            continue
+        block = "\n".join(
+            [
+                f"## 切片 {section.digest_chunk_uid}",
+                f"标题：{section.title or section.header_path}",
+                f"路径：{section.header_path}",
+                f"页码：{section.page_num or 'unknown'}",
+                f"预览：{section.preview}",
+                "",
+                excerpt,
+            ]
+        ).strip()
+        if used_chars + len(block) > max_chars and blocks:
+            blocks.append("...[本批次摘录已按预算截断，完整目录仍可用于 section_ref 路由]...")
+            break
+        blocks.append(block)
+        used_chars += len(block)
+    return "\n\n".join(blocks).strip()
+
+
+def _build_long_file_section_batches(
+    packet: SourcePacket,
+    sections: Sequence[SectionPacket],
+) -> list[_FileSectionBatch]:
+    """Split a long file into bounded ordered batches for parallel LLM routing."""
+
+    file_sections = _sections_for_file(sections, packet.file_id)
+    if not file_sections:
+        return []
+    content_chars = len(str(packet.normalized_content or ""))
+    if content_chars <= _FILE_SUMMARY_MAX_EXCERPT_CHARS and len(file_sections) <= _FILE_SUMMARY_MAX_SECTIONS_PER_BATCH:
+        return []
+
+    total_section_chars = sum(max(1, section.char_count) for section in file_sections)
+    desired_batches = max(
+        2,
+        ceil(max(content_chars, total_section_chars) / _FILE_SUMMARY_LONG_BATCH_TARGET_CHARS),
+        ceil(len(file_sections) / _FILE_SUMMARY_MAX_SECTIONS_PER_BATCH),
+    )
+    desired_batches = min(desired_batches, len(file_sections))
+    target_chars = max(1, ceil(total_section_chars / desired_batches))
+    target_sections = max(1, ceil(len(file_sections) / desired_batches))
+
+    raw_batches: list[list[SectionPacket]] = []
+    current: list[SectionPacket] = []
+    current_chars = 0
+    for section in file_sections:
+        should_flush = bool(
+            current
+            and len(raw_batches) < desired_batches - 1
+            and (
+                current_chars + max(1, section.char_count) > target_chars
+                or len(current) >= target_sections
+            )
+        )
+        if should_flush:
+            raw_batches.append(current)
+            current = []
+            current_chars = 0
+        current.append(section)
+        current_chars += max(1, section.char_count)
+    if current:
+        raw_batches.append(current)
+
+    if len(raw_batches) <= 1:
+        return []
+    total_batches = len(raw_batches)
+    return [
+        _FileSectionBatch(batch_index=index + 1, total_batches=total_batches, sections=batch)
+        for index, batch in enumerate(raw_batches)
+        if batch
+    ]
 
 
 def fallback_file_summary(
@@ -154,7 +277,11 @@ def _normalize_summary_slices(
 ) -> FileMaterialSummary:
     catalog_by_ref = {
         item["section_ref"]: item
-        for item in build_section_catalog_for_file(packet, sections=list(sections))
+        for item in build_section_catalog_for_file(
+            packet,
+            sections=list(sections),
+            max_sections=max(1, len(sections)),
+        )
         if str(item.get("section_ref") or "").strip()
     }
     normalized: list[ChapterSourceSlice] = []
@@ -189,6 +316,101 @@ def _normalize_summary_slices(
             break
     summary.chapter_slices = normalized
     return summary
+
+
+def _merge_chapter_affinity(summaries: Sequence[FileMaterialSummary]) -> dict[int, float]:
+    merged: dict[int, float] = {}
+    for summary in summaries:
+        for chapter_index, score in dict(summary.chapter_affinity or {}).items():
+            try:
+                index = int(chapter_index)
+            except (TypeError, ValueError):
+                continue
+            if index <= 0:
+                continue
+            merged[index] = max(float(merged.get(index, 0.0)), float(score or 0.0))
+    return merged
+
+
+def _merge_chapter_slices(summaries: Sequence[FileMaterialSummary]) -> list[ChapterSourceSlice]:
+    deduped: dict[str, ChapterSourceSlice] = {}
+    for summary in summaries:
+        for source_slice in list(summary.chapter_slices or []):
+            if int(source_slice.chapter_index or 0) <= 0 or not source_slice.section_ref:
+                continue
+            key = f"{source_slice.chapter_index}:{source_slice.file_id}:{source_slice.section_ref}"
+            existing = deduped.get(key)
+            if existing is None or source_slice.relevance > existing.relevance:
+                deduped[key] = source_slice
+    slices_by_chapter: dict[int, list[ChapterSourceSlice]] = {}
+    for source_slice in deduped.values():
+        slices_by_chapter.setdefault(int(source_slice.chapter_index), []).append(source_slice)
+    for chapter_slices in slices_by_chapter.values():
+        chapter_slices.sort(key=lambda item: (-float(item.relevance or 0.0), item.section_ref))
+
+    chapter_indices = sorted(
+        slices_by_chapter,
+        key=lambda index: (-float(slices_by_chapter[index][0].relevance or 0.0), index),
+    )
+    balanced: list[ChapterSourceSlice] = []
+    cursor = 0
+    while len(balanced) < _FILE_SUMMARY_MAX_MERGED_CHAPTER_SLICES:
+        added = False
+        for chapter_index in chapter_indices:
+            chapter_slices = slices_by_chapter[chapter_index]
+            if cursor >= len(chapter_slices):
+                continue
+            balanced.append(chapter_slices[cursor])
+            added = True
+            if len(balanced) >= _FILE_SUMMARY_MAX_MERGED_CHAPTER_SLICES:
+                break
+        if not added:
+            break
+        cursor += 1
+    return balanced
+
+
+def _merge_file_summary_batches(
+    packet: SourcePacket,
+    *,
+    summaries: Sequence[FileMaterialSummary],
+    fallback: FileMaterialSummary,
+) -> FileMaterialSummary:
+    usable = [summary for summary in summaries if summary is not None]
+    if not usable:
+        return fallback
+    summary_text = "；".join(clean_string_list([item.summary for item in usable], limit=8))
+    if len(summary_text) > 700:
+        summary_text = summary_text[:697].rstrip() + "..."
+    merged = FileMaterialSummary(
+        file_id=packet.file_id,
+        filename=packet.filename,
+        summary=summary_text or fallback.summary,
+        concepts=clean_string_list([value for item in usable for value in item.concepts], limit=16),
+        definitions=clean_string_list([value for item in usable for value in item.definitions], limit=16),
+        formulas=clean_string_list([value for item in usable for value in item.formulas], limit=16),
+        examples=clean_string_list([value for item in usable for value in item.examples], limit=16),
+        question_types=clean_string_list([value for item in usable for value in item.question_types], limit=16),
+        high_value_sections=clean_string_list(
+            [
+                *[value for item in usable for value in item.high_value_sections],
+                *fallback.high_value_sections,
+            ],
+            limit=24,
+        ),
+        noise_sections=clean_string_list([value for item in usable for value in item.noise_sections], limit=24),
+        chapter_affinity=_merge_chapter_affinity(usable) or fallback.chapter_affinity,
+        chapter_slices=_merge_chapter_slices(usable),
+        source_quality=max([float(item.source_quality or 0.0) for item in usable] + [fallback.source_quality]),
+        summary_mode=(
+            "rule_section_batches"
+            if all(bool(item.fallback_used) for item in usable)
+            else "llm_section_batches"
+        ),
+        fallback_used=all(bool(item.fallback_used) for item in usable),
+        llm_call_count=sum(max(0, int(item.llm_call_count or 0)) for item in usable),
+    )
+    return merged
 
 
 def _chapter_terms(chapter: Mapping[str, Any]) -> list[str]:
@@ -407,9 +629,10 @@ async def _summarize_one_file(
         if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
     ]
     file_sections = _sections_for_file(sections, packet.file_id)
-    section_catalog = build_section_catalog_for_file(packet, sections=file_sections)
     if not str(packet.normalized_content or "").strip():
         return fallback
+
+    section_catalog = build_section_catalog_for_file(packet, sections=file_sections)
     excerpt = _build_file_summary_excerpt(packet, file_sections)
     try:
         response = await acompletion_with_fallback(
@@ -431,20 +654,122 @@ async def _summarize_one_file(
         )
     except Exception as exc:
         logger.warning("docgen_file_summary_failed", file_id=packet.file_id, error=str(exc))
+        fallback.llm_call_count = 1
         return fallback
     try:
         summary = response if isinstance(response, FileMaterialSummary) else FileMaterialSummary.model_validate(response)
     except Exception:
+        fallback.llm_call_count = 1
         return fallback
     summary.file_id = packet.file_id
     summary.filename = packet.filename
     summary = _normalize_summary_slices(summary, packet=packet, sections=file_sections)
     summary.fallback_used = False
+    summary.llm_call_count = 1
     if not summary.high_value_sections:
         summary.high_value_sections = fallback.high_value_sections
     if not summary.chapter_affinity:
         summary.chapter_affinity = fallback.chapter_affinity
     return summary
+
+
+async def _summarize_one_file_batch(
+    packet: SourcePacket,
+    *,
+    batch: _FileSectionBatch,
+    chapter_titles: Sequence[str],
+    chapters: Sequence[Mapping[str, Any]],
+    digest_mode: str,
+    extra_metadata: Mapping[str, Any],
+) -> FileMaterialSummary:
+    fallback = fallback_file_summary(packet, sections=batch.sections, chapters=chapters)
+    section_catalog = build_section_catalog_for_file(
+        packet,
+        sections=list(batch.sections),
+        max_sections=max(1, len(batch.sections)),
+    )
+    excerpt = _build_section_batch_excerpt(batch)
+    try:
+        response = await acompletion_with_fallback(
+            build_file_summary_messages(
+                filename=f"{packet.filename}（切片批次 {batch.batch_index}/{batch.total_batches}）",
+                digest_mode=digest_mode,
+                chapter_titles=list(chapter_titles),
+                excerpt=excerpt,
+                section_catalog=section_catalog,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.FILE_SUMMARY,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                docgen_stage="summarize_file_section_batch",
+                file_id=packet.file_id,
+                section_batch_index=batch.batch_index,
+                section_batch_total=batch.total_batches,
+                section_count=len(batch.sections),
+            ),
+            response_model=FileMaterialSummary,
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_file_section_batch_summary_failed",
+            file_id=packet.file_id,
+            section_batch_index=batch.batch_index,
+            error=str(exc),
+        )
+        fallback.llm_call_count = 1
+        return fallback
+    try:
+        summary = response if isinstance(response, FileMaterialSummary) else FileMaterialSummary.model_validate(response)
+    except Exception:
+        fallback.llm_call_count = 1
+        return fallback
+    summary.file_id = packet.file_id
+    summary.filename = packet.filename
+    summary = _normalize_summary_slices(summary, packet=packet, sections=batch.sections)
+    summary.fallback_used = False
+    summary.llm_call_count = 1
+    if not summary.high_value_sections:
+        summary.high_value_sections = fallback.high_value_sections
+    if not summary.chapter_affinity:
+        summary.chapter_affinity = fallback.chapter_affinity
+    return summary
+
+
+async def _run_file_summary_job(
+    job: _FileSummaryJob,
+    *,
+    chapter_titles: Sequence[str],
+    chapters: Sequence[Mapping[str, Any]],
+    digest_mode: str,
+    extra_metadata: Mapping[str, Any],
+) -> _FileSummaryJobResult:
+    if job.batch is not None:
+        summary = await _summarize_one_file_batch(
+            job.packet,
+            batch=job.batch,
+            chapter_titles=chapter_titles,
+            chapters=chapters,
+            digest_mode=digest_mode,
+            extra_metadata=extra_metadata,
+        )
+        return _FileSummaryJobResult(
+            file_id=job.packet.file_id,
+            summary=summary,
+            batch_mode=True,
+        )
+    summary = await _summarize_one_file(
+        job.packet,
+        sections=job.sections,
+        chapters=chapters,
+        digest_mode=digest_mode,
+        extra_metadata=extra_metadata,
+    )
+    return _FileSummaryJobResult(
+        file_id=job.packet.file_id,
+        summary=summary,
+        batch_mode=False,
+    )
 
 
 async def summarize_files(
@@ -458,17 +783,65 @@ async def summarize_files(
     if not packets:
         return []
     sections = list(material_context.section_packets or [])
-    return await gather_with_concurrency(
-        packets,
-        lambda packet: _summarize_one_file(
-            packet,
-            sections=sections,
+    chapter_titles = [
+        str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
+        for chapter in chapters
+        if str(chapter.get("title") or chapter.get("resolved_title") or "").strip()
+    ]
+    file_sections_by_id: dict[str, list[SectionPacket]] = {}
+    batched_file_ids: set[str] = set()
+    jobs: list[_FileSummaryJob] = []
+    for packet in packets:
+        file_sections = _sections_for_file(sections, packet.file_id)
+        file_sections_by_id[packet.file_id] = file_sections
+        section_batches = _build_long_file_section_batches(packet, file_sections)
+        if section_batches:
+            batched_file_ids.add(packet.file_id)
+            jobs.extend(
+                _FileSummaryJob(packet=packet, sections=file_sections, batch=batch)
+                for batch in section_batches
+            )
+        else:
+            jobs.append(_FileSummaryJob(packet=packet, sections=file_sections))
+
+    metadata = dict(extra_metadata or {})
+    results = await run_llm_tasks(
+        jobs,
+        lambda job: _run_file_summary_job(
+            job,
+            chapter_titles=chapter_titles,
             chapters=chapters,
             digest_mode=digest_mode,
-            extra_metadata=dict(extra_metadata or {}),
+            extra_metadata=metadata,
         ),
-        limit=get_llm_concurrency_limit(),
     )
+    batch_summaries_by_file: dict[str, list[FileMaterialSummary]] = {}
+    single_summaries_by_file: dict[str, FileMaterialSummary] = {}
+    for result in results:
+        if result.batch_mode:
+            batch_summaries_by_file.setdefault(result.file_id, []).append(result.summary)
+        else:
+            single_summaries_by_file[result.file_id] = result.summary
+
+    summaries: list[FileMaterialSummary] = []
+    for packet in packets:
+        file_sections = file_sections_by_id.get(packet.file_id, [])
+        if packet.file_id in batched_file_ids:
+            fallback = fallback_file_summary(packet, sections=file_sections, chapters=chapters)
+            merged = _merge_file_summary_batches(
+                packet,
+                summaries=batch_summaries_by_file.get(packet.file_id, []),
+                fallback=fallback,
+            )
+            summaries.append(_normalize_summary_slices(merged, packet=packet, sections=file_sections))
+        else:
+            summaries.append(
+                single_summaries_by_file.get(
+                    packet.file_id,
+                    fallback_file_summary(packet, sections=file_sections, chapters=chapters),
+                )
+            )
+    return summaries
 
 
 __all__ = ["derive_source_affinity_and_evidence", "fallback_file_summary", "summarize_files"]

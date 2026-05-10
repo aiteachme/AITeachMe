@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import threading
 import time
-import weakref
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -89,47 +89,68 @@ class CompletionAttempt:
     tracked_model: str
 
 
-@dataclass(slots=True)
-class _LimiterState:
-    """Loop-local limiter state so tests and servers can use distinct loops."""
+@dataclass(frozen=True, slots=True)
+class _LimiterWaiter:
+    """One waiter from any event loop blocked on the process LLM budget."""
 
-    changed: asyncio.Event
-    active: int = 0
+    loop: asyncio.AbstractEventLoop
+    future: asyncio.Future[None]
 
 
 class LLMConcurrencyLimiter:
     """Async context manager enforcing the live global LLM concurrency limit."""
 
     def __init__(self) -> None:
-        self._states: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LimiterState]" = (
-            weakref.WeakKeyDictionary()
-        )
-
-    def _state(self) -> _LimiterState:
-        loop = asyncio.get_running_loop()
-        state = self._states.get(loop)
-        if state is None:
-            state = _LimiterState(changed=asyncio.Event())
-            self._states[loop] = state
-        return state
+        self._lock = threading.Lock()
+        self._active = 0
+        self._waiters: list[_LimiterWaiter] = []
 
     async def __aenter__(self) -> "LLMConcurrencyLimiter":
-        state = self._state()
-        while state.active >= get_llm_concurrency_limit():
+        loop = asyncio.get_running_loop()
+        while True:
+            waiter: _LimiterWaiter | None = None
+            with self._lock:
+                if self._active < get_llm_concurrency_limit():
+                    self._active += 1
+                    return self
+                future: asyncio.Future[None] = loop.create_future()
+                waiter = _LimiterWaiter(loop=loop, future=future)
+                self._waiters.append(waiter)
             try:
-                await asyncio.wait_for(state.changed.wait(), timeout=0.5)
+                await asyncio.wait_for(waiter.future, timeout=0.5)
             except asyncio.TimeoutError:
-                pass
-        state.active += 1
-        return self
+                self._remove_waiter(waiter)
+            except asyncio.CancelledError:
+                self._remove_waiter(waiter)
+                raise
 
-    def _release(self, state: _LimiterState) -> None:
-        state.active = max(0, state.active - 1)
-        state.changed.set()
-        state.changed = asyncio.Event()
+    def _remove_waiter(self, waiter: _LimiterWaiter) -> None:
+        with self._lock:
+            try:
+                self._waiters.remove(waiter)
+            except ValueError:
+                return
+
+    def _release(self) -> None:
+        with self._lock:
+            self._active = max(0, self._active - 1)
+            waiters = self._waiters
+            self._waiters = []
+        for waiter in waiters:
+            if waiter.future.done():
+                continue
+            try:
+                waiter.loop.call_soon_threadsafe(_wake_limiter_waiter, waiter.future)
+            except RuntimeError:
+                continue
 
     async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self._release(self._state())
+        self._release()
+
+
+def _wake_limiter_waiter(future: asyncio.Future[None]) -> None:
+    if not future.done():
+        future.set_result(None)
 
 
 def normalize_model_selector(value: str | None) -> str | None:
