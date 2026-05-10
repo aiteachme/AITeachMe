@@ -82,6 +82,8 @@ from app.workflows.digest.docgen.lib.interactive_html import generate_selection_
 from app.workflows.digest.docgen.lib.interactive_overlays import (
     append_interactive_overlay,
     build_overlay_markdown_block,
+    find_interactive_overlay_by_client_reference,
+    interactive_overlay_reference_guard,
 )
 
 router = APIRouter(tags=["knowledge"])
@@ -91,6 +93,29 @@ logger = structlog.get_logger(__name__)
 def _interactive_generation_origin(client_reference_id: str | None) -> str:
     normalized = str(client_reference_id or "").strip()
     return "planned_auto" if normalized else "selection"
+
+
+def _interactive_selection_response_from_overlay(
+    overlay: dict[str, object],
+    *,
+    fallback_version_no: int,
+) -> KnowledgeDocInteractiveSelectionResponse | None:
+    asset_path = str(overlay.get("asset_path") or "").strip()
+    preview_url = str(overlay.get("preview_url") or "").strip()
+    if not asset_path or not preview_url:
+        return None
+    link_markdown = str(overlay.get("link_markdown") or "").strip()
+    if not link_markdown:
+        link_markdown = build_overlay_markdown_block(overlay)
+    return KnowledgeDocInteractiveSelectionResponse(
+        overlay_id=str(overlay.get("overlay_id") or ""),
+        anchor_id=str(overlay.get("anchor_id") or ""),
+        title=str(overlay.get("title") or "交互演示"),
+        asset_path=asset_path,
+        preview_url=preview_url,
+        link_markdown=link_markdown,
+        version_no=int(overlay.get("version_no") or fallback_version_no or 0),
+    )
 
 
 def _storage_scope_for_course_record(course: Course) -> CourseStorageScope:
@@ -872,68 +897,86 @@ async def knowledge_docs_interactive_selection(
                     )
                 return asset
 
-    handle = submit_llm_task(
-        _generate_interactive_asset,
-        label="docgen.selection_interactive_html",
-        metadata={
-            "course_id": normalized,
-            "anchor_id": body.anchor_id,
-            "client_reference_id": client_reference_id,
-            "interactive_batch_id": interactive_batch_id,
-            "interactive_origin": interactive_origin,
-        },
-    )
-    try:
-        asset = await handle.result()
-    except asyncio.CancelledError:
-        handle.cancel()
-        raise
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.warning(
-            "knowledge_doc_interactive_generation_failed",
-            course_id=normalized,
-            anchor_id=body.anchor_id,
-            error=str(exc)[:240],
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="交互页生成暂时失败，可能是模型服务连接中断。请稍后重试或输入改进要求后重新生成。",
-        ) from exc
-    finally:
-        handle.forget()
-
-    overlay_id = f"interactive-{uuid.uuid4().hex}"
-    overlay = {
-        "overlay_id": overlay_id,
-        "version_no": version_no,
-        "anchor_id": body.anchor_id,
-        "anchor_title": str(anchor_title or ""),
-        "heading_path": heading_path,
-        "selected_text": body.selected_text,
-        "user_prompt": body.prompt or "",
-        "client_reference_id": client_reference_id,
-        "title": str(asset["title"]),
-        "asset_path": str(asset["asset_path"]),
-        "preview_url": str(asset["preview_url"]),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    link_markdown = build_overlay_markdown_block(overlay)
-    overlay["link_markdown"] = link_markdown
-    await append_interactive_overlay(course_scope, overlay=overlay)
-
-    return ok_response(
-        KnowledgeDocInteractiveSelectionResponse(
-            overlay_id=overlay_id,
-            anchor_id=body.anchor_id,
-            title=str(asset["title"]),
-            asset_path=str(asset["asset_path"]),
-            preview_url=str(asset["preview_url"]),
-            link_markdown=link_markdown,
+    async with interactive_overlay_reference_guard(
+        course_scope,
+        version_no=version_no,
+        client_reference_id=client_reference_id,
+    ):
+        existing_overlay = await find_interactive_overlay_by_client_reference(
+            course_scope,
             version_no=version_no,
+            client_reference_id=client_reference_id,
         )
-    )
+        if existing_overlay is not None:
+            existing_response = _interactive_selection_response_from_overlay(
+                existing_overlay,
+                fallback_version_no=version_no,
+            )
+            if existing_response is not None:
+                return ok_response(existing_response)
+
+        handle = submit_llm_task(
+            _generate_interactive_asset,
+            label="docgen.selection_interactive_html",
+            metadata={
+                "course_id": normalized,
+                "anchor_id": body.anchor_id,
+                "client_reference_id": client_reference_id,
+                "interactive_batch_id": interactive_batch_id,
+                "interactive_origin": interactive_origin,
+            },
+        )
+        try:
+            asset = await handle.result()
+        except asyncio.CancelledError:
+            handle.cancel()
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.warning(
+                "knowledge_doc_interactive_generation_failed",
+                course_id=normalized,
+                anchor_id=body.anchor_id,
+                error=str(exc)[:240],
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="交互页生成暂时失败，可能是模型服务连接中断。请稍后重试或输入改进要求后重新生成。",
+            ) from exc
+        finally:
+            handle.forget()
+
+        overlay_id = f"interactive-{uuid.uuid4().hex}"
+        overlay = {
+            "overlay_id": overlay_id,
+            "version_no": version_no,
+            "anchor_id": body.anchor_id,
+            "anchor_title": str(anchor_title or ""),
+            "heading_path": heading_path,
+            "selected_text": body.selected_text,
+            "user_prompt": body.prompt or "",
+            "client_reference_id": client_reference_id,
+            "title": str(asset["title"]),
+            "asset_path": str(asset["asset_path"]),
+            "preview_url": str(asset["preview_url"]),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        link_markdown = build_overlay_markdown_block(overlay)
+        overlay["link_markdown"] = link_markdown
+        await append_interactive_overlay(course_scope, overlay=overlay)
+
+        return ok_response(
+            KnowledgeDocInteractiveSelectionResponse(
+                overlay_id=overlay_id,
+                anchor_id=body.anchor_id,
+                title=str(asset["title"]),
+                asset_path=str(asset["asset_path"]),
+                preview_url=str(asset["preview_url"]),
+                link_markdown=link_markdown,
+                version_no=version_no,
+            )
+        )
 
 
 @router.post(

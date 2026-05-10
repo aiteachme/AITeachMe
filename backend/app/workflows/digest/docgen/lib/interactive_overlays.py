@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
@@ -33,6 +34,24 @@ def _get_overlay_lock(key: str) -> asyncio.Lock:
             lock = asyncio.Lock()
             _LOCKS[key] = lock
         return lock
+
+
+@asynccontextmanager
+async def interactive_overlay_reference_guard(
+    course_scope: CourseStorageScope,
+    *,
+    version_no: int,
+    client_reference_id: str | None,
+) -> AsyncIterator[None]:
+    reference_id = str(client_reference_id or "").strip()
+    if not reference_id:
+        yield
+        return
+
+    key = f"{interactive_overlays_key(course_scope)}:reference:{int(version_no or 0)}:{reference_id}"
+    lock = _get_overlay_lock(key)
+    async with lock:
+        yield
 
 
 def _text_to_id(text: str) -> str:
@@ -82,9 +101,41 @@ def _normalize_items(raw: object) -> list[dict[str, Any]]:
     return normalized
 
 
+def _matches_client_reference(
+    item: Mapping[str, Any],
+    *,
+    version_no: int,
+    client_reference_id: str,
+) -> bool:
+    return (
+        int(item.get("version_no") or 0) == int(version_no or 0)
+        and str(item.get("client_reference_id") or "").strip() == client_reference_id
+    )
+
+
 async def read_interactive_overlays(course_scope: CourseStorageScope) -> list[dict[str, Any]]:
     raw = await get_content_store().read_json_raw(interactive_overlays_key(course_scope))
     return _normalize_items(raw)
+
+
+async def find_interactive_overlay_by_client_reference(
+    course_scope: CourseStorageScope,
+    *,
+    version_no: int,
+    client_reference_id: str | None,
+) -> dict[str, Any] | None:
+    reference_id = str(client_reference_id or "").strip()
+    if not reference_id:
+        return None
+    existing = await read_interactive_overlays(course_scope)
+    for item in reversed(existing):
+        if _matches_client_reference(
+            item,
+            version_no=version_no,
+            client_reference_id=reference_id,
+        ):
+            return dict(item)
+    return None
 
 
 def load_current_interactive_overlays(
@@ -106,6 +157,18 @@ async def append_interactive_overlay(
     lock = _get_overlay_lock(key)
     async with lock:
         existing = await read_interactive_overlays(course_scope)
+        reference_id = str(overlay.get("client_reference_id") or "").strip()
+        version_no = int(overlay.get("version_no") or 0)
+        if reference_id:
+            existing = [
+                item
+                for item in existing
+                if not _matches_client_reference(
+                    item,
+                    version_no=version_no,
+                    client_reference_id=reference_id,
+                )
+            ]
         merged = [*existing, dict(overlay)]
         await get_content_store().write_json_raw(
             key,
@@ -209,6 +272,8 @@ __all__ = [
     "append_interactive_overlay",
     "apply_interactive_overlays_to_markdown",
     "build_overlay_markdown_block",
+    "find_interactive_overlay_by_client_reference",
+    "interactive_overlay_reference_guard",
     "interactive_overlays_key",
     "load_current_interactive_overlays",
     "read_interactive_overlays",
