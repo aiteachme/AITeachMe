@@ -795,6 +795,17 @@ async def knowledge_docs_interactive_selection(
         raise
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning(
+            "knowledge_doc_interactive_generation_failed",
+            course_id=normalized,
+            anchor_id=body.anchor_id,
+            error=str(exc)[:240],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="交互页生成暂时失败，可能是模型服务连接中断。请稍后重试或输入改进要求后重新生成。",
+        ) from exc
     finally:
         handle.forget()
 

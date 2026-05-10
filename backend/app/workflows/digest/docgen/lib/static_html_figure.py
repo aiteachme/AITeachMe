@@ -13,16 +13,14 @@ from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_task
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
 from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
 from app.utils.path_helpers import sanitize_doc_title
+from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
 from app.workflows.digest.docgen.prompts.static_html_figure import build_static_html_figure_messages
 
 logger = structlog.get_logger(__name__)
 
-_FENCE_RE = re.compile(r"^```(?:html)?\s*\n(?P<body>.*)\n```$", re.IGNORECASE | re.DOTALL)
 _ANY_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
-_SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL)
-_EVENT_HANDLER_RE = re.compile(r"\s+on[a-z]+\s*=\s*(['\"]).*?\1", re.IGNORECASE | re.DOTALL)
 
 _FIGURE_STRONG_MARKERS = (
     "函数",
@@ -114,45 +112,8 @@ def _heading_text_to_id(text: str) -> str:
     return slug or "section"
 
 
-def _strip_html_fence(text: str) -> str:
-    cleaned = str(text or "").strip()
-    match = _FENCE_RE.match(cleaned)
-    if match is not None:
-        return match.group("body").strip()
-    return cleaned
-
-
 def _sanitize_static_html(html: str, *, title: str) -> str:
-    cleaned = _strip_html_fence(html).replace("\r\n", "\n").replace("\r", "\n").strip()
-    cleaned = _SCRIPT_RE.sub("", cleaned)
-    cleaned = _EVENT_HANDLER_RE.sub("", cleaned)
-    cleaned = re.sub(r"<link[^>]+href=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<img[^>]+src=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage)\s*\(", "void(", cleaned)
-    if "<!DOCTYPE html>" not in cleaned[:80]:
-        cleaned = "<!DOCTYPE html>\n" + cleaned
-    if "<html" not in cleaned.lower():
-        body = cleaned
-        cleaned = f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title}</title>
-</head>
-<body>
-{body}
-</body>
-</html>"""
-    if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", cleaned, re.IGNORECASE):
-        cleaned = re.sub(
-            r"(<head(?:\s[^>]*)?>)",
-            r'\1\n  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-            cleaned,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-    return cleaned.strip() + "\n"
+    return normalize_single_file_html(html, title=title, allow_scripts=False)
 
 
 def _build_preview_url(*, course_id: str, asset_path: str, title: str) -> str:

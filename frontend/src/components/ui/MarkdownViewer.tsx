@@ -1,4 +1,4 @@
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type FormEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -53,6 +53,12 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
 const CALLOUT_LEADING_ICON_RE =
   /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 const INTERACTIVE_MARKER_RE = /<!--\s*ATM_INTERACTIVE_(?:OVERLAY|PLAN):[\s\S]*?-->\s*/g;
+const INTERACTIVE_LOADING_STEPS = [
+  "正在排队进入统一 LLM 调度器",
+  "正在生成单文件 HTML",
+  "正在校验 HTML 结构与资源边界",
+  "正在加载沙箱预览",
+];
 
 type MarkdownAstNode = {
   type?: string;
@@ -1960,9 +1966,61 @@ function InteractiveHtmlEmbed({
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState(isStaticFigure ? "正在加载图示..." : "正在加载交互页...");
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [isRegenerateFormOpen, setIsRegenerateFormOpen] = useState(false);
+  const [regeneratePrompt, setRegeneratePrompt] = useState("");
+  const regenerateControllerRef = useRef<AbortController | null>(null);
   const activePreview = generatedPreview ?? preview;
+  const canRegenerate = !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
+  const loadingStepLabel = isStaticFigure ? "正在读取静态图示资产" : INTERACTIVE_LOADING_STEPS[loadingStepIndex % INTERACTIVE_LOADING_STEPS.length];
+
+  const requestInteractiveAsset = useCallback(
+    async (options: { signal: AbortSignal; prompt?: string; clientReferenceId?: string }) => {
+      const selectedText = preview.selectedText || preview.title;
+      const generated = await runTrackedApiFetch(
+        `/api/v1/courses/${encodeURIComponent(preview.courseId)}/knowledge/docs/interactive-selections`,
+        {
+          method: "POST",
+          signal: options.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            anchor_id: preview.anchorId,
+            selected_text: selectedText,
+            prompt: options.prompt?.trim() || undefined,
+            client_reference_id: options.clientReferenceId || preview.planId,
+            selection_context: {
+              selected_text: selectedText,
+              anchor_id: preview.anchorId,
+              anchor_title: preview.title,
+              heading_path: [preview.title],
+              section_title: preview.title,
+              section_excerpt: selectedText,
+            },
+          }),
+        },
+        async (response) => {
+          const payload = await response.json().catch(() => null) as {
+            data?: { preview_url?: string };
+            detail?: string;
+            message?: string;
+          } | null;
+          if (!response.ok) {
+            throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
+          }
+          return payload?.data?.preview_url || "";
+        },
+        "interactive_autoload_disconnect",
+      );
+      const parsed = parseInteractivePreviewHref(generated, { fallbackCourseId: preview.courseId });
+      if (!parsed || parsed.mode !== "asset") {
+        throw new Error("生成完成但没有返回可预览的交互页。");
+      }
+      return parsed;
+    },
+    [preview.anchorId, preview.courseId, preview.planId, preview.selectedText, preview.title],
+  );
 
   useEffect(() => {
     setGeneratedPreview(null);
@@ -1970,7 +2028,26 @@ function InteractiveHtmlEmbed({
     setError(null);
     setLoading(false);
     setExpanded(true);
+    setLoadingStepIndex(0);
+    setIsRegenerateFormOpen(false);
   }, [preview.previewUrl]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStepIndex(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setLoadingStepIndex((value) => value + 1);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    return () => {
+      regenerateControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!expanded || html) return;
@@ -1988,44 +2065,11 @@ function InteractiveHtmlEmbed({
     const loadInteractiveHtml = async () => {
       let resolvedPreview = generatedPreview ?? preview;
       if (preview.mode === "auto" && !generatedPreview) {
-        const generated = await runTrackedApiFetch(
-          `/api/v1/courses/${encodeURIComponent(preview.courseId)}/knowledge/docs/interactive-selections`,
-          {
-            method: "POST",
-            signal: controller.signal,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              anchor_id: preview.anchorId,
-              selected_text: preview.selectedText || preview.title,
-              prompt: preview.prompt || undefined,
-              client_reference_id: preview.planId,
-              selection_context: {
-                selected_text: preview.selectedText || preview.title,
-                anchor_id: preview.anchorId,
-                anchor_title: preview.title,
-                heading_path: [preview.title],
-                section_title: preview.title,
-                section_excerpt: preview.selectedText || preview.title,
-              },
-            }),
-          },
-          async (response) => {
-            const payload = await response.json().catch(() => null) as {
-              data?: { preview_url?: string };
-              detail?: string;
-              message?: string;
-            } | null;
-            if (!response.ok) {
-              throw new Error(payload?.detail || payload?.message || `HTTP ${response.status}`);
-            }
-            return payload?.data?.preview_url || "";
-          },
-          "interactive_autoload_disconnect",
-        );
-        const parsed = parseInteractivePreviewHref(generated, { fallbackCourseId: preview.courseId });
-        if (!parsed || parsed.mode !== "asset") {
-          throw new Error("生成完成但没有返回可预览的交互页。");
-        }
+        const parsed = await requestInteractiveAsset({
+          signal: controller.signal,
+          prompt: preview.prompt,
+          clientReferenceId: preview.planId,
+        });
         resolvedPreview = parsed;
         setGeneratedPreview(parsed);
         setLoadingLabel("正在加载交互页...");
@@ -2066,6 +2110,7 @@ function InteractiveHtmlEmbed({
     expanded,
     html,
     isStaticFigure,
+    requestInteractiveAsset,
     preview.anchorId,
     preview.assetUrl,
     preview.courseId,
@@ -2079,6 +2124,64 @@ function InteractiveHtmlEmbed({
   ]);
 
   const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
+
+  const handleRegenerateInteractive = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canRegenerate || loading) return;
+    regenerateControllerRef.current?.abort();
+    const controller = new AbortController();
+    regenerateControllerRef.current = controller;
+    const prompt = regeneratePrompt.trim() || "请换一种更清晰、更贴合当前内容的交互形式重新生成。";
+    const referenceSeed = preview.planId || preview.assetPath || "interactive";
+    const clientReferenceId = `${referenceSeed}:regen:${Date.now().toString(36)}`.slice(0, 160);
+    setHtml("");
+    setError(null);
+    setLoading(true);
+    setLoadingLabel("正在按改进要求重新生成交互页...");
+    try {
+      const parsed = await requestInteractiveAsset({
+        signal: controller.signal,
+        prompt,
+        clientReferenceId,
+      });
+      setGeneratedPreview(parsed);
+      setLoadingLabel("正在加载交互页...");
+      const text = await runTrackedApiFetch(
+        parsed.assetUrl,
+        { method: "GET", signal: controller.signal },
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.text();
+        },
+        "interactive_asset_disconnect",
+      );
+      if (!controller.signal.aborted) {
+        setHtml(text);
+        setRegeneratePrompt("");
+        setIsRegenerateFormOpen(false);
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        setError(getApiErrorMessage(err, "交互页重新生成失败，请稍后重试。"));
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+      if (regenerateControllerRef.current === controller) {
+        regenerateControllerRef.current = null;
+      }
+    }
+  }, [
+    canRegenerate,
+    loading,
+    preview.assetPath,
+    preview.planId,
+    regeneratePrompt,
+    requestInteractiveAsset,
+  ]);
 
   if (isStaticFigure) {
     return (
@@ -2107,9 +2210,12 @@ function InteractiveHtmlEmbed({
         </figcaption>
         <div className="bg-slate-50/55 p-3 dark:bg-slate-900/35">
           {loading ? (
-            <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {loadingLabel}
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+              <div className="flex items-center">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {loadingLabel}
+              </div>
+              <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">{loadingStepLabel}</div>
             </div>
           ) : error ? (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -2171,6 +2277,24 @@ function InteractiveHtmlEmbed({
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
+          {canRegenerate && (
+            <button
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsRegenerateFormOpen((value) => !value);
+              }}
+              className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              重新生成
+            </button>
+          )}
           {activePreview.mode === "asset" && (
             <button
               type="button"
@@ -2193,10 +2317,41 @@ function InteractiveHtmlEmbed({
         </span>
       </summary>
       <div className="border-t border-indigo-100 bg-slate-50/70 p-3 dark:border-indigo-500/20 dark:bg-slate-900/45">
+        {canRegenerate && isRegenerateFormOpen && (
+          <form
+            onSubmit={handleRegenerateInteractive}
+            className="mb-3 rounded-lg border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-500/20 dark:bg-slate-950"
+          >
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`interactive-regenerate-${preview.assetPath}`}>
+              输入改进要求后重新生成
+            </label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <textarea
+                id={`interactive-regenerate-${preview.assetPath}`}
+                value={regeneratePrompt}
+                onChange={(event) => setRegeneratePrompt(event.target.value)}
+                placeholder="例如：更像函数图；少一点文字；增加步骤切换；把对比做得更直观"
+                className="min-h-20 flex-1 resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/15"
+                maxLength={1000}
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-55 sm:self-end"
+              >
+                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                重新生成
+              </button>
+            </div>
+          </form>
+        )}
         {loading ? (
-          <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {loadingLabel}
+          <div className="flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <div className="flex items-center">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              {loadingLabel}
+            </div>
+            <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">{loadingStepLabel}</div>
           </div>
         ) : error ? (
           <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
@@ -2237,6 +2392,16 @@ function InteractiveHtmlEmbed({
             <ExternalLink className="h-3.5 w-3.5" />
             全屏打开
           </a>
+        )}
+        {canRegenerate && (
+          <button
+            type="button"
+            onClick={() => setIsRegenerateFormOpen((value) => !value)}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            重新生成
+          </button>
         )}
       </div>
     </details>
