@@ -492,13 +492,13 @@ export function AiConversationDraftFileAttachments({
       return;
     }
 
-    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
       await partitionUploadFilesForRuntime(pendingFiles);
     const unsupportedMessage = unsupportedFiles.length ? buildUnsupportedFilesMessage(unsupportedFiles) : null;
     const imageParserUnavailableMessage = imageParserUnavailableFiles.length
       ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
       : null;
-    setError(unsupportedMessage ?? imageParserUnavailableMessage);
+    setError(unsupportedMessage ?? imageParserUnavailableMessage ?? limitExceededMessage);
     if (unsupportedMessage) {
       toast({
         title: "文件类型暂不支持",
@@ -512,6 +512,14 @@ export function AiConversationDraftFileAttachments({
         description: imageParserUnavailableMessage,
         variant: "error",
       });
+    }
+    if (limitExceededMessage) {
+      toast({
+        title: "上传超出限制",
+        description: limitExceededMessage,
+        variant: "error",
+      });
+      return;
     }
     if (!supportedFiles.length) {
       return;

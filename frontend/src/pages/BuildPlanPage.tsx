@@ -1507,7 +1507,7 @@ export function BuildPlanPage() {
     if (!candidateFiles.length) {
       return;
     }
-    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
       await partitionUploadFilesForRuntime(candidateFiles);
     if (unsupportedFiles.length > 0) {
       const message = buildUnsupportedFilesMessage(unsupportedFiles);
@@ -1526,6 +1526,15 @@ export function BuildPlanPage() {
         variant: "error",
       });
       setMessages((prev) => [...prev, createMessage("system", message)]);
+    }
+    if (limitExceededMessage) {
+      toast({
+        title: "上传超出限制",
+        description: limitExceededMessage,
+        variant: "error",
+      });
+      setMessages((prev) => [...prev, createMessage("system", limitExceededMessage)]);
+      return;
     }
     if (supportedFiles.length > 0) {
       uploadMutation.mutate(supportedFiles);

@@ -634,7 +634,7 @@ export function HomePage() {
     if (!files.length) {
       return;
     }
-    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+    const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
       await partitionUploadFilesForRuntime(files);
     const unsupportedMessage = unsupportedFiles.length
       ? buildUnsupportedFilesMessage(unsupportedFiles)
@@ -642,7 +642,7 @@ export function HomePage() {
     const imageParserUnavailableMessage = imageParserUnavailableFiles.length
       ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
       : null;
-    setError(unsupportedMessage ?? imageParserUnavailableMessage);
+    setError(unsupportedMessage ?? imageParserUnavailableMessage ?? limitExceededMessage);
     if (unsupportedMessage) {
       toast({
         title: "文件类型暂不支持",
@@ -656,6 +656,14 @@ export function HomePage() {
         description: imageParserUnavailableMessage,
         variant: "error",
       });
+    }
+    if (limitExceededMessage) {
+      toast({
+        title: "上传超出限制",
+        description: limitExceededMessage,
+        variant: "error",
+      });
+      return;
     }
     if (!supportedFiles.length) {
       return;

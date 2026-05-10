@@ -6,6 +6,7 @@ import hashlib
 import json
 import mimetypes
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -36,6 +37,13 @@ from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 # 图片只允许走 PaddleOCR / MinerU 外部解析链路，不提供本地兜底。
 SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".md", ".jpeg", ".jpg", ".png", ".bmp"})
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
+
+
+@dataclass(frozen=True)
+class _PendingUpload:
+    filename: str
+    content_type: str | None
+    content: bytes
 
 
 def _generate_file_id() -> str:
@@ -161,23 +169,44 @@ async def _save_uploaded_raw_files(
     parse_request_metadata: dict[str, object] | None = None,
     origin_course_name: str | None = None,
 ) -> list[RawFile]:
-    max_files = get_settings().ingest.max_files_per_upload
+    settings = get_settings()
+    max_files = settings.ingest.max_files_per_upload
     if len(files) > max_files:
         raise FileCountLimitError(max_files)
+    pending_uploads = await _read_uploads(files, max_size_mb=settings.ingest.max_upload_size_mb)
 
     saved: list[RawFile] = []
-    for file in files:
+    for upload in pending_uploads:
         saved.append(
-            await save_uploaded_file(
+            await _save_uploaded_file_content(
                 session,
                 course_id=course_id,
                 owner_user_id=owner_user_id,
-                file=file,
+                upload=upload,
                 parse_request_metadata=parse_request_metadata,
                 origin_course_name=origin_course_name,
             )
         )
     return saved
+
+
+async def _read_uploads(files: list[UploadFile], *, max_size_mb: int) -> list[_PendingUpload]:
+    max_total_bytes = max_size_mb * 1024 * 1024
+    total_bytes = 0
+    pending_uploads: list[_PendingUpload] = []
+    for file in files:
+        content = await file.read()
+        total_bytes += len(content)
+        if total_bytes > max_total_bytes:
+            raise FileTooLargeError(max_size_mb)
+        pending_uploads.append(
+            _PendingUpload(
+                filename=file.filename or "unknown",
+                content_type=file.content_type,
+                content=content,
+            )
+        )
+    return pending_uploads
 
 
 async def save_uploaded_file(
@@ -190,15 +219,32 @@ async def save_uploaded_file(
     origin_course_name: str | None = None,
 ) -> RawFile:
     settings = get_settings()
+    pending_uploads = await _read_uploads([file], max_size_mb=settings.ingest.max_upload_size_mb)
+    return await _save_uploaded_file_content(
+        session,
+        course_id=course_id,
+        owner_user_id=owner_user_id,
+        upload=pending_uploads[0],
+        parse_request_metadata=parse_request_metadata,
+        origin_course_name=origin_course_name,
+    )
+
+
+async def _save_uploaded_file_content(
+    session: Session,
+    *,
+    course_id: str | None = None,
+    owner_user_id: str,
+    upload: _PendingUpload,
+    parse_request_metadata: dict[str, object] | None = None,
+    origin_course_name: str | None = None,
+) -> RawFile:
     cs = get_content_store()
     scope = cs.user_file_scope(user_id=owner_user_id)
     normalized_course_id = validate_course_id(course_id) if course_id else None
-    content = await file.read()
-    filename = file.filename or "unknown"
+    content = upload.content
+    filename = upload.filename
     extension = _validate_upload_extension(filename)
-    max_upload_size_mb = settings.ingest.max_upload_size_mb
-    if len(content) > max_upload_size_mb * 1024 * 1024:
-        raise FileTooLargeError(max_upload_size_mb)
     content_hash = hashlib.sha256(content).hexdigest()
     parse_request_signature = build_parse_request_signature(parse_request_metadata)
     reusable_raw_file = get_reusable_raw_file_by_content_hash(
@@ -237,7 +283,7 @@ async def save_uploaded_file(
                 filename=filename,
                 filetype=extension.lstrip("."),
                 file_path=str(temp_path),
-                mime_type=file.content_type or mimetypes.guess_type(filename)[0],
+                mime_type=upload.content_type or mimetypes.guess_type(filename)[0],
                 storage_backend=storage_backend,
                 status=TaskStatus.PENDING.value,
                 content_hash=content_hash,

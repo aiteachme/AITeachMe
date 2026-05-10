@@ -323,7 +323,7 @@ export function LibraryPage() {
               const selected = Array.from(event.target.files ?? []);
               if (fileInputRef.current) fileInputRef.current.value = "";
               if (selected.length > 0) {
-                const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles } =
+                const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
                   await partitionUploadFilesForRuntime(selected);
                 const unsupportedMessage = unsupportedFiles.length
                   ? buildUnsupportedFilesMessage(unsupportedFiles)
@@ -331,7 +331,7 @@ export function LibraryPage() {
                 const imageParserUnavailableMessage = imageParserUnavailableFiles.length
                   ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
                   : null;
-                setError(unsupportedMessage ?? imageParserUnavailableMessage);
+                setError(unsupportedMessage ?? imageParserUnavailableMessage ?? limitExceededMessage);
                 if (unsupportedMessage) {
                   toast({
                     title: "文件类型暂不支持",
@@ -345,6 +345,14 @@ export function LibraryPage() {
                     description: imageParserUnavailableMessage,
                     variant: "error",
                   });
+                }
+                if (limitExceededMessage) {
+                  toast({
+                    title: "上传超出限制",
+                    description: limitExceededMessage,
+                    variant: "error",
+                  });
+                  return;
                 }
                 if (supportedFiles.length > 0) {
                   uploadMutation.mutate(supportedFiles);

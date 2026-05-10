@@ -4,12 +4,14 @@ import asyncio
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from fastapi import UploadFile
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import RawFile, Course, CourseFileLink, IngestStatus, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
+from app.shared.infra.exceptions import FileCountLimitError, FileTooLargeError
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
 from app.workflows.ingest.intake.parse_dispatch import ready_file_ids_for_course_indexing
@@ -87,6 +89,45 @@ def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:
     assert second_data.started_parse_count == 0
     assert second_data.uploaded_items[0].id == first_data.uploaded_items[0].id
     assert raw_files[0].parse_request_signature == "default"
+
+
+def test_upload_batch_rejects_more_than_max_files(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        with pytest.raises(FileCountLimitError):
+            asyncio.run(
+                uploads.save_uploaded_files_and_request_parse(
+                    session,
+                    owner_user_id="user_a",
+                    files=[_upload(f"notes-{index}.txt", b"small") for index in range(11)],
+                )
+            )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 0
+    assert raw_files == []
+    assert fake_store.writes == []
+
+
+def test_upload_batch_rejects_total_size_over_limit(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        with pytest.raises(FileTooLargeError):
+            asyncio.run(
+                uploads.save_uploaded_files_and_request_parse(
+                    session,
+                    owner_user_id="user_a",
+                    files=[
+                        _upload("part-a.txt", b"a" * (6 * 1024 * 1024)),
+                        _upload("part-b.txt", b"b" * (5 * 1024 * 1024)),
+                    ],
+                )
+            )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 0
+    assert raw_files == []
+    assert fake_store.writes == []
 
 
 def test_storage_only_markdown_marks_file_ready(monkeypatch) -> None:

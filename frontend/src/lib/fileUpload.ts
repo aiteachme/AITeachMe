@@ -39,6 +39,13 @@ const PRESENTATION_EXTENSIONS = new Set<string>(["ppt", "pptx"]);
 const LEGACY_WORD_EXTENSIONS = new Set<string>(["doc"]);
 const IMAGE_EXTENSIONS = new Set<string>(["jpeg", "jpg", "png", "bmp"]);
 const IMAGE_PARSER_SETTING_KEYS = new Set<string>(["paddle_ocr.api_token", "mineru.api_token"]);
+const DEFAULT_MAX_UPLOAD_TOTAL_SIZE_MB = 10;
+const DEFAULT_MAX_FILES_PER_UPLOAD = 10;
+
+type UploadLimitConfig = {
+  maxFiles: number;
+  maxTotalSizeMb: number;
+};
 
 export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、docx、pdf、md、jpeg、jpg、png、bmp";
 export const IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE = "当前无法处理图片上传";
@@ -72,6 +79,45 @@ export function hasConfiguredImageUploadParser(overview: SettingsOverviewData | 
   return false;
 }
 
+function getNumericSetting(overview: SettingsOverviewData | null, key: string, fallback: number): number {
+  for (const section of overview?.sections ?? []) {
+    for (const entry of section.entries ?? []) {
+      if (entry.key !== key) continue;
+      const value = typeof entry.value === "number" ? entry.value : Number(entry.value);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+  }
+  return fallback;
+}
+
+function getUploadLimitConfig(overview: SettingsOverviewData | null): UploadLimitConfig {
+  return {
+    maxFiles: Math.floor(getNumericSetting(overview, "ingest.max_files_per_upload", DEFAULT_MAX_FILES_PER_UPLOAD)),
+    maxTotalSizeMb: getNumericSetting(overview, "ingest.max_upload_size_mb", DEFAULT_MAX_UPLOAD_TOTAL_SIZE_MB),
+  };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function buildUploadLimitExceededMessage(files: File[], limits: UploadLimitConfig): string | null {
+  if (files.length > limits.maxFiles) {
+    return `单次最多上传 ${limits.maxFiles} 个文件，当前已选择 ${files.length} 个。`;
+  }
+
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const maxTotalBytes = limits.maxTotalSizeMb * 1024 * 1024;
+  if (totalBytes > maxTotalBytes) {
+    return `单次上传文件总大小不能超过 ${limits.maxTotalSizeMb} MB，当前为 ${formatFileSize(totalBytes)}。`;
+  }
+
+  return null;
+}
+
 export function partitionUploadFiles(
   files: File[],
   options: { imageUploadParserAvailable?: boolean } = {},
@@ -103,16 +149,19 @@ export async function partitionUploadFilesForRuntime(files: File[]): Promise<{
   supportedFiles: File[];
   unsupportedFiles: File[];
   imageParserUnavailableFiles: File[];
+  limitExceededMessage: string | null;
 }> {
-  const hasImageUpload = files.some(isImageUploadFile);
-  if (!hasImageUpload) {
-    return partitionUploadFiles(files);
-  }
-
   const overview = await ensureSystemSettingsOverviewLoaded();
-  return partitionUploadFiles(files, {
+  const partitioned = partitionUploadFiles(files, {
     imageUploadParserAvailable: hasConfiguredImageUploadParser(overview),
   });
+  return {
+    ...partitioned,
+    limitExceededMessage: buildUploadLimitExceededMessage(
+      partitioned.supportedFiles,
+      getUploadLimitConfig(overview),
+    ),
+  };
 }
 
 export function buildUnsupportedFilesMessage(files: File[]): string {

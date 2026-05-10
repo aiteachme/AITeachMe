@@ -100,7 +100,7 @@ class FileTooLargeError(AITeachMeError):
     status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
     def __init__(self, max_size_mb: int) -> None:
-        super().__init__(detail=f"上传文件超过 {max_size_mb} MB 限制。")
+        super().__init__(detail=f"单次上传文件总大小超过 {max_size_mb} MB 限制。")
 
 
 class FileCountLimitError(AITeachMeError):

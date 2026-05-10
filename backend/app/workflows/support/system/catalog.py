@@ -279,8 +279,8 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
         entries=(
             setting(
                 "ingest.max_upload_size_mb",
-                "最大上传大小",
-                description="当前支持文件的默认大小限制为 10MB。",
+                "单次上传总大小",
+                description="单次文件上传请求的所有文件总大小限制，默认 10MB。",
                 ui_group="上传限制",
                 ui_order=10,
             ),
