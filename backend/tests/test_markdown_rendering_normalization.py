@@ -9,6 +9,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
     summarize_markdown_presentation,
     validate_single_file_html,
 )
+from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
@@ -571,3 +572,39 @@ def test_single_file_html_validator_reports_sidecar_risks() -> None:
     assert "HTML sidecar 包含外部样式 import。" in issues
     assert "HTML sidecar 包含远程样式资源。" in issues
     assert "HTML sidecar 包含不允许的联网或持久化 API。" in issues
+
+
+def test_single_file_html_validator_ignores_script_and_style_literals() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>demo</title>
+  <style>.note::before{content:"<head> text";}</style>
+</head>
+<body>
+  <script>const sample = "<head><body></body></head>";</script>
+</body>
+</html>"""
+
+    assert validate_single_file_html(html) == []
+
+
+def test_normalize_single_file_html_rebuilds_nested_document_shells() -> None:
+    raw = """<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><title>旧标题</title></head>
+<body>
+  <main>正文</main>
+  <script>const sample = "<head><body></body></head>";</script>
+  <head><title>重复标题</title><style>.lost{color:red}</style></head>
+</body>
+</html>"""
+
+    cleaned = normalize_single_file_html(raw, title="交互演示", allow_scripts=True)
+
+    assert validate_single_file_html(cleaned) == []
+    assert cleaned.split("<body>", 1)[0].lower().count("<head") == 1
+    assert "<main>正文</main>" in cleaned
+    assert 'const sample = "<head><body></body></head>";' in cleaned

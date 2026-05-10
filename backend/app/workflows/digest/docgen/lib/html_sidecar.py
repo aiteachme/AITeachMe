@@ -11,6 +11,8 @@ _HTML_DOC_RE = re.compile(r"<!doctype\s+html[^>]*>.*?</html>", re.IGNORECASE | r
 _HEAD_RE = re.compile(r"<head(?:\s[^>]*)?>(?P<body>.*?)</head>", re.IGNORECASE | re.DOTALL)
 _BODY_RE = re.compile(r"<body(?:\s[^>]*)?>(?P<body>.*?)</body>", re.IGNORECASE | re.DOTALL)
 _TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>.*?</title>", re.IGNORECASE | re.DOTALL)
+_SCRIPT_STYLE_RE = re.compile(r"<(?P<tag>script|style)\b[^>]*>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL)
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def strip_html_fence(text: str) -> str:
@@ -21,8 +23,31 @@ def strip_html_fence(text: str) -> str:
     return cleaned
 
 
+def _structure_text(text: str) -> str:
+    text = _COMMENT_RE.sub("", text)
+    return _SCRIPT_STYLE_RE.sub(lambda match: f"<{match.group('tag')}></{match.group('tag')}>", text)
+
+
 def _count_tag(text: str, tag: str) -> int:
-    return len(re.findall(rf"<{tag}\b", text, re.IGNORECASE))
+    return len(re.findall(rf"<{tag}\b", _structure_text(text), re.IGNORECASE))
+
+
+def _protect_script_style(text: str) -> tuple[str, list[tuple[str, str]]]:
+    blocks: list[tuple[str, str]] = []
+
+    def _replace(match: re.Match[str]) -> str:
+        token = f"__ATM_HTML_BLOCK_{len(blocks)}__"
+        blocks.append((token, match.group(0)))
+        return token
+
+    return _SCRIPT_STYLE_RE.sub(_replace, text), blocks
+
+
+def _restore_script_style(text: str, blocks: list[tuple[str, str]]) -> str:
+    restored = text
+    for token, block in blocks:
+        restored = restored.replace(token, block)
+    return restored
 
 
 def _extract_main_document(text: str) -> str:
@@ -32,21 +57,40 @@ def _extract_main_document(text: str) -> str:
     return max(matches, key=lambda match: len(match.group(0))).group(0).strip()
 
 
+def _strip_document_shell(fragment: str, *, drop_head_blocks: bool) -> str:
+    cleaned, protected_blocks = _protect_script_style(str(fragment or ""))
+    cleaned = _DOCTYPE_RE.sub("", cleaned)
+    cleaned = re.sub(r"</?html(?:\s[^>]*)?>", "", cleaned, flags=re.IGNORECASE)
+    if drop_head_blocks:
+        cleaned = _HEAD_RE.sub("", cleaned)
+    cleaned = re.sub(r"</?head(?:\s[^>]*)?>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?body(?:\s[^>]*)?>", "", cleaned, flags=re.IGNORECASE)
+    return _restore_script_style(cleaned, protected_blocks).strip()
+
+
 def _rebuild_single_document(text: str, *, title: str) -> str:
-    head_match = _HEAD_RE.search(text)
-    head_body = head_match.group("body").strip() if head_match is not None else ""
-    body_matches = list(_BODY_RE.finditer(text))
+    structural_text, protected_blocks = _protect_script_style(text)
+    head_bodies = [
+        _restore_script_style(match.group("body"), protected_blocks).strip()
+        for match in _HEAD_RE.finditer(structural_text)
+        if match.group("body").strip()
+    ]
+    head_body = "\n".join(head_bodies)
+    body_matches = list(_BODY_RE.finditer(structural_text))
     if body_matches:
-        body = "\n".join(match.group("body").strip() for match in body_matches if match.group("body").strip())
+        body = "\n".join(
+            _strip_document_shell(_restore_script_style(match.group("body"), protected_blocks), drop_head_blocks=True)
+            for match in body_matches
+            if match.group("body").strip()
+        )
     else:
-        body = re.sub(r"<!doctype\s+html[^>]*>", "", text, flags=re.IGNORECASE)
+        body = re.sub(r"<!doctype\s+html[^>]*>", "", structural_text, flags=re.IGNORECASE)
         body = re.sub(r"</?html(?:\s[^>]*)?>", "", body, flags=re.IGNORECASE)
         body = _HEAD_RE.sub("", body).strip()
+        body = _restore_script_style(body, protected_blocks)
+        body = _strip_document_shell(body, drop_head_blocks=True)
 
-    head_body = _DOCTYPE_RE.sub("", head_body)
-    head_body = re.sub(r"</?html(?:\s[^>]*)?>", "", head_body, flags=re.IGNORECASE)
-    head_body = _HEAD_RE.sub("", head_body)
-    head_body = _BODY_RE.sub("", head_body).strip()
+    head_body = _strip_document_shell(head_body, drop_head_blocks=True)
     if not _TITLE_RE.search(head_body):
         head_body = f"<title>{html_lib.escape(title)}</title>\n{head_body}".strip()
     if not re.search(r"<meta[^>]+charset\s*=", head_body, re.IGNORECASE):

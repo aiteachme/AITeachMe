@@ -1381,24 +1381,35 @@ def summarize_markdown_presentation(markdown: str) -> dict[str, object]:
     }
 
 
+_HTML_SCRIPT_STYLE_RE = re.compile(r"<(?P<tag>script|style)\b[^>]*>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL)
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _html_structure_text(html: str) -> str:
+    """Return HTML text suitable for structural tag counting."""
+
+    text = _HTML_COMMENT_RE.sub("", str(html or ""))
+    return _HTML_SCRIPT_STYLE_RE.sub(lambda match: f"<{match.group('tag')}></{match.group('tag')}>", text)
+
+
 def validate_single_file_html(html: str) -> list[str]:
     """Check an interactive sidecar HTML document without executing it."""
 
     text = str(html or "").strip()
-    lower = text.lower()
+    structure_lower = _html_structure_text(text).lower()
     issues: list[str] = []
-    if not lower.startswith("<!doctype html>"):
+    if not structure_lower.startswith("<!doctype html>"):
         issues.append("HTML sidecar 缺少 <!doctype html>。")
-    if len(re.findall(r"<!doctype\s+html", text, re.IGNORECASE)) != 1:
+    if len(re.findall(r"<!doctype\s+html", structure_lower, re.IGNORECASE)) != 1:
         issues.append("HTML sidecar 必须只包含一个 <!doctype html>。")
     for tag in ("<html", "<head", "<body"):
-        if tag not in lower:
+        if tag not in structure_lower:
             issues.append(f"HTML sidecar 缺少 {tag}> 结构。")
     for tag in ("<html", "<head", "<body"):
-        if len(re.findall(tag, lower)) > 1:
+        if len(re.findall(tag, structure_lower)) > 1:
             issues.append(f"HTML sidecar 包含重复的 {tag}> 结构。")
     for tag in ("</html>", "</head>", "</body>"):
-        if tag not in lower:
+        if tag not in structure_lower:
             issues.append(f"HTML sidecar 缺少 {tag}。")
     if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", text, re.IGNORECASE):
         issues.append("HTML sidecar 缺少移动端 viewport meta。")
