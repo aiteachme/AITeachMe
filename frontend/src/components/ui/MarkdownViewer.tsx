@@ -1955,7 +1955,7 @@ function InteractiveHtmlEmbed({
   label: ReactNode;
 }) {
   const isStaticFigure = preview.kind === "figure";
-  const [expanded, setExpanded] = useState(isStaticFigure);
+  const [expanded, setExpanded] = useState(true);
   const [generatedPreview, setGeneratedPreview] = useState<InteractiveHtmlPreview | null>(null);
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1969,8 +1969,8 @@ function InteractiveHtmlEmbed({
     setHtml("");
     setError(null);
     setLoading(false);
-    setExpanded(isStaticFigure);
-  }, [isStaticFigure, preview.previewUrl]);
+    setExpanded(true);
+  }, [preview.previewUrl]);
 
   useEffect(() => {
     if (!expanded || html) return;
@@ -2149,6 +2149,7 @@ function InteractiveHtmlEmbed({
     <details
       data-doc-interactive-embed="true"
       data-doc-interactive-asset={preview.assetPath}
+      open={expanded}
       className="group my-5 overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-sm dark:border-indigo-500/25 dark:bg-slate-950"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
@@ -2165,7 +2166,7 @@ function InteractiveHtmlEmbed({
               </span>
             </span>
             <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-              {preview.mode === "auto" && !generatedPreview ? "展开后现场生成并加载，不阻塞正文阅读。" : "展开后在文档内加载，支持保留上下文学习。"}
+              {preview.mode === "auto" && !generatedPreview ? "进入文档后自动生成并加载，不阻塞正文生成。" : "进入文档后自动加载，可折叠保留上下文。"}
             </span>
           </span>
         </span>
@@ -2223,7 +2224,7 @@ function InteractiveHtmlEmbed({
           />
         ) : (
           <div className="flex min-h-[260px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-            展开后加载交互页
+            正在准备交互页
           </div>
         )}
         {activePreview.mode === "asset" && (
