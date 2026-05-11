@@ -295,9 +295,9 @@ results = await run_llm_tasks(items, lambda item: build_one_item_with_llm(item))
 - 多题目生成、多题目评分。
 - 多文件、多切片、多 section 的摘要、路由、抽取。
 - 同一节点里同时跑多个互不依赖的 LLM 子任务。
-- 需要把一个 API 触发的单次生成也放进统一上层调度时，用 `run_llm_tasks([item], worker, limit=1)`；普通单次 LLM 调用仍直接调用 LLM helper。
+- 需要把一个 API 触发的单次生成也放进统一上层调度时，用 `run_llm_tasks([item], worker)`；普通单次 LLM 调用仍直接调用 LLM helper。
 
-`limit` 是“当前这一批任务”的局部并发上限，不是全局并发配置。全局预算仍由 `llm.concurrency_limit` 统一控制；`limit=3` 只表示这一批最多同时提交 3 个任务，且仍不能突破全局预算。
+`max_concurrent` 是当前这一批任务的局部上限，不是全局配置；全局硬上限仍然只有 `llm.concurrency_limit`。普通批量调用不要传 `max_concurrent`，只有在某个子流程不应该独占全局 LLM 池时才传，例如静态图候选、交互 HTML 候选或 OCR 子批次。
 
 禁止写法：
 

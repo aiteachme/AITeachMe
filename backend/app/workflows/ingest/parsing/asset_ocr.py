@@ -265,7 +265,7 @@ async def _ocr_asset_paths(
     await run_llm_tasks(
         list(enumerate(asset_paths)),
         _run_indexed,
-        limit=worker_count,
+        max_concurrent=worker_count,
     )
     return [item for item in results if item is not None]
 

@@ -1328,7 +1328,7 @@ async def _collect_section_payloads_async(
     payloads = await run_llm_tasks(
         extraction_tasks,
         _extract_with_queue,
-        limit=extraction_limit,
+        max_concurrent=extraction_limit,
     )
     stats = {
         "prefetch_section_count": len(list(prefetched_records or [])),

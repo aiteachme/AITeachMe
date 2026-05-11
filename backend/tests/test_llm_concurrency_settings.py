@@ -257,7 +257,7 @@ async def test_llm_task_scheduler_accepts_dynamic_submissions() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_llm_tasks_local_limit_does_not_occupy_global_slots() -> None:
+async def test_run_llm_tasks_batch_limit_does_not_occupy_global_slots() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 2}})
     gather_started = asyncio.Event()
     release_gather = asyncio.Event()
@@ -269,7 +269,7 @@ async def test_run_llm_tasks_local_limit_does_not_occupy_global_slots() -> None:
         return value
 
     gather_task = asyncio.create_task(
-        run_llm_tasks(range(3), gather_worker, limit=1)
+        run_llm_tasks(range(3), gather_worker, max_concurrent=1)
     )
     await asyncio.wait_for(gather_started.wait(), timeout=1)
 
@@ -277,7 +277,7 @@ async def test_run_llm_tasks_local_limit_does_not_occupy_global_slots() -> None:
         run_llm_tasks(
             [None],
             lambda _item: _return_after_event(late_started, 99),
-            limit=1,
+            max_concurrent=1,
         ),
         timeout=1,
     )

@@ -934,7 +934,6 @@ async def knowledge_docs_interactive_selection(
                 await run_llm_tasks(
                     [None],
                     lambda _item: _generate_interactive_asset(),
-                    limit=1,
                 )
             )[0]
         except ValueError as exc:

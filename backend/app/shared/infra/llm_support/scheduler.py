@@ -123,7 +123,7 @@ class LLMTaskScheduler:
         items: Iterable[T],
         worker: Callable[[T], Awaitable[R]],
         *,
-        limit: int | None = None,
+        max_concurrent: int | None = None,
         on_result: Callable[[int, T, R], Awaitable[None]] | None = None,
     ) -> list[R]:
         indexed_items = list(enumerate(items))
@@ -134,13 +134,13 @@ class LLMTaskScheduler:
             return await _run_nested_llm_tasks(
                 indexed_items,
                 worker,
-                limit=limit,
+                max_concurrent=max_concurrent,
                 on_result=on_result,
             )
         return await self._run_pooled_many(
             indexed_items,
             worker,
-            limit=limit,
+            max_concurrent=max_concurrent,
             on_result=on_result,
         )
 
@@ -291,7 +291,7 @@ class LLMTaskScheduler:
         indexed_items: list[tuple[int, T]],
         worker: Callable[[T], Awaitable[R]],
         *,
-        limit: int | None,
+        max_concurrent: int | None,
         on_result: Callable[[int, T, R], Awaitable[None]] | None,
     ) -> list[R]:
         async def _run_one(index: int, item: T) -> tuple[int, T, R]:
@@ -304,7 +304,7 @@ class LLMTaskScheduler:
                 await on_result(index, item, result)
             return index, result
 
-        submit_window = _task_window_size(len(indexed_items), limit=limit)
+        submit_window = _task_window_size(len(indexed_items), max_concurrent=max_concurrent)
         next_position = 0
         running: dict[asyncio.Task[tuple[int, R]], LLMTaskHandle[tuple[int, T, R]]] = {}
         all_handles: list[LLMTaskHandle[tuple[int, T, R]]] = []
@@ -370,7 +370,7 @@ async def run_llm_tasks(
     items: Iterable[T],
     worker: Callable[[T], Awaitable[R]],
     *,
-    limit: int | None = None,
+    max_concurrent: int | None = None,
     on_result: Callable[[int, T, R], Awaitable[None]] | None = None,
 ) -> list[R]:
     """Run a batch of LLM tasks through the shared scheduler."""
@@ -378,7 +378,7 @@ async def run_llm_tasks(
     return await get_llm_scheduler().run_many(
         items,
         worker,
-        limit=limit,
+        max_concurrent=max_concurrent,
         on_result=on_result,
     )
 
@@ -387,10 +387,10 @@ async def _run_nested_llm_tasks(
     indexed_items: list[tuple[int, T]],
     worker: Callable[[T], Awaitable[R]],
     *,
-    limit: int | None,
+    max_concurrent: int | None,
     on_result: Callable[[int, T, R], Awaitable[None]] | None,
 ) -> list[R]:
-    window = _task_window_size(len(indexed_items), limit=limit)
+    window = _task_window_size(len(indexed_items), max_concurrent=max_concurrent)
     semaphore = asyncio.Semaphore(window)
 
     async def _run_one(index: int, item: T) -> tuple[int, R]:
@@ -409,9 +409,9 @@ async def _run_nested_llm_tasks(
     ]
 
 
-def _task_window_size(item_count: int, *, limit: int | None) -> int:
-    configured_limit = get_llm_concurrency_limit() if limit is None else int(limit or 1)
-    return max(1, min(configured_limit, item_count))
+def _task_window_size(item_count: int, *, max_concurrent: int | None) -> int:
+    batch_limit = get_llm_concurrency_limit() if max_concurrent is None else int(max_concurrent or 1)
+    return max(1, min(batch_limit, get_llm_concurrency_limit(), item_count))
 
 
 async def _cancel_running_tasks(
