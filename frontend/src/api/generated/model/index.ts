@@ -95,6 +95,7 @@ export * from './chatClearRequest';
 export * from './chatContextItem';
 export * from './chatListRequest';
 export * from './chatMessageItem';
+export * from './chatMessageItemClientActions';
 export * from './chatRoleValue';
 export * from './chatSelectionContext';
 export * from './chatSendRequest';

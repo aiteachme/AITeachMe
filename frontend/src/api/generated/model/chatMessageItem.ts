@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { ChatContextItem } from './chatContextItem';
+import type { ChatMessageItemClientActions } from './chatMessageItemClientActions';
 import type { ChatRoleValue } from './chatRoleValue';
 
 /**
@@ -22,7 +23,7 @@ export interface ChatMessageItem {
   /** Assistant citation list. */
   contexts?: ChatContextItem[] | null;
   /** Optional client actions emitted by the assistant turn. */
-  client_actions?: Record<string, unknown>[] | null;
+  client_actions?: ChatMessageItemClientActions;
   /** Created time. */
   created_at: string;
 }

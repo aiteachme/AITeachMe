@@ -9996,6 +9996,22 @@
             "title": "Contexts",
             "description": "Assistant citation list."
           },
+          "client_actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Actions",
+            "description": "Optional client actions emitted by the assistant turn."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
