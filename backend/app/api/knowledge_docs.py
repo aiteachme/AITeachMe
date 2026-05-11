@@ -63,7 +63,6 @@ from app.workflows.support.courses import get_course_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.knowledge.build_store import read_knowledge_manifest
 from app.shared.infra.llm_support import submit_llm_task
 from app.shared.infra.observability.trace import (
     langsmith_trace,
@@ -86,6 +85,7 @@ from app.workflows.digest.docgen.lib.interactive_overlays import (
     interactive_overlay_reference_guard,
     overlay_preview_url,
 )
+from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
@@ -769,7 +769,7 @@ async def knowledge_docs_interactive_selection(
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
     course_scope = _storage_scope_for_course_record(course_record)
-    manifest = read_knowledge_manifest(normalized, course_scope=course_scope)
+    manifest = ensure_published_knowledge_manifest(session, course_id=normalized, course_scope=course_scope)
     if manifest is None:
         raise HTTPException(status_code=409, detail="请先完成知识文档生成后再创建交互演示。")
 

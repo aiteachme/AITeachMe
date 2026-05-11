@@ -674,6 +674,13 @@ def _import_table(
 
         if spec.name == "chat_session":
             _remap_planner_meta(record_data, new_course_id=new_course_id, user_id=user_id, id_map=id_map, warnings=warnings)
+        elif spec.name == "knowledge_document":
+            _remap_optional_json_id_list_text_field(
+                record_data,
+                "source_file_ids",
+                "raw_file",
+                id_map,
+            )
         elif spec.name == "knowledge_graph_source_ref":
             _remap_graph_source_ref_entity(record_data, id_map, warnings)
             _remap_json_int_list_text_field(
@@ -840,6 +847,33 @@ def _remap_json_int_list_text_field(
             warnings.append(f"{table_name}.{field_name}: ref {old_id} not found in {ref_table}")
             continue
         remapped.append(new_id)
+    record[field_name] = json.dumps(remapped, ensure_ascii=False)
+
+
+def _remap_optional_json_id_list_text_field(
+    record: dict,
+    field_name: str,
+    ref_table: str,
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    """Remap optional source-id metadata without leaking ids from the source course."""
+
+    if ref_table not in id_map:
+        record[field_name] = "[]"
+        return
+    try:
+        values = json.loads(str(record.get(field_name) or "[]"))
+    except Exception:
+        values = []
+    if not isinstance(values, list):
+        values = []
+
+    ref_map = id_map.get(ref_table) or {}
+    remapped = [
+        new_id
+        for old_id in values
+        if (new_id := _lookup_mapped_id(old_id, ref_map)) is not None
+    ]
     record[field_name] = json.dumps(remapped, ensure_ascii=False)
 
 

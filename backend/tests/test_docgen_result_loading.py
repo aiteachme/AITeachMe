@@ -2,11 +2,17 @@
 
 from datetime import datetime, timezone
 
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
+
 import app.shared.infra.knowledge.build_store as build_store
+from app.models import Course, User
 from app.models.build_planner import ConfirmedBuildPlan
+from app.models.knowledge_doc import KnowledgeDocument
 from app.shared.infra.knowledge.build_store import KnowledgeDocsManifest
 from app.shared.infra.storage import build_course_storage_scope
 from app.workflows.digest.docgen.lib import build_lifecycle
+from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 
 
 class _FakeContentStore:
@@ -95,6 +101,72 @@ def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:
     assert build_store.read_knowledge_manifest("course_linearalg012", course_scope=course_scope) == manifest
     assert course_scope.build_manifest_key() in fake_store.payloads
     assert f"{course_scope.knowledge_build_prefix()}manifest.json" not in fake_store.payloads
+
+
+def test_imported_knowledge_docs_rebuild_published_manifest(monkeypatch) -> None:
+    fake_store = _FakeJsonContentStore()
+    monkeypatch.setattr(build_store, "get_content_store", lambda: fake_store)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[User.__table__, Course.__table__, KnowledgeDocument.__table__],
+    )
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(User(id="user_a", username="user_a"))
+        session.add(Course(id="course_abc123def456", user_id="user_a", name="Imported"))
+        session.add(
+            KnowledgeDocument(
+                course_id="course_abc123def456",
+                chapter_index=1,
+                order_index=1,
+                title="第一章",
+                markdown_content="# 第一章",
+                content_markdown="# 第一章",
+                source_file_ids='["file_new"]',
+                version_no=4,
+                document_role="chapter",
+                is_current=True,
+                status="published",
+                published_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            )
+        )
+        session.add(
+            KnowledgeDocument(
+                course_id="course_abc123def456",
+                chapter_index=2,
+                order_index=2,
+                title="草稿章",
+                markdown_content="# 草稿章",
+                content_markdown="# 草稿章",
+                source_file_ids='["draft_file"]',
+                version_no=5,
+                document_role="chapter",
+                is_current=True,
+                status="draft",
+            )
+        )
+        session.commit()
+
+        ensure_published_knowledge_manifest(
+            session,
+            course_id="course_abc123def456",
+            course_scope=build_course_storage_scope(user_id="user_a", course_id="course_abc123def456"),
+        )
+
+    manifest = build_store.read_knowledge_manifest(
+        "course_abc123def456",
+        course_scope=build_course_storage_scope(user_id="user_a", course_id="course_abc123def456"),
+    )
+    assert manifest is not None
+    assert manifest.version_no == 4
+    assert manifest.chapter_count == 1
+    assert manifest.chapter_titles == ["第一章"]
+    assert manifest.source_file_ids == ["file_new"]
 
 
 def test_confirmed_plan_payload_keeps_course_name_from_plan_json() -> None:

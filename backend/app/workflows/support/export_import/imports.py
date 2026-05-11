@@ -32,6 +32,7 @@ from app.shared.infra.exceptions import (
     ImportPackageTooLargeError,
     InvalidImportPackageError,
 )
+from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
     _create_unique_course_id,
@@ -125,6 +126,11 @@ def import_course(
                 new_course_id,
                 user_id=user_id,
                 file_id_map=id_map.get("raw_file", {}),
+            )
+            ensure_published_knowledge_manifest(
+                session,
+                course_id=new_course_id,
+                course_scope=build_course_storage_scope(user_id=user_id, course_id=new_course_id),
             )
             _reconcile_imported_planner_metadata(
                 session,

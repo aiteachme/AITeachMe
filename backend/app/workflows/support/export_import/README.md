@@ -32,6 +32,6 @@
 - Always included: course metadata plus `knowledge_unit` / `knowledge_edge` graph tables.
 - Optional: generated knowledge documents, exam history, chat history, learning profile, and parsed source metadata/retrieval cache.
 - Not exported: original uploaded binaries (`PDF/DOCX/PPT/...`), duplicated `files/raw_markdowns/*.md`, vector embeddings, build locks, temporary `_build/` files, and derived `merged_knowledge_base.md` files.
-- Published knowledge-document markdown is restored from `knowledge_document.markdown_content`; the archive only carries docgen assets that are not in DB, such as the cover image.
+- Published knowledge-document markdown is restored from `knowledge_document.markdown_content`; import rebuilds the published-doc manifest so downstream document APIs can treat the restored docs as ready. The archive only carries docgen assets that are not in DB, such as the cover image.
 
 This module is a support workflow. It should coordinate repositories, schemas, storage, and models without introducing a parallel engine lane.

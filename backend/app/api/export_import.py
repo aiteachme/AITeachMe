@@ -104,6 +104,7 @@ async def export_course_api(
     responses=build_error_responses([400, 409, 413, 422, 500]),
 )
 async def import_uploaded_course_api(
+    request: Request,
     file: UploadFile = File(..., description="上传 .atmx 导出包。"),
     new_course_name: str | None = Form(default=None, description="自定义导入课程名。"),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -122,9 +123,15 @@ async def import_uploaded_course_api(
         result = import_course(
             session,
             file_path=tmp_path,
-            options=ImportOptions(new_course_name=new_course_name),
+            options=ImportOptions(new_course_name=new_course_name, rebuild_embeddings=False),
             user_id=user.user_id,
         )
+        if spawn_imported_embedding_rebuild_background(
+            getattr(request.app.state, "background_task_registry", None),
+            course_id=result.course_id,
+            imported_counts=result.imported_counts,
+        ):
+            result.warnings.append("课程已导入，检索索引正在后台准备，通常几秒内完成。")
         return ok_response(result)
     finally:
         tmp_path.unlink(missing_ok=True)
