@@ -7,13 +7,12 @@ from pathlib import Path
 import pytest
 
 from app.shared.infra.llm_support import (
-    get_llm_scheduler,
     run_llm_tasks,
     get_llm_concurrency_limit,
     get_llm_concurrency_limiter,
-    submit_llm_task,
 )
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
     get_settings,
     reset_project_settings_cache,
@@ -274,8 +273,15 @@ async def test_run_llm_tasks_local_limit_does_not_occupy_global_slots() -> None:
     )
     await asyncio.wait_for(gather_started.wait(), timeout=1)
 
-    late = submit_llm_task(lambda: _return_after_event(late_started, 99))
-    assert await asyncio.wait_for(late.result(), timeout=1) == 99
+    late_results = await asyncio.wait_for(
+        run_llm_tasks(
+            [None],
+            lambda _item: _return_after_event(late_started, 99),
+            limit=1,
+        ),
+        timeout=1,
+    )
+    assert late_results == [99]
 
     release_gather.set()
     assert await gather_task == [0, 1, 2]
@@ -298,25 +304,6 @@ async def test_run_llm_tasks_can_be_nested_without_deadlock() -> None:
     )
 
     assert result == [[10, 20]]
-
-
-@pytest.mark.anyio
-async def test_submit_llm_task_can_be_awaited_inside_run_llm_tasks() -> None:
-    set_system_settings_override({"llm": {"concurrency_limit": 1}})
-
-    async def outer_worker(_value: int) -> int:
-        handle = submit_llm_task(lambda: _return_after_event(asyncio.Event(), 42))
-        try:
-            return await handle.result()
-        finally:
-            handle.forget()
-
-    result = await asyncio.wait_for(
-        run_llm_tasks([0], outer_worker),
-        timeout=1,
-    )
-
-    assert result == [42]
 
 
 async def _return_after_event(event: asyncio.Event, value: int) -> int:

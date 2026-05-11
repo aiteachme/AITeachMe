@@ -63,7 +63,7 @@ from app.workflows.support.courses import get_course_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.llm_support import submit_llm_task
+from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.observability.trace import (
     langsmith_trace,
     llm_trace_scope,
@@ -929,22 +929,14 @@ async def knowledge_docs_interactive_selection(
             if existing_response is not None:
                 return ok_response(existing_response)
 
-        handle = submit_llm_task(
-            _generate_interactive_asset,
-            label="docgen.selection_interactive_html",
-            metadata={
-                "course_id": normalized,
-                "anchor_id": body.anchor_id,
-                "client_reference_id": client_reference_id,
-                "interactive_batch_id": interactive_batch_id,
-                "interactive_origin": interactive_origin,
-            },
-        )
         try:
-            asset = await handle.result()
-        except asyncio.CancelledError:
-            handle.cancel()
-            raise
+            asset = (
+                await run_llm_tasks(
+                    [None],
+                    lambda _item: _generate_interactive_asset(),
+                    limit=1,
+                )
+            )[0]
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:

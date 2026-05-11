@@ -273,7 +273,7 @@ from app.workflows.interact import stream_chat_workflow
 - LangSmith 展示名、前端阶段文案、文档可用中文。
 - 条件路由函数如果要展示中文名，用明确 helper 命名，不要散落改 `__name__` / `__qualname__`。
 - 需要并行展示的阶段必须使用 LangGraph `Send` fan-out，不要只在单个节点里 `asyncio.gather`。
-- 工作流内部如果要并行跑多次 LLM 调用，统一使用 `app.shared.infra.llm_support.run_llm_tasks(...)`；需要动态提交后台 LLM 任务时使用 `submit_llm_task(...)`。单次 `acompletion*` / `agenerate_image` 调用不需要再包调度器，底层已有全局 limiter 兜底。
+- 工作流内部如果要并行跑多次 LLM 调用，统一使用 `app.shared.infra.llm_support.run_llm_tasks(...)`。单次 `acompletion*` / `agenerate_image` 调用不需要再包调度器，底层已有全局 limiter 兜底。
 - Prompt builder 应在 LangSmith 中以 `run_type="prompt"` 记录，LLM 调用本身继续以 `run_type="llm"` 记录。
 - 长链路必须有 timing/token summary，失败路径也要输出摘要。
 
@@ -295,6 +295,9 @@ results = await run_llm_tasks(items, lambda item: build_one_item_with_llm(item))
 - 多题目生成、多题目评分。
 - 多文件、多切片、多 section 的摘要、路由、抽取。
 - 同一节点里同时跑多个互不依赖的 LLM 子任务。
+- 需要把一个 API 触发的单次生成也放进统一上层调度时，用 `run_llm_tasks([item], worker, limit=1)`；普通单次 LLM 调用仍直接调用 LLM helper。
+
+`limit` 是“当前这一批任务”的局部并发上限，不是全局并发配置。全局预算仍由 `llm.concurrency_limit` 统一控制；`limit=3` 只表示这一批最多同时提交 3 个任务，且仍不能突破全局预算。
 
 禁止写法：
 
@@ -310,15 +313,6 @@ result = await acompletion_with_fallback(messages, extra_metadata=metadata)
 ```
 
 原因是 `acompletion*`、`acompletion_with_fallback(...)`、`acompletion_structured(...)`、`acompletion_stream(...)`、`agenerate_image(...)` 和 embedding helper 底层都会进入共享 provider limiter。`run_llm_tasks(...)` 负责上层批量任务排队和动态调度，底层 limiter 负责最终模型请求兜底。
-
-如果需要在运行中追加、取消或查询后台 LLM 任务，使用：
-
-```python
-from app.shared.infra.llm_support import submit_llm_task
-
-handle = submit_llm_task(lambda: build_one_item_with_llm(item), label="docgen.repair")
-result = await handle.result()
-```
 
 LangSmith 规范：
 

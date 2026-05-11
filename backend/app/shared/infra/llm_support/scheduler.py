@@ -366,15 +366,6 @@ def get_llm_scheduler() -> LLMTaskScheduler:
     return scheduler
 
 
-def submit_llm_task(
-    factory: Callable[[], Awaitable[R]],
-    *,
-    label: str | None = None,
-    metadata: Mapping[str, Any] | None = None,
-) -> LLMTaskHandle[R]:
-    return get_llm_scheduler().submit(factory, label=label, metadata=metadata)
-
-
 async def run_llm_tasks(
     items: Iterable[T],
     worker: Callable[[T], Awaitable[R]],
@@ -441,5 +432,4 @@ __all__ = [
     "LLMTaskSnapshot",
     "get_llm_scheduler",
     "run_llm_tasks",
-    "submit_llm_task",
 ]
