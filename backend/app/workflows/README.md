@@ -297,7 +297,7 @@ results = await run_llm_tasks(items, lambda item: build_one_item_with_llm(item))
 - 同一节点里同时跑多个互不依赖的 LLM 子任务。
 - 需要把一个 API 触发的单次生成也放进统一上层调度时，用 `run_llm_tasks([item], worker)`；普通单次 LLM 调用仍直接调用 LLM helper。
 
-`max_concurrent` 是当前这一批任务的局部上限，不是全局配置；全局硬上限仍然只有 `llm.concurrency_limit`。普通批量调用不要传 `max_concurrent`，只有在某个子流程不应该独占全局 LLM 池时才传，例如静态图候选、交互 HTML 候选或 OCR 子批次。
+`max_concurrent` 是当前这一批任务的局部上限，不是全局配置；全局硬上限仍然只有 `llm.concurrency_limit`。普通批量调用不要传 `max_concurrent`，只有在任务数量可能明显超过全局预算、且该子流程不应该独占全局 LLM 池时才传，例如 KG 抽取、OCR 子批次或低优先级后台补算。
 
 禁止写法：
 

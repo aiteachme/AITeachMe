@@ -333,7 +333,6 @@ async def generate_static_html_figure_assets(
     results = await run_llm_tasks(
         candidates,
         _generate_one,
-        max_concurrent=min(2, max(1, len(candidates))),
     )
     return [item for item in results if item is not None]
 
