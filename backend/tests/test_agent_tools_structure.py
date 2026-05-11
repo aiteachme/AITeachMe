@@ -18,7 +18,7 @@ from app.shared.infra.agent_loop import (
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
-from app.workflows.interact.chat.lib.tooling import resolve_interact_tool_plan
+from app.workflows.interact.chat.lib.tooling import resolve_interact_tool_plan, synthesize_ask_user_options_action
 
 
 def test_agent_tool_registry_loads_scoped_tools(monkeypatch) -> None:
@@ -93,6 +93,33 @@ def test_interact_tool_plan_forces_ask_user_options_when_requested() -> None:
 
     assert home_plan.tool_names == ["ask_user_options"]
     assert home_plan.forced_tool_name == "ask_user_options"
+
+
+def test_synthesizes_ask_user_options_action_from_numbered_text() -> None:
+    actions = synthesize_ask_user_options_action(
+        question="使用ask_user_options问我问题",
+        assistant_response=(
+            "请选择一个方向：\n\n"
+            "1. 基础概念\n"
+            "2. 实战练习\n"
+            "3. 复习计划"
+        ),
+    )
+
+    assert actions == [
+        {
+            "type": "ask_user_options",
+            "payload": {
+                "question": "请选择一个方向：",
+                "options": [
+                    {"id": "option_1", "label": "基础概念", "value": "基础概念", "description": ""},
+                    {"id": "option_2", "label": "实战练习", "value": "实战练习", "description": ""},
+                    {"id": "option_3", "label": "复习计划", "value": "复习计划", "description": ""},
+                ],
+                "allow_custom_response": True,
+            },
+        }
+    ]
 
 
 def test_agent_loop_injects_hidden_args_and_requires_approval() -> None:

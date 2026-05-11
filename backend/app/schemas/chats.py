@@ -202,6 +202,7 @@ class ChatMessageItem(BaseModel):
     role: ChatRoleValue = Field(description="Message role.")
     content: str = Field(description="Message content.")
     contexts: list[ChatContextItem] | None = Field(default=None, description="Assistant citation list.")
+    client_actions: list[dict] | None = Field(default=None, description="Optional client actions emitted by the assistant turn.")
     created_at: datetime = Field(description="Created time.")
 
 

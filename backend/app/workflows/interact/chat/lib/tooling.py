@@ -7,6 +7,7 @@ own the global tool registry.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -35,6 +36,7 @@ _FORCE_ASK_USER_MARKERS = (
     "\u7ed9\u51e0\u4e2a\u9009\u9879",
     "\u95ee\u6211\u95ee\u9898",
 )
+_NUMBERED_OPTION_RE = re.compile(r"^\s*(?:[-*]\s*)?(?:\d{1,2}|[A-Fa-f])[\.\)\u3001\uff09]\s*(.+?)\s*$")
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,76 @@ def is_explicit_ask_user_options_request(question: str | None) -> bool:
     return "\u9009\u9879" in normalized and "\u95ee" in normalized and "\u6211" in normalized
 
 
+def synthesize_ask_user_options_action(
+    *,
+    question: str | None,
+    assistant_response: str | None,
+    existing_client_actions: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Recover a selectable-options action when a model wrote the choices as text."""
+
+    if existing_client_actions:
+        return existing_client_actions
+    if not is_explicit_ask_user_options_request(question):
+        return []
+
+    prompt, options = _extract_numbered_option_prompt(assistant_response or "")
+    if len(options) < 2:
+        return []
+
+    return [
+        {
+            "type": ASK_USER_OPTIONS_TOOL,
+            "payload": {
+                "question": _clip_action_text(prompt or "\u8bf7\u9009\u62e9\u4e00\u4e2a\u9009\u9879", 240),
+                "options": [
+                    {
+                        "id": f"option_{index}",
+                        "label": _clip_action_text(option, 80),
+                        "value": _clip_action_text(option, 160),
+                        "description": "",
+                    }
+                    for index, option in enumerate(options[:6], start=1)
+                ],
+                "allow_custom_response": True,
+            },
+        }
+    ]
+
+
+def _extract_numbered_option_prompt(content: str) -> tuple[str, list[str]]:
+    prompt_lines: list[str] = []
+    options: list[str] = []
+    seen_option = False
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = _NUMBERED_OPTION_RE.match(line)
+        if match:
+            seen_option = True
+            option = _clean_option_label(match.group(1))
+            if option:
+                options.append(option)
+            continue
+        if not seen_option:
+            prompt_lines.append(line)
+
+    return " ".join(prompt_lines).strip(), options
+
+
+def _clean_option_label(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip(" \t*-_")
+
+
+def _clip_action_text(value: str, max_chars: int) -> str:
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 1)].rstrip() + "..."
+
+
 def build_agent_loop_config(
     *,
     tool_plan: InteractToolPlan,
@@ -165,4 +237,5 @@ __all__ = [
     "is_explicit_ask_user_options_request",
     "resolve_forced_interact_tool_name",
     "resolve_interact_tool_plan",
+    "synthesize_ask_user_options_action",
 ]

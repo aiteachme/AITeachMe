@@ -99,6 +99,7 @@ def test_client_action_only_turn_can_persist(monkeypatch: pytest.MonkeyPatch) ->
 
     assert result["turn_id"] == "turn_action"
     assert calls[0]["assistant_content"] == ""
+    assert calls[0]["client_actions"] == [{"type": "ask_user_options", "payload": {"question": "选一个"}}]
 
 
 @pytest.mark.anyio

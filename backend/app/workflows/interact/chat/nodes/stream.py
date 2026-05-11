@@ -28,6 +28,7 @@ from app.workflows.interact.chat.lib.tooling import (
     INTERACT_MODEL_SELECTOR,
     build_agent_loop_config,
     resolve_interact_tool_plan,
+    synthesize_ask_user_options_action,
 )
 from app.workflows.interact.chat.lib.model_policy import (
     InteractModelStep,
@@ -323,6 +324,11 @@ def build_stream_answer_node(
             )
 
         assistant_response = "".join(collected_tokens)
+        client_actions = synthesize_ask_user_options_action(
+            question=state.get("question"),
+            assistant_response=assistant_response,
+            existing_client_actions=agent_client_actions or None,
+        )
         workflow_logger.info(
             "interact_stream_completed",
             response_chars=len(assistant_response),
@@ -335,7 +341,7 @@ def build_stream_answer_node(
             state,
             collected_tokens,
             stream_interrupted=False,
-            client_actions=agent_client_actions or None,
+            client_actions=client_actions or None,
         )
 
     return stream_answer
