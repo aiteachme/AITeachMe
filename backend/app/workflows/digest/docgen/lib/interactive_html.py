@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -17,6 +17,13 @@ from app.shared.infra.storage import CourseStorageScope, get_content_store, reso
 from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
+from app.workflows.digest.docgen.lib.interactive_design import (
+    InteractionDesignBrief,
+    InteractiveHtmlQualityReport,
+    assess_interactive_html_quality,
+    build_chapter_interaction_design_brief,
+    build_selection_interaction_design_brief,
+)
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
 from app.workflows.digest.docgen.prompts.interactive_html import (
@@ -105,6 +112,13 @@ class _InteractiveSectionCandidate:
     context: str
     insert_at: int
     score: float
+
+
+@dataclass(frozen=True)
+class _GeneratedInteractiveHtml:
+    html: str
+    validation_issues: list[str]
+    quality_report: InteractiveHtmlQualityReport
 
 
 def _normalize_blob(value: str) -> str:
@@ -285,6 +299,56 @@ def _sanitize_generated_html(html: str, *, title: str) -> str:
     return normalize_single_file_html(html, title=title, allow_scripts=True)
 
 
+async def _generate_interactive_html_with_retry(
+    *,
+    title: str,
+    digest_mode: str,
+    context: str,
+    design_brief: InteractionDesignBrief,
+    base_metadata: Mapping[str, object],
+    messages_factory: Callable[[Sequence[str]], list[dict[str, str]]],
+) -> _GeneratedInteractiveHtml:
+    last_feedback: tuple[str, ...] = ()
+    last_result = _GeneratedInteractiveHtml(
+        html="",
+        validation_issues=["interactive HTML generation did not run"],
+        quality_report=InteractiveHtmlQualityReport(passed=False, issues=("生成未执行。",)),
+    )
+
+    for attempt in range(2):
+        html = await acompletion_with_fallback(
+            messages_factory(last_feedback),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.INTERACTIVE_HTML,
+                digest_mode=digest_mode,
+                extra_metadata={
+                    **dict(base_metadata),
+                    "quality_attempt": attempt + 1,
+                    "quality_retry": attempt > 0,
+                    "quality_retry_issue_count": len(last_feedback),
+                },
+            ),
+        )
+        cleaned_html = _sanitize_generated_html(str(html), title=title)
+        validation_issues = validate_single_file_html(cleaned_html)
+        quality_report = assess_interactive_html_quality(
+            cleaned_html,
+            title=title,
+            context=context,
+            design_brief=design_brief.as_prompt_text(),
+        )
+        last_result = _GeneratedInteractiveHtml(
+            html=cleaned_html,
+            validation_issues=validation_issues,
+            quality_report=quality_report,
+        )
+        if not validation_issues and quality_report.passed:
+            return last_result
+        last_feedback = tuple([*validation_issues, *quality_report.issues])
+
+    return last_result
+
+
 def _build_preview_url(*, course_id: str, asset_path: str, title: str) -> str:
     from urllib.parse import quote
 
@@ -348,27 +412,42 @@ async def generate_selection_interactive_html_asset(
         selected_text=selected_text,
         user_prompt=user_prompt,
     )
-    html = await acompletion_with_fallback(
-        build_selection_interactive_html_messages(
+    design_brief = build_selection_interaction_design_brief(
+        anchor_title=anchor_title,
+        selected_text=selected_text,
+        user_prompt=user_prompt,
+        section_excerpt=section_excerpt,
+    )
+    selection_context = "\n".join([selected_text, section_excerpt])
+
+    generated = await _generate_interactive_html_with_retry(
+        title=title,
+        digest_mode=traced_context.digest_mode or "",
+        context=selection_context,
+        design_brief=design_brief,
+        base_metadata=traced_context.trace_metadata(
+            docgen_stage="interactive_html_selection",
+            asset_kind="interactive_html",
+            design_brief=design_brief.as_metadata(),
+        ),
+        messages_factory=lambda retry_feedback: build_selection_interactive_html_messages(
             anchor_title=anchor_title,
             heading_path=heading_path,
             selected_text=selected_text,
             user_prompt=user_prompt,
             section_excerpt=section_excerpt,
-        ),
-        **docgen_completion_kwargs_with_metadata(
-            DocGenModelStep.INTERACTIVE_HTML,
-            digest_mode=traced_context.digest_mode or "",
-            extra_metadata=traced_context.trace_metadata(
-                docgen_stage="interactive_html_selection",
-                asset_kind="interactive_html",
-            ),
+            design_brief=design_brief.as_prompt_text(),
+            retry_feedback=retry_feedback,
         ),
     )
-    cleaned_html = _sanitize_generated_html(str(html), title=title)
-    validation_issues = validate_single_file_html(cleaned_html)
+    cleaned_html = generated.html
+    validation_issues = generated.validation_issues
     if validation_issues:
         raise ValueError("generated interactive HTML failed validation: " + "; ".join(validation_issues))
+    if not generated.quality_report.passed:
+        raise ValueError(
+            "generated interactive HTML failed quality check: " + "; ".join(generated.quality_report.issues)
+        )
 
     cs = get_content_store()
     course_scope = course_scope or resolve_course_storage_scope(course_id)
@@ -386,6 +465,8 @@ async def generate_selection_interactive_html_asset(
         "preview_url": preview_url,
         "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=title),
         "validation_issues": validation_issues,
+        "quality_issues": list(generated.quality_report.issues),
+        "design_brief": design_brief.as_metadata(),
     }
 
 
@@ -485,31 +566,44 @@ async def maybe_generate_interactive_html_assets(
 
     async def _generate_one(candidate: _InteractiveSectionCandidate) -> dict[str, object] | None:
         title = candidate.title or draft.title
-        html = await acompletion_with_fallback(
-            build_interactive_html_messages(
+        context = candidate.context or _chapter_context_excerpt(draft)
+        design_brief = build_chapter_interaction_design_brief(
+            title=title,
+            objective=draft.summary_draft,
+            context=context,
+            interaction_mode=interaction_mode,
+            concept_targets=concept_targets,
+            formula_targets=formula_targets,
+            claim_targets=claim_targets,
+        )
+        generated = await _generate_interactive_html_with_retry(
+            title=title,
+            digest_mode=digest_mode,
+            context=context,
+            design_brief=design_brief,
+            base_metadata=traced_context.trace_metadata(
+                docgen_stage="interactive_html_sidecar",
+                asset_kind="interactive_html",
+                chapter_index=draft.chapter_index,
+                section_index=candidate.index,
+                section_title=title,
+                design_brief=design_brief.as_metadata(),
+            ),
+            messages_factory=lambda retry_feedback: build_interactive_html_messages(
                 chapter_title=title,
                 chapter_objective=draft.summary_draft,
                 digest_mode=digest_mode,
                 interaction_mode=interaction_mode,
+                design_brief=design_brief.as_prompt_text(),
                 concept_targets=concept_targets,
                 formula_targets=formula_targets,
                 claim_targets=claim_targets,
-                chapter_context=candidate.context or _chapter_context_excerpt(draft),
-            ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.INTERACTIVE_HTML,
-                digest_mode=digest_mode,
-                extra_metadata=traced_context.trace_metadata(
-                    docgen_stage="interactive_html_sidecar",
-                    asset_kind="interactive_html",
-                    chapter_index=draft.chapter_index,
-                    section_index=candidate.index,
-                    section_title=title,
-                ),
+                chapter_context=context,
+                retry_feedback=retry_feedback,
             ),
         )
-        cleaned_html = _sanitize_generated_html(str(html), title=title)
-        validation_issues = validate_single_file_html(cleaned_html)
+        cleaned_html = generated.html
+        validation_issues = generated.validation_issues
         if validation_issues:
             logger.warning(
                 "docgen_interactive_html_skipped_after_validation",
@@ -517,6 +611,16 @@ async def maybe_generate_interactive_html_assets(
                 chapter_title=draft.title,
                 section_title=title,
                 validation_issues=validation_issues,
+            )
+            return None
+        if not generated.quality_report.passed:
+            logger.warning(
+                "docgen_interactive_html_skipped_after_quality_check",
+                chapter_index=draft.chapter_index,
+                chapter_title=draft.title,
+                section_title=title,
+                quality_issues=list(generated.quality_report.issues),
+                design_brief=design_brief.as_metadata(),
             )
             return None
         cs = get_content_store()
@@ -546,6 +650,8 @@ async def maybe_generate_interactive_html_assets(
             "open_mode": "inline",
             "link_markdown": _build_markdown_link(preview_url=preview_url, link_label=link_label),
             "validation_issues": validation_issues,
+            "quality_issues": list(generated.quality_report.issues),
+            "design_brief": design_brief.as_metadata(),
         }
 
     results = await run_llm_tasks(
