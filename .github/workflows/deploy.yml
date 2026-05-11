@@ -126,8 +126,12 @@ jobs:
   deploy-frontend-sealos:
     name: Deploy frontend to Sealos
     runs-on: ubuntu-latest
-    needs: verify-latest
-    if: needs.verify-latest.outputs.should_deploy == 'true'
+    needs:
+      - verify-latest
+      - deploy-backend
+    # The frontend Sealos smoke test exercises proxied /api upload traffic, so
+    # wait until the backend rollout has finished instead of racing it.
+    if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.deploy-backend.result == 'success'
     permissions:
       contents: read
       packages: write
@@ -374,7 +378,10 @@ jobs:
           health_url="${base_url}/api/health"
           upload_url="${base_url}/api/v1/files/upload"
           upload_probe="/tmp/aiteachme-upload-body-probe.bin"
-          python3 -c 'from pathlib import Path; Path("/tmp/aiteachme-upload-body-probe.bin").write_bytes(b"0" * (2 * 1024 * 1024))'
+          # Keep this above common 1 MiB ingress defaults, but below the real 10 MB app limit.
+          upload_probe_bytes=$((1280 * 1024))
+          upload_probe_label="1.25MiB"
+          python3 -c 'import sys; from pathlib import Path; Path(sys.argv[1]).write_bytes(b"0" * int(sys.argv[2]))' "${upload_probe}" "${upload_probe_bytes}"
 
           readiness_ok=false
           for attempt in {1..12}; do
@@ -401,7 +408,7 @@ jobs:
             exit 1
           fi
 
-          for attempt in {1..18}; do
+          for attempt in {1..8}; do
             upload_status="$(
               curl -sS \
                 -o /tmp/frontend-upload-body.out \
@@ -413,7 +420,7 @@ jobs:
                 || true
             )"
 
-            echo "Frontend upload body smoke attempt ${attempt}/18: 2MiB multipart -> ${upload_status}"
+            echo "Frontend upload body smoke attempt ${attempt}/8: ${upload_probe_label} multipart -> ${upload_status}"
 
             if [ "${upload_status}" = "422" ]; then
               exit 0
@@ -422,7 +429,7 @@ jobs:
           done
 
           echo "Sealos frontend upload body smoke check did not pass: ${upload_url}" >&2
-          echo "Last 2MiB upload-body response:" >&2
+          echo "Last upload-body response:" >&2
           tail -c 1000 /tmp/frontend-upload-body.out >&2 || true
           echo "" >&2
           exit 1
