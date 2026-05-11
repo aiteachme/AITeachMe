@@ -331,6 +331,16 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
     openAiInteraction,
   ]);
 
+  const handleCloseFullscreen = useCallback(() => {
+    closeAiInteraction();
+    navigate(getSidebarReturnPath(fullscreenConversationScope, lastNonAssistantPath), { replace: true });
+  }, [
+    closeAiInteraction,
+    fullscreenConversationScope,
+    lastNonAssistantPath,
+    navigate,
+  ]);
+
   const handleWindowTransitionEnd = useCallback((event: TransitionEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || event.propertyName !== "width") {
       return;
@@ -506,7 +516,7 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
                 request={renderedRequest}
                 active={isWindowOpen}
                 presentation={renderMode}
-                onClose={displayMode === "sidebar" ? closeAiInteraction : undefined}
+                onClose={displayMode === "sidebar" ? closeAiInteraction : handleCloseFullscreen}
                 onReturnToSidebar={renderMode === "fullscreen" ? handleReturnFullscreenToSidebar : undefined}
               />
             </Suspense>

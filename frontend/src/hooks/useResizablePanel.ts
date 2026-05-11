@@ -151,6 +151,24 @@ export function useResizablePanel({
   useEffect(() => {
     if (!isDragging) return;
 
+    const cancelScheduledFrame = () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+
+    const clearScheduledWidth = () => {
+      cancelScheduledFrame();
+      pendingWidthRef.current = null;
+    };
+
+    const finishBoundaryAction = () => {
+      clearScheduledWidth();
+      hideDragGuide();
+      setIsDragging(false);
+    };
+
     const flushWidth = (nextWidth: number, shouldCommit: boolean) => {
       if (commitResizeOnDragEnd && !shouldCommit) {
         positionDragGuide(nextWidth);
@@ -188,6 +206,10 @@ export function useResizablePanel({
     };
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (boundaryActionTriggeredRef.current) {
+        return;
+      }
+
       let newWidth;
       
       if (direction === "right") {
@@ -201,12 +223,16 @@ export function useResizablePanel({
       if (!boundaryActionTriggeredRef.current) {
         const { minAllowed, maxAllowed } = getPanelWidthBounds(minWidth, maxWidth);
         const triggerOffset = Math.max(0, boundaryActionThreshold);
-        if (newWidth >= maxAllowed + triggerOffset) {
+        if (onDragBeyondMax && newWidth >= maxAllowed + triggerOffset) {
           boundaryActionTriggeredRef.current = true;
-          onDragBeyondMax?.();
-        } else if (newWidth <= minAllowed - triggerOffset) {
+          onDragBeyondMax();
+          finishBoundaryAction();
+          return;
+        } else if (onDragBeyondMin && newWidth <= minAllowed - triggerOffset) {
           boundaryActionTriggeredRef.current = true;
-          onDragBeyondMin?.();
+          onDragBeyondMin();
+          finishBoundaryAction();
+          return;
         }
       }
 
@@ -215,10 +241,7 @@ export function useResizablePanel({
     };
 
     const handleMouseUp = () => {
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
+      cancelScheduledFrame();
 
       const finalWidth = pendingWidthRef.current;
       if (finalWidth !== null) {
