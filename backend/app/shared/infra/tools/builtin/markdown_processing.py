@@ -1383,6 +1383,10 @@ def summarize_markdown_presentation(markdown: str) -> dict[str, object]:
 
 _HTML_SCRIPT_STYLE_RE = re.compile(r"<(?P<tag>script|style)\b[^>]*>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_REMOTE_RESOURCE_ATTR_RE = re.compile(
+    r"""\b(?:src|href|data|poster|action|formaction|srcset|xlink:href)\s*=\s*(?:"[^"]*(?:https?:)?//|'[^']*(?:https?:)?//|[^\s>]*(?:https?:)?//)""",
+    re.IGNORECASE,
+)
 
 
 def _html_structure_text(html: str) -> str:
@@ -1390,6 +1394,18 @@ def _html_structure_text(html: str) -> str:
 
     text = _HTML_COMMENT_RE.sub("", str(html or ""))
     return _HTML_SCRIPT_STYLE_RE.sub(lambda match: f"<{match.group('tag')}></{match.group('tag')}>", text)
+
+
+def _html_resource_attribute_text(html: str) -> str:
+    """Return HTML text for URL-attribute scanning without script/style bodies."""
+
+    text = _HTML_COMMENT_RE.sub("", str(html or ""))
+
+    def _keep_shell(match: re.Match[str]) -> str:
+        opening = match.group(0).split(">", 1)[0] + ">"
+        return f"{opening}</{match.group('tag')}>"
+
+    return _HTML_SCRIPT_STYLE_RE.sub(_keep_shell, text)
 
 
 def _html_tag_count(html: str, tag: str) -> int:
@@ -1401,6 +1417,7 @@ def validate_single_file_html(html: str) -> list[str]:
 
     text = str(html or "").strip()
     structure_lower = _html_structure_text(text).lower()
+    resource_text = _html_resource_attribute_text(text)
     issues: list[str] = []
     if not structure_lower.startswith("<!doctype html>"):
         issues.append("HTML sidecar 缺少 <!doctype html>。")
@@ -1424,9 +1441,11 @@ def validate_single_file_html(html: str) -> list[str]:
         issues.append("HTML sidecar 包含外部样式、字体或资源引用。")
     if re.search(r"<img[^>]+src\s*=\s*['\"]https?://", text, re.IGNORECASE):
         issues.append("HTML sidecar 包含远程图片资源。")
+    if _HTML_REMOTE_RESOURCE_ATTR_RE.search(resource_text):
+        issues.append("HTML sidecar 包含远程资源 URL。")
     if re.search(r"@import\b", text, re.IGNORECASE):
         issues.append("HTML sidecar 包含外部样式 import。")
-    if re.search(r"url\s*\(\s*['\"]?https?://", text, re.IGNORECASE):
+    if re.search(r"url\s*\(\s*['\"]?(?:https?:)?//", text, re.IGNORECASE):
         issues.append("HTML sidecar 包含远程样式资源。")
     if re.search(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", text) or re.search(r"\b(localStorage|sessionStorage)\b", text):
         issues.append("HTML sidecar 包含不允许的联网或持久化 API。")

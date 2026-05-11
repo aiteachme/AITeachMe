@@ -574,6 +574,46 @@ def test_single_file_html_validator_reports_sidecar_risks() -> None:
     assert "HTML sidecar 包含不允许的联网或持久化 API。" in issues
 
 
+def test_single_file_html_validator_rejects_remote_resource_attributes() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>demo</title>
+</head>
+<body>
+  <iframe src="https://example.com/embed"></iframe>
+  <object data="//cdn.example.com/diagram.svg"></object>
+  <video poster="https://example.com/poster.png"></video>
+  <img srcset="local.png 1x, https://example.com/remote.png 2x" alt="" />
+</body>
+</html>"""
+
+    issues = validate_single_file_html(html)
+
+    assert "HTML sidecar 包含远程资源 URL。" in issues
+
+
+def test_single_file_html_validator_ignores_script_resource_string_literals() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>demo</title>
+</head>
+<body>
+  <script>
+    const sample = '<iframe src="https://example.com/embed"></iframe>';
+    const link = '<object data="//cdn.example.com/diagram.svg"></object>';
+  </script>
+</body>
+</html>"""
+
+    assert validate_single_file_html(html) == []
+
+
 def test_single_file_html_validator_ignores_script_and_style_literals() -> None:
     html = """<!DOCTYPE html>
 <html lang="zh-CN">
