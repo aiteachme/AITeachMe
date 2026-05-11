@@ -9,8 +9,16 @@ import sys
 from pathlib import Path
 from generate_code_stats import generate_quickchart_url, generate_shields_io_badge
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
 DEFAULT_JSON_PATH = str(SCRIPT_DIR / 'code_stats.json')
+DEFAULT_README_PATH = str(REPO_ROOT / 'README.md')
+CODE_STATS_START = '<!-- CODE_STATS_START -->'
+CODE_STATS_END = '<!-- CODE_STATS_END -->'
 
 
 def load_stats_data(json_path: str = DEFAULT_JSON_PATH) -> dict:
@@ -26,7 +34,21 @@ def load_stats_data(json_path: str = DEFAULT_JSON_PATH) -> dict:
         return json.load(f)
 
 
-def update_readme(data: dict, readme_path: str = 'README.md'):
+def build_code_stats_block(data: dict) -> str:
+    """生成根 README 中展示用的代码统计区块。"""
+    chart_url = generate_quickchart_url(data)
+    badge_url = generate_shields_io_badge(data)
+
+    return (
+        f"{CODE_STATS_START}\n"
+        "## 代码量概览\n\n"
+        f"![代码行数]({badge_url})\n\n"
+        f"![代码量趋势]({chart_url})\n"
+        f"{CODE_STATS_END}"
+    )
+
+
+def update_readme(data: dict, readme_path: str = DEFAULT_README_PATH):
     """更新 README 中的图表 URL"""
     readme_file = Path(readme_path)
     
@@ -38,27 +60,23 @@ def update_readme(data: dict, readme_path: str = 'README.md'):
     with open(readme_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # 生成新的 URL
-    chart_url = generate_quickchart_url(data)
-    badge_url = generate_shields_io_badge(data)
-    
-    # 更新徽章 URL（在 header 部分）
-    badge_pattern = r'https://img\.shields\.io/badge/代码行数-[^"]+?-blue'
-    if re.search(badge_pattern, content):
-        content = re.sub(badge_pattern, badge_url, content)
-        print("✓ 已更新代码行数徽章")
+    new_block = build_code_stats_block(data)
+    block_pattern = re.compile(
+        rf'{re.escape(CODE_STATS_START)}.*?{re.escape(CODE_STATS_END)}',
+        re.DOTALL,
+    )
+
+    if block_pattern.search(content):
+        content = block_pattern.sub(new_block, content)
+        print("✓ 已更新代码量统计区块")
     else:
-        print("⚠️  未找到代码行数徽章，跳过更新")
-    
-    # 更新图表 URL（在代码量变化趋势部分）
-    chart_pattern = r'!\[代码量趋势\]\(https://quickchart\.io/chart\?c=[^\)]+\)'
-    new_chart_markdown = f'![代码量趋势]({chart_url})'
-    
-    if re.search(chart_pattern, content):
-        content = re.sub(chart_pattern, new_chart_markdown, content)
-        print("✓ 已更新代码量趋势图表")
-    else:
-        print("⚠️  未找到代码量趋势图表，跳过更新")
+        anchor = "\n## 核心闭环\n"
+        if anchor in content:
+            content = content.replace(anchor, f"\n{new_block}\n{anchor}", 1)
+            print("✓ 已插入代码量统计区块")
+        else:
+            content = content.rstrip() + f"\n\n{new_block}\n"
+            print("✓ 已在 README 末尾追加代码量统计区块")
     
     # 写回 README
     with open(readme_file, 'w', encoding='utf-8') as f:

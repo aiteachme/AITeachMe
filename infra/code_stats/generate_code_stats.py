@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import re
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # 脚本所在目录，用于定位 JSON 数据文件
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_JSON_PATH = str(SCRIPT_DIR / 'code_stats.json')
