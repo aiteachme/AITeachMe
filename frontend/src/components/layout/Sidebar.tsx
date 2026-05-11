@@ -627,7 +627,12 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
           ) : null}
         </div>
 
-        <div className={cn("min-h-0 flex-1 space-y-2 overflow-hidden pb-3", effectiveCollapsed ? "px-2" : "px-3")}>
+        <div
+          className={cn(
+            "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit",
+            effectiveCollapsed ? "px-2" : "px-3",
+          )}
+        >
           {!effectiveCollapsed ? (
             <div className="flex h-8 items-center">
               <button
@@ -667,7 +672,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 className="min-h-0 overflow-hidden"
               >
                 <motion.div
-                  className="max-h-[52vh] space-y-0.5 overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin scrollbar-webkit"
+                  className="space-y-0.5 overflow-x-hidden pr-1"
                   variants={shouldAnimateCourseItems ? sidebarListContainerMotion : undefined}
                   initial={shouldAnimateCourseItems ? "hidden" : false}
                   animate={shouldAnimateCourseItems ? "visible" : undefined}

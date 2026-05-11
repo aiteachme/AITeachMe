@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-04T02:51:40.681061",
-  "total_commits_analyzed": 1529,
+  "generated_at": "2026-05-11T02:54:58.431090",
+  "total_commits_analyzed": 1652,
   "stats": [
     {
       "date": "2026-03-11",
@@ -12233,6 +12233,990 @@
       "code_lines": 150234,
       "other_lines": 32075,
       "message": "chore: release v0.0.3-beta"
+    },
+    {
+      "date": "2026-05-01",
+      "commit": "386a8e4",
+      "total_lines": 184678,
+      "code_lines": 148769,
+      "other_lines": 35909,
+      "message": "feat: 为外部解析增加15秒超时本地回退"
+    },
+    {
+      "date": "2026-05-01",
+      "commit": "dbb6147",
+      "total_lines": 184380,
+      "code_lines": 148541,
+      "other_lines": 35839,
+      "message": "chore: 删除废弃的解析调试脚本"
+    },
+    {
+      "date": "2026-05-03",
+      "commit": "71fcd13",
+      "total_lines": 181714,
+      "code_lines": 149790,
+      "other_lines": 31924,
+      "message": "feat: 优化工作流性能与质量"
+    },
+    {
+      "date": "2026-05-03",
+      "commit": "4c6fe78",
+      "total_lines": 181757,
+      "code_lines": 149827,
+      "other_lines": 31930,
+      "message": "fix: 调整检索结果合并顺序并优化去重"
+    },
+    {
+      "date": "2026-05-03",
+      "commit": "4c34226",
+      "total_lines": 181780,
+      "code_lines": 149843,
+      "other_lines": 31937,
+      "message": "fix: 避免后台任务关闭超时后阻塞"
+    },
+    {
+      "date": "2026-05-03",
+      "commit": "723ea3f",
+      "total_lines": 181868,
+      "code_lines": 149915,
+      "other_lines": 31953,
+      "message": "fix: 保留 OCR 占位图回退替换"
+    },
+    {
+      "date": "2026-05-03",
+      "commit": "58f152d",
+      "total_lines": 181868,
+      "code_lines": 149915,
+      "other_lines": 31953,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "e79751a",
+      "total_lines": 182307,
+      "code_lines": 150232,
+      "other_lines": 32075,
+      "message": "fix: 收敛 Tauri 更新发布产物"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "9cd486b",
+      "total_lines": 182307,
+      "code_lines": 150232,
+      "other_lines": 32075,
+      "message": "fix: 支持重复发布预发布版本"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "565e9f9",
+      "total_lines": 182309,
+      "code_lines": 150234,
+      "other_lines": 32075,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "139cf5e",
+      "total_lines": 182307,
+      "code_lines": 150232,
+      "other_lines": 32075,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "e821b46",
+      "total_lines": 182318,
+      "code_lines": 150243,
+      "other_lines": 32075,
+      "message": "feat: 增加反馈与联系邮箱入口"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "0c09f35",
+      "total_lines": 182480,
+      "code_lines": 150373,
+      "other_lines": 32107,
+      "message": "fix: 收紧 OSS 私有资源公开访问"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "4f19887",
+      "total_lines": 182495,
+      "code_lines": 150386,
+      "other_lines": 32109,
+      "message": "Merge branch 'main' into dev_ywl_t"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "cb3cb12",
+      "total_lines": 182503,
+      "code_lines": 150395,
+      "other_lines": 32108,
+      "message": "fix: 改用远程直链加载社区二维码"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "5eadba8",
+      "total_lines": 182477,
+      "code_lines": 150376,
+      "other_lines": 32101,
+      "message": "fix: 固定社区二维码资源地址"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "07f09c5",
+      "total_lines": 182416,
+      "code_lines": 150330,
+      "other_lines": 32086,
+      "message": "refactor: 移除存储公开 URL 能力"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "e383989",
+      "total_lines": 182416,
+      "code_lines": 150330,
+      "other_lines": 32086,
+      "message": "refactor: 统一公开资源到 assets 仓库"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "75d4867",
+      "total_lines": 182467,
+      "code_lines": 150371,
+      "other_lines": 32096,
+      "message": "fix: 加快社区二维码加载"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "d910a4b",
+      "total_lines": 182273,
+      "code_lines": 150187,
+      "other_lines": 32086,
+      "message": "refactor: 精简课程导入入口"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "8d0f639",
+      "total_lines": 182274,
+      "code_lines": 150188,
+      "other_lines": 32086,
+      "message": "fix: 调整首页演示课程布局"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "942674e",
+      "total_lines": 182340,
+      "code_lines": 150245,
+      "other_lines": 32095,
+      "message": "fix: 修复演示课程重复导入"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "ccdf3e1",
+      "total_lines": 182346,
+      "code_lines": 150251,
+      "other_lines": 32095,
+      "message": "fix: 提示重复导入资料复用"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "47f9f44",
+      "total_lines": 182443,
+      "code_lines": 150334,
+      "other_lines": 32109,
+      "message": "fix: 加快演示课程导入返回"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "eb70488",
+      "total_lines": 182534,
+      "code_lines": 150409,
+      "other_lines": 32125,
+      "message": "fix: 缓存演示课程包下载"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "fc64f72",
+      "total_lines": 182662,
+      "code_lines": 150488,
+      "other_lines": 32174,
+      "message": "chore: 更新generated"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "c6a5e6c",
+      "total_lines": 182662,
+      "code_lines": 150488,
+      "other_lines": 32174,
+      "message": "chore: release v0.0.3-beta.1"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "c02360f",
+      "total_lines": 182662,
+      "code_lines": 150488,
+      "other_lines": 32174,
+      "message": "fix: 升级后端安全依赖"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "b8066ad",
+      "total_lines": 182655,
+      "code_lines": 150482,
+      "other_lines": 32173,
+      "message": "fix: 避免导入课程提前标记向量索引"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "9fb9c9a",
+      "total_lines": 182655,
+      "code_lines": 150482,
+      "other_lines": 32173,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "0f64d78",
+      "total_lines": 182655,
+      "code_lines": 150482,
+      "other_lines": 32173,
+      "message": "fix: 支持 Tauri 桌面拖拽上传"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "1d2f727",
+      "total_lines": 182658,
+      "code_lines": 150485,
+      "other_lines": 32173,
+      "message": "style: 统一知识文档浮动按钮样式"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "1bde6e3",
+      "total_lines": 183894,
+      "code_lines": 151655,
+      "other_lines": 32239,
+      "message": "refactor: 优化知识图谱洞察可视化"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "f3d01a8",
+      "total_lines": 184755,
+      "code_lines": 152447,
+      "other_lines": 32308,
+      "message": "refactor: 重构知识图谱洞察可视化"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "c5078e2",
+      "total_lines": 185246,
+      "code_lines": 152913,
+      "other_lines": 32333,
+      "message": "feat: 优化知识图谱可读地图"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "97b6941",
+      "total_lines": 184601,
+      "code_lines": 152300,
+      "other_lines": 32301,
+      "message": "feat: 完善知识图谱数据分析视图"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "4b6eb7d",
+      "total_lines": 184601,
+      "code_lines": 152300,
+      "other_lines": 32301,
+      "message": "style: 整理知识图谱洞察样式"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "30a66f1",
+      "total_lines": 184626,
+      "code_lines": 152322,
+      "other_lines": 32304,
+      "message": "fix: 修正知识图谱洞察区高度布局"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "cdc3ba4",
+      "total_lines": 184626,
+      "code_lines": 152322,
+      "other_lines": 32304,
+      "message": "fix: 避免知识图谱信息栏遮挡地图"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "acafe99",
+      "total_lines": 184626,
+      "code_lines": 152322,
+      "other_lines": 32304,
+      "message": "fix: 修复后端依赖锁文件冲突"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "eac6703",
+      "total_lines": 184626,
+      "code_lines": 152322,
+      "other_lines": 32304,
+      "message": "chore: release v0.0.3-beta.2"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "e1dcc28",
+      "total_lines": 184725,
+      "code_lines": 152379,
+      "other_lines": 32346,
+      "message": "feat: 增加 Windows 安装包签名配置"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "8f4359e",
+      "total_lines": 184822,
+      "code_lines": 152464,
+      "other_lines": 32358,
+      "message": "fix: 修复 Mermaid 纯文本节点解析失败"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "e31875e",
+      "total_lines": 184824,
+      "code_lines": 152466,
+      "other_lines": 32358,
+      "message": "fix: 强化 Tauri 自动更新发布校验"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "e7ae8c6",
+      "total_lines": 184824,
+      "code_lines": 152466,
+      "other_lines": 32358,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "c63ff5c",
+      "total_lines": 184824,
+      "code_lines": 152466,
+      "other_lines": 32358,
+      "message": "chore: 更新generated"
+    },
+    {
+      "date": "2026-05-04",
+      "commit": "82b1841",
+      "total_lines": 184824,
+      "code_lines": 152466,
+      "other_lines": 32358,
+      "message": "chore: release v0.0.3"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "ccb67c1",
+      "total_lines": 184828,
+      "code_lines": 152468,
+      "other_lines": 32360,
+      "message": "fix: 阻止发布未签名 Windows 安装包"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "1c677b9",
+      "total_lines": 184899,
+      "code_lines": 152527,
+      "other_lines": 32372,
+      "message": "fix: 兼容 Mermaid class 节点列表空格"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "68cd830",
+      "total_lines": 184903,
+      "code_lines": 152529,
+      "other_lines": 32374,
+      "message": "fix: 校验 Tauri 预发布更新清单"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "0b45f52",
+      "total_lines": 185086,
+      "code_lines": 152695,
+      "other_lines": 32391,
+      "message": "feat: 在设置中支持手动检查更新"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "eeecec4",
+      "total_lines": 185086,
+      "code_lines": 152695,
+      "other_lines": 32391,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "b1afce7",
+      "total_lines": 185788,
+      "code_lines": 153327,
+      "other_lines": 32461,
+      "message": "feat: 完善社区版发布与模型策略"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "04c520e",
+      "total_lines": 185820,
+      "code_lines": 153327,
+      "other_lines": 32493,
+      "message": "chore: 固定 Orval 版本并同步生成客户端"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "b468c87",
+      "total_lines": 185820,
+      "code_lines": 153327,
+      "other_lines": 32493,
+      "message": "fix: 允许发布流程跳过 Windows 签名"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "d967a48",
+      "total_lines": 185820,
+      "code_lines": 153327,
+      "other_lines": 32493,
+      "message": "fix: 延后发布版本提交"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "a386742",
+      "total_lines": 185820,
+      "code_lines": 153327,
+      "other_lines": 32493,
+      "message": "chore: release v0.0.4"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "7e64917",
+      "total_lines": 185675,
+      "code_lines": 153423,
+      "other_lines": 32252,
+      "message": "fix: 优化桌面更新体验并稳定生成文件头"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "90800c4",
+      "total_lines": 185674,
+      "code_lines": 153422,
+      "other_lines": 32252,
+      "message": "fix: 调整反馈弹窗布局和课程模式文案"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "a2315c5",
+      "total_lines": 185674,
+      "code_lines": 153422,
+      "other_lines": 32252,
+      "message": "chore: 调整邮箱"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "f6a54b1",
+      "total_lines": 185674,
+      "code_lines": 153422,
+      "other_lines": 32252,
+      "message": "fix: 允许预发布桌面包复用稳定更新通道"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "ba1f752",
+      "total_lines": 185674,
+      "code_lines": 153422,
+      "other_lines": 32252,
+      "message": "chore: release v0.0.5-alpha.1"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "4ec851f",
+      "total_lines": 185674,
+      "code_lines": 153422,
+      "other_lines": 32252,
+      "message": "chore: release v0.0.5"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "471a42a",
+      "total_lines": 185673,
+      "code_lines": 153421,
+      "other_lines": 32252,
+      "message": "fix: 统一 LLM 并发设置生效范围"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "a78e7cd",
+      "total_lines": 185757,
+      "code_lines": 153492,
+      "other_lines": 32265,
+      "message": "fix: 补齐 OCR 并发遵循全局设置"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "6c91bed",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "fix: 对齐 Tauri 更新使用 MSI 发布链路"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "4256c2b",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "8c2dc66",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "chore: 添加githook, 更新openai.json"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "502e21c",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "chore: 简化 OpenAPI 客户端同步钩子"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "ae58b08",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "fix: 避免预发布 Tauri MSI 版本号不兼容"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "0d0a9fd",
+      "total_lines": 185782,
+      "code_lines": 153514,
+      "other_lines": 32268,
+      "message": "chore: release v0.0.6-alpha.1"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "cdefdd9",
+      "total_lines": 185774,
+      "code_lines": 153510,
+      "other_lines": 32264,
+      "message": "fix: 固定 Tauri 更新使用 GitHub Release 通道"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "6c2d8a8",
+      "total_lines": 186310,
+      "code_lines": 153990,
+      "other_lines": 32320,
+      "message": "fix: 收窄 DocGen 复核输入与局部修补"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "0c1c4ec",
+      "total_lines": 186359,
+      "code_lines": 154033,
+      "other_lines": 32326,
+      "message": "fix: 限制 DocGen 单章单次修补"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "76d092f",
+      "total_lines": 186652,
+      "code_lines": 154295,
+      "other_lines": 32357,
+      "message": "fix: 改进 DocGen 局部修补轮次"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "4347566",
+      "total_lines": 185816,
+      "code_lines": 153540,
+      "other_lines": 32276,
+      "message": "fix: 修复前端深链资源加载失败"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "8249cbf",
+      "total_lines": 186654,
+      "code_lines": 154296,
+      "other_lines": 32358,
+      "message": "refactor: 优化 DocGen 修补结果字段默认值"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "097dd65",
+      "total_lines": 185816,
+      "code_lines": 153540,
+      "other_lines": 32276,
+      "message": "chore: 同步openai"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "8ec6a38",
+      "total_lines": 186643,
+      "code_lines": 154285,
+      "other_lines": 32358,
+      "message": "refactor: 内联 DocGen 修补轮次约束"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "0022e48",
+      "total_lines": 186713,
+      "code_lines": 154348,
+      "other_lines": 32365,
+      "message": "fix: 修正 DocGen 局部修补锚点"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "3d1299b",
+      "total_lines": 185816,
+      "code_lines": 153540,
+      "other_lines": 32276,
+      "message": "chore: release v0.0.6"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "ca61dac",
+      "total_lines": 186747,
+      "code_lines": 154374,
+      "other_lines": 32373,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "f2119dc",
+      "total_lines": 186754,
+      "code_lines": 154379,
+      "other_lines": 32375,
+      "message": "fix: 默认使用 NSIS 作为 Tauri 更新包"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "a846f75",
+      "total_lines": 186249,
+      "code_lines": 153898,
+      "other_lines": 32351,
+      "message": "chore: 初步接入posthog"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "afb28eb",
+      "total_lines": 186249,
+      "code_lines": 153898,
+      "other_lines": 32351,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "f3da165",
+      "total_lines": 186731,
+      "code_lines": 154358,
+      "other_lines": 32373,
+      "message": "fix: 对齐 Tauri 更新下载链路"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "50db6fb",
+      "total_lines": 186249,
+      "code_lines": 153898,
+      "other_lines": 32351,
+      "message": "fix: 发布版本同步 OpenAPI 版本号"
+    },
+    {
+      "date": "2026-05-06",
+      "commit": "b42ad89",
+      "total_lines": 187164,
+      "code_lines": 154716,
+      "other_lines": 32448,
+      "message": "Merge branch 'main' of github.com:aiteachme/AiTeac"
+    },
+    {
+      "date": "2026-05-05",
+      "commit": "bca3d60",
+      "total_lines": 187164,
+      "code_lines": 154716,
+      "other_lines": 32448,
+      "message": "chore: release v0.0.7"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "3d01dc9",
+      "total_lines": 187214,
+      "code_lines": 154754,
+      "other_lines": 32460,
+      "message": "fix: 完善发布版本同步和发布保护"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "92b7b01",
+      "total_lines": 187319,
+      "code_lines": 154850,
+      "other_lines": 32469,
+      "message": "feat: 显示桌面更新当前版本"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "cb6c951",
+      "total_lines": 187319,
+      "code_lines": 154850,
+      "other_lines": 32469,
+      "message": "fix: 允许稳定版发布预绑定安装包"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "4070d0f",
+      "total_lines": 187319,
+      "code_lines": 154850,
+      "other_lines": 32469,
+      "message": "chore: release v0.0.8"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "450fe69",
+      "total_lines": 187357,
+      "code_lines": 154886,
+      "other_lines": 32471,
+      "message": "fix: 恢复桌面更新下载进度"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "59d01fb",
+      "total_lines": 187359,
+      "code_lines": 154888,
+      "other_lines": 32471,
+      "message": "fix: 优化桌面更新检查交互"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "0bb3903",
+      "total_lines": 187359,
+      "code_lines": 154888,
+      "other_lines": 32471,
+      "message": "fix: 固定 Tauri API 版本"
+    },
+    {
+      "date": "2026-05-07",
+      "commit": "1da0efb",
+      "total_lines": 187359,
+      "code_lines": 154888,
+      "other_lines": 32471,
+      "message": "chore: release v0.0.9"
+    },
+    {
+      "date": "2026-05-08",
+      "commit": "5b1a48d",
+      "total_lines": 187719,
+      "code_lines": 155211,
+      "other_lines": 32508,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-05-08",
+      "commit": "414a380",
+      "total_lines": 188006,
+      "code_lines": 155490,
+      "other_lines": 32516,
+      "message": "feat(ingest): 支持图片上传外部解析链路"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "54c2f1f",
+      "total_lines": 187435,
+      "code_lines": 154954,
+      "other_lines": 32481,
+      "message": "refactor: 移除 LLMCallPurpose 调用画像"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "ec3827e",
+      "total_lines": 188082,
+      "code_lines": 155556,
+      "other_lines": 32526,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "eaa48e9",
+      "total_lines": 188239,
+      "code_lines": 155702,
+      "other_lines": 32537,
+      "message": "refactor: 优化考试历史查询与题模板匹配"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "96007e3",
+      "total_lines": 188249,
+      "code_lines": 155711,
+      "other_lines": 32538,
+      "message": "test: 隔离外部解析超时兜底测试"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "afbe425",
+      "total_lines": 188287,
+      "code_lines": 155750,
+      "other_lines": 32537,
+      "message": "Refactor conversation components: replace fullscre"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "71cdb33",
+      "total_lines": 189194,
+      "code_lines": 156574,
+      "other_lines": 32620,
+      "message": "Refactor AiInteractionWindow to support sidebar an"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "2b97e33",
+      "total_lines": 189372,
+      "code_lines": 156735,
+      "other_lines": 32637,
+      "message": "feat: 添加历史对话功能，支持全屏查看和搜索历史记录"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "069a146",
+      "total_lines": 189372,
+      "code_lines": 156735,
+      "other_lines": 32637,
+      "message": "refactor: 优化按钮样式，移除不必要的属性，提升可读性"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "745af19",
+      "total_lines": 189507,
+      "code_lines": 156859,
+      "other_lines": 32648,
+      "message": "feat: 添加文件拖放功能，支持在多个组件中上传文件"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "08a7902",
+      "total_lines": 189644,
+      "code_lines": 156984,
+      "other_lines": 32660,
+      "message": "feat: 添加消息处理的时间跟踪功能，支持计算和显示消息的持续时间"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "0a0cc65",
+      "total_lines": 189741,
+      "code_lines": 157076,
+      "other_lines": 32665,
+      "message": "feat: 优化文本区域样式，支持多行输入"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "c055cd5",
+      "total_lines": 189703,
+      "code_lines": 157041,
+      "other_lines": 32662,
+      "message": "fix: 移除语音输入按钮，优化按钮状态逻辑，调整样式提升视觉效果"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "f743caf",
+      "total_lines": 190172,
+      "code_lines": 157469,
+      "other_lines": 32703,
+      "message": "feat: introduce new chat scenes and enhance prompt"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "6f4ae3d",
+      "total_lines": 190994,
+      "code_lines": 158234,
+      "other_lines": 32760,
+      "message": "feat: enhance home intake flow with recent message"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "9ab53f6",
+      "total_lines": 191635,
+      "code_lines": 158810,
+      "other_lines": 32825,
+      "message": "feat: add ask_user_options tool for user interacti"
+    },
+    {
+      "date": "2026-05-09",
+      "commit": "13d55ca",
+      "total_lines": 191773,
+      "code_lines": 158943,
+      "other_lines": 32830,
+      "message": "feat: 添加全屏切换功能，优化会话头部按钮逻辑"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "6e203b5",
+      "total_lines": 191773,
+      "code_lines": 158943,
+      "other_lines": 32830,
+      "message": "chore: openai.json修复"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "be3544e",
+      "total_lines": 191942,
+      "code_lines": 159093,
+      "other_lines": 32849,
+      "message": "fix: 统一上传文件数量与总大小限制"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "c23c04e",
+      "total_lines": 191942,
+      "code_lines": 159093,
+      "other_lines": 32849,
+      "message": "chore: 增加上传大小部署冒烟检查"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "310fa2d",
+      "total_lines": 191942,
+      "code_lines": 159093,
+      "other_lines": 32849,
+      "message": "chore: 拆分上传限制部署冒烟检查"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "9b4be2a",
+      "total_lines": 193539,
+      "code_lines": 160448,
+      "other_lines": 33091,
+      "message": "refactor: 统一 LLM 调度并强化并发控制"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "b13132c",
+      "total_lines": 194751,
+      "code_lines": 161473,
+      "other_lines": 33278,
+      "message": "feat: 支持知识文档划选生成交互演示"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "d3eb788",
+      "total_lines": 194828,
+      "code_lines": 161543,
+      "other_lines": 33285,
+      "message": "feat: 添加全屏关闭按钮并优化面板拖动边界处理"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "206bf5b",
+      "total_lines": 195050,
+      "code_lines": 161736,
+      "other_lines": 33314,
+      "message": "feat: 添加客户端操作支持，优化助手响应处理"
     }
   ]
 }

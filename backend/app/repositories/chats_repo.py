@@ -378,9 +378,11 @@ def create_message_pair(
     anchor_id: str | None = None,
     selected_text: str | None = None,
     source_chunk_id: int | None = None,
+    client_actions: Any | None = None,
     user_id: str = "local",
 ) -> tuple[ChatMessage, ChatMessage]:
     resolved_turn_id = turn_id or str(uuid.uuid4())
+    assistant_meta = {"client_actions": client_actions} if client_actions else None
     user_message = ChatMessage(
         course_id=course_id,
         user_id=user_id,
@@ -406,7 +408,7 @@ def create_message_pair(
         source_chunk_id=source_chunk_id,
         role="assistant",
         content=assistant_content,
-        meta_json=None,
+        meta_json=assistant_meta,
         contexts_json=contexts,
     )
     session.add(user_message)

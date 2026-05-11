@@ -351,8 +351,19 @@ def _to_chat_message_item(message: ChatMessage) -> ChatMessageItem:
         role=message.role,
         content=message.content,
         contexts=_normalize_chat_contexts(message.contexts_json),
+        client_actions=_normalize_client_actions(message.meta_json),
         created_at=message.created_at,
     )
+
+
+def _normalize_client_actions(raw_meta: object) -> list[dict] | None:
+    if not isinstance(raw_meta, dict):
+        return None
+    client_actions = raw_meta.get("client_actions")
+    if not isinstance(client_actions, list):
+        return None
+    actions = [item for item in client_actions if isinstance(item, dict) and item.get("type")]
+    return actions or None
 
 
 def _to_chat_session_item(

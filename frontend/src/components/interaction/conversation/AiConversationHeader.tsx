@@ -6,6 +6,7 @@ import {
   PanelRight,
   PanelRightOpen,
   Share2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -122,6 +123,28 @@ export function AiConversationCollapseButton({
     >
       <ChevronsRight className="h-4 w-4 shrink-0" strokeWidth={2} />
       {showLabel ? <span className="text-[13px] font-medium">收起</span> : null}
+    </button>
+  );
+}
+
+interface AiConversationCloseButtonProps {
+  onClick: () => void;
+  className?: string;
+}
+
+export function AiConversationCloseButton({
+  onClick,
+  className,
+}: AiConversationCloseButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(TITLE_BAR_ICON_BUTTON_CLASS_NAME, className)}
+      aria-label="关闭对话"
+      title="关闭对话"
+    >
+      <X className="h-4 w-4 shrink-0" strokeWidth={2} />
     </button>
   );
 }
@@ -247,7 +270,9 @@ export function AiConversationHeader({
             onClick={onTogglePresentation}
           />
         ) : null}
-        {onReturnToSidebar ? (
+        {onClose && isFullscreen ? (
+          <AiConversationCloseButton onClick={onClose} />
+        ) : onReturnToSidebar ? (
           <AiConversationReturnToSidebarButton onClick={onReturnToSidebar} />
         ) : onClose ? (
           <AiConversationCollapseButton onClick={onClose} />

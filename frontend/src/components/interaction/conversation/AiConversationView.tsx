@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
-import { BookOpen, FileText, MessageSquareText, Plus, Search, Sparkles } from "lucide-react";
+import { BookOpen, FileText, Maximize2, MessageSquareText, PanelRightOpen, Plus, Search, Sparkles } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import type {
@@ -25,6 +25,7 @@ import { AiConversationComposerDock } from "./AiConversationComposerDock";
 import { AiConversationDraftPage } from "./AiConversationDraftPage";
 import {
   AiConversationCollapseButton,
+  AiConversationCloseButton,
   AiConversationHeader,
   AiConversationReturnToSidebarButton,
 } from "./AiConversationHeader";
@@ -1714,7 +1715,25 @@ export const AiConversationView = memo(function AiConversationView({
               <Search className="h-4 w-4" strokeWidth={2} />
             </button>
             <div className="flex items-center justify-end gap-1.5">
-              {onReturnToSidebar ? (
+              <button
+                type="button"
+                onClick={handleTogglePresentation}
+                className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700"
+                aria-label={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
+                title={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
+              >
+                {isFullscreen ? (
+                  <PanelRightOpen className="h-4 w-4" strokeWidth={2} />
+                ) : (
+                  <Maximize2 className="h-4 w-4" strokeWidth={2} />
+                )}
+              </button>
+              {onClose && isFullscreen ? (
+                <AiConversationCloseButton
+                  onClick={onClose}
+                  className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
+                />
+              ) : onReturnToSidebar ? (
                 <AiConversationReturnToSidebarButton
                   onClick={handleReturnToSidebar}
                   className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"

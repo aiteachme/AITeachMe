@@ -654,6 +654,9 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
   const elapsedMs = item.role === "assistant" && previousItem?.role === "user"
     ? computeElapsedMs(previousItem.created_at, item.created_at)
     : null;
+  const clientActions = item.role === "assistant"
+    ? resolvePersistedClientActions(item, previousItem)
+    : [];
 
   const mappedMessage: ChatSessionMessage = {
     localId: `history-${item.id}`,
@@ -673,10 +676,100 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     runningToolCallIds: [],
     completedToolCallIds: [],
     toolRuns: [],
-    clientActions: [],
+    clientActions,
     errorDetail: null,
   };
   return restorePersistedToolRunState(mappedMessage);
+}
+
+function resolvePersistedClientActions(
+  item: ChatMessageItem,
+  previousItem: ChatMessageItem | null,
+): ChatClientAction[] {
+  const parsedActions = parseClientActions(item.client_actions);
+  if (parsedActions.length > 0) {
+    return parsedActions;
+  }
+  return inferAskUserOptionsActions(previousItem?.content ?? "", item.content);
+}
+
+function inferAskUserOptionsActions(userQuestion: string, assistantContent: string): ChatClientAction[] {
+  if (!looksLikeExplicitAskUserOptionsRequest(userQuestion)) {
+    return [];
+  }
+
+  const { question, options } = extractNumberedOptions(assistantContent);
+  if (options.length < 2) {
+    return [];
+  }
+
+  return [{
+    type: "ask_user_options",
+    payload: {
+      question: clipActionText(question || "\u8bf7\u9009\u62e9\u4e00\u4e2a\u9009\u9879", 240),
+      options: options.slice(0, 6).map((option, index) => ({
+        id: `option_${index + 1}`,
+        label: clipActionText(option, 80),
+        value: clipActionText(option, 160),
+        description: "",
+      })),
+      allow_custom_response: true,
+    },
+  }];
+}
+
+function looksLikeExplicitAskUserOptionsRequest(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return false;
+  }
+  const markers = [
+    "ask_user_options",
+    "\u76f4\u63a5\u95ee\u6211",
+    "\u7528\u9009\u9879\u95ee\u6211",
+    "\u4f7f\u7528\u9009\u9879\u95ee\u6211",
+    "\u7ed9\u6211\u51e0\u4e2a\u9009\u9879",
+    "\u7ed9\u51e0\u4e2a\u9009\u9879",
+    "\u95ee\u6211\u95ee\u9898",
+  ];
+  return markers.some((marker) => normalized.includes(marker)) ||
+    (normalized.includes("\u9009\u9879") && normalized.includes("\u95ee") && normalized.includes("\u6211"));
+}
+
+function extractNumberedOptions(content: string): { question: string; options: string[] } {
+  const optionPattern = /^\s*(?:[-*]\s*)?(?:\d{1,2}|[a-fA-F])[\.)\u3001\uff09]\s*(.+?)\s*$/;
+  const questionLines: string[] = [];
+  const options: string[] = [];
+  let seenOption = false;
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const match = line.match(optionPattern);
+    if (match) {
+      seenOption = true;
+      const option = match[1]?.replace(/\s+/g, " ").replace(/^[*\-_]+|[*\-_]+$/g, "").trim();
+      if (option) {
+        options.push(option);
+      }
+      continue;
+    }
+    if (!seenOption) {
+      questionLines.push(line);
+    }
+  }
+
+  return { question: questionLines.join(" ").trim(), options };
+}
+
+function clipActionText(value: string, maxChars: number): string {
+  const text = value.trim();
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxChars - 1)).trimEnd()}...`;
 }
 
 function restorePersistedToolRunState(message: ChatSessionMessage): ChatSessionMessage {

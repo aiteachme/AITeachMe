@@ -77,6 +77,7 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
                     or state.get("selected_context")
                 ),
                 source_chunk_id=state.get("source_chunk_id"),
+                client_actions=state.get("client_actions") or None,
             )
         workflow_logger.info(
             "interact_turn_persisted",

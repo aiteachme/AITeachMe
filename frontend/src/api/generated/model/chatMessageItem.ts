@@ -21,6 +21,8 @@ export interface ChatMessageItem {
   content: string;
   /** Assistant citation list. */
   contexts?: ChatContextItem[] | null;
+  /** Optional client actions emitted by the assistant turn. */
+  client_actions?: Record<string, unknown>[] | null;
   /** Created time. */
   created_at: string;
 }
