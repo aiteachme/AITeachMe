@@ -181,12 +181,6 @@ class Settings(_SettingsModel):
         return bool((self.models.ocr or "").strip())
 
     @property
-    def has_vision_ocr_model(self) -> bool:
-        """Backward-compatible alias for older ingest call sites."""
-
-        return self.has_document_ocr_model
-
-    @property
     def rerank_configured(self) -> bool:
         return bool((self.models.rerank or "").strip())
 

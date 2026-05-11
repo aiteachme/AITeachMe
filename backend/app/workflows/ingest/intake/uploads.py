@@ -26,7 +26,7 @@ from app.repositories.files_repo import (
     update_raw_file,
 )
 from app.schemas.files import FilesUploadData
-from app.utils.path_helpers import build_temp_dir
+from app.utils.path_helpers import build_temp_dir, build_user_file_temp_dir
 from app.utils.presenters import require_id
 from app.utils.course import validate_course_id
 from app.workflows.ingest.intake.catalog import build_file_record
@@ -259,7 +259,11 @@ async def _save_uploaded_file_content(
     if reusable_raw_file is not None:
         return reusable_raw_file
 
-    temp_dir = build_temp_dir(normalized_course_id or "library", user_id=owner_user_id)
+    temp_dir = (
+        build_temp_dir(normalized_course_id, user_id=owner_user_id)
+        if normalized_course_id
+        else build_user_file_temp_dir(user_id=owner_user_id)
+    )
     file_id = _generate_file_id()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4().hex}{extension}"

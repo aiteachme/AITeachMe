@@ -19,24 +19,17 @@ def get_data_dir() -> Path:
 
 
 def _canonical_course_dir(course_id: str, *, user_id: str | None = None) -> Path:
-    """Return the canonical course directory under `users/<user>/courses/`.
+    """Return the canonical course directory under `users/<user>/courses/`."""
 
-    Falls back to the legacy `data/<course>/` layout only when the user scope
-    cannot be resolved yet.
-    """
+    if user_id is not None:
+        from app.shared.infra.storage import build_course_storage_scope
 
-    try:
-        if user_id is not None:
-            from app.shared.infra.storage import build_course_storage_scope
+        scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
+    else:
+        from app.shared.infra.storage import resolve_course_storage_scope
 
-            scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
-        else:
-            from app.shared.infra.storage import resolve_course_storage_scope
-
-            scope = resolve_course_storage_scope(course_id)
-        return get_data_dir() / scope.namespace
-    except Exception:
-        return get_data_dir() / course_id
+        scope = resolve_course_storage_scope(course_id)
+    return get_data_dir() / scope.namespace
 
 
 def build_course_dir(course_id: str, *, user_id: str | None = None) -> Path:
@@ -51,16 +44,13 @@ def build_temp_dir(course_id: str, *, user_id: str | None = None) -> Path:
     return build_course_dir(course_id, user_id=user_id) / "temp"
 
 
-def build_debug_dir(course_id: str, *, user_id: str | None = None) -> Path:
-    """Return the course-level debug directory."""
+def build_user_file_temp_dir(*, user_id: str) -> Path:
+    """Return the user-library temp directory."""
 
-    return build_course_dir(course_id, user_id=user_id) / "debug"
+    from app.shared.infra.storage import build_user_file_storage_scope
 
-
-def build_exam_dir(course_id: str, *, user_id: str | None = None) -> Path:
-    """Return the course-level exam export directory."""
-
-    return build_course_dir(course_id, user_id=user_id) / "exam"
+    scope = build_user_file_storage_scope(user_id=user_id)
+    return get_data_dir() / scope.namespace / "temp"
 
 
 def build_knowledge_markdown_dir(course_id: str, *, user_id: str | None = None) -> Path:
@@ -69,20 +59,20 @@ def build_knowledge_markdown_dir(course_id: str, *, user_id: str | None = None) 
     return build_course_dir(course_id, user_id=user_id) / "knowledge_markdowns"
 
 
-def build_knowledge_docs_dir(course_id: str) -> Path:
-    """Compatibility alias for the published knowledge-markdown directory."""
-
-    return build_knowledge_markdown_dir(course_id)
-
-
 def build_knowledge_markdown_build_dir(course_id: str) -> Path:
     """Return the knowledge-markdown build/intermediate directory."""
 
     return build_knowledge_markdown_dir(course_id) / "_build"
 
 
-def build_knowledge_docs_build_dir(course_id: str) -> Path:
-    """Compatibility alias for the knowledge-markdown build directory."""
+def build_knowledge_build_lock_path(course_id: str) -> Path:
+    """Return the course-level knowledge docs lock path."""
+
+    return build_knowledge_markdown_dir(course_id) / ".build.lock"
+
+
+def build_docgen_intermediate_latest_dir(course_id: str) -> Path:
+    """Return the current build intermediate directory."""
 
     return build_knowledge_markdown_build_dir(course_id)
 
@@ -100,78 +90,6 @@ def sanitize_doc_title(title: str) -> str:
     normalized = normalized.replace(".", "_")
     normalized = _MULTI_UNDERSCORE_RE.sub("_", normalized).strip(" _.")
     return (normalized or "untitled")[:50]
-
-
-# 保留别名以兼容内部调用
-_sanitize_doc_title = sanitize_doc_title
-
-
-def build_knowledge_doc_path(course_id: str, chapter_index: int, title: str) -> Path:
-    """Build the published chapter markdown path."""
-
-    filename = f"chapter_{chapter_index:02d}_{_sanitize_doc_title(title)}.md"
-    return build_knowledge_markdown_dir(course_id) / filename
-
-
-def build_knowledge_doc_build_path(course_id: str, chapter_index: int, title: str) -> Path:
-    """Build the staging chapter markdown path."""
-
-    filename = f"chapter_{chapter_index:02d}_{_sanitize_doc_title(title)}.md"
-    return build_knowledge_markdown_build_dir(course_id) / filename
-
-
-def build_merged_knowledge_base_path(course_id: str) -> Path:
-    """Return the published merged knowledge markdown path."""
-
-    return build_knowledge_markdown_dir(course_id) / "merged_knowledge_base.md"
-
-
-def build_merged_knowledge_base_build_path(course_id: str) -> Path:
-    """Return the staging merged knowledge markdown path."""
-
-    return build_knowledge_markdown_build_dir(course_id) / "merged_knowledge_base.md"
-
-
-def build_knowledge_manifest_path(course_id: str) -> Path:
-    """Return the knowledge docs manifest path."""
-
-    return build_knowledge_markdown_dir(course_id) / "manifest.json"
-
-
-def build_knowledge_build_status_path(course_id: str) -> Path:
-    """Return the runtime build-status path for knowledge docs."""
-
-    return build_knowledge_markdown_dir(course_id) / "build_status.json"
-
-
-def build_knowledge_build_lock_path(course_id: str) -> Path:
-    """Return the course-level knowledge docs lock path."""
-
-    return build_knowledge_markdown_dir(course_id) / ".build.lock"
-
-
-def build_knowledge_unit_embedding_cache_path(course_id: str) -> Path:
-    """Return the persistent node-embedding cache path."""
-
-    return build_knowledge_markdown_dir(course_id) / "node_embedding_cache.json"
-
-
-def build_knowledge_chunk_manifest_path(course_id: str) -> Path:
-    """Return the incremental canonical chunk manifest path."""
-
-    return build_knowledge_markdown_dir(course_id) / "chunk_manifest.json"
-
-
-def build_docgen_intermediate_dir(course_id: str) -> Path:
-    """Return the docgen intermediate directory."""
-
-    return build_knowledge_markdown_build_dir(course_id)
-
-
-def build_docgen_intermediate_latest_dir(course_id: str) -> Path:
-    """Return the current build intermediate directory."""
-
-    return build_docgen_intermediate_dir(course_id)
 
 
 def _sanitize_storage_token(value: str) -> str:
@@ -212,38 +130,6 @@ def list_asset_files(
         for item in sorted(path.iterdir())
         if item.is_file() and (not asset_name_prefix or item.name.startswith(asset_name_prefix))
     ]
-
-
-def delete_asset_files(
-    asset_dir: str | Path | None,
-    *,
-    asset_name_prefix: str | None = None,
-) -> int:
-    """Delete asset files, optionally filtered by filename prefix."""
-
-    deleted = 0
-    for item in list_asset_files(asset_dir, asset_name_prefix=asset_name_prefix):
-        item.unlink(missing_ok=True)
-        deleted += 1
-    return deleted
-
-
-def _sanitize_debug_segment(value: str) -> str:
-    """Sanitize debug directory path segments."""
-
-    return value.replace("/", "_").replace("\\", "_").replace(" ", "_")
-
-
-def build_workflow_debug_dir(course_id: str, workflow_name: str) -> Path:
-    """Return the workflow debug root directory."""
-
-    return build_debug_dir(course_id) / _sanitize_debug_segment(workflow_name)
-
-
-def build_workflow_run_debug_dir(course_id: str, workflow_name: str, run_or_job_id: str | int) -> Path:
-    """Return the debug directory for one workflow run."""
-
-    return build_workflow_debug_dir(course_id, workflow_name) / _sanitize_debug_segment(str(run_or_job_id))
 
 
 def to_storage_key(path: str | Path) -> str:

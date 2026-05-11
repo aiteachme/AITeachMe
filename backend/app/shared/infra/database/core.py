@@ -1059,12 +1059,6 @@ def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
                 )
 
 
-def _drop_sqlite_legacy_schema(engine: sa.Engine) -> None:
-    """Backward-compatible alias for older tests and local tooling."""
-
-    _drop_sqlite_removed_schema(engine)
-
-
 def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     db_path = _get_db_path()
     if not db_path.exists():

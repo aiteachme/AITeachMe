@@ -38,7 +38,7 @@ from app.models import (
     UserKnowledgeState,
 )
 from app.schemas.course import CourseDeleteImpactItem, CourseDeletePreviewData
-from app.utils.path_helpers import build_course_dir, get_data_dir
+from app.utils.path_helpers import build_course_dir
 
 logger = structlog.get_logger()
 _POSTGRES_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_]*")
@@ -369,10 +369,6 @@ def _delete_raw_files_and_artifacts(session: Session, *, course_id: str, owner_u
 
 
 def _delete_course_directory(course_id: str, *, user_id: str | None = None) -> None:
-    course_dirs = {
-        build_course_dir(course_id, user_id=user_id),
-        get_data_dir() / course_id,  # Best-effort cleanup for legacy top-level folders.
-    }
-    for course_dir in course_dirs:
-        if course_dir.exists():
-            shutil.rmtree(course_dir, ignore_errors=True)
+    course_dir = build_course_dir(course_id, user_id=user_id)
+    if course_dir.exists():
+        shutil.rmtree(course_dir, ignore_errors=True)

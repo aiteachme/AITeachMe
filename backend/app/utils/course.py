@@ -14,12 +14,11 @@ except ImportError:
 
 COURSE_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 COURSE_ID_PREFIX = "course_"
-LEGACY_COURSE_ID_PREFIX = "su" + "bj_"
 COURSE_ID_SIZE = 12
 GLOBAL_COURSE = ""
 GLOBAL_COURSE_ALIASES = frozenset({"", "global", "_global", "__global__"})
 _COURSE_ID_PATTERN = re.compile(
-    rf"^(?:{re.escape(COURSE_ID_PREFIX)}|{re.escape(LEGACY_COURSE_ID_PREFIX)})[a-z0-9]{{{COURSE_ID_SIZE}}}$"
+    rf"^{re.escape(COURSE_ID_PREFIX)}[a-z0-9]{{{COURSE_ID_SIZE}}}$"
 )
 
 
