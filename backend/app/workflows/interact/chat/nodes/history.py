@@ -19,7 +19,7 @@ from app.repositories import profile_repo, course_repo
 from app.repositories.chats_repo import get_recent_turns
 from app.utils.presenters import mastery_to_text
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.profile.pipeline.lib.course_profile import build_course_profile_summary
+from app.workflows.profile.common.lib.course_profile import build_course_profile_summary
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.types import (
     MistakeSummary,

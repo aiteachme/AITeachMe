@@ -1,16 +1,16 @@
 """Profile mastery update node.
 
 This node applies graded exam results to user knowledge states. It delegates
-the scoring math to ``pipeline.lib.mastery`` and only adapts graph state.
+the scoring math to ``common.lib.mastery`` and only adapts graph state.
 """
 
 from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.profile.pipeline.lib.mastery import MasteryUpdateResult, update_mastery_from_exam
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.lib.mastery import MasteryUpdateResult, update_mastery_from_exam
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def serialize_mastery_result(result: MasteryUpdateResult) -> dict[str, object]:

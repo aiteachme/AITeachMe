@@ -8,16 +8,16 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.profile.pipeline.lib.course_profile import (
+from app.workflows.profile.common.lib.course_profile import (
     build_course_profile_summary,
     refresh_course_profile_summary,
 )
-from app.workflows.profile.pipeline.lib.user_profile import (
+from app.workflows.profile.common.lib.user_profile import (
     build_user_profile_summary,
     refresh_user_profile_summary,
 )
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def build_refresh_course_profile_node(*, session: Session | None = None):

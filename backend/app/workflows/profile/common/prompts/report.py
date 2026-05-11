@@ -1,4 +1,4 @@
-"""Prompt templates for the profile pipeline."""
+"""Prompt templates for Profile report suggestions."""
 
 SYSTEM_PROMPT_REPORT_SUGGESTIONS = """
 请根据下面的学习情况，给出 3 到 5 条简洁、可执行的复习建议。

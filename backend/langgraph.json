@@ -32,9 +32,17 @@
       "path": "./app/workflows/examine/exam_grade/graph.py:build_exam_grade_graph",
       "description": "Examine exam grading workflow."
     },
-    "profile_pipeline": {
-      "path": "./app/workflows/profile/pipeline/graph.py:build_profile_pipeline_graph",
-      "description": "Executable profile pipeline for mastery, review, weakness, and summary refresh."
+    "profile_update": {
+      "path": "./app/workflows/profile/update/graph.py:get_langgraph_dev_profile_update_graph",
+      "description": "Profile update workflow after exam grading."
+    },
+    "profile_snapshot": {
+      "path": "./app/workflows/profile/snapshot/graph.py:get_langgraph_dev_profile_snapshot_graph",
+      "description": "Read-only Profile snapshot workflow for profile pages."
+    },
+    "profile_study_plan": {
+      "path": "./app/workflows/profile/study_plan/graph.py:get_langgraph_dev_profile_study_plan_graph",
+      "description": "Profile study-plan workflow from current profile signals."
     }
   },
   "env": "../.env"

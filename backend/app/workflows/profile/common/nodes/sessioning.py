@@ -1,4 +1,4 @@
-"""Profile pipeline session helpers for graph nodes.
+"""Profile session helpers for graph nodes.
 
 Node modules use this small helper to share optional API-provided sessions.
 It does not own workflow routing, tracing, or profile business rules.

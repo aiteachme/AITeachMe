@@ -8,11 +8,11 @@ from app.shared.infra.llm_support import acompletion
 from app.shared.infra.observability.trace import traceable_with_context as traceable
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import SYSTEM, USER
-from app.workflows.profile.pipeline.lib.model_policy import (
+from app.workflows.profile.common.lib.model_policy import (
     ProfileModelStep,
     profile_completion_kwargs_with_metadata,
 )
-from app.workflows.profile.pipeline.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
+from app.workflows.profile.common.prompts import SYSTEM_PROMPT_REPORT_SUGGESTIONS
 
 logger = structlog.get_logger()
 

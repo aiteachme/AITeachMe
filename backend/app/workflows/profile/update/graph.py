@@ -17,16 +17,16 @@ from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.profile.common import ProfileNodeTracer, profile_dev_context, route_after_error
-from app.workflows.profile.pipeline.nodes import (
+from app.workflows.profile.common.nodes import (
     build_analyze_weakness_node,
     build_refresh_course_profile_node,
     build_refresh_user_profile_node,
     build_resolve_exam_profile_context_node,
     build_schedule_reviews_node,
     build_update_mastery_node,
-    fail_profile_pipeline_node,
+    fail_profile_lane_node,
 )
-from app.workflows.profile.pipeline.prompts import PROMPTS
+from app.workflows.profile.common.prompts import PROMPTS
 from app.workflows.profile.update.state import ProfileUpdateState
 
 PROFILE_UPDATE_WORKFLOW_NAME = "profile.update"
@@ -193,7 +193,7 @@ def build_profile_update_graph(
         NODE_TRACER.wrap(
             trace,
             NODE_FAIL_PROFILE_UPDATE,
-            fail_profile_pipeline_node,
+            fail_profile_lane_node,
         ),
         metadata=NODE_TRACER.metadata(NODE_FAIL_PROFILE_UPDATE),
     )

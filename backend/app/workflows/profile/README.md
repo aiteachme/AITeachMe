@@ -13,8 +13,7 @@ profile/
   update/          # 判卷后画像更新，写掌握度/复习/画像摘要
   snapshot/        # Profile 页只读快照，组装 mastery overview / course profile / user profile
   study_plan/      # 主动学习计划，生成复习+练习+伴读的执行建议
-  common/          # 多条 profile lane 共享的 tracing / routing 辅助
-  pipeline/        # 旧路径兼容层，不再新增业务
+  common/          # 多条 profile lane 共享的 tracing / routing / nodes / lib / prompts
 ```
 
 `study_plan` 不叫 `planning`，是为了避免和 `digest/planner` 混淆：
@@ -27,10 +26,6 @@ profile/
 - `run_profile_update_workflow(...)`：判卷完成后触发，持久化更新掌握度、复习任务和画像摘要。
 - `run_profile_snapshot_workflow(...)`：Profile 页读取时触发，只读生成 mastery overview / course profile / user profile。
 - `run_profile_study_plan_workflow(...)`：基于画像生成主动学习计划，不写 DB、不替代 Digest Planner。
-
-兼容入口：
-
-- `run_profile_pipeline_workflow(...)` 仍可用，但只是转发到 `run_profile_update_workflow(...)`。
 
 LangSmith root trace：
 

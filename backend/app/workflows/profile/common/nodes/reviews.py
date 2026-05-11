@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.profile.pipeline.lib.reviews import schedule_reviews
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
-from app.workflows.profile.pipeline.state import ProfileWorkflowState
+from app.workflows.profile.common.lib.reviews import schedule_reviews
+from app.workflows.profile.common.nodes.sessioning import node_session
+from app.workflows.profile.common.state import ProfileWorkflowState
 
 
 def build_schedule_reviews_node(*, session: Session | None = None):
-    """Build the review scheduler node for the exam-driven pipeline."""
+    """Build the review scheduler node for the exam-driven update lane."""
 
     def schedule_reviews_node(state: ProfileWorkflowState) -> ProfileWorkflowState:
         course_id = state.get("course_id")

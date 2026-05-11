@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.models import ChatMessage
-from app.workflows.profile.pipeline.lib.conversation_memory import build_conversation_profile_signals
+from app.workflows.profile.common.lib.conversation_memory import build_conversation_profile_signals
 
 
 def _session() -> Session:

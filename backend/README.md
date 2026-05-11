@@ -93,7 +93,9 @@ langgraph dev --config langgraph.json
 - `interact_chat`
 - `examine_question_build`
 - `examine_exam_grade`
-- `profile_pipeline`
+- `profile_update`
+- `profile_snapshot`
+- `profile_study_plan`
 
 更多调试说明见 [Workflows 调试指南](../docs/workflows/debugging.md)。
 

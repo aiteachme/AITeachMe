@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from app.workflows.profile.pipeline.lib.course_profile import build_course_profile_summary
-from app.workflows.profile.pipeline.lib.user_profile import build_user_profile_summary
-from app.workflows.profile.pipeline.nodes.sessioning import node_session
+from app.workflows.profile.common.lib.course_profile import build_course_profile_summary
+from app.workflows.profile.common.lib.user_profile import build_user_profile_summary
+from app.workflows.profile.common.nodes.sessioning import node_session
 from app.workflows.profile.study_plan.lib import build_profile_study_plan
 from app.workflows.profile.study_plan.state import ProfileStudyPlanState
 

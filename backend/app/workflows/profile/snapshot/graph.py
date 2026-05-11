@@ -17,14 +17,14 @@ from app.shared.infra.workflow.graph_export import WorkflowGraphExport
 from app.shared.infra.workflow.result import WorkflowResult
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.profile.common import ProfileNodeTracer, profile_dev_context, route_after_error
-from app.workflows.profile.pipeline.nodes import (
+from app.workflows.profile.common.nodes import (
     build_course_profile_snapshot_node,
     build_load_mastery_overview_node,
     build_user_profile_snapshot_node,
     build_validate_profile_snapshot_context_node,
-    fail_profile_pipeline_node,
+    fail_profile_lane_node,
 )
-from app.workflows.profile.pipeline.prompts import PROMPTS
+from app.workflows.profile.common.prompts import PROMPTS
 from app.workflows.profile.snapshot.state import ProfileSnapshotState
 
 PROFILE_SNAPSHOT_WORKFLOW_NAME = "profile.snapshot"
@@ -151,7 +151,7 @@ def build_profile_snapshot_graph(
         NODE_TRACER.wrap(
             trace,
             NODE_FAIL_PROFILE_SNAPSHOT,
-            fail_profile_pipeline_node,
+            fail_profile_lane_node,
         ),
         metadata=NODE_TRACER.metadata(NODE_FAIL_PROFILE_SNAPSHOT),
     )

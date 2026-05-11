@@ -1,6 +1,6 @@
-"""Profile pipeline prompt exports."""
+"""Shared Profile prompt exports."""
 
-from app.workflows.profile.pipeline.prompts.report import (
+from app.workflows.profile.common.prompts.report import (
     PROMPTS,
     SYSTEM_PROMPT_REPORT_SUGGESTIONS,
 )

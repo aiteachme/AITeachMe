@@ -27,7 +27,7 @@ Profile 负责把学习行为转成可查询的掌握度、薄弱点、复习任
 | 画像更新链路 | `backend/app/workflows/profile/update/` |
 | 画像快照链路 | `backend/app/workflows/profile/snapshot/` |
 | 主动学习计划链路 | `backend/app/workflows/profile/study_plan/` |
-| 旧路径兼容层 | `backend/app/workflows/profile/pipeline/` |
+| 共享节点与 helper | `backend/app/workflows/profile/common/` |
 | 数据访问 | `backend/app/repositories/profile_repo.py` |
 | Exam 触发点 | `backend/app/api/exams.py` |
 
