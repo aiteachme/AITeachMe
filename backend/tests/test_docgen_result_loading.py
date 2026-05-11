@@ -28,6 +28,7 @@ class _FakeContentStore:
 class _FakeJsonContentStore:
     def __init__(self) -> None:
         self.payloads: dict[str, str] = {}
+        self.deleted_prefixes: list[str] = []
 
     async def read_json(self, key: str, model):
         raw = self.payloads.get(key)
@@ -38,6 +39,13 @@ class _FakeJsonContentStore:
 
     async def delete(self, key: str) -> None:
         self.payloads.pop(key, None)
+
+    async def delete_prefix(self, prefix: str) -> int:
+        self.deleted_prefixes.append(prefix)
+        matching_keys = [key for key in self.payloads if key.startswith(prefix)]
+        for key in matching_keys:
+            self.payloads.pop(key, None)
+        return len(matching_keys)
 
 
 def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) -> None:
@@ -85,6 +93,21 @@ def test_knowledge_manifest_is_written_outside_staging_prefix(monkeypatch) -> No
     assert key == course_scope.build_manifest_key()
     assert not key.startswith(course_scope.knowledge_build_prefix())
     assert build_store.read_knowledge_manifest("course_linearalg012", course_scope=course_scope) == manifest
+
+
+def test_clear_docgen_staging_uses_passed_course_scope(monkeypatch, tmp_path) -> None:
+    course_scope = build_course_storage_scope(user_id="user_a", course_id="course_linearalg012")
+    build_dir = tmp_path / course_scope.namespace / "knowledge_markdowns" / "_build"
+    build_dir.mkdir(parents=True)
+    (build_dir / "runtime.json").write_text("{}", encoding="utf-8")
+    fake_store = _FakeJsonContentStore()
+    monkeypatch.setattr(build_store, "get_content_store", lambda: fake_store)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+
+    build_store.clear_docgen_staging("course_linearalg012", course_scope=course_scope)
+
+    assert fake_store.deleted_prefixes == [course_scope.knowledge_build_prefix()]
+    assert not build_dir.exists()
 
 
 def test_knowledge_manifest_read_migrates_staged_manifest(monkeypatch) -> None:

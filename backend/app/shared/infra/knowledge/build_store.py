@@ -11,16 +11,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
-from app.shared.infra.runtime import is_cloud_mode, is_local_mode
+from app.shared.infra.runtime import get_runtime_data_dir, is_cloud_mode, is_local_mode
 from app.shared.infra.storage import (
     CourseStorageScope,
     get_content_store,
     resolve_course_storage_scope,
     run_store_sync,
-)
-from app.utils.path_helpers import (
-    build_docgen_intermediate_latest_dir,
-    build_knowledge_build_lock_path,
 )
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import ensure_utc_datetime, utcnow
@@ -736,8 +732,25 @@ def build_aggregate_knowledge_build_status(
     )
 
 
-def _course_scope_or_resolve(course_id: str, course_scope: CourseStorageScope | None) -> CourseStorageScope:
-    return course_scope or resolve_course_storage_scope(course_id)
+def _course_scope_or_resolve(
+    course_id: str,
+    course_scope: CourseStorageScope | None,
+    *,
+    session: Session | None = None,
+) -> CourseStorageScope:
+    return course_scope or resolve_course_storage_scope(course_id, session=session)
+
+
+def _local_storage_path(storage_key: str) -> Path:
+    return get_runtime_data_dir() / storage_key
+
+
+def _local_build_lock_path(course_scope: CourseStorageScope) -> Path:
+    return _local_storage_path(course_scope.knowledge_doc_key(".build.lock"))
+
+
+def _local_docgen_intermediate_dir(course_scope: CourseStorageScope) -> Path:
+    return _local_storage_path(course_scope.knowledge_build_prefix())
 
 
 def _staged_build_manifest_key(course_scope: CourseStorageScope) -> str:
@@ -791,21 +804,29 @@ def read_knowledge_build_lock(
     course_id: str,
     *,
     session: Session | None = None,
+    course_scope: CourseStorageScope | None = None,
 ) -> KnowledgeBuildLock | None:
     """Read the course-level build lock, if present."""
 
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id, session=session)
-    return _read_build_lock_path(build_knowledge_build_lock_path(course_id))
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope, session=session)
+    return _read_build_lock_path(_local_build_lock_path(resolved_scope))
 
 
-def acquire_knowledge_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
+def acquire_knowledge_build_lock(
+    course_id: str,
+    lock: KnowledgeBuildLock,
+    *,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
     """Create a course-level build lock atomically."""
 
     if is_cloud_mode():
         return _cloud_acquire_build_lock(course_id, lock)
 
-    path = build_knowledge_build_lock_path(course_id)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = _read_build_lock_path(path)
@@ -820,24 +841,34 @@ def acquire_knowledge_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bo
     return True
 
 
-def release_knowledge_build_lock(course_id: str) -> None:
+def release_knowledge_build_lock(
+    course_id: str,
+    *,
+    course_scope: CourseStorageScope | None = None,
+) -> None:
     """Remove the course-level build lock if it exists."""
 
     if is_cloud_mode():
         _cloud_release_build_lock(course_id)
         return
 
-    path = build_knowledge_build_lock_path(course_id)
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
     if path.exists():
         path.unlink()
 
 
-def is_knowledge_build_locked(course_id: str) -> bool:
+def is_knowledge_build_locked(
+    course_id: str,
+    *,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
     """Check whether the course-level build lock exists."""
 
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id) is not None
-    return build_knowledge_build_lock_path(course_id).exists()
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    return _local_build_lock_path(resolved_scope).exists()
 
 
 def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> KnowledgeBuildLock | None:
@@ -1259,7 +1290,7 @@ def clear_docgen_staging(
     run_store_sync(cs.delete_prefix, resolved_scope.knowledge_build_prefix(), default=0)
 
     if is_local_mode():
-        intermediate_dir = build_docgen_intermediate_latest_dir(course_id)
+        intermediate_dir = _local_docgen_intermediate_dir(resolved_scope)
         if intermediate_dir.exists():
             shutil.rmtree(intermediate_dir, ignore_errors=True)
 
@@ -1323,7 +1354,7 @@ def clear_knowledge_runtime_artifacts(
     run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
     run_store_sync(cs.delete, _staged_build_manifest_key(resolved_scope), default=None)
 
-    release_knowledge_build_lock(course_id)
+    release_knowledge_build_lock(course_id, course_scope=resolved_scope)
 
 
 __all__ = [

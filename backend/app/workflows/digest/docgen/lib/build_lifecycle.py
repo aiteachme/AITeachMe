@@ -433,7 +433,7 @@ def _resolve_runtime_build_status(
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     effective = runtime.docgen_runtime if runtime is not None else None
     if effective is None:
-        build_lock = read_knowledge_build_lock(course_id, session=session)
+        build_lock = read_knowledge_build_lock(course_id, session=session, course_scope=course_scope)
     else:
         build_lock = None
     if effective is None and build_lock is not None:
@@ -683,9 +683,9 @@ def trigger_docgen_build(
         source_file_ids=accepted_file_ids,
         prompt=cleaned_prompt,
     )
-    if not acquire_knowledge_build_lock(course.id, build_lock):
-        raise CourseBuildLockConflictError(course.id)
     course_scope = build_course_storage_scope(user_id=course.user_id, course_id=course.id)
+    if not acquire_knowledge_build_lock(course.id, build_lock, course_scope=course_scope):
+        raise CourseBuildLockConflictError(course.id)
     _clear_docgen_staging_safely(course.id, course_scope=course_scope)
     update_knowledge_build_lane_status(
         course.id,
@@ -1071,7 +1071,7 @@ async def run_docgen_background(
         logger.exception("knowledge_build_failed", course_id=course_id)
         return
     finally:
-        release_knowledge_build_lock(course_id)
+        release_knowledge_build_lock(course_id, course_scope=course_scope)
 
 
 def get_docgen_result(

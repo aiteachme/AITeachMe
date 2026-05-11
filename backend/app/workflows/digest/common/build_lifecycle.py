@@ -97,7 +97,7 @@ async def cancel_knowledge_build(
             current_stage_description="本轮图谱构建已被用户终止。",
         )
 
-    release_knowledge_build_lock(course.id)
+    release_knowledge_build_lock(course.id, course_scope=course_scope)
     return DocGenBuildCancelData(
         course_id=course.id,
         cancelled_task_count=cancelled_task_count,
