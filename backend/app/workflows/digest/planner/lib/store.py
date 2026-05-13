@@ -76,12 +76,22 @@ def _select_planner_files(
     if not file_ids:
         return available_files
     requested = list_raw_files_by_ids(session, course_id, file_ids)
-    found_ids = {require_id(item.id, "RawFile.id") for item in requested}
+    requested_by_id = {require_id(item.id, "RawFile.id"): item for item in requested}
+    found_ids = set(requested_by_id)
     missing = [file_id for file_id in file_ids if file_id not in found_ids]
     if missing:
         raise RawFileNotFoundError(missing[0])
     available_ids = {require_id(item.id, "RawFile.id") for item in available_files}
-    return [item for item in requested if item.id and require_id(item.id, "RawFile.id") in available_ids]
+    ordered: list[RawFile] = []
+    seen: set[str] = set()
+    for file_id in file_ids:
+        if file_id in seen:
+            continue
+        item = requested_by_id.get(file_id)
+        if item is not None and item.id and require_id(item.id, "RawFile.id") in available_ids:
+            ordered.append(item)
+            seen.add(file_id)
+    return ordered
 
 
 def _select_planner_workflow_files(raw_files: list[RawFile]) -> list[RawFile]:
@@ -322,6 +332,22 @@ def _get_latest_planner_session(session: Session, *, course_id: str, user_id: st
         .limit(1)
     )
     return session.exec(stmt).first()
+
+
+def _get_active_planning_session(session: Session, *, course_id: str, user_id: str) -> ChatSession | None:
+    stmt = (
+        select(ChatSession)
+        .where(
+            ChatSession.course_id == course_id,
+            ChatSession.user_id == user_id,
+            ChatSession.source == PLANNER_CHAT_SOURCE,
+        )
+        .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
+    )
+    for item in session.exec(stmt).all():
+        if _planner_status(item) == "planning":
+            return item
+    return None
 
 
 def _list_planner_turns(session: Session, *, session_id: str, course_id: str, user_id: str) -> list[ChatMessage]:
@@ -716,10 +742,12 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         ).strip() or planner_defaults.default_digest_mode
 
         with managed_session() as session:
-            course_row = session.query(Course).filter(Course.id == course_id).first()
-            latest = _get_latest_planner_session(session, course_id=course_id, user_id=user_id)
-            if latest is not None and _planner_status(latest) == "planning":
-                raise BuildPlannerSessionBusyError(latest.id)
+            course_row = session.exec(
+                select(Course).where(Course.id == course_id, Course.user_id == user_id)
+            ).first()
+            active_planning = _get_active_planning_session(session, course_id=course_id, user_id=user_id)
+            if active_planning is not None:
+                raise BuildPlannerSessionBusyError(active_planning.id)
             planner_files = _select_planner_files(
                 session,
                 course_id=course_id,

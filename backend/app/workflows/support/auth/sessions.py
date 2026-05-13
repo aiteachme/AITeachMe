@@ -534,7 +534,7 @@ def purge_expired_email_confirmations(
                 EmailConfirmation.expires_at <= cutoff,
                 EmailConfirmation.consumed_at <= cutoff,
             )
-        )
+        ).execution_options(synchronize_session=False)
     )
     session.commit()
     return int(getattr(result, "rowcount", 0) or 0)

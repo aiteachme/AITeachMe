@@ -949,9 +949,6 @@ async def knowledge_docs_interactive_selection(
                 status_code=503,
                 detail="交互页生成暂时失败，可能是模型服务连接中断。请稍后重试或输入改进要求后重新生成。",
             ) from exc
-        finally:
-            handle.forget()
-
         overlay_id = f"interactive-{uuid.uuid4().hex}"
         preview_url = overlay_preview_url(
             str(asset["preview_url"]),

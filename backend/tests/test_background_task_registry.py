@@ -38,22 +38,34 @@ async def test_background_task_registry_limits_kind_concurrency() -> None:
     registry = BackgroundTaskRegistry()
     active_count = 0
     max_active_count = 0
+    two_started = asyncio.Event()
+    third_started = asyncio.Event()
+    release = asyncio.Event()
 
     async def job() -> None:
         nonlocal active_count, max_active_count
         active_count += 1
         max_active_count = max(max_active_count, active_count)
-        await asyncio.sleep(0.01)
+        if active_count == 2:
+            two_started.set()
+        if active_count == 3:
+            third_started.set()
+        await release.wait()
         active_count -= 1
 
     tasks = [
         registry.spawn(job(), kind="test.registry.limited", max_concurrency=2)
         for _ in range(6)
     ]
+    await asyncio.wait_for(two_started.wait(), timeout=0.5)
+    await asyncio.sleep(0)
+    assert not third_started.is_set()
+
+    release.set()
     await asyncio.gather(*tasks)
     await registry.shutdown()
 
-    assert max_active_count <= 2
+    assert max_active_count == 2
 
 
 @pytest.mark.anyio
@@ -61,18 +73,24 @@ async def test_background_task_registry_limits_are_scoped_by_course() -> None:
     registry = BackgroundTaskRegistry()
     active_count = 0
     max_active_count = 0
+    both_started = asyncio.Event()
+    release = asyncio.Event()
 
     async def job() -> None:
         nonlocal active_count, max_active_count
         active_count += 1
         max_active_count = max(max_active_count, active_count)
-        await asyncio.sleep(0.01)
+        if active_count == 2:
+            both_started.set()
+        await release.wait()
         active_count -= 1
 
     tasks = [
         registry.spawn(job(), kind="test.registry.scoped", course_id="course_a", max_concurrency=1),
         registry.spawn(job(), kind="test.registry.scoped", course_id="course_b", max_concurrency=1),
     ]
+    await asyncio.wait_for(both_started.wait(), timeout=0.5)
+    release.set()
     await asyncio.gather(*tasks)
     await registry.shutdown()
 

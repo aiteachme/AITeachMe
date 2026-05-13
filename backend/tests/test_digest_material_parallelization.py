@@ -156,6 +156,8 @@ async def test_docgen_summarize_files_uses_one_global_concurrency_gate(monkeypat
     active_calls = 0
     max_active_calls = 0
     calls: list[str] = []
+    first_two_started = asyncio.Event()
+    release_calls = asyncio.Event()
 
     async def fake_completion(messages, **kwargs):
         nonlocal active_calls, max_active_calls
@@ -163,8 +165,10 @@ async def test_docgen_summarize_files_uses_one_global_concurrency_gate(monkeypat
         calls.append(prompt)
         active_calls += 1
         max_active_calls = max(max_active_calls, active_calls)
+        if active_calls == 2:
+            first_two_started.set()
         try:
-            await asyncio.sleep(0.01)
+            await release_calls.wait()
             match = re.search(r"rf_file_\d_sec_\d{3}_test", prompt)
             section_ref = match.group(0) if match else sections[0].digest_chunk_uid
             return FileMaterialSummary(
@@ -187,14 +191,20 @@ async def test_docgen_summarize_files_uses_one_global_concurrency_gate(monkeypat
     monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
     monkeypatch.setattr(llm_scheduler, "get_llm_concurrency_limit", lambda: 2)
 
-    summaries = await file_summaries.summarize_files(
-        context,
-        chapters=[{"chapter_index": 1, "title": "核心主题"}],
-        digest_mode="systematic",
+    summaries_task = asyncio.create_task(
+        file_summaries.summarize_files(
+            context,
+            chapters=[{"chapter_index": 1, "title": "核心主题"}],
+            digest_mode="systematic",
+        )
     )
+    await asyncio.wait_for(first_two_started.wait(), timeout=1)
+    assert max_active_calls == 2
+    release_calls.set()
+    summaries = await summaries_task
 
     assert len(calls) > 2
-    assert max_active_calls <= 2
+    assert max_active_calls == 2
     assert [summary.file_id for summary in summaries] == ["file_1", "file_2"]
     assert all(summary.summary_mode == "llm_section_batches" for summary in summaries)
     assert sum(summary.llm_call_count for summary in summaries) == len(calls)

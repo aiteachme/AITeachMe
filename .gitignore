@@ -14,10 +14,12 @@
 Thumbs.db
 
 # Repo-local environments and scratch data
-/.venv/
+.venv/
 /env/
 /venv/
 /data/
+.coverage*
+coverage.json
 *.log
 tsc_errors.txt
 .env
@@ -55,6 +57,7 @@ settings.private.yaml
 /frontend/.npm-cache*/
 /.tmp-*/
 /.tmp-*.exe
+pytest-tmp/
 __pycache__/
 *.py[cod]
 *$py.class

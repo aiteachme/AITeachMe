@@ -177,13 +177,17 @@ async def test_run_llm_tasks_uses_shared_fanout_limit() -> None:
     active = 0
     max_active = 0
     completed: list[tuple[int, int, int]] = []
+    first_two_started = asyncio.Event()
+    release_workers = asyncio.Event()
 
     async def worker(value: int) -> int:
         nonlocal active, max_active
         active += 1
         max_active = max(max_active, active)
+        if active == 2:
+            first_two_started.set()
         try:
-            await asyncio.sleep(0.01)
+            await release_workers.wait()
             return value * 2
         finally:
             active -= 1
@@ -191,9 +195,13 @@ async def test_run_llm_tasks_uses_shared_fanout_limit() -> None:
     async def on_result(index: int, item: int, result: int) -> None:
         completed.append((index, item, result))
 
-    results = await run_llm_tasks(range(6), worker, on_result=on_result)
+    results_task = asyncio.create_task(run_llm_tasks(range(6), worker, on_result=on_result))
+    await asyncio.wait_for(first_two_started.wait(), timeout=1)
+    assert max_active == 2
+    release_workers.set()
+    results = await results_task
 
-    assert max_active <= 2
+    assert max_active == 2
     assert results == [0, 2, 4, 6, 8, 10]
     assert sorted(completed) == [
         (0, 0, 0),

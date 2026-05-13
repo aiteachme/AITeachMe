@@ -43,6 +43,7 @@ cloud = [
     "llama-index-vector-stores-postgres>=0.4.0",
 ]
 dev = [
+    "coverage[toml]>=7.6.0",
     "pytest>=9.0.0",
     "langgraph-cli[inmem]>=0.4.19",
 ]
@@ -51,6 +52,11 @@ dev = [
 include = ["app*"]
 
 [tool.pytest.ini_options]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--basetemp=pytest-tmp",
+]
 testpaths = ["tests"]
 
 [build-system]
