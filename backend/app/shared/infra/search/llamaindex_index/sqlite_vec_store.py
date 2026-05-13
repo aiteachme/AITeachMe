@@ -85,6 +85,24 @@ def _list_vector_tables(connection: sa.Connection) -> list[str]:
     return sorted(name for name in rows if _VECTOR_TABLE_RE.fullmatch(str(name)))
 
 
+def _vector_table_exists(connection: sa.Connection, table_name: str) -> bool:
+    if not _VECTOR_TABLE_RE.fullmatch(str(table_name)):
+        return False
+    row = connection.execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = :table_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
 def _delete_chunk_ids(
     connection: sa.Connection,
     *,
@@ -263,7 +281,7 @@ class SQLiteVecVectorStore(BasePydanticVectorStore):
         table_name = _table_name_for_dim(len(query_embedding))
         with get_engine().connect() as connection:
             _load_sqlite_vec(connection)
-            if table_name not in _list_vector_tables(connection):
+            if not _vector_table_exists(connection, table_name):
                 return VectorStoreQueryResult(nodes=[], similarities=[], ids=[])
             rows = connection.execute(
                 sa.text(

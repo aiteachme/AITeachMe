@@ -6,7 +6,6 @@ import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemePr
 import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
-import { DesktopUpdatePrompt } from "./components/desktop/DesktopUpdatePrompt";
 import { ToastProvider } from "./components/ui/Toast";
 import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
@@ -50,6 +49,9 @@ const KnowledgeDocsPage = lazy(() =>
 );
 const KnowledgeInteractivePage = lazy(() =>
   import("./pages/KnowledgeInteractivePage").then((module) => ({ default: module.KnowledgeInteractivePage })),
+);
+const DesktopUpdatePrompt = lazy(() =>
+  import("./components/desktop/DesktopUpdatePrompt").then((module) => ({ default: module.DesktopUpdatePrompt })),
 );
 
 function RouteLoadingFallback() {
@@ -114,6 +116,25 @@ function BackendConnectivityBridge() {
   return null;
 }
 
+function isDesktopUpdateRuntime(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.location.hostname === "tauri.localhost" &&
+    window.aiteachmeDesktop?.desktopFlavor === "local"
+  );
+}
+
+function DesktopUpdatePromptMount() {
+  if (!isDesktopUpdateRuntime()) {
+    return null;
+  }
+  return (
+    <Suspense fallback={null}>
+      <DesktopUpdatePrompt />
+    </Suspense>
+  );
+}
+
 function App() {
   const Router = isElectronRuntime() ? HashRouter : BrowserRouter;
 
@@ -123,7 +144,7 @@ function App() {
         <BackendConnectivityBridge />
         <RuntimeSettingsBootstrap />
         <ToastProvider>
-          <DesktopUpdatePrompt />
+          <DesktopUpdatePromptMount />
           <Router unstable_useTransitions={false}>
             <RouteAnalyticsBridge />
             <ElectronWindowFrame>

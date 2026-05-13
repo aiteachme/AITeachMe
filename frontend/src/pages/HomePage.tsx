@@ -115,11 +115,6 @@ async function fetchDemoCourses(): Promise<CoursePackageItem[]> {
   const response = await apiClient<ApiResponse<CoursePackageItem[]>>({
     method: "GET",
     url: `/api/v1/demo-courses`,
-    params: { _: Date.now() },
-    headers: {
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache",
-    },
   });
   return response.data;
 }

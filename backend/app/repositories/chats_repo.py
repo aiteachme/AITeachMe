@@ -333,6 +333,17 @@ def count_messages_by_session_ids_for_user(
     return {session_id: int(count) for session_id, count in rows}
 
 
+def _count_chat_messages(session: Session, *conditions: Any) -> int:
+    return int(
+        session.exec(
+            select(func.count())
+            .select_from(ChatMessage)
+            .where(*conditions)
+        ).one()
+        or 0
+    )
+
+
 def delete_chat_session(
     session: Session,
     *,
@@ -340,27 +351,27 @@ def delete_chat_session(
     session_id: str,
     user_id: str = "local",
 ) -> int:
-    message_items = list(
-        session.exec(
-            select(ChatMessage).where(
-                ChatMessage.course_id == course_id,
-                ChatMessage.user_id == user_id,
-                ChatMessage.session_id == session_id,
-            )
-        ).all()
-    )
-    deleted_message_count = len(message_items)
-    for item in message_items:
-        session.delete(item)
+    message_conditions = [
+        ChatMessage.course_id == course_id,
+        ChatMessage.user_id == user_id,
+        ChatMessage.session_id == session_id,
+    ]
+    deleted_message_count = _count_chat_messages(session, *message_conditions)
 
-    session_item = get_chat_session(
-        session,
-        course_id=course_id,
-        session_id=session_id,
-        user_id=user_id,
+    session.exec(
+        sa.delete(ChatMessage)
+        .where(*message_conditions)
+        .execution_options(synchronize_session=False)
     )
-    if session_item:
-        session.delete(session_item)
+    session.exec(
+        sa.delete(ChatSession)
+        .where(
+            ChatSession.id == session_id,
+            ChatSession.course_id == course_id,
+            ChatSession.user_id == user_id,
+        )
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
     return deleted_message_count
 
@@ -515,22 +526,22 @@ def clear_messages_by_course(
     if session_id:
         conditions.append(ChatMessage.session_id == session_id)
 
-    items = list(session.exec(select(ChatMessage).where(*conditions)).all())
-    count = len(items)
-    for item in items:
-        session.delete(item)
+    count = _count_chat_messages(session, *conditions)
+    session.exec(
+        sa.delete(ChatMessage)
+        .where(*conditions)
+        .execution_options(synchronize_session=False)
+    )
 
     if not session_id:
-        sessions = list(
-            session.exec(
-                select(ChatSession).where(
-                    ChatSession.course_id == course_id,
-                    ChatSession.user_id == user_id,
-                )
-            ).all()
+        session.exec(
+            sa.delete(ChatSession)
+            .where(
+                ChatSession.course_id == course_id,
+                ChatSession.user_id == user_id,
+            )
+            .execution_options(synchronize_session=False)
         )
-        for item in sessions:
-            session.delete(item)
 
     session.commit()
     return count

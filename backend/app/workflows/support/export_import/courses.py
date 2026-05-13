@@ -38,6 +38,7 @@ _CATALOG_CACHE_TTL_S = 60.0
 _DEMO_COURSES_BASE_URL = "https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/"
 _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
 _REMOTE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
+_REMOTE_AVAILABLE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
 
 
 @dataclass(frozen=True)
@@ -156,10 +157,26 @@ def _get_demo_courses_timeout_s() -> float:
 
 def _load_remote_course_descriptors(*, probe_packages: bool = True) -> list[_RemoteCourseDescriptor]:
     catalog_url = get_demo_courses_index_url()
-    descriptors = _load_catalog_descriptors(catalog_url)
     if not probe_packages:
-        return descriptors
-    return _filter_available_remote_course_descriptors(descriptors)
+        return _load_catalog_descriptors(catalog_url)
+    return _load_available_remote_course_descriptors(catalog_url)
+
+
+def _load_available_remote_course_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
+    global _REMOTE_AVAILABLE_DESCRIPTOR_CACHE
+
+    now = time.monotonic()
+    if (
+        _REMOTE_AVAILABLE_DESCRIPTOR_CACHE is not None
+        and _REMOTE_AVAILABLE_DESCRIPTOR_CACHE[1] == catalog_url
+        and now - _REMOTE_AVAILABLE_DESCRIPTOR_CACHE[0] <= _CATALOG_CACHE_TTL_S
+    ):
+        return list(_REMOTE_AVAILABLE_DESCRIPTOR_CACHE[2])
+
+    descriptors = _load_catalog_descriptors(catalog_url)
+    available_descriptors = _filter_available_remote_course_descriptors(descriptors)
+    _REMOTE_AVAILABLE_DESCRIPTOR_CACHE = (now, catalog_url, available_descriptors)
+    return list(available_descriptors)
 
 
 def _load_catalog_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
