@@ -211,19 +211,40 @@ jobs:
 
       - name: Log in to GHCR
         if: steps.optin.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USERNAME || github.actor }}
-          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..4}; do
+            if printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USERNAME}" --password-stdin; then
+              exit 0
+            fi
+            echo "GHCR login failed; retrying (${attempt}/4)..." >&2
+            sleep $((attempt * 10))
+          done
+
+          echo "GHCR login failed after retries." >&2
+          exit 1
 
       - name: Log in to Aliyun ACR
         if: steps.optin.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.FRONTEND_ACR_REGISTRY }}
-          username: ${{ env.ALIYUN_ACR_USERNAME }}
-          password: ${{ env.ALIYUN_ACR_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..4}; do
+            if printf '%s' "${ALIYUN_ACR_PASSWORD}" | docker login "${FRONTEND_ACR_REGISTRY}" --username "${ALIYUN_ACR_USERNAME}" --password-stdin; then
+              exit 0
+            fi
+            echo "Aliyun ACR login failed; retrying (${attempt}/4)..." >&2
+            sleep $((attempt * 10))
+          done
+
+          echo "Aliyun ACR login failed after retries." >&2
+          exit 1
 
       - name: Resolve frontend image tags
         if: steps.optin.outputs.enabled == 'true'
@@ -538,19 +559,40 @@ jobs:
 
       - name: Log in to GHCR
         if: steps.optin.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USERNAME || github.actor }}
-          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        shell: bash
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..4}; do
+            if printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USERNAME}" --password-stdin; then
+              exit 0
+            fi
+            echo "GHCR login failed; retrying (${attempt}/4)..." >&2
+            sleep $((attempt * 10))
+          done
+
+          echo "GHCR login failed after retries." >&2
+          exit 1
 
       - name: Log in to Aliyun ACR
         if: steps.optin.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.BACKEND_ACR_REGISTRY }}
-          username: ${{ env.ALIYUN_ACR_USERNAME }}
-          password: ${{ env.ALIYUN_ACR_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..4}; do
+            if printf '%s' "${ALIYUN_ACR_PASSWORD}" | docker login "${BACKEND_ACR_REGISTRY}" --username "${ALIYUN_ACR_USERNAME}" --password-stdin; then
+              exit 0
+            fi
+            echo "Aliyun ACR login failed; retrying (${attempt}/4)..." >&2
+            sleep $((attempt * 10))
+          done
+
+          echo "Aliyun ACR login failed after retries." >&2
+          exit 1
 
       - name: Resolve backend image tags
         if: steps.optin.outputs.enabled == 'true'
