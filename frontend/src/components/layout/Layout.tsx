@@ -31,6 +31,7 @@ export function Layout() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const settingsOverview = useSystemSettingsOverview();
   const isCloudRuntime = settingsOverview?.mode === "cloud";
   const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && isCloudRuntime;
@@ -52,8 +53,18 @@ export function Layout() {
             isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
-          {!isExamFocusPage && <Sidebar onOpenSettings={openSettings} />}
-          <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+          {!isExamFocusPage && (
+            <Sidebar
+              onOpenSettings={openSettings}
+              onMobileOpenChange={setIsMobileSidebarOpen}
+            />
+          )}
+          <div
+            className={cn(
+              "relative z-10 flex min-w-0 flex-1 flex-col transition-transform duration-200 ease-out lg:translate-x-0",
+              isMobileSidebarOpen && !isExamFocusPage ? "translate-x-[80vw]" : "translate-x-0",
+            )}
+          >
             {shouldShowTopBar && (
               <header className="pointer-events-none absolute left-0 right-0 top-0 z-40 flex h-16 items-center justify-end px-4 md:px-6">
                 <div className="pointer-events-auto">
@@ -79,7 +90,7 @@ export function Layout() {
               )}
             </main>
           </div>
-          <AiInteractionWindow />
+          <AiInteractionWindow suppressFloatingTrigger={isMobileSidebarOpen && !isExamFocusPage} />
         </div>
       </AiInteractionProvider>
 

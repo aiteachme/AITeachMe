@@ -1,6 +1,6 @@
 import {
   ChevronDown,
-  ChevronsRight,
+  ChevronsLeft,
   CirclePlus,
   Maximize2,
   PanelRight,
@@ -92,7 +92,7 @@ export function AiConversationReturnToSidebarButton({
       aria-label="回到侧边栏"
       title="回到侧边栏"
     >
-      <ChevronsRight className="h-4 w-4 shrink-0" strokeWidth={2} />
+      <ChevronsLeft className="h-4 w-4 shrink-0" strokeWidth={2} />
       {showLabel ? <span className="text-[13px] font-medium">侧边栏</span> : null}
     </button>
   );
@@ -121,7 +121,7 @@ export function AiConversationCollapseButton({
       aria-label="收起"
       title="收起"
     >
-      <ChevronsRight className="h-4 w-4 shrink-0" strokeWidth={2} />
+      <ChevronsLeft className="h-4 w-4 shrink-0" strokeWidth={2} />
       {showLabel ? <span className="text-[13px] font-medium">收起</span> : null}
     </button>
   );
@@ -199,7 +199,7 @@ export function AiConversationHeader({
   const presentationLabel = isFullscreen ? "切换为侧边栏" : "切换为全屏";
 
   return (
-    <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-2 dark:border-slate-800 dark:bg-slate-950">
+    <div className="flex h-[calc(4.25rem+env(safe-area-inset-top))] shrink-0 items-center border-b border-zinc-200 bg-white px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800 dark:bg-slate-950">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-0.5">
           {onToggleHistory ? (
@@ -268,6 +268,7 @@ export function AiConversationHeader({
             icon={PresentationIcon}
             label={presentationLabel}
             onClick={onTogglePresentation}
+            className="hidden sm:inline-flex"
           />
         ) : null}
         {onClose && isFullscreen ? (

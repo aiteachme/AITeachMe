@@ -20,6 +20,7 @@ import type { AiConversationScope, AiInteractionOpenRequest, OpenAiInteractionOp
 interface AiInteractionWindowProps {
   scope?: AiConversationScope | null;
   className?: string;
+  suppressFloatingTrigger?: boolean;
 }
 
 interface AiConversationViewLoaderProps {
@@ -121,7 +122,7 @@ function AiConversationViewFallback() {
   );
 }
 
-export function AiInteractionWindow({ scope, className }: AiInteractionWindowProps) {
+export function AiInteractionWindow({ scope, className, suppressFloatingTrigger = false }: AiInteractionWindowProps) {
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -217,7 +218,8 @@ export function AiInteractionWindow({ scope, className }: AiInteractionWindowPro
     displayMode === "closed" &&
     !isWindowMounted &&
     !isSidebarStreaming &&
-    !isKnowledgeGraphDrawerOpen;
+    !isKnowledgeGraphDrawerOpen &&
+    !suppressFloatingTrigger;
   const fullscreenShellWidth = Math.max(0, viewportWidth - appSidebarWidth);
   const shellWidth = displayMode === "fullscreen"
     ? fullscreenShellWidth
