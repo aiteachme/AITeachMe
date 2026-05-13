@@ -761,7 +761,7 @@ export const AiConversationView = memo(function AiConversationView({
   const draftHomeTitle =
     scope?.type === "course"
       ? `你想问“${courseName?.trim() || "当前课程"}”什么？`
-      : "我们该做什么？";
+      : "今天想讨论什么？";
   const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
@@ -1614,7 +1614,7 @@ export const AiConversationView = memo(function AiConversationView({
 
       {isFullscreenHistoryPanelOpen ? (
         <div
-          className="pointer-events-none absolute right-4 top-14 z-40"
+          className="pointer-events-none absolute right-4 top-[calc(4.75rem+env(safe-area-inset-top))] z-40"
           style={{ width: "min(26rem, calc(100% - 2rem))" }}
         >
           <div
@@ -1699,14 +1699,13 @@ export const AiConversationView = memo(function AiConversationView({
 
       {shouldShowDraftHome ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex h-10 items-center justify-between px-2">
+          <div className="pointer-events-none absolute left-0 right-0 top-[calc(0.75rem+env(safe-area-inset-top))] z-30 flex h-14 items-center justify-between px-4">
             <button
               type="button"
               onClick={handleToggleFullscreenHistory}
               data-ai-conversation-history-trigger="true"
               className={cn(
                 "pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
-                isFullscreenHistoryPanelOpen && "bg-zinc-100 text-zinc-700 dark:bg-slate-800 dark:text-slate-200",
               )}
               aria-label="查询历史对话"
               title="查询历史对话"
@@ -1718,7 +1717,7 @@ export const AiConversationView = memo(function AiConversationView({
               <button
                 type="button"
                 onClick={handleTogglePresentation}
-                className="pointer-events-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700"
+                className="pointer-events-auto hidden h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700 sm:inline-flex"
                 aria-label={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
                 title={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
               >

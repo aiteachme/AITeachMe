@@ -190,7 +190,13 @@ function writeCourseSectionExpanded(value: boolean) {
   }
 }
 
-export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
+export function Sidebar({
+  onOpenSettings,
+  onMobileOpenChange,
+}: {
+  onOpenSettings?: () => void;
+  onMobileOpenChange?: (isOpen: boolean) => void;
+}) {
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
   const [isCourseSectionExpanded, setIsCourseSectionExpanded] = useState(readCourseSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -239,6 +245,27 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
     const timer = window.setTimeout(ensureCommunityQrPreloaded, 1200);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    onMobileOpenChange?.(isMobileOpen);
+  }, [isMobileOpen, onMobileOpenChange]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const largeScreenQuery = window.matchMedia("(min-width: 1024px)");
+    const closeMobileSidebarOnLargeScreen = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) {
+        setIsMobileOpen(false);
+      }
+    };
+
+    closeMobileSidebarOnLargeScreen(largeScreenQuery);
+    largeScreenQuery.addEventListener("change", closeMobileSidebarOnLargeScreen);
+    return () => largeScreenQuery.removeEventListener("change", closeMobileSidebarOnLargeScreen);
   }, []);
 
   const { data: courses = [], isLoading } = useQuery({
@@ -397,29 +424,35 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
       <button
         type="button"
         onClick={() => setIsMobileOpen((prev) => !prev)}
-        className="fixed left-4 top-[calc(1rem+env(safe-area-inset-top))] z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden"
+        className={cn(
+          "fixed left-4 top-[calc(1.125rem+env(safe-area-inset-top))] z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-[transform,opacity,background-color,box-shadow,color] duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden",
+          isMobileOpen
+            ? "translate-x-[80vw] bg-white/65 text-slate-500 opacity-60 shadow-none backdrop-blur-[3px] dark:bg-slate-900/65 dark:text-slate-500"
+            : "translate-x-0 opacity-100",
+        )}
         aria-label={isMobileOpen ? "关闭导航" : "打开导航"}
       >
-        {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        <Menu className="h-5 w-5" />
       </button>
 
       {isMobileOpen ? (
-        <div className="fixed inset-0 z-30 modal-backdrop lg:hidden" onClick={() => setIsMobileOpen(false)} />
+        <div className="fixed inset-0 z-30 sidebar-backdrop lg:hidden" onClick={() => setIsMobileOpen(false)} />
       ) : null}
 
       <aside
         data-app-sidebar="true"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/50 dark:border-slate-800/50 bg-gradient-to-b from-white/96 to-white/92 dark:from-[#0b0f19]/96 dark:to-[#0b0f19]/92 shadow-[4px_0_24px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.3)] ring-1 ring-white/50 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90]",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/80 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/70 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] ring-1 ring-slate-900/5 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
           isAssistantPage ? "rounded-none" : "rounded-r-[22px]",
-          effectiveCollapsed ? "w-[56px]" : "w-[240px]",
+          isMobileOpen ? "w-[80vw] lg:w-[240px]" : effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         <div
           className={cn(
-            "flex h-12 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
-            effectiveCollapsed ? "justify-center px-0" : "justify-between px-3",
+            "flex shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
+            isMobileOpen ? "h-14" : "h-12",
+            effectiveCollapsed ? "justify-center px-0" : isMobileOpen ? "justify-between px-4" : "justify-between px-3",
           )}
         >
           {effectiveCollapsed ? (
@@ -440,22 +473,34 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           ) : (
             <>
-              <Link to="/" className="flex items-center gap-2 pl-2 text-slate-900 dark:text-slate-100">
+              <Link to="/" className="flex h-11 items-center gap-2 pl-2 text-slate-900 dark:text-slate-100">
                 <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
+                {isMobileOpen ? (
+                  <span className="text-sm font-semibold tracking-normal text-slate-900 dark:text-slate-100">
+                    AITeachMe
+                  </span>
+                ) : null}
               </Link>
               <button
                 type="button"
-                onClick={() => setIsCollapsed(true)}
-                className="flex h-11 w-11 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8"
-                title="收起侧边栏"
+                onClick={() => {
+                  if (isMobileOpen) {
+                    setIsMobileOpen(false);
+                    return;
+                  }
+                  setIsCollapsed(true);
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8 lg:rounded"
+                aria-label={isMobileOpen ? "关闭导航" : "收起侧边栏"}
+                title={isMobileOpen ? "关闭导航" : "收起侧边栏"}
               >
-                <PanelLeftClose className="h-4 w-4" />
+                <PanelLeftClose className="h-5 w-5 lg:h-4 lg:w-4" />
               </button>
             </>
           )}
         </div>
 
-        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : "px-3 pb-2 pt-1")}>
+        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : isMobileOpen ? "px-4 pb-2 pt-2" : "px-3 pb-2 pt-1")}>
           {effectiveCollapsed ? (
             <div className="flex flex-col items-center gap-1">
               <button
@@ -520,7 +565,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  isMobileOpen ? "h-10" : "h-8",
                   isCreateCourseActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -529,7 +575,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <Edit3
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-colors",
+                    "shrink-0 transition-colors",
+                    isMobileOpen ? "h-5 w-5" : "h-4 w-4",
                     isCreateCourseActive
                       ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
                       : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
@@ -538,7 +585,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    "whitespace-nowrap tracking-[0.01em]",
+                    isMobileOpen ? "text-sm" : "text-xs",
                     isCreateCourseActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -551,7 +599,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  isMobileOpen ? "h-10" : "h-8",
                   isMyLearningSpaceActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -565,7 +614,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <LayoutGrid
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-colors",
+                    "shrink-0 transition-colors",
+                    isMobileOpen ? "h-5 w-5" : "h-4 w-4",
                     isMyLearningSpaceActive
                       ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
                       : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
@@ -574,7 +624,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    "whitespace-nowrap tracking-[0.01em]",
+                    isMobileOpen ? "text-sm" : "text-xs",
                     isMyLearningSpaceActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -587,7 +638,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <button
                 type="button"
                 className={cn(
-                  "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                  isMobileOpen ? "h-10" : "h-8",
                   isLibraryActive
                     ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
                     : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
@@ -601,7 +653,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               >
                 <FolderOpen
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-colors",
+                    "shrink-0 transition-colors",
+                    isMobileOpen ? "h-5 w-5" : "h-4 w-4",
                     isLibraryActive
                       ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
                       : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
@@ -610,7 +663,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap text-xs tracking-[0.01em]",
+                    "whitespace-nowrap tracking-[0.01em]",
+                    isMobileOpen ? "text-sm" : "text-xs",
                     isLibraryActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
                       : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
@@ -630,7 +684,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div
           className={cn(
             "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit",
-            effectiveCollapsed ? "px-2" : "px-3",
+            effectiveCollapsed ? "px-2" : isMobileOpen ? "px-4" : "px-3",
           )}
         >
           {!effectiveCollapsed ? (
@@ -695,7 +749,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   >
                 <div
                   className={cn(
-                    "group flex h-8 items-center gap-1 rounded-md transition-colors",
+                    "group flex items-center gap-1 rounded-md transition-colors",
+                    isMobileOpen ? "h-10" : "h-8",
                     !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
                   )}
                 >
@@ -715,6 +770,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       "flex items-center transition-colors",
                       effectiveCollapsed
                         ? "h-8 w-full justify-center rounded-md px-0 hover:bg-[#eef3f8] dark:hover:bg-slate-800/60"
+                        : isMobileOpen
+                        ? "h-10 flex-1 rounded-md px-2"
                         : "h-8 flex-1 rounded-md px-2",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
@@ -722,13 +779,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     <div
                       className={cn(
                         "flex shrink-0 items-center justify-center bg-gradient-to-br font-bold text-white shadow-sm",
-                        effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : "h-5 w-5 rounded text-[10px]",
+                        effectiveCollapsed ? "h-5 w-5 rounded text-[10px]" : isMobileOpen ? "h-6 w-6 rounded-md text-[11px]" : "h-5 w-5 rounded text-[10px]",
                         toneClass,
                       )}
                     >
-                      <CourseIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      <CourseIcon className={cn(isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.2} />
                     </div>
-                    {!effectiveCollapsed ? <span className="ml-2 truncate text-xs font-medium text-slate-700 dark:text-slate-300">{displayName}</span> : null}
+                    {!effectiveCollapsed ? <span className={cn("ml-2 truncate font-medium text-slate-700 dark:text-slate-300", isMobileOpen ? "text-sm" : "text-xs")}>{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
@@ -737,10 +794,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                         <button
                           type="button"
                           onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100"
+                          className={cn(
+                            "flex shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100",
+                            isMobileOpen ? "h-10 w-10" : "h-8 w-8",
+                          )}
                           title="更多操作"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className={cn(isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
                         </button>
 
                       {openMenuId === course.course_id ? (
@@ -851,7 +911,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             title={isCourseConversationScope ? "课程最近" : "全局最近"}
             showTopBorder={false}
             showCourseBadge={false}
-            emptyText={isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
+            emptyText={isMobileOpen && !isCourseConversationScope ? "" : isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />
         </div>
 
@@ -859,7 +919,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div
           className={cn(
             "z-10 mt-auto shrink-0 space-y-1 border-t border-slate-200/80 dark:border-slate-800/50",
-            effectiveCollapsed ? "p-2" : "px-3 py-2",
+            effectiveCollapsed ? "p-2" : isMobileOpen ? "px-4 py-2.5" : "px-3 py-2",
           )}
         >
           <button
@@ -868,24 +928,24 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             onMouseEnter={ensureCommunityQrPreloaded}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-              effectiveCollapsed ? "mx-auto h-8 w-8 justify-center rounded-md" : "h-8 w-full rounded-md px-2 gap-2",
+              effectiveCollapsed ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
             )}
             title="社区"
           >
-            <MessageCircle className="h-4 w-4 shrink-0" />
-            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">社区</span> : null}
+            <MessageCircle className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap tracking-[0.01em]", isMobileOpen ? "text-sm" : "text-xs")}>社区</span> : null}
           </button>
           <button
             type="button"
             onClick={onOpenSettings}
             className={cn(
               "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-              effectiveCollapsed ? "mx-auto h-8 w-8 justify-center rounded-md" : "h-8 w-full rounded-md px-2 gap-2",
+              effectiveCollapsed ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
             )}
             title="设置"
           >
-            <Settings className="h-4 w-4 shrink-0" />
-            {!effectiveCollapsed ? <span className="whitespace-nowrap text-xs tracking-[0.01em]">设置</span> : null}
+            <Settings className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap tracking-[0.01em]", isMobileOpen ? "text-sm" : "text-xs")}>设置</span> : null}
           </button>
         </div>
       </aside>

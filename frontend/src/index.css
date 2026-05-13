@@ -951,6 +951,14 @@
   background: rgba(2, 6, 23, 0.75);
 }
 
+.sidebar-backdrop {
+  background: rgba(248, 250, 252, 0.3);
+}
+
+.dark .sidebar-backdrop {
+  background: rgba(2, 6, 23, 0.45);
+}
+
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .modal-backdrop {
     background: rgba(248, 250, 252, 0.42);
@@ -974,6 +982,18 @@
     background: rgba(2, 6, 23, 0.6);
     -webkit-backdrop-filter: blur(16px) saturate(1.2);
     backdrop-filter: blur(16px) saturate(1.2);
+  }
+
+  .sidebar-backdrop {
+    background: rgba(248, 250, 252, 0.24);
+    -webkit-backdrop-filter: blur(3px) saturate(1.02);
+    backdrop-filter: blur(3px) saturate(1.02);
+  }
+
+  .dark .sidebar-backdrop {
+    background: rgba(2, 6, 23, 0.42);
+    -webkit-backdrop-filter: blur(4px) saturate(1.08);
+    backdrop-filter: blur(4px) saturate(1.08);
   }
 }
 

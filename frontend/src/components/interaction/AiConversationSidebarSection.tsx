@@ -544,7 +544,7 @@ export function AiConversationSidebarSection({
               {visibleSessions.map(renderSessionItem)}
             </AnimatePresence>
           ) : null}
-          {!isListLoading && !error && visibleSessions.length === 0 ? (
+          {!isListLoading && !error && visibleSessions.length === 0 && emptyText ? (
             <p className="px-2 py-1 text-[11px] text-slate-300 dark:text-slate-600">{emptyText}</p>
           ) : null}
           </motion.div>
