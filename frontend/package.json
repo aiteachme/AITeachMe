@@ -46,7 +46,7 @@
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "axios": "^1.13.6",
+    "axios": "^1.16.0",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "d3": "^7.9.0",
@@ -56,9 +56,9 @@
     "framer-motion": "^12.38.0",
     "katex": "^0.16.38",
     "lucide-react": "^0.468.0",
-    "mermaid": "^11.14.0",
+    "mermaid": "^11.15.0",
     "msw": "^2.12.11",
-    "orval": "8.8.0",
+    "orval": "^8.10.0",
     "postcss": "^8.4.49",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -77,7 +77,7 @@
     "vis-data": "^8.0.3",
     "vis-network": "^10.0.2",
     "vite": "^6.2.0",
-    "wait-on": "^9.0.5"
+    "wait-on": "^9.0.10"
   },
   "overrides": {
     "uuid": "^14.0.0"
