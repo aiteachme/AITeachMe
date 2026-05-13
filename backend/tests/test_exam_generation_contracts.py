@@ -496,6 +496,115 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
 
 
 @pytest.mark.anyio
+async def test_exam_generation_background_keeps_generated_snapshot_when_final_persistence_fails(
+    managed_exam_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    units = _seed_exam_course(managed_exam_session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    events: list[tuple[str, int, str, dict[str, object]]] = []
+    generated_questions = [
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "easy",
+            "stem": "Which matrix is invertible?",
+            "options": ["Full rank", "Zero", "Duplicate rows", "Singular"],
+            "correct_answer": "Full rank",
+            "explanation": "Full rank matrices are invertible in this setting.",
+            "knowledge_unit_refs": [{"knowledge_unit_id": unit_ids[0], "coverage_weight": 1.0}],
+        },
+        {
+            "item_order": 2,
+            "question_type": "fill_blank",
+            "difficulty": "medium",
+            "stem": "A linear map preserves {{blank}} and scalar multiplication.",
+            "correct_answer": "addition",
+            "explanation": "Linearity means preserving vector addition and scalar multiplication.",
+            "knowledge_unit_refs": [{"knowledge_unit_id": unit_ids[1], "coverage_weight": 1.0}],
+        },
+    ]
+
+    monkeypatch.setattr(exams_api, "load_course_llm_context", lambda *args, **kwargs: "course context")
+    monkeypatch.setattr(
+        exams_api,
+        "_publish_exam_event",
+        lambda course_id, paper_id, event, data: events.append((course_id, paper_id, event, data)),
+    )
+
+    async def fake_question_build_workflow(**_kwargs):
+        return _workflow_result(
+            {
+                "generated_questions": generated_questions,
+                "failed_questions": [],
+                "error": "",
+            }
+        )
+
+    def fail_template_persistence(*_args, **_kwargs):
+        raise RuntimeError("template write failed")
+
+    monkeypatch.setattr(exams_api, "run_question_build_workflow", fake_question_build_workflow)
+    monkeypatch.setattr(exams_api, "_upsert_generated_template", fail_template_persistence)
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=2,
+        user_prompt="matrix practice",
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint="fingerprint",
+    )
+    paper = exams_api._create_exam_generation_paper(
+        managed_exam_session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=2,
+        user_prompt="matrix practice",
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="visible",
+        generation_origin="user",
+    )
+
+    await exams_api._run_exam_generation_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=int(paper.id or 0),
+        exam_mode="web_practice",
+        unit_ids=unit_ids,
+        question_count=2,
+        user_prompt="matrix practice",
+        sample_file_ids=[],
+        config_snapshot=config_snapshot,
+        config_hash=paper.config_hash,
+    )
+
+    managed_exam_session.refresh(paper)
+    context = json.loads(paper.selection_context_json)
+    detail = exams_api._paper_detail(managed_exam_session, paper)
+
+    assert paper.status == "failed"
+    assert context["generated_question_count"] == 2
+    assert [item["item_order"] for item in context["generated_questions"]] == [1, 2]
+    assert detail.status == "failed"
+    assert [item.item_order for item in detail.items] == [1, 2]
+    assert detail.items[0].stem == "Which matrix is invertible?"
+    assert any(
+        event == "snapshot"
+        and data.get("stage") == "generate_exam_questions"
+        and data.get("generated_question_count") == 2
+        for _course, _paper, event, data in events
+    )
+    assert events[-1][2] == "done"
+    assert events[-1][3]["status"] == "failed"
+
+
+@pytest.mark.anyio
 async def test_exam_generation_background_marks_failed_when_units_are_missing(
     managed_exam_session: Session,
     monkeypatch: pytest.MonkeyPatch,

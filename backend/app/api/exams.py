@@ -1638,6 +1638,21 @@ async def _run_exam_generation_background(
                 return
             paper_context = _json_dict(paper.selection_context_json)
             final_preview = _paper_preview_from_json(paper.paper_preview_json)
+            for generated_payload in [
+                generated_by_order[order]
+                for order in sorted(generated_by_order)
+            ]:
+                paper_context = _merge_generated_question_into_context(
+                    paper_context,
+                    generated_payload,
+                    question_count=question_count,
+                )
+                final_preview = _merge_generated_question_into_preview(
+                    final_preview,
+                    generated_payload,
+                    question_count=question_count,
+                    unit_name_by_id=unit_name_by_id,
+                )
             for failed_payload in [
                 terminal_failed_by_order[order]
                 for order in sorted(terminal_failed_by_order)
@@ -1651,6 +1666,25 @@ async def _run_exam_generation_background(
                     final_preview,
                     failed_payload,
                     question_count=question_count,
+                )
+            paper.total_items = question_count
+            paper.total_score = float(question_count)
+            paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
+            paper.paper_preview_json = final_preview.model_dump_json()
+            paper.updated_at = utcnow()
+            session.add(paper)
+            session.commit()
+            session.refresh(paper)
+            if generated_by_order or terminal_failed_by_order:
+                _publish_exam_event(
+                    course_id,
+                    paper_id,
+                    "snapshot",
+                    _paper_generation_event_payload(
+                        paper,
+                        preview=final_preview,
+                        stage="generate_exam_questions",
+                    ),
                 )
             units = list(
                 session.exec(
@@ -2154,7 +2188,7 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         )
         for item in items
     ]
-    if effective_status == "generating":
+    if effective_status in {"generating", "failed"}:
         response_by_order = {
             item.item_order: item
             for item in _generated_question_item_responses(
