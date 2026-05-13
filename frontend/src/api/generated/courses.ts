@@ -38,9 +38,6 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
-/**
- * @summary 创建课程
- */
 export type createCourseApiApiV1CoursesAddPostResponse200 = {
   data: ApiResponseCourseItem
   status: 200
@@ -83,6 +80,9 @@ export const getCreateCourseApiApiV1CoursesAddPostUrl = () => {
   return `/api/v1/courses/add`
 }
 
+/**
+ * @summary 创建课程
+ */
 export const createCourseApiApiV1CoursesAddPost = async (courseCreateRequest: CourseCreateRequest, options?: RequestInit): Promise<createCourseApiApiV1CoursesAddPostResponse> => {
 
   return orvalApiClient<createCourseApiApiV1CoursesAddPostResponse>(getCreateCourseApiApiV1CoursesAddPostUrl(),
@@ -90,8 +90,7 @@ export const createCourseApiApiV1CoursesAddPost = async (courseCreateRequest: Co
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseCreateRequest,)
+    body: JSON.stringify(courseCreateRequest)
   }
 );}
 
@@ -142,10 +141,7 @@ export const useCreateCourseApiApiV1CoursesAddPost = <TError = ErrorResponse | H
       > => {
       return useMutation(getCreateCourseApiApiV1CoursesAddPostMutationOptions(options), queryClient);
     }
-    /**
- * @summary 课程列表
- */
-export type listCoursesApiApiV1CoursesListPostResponse200 = {
+    export type listCoursesApiApiV1CoursesListPostResponse200 = {
   data: ApiResponsePaginatedDataCourseItem
   status: 200
 }
@@ -177,15 +173,17 @@ export const getListCoursesApiApiV1CoursesListPostUrl = () => {
   return `/api/v1/courses/list`
 }
 
-export const listCoursesApiApiV1CoursesListPost = async (courseListRequest: CourseListRequest, options?: RequestInit): Promise<listCoursesApiApiV1CoursesListPostResponse> => {
+/**
+ * @summary 课程列表
+ */
+export const listCoursesApiApiV1CoursesListPost = async (courseListRequest?: CourseListRequest, options?: RequestInit): Promise<listCoursesApiApiV1CoursesListPostResponse> => {
 
   return orvalApiClient<listCoursesApiApiV1CoursesListPostResponse>(getListCoursesApiApiV1CoursesListPostUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseListRequest,)
+    body: JSON.stringify(courseListRequest)
   }
 );}
 
@@ -193,8 +191,8 @@ export const listCoursesApiApiV1CoursesListPost = async (courseListRequest: Cour
 
 
 export const getListCoursesApiApiV1CoursesListPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data: CourseListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data: CourseListRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data?: CourseListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data?: CourseListRequest}, TContext> => {
 
 const mutationKey = ['listCoursesApiApiV1CoursesListPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -206,7 +204,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, {data: CourseListRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, {data?: CourseListRequest}> = (props) => {
           const {data} = props ?? {};
 
           return  listCoursesApiApiV1CoursesListPost(data,requestOptions)
@@ -220,26 +218,23 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ListCoursesApiApiV1CoursesListPostMutationResult = NonNullable<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>>
-    export type ListCoursesApiApiV1CoursesListPostMutationBody = CourseListRequest
+    export type ListCoursesApiApiV1CoursesListPostMutationBody = CourseListRequest | undefined
     export type ListCoursesApiApiV1CoursesListPostMutationError = HTTPValidationError | ErrorResponse
 
     /**
  * @summary 课程列表
  */
 export const useListCoursesApiApiV1CoursesListPost = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data: CourseListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>, TError,{data?: CourseListRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof listCoursesApiApiV1CoursesListPost>>,
         TError,
-        {data: CourseListRequest},
+        {data?: CourseListRequest},
         TContext
       > => {
       return useMutation(getListCoursesApiApiV1CoursesListPostMutationOptions(options), queryClient);
     }
-    /**
- * @summary 删除课程预览
- */
-export type previewDeleteCourseApiApiV1CoursesDeletePreviewPostResponse200 = {
+    export type previewDeleteCourseApiApiV1CoursesDeletePreviewPostResponse200 = {
   data: ApiResponseCourseDeletePreviewData
   status: 200
 }
@@ -281,6 +276,9 @@ export const getPreviewDeleteCourseApiApiV1CoursesDeletePreviewPostUrl = () => {
   return `/api/v1/courses/delete/preview`
 }
 
+/**
+ * @summary 删除课程预览
+ */
 export const previewDeleteCourseApiApiV1CoursesDeletePreviewPost = async (courseDeletePreviewRequest: CourseDeletePreviewRequest, options?: RequestInit): Promise<previewDeleteCourseApiApiV1CoursesDeletePreviewPostResponse> => {
 
   return orvalApiClient<previewDeleteCourseApiApiV1CoursesDeletePreviewPostResponse>(getPreviewDeleteCourseApiApiV1CoursesDeletePreviewPostUrl(),
@@ -288,8 +286,7 @@ export const previewDeleteCourseApiApiV1CoursesDeletePreviewPost = async (course
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseDeletePreviewRequest,)
+    body: JSON.stringify(courseDeletePreviewRequest)
   }
 );}
 
@@ -340,10 +337,7 @@ export const usePreviewDeleteCourseApiApiV1CoursesDeletePreviewPost = <TError = 
       > => {
       return useMutation(getPreviewDeleteCourseApiApiV1CoursesDeletePreviewPostMutationOptions(options), queryClient);
     }
-    /**
- * @summary 删除课程
- */
-export type deleteCourseApiApiV1CoursesDeletePostResponse200 = {
+    export type deleteCourseApiApiV1CoursesDeletePostResponse200 = {
   data: ApiResponseCourseDeleteData
   status: 200
 }
@@ -390,6 +384,9 @@ export const getDeleteCourseApiApiV1CoursesDeletePostUrl = () => {
   return `/api/v1/courses/delete`
 }
 
+/**
+ * @summary 删除课程
+ */
 export const deleteCourseApiApiV1CoursesDeletePost = async (courseDeleteRequest: CourseDeleteRequest, options?: RequestInit): Promise<deleteCourseApiApiV1CoursesDeletePostResponse> => {
 
   return orvalApiClient<deleteCourseApiApiV1CoursesDeletePostResponse>(getDeleteCourseApiApiV1CoursesDeletePostUrl(),
@@ -397,8 +394,7 @@ export const deleteCourseApiApiV1CoursesDeletePost = async (courseDeleteRequest:
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseDeleteRequest,)
+    body: JSON.stringify(courseDeleteRequest)
   }
 );}
 
@@ -449,10 +445,7 @@ export const useDeleteCourseApiApiV1CoursesDeletePost = <TError = ErrorResponse 
       > => {
       return useMutation(getDeleteCourseApiApiV1CoursesDeletePostMutationOptions(options), queryClient);
     }
-    /**
- * @summary 更新课程
- */
-export type updateCourseApiApiV1CoursesUpdatePostResponse200 = {
+    export type updateCourseApiApiV1CoursesUpdatePostResponse200 = {
   data: ApiResponseCourseItem
   status: 200
 }
@@ -494,6 +487,9 @@ export const getUpdateCourseApiApiV1CoursesUpdatePostUrl = () => {
   return `/api/v1/courses/update`
 }
 
+/**
+ * @summary 更新课程
+ */
 export const updateCourseApiApiV1CoursesUpdatePost = async (courseUpdateRequest: CourseUpdateRequest, options?: RequestInit): Promise<updateCourseApiApiV1CoursesUpdatePostResponse> => {
 
   return orvalApiClient<updateCourseApiApiV1CoursesUpdatePostResponse>(getUpdateCourseApiApiV1CoursesUpdatePostUrl(),
@@ -501,8 +497,7 @@ export const updateCourseApiApiV1CoursesUpdatePost = async (courseUpdateRequest:
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseUpdateRequest,)
+    body: JSON.stringify(courseUpdateRequest)
   }
 );}
 
@@ -553,10 +548,7 @@ export const useUpdateCourseApiApiV1CoursesUpdatePost = <TError = ErrorResponse 
       > => {
       return useMutation(getUpdateCourseApiApiV1CoursesUpdatePostMutationOptions(options), queryClient);
     }
-    /**
- * @summary 根据用户输入快速生成课程名称
- */
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponse200 = {
+    export type suggestCourseNameApiV1CoursesSuggestNamePostResponse200 = {
   data: ApiResponseCourseNameSuggestionResponse
   status: 200
 }
@@ -593,6 +585,9 @@ export const getSuggestCourseNameApiV1CoursesSuggestNamePostUrl = () => {
   return `/api/v1/courses/suggest-name`
 }
 
+/**
+ * @summary 根据用户输入快速生成课程名称
+ */
 export const suggestCourseNameApiV1CoursesSuggestNamePost = async (courseNameSuggestionRequest: CourseNameSuggestionRequest, options?: RequestInit): Promise<suggestCourseNameApiV1CoursesSuggestNamePostResponse> => {
 
   return orvalApiClient<suggestCourseNameApiV1CoursesSuggestNamePostResponse>(getSuggestCourseNameApiV1CoursesSuggestNamePostUrl(),
@@ -600,8 +595,7 @@ export const suggestCourseNameApiV1CoursesSuggestNamePost = async (courseNameSug
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      courseNameSuggestionRequest,)
+    body: JSON.stringify(courseNameSuggestionRequest)
   }
 );}
 
