@@ -2,23 +2,22 @@
 
 AITeachMe 文档采用四层结构：
 
-1. 根 `README.md`：项目定位、快速启动、架构总览。
+1. 根 `README.md`：公开项目首页，负责产品定位、核心能力、快速启动、展示位、路线图和贡献入口。
 2. `docs/README.md`：全仓文档导航和阅读顺序。
 3. `docs/*`：跨模块当前事实源，不放历史流水账。
 4. 模块内 README：代码附近的局部权威文档。
 
-如果文档和当前代码冲突，以当前代码和模块 README 为准，并尽快修正文档。
+如果文档和当前代码冲突，以当前代码和模块 README 为准，并尽快修正文档。根 README 可以更偏对外介绍；`docs/` 里的事实页必须更克制，重点保证准确、可维护、可追溯。
 
 ## 推荐阅读
 
-### 新加入项目
+### 第一次了解项目
 
-1. [产品愿景](./product/vision.md)
-2. [系统架构](./architecture/system-architecture.md)
-3. [仓库结构与运行时文件](./architecture/repo-structure-and-runtime-files.md)
-4. [本地开发](./development/local-development.md)
-5. [Workflows 结构规则](../backend/app/workflows/README.md)
-6. [Infra 分层说明](../backend/app/shared/infra/README.md)
+1. [仓库根 README](../README.md)
+2. [产品愿景](./product/vision.md)
+3. [系统架构](./architecture/system-architecture.md)
+4. [仓库结构与运行时文件](./architecture/repo-structure-and-runtime-files.md)
+5. [本地开发](./development/local-development.md)
 
 ### 后端开发
 
@@ -36,14 +35,22 @@ AITeachMe 文档采用四层结构：
 3. [本地开发](./development/local-development.md)
 4. [前端 README](../frontend/README.md)
 
-### 部署与运维
+### 部署、桌面端与运维
 
 1. [云端部署架构](./deployment/cloud-architecture.md)
 2. [云端部署配置](./deployment/cloud-deployment.md)
 3. [云端数据库迁移](./deployment/cloud-db-migrations.md)
 4. [Sealos 前端 Nginx 部署](./deployment/sealos-frontend.md)
-5. [导入导出](./operations/export-import.md)
-6. [桌面端打包](../packaging/README.md)
+5. [桌面端打包](../packaging/README.md)
+6. [导入导出](./operations/export-import.md)
+
+### 贡献前检查
+
+1. [CONTRIBUTING.md](../CONTRIBUTING.md)
+2. [本地开发](./development/local-development.md)
+3. [API 契约与开发流程](./development/api-contracts-and-dev-workflow.md)
+4. [Workflows 结构规则](../backend/app/workflows/README.md)
+5. [手动验证](./development/manual-testing.md)
 
 ## 文档分区
 
@@ -90,6 +97,7 @@ AITeachMe 文档采用四层结构：
 
 - [导入导出](./operations/export-import.md)
 - [运维入口](./operations/README.md)
+- [桌面端打包入口](../packaging/README.md)
 
 ### Standards
 
@@ -101,5 +109,6 @@ AITeachMe 文档采用四层结构：
 - 新增当前事实文档必须同步更新本文件。
 - 历史方案、交接稿、过程稿不要放进 active docs。
 - 单个主题只保留一个当前事实源。
+- 根 README 可以服务对外介绍；事实、边界和落点必须回到 `docs/` 或模块 README。
 - 模块内部结构优先写在模块 README，不复制到跨模块文档。
-- 文档不得包含真实密钥、私有部署地址、本机绝对路径或其他项目内容。
+- 文档不得包含真实密钥、私有部署地址、本机绝对路径或其他敏感内容。

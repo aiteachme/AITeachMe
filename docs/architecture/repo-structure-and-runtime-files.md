@@ -1,6 +1,6 @@
 # 10. 仓库结构与运行时文件
 
-最后更新：2026-04-27
+最后更新：2026-05-13
 
 本文说明当前仓库怎么读、运行时文件落在哪里、哪些目录不要手改。
 
@@ -13,11 +13,13 @@
 | `docs/` | 当前事实源、标准、开发和部署说明 |
 | `scripts/` | 仓库级辅助脚本 |
 | `infra/` | 部署、Compose、CI、工程运维 |
+| `packaging/` | 桌面端打包入口、Electron/Tauri 构建脚本和发布说明 |
 
 注意：
 
 - 根目录 `infra/` 不是 `backend/app/shared/infra/`。
 - 真正应用代码主要是 `frontend/` 和 `backend/`。
+- 根 `README.md` 是公开项目首页，负责展示、快速启动和贡献入口；事实边界仍以 `docs/` 与模块 README 为准。
 
 ## 2. 前端结构
 
@@ -39,6 +41,7 @@ frontend/src/
 - `frontend/src/api/generated/` 不手改。
 - 后端 OpenAPI 变化时重新生成，而不是补丁生成代码。
 - 设置页本机环境变量只存浏览器 localStorage。
+- `frontend/public/logo.svg` 是根 README 当前引用的项目 Logo。
 
 ## 3. 后端结构
 
@@ -95,7 +98,19 @@ backend/app/api/knowledge_docs.py
 其中 `planner/`、`docgen/` 和 `kg_doc_sync/` 目录当前都以各自 `README.md`
 为主文档。入口说明和流程判断都以对应目录内的主文档为准。
 
-## 5. 运行时文件
+## 5. 当前学习闭环读代码顺序
+
+如果要理解 README 中描述的五大引擎闭环，建议按下面顺序读：
+
+1. `backend/app/workflows/README.md`
+2. `backend/app/workflows/ingest/README.md`
+3. `backend/app/workflows/digest/README.md`
+4. `backend/app/workflows/interact/README.md`
+5. `backend/app/workflows/examine/README.md`
+6. `backend/app/workflows/profile/README.md`
+7. `backend/app/shared/infra/README.md`
+
+## 6. 运行时文件
 
 本地运行时根目录：
 
@@ -131,7 +146,7 @@ backend/data/<course>/
   exam/
 ```
 
-## 6. 关键构建文件
+## 7. 关键构建文件
 
 知识文档构建相关：
 
@@ -166,7 +181,7 @@ assets 仓库 -> https://github.com/aiteachme/assets
 frontend/dist/
 ```
 
-## 7. 配置文件
+## 8. 配置文件
 
 根目录：
 
@@ -185,7 +200,7 @@ frontend/dist/
 - 用户级非敏感 settings 覆盖存用户数据库。
 - 密钥、连接串、SMTP、对象存储等敏感配置不写用户 settings 数据库。
 
-## 8. 不要手改的内容
+## 9. 不要手改的内容
 
 - `frontend/src/api/generated/`
 - `__pycache__/`
@@ -193,8 +208,9 @@ frontend/dist/
 - `backend/data/<course>/knowledge_markdowns/_build/`
 - `backend/data/<course>/temp/`
 - `backend/data/<course>/debug/`
+- README 中的 `<!-- CODE_STATS_START -->` 到 `<!-- CODE_STATS_END -->` 区块由 `infra/code_stats/auto_update_readme.py` 维护，手改后可能被脚本覆盖。
 
-## 9. 本地开发约束
+## 10. 本地开发约束
 
 - Python 环境：使用 Python 3.11+，先激活自己的项目环境。
 - 文件读写统一 UTF-8。
@@ -202,7 +218,7 @@ frontend/dist/
 - 架构判断优先看当前代码、`backend/app/workflows/*.md`、`backend/app/shared/infra/*.md`。
 - `docs/README.md` 是文档导航；模块落点以代码目录 README 为准。
 
-## 10. 推荐阅读顺序
+## 11. 推荐阅读顺序
 
 1. 仓库根 `README.md`
 2. 本文

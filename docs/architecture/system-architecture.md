@@ -1,12 +1,12 @@
 # 01. 系统架构
 
-最后更新：2026-04-19
+最后更新：2026-05-13
 
 本文只描述当前代码真实架构，不记录历史迁移过程。
 
 ## 1. 一句话架构
 
-AITeachMe 当前是一个前后端分离的资料驱动 AI 学习系统：
+AITeachMe 当前是一个前后端分离、可本地运行、可云端部署的资料驱动 AI 学习系统：
 
 ```text
 frontend React
@@ -17,6 +17,14 @@ frontend React
 ```
 
 核心业务边界是 `Course`。上传资料、知识文档、知识图谱、对话、考试、画像都围绕同一个 course 隔离。
+
+系统定位不是“单次问答 Agent”，而是围绕课程知识资产运行的学习闭环：
+
+```text
+资料 -> 解析 -> 学习方案 -> 知识文档 -> 知识图谱
+                      -> 伴读对话 / 诊断练习 / 学习画像
+                      -> 反哺下一次学习
+```
 
 ## 2. 主业务链路
 
@@ -36,8 +44,31 @@ Course
 - Planner 只决定学习方案，不做 deep research。
 - DocGen 消费 confirmed plan，生成知识文档和 manifest。
 - Interact / Examine / Profile 复用同一套 course 知识资产。
+- Profile 的 `study_plan` 是 learner-facing 的主动建议链路，不替代 Digest Planner。
 
-## 3. 后端分层
+## 3. 端到端运行视图
+
+```text
+React Web / Desktop
+  -> FastAPI api
+  -> workflows
+     -> ingest/intake + ingest/fast_parse
+     -> digest/planner + digest/docgen + digest/kg_doc_sync
+     -> interact/chat
+     -> examine/question_build + examine/exam_grade
+     -> profile/update + profile/snapshot + profile/study_plan
+  -> repositories / shared.infra / models / schemas
+  -> SQLite or PostgreSQL + ContentStore or S3
+```
+
+运行时要点：
+
+- Web 前端和桌面端都走同一套 API 契约。
+- Electron/Tauri local 会启动本地后端；云端部署由独立后端服务承接。
+- 本地模式默认 SQLite + 本地 ContentStore；云端模式可接 PostgreSQL + pgvector + S3-compatible OSS。
+- LangSmith trace、workflow progress events、token/timing summary 用于排查长链路 AI 任务。
+
+## 4. 后端分层
 
 当前唯一推荐依赖方向：
 
@@ -63,7 +94,7 @@ shared.infra -> shared.kernel
 - `backend/app/shared/infra/facade`
 - `backend/app/shared/infra/guardrails`
 
-## 4. 五大引擎
+## 5. 五大引擎
 
 ### Ingest：透视引擎
 
@@ -79,6 +110,7 @@ shared.infra -> shared.kernel
 - 产出 raw markdown。
 - 提取/规范化 assets。
 - 后台增强 OCR / PDF 解析质量。
+- 当前开放上传类型以 `workflows/ingest/intake/uploads.py` 为准，包含 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等。
 
 ### Digest：织网引擎
 
@@ -137,8 +169,18 @@ shared.infra -> shared.kernel
 - 薄弱点识别。
 - 复习任务。
 - 课程/用户画像。
+- 面向学习者生成主动 study plan。
 
-## 5. 配置边界
+## 6. 使用形态
+
+| 形态 | 入口 | 主要用途 |
+| --- | --- | --- |
+| 本地开发 | `uvicorn app.main:app` + `npm run dev` 或根目录 `dev.bat` | 调试前后端、workflow、解析器和模型接入 |
+| 桌面本地版 | `packaging/release.bat` 生成 Electron local，Tauri local 可选 | 面向个人本机使用，默认保留本地数据目录 |
+| 云端部署 | `infra/`、`docs/deployment/*` | 面向团队、学校或公开服务，使用云端数据库和对象存储 |
+| 课程包交换 | `.atmx` 导入导出 | 课程知识资产迁移、分发和复用 |
+
+## 7. 配置边界
 
 配置分三类：
 
@@ -154,7 +196,7 @@ shared.infra -> shared.kernel
 - `frontend/src/api/generated/` 由 Orval 生成，不手改。
 - 用户 settings 覆盖按当前 schema 投影，旧 key 自动忽略。
 
-## 6. 基础设施边界
+## 8. 基础设施边界
 
 `shared.infra` 按能力包直接使用：
 
@@ -171,17 +213,27 @@ shared.infra -> shared.kernel
 | Observability | `app.shared.infra.observability` |
 | Runtime paths / mode / tasks | `app.shared.infra.runtime` |
 
-## 7. 当前优先演进方向
+## 9. 工程原则
+
+- `Course` 是业务隔离边界。
+- `workflows/` 是唯一业务层。
+- `shared.infra` 只接通用能力，不反向理解教学语义。
+- 长链路 AI 任务必须有状态、进度、trace 和失败摘要。
+- 可选外部能力缺失时，优先保证普通本地链路可用。
+- 根 README 可以更偏对外介绍；事实源文档必须以当前代码为准。
+
+## 10. 当前优先演进方向
 
 1. Ingest Phase 2 持久化任务队列。
 2. DocGen repair loop 闭环。
 3. Search/reader 持久化缓存。
 4. Settings 页面继续做常用/高级配置分层。
 5. Profile 学习档案继续投影到 Interact 运行时上下文。
+6. 公开 README 补齐真实截图、演示 GIF 和课程样例。
 
-## 8. 一句话
+## 11. 一句话
 
-当前架构不是全能 Agent，而是：
+当前架构不是通用 Agent 平台，而是：
 
 ```text
 Course 边界 + Workflow 业务编排 + Infra 能力接入 + 本地优先存储

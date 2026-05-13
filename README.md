@@ -1,15 +1,316 @@
-# AITeachMe
+<div align="center">
+  <img src="./frontend/public/logo.svg" alt="AITeachMe Logo" width="168" />
 
-让天下没有难学的知识。
+  <h1>AITeachMe</h1>
 
-AITeachMe 是一个资料驱动的 AI 学习系统：把 PDF、Word、PPT、Markdown、笔记等学习材料转成可讲、可问、可测、可追踪的个人学习空间。
+  <p><strong>让天下没有难学的知识。</strong></p>
+  <p>
+    AITeachMe 是一个资料驱动的 AI 学习系统，把课程资料转化为可讲、可问、可测、可追踪的个人学习空间。
+  </p>
 
-当前仓库是一个前后端分离的 MVP：
+  <p>
+    <a href="./LICENSE"><img alt="License: AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" /></a>
+    <img alt="Version 0.0.9" src="https://img.shields.io/badge/version-0.0.9-informational" />
+    <img alt="Backend FastAPI" src="https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white" />
+    <img alt="Frontend React" src="https://img.shields.io/badge/frontend-React-61DAFB?logo=react&logoColor=111" />
+    <img alt="Workflow LangGraph" src="https://img.shields.io/badge/workflow-LangGraph-1f6feb" />
+    <a href="https://github.com/aiteachme/AiTeachMe"><img alt="GitHub stars" src="https://img.shields.io/github/stars/aiteachme/AiTeachMe?style=social" /></a>
+  </p>
+</div>
 
-- 前端：React + TypeScript + Vite
-- 后端：FastAPI + SQLModel + LangGraph
-- 数据：本地 SQLite，云端 PostgreSQL + pgvector
-- 存储：本地 ContentStore，云端可接 S3-compatible OSS
+---
+
+## AITeachMe 是什么
+
+现代学习最难的地方不是缺资料，而是资料很难转化成持续、可验证、可复用的学习行为。AITeachMe 以 `Course` 为边界，把上传资料、知识文档、知识图谱、伴读对话、诊断练习和学习画像串成一个闭环。
+
+```text
+学习资料
+  -> Ingest: 解析为标准 Markdown 与资产
+  -> Digest: 生成学习方案、知识文档与知识图谱
+  -> Interact: 围绕资料和上下文伴读问答
+  -> Examine: 出题、作答、判卷、错因解释
+  -> Profile: 沉淀掌握度、薄弱点、复习任务和学习画像
+```
+
+它不是一个简单的 ChatGPT 壳，也不是只做文件摘要的工具。项目目标是让一门课程拥有可持续复用的资料解析结果、教学上下文、诊断反馈和学习记录。
+
+如果说传统学习软件解决的是“资料放在哪里”，AITeachMe 想进一步解决“资料如何被组织、追问、验证并沉淀到下一次学习”。资料进入系统后，不只被摘要，也会成为后续教学、练习、复习和画像可以复用的上下文。
+
+## 为什么值得关注
+
+| 设计判断 | 含义 |
+| --- | --- |
+| 课程边界 | 资料、文档、图谱、对话、考试和画像围绕 `Course` 组织，避免每次学习都从零开始 |
+| Workflow 编排 | 后端以 LangGraph workflow 承接长链路任务，把解析、生成、诊断拆成可观测的阶段 |
+| 知识资产复用 | Digest 先形成学习方案，再生成知识文档和图谱，Interact / Examine / Profile 复用这些产物 |
+| 本地优先 | 本地 SQLite + ContentStore 可以独立运行，云端路径再接 PostgreSQL + pgvector + S3-compatible OSS |
+| 学习记录沉淀 | Profile 记录掌握度、薄弱点、复习任务和 study plan，逐步服务后续学习行为 |
+| 工程边界清晰 | `api -> workflows -> repositories / shared.infra / models / schemas`，业务编排和基础设施能力分层明确 |
+
+## 当前状态
+
+AITeachMe 当前处于 MVP 到早期产品化阶段，核心链路已经按真实应用边界拆分，但公开展示素材、部署模板和社区协作流程仍在持续完善。
+
+| 维度 | 当前能力 |
+| --- | --- |
+| 本地运行 | React + FastAPI 分离运行，Windows 提供 `dev.bat` 一键启动入口 |
+| 桌面端 | Electron local 为默认打包路径，Tauri local/remote 可选 |
+| 后端架构 | FastAPI + SQLModel + LangGraph，`workflows/` 是唯一业务层 |
+| 数据与存储 | 本地 SQLite + ContentStore；云端支持 PostgreSQL + pgvector 与 S3-compatible OSS |
+| 文件接入 | 当前开放 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等资料上传 |
+| 观测与调试 | LangSmith trace、workflow progress events、LLM token/timing summary |
+| 代码规模 | 约 195.1k 总行数 / 161.7k 代码行；趋势图见下方「代码量概览」 |
+
+## 核心能力
+
+| 模块 | 做什么 | 现在的边界 |
+| --- | --- | --- |
+| Ingest 透视引擎 | 把原始资料解析成可预览、可检索、可继续增强的 Markdown 与 assets | 上传、去重、解析、OCR/增强、失败恢复 |
+| Digest 织网引擎 | 从资料生成可确认的学习方案，再生成知识文档并同步知识图谱 | Planner -> DocGen -> KG Doc Sync |
+| Interact 伴读引擎 | 基于课程资料、知识文档、上下文和画像进行教学对话 | SSE 流式输出、本地知识优先、上下文压缩 |
+| Examine 诊断引擎 | 生成试卷、组织作答、判卷并解释错因 | 题目生成、提交评分、诊断反馈、写回画像 |
+| Profile 显影引擎 | 把学习与作答沉淀成掌握度、薄弱点、复习任务和学习建议 | update / snapshot / study_plan 三条链路 |
+| Support 支撑用例 | 承接不属于五大引擎但面向 API 的业务用例 | 课程、认证、系统设置、导入导出 |
+
+## 端到端架构
+
+```mermaid
+flowchart LR
+  User[学习者 / 教师] --> Frontend[React Web / Desktop]
+  Frontend --> API[FastAPI API]
+  API --> Workflows[Workflow 业务层]
+
+  Workflows --> Ingest[Ingest<br/>资料解析]
+  Workflows --> Digest[Digest<br/>方案 / 文档 / 图谱]
+  Workflows --> Interact[Interact<br/>伴读对话]
+  Workflows --> Examine[Examine<br/>诊断练习]
+  Workflows --> Profile[Profile<br/>学习画像]
+
+  Ingest --> Store[ContentStore<br/>Local / S3]
+  Digest --> KG[Knowledge Graph]
+  Interact --> RAG[Local RAG / Search]
+  Examine --> Profile
+  Profile --> Interact
+
+  Workflows --> Infra[shared.infra<br/>LLM / Embedding / Search / Storage / Observability]
+  Infra --> DB[(SQLite / PostgreSQL + pgvector)]
+```
+
+这张图只表达当前主干依赖：API 不直接拼装 AI 能力，业务流程进入 `workflows/`，共享能力由 `shared.infra` 提供，知识资产和学习画像围绕课程边界持久化。
+
+## 产品展示位
+
+> 这里先只预留展示结构，不新增截图或演示文件。后续公开发布前建议补齐真实截图、短 GIF 和一段完整课程样例。
+
+| 场景 | 展示重点 | 推荐素材 |
+| --- | --- | --- |
+| 学习空间 | 课程列表、资料库、构建状态、学习入口 | 首屏截图 |
+| 资料解析 | 上传资料到 Markdown 预览与资产抽取 | 8-12 秒 GIF |
+| 知识文档 | 学习方案、章节生成、引用依据、质量报告 | 宽屏截图 |
+| 知识图谱 | 知识单元、关系边、图谱侧栏与定位 | 交互 GIF |
+| 伴读问答 | 基于课程资料的流式教学对话 | 对话截图 |
+| 诊断练习 | 出题、作答、判卷、错因解释、画像更新 | 流程拼图 |
+| 桌面端 | 安装、启动本地后端、数据目录与更新提示 | 安装包截图 |
+
+## 使用形态
+
+| 形态 | 适合谁 | 特点 |
+| --- | --- | --- |
+| 本地开发版 | 开发者、研究者、早期体验者 | 前后端分离运行，便于调试 workflow、模型、解析器和前端交互 |
+| 桌面本地版 | 希望数据留在本机的个人用户 | Electron/Tauri local 打包，内置本地后端，默认使用本地数据目录 |
+| 云端部署版 | 小团队、课程平台、内部验证环境 | 前端 Nginx + 后端服务 + PostgreSQL/pgvector + S3-compatible OSS |
+| 课程包交换 | 教师、内容创作者、课程维护者 | 通过 `.atmx` 导入导出课程知识资产，支持迁移和复用 |
+
+## 技术栈
+
+| 层 | 技术 |
+| --- | --- |
+| Web 前端 | React 19, TypeScript, Vite, React Router, TanStack Query, Tailwind CSS, Framer Motion |
+| 可视化 | Three.js, react-force-graph-2d, D3, Mermaid, KaTeX, Markdown 渲染 |
+| 桌面端 | Electron, Tauri v2, Electron Builder, NSIS |
+| 后端 API | FastAPI, SQLModel, Pydantic, Uvicorn |
+| AI 编排 | LangGraph, LangSmith, LiteLLM, Instructor |
+| 检索与知识 | 本地 RAG, pgvector, llama-index-core, Knowledge Graph lanes |
+| 文件解析 | MarkItDown 风格本地解析、Mammoth/DOCX、PDF/OCR、MinerU/PaddleOCR 外部链路 |
+| 数据与存储 | SQLite, PostgreSQL, ContentStore, S3-compatible object storage |
+
+## 快速启动
+
+### 环境要求
+
+- Python `3.11+`
+- Node.js `18+`
+- Windows 优先支持；Linux/macOS 可按前后端分离方式运行
+- 终端和文件读写建议统一使用 UTF-8
+
+### 后端
+
+```powershell
+cd backend
+$env:PYTHONUTF8 = "1"
+pip install -e .
+uvicorn app.main:app --reload --port 9020
+```
+
+健康检查：
+
+```text
+http://127.0.0.1:9020/api/health
+```
+
+### 前端
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+默认地址：
+
+```text
+http://127.0.0.1:5180
+```
+
+开发模式下，Vite 会把 `/api` 代理到 `http://127.0.0.1:9020`。
+
+### Windows 一键开发入口
+
+```powershell
+.\dev.bat
+```
+
+可通过 `.env` 或环境变量覆盖端口和 Conda 环境：
+
+```env
+AITEACHME_BACKEND_PORT=9020
+AITEACHME_FRONTEND_PORT=5180
+AITEACHME_CONDA_ENV=<your-conda-env>
+```
+
+### 最小本地配置
+
+根目录 `.env.sample` 是本地用户侧变量入口，`.env.developer.sample` 包含开发、部署、验证码、通知等扩展配置。
+
+```env
+APP_MODE=local
+AUTH_ENABLED=false
+LLM_API_KEY=<model-api-key>
+LLM_BASE_URL=https://api.example.com/v1
+```
+
+未启用鉴权的本地模型网关可以不填 `LLM_API_KEY`。实际模型槽位也可以在设置页或项目 settings override 中配置。
+
+## 目录结构
+
+```text
+AITeachMe/
+├── frontend/       # React 前端、Electron/Tauri 桌面端入口
+├── backend/        # FastAPI 后端、workflows、models、migrations
+├── docs/           # 当前事实源、标准、部署和开发说明
+├── infra/          # Docker、Compose、Nginx、部署脚本
+├── packaging/      # 桌面端打包脚本与说明
+└── scripts/        # 仓库级辅助脚本
+```
+
+后端推荐依赖方向：
+
+```text
+api -> workflows -> repositories / shared.infra / models / schemas
+shared.infra -> shared.kernel
+```
+
+`backend/app/workflows/` 是唯一业务层，承接五大引擎和 support 用例。`backend/app/shared/infra/` 只负责 LLM、检索、存储、数据库、workflow runtime、observability 等共享基础设施。
+
+## 工程原则
+
+- **Course first**：课程是资料、知识文档、知识图谱、对话、练习和画像的统一边界。
+- **Workflow native**：复杂 AI 流程进入 LangGraph lane，状态、节点、进度和观测都应该可以追踪。
+- **Evidence first**：学习文档和对话尽量回到资料、引用、检索结果和图谱资产，而不是只依赖模型即时发挥。
+- **Local first**：本地模式必须能独立运行；云端能力是扩展，不是使用项目的前置门槛。
+- **Readable by default**：模块 README 和 `docs/` 是当前事实源，架构变化必须能被后来者读懂。
+- **Graceful degradation**：可选的外部服务、更新能力和云端能力缺失时，普通本地使用不应被硬阻断。
+
+## 桌面端与发布
+
+桌面端打包统一从仓库根目录运行：
+
+```powershell
+.\packaging\release.bat
+```
+
+默认生成 Electron local 安装包。Tauri local、remote 包和预绑定本地模型配置都通过显式参数打开，详细说明见 [packaging/README.md](./packaging/README.md)。
+
+常见入口：
+
+```powershell
+.\packaging\release.bat
+.\packaging\release.bat -ImportBundledEnv
+.\packaging\release.bat -IncludeTauri
+.\packaging\release.bat -IncludeRemote -ApiUrl https://api.example.com
+```
+
+Tauri local 已接入 Tauri v2 updater。没有 GitHub Release、没有更新 manifest 或网络不可达时，更新检查会静默跳过，不影响正常使用。
+
+## 文档导航
+
+从 [docs/README.md](./docs/README.md) 开始阅读。高频入口：
+
+| 主题 | 文档 |
+| --- | --- |
+| 产品定位 | [产品愿景](./docs/product/vision.md) |
+| 系统总览 | [系统架构](./docs/architecture/system-architecture.md) |
+| 仓库结构 | [仓库结构与运行时文件](./docs/architecture/repo-structure-and-runtime-files.md) |
+| 本地开发 | [本地开发](./docs/development/local-development.md) |
+| API 契约 | [API 契约与开发流程](./docs/development/api-contracts-and-dev-workflow.md) |
+| Workflows | [Workflows 结构规则](./backend/app/workflows/README.md) |
+| Infra | [Infra 分层说明](./backend/app/shared/infra/README.md) |
+| 云端部署 | [云端部署配置](./docs/deployment/cloud-deployment.md) |
+| 桌面端打包 | [packaging/README.md](./packaging/README.md) |
+
+## 路线图
+
+短期重点：
+
+- 补齐公开 README 的真实截图、演示 GIF 和课程样例。
+- 强化 Ingest 持久化任务队列，减少长解析任务对进程内存状态的依赖。
+- 完善 DocGen repair loop，让知识文档生成具备更强的自检和修复闭环。
+- 增强 Profile study plan，把画像结果更主动地反馈到复习、练习和伴读建议中。
+- 完善云端部署模板、发布流程和社区贡献指引。
+
+中长期方向：
+
+- 更完整的学习档案和认知诊断模型。
+- 更强的知识图谱查询、可视化和章节定位能力。
+- 更成熟的 `.atmx` 课程包导入导出和复用流程。
+- 面向团队部署的权限、协作和运维能力。
+- 更清晰的插件、工具和外部数据源接入边界。
+
+## 贡献
+
+欢迎围绕以下方向贡献：
+
+- 文件解析质量、OCR、Markdown 规范化和资料预览体验。
+- Planner / DocGen / KG 的教学质量、引用依据和质量评估。
+- 伴读对话、诊断练习、错因解释和 Profile 学习建议。
+- 前端交互、暗色模式、移动端适配和可视化体验。
+- 部署、打包、更新、导入导出和文档质量。
+
+开发前建议先阅读：
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md)
+- [本地开发](./docs/development/local-development.md)
+- [API 契约与开发流程](./docs/development/api-contracts-and-dev-workflow.md)
+- [Workflows 结构规则](./backend/app/workflows/README.md)
+
+重要约束：
+
+- Python 使用 `3.11+`。
+- 输入输出文件读写统一使用 UTF-8。
+- `frontend/src/api/generated/` 由 Orval 生成，不手动修改。
+- 架构改动优先同步 `docs/` 的当前事实源，以及对应模块目录内 README。
+- 文档中不要提交真实密钥、私有部署地址、本机绝对路径或其他敏感信息。
 
 <!-- CODE_STATS_START -->
 ## 代码量概览
@@ -19,80 +320,6 @@ AITeachMe 是一个资料驱动的 AI 学习系统：把 PDF、Word、PPT、Mark
 ![代码量趋势](https://quickchart.io/chart?c=%7B%22type%22%3A%22line%22%2C%22data%22%3A%7B%22labels%22%3A%5B%222026-03-11%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-03-23%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-05%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-16%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-20%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-24%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-27%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-04-30%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%22%22%2C%222026-05-05%22%2C%22%22%2C%22%22%2C%22%22%5D%2C%22datasets%22%3A%5B%7B%22label%22%3A%22%5Cu4ee3%5Cu7801%5Cu884c%5Cu6570%22%2C%22data%22%3A%5B253%2C6294%2C7646%2C6270%2C7375%2C10481%2C20483%2C23364%2C26821%2C38753%2C39725%2C41670%2C41751%2C44539%2C50563%2C55810%2C63663%2C66993%2C67733%2C70967%2C72160%2C79589%2C83973%2C85623%2C86176%2C88035%2C89456%2C92068%2C96716%2C99574%2C103974%2C106640%2C108604%2C100146%2C109661%2C107322%2C99784%2C94612%2C101750%2C104088%2C100179%2C96899%2C97510%2C97537%2C99337%2C100591%2C98926%2C100137%2C101971%2C102663%2C105479%2C106302%2C106674%2C106211%2C107525%2C107808%2C109450%2C112589%2C113817%2C116323%2C119498%2C121199%2C126319%2C127188%2C127497%2C131200%2C132754%2C136353%2C136672%2C133702%2C135278%2C136574%2C131036%2C139260%2C133118%2C134527%2C135392%2C137447%2C138005%2C138919%2C137517%2C138552%2C140912%2C141518%2C142034%2C144158%2C145536%2C147066%2C146015%2C149784%2C154609%2C149282%2C150230%2C150232%2C150334%2C152322%2C153327%2C154033%2C154754%2C156735%5D%2C%22borderColor%22%3A%22rgb%2875%2C%20192%2C%20192%29%22%2C%22backgroundColor%22%3A%22rgba%2875%2C%20192%2C%20192%2C%200.5%29%22%2C%22fill%22%3Atrue%2C%22tension%22%3A0.4%7D%2C%7B%22label%22%3A%22%5Cu6ce8%5Cu91ca/%5Cu7a7a%5Cu884c%22%2C%22data%22%3A%5B272%2C2638%2C3077%2C2567%2C2745%2C4161%2C8018%2C9817%2C10421%2C12680%2C12729%2C12667%2C12666%2C12565%2C14169%2C16099%2C22720%2C22958%2C23450%2C23707%2C23816%2C25883%2C26680%2C27514%2C27620%2C27926%2C28342%2C28927%2C29787%2C30889%2C31195%2C31714%2C32450%2C31345%2C32476%2C29511%2C27964%2C23960%2C28745%2C29470%2C28488%2C28828%2C29016%2C28945%2C28911%2C29227%2C27812%2C28048%2C28450%2C28700%2C30038%2C30206%2C30230%2C30082%2C30153%2C30225%2C30452%2C30887%2C31133%2C31567%2C32085%2C32286%2C33421%2C33525%2C33675%2C33928%2C34138%2C34552%2C34575%2C33864%2C34023%2C34176%2C32881%2C34594%2C33205%2C33384%2C33749%2C34091%2C34183%2C34581%2C34126%2C34271%2C34725%2C34832%2C34954%2C35262%2C35515%2C35666%2C35617%2C36041%2C36533%2C31851%2C32073%2C32075%2C32109%2C32304%2C32493%2C32326%2C32460%2C32637%5D%2C%22borderColor%22%3A%22rgb%28255%2C%20159%2C%2064%29%22%2C%22backgroundColor%22%3A%22rgba%28255%2C%20159%2C%2064%2C%200.5%29%22%2C%22fill%22%3Atrue%2C%22tension%22%3A0.4%7D%5D%7D%2C%22options%22%3A%7B%22title%22%3A%7B%22display%22%3Atrue%2C%22text%22%3A%22%5Cu4ee3%5Cu7801%5Cu91cf%5Cu53d8%5Cu5316%5Cu8d8b%5Cu52bf%22%2C%22fontSize%22%3A16%7D%2C%22scales%22%3A%7B%22yAxes%22%3A%5B%7B%22stacked%22%3Atrue%2C%22ticks%22%3A%7B%22beginAtZero%22%3Atrue%7D%2C%22scaleLabel%22%3A%7B%22display%22%3Atrue%2C%22labelString%22%3A%22%5Cu884c%5Cu6570%22%7D%7D%5D%2C%22xAxes%22%3A%5B%7B%22stacked%22%3Atrue%2C%22scaleLabel%22%3A%7B%22display%22%3Atrue%2C%22labelString%22%3A%22%5Cu65e5%5Cu671f%22%7D%7D%5D%7D%2C%22legend%22%3A%7B%22display%22%3Atrue%7D%7D%7D&width=800&height=400)
 <!-- CODE_STATS_END -->
 
-## 核心闭环
-
-```text
-Ingest    透视引擎：上传资料 -> 标准 Markdown / assets
-Digest    织网引擎：学习方案 -> 知识文档 -> 知识图谱
-Interact  伴读引擎：结合资料、画像和上下文进行教学对话
-Examine   诊断引擎：生成试卷、判卷、解释错因
-Profile   显影引擎：沉淀掌握度、薄弱点、复习任务和学习画像
-```
-
-## 快速启动
-
-后端：
-
-```powershell
-cd backend
-pip install -e .
-$env:PYTHONUTF8 = "1"
-uvicorn app.main:app --reload --port 9020
-```
-
-前端：
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-默认端口：
-
-- 前端：`http://127.0.0.1:5180`
-- 后端：`http://127.0.0.1:9020`
-- 健康检查：`http://127.0.0.1:9020/api/health`
-
-Windows 也可以在仓库根目录运行：
-
-```powershell
-.\dev.bat
-```
-
-## 目录结构
-
-```text
-AITeachMe/
-├── frontend/       # React 前端、Electron/Tauri 桌面端入口
-├── backend/        # FastAPI 后端、workflows、models、migrations
-├── docs/           # 当前文档事实源、标准、部署和开发说明
-├── infra/          # Docker、Compose、Nginx、部署脚本
-├── packaging/      # 桌面端打包脚本与说明
-└── scripts/        # 仓库级辅助脚本
-```
-
-后端当前依赖方向：
-
-```text
-api -> workflows -> repositories / shared.infra / models / schemas
-shared.infra -> shared.kernel
-```
-
-`backend/app/workflows/` 是唯一业务层，承接五大引擎和 support 用例。`backend/app/shared/infra/` 只负责 LLM、检索、存储、数据库、workflow runtime、observability 等共享基础设施。
-
-## 文档
-
-从 [docs/README.md](./docs/README.md) 开始阅读。高频入口：
-
-- [产品愿景](./docs/product/vision.md)
-- [系统架构](./docs/architecture/system-architecture.md)
-- [仓库结构与运行时文件](./docs/architecture/repo-structure-and-runtime-files.md)
-- [本地开发](./docs/development/local-development.md)
-- [API 契约与开发流程](./docs/development/api-contracts-and-dev-workflow.md)
-- [Workflows 结构规则](./backend/app/workflows/README.md)
-- [Infra 分层说明](./backend/app/shared/infra/README.md)
-
 ## License 与商标
 
 本仓库代码使用 [GNU Affero General Public License v3.0 only](./LICENSE)（`AGPL-3.0-only`）。
@@ -100,11 +327,3 @@ shared.infra -> shared.kernel
 如果你修改本项目并通过网络服务向用户提供访问，需要按照 AGPL-3.0 的要求向这些用户提供相应源码。需要在不触发 AGPL 源码开放义务的场景中使用、集成或托管 AITeachMe，请参考 [商业授权说明](./COMMERCIAL.md)。
 
 `AITeachMe` 名称、标识、Logo 和相关品牌资产不随代码许可证授权。商标和品牌使用边界见 [TRADEMARKS.md](./TRADEMARKS.md)。
-
-## 开发约束
-
-- Python 使用 3.11+；如使用 Conda、venv 或其他环境管理器，请先激活自己的项目环境。
-- 输入输出文件读写统一使用 UTF-8。
-- `frontend/src/api/generated/` 由 Orval 生成，不手动修改。
-- 架构改动优先同步 `docs/` 的当前事实源，以及对应模块目录内 README。
-- 文档中不要提交真实密钥、私有部署地址、本机绝对路径或其他项目内容。
