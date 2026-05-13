@@ -112,7 +112,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.FILTER_UNITS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.FILTER_UNITS,
         call_type="structured",
-        model="light",
+        model="reason",
         max_tokens=3600,
         timeout_s=120,
         temperature=0.1,
@@ -121,7 +121,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.ALLOCATE_BLUEPRINTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.ALLOCATE_BLUEPRINTS,
         call_type="structured",
-        model="light",
+        model="reason",
         timeout_s=120,
         min_tokens=4200,
         tokens_per_question=700,
@@ -132,7 +132,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.PLAN_REQUIREMENTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.PLAN_REQUIREMENTS,
         call_type="structured",
-        model="light",
+        model="reason",
         timeout_s=120,
         min_tokens=2600,
         tokens_per_question=420,
