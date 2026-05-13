@@ -1,7 +1,6 @@
 """LEARNER.md — 用户学习者档案（人类可读 Markdown 文件）。
 
-参考 OpenClaw 的 USER.md / SOUL.md 思路，为每位学习者维护一份
-可读可编辑的 Markdown 档案文件。
+为每位学习者维护一份可读可编辑的 Markdown 档案文件。
 
 文件位置：
 - 运行时统一落在：``backend/data/users/{user_id}/LEARNER.md``

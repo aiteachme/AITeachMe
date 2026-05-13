@@ -79,6 +79,7 @@ frontend/src/
 backend/app/
   api/
   workflows/
+    common/
   shared/
     infra/
     kernel/
@@ -93,6 +94,7 @@ backend/app/
 
 - `api/`：HTTP 路由。
 - `workflows/`：唯一业务层。
+- `workflows/common/`：跨 workflow 的轻量业务辅助层，不承接具体业务 graph。
 - `shared/infra/`：基础设施能力。
 - `models/`：持久化模型。
 - `repositories/`：数据库读写。

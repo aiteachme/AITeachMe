@@ -260,6 +260,7 @@ Tauri local 已接入 Tauri v2 updater。没有 GitHub Release、没有更新 ma
 | 主题 | 文档 |
 | --- | --- |
 | 产品定位 | [产品愿景](./docs/product/vision.md) |
+| 国际化策略 | [英文模式与国际化策略](./docs/product/language-mode-and-internationalization.md) |
 | 系统总览 | [系统架构](./docs/architecture/system-architecture.md) |
 | 仓库结构 | [仓库结构与运行时文件](./docs/architecture/repo-structure-and-runtime-files.md) |
 | 本地开发 | [本地开发](./docs/development/local-development.md) |
@@ -273,7 +274,7 @@ Tauri local 已接入 Tauri v2 updater。没有 GitHub Release、没有更新 ma
 
 短期重点：
 
-- 补齐公开 README 的真实截图、演示 GIF 和课程样例。
+- 补齐公开 README 的真实截图、演示 GIF、课程样例和英文项目介绍。
 - 强化 Ingest 持久化任务队列，减少长解析任务对进程内存状态的依赖。
 - 完善 DocGen repair loop，让知识文档生成具备更强的自检和修复闭环。
 - 增强 Profile study plan，把画像结果更主动地反馈到复习、练习和伴读建议中。

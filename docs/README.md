@@ -58,6 +58,7 @@ AITeachMe 文档采用四层结构：
 
 - [产品愿景](./product/vision.md)
 - [可计算教材愿景](./product/computable-textbook.md)
+- [英文模式与国际化策略](./product/language-mode-and-internationalization.md)
 
 ### Architecture
 

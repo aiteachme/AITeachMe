@@ -27,6 +27,12 @@
 
 `support/` 承接不属于五大引擎、但仍属于后端业务层的模块，例如 `system`、`auth`、`courses`、`export_import`。
 
+### 跨 workflow 公共辅助
+
+- `common`
+
+`common/` 只放跨 workflow 复用、且仍属于业务 workflow 层的轻量公共能力，例如 model policy metadata 辅助。它不是新的业务引擎，也不是 `shared.infra` 的替代品；如果后续实现英文模式，跨 workflow 的语言策略解析可以放在这里，但各业务 prompt 仍应留在对应 lane 的 `prompts/` 目录。
+
 ## 模块根目录规则
 
 五大引擎模块根目录只允许做“稳定导入面 + README + lane/明确共享包聚合”：
