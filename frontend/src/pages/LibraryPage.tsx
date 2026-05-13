@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -173,6 +173,68 @@ export function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState<FileStatusFilter>("all");
   const [sortKey, setSortKey] = useState<FileSortKey>("updated_desc");
 
+  const handleUploadFiles = useCallback(
+    async (candidateFiles: File[]) => {
+      const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
+        await partitionUploadFilesForRuntime(candidateFiles);
+      const unsupportedMessage = unsupportedFiles.length
+        ? buildUnsupportedFilesMessage(unsupportedFiles)
+        : null;
+      const imageParserUnavailableMessage = imageParserUnavailableFiles.length
+        ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
+        : null;
+      setError(unsupportedMessage ?? imageParserUnavailableMessage ?? limitExceededMessage);
+      if (unsupportedMessage) {
+        toast({
+          title: "文件类型暂不支持",
+          description: unsupportedMessage,
+          variant: "error",
+        });
+      }
+      if (imageParserUnavailableMessage) {
+        toast({
+          title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
+          description: imageParserUnavailableMessage,
+          variant: "error",
+        });
+      }
+      if (limitExceededMessage) {
+        toast({
+          title: "上传超出限制",
+          description: limitExceededMessage,
+          variant: "error",
+        });
+        return;
+      }
+      if (supportedFiles.length > 0) {
+        uploadMutation.mutate(supportedFiles);
+      }
+    },
+    // uploadMutation is stable per render; toast is stable per the hook contract
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  useEffect(() => {
+    const onDocumentPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Don't intercept paste inside input / textarea — let the user paste text normally.
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+      }
+      const files = Array.from(e.clipboardData?.items ?? [])
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (files.length === 0) return;
+      e.preventDefault();
+      void handleUploadFiles(files);
+    };
+    document.addEventListener("paste", onDocumentPaste);
+    return () => document.removeEventListener("paste", onDocumentPaste);
+  }, [handleUploadFiles]);
+
   const filesQuery = useQuery({
     queryKey: ["files-library"],
     queryFn: fetchLibraryFiles,
@@ -319,44 +381,11 @@ export function LibraryPage() {
             multiple
             accept={FILE_ACCEPT}
             className="hidden"
-            onChange={async (event) => {
+            onChange={(event) => {
               const selected = Array.from(event.target.files ?? []);
               if (fileInputRef.current) fileInputRef.current.value = "";
               if (selected.length > 0) {
-                const { supportedFiles, unsupportedFiles, imageParserUnavailableFiles, limitExceededMessage } =
-                  await partitionUploadFilesForRuntime(selected);
-                const unsupportedMessage = unsupportedFiles.length
-                  ? buildUnsupportedFilesMessage(unsupportedFiles)
-                  : null;
-                const imageParserUnavailableMessage = imageParserUnavailableFiles.length
-                  ? buildImageParserUnavailableMessage(imageParserUnavailableFiles)
-                  : null;
-                setError(unsupportedMessage ?? imageParserUnavailableMessage ?? limitExceededMessage);
-                if (unsupportedMessage) {
-                  toast({
-                    title: "文件类型暂不支持",
-                    description: unsupportedMessage,
-                    variant: "error",
-                  });
-                }
-                if (imageParserUnavailableMessage) {
-                  toast({
-                    title: IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
-                    description: imageParserUnavailableMessage,
-                    variant: "error",
-                  });
-                }
-                if (limitExceededMessage) {
-                  toast({
-                    title: "上传超出限制",
-                    description: limitExceededMessage,
-                    variant: "error",
-                  });
-                  return;
-                }
-                if (supportedFiles.length > 0) {
-                  uploadMutation.mutate(supportedFiles);
-                }
+                void handleUploadFiles(selected);
               }
             }}
           />
