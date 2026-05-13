@@ -38,7 +38,7 @@ import {
 import { cn } from "../../../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../../../types/files";
 import { FileDropOverlay, useFileDropZone } from "../../ui/FileDropZone";
-import { resolveFileProcessingLabel } from "../../knowledge-docs";
+import { resolveFileProcessingLabel } from "../../knowledge-docs/utils";
 import { useToast } from "../../ui/Toast";
 
 interface ApiResponse<T> {

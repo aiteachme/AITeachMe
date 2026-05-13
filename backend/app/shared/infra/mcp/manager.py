@@ -1,7 +1,7 @@
 """MCP (Model Context Protocol) 客户端 — 标准化外部工具接入。
 
-MCP 是 Anthropic 提出的标准协议，用于让 LLM 安全地访问外部数据源和工具。
-支持 OpenHands / Dify / Claude 等主流系统。
+MCP 是一套标准化协议，用于让 LLM 安全地访问外部数据源和工具。
+支持兼容 MCP 的客户端和服务端接入。
 
 对外使用::
 

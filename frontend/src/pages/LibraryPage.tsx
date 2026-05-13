@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
-import { resolveFileProcessingLabel } from "../components/knowledge-docs";
+import { resolveFileProcessingLabel } from "../components/knowledge-docs/utils";
 import { useToast } from "../components/ui/Toast";
 import {
   buildImageParserUnavailableMessage,

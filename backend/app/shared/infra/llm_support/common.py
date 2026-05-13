@@ -219,11 +219,11 @@ def build_litellm_provider_kwargs(
 ) -> dict[str, str]:
     """Infer LiteLLM provider kwargs while keeping raw model names in app code.
 
-    Current project convention: business code and settings store plain model
-    names such as ``gpt-4o-mini`` or ``claude-3-5-sonnet-latest``. We infer
-    the LiteLLM provider from either the model prefix or ``LLM_BASE_URL`` /
-    ``LLM_PROVIDER`` so one shared connection entry can support Anthropic,
-    Gemini, Azure, OpenAI-compatible gateways and other major providers.
+    Current project convention: business code and settings store provider
+    model names directly. We infer the LiteLLM provider from either the model
+    prefix or ``LLM_BASE_URL`` / ``LLM_PROVIDER`` so one shared connection entry
+    can support native providers, cloud adapters, compatible gateways, and
+    other major providers.
     """
 
     normalized = normalize_model_selector(model)

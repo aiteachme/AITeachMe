@@ -36,7 +36,7 @@ import {
   IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
   partitionUploadFilesForRuntime,
 } from "../lib/fileUpload";
-import { resolveFileProcessingLabel } from "../components/knowledge-docs";
+import { resolveFileProcessingLabel } from "../components/knowledge-docs/utils";
 import { notifyCoursesImported } from "../lib/courseEvents";
 import { buildCoursePath } from "../lib/courseNavigation";
 import { HeroAnimation } from "../components/ui/HeroAnimation";

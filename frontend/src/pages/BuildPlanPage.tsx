@@ -39,8 +39,8 @@ import {
   ACTIVE_DOC_BUILD_STATUSES,
   TERMINAL_DOC_BUILD_READY_STATUSES,
   parseIsoTimestamp,
-  useDocBuildProgress,
-} from "../components/knowledge-docs";
+} from "../components/knowledge-docs/utils";
+import { useDocBuildProgress } from "../components/knowledge-docs/hooks/useDocBuildProgress";
 import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
