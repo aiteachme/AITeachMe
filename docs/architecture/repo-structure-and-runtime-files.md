@@ -20,8 +20,22 @@
 - 根目录 `infra/` 不是 `backend/app/shared/infra/`。
 - 真正应用代码主要是 `frontend/` 和 `backend/`。
 - 根 `README.md` 是公开项目首页，负责展示、快速启动和贡献入口；事实边界仍以 `docs/` 与模块 README 为准。
+- `.github/`、`.githooks/` 等点目录属于仓库工程配置，不是应用分层的一部分。
 
 ## 2. 前端结构
+
+`frontend/` 根目录当前同时承接 Web 前端和桌面端入口：
+
+| 路径 | 作用 |
+| --- | --- |
+| `frontend/src/` | React 应用源码 |
+| `frontend/public/` | Vite public 静态资源；根 README 当前引用 `logo.svg` |
+| `frontend/electron/` | Electron 主进程、启动和打包辅助 |
+| `frontend/src-tauri/` | Tauri v2 配置、Rust 入口和 local/remote 构建配置 |
+| `frontend/openapi.json` | 后端 OpenAPI 快照，供 Orval 生成客户端 |
+| `frontend/package.json` | 前端、Electron、Tauri 命令和依赖入口 |
+
+React 源码主结构：
 
 ```text
 frontend/src/
@@ -45,6 +59,22 @@ frontend/src/
 
 ## 3. 后端结构
 
+`backend/` 根目录包含服务入口、迁移、测试、LangGraph 调试和桌面端后端打包辅助：
+
+| 路径 | 作用 |
+| --- | --- |
+| `backend/app/` | FastAPI 应用源码和业务分层 |
+| `backend/migrations/` | Alembic 数据库迁移 |
+| `backend/tests/` | 后端测试 |
+| `backend/scripts/` | 后端维护和生成脚本 |
+| `backend/toolpacks/` | 开发者/管理员可选工具扩展点 |
+| `backend/langgraph.json` | LangGraph Dev 调试配置 |
+| `backend/data/` | 本地运行时数据目录，不能作为源码层处理 |
+| `backend/pyproject.toml` / `backend/uv.lock` | 后端包元数据和锁定依赖 |
+| `backend/desktop_server.py` / `backend/*.spec` | 桌面端本地后端打包入口 |
+
+`backend/app/` 是后端应用代码主结构：
+
 ```text
 backend/app/
   api/
@@ -55,6 +85,7 @@ backend/app/
   models/
   repositories/
   schemas/
+  agent_tools/
   utils/
 ```
 
@@ -66,6 +97,7 @@ backend/app/
 - `models/`：持久化模型。
 - `repositories/`：数据库读写。
 - `schemas/`：API / workflow 边界结构。
+- `agent_tools/`：运行时 agent/tool 查询能力的后端落点。
 - `utils/`：纯工具。
 
 已删除且不恢复：

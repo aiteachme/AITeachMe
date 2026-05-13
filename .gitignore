@@ -52,6 +52,9 @@ settings.private.yaml
 # Tooling caches
 .langgraph_api/
 .playwright-mcp/
+/frontend/.npm-cache*/
+/.tmp-*/
+/.tmp-*.exe
 __pycache__/
 *.py[cod]
 *$py.class
