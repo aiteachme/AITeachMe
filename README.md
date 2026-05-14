@@ -16,12 +16,6 @@
     <img alt="Workflow LangGraph" src="https://img.shields.io/badge/workflow-LangGraph-1f6feb" />
     <a href="https://github.com/aiteachme/AiTeachMe"><img alt="GitHub stars" src="https://img.shields.io/github/stars/aiteachme/AiTeachMe?style=social" /></a>
   </p>
-
-  <p>
-    <a href="https://github.com/aiteachme/AiTeachMe">
-      <img src="./docs/brand/readme-star-callout.svg" alt="如果 AITeachMe 帮你把资料变成可学习空间，欢迎点击右上角 Star 支持项目。" width="760" />
-    </a>
-  </p>
 </div>
 
 ---
@@ -67,6 +61,16 @@ AITeachMe 当前处于 MVP 到早期产品化阶段，核心链路已经按真�
 | 文件接入 | 当前开放 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等资料上传 |
 | 观测与调试 | LangSmith trace、workflow progress events、LLM token/timing summary |
 | 代码规模 | 约 195.1k 总行数 / 161.7k 代码行；趋势图见下方「代码量概览」 |
+
+## 保持关注
+
+如果你想跟进 AITeachMe 的新功能、产品改进和后续发布，欢迎给仓库点一个 Star。
+
+<p align="center">
+  <a href="https://github.com/aiteachme/AiTeachMe">
+    <img src="./docs/brand/readme-star-callout.gif" alt="聚焦 GitHub Star 按钮并点亮 AITeachMe 仓库 Star 的动画。" width="760" />
+  </a>
+</p>
 
 ## 核心能力
 
