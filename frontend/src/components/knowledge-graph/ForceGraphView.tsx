@@ -1717,11 +1717,12 @@ export function ForceGraphView({
       const visualYMax = Math.max(yExtent[1], layoutMetrics.topPad + layoutMetrics.usableHeight + 36);
       const gw = visualXMax - visualXMin + pad * 2;
       const gh = visualYMax - visualYMin + pad * 2;
-      const topReserve = 68;
-      const bottomReserve = 52;
-      const availableWidth = Math.max(320, width - 24);
-      const availableHeight = Math.max(320, height - topReserve - bottomReserve);
-      const scale = Math.min(availableWidth / gw, availableHeight / gh, 1.28);
+      const isMobileViewport = width < 640;
+      const topReserve = isMobileViewport ? 24 : 68;
+      const bottomReserve = isMobileViewport ? 24 : 52;
+      const availableWidth = Math.max(isMobileViewport ? 280 : 320, width - (isMobileViewport ? 16 : 24));
+      const availableHeight = Math.max(isMobileViewport ? 280 : 320, height - topReserve - bottomReserve);
+      const scale = Math.min(availableWidth / gw, availableHeight / gh, isMobileViewport ? 1.72 : 1.28);
       const graphWidth = (visualXMax - visualXMin) * scale;
       const graphHeight = (visualYMax - visualYMin) * scale;
       const leftInset = Math.max(18, (availableWidth - graphWidth) * 0.5);
@@ -1806,15 +1807,52 @@ export function ForceGraphView({
   }
 
   return (
-    <div className="relative h-full min-h-0 overflow-hidden bg-slate-50/60 dark:bg-slate-950">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-50/60 dark:bg-slate-950 lg:block">
+      <div className="shrink-0 space-y-2 border-b border-slate-200/70 bg-slate-50/95 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/95 lg:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {toolbar}
+          <div className="flex shrink-0 items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80">
+            <button
+              type="button"
+              onClick={fitGraphToView}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              title="适配视图"
+              aria-label="适配视图"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomGraphBy(1.22)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              title="放大"
+              aria-label="放大"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => zoomGraphBy(0.82)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              title="缩小"
+              aria-label="缩小"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <span className="inline-flex max-w-full items-center rounded-lg bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
+          {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount ?? edgeCount} 关系
+        </span>
+      </div>
       {/* Graph panel */}
-      <div className="absolute inset-0 min-h-0 min-w-0 lg:right-[360px]">
+      <div className="relative min-h-0 min-w-0 flex-1 lg:absolute lg:inset-0 lg:right-[360px]">
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
 
         {/* Top-left: mode switch + compact status */}
-        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 lg:right-3 lg:max-w-none lg:pr-0">
+        <div className="pointer-events-auto absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 sm:pr-28 lg:right-3 lg:flex lg:max-w-none lg:pr-0">
           {toolbar}
           <span className="inline-flex h-8 items-center rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
             {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount ?? edgeCount} 关系
@@ -1838,7 +1876,7 @@ export function ForceGraphView({
           ) : null}
         </div>
 
-        <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80 lg:hidden">
+        <div className="pointer-events-auto absolute right-3 top-3 z-10 hidden items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80">
           <button
             type="button"
             onClick={fitGraphToView}

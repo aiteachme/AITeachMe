@@ -32,6 +32,7 @@ import { useToast } from "../components/ui/Toast";
 import { cn } from "../lib/utils";
 import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 import { buildCoursePath } from "../lib/courseNavigation";
+import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import {
   AccuracyRows,
   LearningPlanPanel,
@@ -47,7 +48,7 @@ import {
 } from "../components/profile";
 
 const surfaceClass = PROFILE_SURFACE_CLASS;
-const pageShellClass = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-20 sm:px-6 sm:pt-8 lg:px-8 xl:px-10 lg:pt-10";
+const pageShellClass = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 sm:px-6 lg:px-8 xl:px-10";
 
 export function ProfilePage() {
   const { courseId } = useParams();
@@ -195,12 +196,10 @@ export function ProfilePage() {
   return (
     <div className={pageShellClass}>
       <div className="flex w-full flex-col gap-7">
+        <CoursePagePillTitle icon={BarChart3} label="学习画像" />
+
         <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
-              <BarChart3 className="h-3.5 w-3.5" />
-              学习画像
-            </div>
             <div>
               <h1 className="break-words text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
                 {courseName ?? "当前课程"}

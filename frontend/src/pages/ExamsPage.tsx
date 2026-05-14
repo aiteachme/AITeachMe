@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CloudOff,
   FileText,
+  ClipboardCheck,
   Layers3,
   Loader2,
   MoreVertical,
@@ -54,6 +55,7 @@ import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreferen
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
+import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 
 
 interface ExamPaperDeleteResponse {
@@ -131,7 +133,7 @@ interface ExamPrewarmStatusResponse {
   error_message?: string | null;
 }
 
-const EXAM_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 pt-8 sm:px-6 lg:px-8 xl:px-10 lg:pt-10";
+const EXAM_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 sm:px-6 lg:px-8 xl:px-10";
 const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
 
 
@@ -438,9 +440,11 @@ export function ExamsPage() {
     <>
       <div className={EXAM_PAGE_SHELL_CLASS}>
         <div className="flex flex-col gap-6">
+          <CoursePagePillTitle icon={ClipboardCheck} label="考试中心" />
+
           <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
                 <FileText className="h-3.5 w-3.5" />
                 考试中心
               </div>

@@ -87,10 +87,10 @@ export function KnowledgeGraphView({
   const displayPage = listData?.page ?? page;
 
   const viewToggle = (
-    <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
+    <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
       <button
         onClick={() => setViewMode("graph")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-all sm:px-3 ${
           viewMode === "graph"
             ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
             : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -100,7 +100,7 @@ export function KnowledgeGraphView({
       </button>
       <button
         onClick={() => setViewMode("list")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-all sm:px-3 ${
           viewMode === "list"
             ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
             : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -110,7 +110,7 @@ export function KnowledgeGraphView({
       </button>
       <button
         onClick={() => setViewMode("insights")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
+        className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-all sm:px-3 ${
           viewMode === "insights"
             ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
             : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
