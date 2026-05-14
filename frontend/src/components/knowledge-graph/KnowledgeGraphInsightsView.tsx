@@ -15,10 +15,10 @@ const AtlasGalaxyView = lazy(async () => {
   return { default: module.AtlasGalaxyView };
 });
 
-const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon }> = [
-  { id: "map", label: "地图", icon: Network },
-  { id: "galaxy", label: "3D", icon: Sparkles },
-  { id: "analysis", label: "数据分析", icon: BarChart3 },
+const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon; title: string }> = [
+  { id: "map", label: "学习地图", icon: Network, title: "按学习层级阅读课程结构" },
+  { id: "analysis", label: "结构诊断", icon: BarChart3, title: "查看主干、闭环和断点" },
+  { id: "galaxy", label: "3D 概览", icon: Sparkles, title: "用空间视角浏览知识簇" },
 ];
 
 function LoadingState({ toolbar }: { toolbar?: ReactNode }) {
@@ -84,7 +84,7 @@ export function KnowledgeGraphInsightsView({
                   key={item.id}
                   type="button"
                   onClick={() => setMode(item.id)}
-                  title={item.label}
+                  title={item.title}
                   aria-label={item.label}
                   className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 dark:focus-visible:ring-offset-slate-950 ${
                     active

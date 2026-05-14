@@ -1975,8 +1975,9 @@ export function KnowledgeDocsPage() {
   const [interactiveError, setInteractiveError] = useState<string | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
   const [floatingComposerHeight, setFloatingComposerHeight] = useState(236);
+  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : COMMENT_DRAWER_BREAKPOINT
+    typeof window !== "undefined" ? initialViewportWidth : COMMENT_DRAWER_BREAKPOINT
   );
   const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(courseId));
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
@@ -1984,9 +1985,8 @@ export function KnowledgeDocsPage() {
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
-  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(true);
   const graphDrawerRef = useRef<HTMLDivElement>(null);
-  const initialViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const isNarrowInitialViewport = initialViewportWidth < 640;
   const graphDesktopMaxWidth = Math.max(400, initialViewportWidth * 0.94);
   const graphDesktopDefaultWidth = Math.min(graphDesktopMaxWidth, Math.max(760, initialViewportWidth * 0.82));

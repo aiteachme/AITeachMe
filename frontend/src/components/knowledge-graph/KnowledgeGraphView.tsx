@@ -86,37 +86,44 @@ export function KnowledgeGraphView({
   const totalPages = listData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
   const displayPage = listData?.page ?? page;
 
+  const viewButtonClass = (active: boolean) =>
+    `flex h-8 items-center gap-1.5 rounded-md px-3 text-xs transition-all ${
+      active
+        ? "bg-white text-slate-900 shadow-sm font-semibold dark:bg-slate-800 dark:text-slate-100"
+        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+    }`;
+
   const viewToggle = (
     <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
       <button
+        type="button"
+        aria-pressed={viewMode === "graph"}
+        title="探索节点之间的直接关系"
         onClick={() => setViewMode("graph")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
-          viewMode === "graph"
-            ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
-            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        }`}
+        className={viewButtonClass(viewMode === "graph")}
       >
-        <Share2 className="w-3.5 h-3.5" />图谱
+        <Share2 className="h-3.5 w-3.5" />
+        知识图谱
       </button>
       <button
-        onClick={() => setViewMode("list")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
-          viewMode === "list"
-            ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
-            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        }`}
-      >
-        <List className="w-3.5 h-3.5" />节点列表
-      </button>
-      <button
+        type="button"
+        aria-pressed={viewMode === "insights"}
+        title="查看学习地图、结构诊断和 3D 概览"
         onClick={() => setViewMode("insights")}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-all ${
-          viewMode === "insights"
-            ? "bg-white text-slate-900 shadow-sm font-medium dark:bg-slate-800 dark:text-slate-100"
-            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        }`}
+        className={viewButtonClass(viewMode === "insights")}
       >
-        <BarChart3 className="w-3.5 h-3.5" />洞察
+        <BarChart3 className="h-3.5 w-3.5" />
+        图谱分析
+      </button>
+      <button
+        type="button"
+        aria-pressed={viewMode === "list"}
+        title="按类型查找全部知识点"
+        onClick={() => setViewMode("list")}
+        className={viewButtonClass(viewMode === "list")}
+      >
+        <List className="h-3.5 w-3.5" />
+        节点列表
       </button>
     </div>
   );

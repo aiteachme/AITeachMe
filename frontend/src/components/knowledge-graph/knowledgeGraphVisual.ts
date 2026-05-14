@@ -103,7 +103,7 @@ export const GRAPH_LAYERS: GraphLayer[] = [
   { label: "知识", description: "概念 / 规则 / 事实" },
   { label: "原理", description: "推理 / 机制 / 条件" },
   { label: "方法", description: "例题 / 步骤 / 操作" },
-  { label: "训练", description: "练习 / 应用 / 拓展" },
+  { label: "路径", description: "练习 / 应用 / 拓展" },
 ];
 
 export const EDGE_TYPE_PRIORITY: Record<string, number> = {
@@ -208,24 +208,24 @@ export function graphNodePriority(node: Pick<GraphNode, "knowledge_unit_type" | 
 
 export function graphNodeRadius(node: GraphNode): number {
   const style = nodeStyle(node.knowledge_unit_type);
-  const roleBase = style.role === "assessment_core" ? 7.8 : style.role === "support" ? 7.0 : 6.4;
-  const degreeBoost = Math.sqrt(Math.max(1, node.degree)) * (style.role === "assessment_core" ? 1.28 : 0.92);
-  return Math.min(style.role === "assessment_core" ? 14.5 : 11.5, roleBase + degreeBoost);
+  const roleBase = style.role === "assessment_core" ? 9.2 : style.role === "support" ? 8.0 : 7.2;
+  const degreeBoost = Math.sqrt(Math.max(1, node.degree)) * (style.role === "assessment_core" ? 1.34 : 1.0);
+  return Math.min(style.role === "assessment_core" ? 16.2 : 13.2, roleBase + degreeBoost);
 }
 
 export function graphNodeLabelLimit(node: GraphNode, selectedNodeId: number | null): number {
-  if (node.id === selectedNodeId) return 24;
-  if (isAssessmentCoreNode(node)) return node.degree >= 3 ? 20 : 17;
-  return node.degree >= 4 ? 17 : 14;
+  if (node.id === selectedNodeId) return 28;
+  if (isAssessmentCoreNode(node)) return node.degree >= 3 ? 22 : 19;
+  return node.degree >= 4 ? 19 : 16;
 }
 
 export function estimateGraphLabelWidth(label: string, maxChars: number): number {
   const text = truncateGraphLabel(label, maxChars);
   let width = 0;
   for (const char of text) {
-    width += /[\u4e00-\u9fff]/.test(char) ? 12 : 6.8;
+    width += /[\u4e00-\u9fff]/.test(char) ? 13 : 7.4;
   }
-  return Math.min(170, Math.max(34, width + 18));
+  return Math.min(196, Math.max(42, width + 22));
 }
 
 export function estimateRelationLabelWidth(label: string): number {

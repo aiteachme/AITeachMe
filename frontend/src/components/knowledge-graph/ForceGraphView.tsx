@@ -7,6 +7,9 @@ import {
   Maximize2,
   Network as NetworkIcon,
   RefreshCw,
+  Search,
+  SlidersHorizontal,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -34,7 +37,6 @@ import {
   getLearningEdgeDirection,
   graphNodeLabelLimit,
   graphNodePriority,
-  graphNodeRadius,
   isAssessmentCoreNode,
   isBackboneEdge,
   isDirectionalLearningEdge,
@@ -105,9 +107,12 @@ function applyGraphInteractiveStyles(
 
   const root = d3.select(svg);
   root.selectAll<SVGPathElement, GraphLink>("path.graph-link")
+    .classed("is-selected-link", (d) => selectedNodeId !== null && isConnectedToSelected(d))
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
-    .attr("stroke-width", (d) => (isConnectedToSelected(d) ? 1.75 : 1.08))
-    .attr("stroke-opacity", (d) => (selectedNodeId === null ? 0.34 : isConnectedToSelected(d) ? 0.82 : 0.1));
+    .attr("stroke-width", (d) => (isConnectedToSelected(d) ? (d.is_backbone ? 1.65 : 1.08) : 0.8))
+    .attr("stroke-opacity", (d) => (
+      selectedNodeId === null ? (d.is_backbone ? 0.46 : 0.22) : isConnectedToSelected(d) ? 0.8 : 0.04
+    ));
   root.selectAll<SVGPathElement, GraphLink>("path.hit-area")
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"));
 
@@ -119,12 +124,16 @@ function applyGraphInteractiveStyles(
     .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 0.96 : 0));
 
   const nodeG = root.selectAll<SVGGElement, GraphNode>("g.graph-node");
+  nodeG
+    .classed("is-selected-node", (d) => d.id === selectedNodeId)
+    .classed("is-selected-neighbor", (d) => selectedNeighbors.has(d.id))
+    .classed("is-muted-node", (d) => selectedNodeId !== null && d.id !== selectedNodeId && !selectedNeighbors.has(d.id));
   nodeG.select<SVGCircleElement>("circle.node-halo")
     .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
   nodeG.select<SVGCircleElement>("circle.node-priority-ring")
     .attr("opacity", (d) => {
       if (d.id === selectedNodeId) return 0.72;
-      if (isAssessmentCoreNode(d) && highlightCoreUnits && d.label_rank <= 10) return 0.08;
+      if (isAssessmentCoreNode(d) && highlightCoreUnits && d.label_rank <= 10) return 0.12;
       return 0;
     });
   nodeG.select<SVGCircleElement>("circle.node-circle")
@@ -132,32 +141,39 @@ function applyGraphInteractiveStyles(
     .attr("stroke-width", (d) => (d.id === selectedNodeId ? 3 : isAssessmentCoreNode(d) ? 2.35 : 2))
     .attr("opacity", (d) => {
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.34;
-      if (highlightCoreUnits && !isAssessmentCoreNode(d)) return 0.78;
+      if (highlightCoreUnits && !isAssessmentCoreNode(d)) return 0.92;
       return 1;
     });
   nodeG.select<SVGRectElement>("rect.node-label-bg")
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
-      if (d.id === selectedNodeId) return 0.92;
-      if (selectedNodeId !== null && selectedNeighbors.has(d.id)) return 0.68;
-      return isAssessmentCoreNode(d) ? 0.76 : 0.62;
+      if (d.id === selectedNodeId) return 0.98;
+      if (selectedNodeId !== null && selectedNeighbors.has(d.id)) return 0.94;
+      return 0.92;
     })
-    .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeId)));
+    .attr("width", (d) => graphNodeCardWidth(d));
+  nodeG.select<SVGRectElement>("rect.node-card-shadow")
+    .attr("opacity", (d) => {
+      if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
+      if (selectedNodeId !== null && d.id !== selectedNodeId && !selectedNeighbors.has(d.id)) return 0.03;
+      return 0.78;
+    })
+    .attr("width", (d) => graphNodeCardWidth(d));
   nodeG.select<SVGTextElement>("text.node-role-label")
     .attr("opacity", (d) => {
       if (d.id === selectedNodeId) return 1;
       return 0;
     });
   nodeG.select<SVGTextElement>("text.node-label")
-    .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "11.5px" : "10.5px"))
-    .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "650" : "520"))
+    .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "12.5px" : "11.5px"))
+    .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "700" : "600"))
     .attr("fill", (d) => (d.id === selectedNodeId ? "#1e3a8a" : "#334155"))
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
       return 0.96;
     })
-    .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, selectedNodeId)));
+    .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null)));
 }
 
 type LoadedGraphData = {
@@ -176,20 +192,33 @@ const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxCo
   practice_assessment: { xBias: 0.38, yRatio: 0.78, maxColumns: 4 },
   application_extension: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
 };
+const LAYER_GUIDE_COLORS = ["#6366f1", "#2563eb", "#0f766e", "#f59e0b", "#f43f5e"];
+const GRAPH_LAYOUT_VERSION = 9;
+const NODE_CARD_HEIGHT = 28;
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
   return DETAIL_NODE_TYPES.has(node.knowledge_unit_type);
 }
 
+function graphNodeCardWidth(node: GraphNode): number {
+  const labelWidth = estimateGraphLabelWidth(node.canonical_name, graphNodeLabelLimit(node, null));
+  return Math.min(180, Math.max(isAssessmentCoreNode(node) ? 126 : 114, labelWidth + 28));
+}
+
 function getStructuredGraphMetrics(nodeCount: number, width: number, height: number) {
-  const canvasWidth = Math.max(width, Math.min(2200, Math.max(980, nodeCount * 8.6 + 520)));
-  const leftPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
-  const rightPad = Math.min(112, Math.max(58, canvasWidth * 0.058));
-  const topPad = Math.min(88, Math.max(58, height * 0.072));
-  const bottomPad = Math.min(88, Math.max(60, height * 0.072));
-  const usableWidth = Math.max(420, canvasWidth - leftPad - rightPad);
-  const usableHeight = Math.max(680, height - topPad - bottomPad);
+  const canvasWidth = Math.max(width, 1180);
+  const densityScale = Math.min(1.12, 1 + Math.max(0, nodeCount - 36) * 0.003);
+  const leftPad = Math.min(128, Math.max(64, canvasWidth * 0.058));
+  const rightPad = Math.min(128, Math.max(64, canvasWidth * 0.058));
+  const topPad = Math.min(112, Math.max(76, height * 0.1));
+  const bottomPad = Math.min(96, Math.max(66, height * 0.085));
+  const usableWidth = Math.max(360, canvasWidth - leftPad - rightPad);
+  const usableHeight = Math.max(620, height - topPad - bottomPad);
   const layerStep = usableWidth / Math.max(1, GRAPH_LAYERS.length - 1);
+  const centerX = canvasWidth / 2;
+  const centerY = topPad + usableHeight * 0.52;
+  const clusterCellX = Math.min(132, Math.max(108, canvasWidth * 0.078)) * densityScale;
+  const clusterCellY = Math.min(76, Math.max(58, height * 0.075)) * densityScale;
 
   return {
     canvasWidth,
@@ -200,6 +229,70 @@ function getStructuredGraphMetrics(nodeCount: number, width: number, height: num
     usableWidth,
     usableHeight,
     layerStep,
+    centerX,
+    centerY,
+    clusterCellX,
+    clusterCellY,
+  };
+}
+
+function getRegionSurface(metrics: ReturnType<typeof getStructuredGraphMetrics>, height: number) {
+  const x = Math.max(24, metrics.leftPad - 20);
+  const y = Math.max(58, metrics.topPad - 6);
+  const width = Math.max(720, metrics.canvasWidth - x - Math.max(24, metrics.rightPad - 20));
+  const frameHeight = Math.max(620, Math.min(height - y - 20, metrics.usableHeight + 80));
+
+  return { x, y, width, height: frameHeight };
+}
+
+function getLayerZoneFrame(
+  metrics: ReturnType<typeof getStructuredGraphMetrics>,
+  layerIndex: number,
+  height: number,
+) {
+  const surface = getRegionSurface(metrics, height);
+  const gutter = Math.min(38, Math.max(28, surface.width * 0.02));
+  const topHeight = Math.max(250, Math.min(surface.height * 0.46, surface.height - 340));
+  const bottomHeight = surface.height - topHeight - gutter;
+  const topWidth = surface.width - gutter * 2;
+  const firstTopWidth = topWidth * 0.28;
+  const secondTopWidth = topWidth * 0.31;
+  const thirdTopWidth = topWidth - firstTopWidth - secondTopWidth;
+  const bottomLeftWidth = (surface.width - gutter) * 0.54;
+  const bottomRightWidth = surface.width - gutter - bottomLeftWidth;
+
+  switch (layerIndex) {
+    case 0:
+      return { x: surface.x, y: surface.y, width: firstTopWidth, height: topHeight };
+    case 1:
+      return { x: surface.x + firstTopWidth + gutter, y: surface.y, width: secondTopWidth, height: topHeight };
+    case 2:
+      return { x: surface.x + firstTopWidth + secondTopWidth + gutter * 2, y: surface.y, width: thirdTopWidth, height: topHeight };
+    case 3:
+      return { x: surface.x + bottomLeftWidth + gutter, y: surface.y + topHeight + gutter, width: bottomRightWidth, height: bottomHeight };
+    case 4:
+      return { x: surface.x, y: surface.y + topHeight + gutter, width: bottomLeftWidth, height: bottomHeight };
+    default:
+      return surface;
+  }
+}
+
+function getLayerZoneContentBounds(
+  metrics: ReturnType<typeof getStructuredGraphMetrics>,
+  layerIndex: number,
+  height: number,
+) {
+  const zone = getLayerZoneFrame(metrics, layerIndex, height);
+  const headerHeight = 58;
+  const contentInsetX = Math.max(26, Math.min(54, zone.width * 0.068));
+  const contentInsetY = Math.max(30, Math.min(52, zone.height * 0.12));
+
+  return {
+    zone,
+    left: zone.x + contentInsetX,
+    top: zone.y + headerHeight + contentInsetY,
+    right: zone.x + zone.width - contentInsetX,
+    bottom: zone.y + zone.height - contentInsetY,
   };
 }
 
@@ -207,8 +300,8 @@ function selectBackboneEdgeIds(links: GraphLink[], visibleNodeCount: number, sho
   const selected = new Set<number>();
   const nodeUseCount = new Map<number, number>();
   const maxEdges = Math.max(
-    22,
-    Math.min(showDetailNodes ? 66 : 42, Math.round(visibleNodeCount * (showDetailNodes ? 0.5 : 0.54))),
+    14,
+    Math.min(showDetailNodes ? 18 : 16, Math.round(visibleNodeCount * (showDetailNodes ? 0.34 : 0.36))),
   );
   const add = (link: GraphLink, relaxed = false) => {
     if (selected.has(link.id) || selected.size >= maxEdges) return;
@@ -294,44 +387,58 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
   if (!nodes.length) return positions;
 
   const metrics = getStructuredGraphMetrics(nodes.length, width, height);
-  const groupedByType = new Map<string, GraphNode[]>();
+  const groupedByLayer = new Map<number, GraphNode[]>();
   for (const node of nodes) {
-    const group = groupedByType.get(node.knowledge_unit_type) ?? [];
+    const layer = clampGraphLayer(node.layout_layer);
+    const group = groupedByLayer.get(layer) ?? [];
     group.push(node);
-    groupedByType.set(node.knowledge_unit_type, group);
+    groupedByLayer.set(layer, group);
   }
 
-  const groups = Array.from(groupedByType.entries())
-    .map(([type, groupNodes]) => {
-      const sortedNodes = groupNodes.sort((left, right) =>
-        graphNodePriority(right) - graphNodePriority(left) ||
-        left.layout_layer - right.layout_layer ||
-        left.component_rank - right.component_rank ||
-        left.id - right.id,
-      );
-      const averageLayer = sortedNodes.reduce((sum, node) => sum + node.layout_layer, 0) / Math.max(1, sortedNodes.length);
-      return { type, nodes: sortedNodes, averageLayer };
-    })
-    .sort((left, right) => left.averageLayer - right.averageLayer || left.type.localeCompare(right.type));
+  const roleOrder: Record<NodeVisualRole, number> = {
+    assessment_core: 0,
+    context: 1,
+    support: 2,
+  };
+  const typeOrder = new Map(Object.keys(TYPE_CLUSTER_LAYOUT).map((type, index) => [type, index]));
 
-  groups.forEach((group, groupIndex) => {
-    const preset = TYPE_CLUSTER_LAYOUT[group.type] ?? {
-      xBias: ((groupIndex % 3) - 1) * 0.1,
-      yRatio: 0.26 + ((groupIndex * 0.19) % 0.58),
-      maxColumns: 4,
-    };
-    const centerLayer = Math.max(0, Math.min(GRAPH_LAYERS.length - 1, group.averageLayer));
-    const centerX = metrics.leftPad + metrics.layerStep * centerLayer + preset.xBias * metrics.layerStep;
-    const centerY = metrics.topPad + metrics.usableHeight * preset.yRatio;
-    group.nodes.forEach((node, index) => {
-      const angle = index * 2.399963229728653 + groupIndex * 0.38;
-      const radius = index === 0 ? 0 : 42 + Math.sqrt(index) * 43;
-      const layerPull = (node.layout_layer - group.averageLayer) * metrics.layerStep * 0.16;
-      const localX = ((node.id % 7) - 3) * 2.6;
-      const localY = (((node.id * 3) % 7) - 3) * 2.1;
+  GRAPH_LAYERS.forEach((_, layerIndex) => {
+    const group = groupedByLayer.get(layerIndex) ?? [];
+    const sorted = [...group].sort((left, right) => {
+      const leftStyle = nodeStyle(left.knowledge_unit_type);
+      const rightStyle = nodeStyle(right.knowledge_unit_type);
+      return roleOrder[leftStyle.role] - roleOrder[rightStyle.role] ||
+        (typeOrder.get(left.knowledge_unit_type) ?? 99) - (typeOrder.get(right.knowledge_unit_type) ?? 99) ||
+        left.component_rank - right.component_rank ||
+        graphNodePriority(right) - graphNodePriority(left) ||
+        left.id - right.id;
+    });
+    const { zone, left: innerLeft, top: innerTop, right: innerRight, bottom: innerBottom } =
+      getLayerZoneContentBounds(metrics, layerIndex, height);
+    const innerWidth = Math.max(160, innerRight - innerLeft);
+    const innerHeight = Math.max(96, innerBottom - innerTop);
+    const averageCardWidth = sorted.length
+      ? sorted.reduce((total, node) => total + graphNodeCardWidth(node), 0) / sorted.length
+      : 124;
+    const comfortableColumnWidth = Math.max(154, averageCardWidth + 42);
+    const maxColumnsByWidth = Math.max(1, Math.floor((innerWidth + 42) / comfortableColumnWidth));
+    const preferredColumns = [2, 2, 3, 3, 4][layerIndex] ?? 3;
+    const columns = Math.max(1, Math.min(preferredColumns, maxColumnsByWidth, sorted.length));
+    const rows = Math.max(1, Math.ceil(sorted.length / columns));
+    const cellX = columns <= 1 ? 0 : innerWidth / (columns - 1);
+    const cellY = rows <= 1 ? 0 : innerHeight / Math.max(1, rows - 1);
+
+    sorted.forEach((node, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const halfCard = graphNodeCardWidth(node) / 2;
+      const rowOffset = rows > 2 && columns > 1 ? (row % 2 === 0 ? -0.08 : 0.08) * cellX : 0;
+      const x = columns <= 1 ? zone.x + zone.width / 2 : innerLeft + column * cellX + rowOffset;
+      const y = rows <= 1 ? innerTop + innerHeight / 2 : innerTop + row * cellY;
+
       positions.set(node.id, {
-        x: centerX + Math.cos(angle) * radius * 1.28 + layerPull + localX,
-        y: centerY + Math.sin(angle) * radius * 0.86 + localY,
+        x: Math.min(innerRight - halfCard, Math.max(innerLeft + halfCard, x)),
+        y: Math.min(innerBottom - NODE_CARD_HEIGHT / 2, Math.max(innerTop + NODE_CARD_HEIGHT / 2, y)),
       });
     });
   });
@@ -419,7 +526,7 @@ function GraphSettingsSidebar({
   const directedCount = links.filter((link) => isDirectionalLearningEdge(link.edge_type)).length;
   const lateralCount = Math.max(0, links.length - directedCount);
   const resolvedTotalNodeCount = totalLoadedNodeCount || totalNodeCount || nodeCount;
-  const resolvedTotalEdgeCount = totalEdgeCount ?? edgeCount;
+  const resolvedTotalEdgeCount = totalEdgeCount && totalEdgeCount > 0 ? totalEdgeCount : edgeCount;
   const visibleEdgeCount = showAllEdges ? activeEdgeCount : backboneEdgeCount;
   const segmentClass = (active: boolean) =>
     `flex min-h-10 flex-1 items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
@@ -680,30 +787,32 @@ export function ForceGraphView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [nodeSearchQuery, setNodeSearchQuery] = useState("");
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
-  const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
-  const [showDetailNodes, setShowDetailNodes] = useState(false);
-  const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(new Set());
+  const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
+  const [showDetailNodes, setShowDetailNodes] = useState(true);
+  const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(() => new Set(["similar", "contrast"]));
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
   const [expandingNodeId, setExpandingNodeId] = useState<number | null>(null);
-  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const zoomTransformRef = useRef<d3.ZoomTransform | null>(null);
   const fitGraphToViewRef = useRef<((duration?: number) => void) | null>(null);
   const hasAutoFittedGraphRef = useRef(false);
   const graphRefetchTimerRef = useRef<number | null>(null);
   const nodePositionRef = useRef<Map<number, GraphNodePosition>>(new Map());
+  const lastLayoutScopeRef = useRef<string | null>(null);
   const lastGraphSignatureRef = useRef<string | null>(null);
   const lastGraphCountsRef = useRef<{ nodes: number; edges: number } | null>(null);
   const selectedNodeIdRef = useRef<number | null>(null);
   const showEdgeLabelsRef = useRef(false);
   const showAllEdgesRef = useRef(false);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(false);
+  const showAllNodeLabelsRef = useRef(true);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
 
@@ -772,8 +881,11 @@ export function ForceGraphView({
     hasAutoFittedGraphRef.current = false;
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
-    setHiddenRelationTypes(new Set());
-    setShowDetailNodes(false);
+    setHiddenRelationTypes(new Set(["similar", "contrast"]));
+    setShowDetailNodes(true);
+    setShowAllNodeLabels(true);
+    setShowSettingsPanel(false);
+    setNodeSearchQuery("");
     setGraphDelta(null);
   }, [course]);
 
@@ -879,6 +991,8 @@ export function ForceGraphView({
     setGraphData(null);
     setExpandedNodeIds(new Set());
     setSelectedNodeId(null);
+    setShowSettingsPanel(false);
+    setNodeSearchQuery("");
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
     hasAutoFittedGraphRef.current = false;
@@ -900,6 +1014,21 @@ export function ForceGraphView({
       .duration(180)
       .call(zoom.scaleBy, scaleFactor);
   }, []);
+
+  const focusNodeInView = useCallback((nodeId: number) => {
+    const svg = svgRef.current;
+    const zoom = zoomRef.current;
+    const position = nodePositionRef.current.get(nodeId);
+    if (!svg || !zoom || !position) return;
+    const currentScale = zoomTransformRef.current?.k ?? 0.86;
+    const nextScale = Math.max(0.72, Math.min(1.18, currentScale < 0.68 ? 0.82 : currentScale));
+    const tx = dimensions.width / 2 - position.x * nextScale;
+    const ty = dimensions.height / 2 - position.y * nextScale;
+    d3.select(svg)
+      .transition()
+      .duration(260)
+      .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(nextScale));
+  }, [dimensions.height, dimensions.width]);
 
   const toggleRelationType = useCallback((type: string) => {
     setHiddenRelationTypes((current) => {
@@ -1147,6 +1276,41 @@ export function ForceGraphView({
     return { nodes: visibleNodes, links, presentTypes: types, presentRelationTypes: relationTypes, nodeCount: visibleNodes.length, edgeCount: validEdges.length, activeEdgeCount: links.length, coreNodeCount, backboneEdgeCount, visibleSmartLabelCount, totalLoadedNodeCount };
   }, [hiddenRelationTypes, rawData, selectedNodeId, showDetailNodes]);
 
+  const nodeSearchResults = useMemo(() => {
+    const query = nodeSearchQuery.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return [...nodes]
+      .filter((node) =>
+        node.canonical_name.toLocaleLowerCase().includes(query) ||
+        nodeStyle(node.knowledge_unit_type).label.toLocaleLowerCase().includes(query),
+      )
+      .sort((left, right) =>
+        graphNodePriority(right) - graphNodePriority(left) ||
+        left.layout_layer - right.layout_layer ||
+        left.canonical_name.localeCompare(right.canonical_name),
+      )
+      .slice(0, 7);
+  }, [nodeSearchQuery, nodes]);
+  const desktopSidePanelOpen = selectedNodeId !== null || showSettingsPanel;
+  const graphLayoutScope = useMemo(() => (
+    `${GRAPH_LAYOUT_VERSION}:${dimensions.width}x${dimensions.height}:` +
+    nodes.map((node) => `${node.id}:${node.layout_layer}:${node.knowledge_unit_type}`).join("|")
+  ), [dimensions.height, dimensions.width, nodes]);
+
+  useEffect(() => {
+    if (lastLayoutScopeRef.current === graphLayoutScope) return;
+    lastLayoutScopeRef.current = graphLayoutScope;
+    nodePositionRef.current.clear();
+    zoomTransformRef.current = null;
+    hasAutoFittedGraphRef.current = false;
+  }, [graphLayoutScope]);
+
+  useEffect(() => {
+    if (!rawData || nodes.length === 0) return;
+    const timer = window.setTimeout(() => fitGraphToView(), 180);
+    return () => window.clearTimeout(timer);
+  }, [desktopSidePanelOpen, fitGraphToView, nodes.length, rawData]);
+
   // Measure container
   useEffect(() => {
     const el = containerRef.current;
@@ -1163,13 +1327,15 @@ export function ForceGraphView({
     const obs = new ResizeObserver(measure);
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [nodes.length]);
 
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || nodes.length === 0) return;
 
-    const { width, height } = dimensions;
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    const width = Math.max(320, Math.round(containerRect?.width || dimensions.width));
+    const height = Math.max(320, Math.round(containerRect?.height || dimensions.height));
 
     // Clear previous
     d3.select(svg).selectAll("*").remove();
@@ -1177,22 +1343,19 @@ export function ForceGraphView({
     const structuredPositions = buildStructuredNodePositions(nodes, width, height);
     const layoutMetrics = getStructuredGraphMetrics(nodes.length, width, height);
 
-    const savedPositionCount = nodes.reduce((count, node) => (
-      nodePositionRef.current.has(node.id) ? count + 1 : count
-    ), 0);
-    const newNodeCount = Math.max(0, nodes.length - savedPositionCount);
-
     // Deep copy nodes/links so D3 can mutate them. Preserve positions across live graph refreshes.
-    const simNodes: GraphNode[] = nodes.map((node, index) => {
+    const simNodes: GraphNode[] = nodes.map((node) => {
       const saved = nodePositionRef.current.get(node.id);
-      if (saved) return { ...node, x: saved.x, y: saved.y, fx: saved.fx ?? undefined, fy: saved.fy ?? undefined };
       const center = structuredPositions.get(node.id) ?? { x: width / 2, y: height / 2 };
-      const angle = index * 2.399963229728653;
-      const radius = 12 + (index % 5) * 4;
+      if (saved && saved.fx != null && saved.fy != null) {
+        return { ...node, x: saved.x, y: saved.y, fx: saved.fx, fy: saved.fy };
+      }
       return {
         ...node,
-        x: center.x + Math.cos(angle) * radius,
-        y: center.y + Math.sin(angle) * radius,
+        x: center.x,
+        y: center.y,
+        fx: center.x,
+        fy: center.y,
       };
     });
     const nodeById = new Map(simNodes.map((node) => [node.id, node]));
@@ -1202,12 +1365,22 @@ export function ForceGraphView({
       if (!source || !target) return [];
       return [{ ...link, source, target }];
     });
-    const forceLinks = simLinks.filter((link) => (
-      showAllEdges ||
-      link.is_backbone ||
-      (selectedNodeIdRef.current !== null &&
-        (link.source_node_id === selectedNodeIdRef.current || link.target_node_id === selectedNodeIdRef.current))
-    ));
+    const nodeZoneBounds = new Map<number, { left: number; top: number; right: number; bottom: number }>();
+    for (const node of simNodes) {
+      const bounds = getLayerZoneContentBounds(layoutMetrics, clampGraphLayer(node.layout_layer), height);
+      nodeZoneBounds.set(node.id, {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+      });
+    }
+    const nodeLabelWidth = (node: GraphNode) => graphNodeCardWidth(node);
+    const nodeLabelBgX = (node: GraphNode) => -nodeLabelWidth(node) / 2;
+    const nodeLabelTextDx = (node: GraphNode) => -nodeLabelWidth(node) / 2 + 30;
+    const nodeLabelAnchor = (_node?: GraphNode) => "start";
+    const nodeDotRadius = (node: GraphNode) => (isAssessmentCoreNode(node) ? 8.4 : 7.1);
+    const nodeDotCx = (node: GraphNode) => -nodeLabelWidth(node) / 2 + 16;
 
     // SVG structure
     const svgSel = d3.select(svg)
@@ -1217,6 +1390,40 @@ export function ForceGraphView({
 
     const defs = svgSel.append("defs");
     svgSel.append("style").text(`
+      @keyframes graphHaloPulse {
+        0%, 100% { opacity: 0.14; }
+        50% { opacity: 0.34; }
+      }
+      @keyframes graphCoreBreathe {
+        0%, 100% { opacity: 0.12; }
+        50% { opacity: 0.38; }
+      }
+      @keyframes graphNodeBreathe {
+        0%, 100% {
+          opacity: 0.12;
+          transform: scale(0.9);
+        }
+        50% {
+          opacity: 0.42;
+          transform: scale(1.28);
+        }
+      }
+      @keyframes graphPathFlow {
+        to { stroke-dashoffset: -20; }
+      }
+      @keyframes graphRegionBreathe {
+        0%, 100% {
+          fill-opacity: 0.05;
+          stroke-opacity: 0.2;
+        }
+        50% {
+          fill-opacity: 0.085;
+          stroke-opacity: 0.38;
+        }
+      }
+      .layer-zone-frame {
+        animation: graphRegionBreathe 4.8s ease-in-out infinite;
+      }
       .graph-link,
       .graph-node .node-circle,
       .graph-node .node-halo,
@@ -1224,6 +1431,57 @@ export function ForceGraphView({
       .graph-node .node-label,
       .graph-node .node-label-bg {
         transition: opacity 160ms ease, stroke-width 160ms ease, stroke 160ms ease;
+      }
+      .graph-node {
+        opacity: 1;
+      }
+      .graph-node .node-hit-area {
+        pointer-events: all;
+      }
+      .graph-node .node-breath-ring {
+        animation: graphNodeBreathe 3.4s ease-in-out infinite;
+        pointer-events: none;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .graph-node.is-muted-node .node-breath-ring {
+        animation: none;
+        opacity: 0.04;
+      }
+      .graph-node.is-selected-node .node-breath-ring,
+      .graph-node.is-hover-focus .node-breath-ring {
+        animation-duration: 1.9s;
+      }
+      .graph-link {
+        opacity: 1;
+      }
+      .graph-node.is-selected-node .node-halo,
+      .graph-node.is-hover-focus .node-halo {
+        animation: graphHaloPulse 1.8s ease-in-out infinite;
+      }
+      .graph-node.is-core-pulse .node-priority-ring {
+        animation: graphCoreBreathe 2.7s ease-in-out infinite;
+      }
+      .graph-link.is-neighbor-link,
+      .graph-link.is-selected-link {
+        stroke-dasharray: 9 11;
+        animation: graphPathFlow 1.15s linear infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .graph-node,
+        .graph-link,
+        .graph-node .node-halo,
+        .graph-node .node-breath-ring,
+        .graph-node .node-priority-ring,
+        .layer-zone-frame,
+        .graph-link.is-neighbor-link,
+        .graph-link.is-selected-link {
+          animation: none !important;
+        }
+        .graph-node,
+        .graph-link {
+          opacity: 1 !important;
+        }
       }
     `);
 
@@ -1257,18 +1515,72 @@ export function ForceGraphView({
     const g = svgSel.append("g");
 
     const layerBand = g.append("g").attr("class", "graph-layer-guides").attr("pointer-events", "none");
-    const guideTop = Math.max(24, layoutMetrics.topPad - 56);
-    const guideBottom = layoutMetrics.topPad + layoutMetrics.usableHeight + 38;
-    GRAPH_LAYERS.forEach((_, index) => {
-      const x = layoutMetrics.leftPad + layoutMetrics.layerStep * index;
-      layerBand.append("line")
-        .attr("x1", x)
-        .attr("x2", x)
-        .attr("y1", guideTop)
-        .attr("y2", guideBottom)
-        .attr("stroke", "rgba(147,197,253,0.22)")
-        .attr("stroke-width", 1)
-        .attr("stroke-dasharray", "4 14");
+    const layerNodeCounts = new Map<number, number>();
+    for (const node of simNodes) {
+      const layer = clampGraphLayer(node.layout_layer);
+      layerNodeCounts.set(layer, (layerNodeCounts.get(layer) ?? 0) + 1);
+    }
+    const regionSurface = getRegionSurface(layoutMetrics, height);
+    layerBand.append("rect")
+      .attr("class", "layer-region-surface")
+      .attr("x", regionSurface.x)
+      .attr("y", regionSurface.y)
+      .attr("width", regionSurface.width)
+      .attr("height", regionSurface.height)
+      .attr("rx", 22)
+      .attr("fill", "rgba(255,255,255,0.66)")
+      .attr("stroke", "rgba(148,163,184,0.28)")
+      .attr("stroke-width", 1.2);
+    GRAPH_LAYERS.forEach((layer, index) => {
+      const zone = getLayerZoneFrame(layoutMetrics, index, height);
+      const zoneColor = LAYER_GUIDE_COLORS[index] ?? "#2563eb";
+      layerBand.append("rect")
+        .attr("class", "layer-zone-frame")
+        .attr("x", zone.x)
+        .attr("y", zone.y)
+        .attr("width", zone.width)
+        .attr("height", zone.height)
+        .attr("rx", 18)
+        .attr("fill", zoneColor)
+        .attr("fill-opacity", 0.055)
+        .attr("stroke", zoneColor)
+        .attr("stroke-opacity", 0.24)
+        .attr("stroke-width", 1.8)
+        .style("animation-delay", `${index * 0.38}s`);
+      layerBand.append("rect")
+        .attr("x", zone.x + 16)
+        .attr("y", zone.y + 14)
+        .attr("width", Math.min(156, zone.width - 32))
+        .attr("height", 42)
+        .attr("rx", 10)
+        .attr("fill", "rgba(255,255,255,0.9)")
+        .attr("stroke", zoneColor)
+        .attr("stroke-opacity", 0.24)
+        .attr("stroke-width", 1);
+      layerBand.append("circle")
+        .attr("cx", zone.x + 36)
+        .attr("cy", zone.y + 35)
+        .attr("r", 5)
+        .attr("fill", zoneColor)
+        .attr("opacity", 0.86);
+      layerBand.append("text")
+        .attr("x", zone.x + 50)
+        .attr("y", zone.y + 32)
+        .attr("text-anchor", "start")
+        .attr("font-size", "12px")
+        .attr("font-weight", 800)
+        .attr("font-family", "system-ui, sans-serif")
+        .attr("fill", "#0f172a")
+        .text(`${layer.label} ${layerNodeCounts.get(index) ?? 0}`);
+      layerBand.append("text")
+        .attr("x", zone.x + 50)
+        .attr("y", zone.y + 48)
+        .attr("text-anchor", "start")
+        .attr("font-size", "9px")
+        .attr("font-weight", 600)
+        .attr("font-family", "system-ui, sans-serif")
+        .attr("fill", "#64748b")
+        .text(layer.description.split("/")[0].trim());
     });
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -1282,20 +1594,6 @@ export function ForceGraphView({
     if (zoomTransformRef.current) {
       svgSel.call(zoom.transform, zoomTransformRef.current);
     }
-
-    // Glow filter for hover (simplified)
-    const glowFilter = defs.append("filter")
-      .attr("id", "node-glow")
-      .attr("x", "-20%").attr("y", "-20%")
-      .attr("width", "140%").attr("height", "140%");
-    glowFilter.append("feGaussianBlur")
-      .attr("stdDeviation", "2")
-      .attr("result", "blur");
-    glowFilter.append("feMerge")
-      .selectAll("feMergeNode")
-      .data(["blur", "SourceGraphic"])
-      .join("feMergeNode")
-      .attr("in", (d) => d);
 
     // Arrow marker
     defs.append("marker")
@@ -1316,16 +1614,17 @@ export function ForceGraphView({
     const linkLine = linkGroup.selectAll<SVGPathElement, GraphLink>("path")
       .data(simLinks)
       .join("path")
-      .attr("class", "graph-link")
+      .attr("class", (d) => `graph-link${d.is_backbone ? " is-backbone-link" : ""}`)
       .attr("fill", "none")
       .attr("stroke", (d) => RELATION_COLORS[d.edge_type] ?? "#94a3b8")
       .attr("stroke-linecap", "round")
       .attr("stroke-linejoin", "round")
-      .attr("stroke-width", 1.08)
-      .attr("stroke-opacity", 0.30)
-      .attr("marker-end", "url(#arrowhead)");
+      .attr("stroke-width", (d) => (d.is_backbone ? 1.6 : 1.05))
+      .attr("stroke-opacity", (d) => (d.is_backbone ? 0.46 : 0.22))
+      .attr("marker-end", "url(#arrowhead)")
+      .style("animation-delay", (_d, index) => `${Math.min(420, index * 16)}ms`);
 
-    linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
+    const hitLine = linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
       .data(simLinks)
       .join("path")
       .attr("class", "hit-area")
@@ -1373,7 +1672,7 @@ export function ForceGraphView({
     const nodeG = nodeGroup.selectAll<SVGGElement, GraphNode>("g")
       .data(simNodes)
       .join("g")
-      .attr("class", "graph-node")
+      .attr("class", (d) => `graph-node${isAssessmentCoreNode(d) && d.label_rank <= 14 ? " is-core-pulse" : ""}`)
       .attr("cursor", "pointer")
       .call(
         d3.drag<SVGGElement, GraphNode>()
@@ -1391,17 +1690,20 @@ export function ForceGraphView({
             const dy = event.y - (dragNode.__dragStartY ?? event.y);
             if (!dragNode.__hasDragged && Math.sqrt(dx * dx + dy * dy) >= 3) {
               dragNode.__hasDragged = true;
-              simulation.alphaTarget(0.07).restart();
             }
+            d.x = event.x;
+            d.y = event.y;
             d.fx = event.x;
             d.fy = event.y;
+            if (dragNode.__hasDragged) renderTick(false);
           })
           .on("end", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
             const dragNode = d as DraggableGraphNode;
             if (dragNode.__hasDragged) {
-              d.fx = d.x ?? event.x;
-              d.fy = d.y ?? event.y;
+              d.x = event.x;
+              d.y = event.y;
+              d.fx = event.x;
+              d.fy = event.y;
             } else {
               d.fx = null;
               d.fy = null;
@@ -1413,24 +1715,54 @@ export function ForceGraphView({
             }
             dragNode.__dragStartX = undefined;
             dragNode.__dragStartY = undefined;
+            renderTick();
           })
       );
 
     // Node click handler
     nodeG.on("click", (event, d) => {
       event.stopPropagation();
-      setSelectedNodeId((prev) => (prev === d.id ? null : d.id));
+      setSelectedNodeId((prev) => {
+        const next = prev === d.id ? null : d.id;
+        if (next !== null) setShowSettingsPanel(false);
+        return next;
+      });
     });
+
+    nodeG.append("rect")
+      .attr("class", "node-hit-area")
+      .attr("x", (d) => nodeLabelBgX(d) - 10)
+      .attr("y", -24)
+      .attr("width", (d) => nodeLabelWidth(d) + 20)
+      .attr("height", 48)
+      .attr("rx", 14)
+      .attr("fill", "rgba(255,255,255,0.001)")
+      .attr("stroke", "none");
 
     nodeG.append("circle")
       .attr("class", "node-halo")
-      .attr("r", (d) => graphNodeRadius(d) + 5)
+      .attr("cx", (d) => nodeDotCx(d))
+      .attr("cy", 0)
+      .attr("r", (d) => nodeDotRadius(d) + 7)
       .attr("fill", (d) => nodeStyle(d.knowledge_unit_type).fill)
       .attr("opacity", 0);
 
     nodeG.append("circle")
+      .attr("class", "node-breath-ring")
+      .attr("cx", (d) => nodeDotCx(d))
+      .attr("cy", 0)
+      .attr("r", (d) => nodeDotRadius(d) + 6)
+      .attr("fill", "none")
+      .attr("stroke", (d) => nodeStyle(d.knowledge_unit_type).fill)
+      .attr("stroke-width", 2.4)
+      .attr("opacity", 0.16)
+      .style("animation-delay", (d) => `${(d.layout_rank % 11) * 130}ms`);
+
+    nodeG.append("circle")
       .attr("class", "node-priority-ring")
-      .attr("r", (d) => graphNodeRadius(d) + (isAssessmentCoreNode(d) ? 3.5 : 2.5))
+      .attr("cx", (d) => nodeDotCx(d))
+      .attr("cy", 0)
+      .attr("r", (d) => nodeDotRadius(d) + (isAssessmentCoreNode(d) ? 4.5 : 3.4))
       .attr("fill", "none")
       .attr("stroke", (d) => nodeStyle(d.knowledge_unit_type).fill)
       .attr("stroke-width", (d) => (isAssessmentCoreNode(d) ? 1.4 : 1))
@@ -1439,44 +1771,63 @@ export function ForceGraphView({
 
     nodeG.append("circle")
       .attr("class", "node-circle")
-      .attr("r", (d) => graphNodeRadius(d))
+      .attr("cx", (d) => nodeDotCx(d))
+      .attr("cy", 0)
+      .attr("r", (d) => nodeDotRadius(d))
       .attr("fill", (d) => nodeStyle(d.knowledge_unit_type).fill)
       .attr("stroke", "#ffffff")
       .attr("stroke-width", 2)
       .attr("opacity", 1);
 
     nodeG.append("rect")
-      .attr("class", "node-label-bg")
-      .attr("x", (d) => graphNodeRadius(d) + 4)
-      .attr("y", -11)
-      .attr("width", (d) => estimateGraphLabelWidth(d.canonical_name, graphNodeLabelLimit(d, selectedNodeIdRef.current)))
-      .attr("height", 20)
-      .attr("rx", 4)
-      .attr("fill", "rgba(255,255,255,0.9)")
-      .attr("stroke", "rgba(191,219,254,0.78)")
-      .attr("stroke-width", 0.8)
+      .attr("class", "node-card-shadow")
+      .attr("x", (d) => nodeLabelBgX(d))
+      .attr("y", -NODE_CARD_HEIGHT / 2 + 2)
+      .attr("width", (d) => nodeLabelWidth(d))
+      .attr("height", NODE_CARD_HEIGHT)
+      .attr("rx", 8)
+      .attr("fill", "rgba(15,23,42,0.08)")
       .attr("opacity", 0)
       .style("pointer-events", "none");
 
+    nodeG.append("rect")
+      .attr("class", "node-label-bg")
+      .attr("x", (d) => nodeLabelBgX(d))
+      .attr("y", -NODE_CARD_HEIGHT / 2)
+      .attr("width", (d) => nodeLabelWidth(d))
+      .attr("height", NODE_CARD_HEIGHT)
+      .attr("rx", 8)
+      .attr("fill", "rgba(255,255,255,0.96)")
+      .attr("stroke", (d) => nodeStyle(d.knowledge_unit_type).fill)
+      .attr("stroke-opacity", 0.34)
+      .attr("stroke-width", 1)
+      .attr("opacity", 0)
+      .style("pointer-events", "none");
+
+    nodeG.select<SVGCircleElement>("circle.node-halo").raise();
+    nodeG.select<SVGCircleElement>("circle.node-breath-ring").raise();
+    nodeG.select<SVGCircleElement>("circle.node-priority-ring").raise();
+    nodeG.select<SVGCircleElement>("circle.node-circle").raise();
+
     nodeG.append("text")
       .attr("class", "node-label")
-      .attr("dx", (d) => graphNodeRadius(d) + 7)
+      .attr("dx", (d) => nodeLabelTextDx(d))
       .attr("dy", 4)
-      .attr("font-size", (d) => (isAssessmentCoreNode(d) ? "11.5px" : "10.5px"))
+      .attr("text-anchor", (d) => nodeLabelAnchor(d))
+      .attr("font-size", (d) => (isAssessmentCoreNode(d) ? "12px" : "11.5px"))
       .attr("font-family", "system-ui, sans-serif")
-      .attr("font-weight", (d) => (isAssessmentCoreNode(d) ? "650" : "520"))
+      .attr("font-weight", (d) => (isAssessmentCoreNode(d) ? "720" : "620"))
       .attr("fill", "#1f2937")
-      .attr("stroke", "rgba(255,255,255,0.96)")
-      .attr("stroke-width", 3.6)
-      .attr("paint-order", "stroke")
+      .attr("stroke", "none")
       .attr("opacity", 1)
       .style("pointer-events", "none")
-      .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, selectedNodeIdRef.current)));
+      .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null)));
 
     nodeG.append("text")
       .attr("class", "node-role-label")
-      .attr("dx", (d) => graphNodeRadius(d) + 9)
-      .attr("dy", -13)
+      .attr("dx", (d) => nodeLabelTextDx(d))
+      .attr("dy", -19)
+      .attr("text-anchor", (d) => nodeLabelAnchor(d))
       .attr("font-size", "9px")
       .attr("font-family", "system-ui, sans-serif")
       .attr("font-weight", "700")
@@ -1500,17 +1851,20 @@ export function ForceGraphView({
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0.28));
         nodeG.select<SVGRectElement>("rect.node-label-bg")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 0.92 : 0));
+        nodeG.select<SVGRectElement>("rect.node-card-shadow")
+          .attr("opacity", (node) => (connectedIds.has(node.id) ? 0.78 : 0));
         nodeG.select<SVGTextElement>("text.node-label")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0));
         linkLine
+          .classed("is-neighbor-link", (link) => link.source_node_id === d.id || link.target_node_id === d.id)
           .attr("display", (link) => (
             showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
           ))
           .attr("stroke-opacity", (link) => (
-            link.source_node_id === d.id || link.target_node_id === d.id ? 0.86 : 0.08
+            link.source_node_id === d.id || link.target_node_id === d.id ? 0.78 : 0.05
           ))
           .attr("stroke-width", (link) => (
-            link.source_node_id === d.id || link.target_node_id === d.id ? 2.3 : 1
+            link.source_node_id === d.id || link.target_node_id === d.id ? 2.1 : 0.9
           ));
         linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
           .attr("display", (link) => (
@@ -1532,11 +1886,15 @@ export function ForceGraphView({
           ));
         d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
         d3.select(this).select("circle.node-priority-ring").attr("opacity", 0.92);
+        d3.select(this).select("rect.node-card-shadow").attr("opacity", 0.82);
         d3.select(this).select("rect.node-label-bg").attr("opacity", 0.96);
         d3.select(this).select("text.node-role-label").attr("opacity", 1);
         d3.select(this).select("circle.node-circle").attr("stroke", "#1d4ed8").attr("stroke-width", 3);
+        d3.select(this).classed("is-hover-focus", true);
       })
       .on("mouseleave", function () {
+        linkLine.classed("is-neighbor-link", false);
+        nodeG.classed("is-hover-focus", false);
         applyGraphInteractiveStyles(
           svg,
           simLinks,
@@ -1548,34 +1906,6 @@ export function ForceGraphView({
         );
       });
 
-    const simulation = d3.forceSimulation<GraphNode>(simNodes)
-      .force("link", d3.forceLink<GraphNode, GraphLink>(forceLinks).id((d) => d.id).distance((d) => {
-        const sourceDegree = typeof d.source === "object" ? d.source.degree : 1;
-        const targetDegree = typeof d.target === "object" ? d.target.degree : 1;
-        const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
-        const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        const sourceLayer = typeof d.source === "object" ? d.source.layout_layer : 2;
-        const targetLayer = typeof d.target === "object" ? d.target.layout_layer : 2;
-        const layerGap = Math.abs(sourceLayer - targetLayer);
-        const base = layerGap === 0 ? 260 : 232 + layerGap * 64;
-        return Math.max(188, base + Math.max(0, d.pair_total - 1) * 44 - Math.min(sourceDegree + targetDegree, 10) * 0.5 + (sourceIsCore || targetIsCore ? 18 : 42));
-      }).strength((d) => {
-        const sourceIsCore = typeof d.source === "object" ? isAssessmentCoreNode(d.source) : false;
-        const targetIsCore = typeof d.target === "object" ? isAssessmentCoreNode(d.target) : false;
-        return d.is_backbone ? (sourceIsCore || targetIsCore ? 0.018 : 0.014) : 0.0026;
-      }))
-      .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (
-        isAssessmentCoreNode(d) ? -190 - Math.min(d.degree, 9) * 14 : -132 - Math.min(d.degree, 7) * 10
-      )))
-      .force("center", d3.forceCenter(layoutMetrics.canvasWidth / 2, height / 2))
-      .force("collision", d3.forceCollide<GraphNode>().radius((d) => graphNodeRadius(d) + (showAllNodeLabelsRef.current ? 58 : isAssessmentCoreNode(d) ? 40 : 32)).iterations(2))
-      .force("x", d3.forceX<GraphNode>((d) => structuredPositions.get(d.id)?.x ?? layoutMetrics.canvasWidth / 2).strength(1.42))
-      .force("y", d3.forceY<GraphNode>((d) => structuredPositions.get(d.id)?.y ?? height / 2).strength(1.34))
-      .alphaDecay(0.11)
-      .velocityDecay(0.86);
-    simulation.alpha(savedPositionCount > 0 ? (newNodeCount > 0 || showAllEdges || showAllNodeLabels ? 0.22 : 0.035) : 1);
-
-    simulationRef.current = simulation;
     applyGraphInteractiveStyles(
       svg,
       simLinks,
@@ -1586,16 +1916,13 @@ export function ForceGraphView({
       showAllNodeLabelsRef.current,
     );
 
-    const displayPoint = (node: GraphNode, now: number) => {
-      void now;
-      return {
-        x: Number(node.x ?? 0),
-        y: Number(node.y ?? 0),
-      };
-    };
-    const buildCurvedLinkRoute = (d: any, now: number) => {
-      const sourcePoint = displayPoint(d.source, now);
-      const targetPoint = displayPoint(d.target, now);
+    const displayPoint = (node: GraphNode) => ({
+      x: Number(node.x ?? 0),
+      y: Number(node.y ?? 0),
+    });
+    const buildCurvedLinkRoute = (d: any) => {
+      const sourcePoint = displayPoint(d.source);
+      const targetPoint = displayPoint(d.target);
       const rawSx = sourcePoint.x;
       const rawSy = sourcePoint.y;
       const rawTx = targetPoint.x;
@@ -1603,8 +1930,18 @@ export function ForceGraphView({
       const rawDx = rawTx - rawSx;
       const rawDy = rawTy - rawSy;
       const rawDistance = Math.max(1, Math.sqrt(rawDx * rawDx + rawDy * rawDy));
-      const sourceInset = graphNodeRadius(d.source) + 5;
-      const targetInset = graphNodeRadius(d.target) + 12;
+      const edgeInset = (node: GraphNode, extra: number) => {
+        const ux = Math.abs(rawDx) / rawDistance;
+        const uy = Math.abs(rawDy) / rawDistance;
+        const halfWidth = graphNodeCardWidth(node) / 2;
+        const halfHeight = NODE_CARD_HEIGHT / 2;
+        const xEdge = ux > 0.001 ? halfWidth / ux : Number.POSITIVE_INFINITY;
+        const yEdge = uy > 0.001 ? halfHeight / uy : Number.POSITIVE_INFINITY;
+        const edge = Math.min(xEdge, yEdge);
+        return (Number.isFinite(edge) ? edge : halfWidth) + extra;
+      };
+      const sourceInset = edgeInset(d.source, 8);
+      const targetInset = edgeInset(d.target, 14);
       const sx = rawSx + (rawDx / rawDistance) * sourceInset;
       const sy = rawSy + (rawDy / rawDistance) * sourceInset;
       const tx = rawTx - (rawDx / rawDistance) * targetInset;
@@ -1614,50 +1951,43 @@ export function ForceGraphView({
       const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
       const sourceLayer = d.source.layout_layer ?? 2;
       const targetLayer = d.target.layout_layer ?? 2;
-      const sameLayer = sourceLayer === targetLayer;
       const relationLane = ((EDGE_TYPE_PRIORITY[d.edge_type] ?? 3) - 3.5) * 10;
       const pairLane = (d.pair_index - (d.pair_total - 1) / 2) * 20;
-      const sign = d.curvature >= 0 ? 1 : -1;
-      const baseBend = sameLayer
-        ? Math.min(168, Math.max(62, distance * 0.34))
-        : Math.min(126, Math.max(42, distance * 0.18));
-      let bend = sign * baseBend + relationLane + pairLane;
-      const minBend = sameLayer ? 52 : 34;
-      if (Math.abs(bend) < minBend) bend = sign * minBend;
 
       if (sourceLayer === targetLayer) {
+        const side = sourceLayer >= GRAPH_LAYERS.length - 1 ? -1 : 1;
+        const sideBend = side * (Math.min(168, Math.max(72, distance * 0.42)) + Math.abs(pairLane) * 0.34);
         return {
           sx,
           sy,
           tx,
           ty,
-          c1x: sx + dx * 0.28 - (dy / distance) * bend,
-          c1y: sy + dy * 0.28 + (dx / distance) * bend,
-          c2x: sx + dx * 0.72 - (dy / distance) * bend,
-          c2y: sy + dy * 0.72 + (dx / distance) * bend,
+          c1x: sx + sideBend,
+          c1y: sy + dy * 0.18 + relationLane,
+          c2x: tx + sideBend,
+          c2y: ty - dy * 0.18 + relationLane,
         };
       }
-      const direction = dx >= 0 ? 1 : -1;
-      const handle = Math.max(82, Math.min(260, Math.abs(dx) * 0.52));
+      const lane = relationLane + pairLane * 0.38 + d.curvature * 24;
       return {
         sx,
         sy,
         tx,
         ty,
-        c1x: sx + handle * direction,
-        c1y: sy + bend,
-        c2x: tx - handle * direction,
-        c2y: ty + bend,
+        c1x: sx + dx * 0.42,
+        c1y: sy + dy * 0.08 + lane,
+        c2x: sx + dx * 0.58,
+        c2y: ty - dy * 0.08 + lane,
       };
     };
 
-    const linkPath = (d: any, now: number) => {
-      const route = buildCurvedLinkRoute(d, now);
+    const linkPath = (d: any) => {
+      const route = buildCurvedLinkRoute(d);
       return `M${route.sx},${route.sy} C${route.c1x},${route.c1y} ${route.c2x},${route.c2y} ${route.tx},${route.ty}`;
     };
 
-    const linkMidpoint = (d: any, now: number) => {
-      const route = buildCurvedLinkRoute(d, now);
+    const linkMidpoint = (d: any) => {
+      const route = buildCurvedLinkRoute(d);
       const t = 0.5;
       const mt = 1 - t;
       return {
@@ -1665,7 +1995,6 @@ export function ForceGraphView({
         y: mt * mt * mt * route.sy + 3 * mt * mt * t * route.c1y + 3 * mt * t * t * route.c2y + t * t * t * route.ty,
       };
     };
-    let tickFrame: number | null = null;
     let positionSnapshotTick = 0;
     const saveNodePositions = () => {
       for (const node of simNodes) {
@@ -1681,47 +2010,61 @@ export function ForceGraphView({
         }
       }
     };
-    const renderTick = (now = performance.now()) => {
-      tickFrame = null;
-      linkLine.attr("d", (d: any) => linkPath(d, now));
-      linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area").attr("d", (d: any) => linkPath(d, now));
+    const renderTick = (persistPositions = true) => {
+      for (const node of simNodes) {
+        const bounds = nodeZoneBounds.get(node.id);
+        if (!bounds) continue;
+        const x = Number(node.x);
+        const y = Number(node.y);
+        const halfCard = graphNodeCardWidth(node) / 2;
+        if (Number.isFinite(x)) node.x = Math.min(bounds.right - halfCard, Math.max(bounds.left + halfCard, x));
+        if (Number.isFinite(y)) {
+          node.y = Math.min(
+            bounds.bottom - NODE_CARD_HEIGHT / 2,
+            Math.max(bounds.top + NODE_CARD_HEIGHT / 2, y),
+          );
+        }
+      }
+      linkLine.attr("d", (d: any) => linkPath(d));
+      hitLine.attr("d", (d: any) => linkPath(d));
 
       linkLabel
-        .attr("x", (d: any) => linkMidpoint(d, now).x)
-        .attr("y", (d: any) => linkMidpoint(d, now).y - 6)
+        .attr("x", (d: any) => linkMidpoint(d).x)
+        .attr("y", (d: any) => linkMidpoint(d).y - 6)
         .attr("transform", ""); // Explicitly avoid rotation for legibility
       linkLabelBg
-        .attr("x", (d: any) => linkMidpoint(d, now).x - d.label_width / 2)
-        .attr("y", (d: any) => linkMidpoint(d, now).y - 15);
+        .attr("x", (d: any) => linkMidpoint(d).x - d.label_width / 2)
+        .attr("y", (d: any) => linkMidpoint(d).y - 15);
 
       nodeG.attr("transform", (d: any) => {
-        const point = displayPoint(d, now);
+        const point = displayPoint(d);
         return `translate(${point.x},${point.y})`;
       });
-      positionSnapshotTick += 1;
-      if (positionSnapshotTick % 5 === 0) saveNodePositions();
+      if (persistPositions) {
+        positionSnapshotTick += 1;
+        if (positionSnapshotTick % 5 === 0) saveNodePositions();
+      }
     };
-    simulation.on("tick", () => {
-      if (tickFrame !== null) return;
-      tickFrame = window.requestAnimationFrame((now) => renderTick(now));
-    });
 
     const fitCurrentGraphToView = (duration = 600) => {
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
       const yExtent = d3.extent(simNodes, (d) => d.y) as [number, number];
       if (xExtent[0] == null) return;
-      const pad = showDetailNodes ? 52 : 48;
-      const visualXMin = Math.min(xExtent[0], layoutMetrics.leftPad - 96);
-      const visualXMax = Math.max(xExtent[1], layoutMetrics.leftPad + layoutMetrics.layerStep * (GRAPH_LAYERS.length - 1) + 96);
-      const visualYMin = Math.min(yExtent[0], layoutMetrics.topPad - 104);
-      const visualYMax = Math.max(yExtent[1], layoutMetrics.topPad + layoutMetrics.usableHeight + 36);
+      const pad = showAllNodeLabels ? 34 : 44;
+      const labelPad = showAllNodeLabels ? 154 : 92;
+      const visualXMin = Math.min(xExtent[0] - labelPad, regionSurface.x - 26);
+      const visualXMax = Math.max(xExtent[1] + labelPad, regionSurface.x + regionSurface.width + 26);
+      const visualYMin = Math.min(yExtent[0] - 74, regionSurface.y - 22);
+      const visualYMax = Math.max(yExtent[1] + 76, regionSurface.y + regionSurface.height + 22);
       const gw = visualXMax - visualXMin + pad * 2;
       const gh = visualYMax - visualYMin + pad * 2;
       const topReserve = 68;
       const bottomReserve = 52;
       const availableWidth = Math.max(320, width - 24);
       const availableHeight = Math.max(320, height - topReserve - bottomReserve);
-      const scale = Math.min(availableWidth / gw, availableHeight / gh, 1.28);
+      const fittedScale = Math.min(availableWidth / gw, availableHeight / gh, width < 720 ? 1.22 : 1.62);
+      const readableScaleFloor = width < 520 ? 0.72 : 0;
+      const scale = Math.max(readableScaleFloor, fittedScale);
       const graphWidth = (visualXMax - visualXMin) * scale;
       const graphHeight = (visualYMax - visualYMin) * scale;
       const leftInset = Math.max(18, (availableWidth - graphWidth) * 0.5);
@@ -1732,15 +2075,10 @@ export function ForceGraphView({
         .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
     };
     fitGraphToViewRef.current = fitCurrentGraphToView;
+    renderTick(false);
 
     // Fit to view only for the first layout. Live refreshes preserve the user's viewport.
     let hasAutoFitted = false;
-    simulation.on("end", () => {
-      if (hasAutoFitted || hasAutoFittedGraphRef.current) return;
-      hasAutoFitted = true;
-      hasAutoFittedGraphRef.current = true;
-      fitCurrentGraphToView(600);
-    });
     const autoFitTimer = window.setTimeout(() => {
       if (hasAutoFitted || hasAutoFittedGraphRef.current) return;
       hasAutoFitted = true;
@@ -1749,9 +2087,7 @@ export function ForceGraphView({
 
     return () => {
       window.clearTimeout(autoFitTimer);
-      if (tickFrame !== null) window.cancelAnimationFrame(tickFrame);
       saveNodePositions();
-      simulation.stop();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
     };
   }, [nodes, links, dimensions, showAllEdges, showAllNodeLabels, showEdgeLabels]);
@@ -1808,16 +2144,16 @@ export function ForceGraphView({
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-slate-50/60 dark:bg-slate-950">
       {/* Graph panel */}
-      <div className="absolute inset-0 min-h-0 min-w-0 lg:right-[360px]">
+      <div className={`absolute inset-0 min-h-0 min-w-0 ${desktopSidePanelOpen ? "lg:right-[320px]" : "lg:right-0"}`}>
         <div ref={containerRef} className="absolute inset-0">
           <svg ref={svgRef} className="h-full w-full" />
         </div>
 
         {/* Top-left: mode switch + compact status */}
-        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 lg:right-3 lg:max-w-none lg:pr-0">
+        <div className="pointer-events-auto absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-32 lg:right-44 lg:max-w-none lg:pr-0">
           {toolbar}
           <span className="inline-flex h-8 items-center rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
-            {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount ?? edgeCount} 关系
+            {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount && totalEdgeCount > 0 ? totalEdgeCount : edgeCount} 关系
           </span>
           {expandingNodeId ? (
             <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
@@ -1838,7 +2174,23 @@ export function ForceGraphView({
           ) : null}
         </div>
 
-        <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80 lg:hidden">
+        <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg bg-white/95 p-1 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:ring-slate-700/80">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedNodeId(null);
+              setShowSettingsPanel((value) => !value);
+            }}
+            className={`hidden h-8 w-8 items-center justify-center rounded-md transition-colors lg:flex ${
+              showSettingsPanel && !selectedNodeId
+                ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            }`}
+            title={showSettingsPanel && !selectedNodeId ? "收起图谱设置" : "打开图谱设置"}
+            aria-label={showSettingsPanel && !selectedNodeId ? "收起图谱设置" : "打开图谱设置"}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
           <button
             type="button"
             onClick={fitGraphToView}
@@ -1868,6 +2220,70 @@ export function ForceGraphView({
           </button>
         </div>
 
+        <div className={`pointer-events-auto absolute bottom-3 left-3 z-10 w-80 max-w-[calc(100%-1.5rem)] ${selectedNodeId ? "hidden lg:block" : ""}`}>
+          <div className="overflow-hidden rounded-lg border border-slate-200/80 bg-white/95 shadow-[0_18px_48px_rgba(15,23,42,0.12)] backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/92">
+            <div className="flex h-10 items-center gap-2 px-3">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input
+                value={nodeSearchQuery}
+                onChange={(event) => setNodeSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || nodeSearchResults.length === 0) return;
+                  const node = nodeSearchResults[0];
+                  setSelectedNodeId(node.id);
+                  setShowSettingsPanel(false);
+                  window.requestAnimationFrame(() => focusNodeInView(node.id));
+                }}
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+                placeholder="搜索知识点"
+                aria-label="搜索知识点"
+              />
+              {nodeSearchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setNodeSearchQuery("")}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                  title="清空搜索"
+                  aria-label="清空搜索"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            {nodeSearchQuery.trim() ? (
+              <div className="max-h-60 overflow-y-auto border-t border-slate-100 py-1 dark:border-slate-800">
+                {nodeSearchResults.length ? nodeSearchResults.map((node) => (
+                  <button
+                    key={node.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedNodeId(node.id);
+                      setShowSettingsPanel(false);
+                      window.requestAnimationFrame(() => focusNodeInView(node.id));
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/80 dark:hover:bg-blue-950/30"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 flex-none rounded-full"
+                      style={{ backgroundColor: nodeStyle(node.knowledge_unit_type).fill }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-slate-700 dark:text-slate-100">
+                        {node.canonical_name}
+                      </span>
+                      <span className="block truncate text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                        {GRAPH_LAYERS[clampGraphLayer(node.layout_layer)]?.label ?? "图谱"} · {nodeStyle(node.knowledge_unit_type).label}
+                      </span>
+                    </span>
+                  </button>
+                )) : (
+                  <div className="px-3 py-3 text-xs font-medium text-slate-400 dark:text-slate-500">没有匹配节点</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         {showGraphLiveBadge ? (
           <div className="pointer-events-none absolute bottom-16 left-1/2 z-20 -translate-x-1/2">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-[0_16px_44px_rgba(15,23,42,0.16)] ring-1 ring-white/80 backdrop-blur dark:border-emerald-500/30 dark:bg-slate-950/90 dark:text-slate-100">
@@ -1888,7 +2304,7 @@ export function ForceGraphView({
 
       </div>
 
-      <div className="absolute bottom-0 right-0 top-0 z-20 hidden w-[360px] border-l border-slate-200 bg-white shadow-[-18px_0_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 lg:flex">
+      <div className={`absolute bottom-0 right-0 top-0 z-20 hidden w-[320px] border-l border-slate-200 bg-white shadow-[-18px_0_44px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950 ${desktopSidePanelOpen ? "lg:flex" : "lg:hidden"}`}>
         {selectedNodeId ? (
           <div className="flex h-full w-full flex-col">
             {!graphIsComplete ? (

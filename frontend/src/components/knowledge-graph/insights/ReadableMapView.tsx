@@ -265,6 +265,32 @@ function NodeDetail({
   );
 }
 
+function MapMetric({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "good" | "warn" | "bad" | "neutral";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+      : tone === "warn"
+        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+        : tone === "bad"
+          ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200"
+          : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200";
+
+  return (
+    <div className={`min-w-0 rounded-md border px-3 py-2 shadow-sm ${toneClass}`}>
+      <p className="truncate text-[11px] opacity-75">{label}</p>
+      <p className="mt-1 truncate text-base font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
 function OverviewPanel({
   model,
   onSelect,
@@ -276,6 +302,9 @@ function OverviewPanel({
   const issueIsGood = mainIssue?.tone === "good";
   const gapNodes = model.gapNodes.slice(0, 4);
   const hubNodes = model.bottleneckNodes.slice(0, 4);
+  const mainlineTone = model.largestComponentPct >= 0.72 ? "good" : "warn";
+  const practiceTone = model.practiceCoveragePct >= 0.64 ? "good" : "warn";
+  const gapTone = model.gapNodes.length ? "warn" : "good";
 
   return (
     <div className="rounded-lg border border-slate-200/80 bg-white/96 p-3 shadow-lg shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
@@ -295,6 +324,12 @@ function OverviewPanel({
             {issueIsGood ? <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" /> : <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />}
             {mainIssue?.title ?? "图谱结构可用"}
           </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <MapMetric label="主干覆盖" value={percentText(model.largestComponentPct)} tone={mainlineTone} />
+          <MapMetric label="练习闭环" value={percentText(model.practiceCoveragePct)} tone={practiceTone} />
+          <MapMetric label="待补断点" value={model.gapNodes.length} tone={gapTone} />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -454,6 +489,26 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
     color: relation.color,
     count: relation.count,
   }));
+  const mainIssue = model.issues[0];
+  const issueIsGood = mainIssue?.tone === "good";
+  const mapHealthTone = issueIsGood ? "good" : model.issues.length ? "warn" : "neutral";
+  const mapSummary = [
+    {
+      label: "主干覆盖",
+      value: percentText(model.largestComponentPct),
+      tone: model.largestComponentPct >= 0.72 ? "good" : "warn",
+    },
+    {
+      label: "练习闭环",
+      value: percentText(model.practiceCoveragePct),
+      tone: model.practiceCoveragePct >= 0.64 ? "good" : "warn",
+    },
+    {
+      label: "断点",
+      value: model.gapNodes.length,
+      tone: model.gapNodes.length ? "warn" : "good",
+    },
+  ] as const;
 
   const toggleSelected = (nodeId: number) => {
     setSelectedId((current) => (current === nodeId ? null : nodeId));
@@ -461,11 +516,31 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 dark:border-slate-800">
-        <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">地图</p>
-        <span className="text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
-          {model.nodeCount} 点 · {visibleEdges.length}/{model.edgeCount} 线
-        </span>
+      <div className="shrink-0 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">学习地图</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              按“组织 → 知识 → 原理 → 方法 → 训练”阅读课程结构，优先看高亮断点和主干路径。
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {mapSummary.map((item) => (
+              <MapMetric key={item.label} label={item.label} value={item.value} tone={item.tone} />
+            ))}
+          </div>
+        </div>
+        <div
+          className={`mt-3 rounded-md border px-3 py-2 text-xs font-medium ${
+            mapHealthTone === "good"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+              : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+          }`}
+        >
+          {issueIsGood ? <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" /> : <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />}
+          {mainIssue?.title ?? "图谱结构可用"}
+          {mainIssue?.hint ? <span className="ml-2 font-normal opacity-80">{mainIssue.hint}</span> : null}
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 bg-[#f8fafc] dark:bg-slate-950 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -504,6 +579,9 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
                     />
                     <text x={x} y={36} textAnchor="middle" className="select-none text-[13px] font-bold" fill="#0f172a">
                       {layer.label}
+                    </text>
+                    <text x={x} y={52} textAnchor="middle" className="select-none text-[10px] font-medium" fill="#64748b">
+                      {layer.description}
                     </text>
                   </g>
                 );
@@ -580,7 +658,36 @@ export function ReadableMapView({ model }: { model: GraphInsightModel }) {
             </svg>
           </div>
 
-          <div className="pointer-events-none absolute bottom-3 left-4 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
+          {activeNode ? (
+            <div className="pointer-events-auto absolute bottom-3 left-3 right-3 z-10 max-h-[44%] overflow-y-auto xl:hidden">
+              <NodeDetail node={activeNode} edges={layout.edges} onSelect={setSelectedId} />
+            </div>
+          ) : (
+            <div className="pointer-events-auto absolute bottom-3 left-3 right-3 z-10 rounded-lg border border-slate-200/80 bg-white/92 p-3 shadow-lg shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 xl:hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    {mainIssue?.title ?? "图谱结构可用"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    点击节点查看直接关系，黄色标记表示优先复核点。
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  {mapSummary.map((item) => (
+                    <span
+                      key={item.label}
+                      className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold tabular-nums text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+                    >
+                      {item.label} {item.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute right-4 top-3 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
             点击节点查看关系
           </div>
         </div>
