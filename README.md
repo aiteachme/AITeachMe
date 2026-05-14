@@ -16,6 +16,12 @@
     <img alt="Workflow LangGraph" src="https://img.shields.io/badge/workflow-LangGraph-1f6feb" />
     <a href="https://github.com/aiteachme/AiTeachMe"><img alt="GitHub stars" src="https://img.shields.io/github/stars/aiteachme/AiTeachMe?style=social" /></a>
   </p>
+
+  <p>
+    <a href="https://github.com/aiteachme/AiTeachMe">
+      <img src="./docs/brand/readme-star-callout.svg" alt="如果 AITeachMe 帮你把资料变成可学习空间，欢迎点击右上角 Star 支持项目。" width="760" />
+    </a>
+  </p>
 </div>
 
 ---
@@ -101,7 +107,7 @@ flowchart LR
 
 ## 产品展示位
 
-> 这里先只预留展示结构，不新增截图或演示文件。后续公开发布前建议补齐真实截图、短 GIF 和一段完整课程样例。
+> 这里先只预留产品展示结构，不新增产品截图或演示文件。后续公开发布前建议补齐真实截图、短 GIF 和一段完整课程样例。
 
 | 场景 | 展示重点 | 推荐素材 |
 | --- | --- | --- |
