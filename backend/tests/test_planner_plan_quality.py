@@ -380,7 +380,8 @@ def test_structured_plan_replacement_prompt_requires_exact_count_and_drops_old_c
 
     assert "chapters 数量必须严格等于用户指定的 5 章" in prompt
     assert "上一版方案 JSON 只能作为上下文和被替换对象" in prompt
-    assert "不能保留极限、导数、级数、多元微分等旧章节" in prompt
+    assert "必须保持 N 章并全部围绕该范围展开" in prompt
+    assert "具体标题仍由本领域语义决定" in prompt
 
 
 def test_structured_plan_patch_prompt_requires_visible_focus_changes() -> None:
@@ -448,7 +449,11 @@ def test_structured_plan_prompt_requires_course_catalog_titles() -> None:
     assert "title 不使用冒号、副标题、分号或长串枚举" in prompt
     assert "key_points 才写学习动作" in prompt
     assert "本地代码不会做关键词提取" in prompt
-    assert "行列式、矩阵、初等变换、向量、线性方程组、特征值、二次型" in prompt
+    assert "示例只展示" in prompt
+    assert "不是候选词表" in prompt
+    assert "不能照抄" in prompt
+    assert "现金流表" in prompt
+    assert "该领域真实教材、课程或任务边界" in prompt
 
 
 def test_title_retry_prompt_sends_bad_titles_back_to_llm() -> None:

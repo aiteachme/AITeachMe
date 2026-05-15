@@ -34,6 +34,29 @@ def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() 
     )
 
 
+def test_title_resolution_prompt_uses_generalizable_examples_not_math_wordlist() -> None:
+    messages = pedagogy.build_chapter_title_resolution_messages(
+        course_name="产品设计",
+        digest_mode="systematic",
+        objective="讲清用户访谈后的需求收敛与方案取舍。",
+        required_elements=["用户访谈", "需求归纳", "方案取舍"],
+        search_queries=["需求分析", "原型评审"],
+        writing_instructions="标题要像真实课程目录。",
+        dense_context="本章讨论从访谈记录到可执行方案的判断过程。",
+        source_titles=["用户研究笔记"],
+        local_hits=2,
+        web_hits=0,
+    )
+    prompt = "\n".join(message["content"] for message in messages)
+
+    assert "标题示例只展示" in prompt
+    assert "不是候选词表" in prompt
+    assert "不能照抄" in prompt
+    assert "如果本章不属于这些领域" in prompt
+    assert "现金流表" in prompt
+    assert "洛必达法则" not in prompt
+
+
 def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
     chapters = [
         {"chapter_index": 1, "title": "核心概念总览", "summary": "short"},
@@ -396,6 +419,8 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "不能反复复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "考前速查与自测" in prompt
+    assert "接口权限的判断题" in prompt
+    assert "不能照抄或当候选词表" in prompt
     assert "不要只写“请自行练习”" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt

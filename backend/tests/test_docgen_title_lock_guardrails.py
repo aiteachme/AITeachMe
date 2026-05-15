@@ -50,3 +50,7 @@ def test_title_lock_prompt_discourages_repeated_abstract_sprint_titles() -> None
     assert "不要" in prompt
     assert "标题" in prompt
     assert "速查" in prompt or "快速" in prompt
+    assert "不是候选词表" in prompt
+    assert "不能照抄" in prompt
+    assert "如果本章领域与示例不同" in prompt
+    assert "现金流表" in prompt
