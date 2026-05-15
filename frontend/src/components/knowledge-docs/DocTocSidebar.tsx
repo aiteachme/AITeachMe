@@ -80,6 +80,7 @@ function TocNodes({
           <div key={item.id} className="my-0.5">
             <div
               data-toc-id={item.id}
+              title={item.text}
               className={cn(
                 "group flex items-center rounded-md transition-colors relative",
                 isActive
@@ -126,6 +127,8 @@ function TocNodes({
               {/* Title text */}
               <button
                 type="button"
+                title={item.text}
+                aria-label={item.text}
                 onClick={() => onTocItemClick(item.id)}
                 className={cn(
                   "flex-1 min-w-0 text-left py-1 pr-2 text-[13px] truncate transition-colors",

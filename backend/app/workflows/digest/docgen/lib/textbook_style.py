@@ -34,6 +34,7 @@ _HEADING_OUTLINE_PREFIX_RE = re.compile(
 _CONTENT_HEADING_TERMS = (
     "定义",
     "概念",
+    "含义",
     "性质",
     "定理",
     "公式",
@@ -42,8 +43,18 @@ _CONTENT_HEADING_TERMS = (
     "证明",
     "推导",
     "方法",
+    "模板",
+    "步骤",
+    "流程",
+    "思路",
+    "信号",
+    "题眼",
+    "条件",
+    "前提",
+    "边界",
     "结构",
     "关系",
+    "对照",
     "分布",
     "概率",
     "期望",
@@ -62,9 +73,19 @@ _CONTENT_HEADING_TERMS = (
     "IO",
     "例题",
     "题型",
+    "任务",
+    "自测",
+    "变式",
+    "解析",
+    "解法",
     "应用",
     "实验",
     "误差",
+    "易错",
+    "错因",
+    "误区",
+    "诊断",
+    "速查",
     "估计",
     "检验",
 )
@@ -86,6 +107,16 @@ _ACTION_STYLE_RE = re.compile(
     r"看|问|记|补|抓|拿|学|做|掌握|检查|确认|串联|整理)"
 )
 _QUESTION_STYLE_RE = re.compile(r"(?:吗|呢|么|怎么|如何|为什么|什么|哪些|？|\?)")
+_FOCUS_ACTION_CLAUSE_RE = re.compile(
+    r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|"
+    r"学会|明确|减少|进入|形成|覆盖|整理|把|用|帮助|让|能够).*$"
+)
+_TRAILING_ACTION_CONNECTOR_RE = re.compile(
+    r"(?:[，,、\s]*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用))+$"
+)
+_MALFORMED_HEADING_CONNECTOR_RE = re.compile(
+    r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用)\s*的"
+)
 
 _KIND_SUFFIX = {
     "coverage": "补充讲解",
@@ -98,6 +129,9 @@ _KIND_SUFFIX = {
     "structure": "知识结构",
     "quickref": "公式与判定速查",
 }
+_DUPLICATE_GENERATED_HEADING_RE = re.compile(
+    r"^.+的(?P<label>典型例题解析|例题与迁移|典型判断问题|知识联系|核心总结|知识结构|公式与判定速查|补充讲解)$"
+)
 _CALLOUT_WARNING_START_RE = re.compile(
     r"^\s*(?:⚠️?|❗|❌|⛔|🚫)?\s*(?:\*\*)?"
     r"(?:易错|误区|陷阱|警示|注意|不能|不要|失分|关键区别|使用前提|混淆|风险|坑点|防坑|常见错误|限制)",
@@ -156,12 +190,20 @@ def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
     text = strip_heading_number_prefix(text)
     text = re.sub(r"^[\s\-*]*(?:目标|要求|覆盖点|知识点)\s*[:：]\s*", "", text)
     text = re.sub(r"[：:；;。！？!?].*$", "", text)
+    text = _FOCUS_ACTION_CLAUSE_RE.sub("", text)
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;|-")
+    text = _TRAILING_ACTION_CONNECTOR_RE.sub("", text).strip(" ：:，,。；;|-")
     if not text:
         return ""
     if len(text) > max_chars:
-        text = text[:max_chars].rstrip(" ：:，,。；;|-")
+        candidate = text[:max_chars].rstrip(" ：:，,。；;|-")
+        next_char = text[max_chars : max_chars + 1]
+        if next_char and re.match(r"[\w\u4e00-\u9fff]", next_char):
+            last_delimiter = max(candidate.rfind("、"), candidate.rfind("，"), candidate.rfind(","))
+            if last_delimiter >= max_chars - 6:
+                candidate = candidate[:last_delimiter]
+        text = _TRAILING_ACTION_CONNECTOR_RE.sub("", candidate).strip(" ：:，,。；;|-")
     return text
 
 
@@ -253,6 +295,17 @@ def _numberless_fallback_title(fallback_title: str, *, default: str) -> str:
     return cleaned or default
 
 
+def _repair_malformed_textbook_heading_title(value: str, *, fallback_title: str = "") -> str:
+    title = str(value or "").strip()
+    if not title:
+        return ""
+    title = _MALFORMED_HEADING_CONNECTOR_RE.sub("的", title)
+    title = _TRAILING_ACTION_CONNECTOR_RE.sub("", title).strip(" ：:，,。；;|-")
+    if "方向导的" in title and "方向导数" in str(fallback_title or ""):
+        title = title.replace("方向导的", "方向导数的")
+    return title
+
+
 def rewrite_textbook_heading_line(
     line: str,
     *,
@@ -266,7 +319,10 @@ def rewrite_textbook_heading_line(
     if match is None:
         return line
     raw_title = match.group("title").strip()
-    numberless_title = strip_heading_number_prefix(raw_title)
+    numberless_title = _repair_malformed_textbook_heading_title(
+        strip_heading_number_prefix(raw_title),
+        fallback_title=fallback_title,
+    )
     level = match.group("prefix").count("#")
     if level == 1:
         if numberless_title and numberless_title != raw_title:
@@ -290,6 +346,8 @@ def rewrite_textbook_heading_line(
             fallback_title=fallback_title,
             level=level,
         )
+    if heading_title and heading_title != numberless_title:
+        return f"{match.group('prefix')} {heading_title}"
     if numberless_title and numberless_title != raw_title:
         return f"{match.group('prefix')} {numberless_title}"
     return line
@@ -302,8 +360,10 @@ def _classify_non_textbook_heading(title: str) -> str:
     if not cleaned:
         return ""
     has_content_term = any(term in cleaned for term in _CONTENT_HEADING_TERMS)
-    if re.search(r"(?:例题|题型|练习|解析|变式)", cleaned):
-        if len(cleaned) <= 8 or _looks_like_non_content_phrase(cleaned):
+    if re.search(r"(?:例题|题型|练习|解析|变式|自测|任务)", cleaned):
+        if len(cleaned) <= 12:
+            return ""
+        if _looks_like_non_content_phrase(cleaned):
             return "examples"
         return ""
     if "公式" in cleaned or "速查" in cleaned or "结论" in cleaned:
@@ -325,6 +385,20 @@ def _classify_non_textbook_heading(title: str) -> str:
     if cleaned.startswith(("第", "本节", "本章", "这一章", "这章")) and not has_content_term:
         return "structure"
     return ""
+
+
+def _demote_repeated_generated_heading_line(line: str, seen_counts: dict[str, int]) -> str:
+    match = _HEADING_LINE_RE.match(str(line or "").strip())
+    if match is None:
+        return line
+    title = match.group("title").strip()
+    duplicate_match = _DUPLICATE_GENERATED_HEADING_RE.match(title)
+    if duplicate_match is None:
+        return line
+    seen_counts[title] = seen_counts.get(title, 0) + 1
+    if seen_counts[title] == 1:
+        return line
+    return f"**{duplicate_match.group('label')}**"
 
 
 def _looks_like_non_content_phrase(text: str) -> bool:
@@ -360,6 +434,7 @@ def normalize_textbook_headings(
 
     lines: list[str] = []
     in_code_fence = False
+    seen_generated_headings: dict[str, int] = {}
     for line in str(markdown or "").splitlines():
         if line.lstrip().startswith("```"):
             in_code_fence = not in_code_fence
@@ -368,14 +443,13 @@ def normalize_textbook_headings(
         if in_code_fence:
             lines.append(line)
             continue
-        lines.append(
-            rewrite_textbook_heading_line(
-                line,
-                digest_mode=digest_mode,
-                fallback_title=fallback_title,
-                focus_items=focus_items,
-            )
+        rewritten = rewrite_textbook_heading_line(
+            line,
+            digest_mode=digest_mode,
+            fallback_title=fallback_title,
+            focus_items=focus_items,
         )
+        lines.append(_demote_repeated_generated_heading_line(rewritten, seen_generated_headings))
     return "\n".join(lines)
 
 
@@ -530,19 +604,19 @@ def format_worked_example_section(
         if not stem:
             continue
         title = f"例题 {index}" + (f"：{label}" if label else "")
-        lines.extend([f"### {title}", "", f"**题目**：{stem}", "", "**解析**："])
+        lines.extend(["> [!IMPORTANT]", ">", f"> **{title}**", ">", f"> **题目**：{stem}", ">", "> **解析**："])
         if analysis_steps:
-            lines.extend(f"{step_index}. {step}" for step_index, step in enumerate(analysis_steps, start=1))
+            lines.extend(f"> {step_index}. {step}" for step_index, step in enumerate(analysis_steps, start=1))
         else:
             lines.extend(
                 [
-                    "1. 先识别题目给出的对象、条件和要求。",
-                    "2. 再选择本章对应的定义、公式或判定方法。",
-                    "3. 最后检查结论是否满足题目条件和单位/范围要求。",
+                    "> 1. 先识别题目给出的对象、条件和要求。",
+                    "> 2. 再选择本章对应的定义、公式或判定方法。",
+                    "> 3. 最后检查结论是否满足题目条件和单位/范围要求。",
                 ]
             )
         if pitfall:
-            lines.extend(["", f"**易错点**：{pitfall}"])
+            lines.extend([">", f"> **易错点**：{pitfall}"])
         lines.append("")
     return "\n".join(lines).strip()
 

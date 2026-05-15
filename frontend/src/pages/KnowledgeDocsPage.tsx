@@ -1985,7 +1985,7 @@ export function KnowledgeDocsPage() {
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
-  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(true);
+  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
   const graphDrawerRef = useRef<HTMLDivElement>(null);
   const isNarrowInitialViewport = initialViewportWidth < 640;
   const graphDesktopMaxWidth = Math.max(400, initialViewportWidth * 0.94);

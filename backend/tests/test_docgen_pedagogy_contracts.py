@@ -1,5 +1,9 @@
 from app.workflows.digest.common import pedagogy
-from app.workflows.digest.docgen.lib.chapter_enhancement import _append_practice_section
+from app.workflows.digest.docgen.lib.chapter_enhancement import (
+    _append_practice_section,
+    _append_problem_pattern_section,
+)
+from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
 
@@ -154,10 +158,120 @@ def test_sprint_practice_supplement_repairs_weak_existing_practice_heading() -> 
     )
 
     assert supplemented != markdown
-    assert supplemented.count("### 例题") >= 3
+    assert supplemented.count("> **例题") >= 3
+    assert "> [!IMPORTANT]" in supplemented
     assert "**题目**" in supplemented
     assert "**解析**" in supplemented
     assert "**易错点**" in supplemented
+
+
+def test_sprint_practice_supplement_only_fills_missing_example_gap() -> None:
+    markdown = """# 矩阵分解
+
+## 练习与自检
+
+### 例题 1：奇异值分解
+
+**题目**：判断一个矩阵是否适合用奇异值分解做低秩近似。
+
+**解析**：先看矩阵和目标。
+
+**易错点**：不能只看矩阵大小。
+
+### 例题 2：低秩近似
+
+**题目**：给定保留阶数，说明如何判断近似是否足够。
+
+**解析**：先看保留的奇异值。
+
+**易错点**：不要忽略误差要求。
+"""
+    questions = [
+        {
+            "label": "奇异值分解",
+            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
+            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
+            "pitfall": "不能只看矩阵大小，还要看近似目标。",
+        },
+        {
+            "label": "低秩近似",
+            "stem": "给定保留阶数，说明如何判断近似是否足够。",
+            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
+            "pitfall": "只保留最大项不等于一定满足误差要求。",
+        },
+        {
+            "label": "误差判断",
+            "stem": "比较两个低秩近似方案，选出更稳妥的一种。",
+            "analysis_steps": ["先比较目标。", "再比较误差和信息损失。"],
+            "pitfall": "不要把计算方便当成误差更小。",
+        },
+    ]
+
+    supplemented = _append_practice_section(
+        markdown,
+        questions,
+        digest_mode="sprint",
+        title="矩阵分解",
+    )
+
+    assert supplemented != markdown
+    assert supplemented.count("### 例题") + supplemented.count("> **例题") == 3
+    assert "误差判断" in supplemented
+
+
+def test_sprint_problem_pattern_section_adds_question_type_table() -> None:
+    markdown = "# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。\n"
+    questions = [
+        {
+            "label": "奇异值分解",
+            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
+            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。", "最后检查误差要求。"],
+            "pitfall": "不能只看矩阵大小，还要看近似目标。",
+        },
+        {
+            "label": "低秩近似",
+            "stem": "给定保留阶数，说明如何判断近似是否足够。",
+            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
+            "pitfall": "只保留最大项不等于一定满足误差要求。",
+        },
+    ]
+
+    supplemented = _append_problem_pattern_section(
+        markdown,
+        questions,
+        digest_mode="sprint",
+        title="矩阵分解",
+    )
+
+    assert supplemented != markdown
+    assert "题型归纳与速练" in supplemented
+    assert "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |" in supplemented
+    assert "奇异值分解" in supplemented
+    assert "先看矩阵和目标" in supplemented
+    assert _append_problem_pattern_section(markdown, questions, digest_mode="systematic", title="矩阵分解") == markdown
+
+
+def test_sprint_problem_pattern_section_does_not_accept_keyword_only_heading() -> None:
+    markdown = "# 矩阵分解\n\n## 题型归纳\n\n本章要注意题眼、处理模板和易错诊断。\n"
+    questions = [
+        {
+            "label": "奇异值分解",
+            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
+            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
+            "pitfall": "不能只看矩阵大小，还要看近似目标。",
+        }
+    ]
+
+    supplemented = _append_problem_pattern_section(
+        markdown,
+        questions,
+        digest_mode="sprint",
+        title="矩阵分解",
+    )
+
+    assert supplemented != markdown
+    assert "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |" in supplemented
+    assert "奇异值分解" in supplemented
 
 
 def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples() -> None:
@@ -177,5 +291,28 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     prompt = messages[-1]["content"]
 
     assert "速查表或判断表" in prompt
+    assert "题型归纳表" in prompt
+    assert "> [!IMPORTANT]" in prompt
+    assert "> [!WARNING]" in prompt
+    assert "不能反复复用章节标题" in prompt
     assert "题目/案例-解析-易错点" in prompt
     assert "不要只写“请自行练习”" in prompt
+
+
+def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
+    messages = build_chapter_review_messages(
+        chapter_title="矩阵分解",
+        digest_mode="sprint",
+        chapter_task={"confirmed_title": "矩阵分解"},
+        markdown="# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。",
+        claim_ledger={},
+        claim_evidence_map={},
+        conflict_report={},
+        rule_review={},
+    )
+    prompt = messages[-1]["content"]
+
+    assert "题型归纳" in prompt
+    assert "题眼信号" in prompt
+    assert "处理模板" in prompt
+    assert "易错诊断" in prompt

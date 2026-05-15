@@ -230,10 +230,95 @@ def _build_practice_questions(
 
 
 _PRACTICE_HEADING_RE = re.compile(r"^#{2,4}\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
-_WORKED_EXAMPLE_TITLE_RE = re.compile(r"^#{3,5}\s+.*(?:例题|案例|任务|变式).*$", re.MULTILINE)
-_PRACTICE_STEM_RE = re.compile(r"(?m)^\s*\*\*(?:题目|任务|案例)\*\*[：:]")
-_PRACTICE_ANALYSIS_RE = re.compile(r"(?m)^\s*\*\*(?:解析|解法|步骤)\*\*[：:]")
-_PRACTICE_PITFALL_RE = re.compile(r"(?m)^\s*\*\*(?:易错点|错因|注意)\*\*[：:]")
+_WORKED_EXAMPLE_TITLE_RE = re.compile(r"(?m)^(?:#{3,5}\s+.*(?:例题|案例|任务|变式)|\s*>\s*\*\*例题\s*\d*)")
+_PRACTICE_STEM_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:题目|任务|案例)\*\*[：:]")
+_PRACTICE_ANALYSIS_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:解析|解法|步骤)\*\*[：:]")
+_PRACTICE_PITFALL_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:易错点|错因|注意)\*\*[：:]")
+
+
+_PROBLEM_PATTERN_TABLE_RE = re.compile(
+    r"(?m)^\|\s*(?:题型/任务|题型|任务类型)\s*\|.*(?:题眼|识别信号).*(?:处理模板|解题模板).*(?:易错|错因|注意).*\|\s*$",
+    re.IGNORECASE,
+)
+_PROBLEM_PATTERN_TABLE_ROW_RE = re.compile(r"(?m)^\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*$")
+
+
+def _safe_table_cell(value: object, *, fallback: str, max_chars: int = 48) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip()).replace("|", "｜")
+    if not text:
+        text = fallback
+    if len(text) > max_chars:
+        text = text[: max_chars - 3].rstrip() + "..."
+    return text
+
+
+def _compact_template_steps(steps: object) -> str:
+    if not isinstance(steps, list):
+        return ""
+    cleaned = [
+        re.sub(r"^\s*(?:\d+[.、]\s*)?", "", str(item or "").strip())
+        for item in steps
+        if str(item or "").strip()
+    ]
+    return " -> ".join(cleaned[:3])
+
+
+def _derive_problem_signal(item: dict) -> str:
+    stem = str(item.get("stem") or item.get("question") or "").strip()
+    label = str(item.get("label") or "").strip()
+    if "条件" in stem:
+        return f"题干给出条件变化时，先锁定{label or '适用前提'}"
+    if "判断" in stem:
+        return f"看到判断/辨析任务，先找{label or '判定依据'}"
+    if "比较" in stem or "辨析" in stem:
+        return f"出现比较或辨析时，先分清{label or '边界条件'}"
+    if "步骤" in stem or "路径" in stem:
+        return f"要求步骤或路径时，先写{label or '处理顺序'}"
+    return f"先看对象、条件和目标，再定位{label or '对应方法'}"
+
+
+def _has_problem_pattern_table(markdown: str) -> bool:
+    header_match = _PROBLEM_PATTERN_TABLE_RE.search(str(markdown or ""))
+    if not header_match:
+        return False
+    return bool(_PROBLEM_PATTERN_TABLE_ROW_RE.search(markdown[header_match.end() :]))
+
+
+def _append_problem_pattern_section(markdown: str, questions: list[dict], *, digest_mode: str, title: str = "") -> str:
+    mode_profile = get_docgen_mode_profile(digest_mode)
+    if not mode_profile.is_sprint or not questions:
+        return markdown
+    if _has_problem_pattern_table(markdown):
+        return markdown
+    focus = choose_heading_focus(
+        [title, *(str(item.get("label") or item.get("stem") or "") for item in questions[:3])],
+        fallback=title or "本章重点",
+    )
+    heading = f"## {focus}的题型归纳与速练" if focus else "## 题型归纳与速练"
+    rows = [
+        "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |",
+        "| --- | --- | --- | --- |",
+    ]
+    for index, item in enumerate(questions[:4], start=1):
+        label = _safe_table_cell(item.get("label"), fallback=f"题型 {index}", max_chars=28)
+        signal = _safe_table_cell(_derive_problem_signal(item), fallback="先看对象、条件和目标", max_chars=42)
+        template = _safe_table_cell(
+            _compact_template_steps(item.get("analysis_steps")),
+            fallback="识别条件 -> 选择方法 -> 检查边界",
+            max_chars=58,
+        )
+        pitfall = _safe_table_cell(item.get("pitfall"), fallback="不要只背结论，先验适用条件", max_chars=48)
+        rows.append(f"| {label} | {signal} | {template} | {pitfall} |")
+    section = "\n".join(
+        [
+            heading,
+            "",
+            "这部分用于速成课快速定位：先看题型/任务，再看题眼信号、处理模板和易错诊断。",
+            "",
+            *rows,
+        ]
+    )
+    return markdown.rstrip() + "\n\n" + section + "\n"
 
 
 def _structured_practice_signal_count(markdown: str) -> int:
@@ -269,8 +354,10 @@ def _append_practice_section(markdown: str, questions: list[dict], *, digest_mod
     has_practice_area = has_worked_example_section(markdown) or _PRACTICE_HEADING_RE.search(markdown)
     if has_practice_area and existing_examples >= minimum_examples:
         return markdown
-    supplement_count = max(minimum_examples - existing_examples, minimum_examples if has_practice_area else len(questions))
-    supplement_questions = questions[: max(1, min(len(questions), supplement_count))]
+    supplement_count = max(1, minimum_examples - existing_examples) if has_practice_area else len(questions)
+    supplement_start = min(existing_examples, len(questions) - 1) if has_practice_area else 0
+    supplement_end = max(supplement_start + 1, min(len(questions), supplement_start + supplement_count))
+    supplement_questions = questions[supplement_start:supplement_end]
     section = format_worked_example_section(
         supplement_questions,
         digest_mode=digest_mode,
@@ -413,6 +500,7 @@ async def enhance_chapter_draft(
         if include_practice
         else []
     )
+    markdown = _append_problem_pattern_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
     markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
     markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
     enhanced = EnhancedChapterDraft(

@@ -13,7 +13,11 @@ from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_h
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
-from app.workflows.digest.docgen.lib.textbook_style import normalize_educational_callouts, normalize_textbook_headings
+from app.workflows.digest.docgen.lib.textbook_style import (
+    clean_heading_focus,
+    normalize_educational_callouts,
+    normalize_textbook_headings,
+)
 
 
 def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
@@ -452,6 +456,73 @@ def test_textbook_headings_remove_generic_untitled_example_prefix() -> None:
 
     assert "### 典型例题解析" in fixed
     assert "未命名章节的典型例题解析" not in fixed
+
+
+def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
+    assert (
+        clean_heading_focus(
+            "建立极限的基本语言与常见题型入口，先会识别题目属于哪类极限问题。",
+            max_chars=32,
+        )
+        == "建立极限的基本语言与常见题型入口"
+    )
+    assert clean_heading_focus("理解多元函数、偏导数、全微分、方向导数等基础概念") == "理解多元函数、偏导数、全微分"
+
+
+def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> None:
+    raw = "\n".join(
+        [
+            "## 区分不定积分、定积分及其几何意义，先的典型例题解析",
+            "### 处理模板",
+            "### 题眼信号",
+            "### 易错诊断",
+            "## 理解多元函数、偏导数、全微分、方向导的公式与判定速查",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="多元函数的偏导数、全微分与方向导数",
+        focus_items=[
+            "区分不定积分、定积分及其几何意义，先建立概念边界",
+        ],
+    )
+
+    assert "区分不定积分、定积分及其几何意义，先的" not in fixed
+    assert "## 区分不定积分、定积分及其几何意义的典型例题解析" in fixed
+    assert "### 处理模板" in fixed
+    assert "### 题眼信号" in fixed
+    assert "### 易错诊断" in fixed
+    assert "方向导的公式与判定速查" not in fixed
+    assert "方向导数的公式与判定速查" in fixed
+
+
+def test_textbook_heading_normalization_demotes_repeated_generated_titles() -> None:
+    raw = "\n".join(
+        [
+            "### 极限题型入口的典型例题解析",
+            "第一题。",
+            "### 极限题型入口的典型例题解析",
+            "第二题。",
+            "### 极限题型入口的公式与判定速查",
+            "速查一。",
+            "### 极限题型入口的公式与判定速查",
+            "速查二。",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="极限、连续与常见极限题的计算方法",
+        focus_items=[],
+    )
+
+    assert fixed.count("### 极限题型入口的典型例题解析") == 1
+    assert fixed.count("### 极限题型入口的公式与判定速查") == 1
+    assert fixed.count("**典型例题解析**") == 1
+    assert fixed.count("**公式与判定速查**") == 1
 
 
 def test_normalize_keeps_loose_display_math_inside_callout() -> None:
