@@ -34,6 +34,10 @@ _TRAINING_TITLE_RE = re.compile(
     r"(?:考试|考点|考法|题型|题目|真题|例题|练习|自测|训练|变式|错因|解题|证明|计算|求导|"
     r"积分|极限|最值|方程|不等式|应用题|综合题|综合训练)"
 )
+_MERMAID_FENCE_RE = re.compile(
+    r"(?im)^\s*```\s*(?:mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|"
+    r"stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b"
+)
 
 
 def _sanitize_public_doc_terms(markdown: str) -> str:
@@ -46,19 +50,24 @@ def _sanitize_public_doc_terms(markdown: str) -> str:
     )
 
 
+def _has_rendered_mermaid_block(markdown: str) -> bool:
+    return bool(_MERMAID_FENCE_RE.search(str(markdown or "")))
+
+
 def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     additions: list[str] = []
     existing = {
         "mermaid": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="mermaid")},
         "interactive": {item.strip().casefold() for item in extract_asset_request_descriptions(markdown, kind="interactive")},
     }
+    has_rendered_mermaid = _has_rendered_mermaid_block(markdown)
     for item in requests:
         kind = str(item.get("kind") or "").strip().lower()
         description = str(item.get("description") or "").strip()
         if not description:
             continue
         description_key = description.casefold()
-        if kind == "mermaid" and description_key not in existing["mermaid"]:
+        if kind == "mermaid" and not has_rendered_mermaid and description_key not in existing["mermaid"]:
             additions.append(build_asset_request_block("mermaid", description))
             existing["mermaid"].add(description_key)
     if not additions:

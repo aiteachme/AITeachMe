@@ -27,23 +27,6 @@ from app.workflows.digest.docgen.lib.models import (
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
-_MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")
-_STATIC_HTML_FIGURE_HINT_TERMS = (
-    "函数",
-    "图像",
-    "坐标",
-    "几何",
-    "三角形",
-    "四边形",
-    "圆",
-    "数轴",
-    "波形",
-    "单位换算",
-    "面积",
-    "周长",
-    "斜率",
-)
-
 
 def _priority_files_for_chapter(
     *,
@@ -95,23 +78,6 @@ def _briefs_by_index(
     briefs: Sequence[ChapterExecutionBrief],
 ) -> dict[int, ChapterExecutionBrief]:
     return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
-
-
-def _suggest_visual_placeholder_requests(
-    *,
-    title: str,
-    required_elements: Sequence[str],
-    concept_targets: Sequence[str],
-) -> list[dict[str, str]]:
-    """Suggest chapter-level asset placeholders before writer generation."""
-
-    visual_terms = " ".join([title, *required_elements, *concept_targets])
-    requests: list[dict[str, str]] = []
-    if any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS):
-        requests.append({"kind": "mermaid", "description": f"{title} 的结构关系图"})
-    if any(marker in visual_terms for marker in _STATIC_HTML_FIGURE_HINT_TERMS):
-        requests.append({"kind": "static_html_figure", "description": f"{title} 的静态题图或概念图示"})
-    return requests
 
 
 def _example_coverage_plan(
@@ -288,11 +254,7 @@ def assemble_chapter_generation_plan(
             priority_file_ids = seed.priority_file_ids
         if seed.source_slices:
             source_slices = list(seed.source_slices)
-        placeholder_requests = _suggest_visual_placeholder_requests(
-            title=locked.enhanced_title or confirmed_title,
-            required_elements=seed.required_elements,
-            concept_targets=brief.concept_targets,
-        )
+        placeholder_requests: list[dict[str, str]] = []
         content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
         if not content_role_targets:
             raise ValueError(f"chapter execution brief is missing role targets for chapter {chapter_index}")

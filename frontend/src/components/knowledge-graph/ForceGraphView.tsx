@@ -193,7 +193,7 @@ const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxCo
   application_extension: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
 };
 const LAYER_GUIDE_COLORS = ["#6366f1", "#2563eb", "#0f766e", "#f59e0b", "#f43f5e"];
-const GRAPH_LAYOUT_VERSION = 9;
+const GRAPH_LAYOUT_VERSION = 10;
 const NODE_CARD_HEIGHT = 28;
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
@@ -213,12 +213,13 @@ function getStructuredGraphMetrics(nodeCount: number, width: number, height: num
   const topPad = Math.min(112, Math.max(76, height * 0.1));
   const bottomPad = Math.min(96, Math.max(66, height * 0.085));
   const usableWidth = Math.max(360, canvasWidth - leftPad - rightPad);
-  const usableHeight = Math.max(620, height - topPad - bottomPad);
+  const densityHeight = Math.max(620, 620 + Math.max(0, nodeCount - 42) * 14);
+  const usableHeight = Math.max(620, height - topPad - bottomPad, densityHeight);
   const layerStep = usableWidth / Math.max(1, GRAPH_LAYERS.length - 1);
   const centerX = canvasWidth / 2;
   const centerY = topPad + usableHeight * 0.52;
   const clusterCellX = Math.min(132, Math.max(108, canvasWidth * 0.078)) * densityScale;
-  const clusterCellY = Math.min(76, Math.max(58, height * 0.075)) * densityScale;
+  const clusterCellY = Math.min(92, Math.max(58, usableHeight * 0.055)) * densityScale;
 
   return {
     canvasWidth,
@@ -240,7 +241,8 @@ function getRegionSurface(metrics: ReturnType<typeof getStructuredGraphMetrics>,
   const x = Math.max(24, metrics.leftPad - 20);
   const y = Math.max(58, metrics.topPad - 6);
   const width = Math.max(720, metrics.canvasWidth - x - Math.max(24, metrics.rightPad - 20));
-  const frameHeight = Math.max(620, Math.min(height - y - 20, metrics.usableHeight + 80));
+  const viewportHeight = Math.max(620, height - y - 20);
+  const frameHeight = Math.max(viewportHeight, metrics.usableHeight + 80);
 
   return { x, y, width, height: frameHeight };
 }
@@ -420,9 +422,10 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
     const averageCardWidth = sorted.length
       ? sorted.reduce((total, node) => total + graphNodeCardWidth(node), 0) / sorted.length
       : 124;
-    const comfortableColumnWidth = Math.max(154, averageCardWidth + 42);
-    const maxColumnsByWidth = Math.max(1, Math.floor((innerWidth + 42) / comfortableColumnWidth));
-    const preferredColumns = [2, 2, 3, 3, 4][layerIndex] ?? 3;
+    const comfortableColumnWidth = Math.max(132, averageCardWidth + 28);
+    const maxColumnsByWidth = Math.max(1, Math.floor((innerWidth + 28) / comfortableColumnWidth));
+    const basePreferredColumns = [2, 3, 4, 4, 5][layerIndex] ?? 4;
+    const preferredColumns = sorted.length >= 18 ? basePreferredColumns + 1 : basePreferredColumns;
     const columns = Math.max(1, Math.min(preferredColumns, maxColumnsByWidth, sorted.length));
     const rows = Math.max(1, Math.ceil(sorted.length / columns));
     const cellX = columns <= 1 ? 0 : innerWidth / (columns - 1);
@@ -792,7 +795,7 @@ export function ForceGraphView({
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
-  const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
+  const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
   const [showDetailNodes, setShowDetailNodes] = useState(true);
   const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(() => new Set(["similar", "contrast"]));
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -812,7 +815,7 @@ export function ForceGraphView({
   const showEdgeLabelsRef = useRef(false);
   const showAllEdgesRef = useRef(false);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(true);
+  const showAllNodeLabelsRef = useRef(false);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
 
@@ -883,7 +886,7 @@ export function ForceGraphView({
     lastGraphCountsRef.current = null;
     setHiddenRelationTypes(new Set(["similar", "contrast"]));
     setShowDetailNodes(true);
-    setShowAllNodeLabels(true);
+    setShowAllNodeLabels(false);
     setShowSettingsPanel(false);
     setNodeSearchQuery("");
     setGraphDelta(null);
@@ -1342,6 +1345,8 @@ export function ForceGraphView({
 
     const structuredPositions = buildStructuredNodePositions(nodes, width, height);
     const layoutMetrics = getStructuredGraphMetrics(nodes.length, width, height);
+    const regionSurface = getRegionSurface(layoutMetrics, height);
+    const workspaceHeight = Math.max(height, regionSurface.y + regionSurface.height + 40);
 
     // Deep copy nodes/links so D3 can mutate them. Preserve positions across live graph refreshes.
     const simNodes: GraphNode[] = nodes.map((node) => {
@@ -1500,15 +1505,15 @@ export function ForceGraphView({
     // Background: subtle workspace grid, borrowed from diagram tools without making the graph noisy.
     svgSel.append("rect")
       .attr("width", width)
-      .attr("height", height)
+      .attr("height", workspaceHeight)
       .attr("fill", "#f8fbff");
     svgSel.append("rect")
       .attr("width", width)
-      .attr("height", height)
+      .attr("height", workspaceHeight)
       .attr("fill", "url(#knowledge-graph-grid)");
     svgSel.append("rect")
       .attr("width", width)
-      .attr("height", height)
+      .attr("height", workspaceHeight)
       .attr("fill", "rgba(255,255,255,0.62)");
 
     // Container for zoom/pan
@@ -1520,7 +1525,6 @@ export function ForceGraphView({
       const layer = clampGraphLayer(node.layout_layer);
       layerNodeCounts.set(layer, (layerNodeCounts.get(layer) ?? 0) + 1);
     }
-    const regionSurface = getRegionSurface(layoutMetrics, height);
     layerBand.append("rect")
       .attr("class", "layer-region-surface")
       .attr("x", regionSurface.x)

@@ -2,6 +2,7 @@ from app.workflows.digest.common import pedagogy
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _append_practice_section,
     _build_practice_questions,
+    _ensure_requested_placeholders,
     _minimum_visible_examples,
 )
 from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
@@ -55,6 +56,18 @@ def test_title_resolution_prompt_uses_generalizable_examples_not_math_wordlist()
     assert "如果本章不属于这些领域" in prompt
     assert "现金流表" in prompt
     assert "洛必达法则" not in prompt
+
+
+def test_mermaid_placeholder_not_added_when_writer_already_rendered_diagram() -> None:
+    markdown = "# Hardware\n\n```mermaid\ngraph TD\n  A[CPU] --> B[Memory]\n```\n"
+    rendered = _ensure_requested_placeholders(
+        markdown,
+        [{"kind": "mermaid", "description": "hardware relation diagram"}],
+    )
+
+    assert rendered == markdown
+    assert rendered.count("```mermaid") == 1
+    assert "ATM_DOCGEN_ASSET_REQUEST" not in rendered
 
 
 def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
