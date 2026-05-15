@@ -176,9 +176,9 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # Gateway, LM Studio, and third-party API aggregators. DashScope/Qwen has
     # its own provider-specific defaults below.
     "openai_compatible": _provider_model_defaults(
-        reason="deepseek-v4-pro",
-        primary="deepseek-v4-flash",
-        light="deepseek-v4-flash",
+        reason="gemini-3.1-flash-lite",
+        primary="gemini-3.1-flash-lite",
+        light="gemini-3.1-flash-lite",
         embedding="text-embedding-v4",
     ),
     "vllm": _provider_model_defaults(
