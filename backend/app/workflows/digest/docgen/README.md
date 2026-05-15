@@ -320,6 +320,7 @@ lock_titles_for_chapters
   作用：把标题锁定从原来的整本 outline enhance 中拆出来，改成收在单节点里的章节级并行极短结构化任务。
   约束：
     - 只锁标题。
+    - 标题语义由结构化 LLM 根据用户目标、confirmed plan、章节目标和 required_elements 判断；本地代码只做空标题、编号标题、过长标题等发布形态校验，不用关键词抽取或词项交集判断标题是否贴合。
     - 不生成 teaching outline。
     - 不生成 retrieval queries。
     - 不生成 media requests。

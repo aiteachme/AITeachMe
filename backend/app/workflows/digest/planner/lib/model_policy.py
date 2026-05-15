@@ -15,7 +15,8 @@ PlannerModelSlot = Literal["light", "primary", "reason"]
 class PlannerModelStep(str, Enum):
     STREAM_BRIEF = "stream_brief_and_extract_intent.stream_planner_brief"
     EXTRACT_INTENT = "stream_brief_and_extract_intent.extract_plan_intent"
-    COMPOSE_PLAN = "stream_and_parse_plan_draft.compose_plan"
+    VISIBLE_PLAN = "stream_and_parse_plan_draft.visible_plan"
+    STRUCTURED_PLAN = "stream_and_parse_plan_draft.structured_plan"
     COURSE_NAME = "generate_course_name"
     COURSE_ICON = "generate_course_name.select_course_icon"
 
@@ -95,14 +96,23 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         temperature=0.1,
         note="结构化抽取内部规划抓手，输出短，优先 light 提速。",
     ),
-    PlannerModelStep.COMPOSE_PLAN: PlannerModelPolicy(
-        step=PlannerModelStep.COMPOSE_PLAN,
+    PlannerModelStep.VISIBLE_PLAN: PlannerModelPolicy(
+        step=PlannerModelStep.VISIBLE_PLAN,
         call_type="stream",
         model="light",
-        max_tokens=6000,
+        max_tokens=1200,
         timeout_s=480,
         temperature=0.2,
-        note="生成可确认课程方案和机器 JSON 合同，是 Planner 最核心的规划调用。",
+        note="流式输出用户可见计划说明，不承载机器合同。",
+    ),
+    PlannerModelStep.STRUCTURED_PLAN: PlannerModelPolicy(
+        step=PlannerModelStep.STRUCTURED_PLAN,
+        call_type="structured",
+        model="light",
+        max_tokens=5000,
+        timeout_s=480,
+        temperature=0.1,
+        note="通过 response_model 生成可确认课程方案和机器大纲合同。",
     ),
     PlannerModelStep.COURSE_NAME: PlannerModelPolicy(
         step=PlannerModelStep.COURSE_NAME,

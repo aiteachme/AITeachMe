@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import uuid
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -54,7 +53,6 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import (
-    build_supplement_chapter_payload,
     normalize_planner_payload,
     planner_mode_label,
 )
@@ -382,6 +380,12 @@ def _plan_response(
         chapter_plan=list(plan.get("chapter_plan") or []),
         build_constraints=dict(plan.get("build_constraints") or {}),
         plan_summary=str(plan.get("plan_summary") or ""),
+        plan_steps=[str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
+        adjustment_questions=[
+            str(item).strip()
+            for item in list(plan.get("adjustment_questions") or [])
+            if str(item).strip()
+        ],
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
@@ -578,6 +582,14 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     if plan_steps:
         lines.extend(["", "## 计划步骤"])
         lines.extend(f"{index}. {item}" for index, item in enumerate(plan_steps, start=1))
+    adjustment_questions = [
+        str(item).strip()
+        for item in list(plan_payload.get("adjustment_questions") or [])
+        if str(item).strip()
+    ]
+    if adjustment_questions:
+        lines.extend(["", "## 可以继续确认的问题"])
+        lines.extend(f"- {item}" for item in adjustment_questions)
     chapter_lines = []
     for index, chapter in enumerate(chapters, start=1):
         title = str(chapter.get("title") or "").strip()
@@ -1016,6 +1028,11 @@ def _normalized_plan_payload(
         "build_constraints": build_constraints,
         "plan_summary": str(plan.get("plan_summary") or ""),
         "plan_steps": [str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
+        "adjustment_questions": [
+            str(item).strip()
+            for item in list(plan.get("adjustment_questions") or [])
+            if str(item).strip()
+        ],
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
@@ -1023,45 +1040,6 @@ def _normalized_plan_payload(
         payload["planner_context"] = context_payload
         payload["docgen_history_brief"] = str(context_payload.get("docgen_history_brief") or "")
     return payload
-
-
-def _clean_supplement_topic(value: object, *, max_chars: int = 18) -> str:
-    text = " ".join(str(value or "").strip().split())
-    text = re.sub(r"^[#\-\d.、\s]+", "", text)
-    text = re.sub(r"[：:；;。！？!?].*$", "", text)
-    text = text.strip(" ：:，,。；;|-")
-    if len(text) > max_chars:
-        text = text[:max_chars].rstrip(" ：:，,。；;|-")
-    return text
-
-
-def _base_supplement_topic(plan: Mapping[str, Any], chapters: list[dict[str, Any]], *, user_prompt: str) -> str:
-    seeds: list[object] = [
-        plan.get("course") or plan.get("course_name"),
-        user_prompt,
-        *(chapter.get("title") for chapter in chapters),
-    ]
-    for seed in seeds:
-        topic = _clean_supplement_topic(seed, max_chars=10)
-        if topic and topic not in {"核心概念", "关键结构", "综合练习", "复盘安排", "学习资料"}:
-            return topic
-    return "本主题"
-
-
-def _supplement_topics_from_plan(
-    plan: Mapping[str, Any],
-    chapters: list[dict[str, Any]],
-    *,
-    user_prompt: str,
-    digest_mode: str,
-) -> list[str]:
-    base = _base_supplement_topic(plan, chapters, user_prompt=user_prompt)
-    suffixes = (
-        ["高价值任务", "快速抓手", "易错边界", "变式练习", "综合回看"]
-        if str(digest_mode or "").strip().lower() == "sprint"
-        else ["学习边界", "关键对象", "结构关系", "方法应用", "迁移任务"]
-    )
-    return [f"{base}{suffix}" for suffix in suffixes]
 
 
 def _dedupe_payload_texts(items: list[object], *, limit: int = 10) -> list[str]:
@@ -1131,53 +1109,7 @@ def _ensure_chapter_count_payload(
 ) -> list[dict[str, Any]]:
     normalized = [dict(item) for item in chapters if isinstance(item, dict)]
     effective_max = max(max_chapters, min_chapters) if max_chapters > 0 else 0
-    normalized = _cap_chapter_payload(normalized, max_chapters=effective_max)
-    if min_chapters <= 0 or len(normalized) >= min_chapters:
-        return normalized
-    existing_titles = {
-        str(item.get("title") or "").strip().casefold()
-        for item in normalized
-        if str(item.get("title") or "").strip()
-    }
-    supplement_topics = _supplement_topics_from_plan(
-        plan or {},
-        normalized,
-        user_prompt=user_prompt,
-        digest_mode=digest_mode,
-    )
-    while len(normalized) < min_chapters:
-        index = len(normalized) + 1
-        title = supplement_topics[(index - 1) % len(supplement_topics)]
-        if title.casefold() in existing_titles:
-            title = f"{title} {index}"
-        existing_titles.add(title.casefold())
-        normalized.append(
-            build_supplement_chapter_payload(
-                index=index,
-                topic=title,
-                digest_mode=digest_mode,
-                user_prompt=user_prompt,
-            )
-        )
     return _cap_chapter_payload(normalized, max_chapters=effective_max)
-
-
-def _ensure_min_chapter_payload(
-    chapters: list[Any],
-    *,
-    min_chapters: int,
-    digest_mode: str,
-    user_prompt: str,
-    plan: Mapping[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    return _ensure_chapter_count_payload(
-        chapters,
-        min_chapters=min_chapters,
-        max_chapters=0,
-        digest_mode=digest_mode,
-        user_prompt=user_prompt,
-        plan=plan,
-    )
 
 
 def mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:

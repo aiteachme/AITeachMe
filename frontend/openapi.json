@@ -9276,6 +9276,20 @@
             "title": "Plan Summary",
             "default": ""
           },
+          "plan_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plan Steps"
+          },
+          "adjustment_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Adjustment Questions"
+          },
           "status": {
             "type": "string",
             "title": "Status",

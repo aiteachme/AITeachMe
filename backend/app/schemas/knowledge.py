@@ -777,6 +777,8 @@ class BuildPlannerPlanResponse(BaseModel):
     chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_summary: str = ""
+    plan_steps: list[str] = Field(default_factory=list)
+    adjustment_questions: list[str] = Field(default_factory=list)
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None

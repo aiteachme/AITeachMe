@@ -176,9 +176,9 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # Gateway, LM Studio, and third-party API aggregators. DashScope/Qwen has
     # its own provider-specific defaults below.
     "openai_compatible": _provider_model_defaults(
-        reason="deepseek-v4-flash",
-        primary="qwen-flash",
-        light="qwen-flash",
+        reason="deepseek-v4-pro",
+        primary="deepseek-v4-flash",
+        light="deepseek-v4-flash",
         embedding="text-embedding-v4",
     ),
     "vllm": _provider_model_defaults(
@@ -524,6 +524,13 @@ def upgrade_legacy_settings_payload(raw_payload: Any) -> dict[str, Any]:
                 upgraded["models"] = models_bucket
             if not str(models_bucket.get("rerank") or "").strip():
                 models_bucket["rerank"] = legacy_rerank_model
+
+    planner = upgraded.get("planner")
+    if isinstance(planner, dict):
+        # Planner chapter/length budgets are now prompt-contract constants in
+        # workflows.digest.planner.lib.constants, not project settings.
+        planner.pop("sprint", None)
+        planner.pop("systematic", None)
 
     return upgraded
 

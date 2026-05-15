@@ -15,6 +15,8 @@ export interface BuildPlannerPlanResponse {
   chapter_plan?: BuildPlannerChapterPlanResponse[];
   build_constraints?: BuildPlannerPlanResponseBuildConstraints;
   plan_summary?: string;
+  plan_steps?: string[];
+  adjustment_questions?: string[];
   status?: string;
   planner_session_id?: string | null;
   confirmed_plan_id?: string | null;

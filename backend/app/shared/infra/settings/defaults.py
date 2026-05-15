@@ -10,18 +10,6 @@ from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 
 from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
 
-SPRINT_MODE_DEFAULTS: dict[str, Any] = {
-    "min_chapters": 4,
-    "max_chapters": 7,
-    "target_length": "8000-30000字",
-}
-
-SYSTEMATIC_MODE_DEFAULTS: dict[str, Any] = {
-    "min_chapters": 5,
-    "max_chapters": 12,
-    "target_length": "30000-100000字",
-}
-
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
         "vision": None,
@@ -43,8 +31,6 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "planner": {
         "default_digest_mode": "systematic",
         "history_turns": 10,
-        "sprint": SPRINT_MODE_DEFAULTS,
-        "systematic": SYSTEMATIC_MODE_DEFAULTS,
     },
     "docgen": {
         "allow_external_search": True,

@@ -324,42 +324,6 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=75,
             ),
             setting(
-                "planner.sprint.min_chapters",
-                "速成课最少章节",
-                ui_group="速成课模式",
-                ui_order=50,
-            ),
-            setting(
-                "planner.sprint.max_chapters",
-                "速成课最多章节",
-                ui_group="速成课模式",
-                ui_order=60,
-            ),
-            setting(
-                "planner.sprint.target_length",
-                "速成课目标长度",
-                ui_group="速成课模式",
-                ui_order=70,
-            ),
-            setting(
-                "planner.systematic.min_chapters",
-                "系统课最少章节",
-                ui_group="系统课模式",
-                ui_order=80,
-            ),
-            setting(
-                "planner.systematic.max_chapters",
-                "系统课最多章节",
-                ui_group="系统课模式",
-                ui_order=90,
-            ),
-            setting(
-                "planner.systematic.target_length",
-                "系统课目标长度",
-                ui_group="系统课模式",
-                ui_order=100,
-            ),
-            setting(
                 "docgen.allow_external_search",
                 "知识文档允许外部搜索",
                 ui_group="知识文档",

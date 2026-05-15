@@ -27,6 +27,7 @@ digest/
 - `common/`
   放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 course 级知识产物清理 `cleanup.py`
+  注意：Planner 的章节预算和目标成稿长度属于 planner 提示词合同，放在 `planner/lib/constants.py`，不放 `common/runtime_config.py` 或项目 settings。
 
 ## 当前公开入口
 

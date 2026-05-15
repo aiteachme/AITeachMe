@@ -150,6 +150,19 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
             raise ValueError("planner PlanIntent returned empty plan_intent")
         if not plan_intent.plan_queries:
             raise ValueError("planner PlanIntent returned empty plan_queries")
+        await emit_planner_event(
+            state,
+            event="planner.intent.scope",
+            detail=_plan_intent_progress_detail(plan_intent),
+            payload={
+                "target_scope": plan_intent.target_scope.strip(),
+                "scope_decision": plan_intent.scope_decision.strip(),
+                "chapter_count_guidance": plan_intent.chapter_count_guidance.strip(),
+                "plan_change_mode": plan_intent.plan_change_mode.strip(),
+                "requested_chapter_count": plan_intent.requested_chapter_count,
+                "query_count": len(plan_intent.plan_queries),
+            },
+        )
         logger.info(
             "planner_plan_intent_llm_completed",
             planner_session_id=state.get("planner_session_id") or "",
@@ -184,6 +197,24 @@ def _normalize_plan_queries(queries: list[str]) -> list[str]:
     return cleaned[:8]
 
 
+def _plan_intent_progress_detail(plan_intent: PlanIntent) -> str:
+    change_mode = plan_intent.plan_change_mode.strip()
+    target_scope = plan_intent.target_scope.strip()
+    scope_decision = plan_intent.scope_decision.strip()
+    chapter_count_guidance = plan_intent.chapter_count_guidance.strip()
+    requested_count = plan_intent.requested_chapter_count
+    count_suffix = f"，按用户指定生成 {requested_count} 章" if requested_count else ""
+    if change_mode == "replace_existing_outline" and target_scope:
+        return f"已判断本轮要把方案重定向到“{target_scope}”{count_suffix}：{scope_decision or '旧方案只作为上下文，不保留无关章节。'}"
+    if target_scope and scope_decision:
+        return f"已判断本轮重点是“{target_scope}”{count_suffix}：{scope_decision}"
+    if target_scope:
+        return f"已判断本轮重点是“{target_scope}”{count_suffix}，后续大纲会围绕这个范围拆分。"
+    if chapter_count_guidance:
+        return f"已确定章节拆分颗粒度：{chapter_count_guidance}"
+    return f"已整理出 {len(plan_intent.plan_queries)} 个规划抓手，准备生成计划和初步大纲。"
+
+
 def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
     async def stream_brief_and_extract_intent_node(state: BuildPlannerState) -> dict:
         logger.info(
@@ -202,9 +233,14 @@ def build_stream_brief_and_extract_intent_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.intent.ready",
-            detail=f"已整理出 {len(plan_intent.plan_queries)} 个规划抓手，准备生成计划和初步大纲。",
+            detail=f"{_plan_intent_progress_detail(plan_intent)} 准备生成计划和初步大纲。",
             payload={
                 "query_count": len(plan_intent.plan_queries),
+                "target_scope": plan_intent.target_scope.strip(),
+                "scope_decision": plan_intent.scope_decision.strip(),
+                "chapter_count_guidance": plan_intent.chapter_count_guidance.strip(),
+                "plan_change_mode": plan_intent.plan_change_mode.strip(),
+                "requested_chapter_count": plan_intent.requested_chapter_count,
             },
         )
         result = {

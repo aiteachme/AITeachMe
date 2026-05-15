@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import describe_project_settings_source
 
-
-@dataclass(frozen=True, slots=True)
-class PlannerModeRuntimeConfig:
-    """Planner mode-specific defaults."""
-
-    min_chapters: int
-    max_chapters: int
-    target_length: str
+if TYPE_CHECKING:
+    from app.workflows.digest.planner.lib.constants import PlannerModeContract
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,8 +18,6 @@ class PlannerRuntimeConfig:
 
     default_digest_mode: str
     history_turns: int
-    sprint: PlannerModeRuntimeConfig
-    systematic: PlannerModeRuntimeConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,36 +42,20 @@ def get_teaching_runtime_config() -> TeachingRuntimeConfig:
         planner=PlannerRuntimeConfig(
             default_digest_mode=settings.planner.default_digest_mode,
             history_turns=max(1, int(settings.planner.history_turns or 10)),
-            sprint=PlannerModeRuntimeConfig(
-                min_chapters=settings.planner.sprint.min_chapters,
-                max_chapters=max(
-                    settings.planner.sprint.min_chapters,
-                    settings.planner.sprint.max_chapters,
-                ),
-                target_length=settings.planner.sprint.target_length,
-            ),
-            systematic=PlannerModeRuntimeConfig(
-                min_chapters=settings.planner.systematic.min_chapters,
-                max_chapters=max(
-                    settings.planner.systematic.min_chapters,
-                    settings.planner.systematic.max_chapters,
-                ),
-                target_length=settings.planner.systematic.target_length,
-            ),
         ),
         settings_source=describe_project_settings_source(),
     )
 
 
-def get_planner_mode_runtime_config(digest_mode: str) -> PlannerModeRuntimeConfig:
-    """Return planner defaults for the requested digest mode."""
+def get_planner_mode_runtime_config(digest_mode: str) -> "PlannerModeContract":
+    """Compatibility wrapper for planner mode prompt contracts."""
 
-    planner = get_teaching_runtime_config().planner
-    return planner.sprint if str(digest_mode).strip().lower() == "sprint" else planner.systematic
+    from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
+
+    return get_planner_mode_contract(digest_mode)
 
 
 __all__ = [
-    "PlannerModeRuntimeConfig",
     "PlannerRuntimeConfig",
     "TeachingRuntimeConfig",
     "get_planner_mode_runtime_config",

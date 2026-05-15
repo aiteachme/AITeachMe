@@ -9,8 +9,9 @@ from typing import Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
-from app.workflows.digest.common.runtime_config import get_planner_mode_runtime_config, get_teaching_runtime_config
+from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
+from app.workflows.digest.planner.lib.constants import get_planner_mode_contract, normalize_planner_mode
 
 
 class PlannerChapterPlan(BaseModel):
@@ -33,6 +34,7 @@ class BuildPlannerDraft(BaseModel):
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     plan_summary: str = ""
     plan_steps: list[str] = Field(default_factory=list)
+    adjustment_questions: list[str] = Field(default_factory=list)
 
 
 def _text(value: Any) -> str:
@@ -52,20 +54,6 @@ def _strings(value: Any) -> list[str]:
             seen.add(key)
             cleaned.append(text)
     return cleaned
-
-
-def _topic_strings(shared_inputs: SharedInputs, *, user_prompt: str, course_name: str) -> list[str]:
-    course_hint = _text(course_name)
-    values: list[Any] = [
-        *shared_inputs.fast_hints.chapter_candidates,
-        *[name for name, _count in shared_inputs.fast_hints.high_freq_terms],
-        *shared_inputs.course_profile.key_topics,
-        shared_inputs.course_profile.sub_discipline,
-        shared_inputs.course_profile.discipline,
-        user_prompt,
-        course_hint,
-    ]
-    return _strings(values)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -91,8 +79,7 @@ def _positive_int(value: Any) -> int | None:
 
 
 def _normalize_digest_mode(value: Any) -> str:
-    mode = _text(value or get_teaching_runtime_config().planner.default_digest_mode).lower()
-    return "sprint" if mode == "sprint" else "systematic"
+    return normalize_planner_mode(value, default=get_teaching_runtime_config().planner.default_digest_mode)
 
 
 def planner_mode_label(value: Any) -> str:
@@ -103,7 +90,7 @@ def render_planner_chapter_contract(value: Any) -> str:
     """Render the high-priority chapter planning contract for Planner prompts."""
 
     mode = _normalize_digest_mode(value)
-    config = get_planner_mode_runtime_config(mode)
+    contract = get_planner_mode_contract(mode)
     if mode == "sprint":
         granularity = "按短期可执行的复习任务、常见任务/题型、易错边界和回看节奏划分。"
     else:
@@ -114,11 +101,11 @@ def render_planner_chapter_contract(value: Any) -> str:
             f"- 模式：{planner_mode_label(mode)}。",
             (
                 f"- 章节数量：由用户目标、资料复杂度和学习路径决定；"
-                f"默认参考 {config.min_chapters}-{config.max_chapters} 章，"
+                f"默认参考 {contract.min_chapters}-{contract.max_chapters} 章，"
                 "不要为了凑默认数量额外加空心章节，也不要拆得过碎。"
             ),
             (
-                f"- 目标成稿长度：{config.target_length}。这是整份知识文档的预算，"
+                f"- 目标成稿长度：{contract.target_length}。这是整份知识文档的预算，"
                 "用于判断章节颗粒度，不要写进章节标题或正文承诺。"
             ),
             f"- 划分主线：{granularity}",
@@ -129,17 +116,6 @@ def render_planner_chapter_contract(value: Any) -> str:
             "- 章节标题要自然像真实讲义目录，避免口号化、过度对仗或统一句式。",
         ]
     )
-
-
-def _compact_supplement_title(value: Any, *, index: int, max_chars: int = 18) -> str:
-    text = _text(value)
-    for piece in re.split(r"[，,、/／：:；;。！？!?\n]+", text):
-        cleaned = _text(piece).strip(" -—_")
-        if 2 <= len(cleaned) <= max_chars:
-            return cleaned
-    if text:
-        return text[:max_chars].rstrip(" ：:，,。；;|-")
-    return f"补充章节 {index}"
 
 
 def _minimal_shared_inputs(course_id: str) -> SharedInputs:
@@ -183,23 +159,6 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
         objective=_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
         writing_instructions=_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
-    )
-
-
-def _build_supplement_chapter(
-    *,
-    index: int,
-    topic: str,
-    digest_mode: str,
-    user_prompt: str,
-) -> PlannerChapterPlan:
-    return PlannerChapterPlan.model_validate(
-        build_supplement_chapter_payload(
-            index=index,
-            topic=topic,
-            digest_mode=digest_mode,
-            user_prompt=user_prompt,
-        )
     )
 
 
@@ -264,8 +223,8 @@ def _cap_chapters_to_maximum(
     *,
     digest_mode: str,
 ) -> list[PlannerChapterPlan]:
-    config = get_planner_mode_runtime_config(digest_mode)
-    chapter_limit = max(config.min_chapters, config.max_chapters)
+    contract = get_planner_mode_contract(digest_mode)
+    chapter_limit = max(contract.min_chapters, contract.max_chapters)
     if len(chapters) <= chapter_limit:
         return _reindex_chapters(chapters)
 
@@ -286,86 +245,17 @@ def _normalize_chapter_count(
     chapters: list[PlannerChapterPlan],
     *,
     digest_mode: str,
+    requested_chapter_count: int | None = None,
 ) -> list[PlannerChapterPlan]:
+    if requested_chapter_count is not None:
+        if len(chapters) != requested_chapter_count:
+            raise ValueError(
+                f"planner chapter count {len(chapters)} does not match requested {requested_chapter_count}"
+            )
+        return _reindex_chapters(chapters)
     chapters = _dedupe_chapters_by_title(chapters)
     chapters = _cap_chapters_to_maximum(chapters, digest_mode=digest_mode)
     return _reindex_chapters(chapters)
-
-
-def build_supplement_chapter_payload(
-    *,
-    index: int,
-    topic: str,
-    digest_mode: str,
-    user_prompt: str = "",
-) -> dict[str, Any]:
-    title = _compact_supplement_title(topic, index=index)
-    normalized_mode = _normalize_digest_mode(digest_mode)
-    if normalized_mode == "sprint":
-        required = _strings([f"{title} 的常见任务/题型", f"{title} 的快速抓手", f"{title} 的易错边界"])
-        objective = f"把《{title}》整理成能快速定位、练习和查漏的任务主线。"
-        writing = "按速成课写法组织：先给判断抓手，再讲典型任务/题型和易错边界。"
-    else:
-        required = _strings([f"{title} 的核心对象", f"{title} 的结构关系", f"{title} 的例子与迁移"])
-        objective = f"系统讲清《{title}》的概念边界、结构关系和典型应用。"
-        writing = "按系统课写法组织：先讲对象和结构，再展开推理、例子与迁移。"
-    if user_prompt:
-        required = _strings([*required, f"{title} 与用户目标的连接"])
-    return {
-        "chapter_index": index,
-        "title": title,
-        "objective": objective,
-        "required_elements": required[:6],
-        "writing_instructions": writing,
-    }
-
-
-def _pad_chapters_to_minimum(
-    chapters: list[PlannerChapterPlan],
-    *,
-    digest_mode: str,
-    shared_inputs: SharedInputs,
-    user_prompt: str,
-    course_name: str,
-) -> list[PlannerChapterPlan]:
-    config = get_planner_mode_runtime_config(digest_mode)
-    if len(chapters) >= config.min_chapters:
-        return chapters
-
-    existing_titles = {_text(chapter.title).casefold() for chapter in chapters}
-    topics = [
-        topic
-        for topic in _topic_strings(shared_inputs, user_prompt=user_prompt, course_name=course_name)
-        if topic.casefold() not in existing_titles
-    ]
-    if not topics:
-        topics = [
-            "学习边界与主线",
-            "关键对象与关系",
-            "方法应用与例子",
-            "易错边界与复盘",
-            "综合迁移任务",
-        ]
-
-    padded = list(chapters)
-    topic_index = 0
-    while len(padded) < config.min_chapters:
-        topic = topics[topic_index % len(topics)]
-        topic_index += 1
-        title_key = topic.casefold()
-        if title_key in existing_titles:
-            topic = f"{topic}（补充）"
-            title_key = topic.casefold()
-        existing_titles.add(title_key)
-        padded.append(
-            _build_supplement_chapter(
-                index=len(padded) + 1,
-                topic=topic,
-                digest_mode=digest_mode,
-                user_prompt=user_prompt,
-            )
-        )
-    return padded
 
 
 def _build_constraints(
@@ -373,19 +263,24 @@ def _build_constraints(
     digest_mode: str,
     chapter_count: int,
     shared_inputs: SharedInputs,
+    requested_chapter_count: int | None = None,
 ) -> dict[str, Any]:
-    config = get_planner_mode_runtime_config(digest_mode)
-    return {
+    contract = get_planner_mode_contract(digest_mode)
+    constraints = {
         "min_chapters": chapter_count,
         "max_chapters": chapter_count,
         "target_chapter_count": chapter_count,
-        "recommended_min_chapters": config.min_chapters,
-        "recommended_max_chapters": config.max_chapters,
-        "target_length": config.target_length,
+        "recommended_min_chapters": contract.min_chapters,
+        "recommended_max_chapters": contract.max_chapters,
+        "target_length": contract.target_length,
         "include_exercises": True,
         "include_sources": False,
         "math_mode": shared_inputs.course_profile.has_heavy_formulas,
     }
+    if requested_chapter_count is not None:
+        constraints["requested_chapter_count"] = requested_chapter_count
+        constraints["chapter_count_source"] = "user_request"
+    return constraints
 
 
 def normalize_planner_draft(
@@ -407,8 +302,10 @@ def normalize_planner_draft(
     resolved_user_prompt = _text(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
+    current_constraints = _mapping(current.get("build_constraints"))
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
     display_course = _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
+    requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
 
     current_chapters = _chapter_items(current.get("chapter_plan"))
     previous_chapters = _chapter_items(previous.get("chapter_plan"))
@@ -420,11 +317,13 @@ def normalize_planner_draft(
     chapters = _normalize_chapter_count(
         chapters,
         digest_mode=mode,
+        requested_chapter_count=requested_chapter_count,
     )
     plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
         raise ValueError("planner plan is missing plan_summary")
     plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
+    adjustment_questions = _strings(current.get("adjustment_questions") or previous.get("adjustment_questions"))
 
     return BuildPlannerDraft(
         course_name=display_course,
@@ -435,9 +334,11 @@ def normalize_planner_draft(
             digest_mode=mode,
             chapter_count=len(chapters),
             shared_inputs=shared,
+            requested_chapter_count=requested_chapter_count,
         ),
         plan_summary=plan_summary,
         plan_steps=plan_steps,
+        adjustment_questions=adjustment_questions,
     )
 
 
@@ -464,7 +365,6 @@ __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
     "_resolve_course_name",
-    "build_supplement_chapter_payload",
     "normalize_planner_draft",
     "normalize_planner_payload",
     "planner_mode_label",

@@ -11,7 +11,6 @@ import structlog
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.common.pedagogy import (
     clean_generated_chapter_title,
-    is_usable_resolved_chapter_title,
     resolve_effective_chapter_title,
 )
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
@@ -20,89 +19,36 @@ from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_mess
 
 logger = structlog.get_logger(__name__)
 
-_TITLE_STOPWORDS = {
-    "知识",
-    "学习",
-    "课程",
-    "主题",
-    "章节",
-    "核心",
-    "内容",
-    "基础",
-    "应用",
-    "模块",
-    "策略",
-    "理解",
-    "方法",
-    "讲解",
-    "解析",
-}
+_TITLE_ONLY_NUMBER_RE = re.compile(r"^(?:第\s*)?(?:\d+|[一二三四五六七八九十百千万]+)\s*[章节讲节篇部分]?$", re.IGNORECASE)
+_TITLE_GENERIC_PLACEHOLDERS = {"未命名", "未命名章节", "本章", "本章内容", "当前章节", "Untitled", "Untitled Chapter"}
 
 
-def _title_terms(value: str) -> set[str]:
-    normalized = re.sub(r"[^\w\u4e00-\u9fff]+", " ", str(value or "")).strip()
-    terms: set[str] = set()
-    for token in normalized.split():
-        token = token.strip().casefold()
-        if len(token) >= 3 and token not in _TITLE_STOPWORDS:
-            terms.add(token)
-    cjk = "".join(re.findall(r"[\u4e00-\u9fff]+", normalized))
-    for size in (4, 3, 2):
-        for index in range(0, max(0, len(cjk) - size + 1)):
-            item = cjk[index : index + size]
-            if item and item not in _TITLE_STOPWORDS:
-                terms.add(item)
-    return terms
+def _is_publishable_title_shape(title: str) -> bool:
+    cleaned = clean_generated_chapter_title(clean_text(title))
+    if not cleaned or cleaned in _TITLE_GENERIC_PLACEHOLDERS:
+        return False
+    if len(cleaned) < 3 or len(cleaned) > 36:
+        return False
+    if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
+        return False
+    return not bool(_TITLE_ONLY_NUMBER_RE.fullmatch(cleaned))
 
 
 def _resolve_locked_title(
     candidate_title: str,
     *,
     confirmed_title: str,
-    user_prompt: str,
-    plan_summary: str,
-    chapter_anchor_text: str = "",
 ) -> tuple[str, str | None]:
+    raw_candidate = clean_text(candidate_title)
     candidate = clean_generated_chapter_title(clean_text(candidate_title))
     confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "本章内容"
-    if candidate and not is_usable_resolved_chapter_title(candidate):
-        return confirmed, f"标题 `{candidate}` 不是可发布语义标题，已回退到 `{confirmed}`。"
     if not candidate:
+        if raw_candidate:
+            return confirmed, f"标题 `{raw_candidate}` 不是可发布标题形态，已回退到 `{confirmed}`。"
         return confirmed, None
-    if len(candidate) > 32:
-        return confirmed, f"标题 `{candidate}` 过长，已回退到 confirmed title。"
-    if candidate == confirmed or candidate in confirmed or confirmed in candidate:
-        return candidate, None
-
-    user_terms = _title_terms(user_prompt)
-    plan_terms = _title_terms(" ".join([confirmed, plan_summary, chapter_anchor_text]))
-    candidate_terms = _title_terms(candidate)
-    if candidate_terms & user_terms:
-        return candidate, None
-    if candidate_terms & plan_terms:
-        return candidate, None
-    return confirmed, f"标题 `{candidate}` 与用户提示和 confirmed plan 锚点不一致，已回退到 `{confirmed}`。"
-
-
-def _chapter_title_anchor_text(chapter: Mapping[str, Any], *, fallback_title: str = "") -> str:
-    anchors: list[str] = [fallback_title]
-    for key in (
-        "title",
-        "resolved_title",
-        "objective",
-        "chapter_goal",
-        "summary",
-        "description",
-        "writing_instructions",
-    ):
-        value = chapter.get(key)
-        if value:
-            anchors.append(clean_text(value))
-    for key in ("required_elements", "content_points", "concept_targets", "formula_targets"):
-        values = chapter.get(key)
-        if isinstance(values, list):
-            anchors.extend(clean_text(item) for item in values[:6] if clean_text(item))
-    return " ".join(part for part in anchors if part).strip()
+    if not _is_publishable_title_shape(candidate):
+        return confirmed, f"标题 `{candidate}` 不是可发布标题形态，已回退到 `{confirmed}`。"
+    return candidate, None
 
 
 def fallback_locked_title(
@@ -159,9 +105,6 @@ async def lock_title_for_chapter(
     locked.enhanced_title, warning = _resolve_locked_title(
         locked.enhanced_title,
         confirmed_title=fallback.confirmed_title,
-        user_prompt=user_prompt,
-        plan_summary=plan_summary,
-        chapter_anchor_text=_chapter_title_anchor_text(chapter, fallback_title=fallback.confirmed_title),
     )
     locked.fallback_used = False
     if warning:

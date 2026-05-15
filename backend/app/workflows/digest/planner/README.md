@@ -1,6 +1,6 @@
 # Planner 流程说明
 
-最后更新：2026-05-02
+最后更新：2026-05-15
 
 这份文档是 `backend/app/workflows/digest/planner/` 的当前主文档，同时承担入口说明、流程权威文档和持久化合同说明。
 
@@ -14,7 +14,7 @@
 - `README.md` 必须同时保留两类内容：短流程总览和长流程执行合同。
 - `planner/` 目录下不再保留平行的流程设计文档。
 - Planner 只做确认前规划：理解资料、理解目标、合成可确认方案、保存 Planner 会话。
-- Planner 不做本地 RAG 检索，不做外部 Web research，不提前替 DocGen 决定证据来源。
+- Planner 不执行 DocGen 阶段的资料读取、外部 research、证据绑定或正文写作。
 
 核心判断：
 
@@ -32,7 +32,7 @@ planner/
   graph.py             # LangGraph 定义、并行分支、运行入口
   state.py             # BuildPlannerState TypedDict
   nodes/               # 顶层图节点
-  lib/                 # 持久化、模型策略、plan normalize、SSE 事件等
+  lib/                 # 持久化、模型策略、plan normalize、Planner 常量、SSE 事件等
   prompts/             # prompt builder
   README.md           # 当前主文档
 ```
@@ -95,13 +95,13 @@ stream_brief_and_extract_intent
     ├─ stream_planner_brief
     │    流式输出用户可见的资料边界、学习目标理解和规划判断。
     └─ extract_plan_intent
-         结构化抽取内部 plan_intent 和 plan_queries。
+         结构化抽取 plan_change_mode、target_scope、requested_chapter_count、plan_intent、plan_queries 和 adjustment_options。
   |
   v
 compose / title 并行分支
   ├─ stream_and_parse_plan_draft
-  │    流式生成用户可见计划说明，隐藏 `<PLAN_JSON>` 机器合同。
-  │    解析 plan_text、plan_steps、chapters；必要时走结构化修复。
+  │    并行流式生成用户可见计划说明，并通过 `response_model` 结构化生成机器大纲合同。
+  │    结构化得到 plan_text、plan_steps、chapters；用户调整引导直接复用 PlanIntent.adjustment_options。
   └─ generate_course_name
        仅 create 时运行，和大纲合成并行生成课程短标题与图标。
   |
@@ -126,9 +126,12 @@ stream_brief_and_extract_intent
   extract_plan_intent  ┘
 
 after understand_goal
-  stream_and_parse_plan_draft ┐
-  generate_course_name        ├─ fan-in -> normalize_and_persist_plan
-                              ┘
+  stream_and_parse_plan_draft
+    ├─ stream_visible_plan      # 流式给用户看的计划说明
+    └─ compose_structured_plan  # response_model 结构化生成机器大纲合同
+  generate_course_name          ┐
+                                ├─ fan-in -> normalize_and_persist_plan
+                                ┘
 ```
 
 ### 1.2 当前模型槽位总览
@@ -155,11 +158,33 @@ light   -> settings.models.light
 | 阶段 / 子步骤 | 调用类型 | 逻辑模型槽位 | 默认用途 |
 | --- | --- | --- | --- |
 | `stream_planner_brief` | stream | `light` | 用户可见的资料边界判断和规划思考 |
-| `extract_plan_intent` | structured | `light` | 内部 plan_intent 与 plan_queries |
-| `stream_and_parse_plan_draft.compose_plan` | stream | `light` | 可见计划说明 + 隐藏 JSON 初步大纲 |
-| `stream_and_parse_plan_draft.repair` | structured | `light` | 修复不完整 `<PLAN_JSON>` |
+| `extract_plan_intent` | structured | `light` | 内部变更模式、目标范围、指定章数与规划抓手 |
+| `stream_and_parse_plan_draft.visible_plan` | stream | `light` | 用户可见计划说明和调整引导 |
+| `stream_and_parse_plan_draft.structured_plan` | structured | `light` | 通过 `response_model` 生成机器可解析初步大纲 |
 | `generate_course_name` | text | `light` | 课程短标题 |
 | `select_course_icon` | text | `light` | 课程图标候选 |
+
+### 1.3 Planner 本地常量
+
+Planner 的章节数量参考值和目标成稿长度不是用户可配置的运行参数，而是提示词合同的一部分，集中放在：
+
+```text
+lib/constants.py
+```
+
+当前常量：
+
+| 模式 | 默认参考章节 | 目标成稿长度 |
+| --- | --- | --- |
+| `sprint` | 4-7 章 | 8000-30000 字 |
+| `systematic` | 5-12 章 | 30000-100000 字 |
+
+使用边界：
+
+- `lib/constants.py` 只放 Planner 产品合同常量，例如章节预算、长度预算和模式归一化。
+- `settings.planner` 只保留真正运行期可调的值，例如 `default_digest_mode` 和 `history_turns`。
+- 旧配置文件里的 `planner.sprint / planner.systematic` 会被设置升级逻辑忽略，避免已删除的提示词预算继续污染运行时设置。
+- 如果用户明确指定章节数，以 LLM 结构化意图里的 `requested_chapter_count` 为准，不受默认参考章节数限制。
 
 ## 2. 长流程执行合同
 
@@ -350,13 +375,27 @@ light   -> settings.models.light
 stream_planner_brief
   输入：资料 digest、用户目标、最近历史消息、上一版方案、本轮反馈、已有文档摘要。
   输出：PlannerBrief.markdown。
-  行为：流式 token 透出给前端；失败时返回 empty brief，不直接失败整轮。
+  行为：流式 token 透出给前端；修订场景必须先判断局部补丁还是整体重定向，明确新专题/章数时不能继续说保留旧章节；失败时返回 empty brief，不直接失败整轮。
 
 extract_plan_intent
   输入：同上。
-  输出：PlanIntent(plan_intent, plan_queries)。
-  行为：结构化输出内部规划抓手；为空或失败则失败本轮 Planner。
+  输出：PlanIntent(plan_change_mode, target_scope, requested_chapter_count, plan_intent, plan_queries, adjustment_options)。
+  行为：结构化输出内部规划抓手和用户可调整方向；为空或失败则失败本轮 Planner。这里依赖字段合同和 response_model，不靠堆 few-shot 示例或本地关键词提取判断用户意图。
 ```
+
+`plan_change_mode` 是修订质量的关键分支：
+
+- `create_new`：新建方案。
+- `patch_existing`：用户是在上一版上局部增删改某章、顺序、风格或重点；后续结构化大纲以旧方案为工作副本，未受影响章节保持。
+- `replace_existing_outline`：用户给出新的具体专题、明确章数，或说“改成/生成 XXX 的 N 个章节”；后续结构化大纲把旧方案作为被替换对象和上下文，不保留无关旧章节。
+
+典型例子：
+
+- “把第二章拆开” -> `patch_existing`
+- “改成定积分的 5 个章节” -> `replace_existing_outline` + `target_scope=定积分` + `requested_chapter_count=5`
+- “生成洛必达法则的几个章节” -> `replace_existing_outline` + `target_scope=洛必达法则`
+
+`adjustment_options` 也是在这个结构化意图阶段生成的。它和 `plan_queries / target_scope / requested_chapter_count` 同源，代表“接下来最值得让用户确认的调整方向”。后续结构化大纲不再单独生成 `adjustment_questions`，而是把这些 options 清洗后写入 plan payload 的 `adjustment_questions`，供前端 “可以继续这样改” 区域展示。
 
 数据库读写：
 
@@ -385,20 +424,31 @@ extract_plan_intent
 
 内部步骤：
 
-1. 调用 composer LLM 流式生成计划说明。
-2. 前端只接收 `<PLAN_JSON>` 之前的可见 Markdown。
-3. 后端保留完整响应，从 `<PLAN_JSON>` 中解析：
+1. 并行启动两条 LLM 调用：
+   - `stream_visible_plan`：只负责流式输出用户可见计划说明。
+   - `compose_structured_plan`：通过 infra `response_model` 结构化输出生成机器大纲合同。
+2. 前端接收可见 Markdown，并只展示当前运行状态点与已经流出的可见文本；`planner.intent.scope / planner.plan.visible_* / planner.plan.structure_*` 等状态事件仍通过 SSE 透出给客户端状态机，但不再作为一串内部过程历史展示给用户。
+   - 如果更早的可见思考流与结构化意图冲突，后续可见计划说明必须以 `PlanIntent` 为准，不能复述“局部收缩/保留旧章节”的冲突说法。
+3. 结构化大纲合同包含：
    - `plan_text`
    - `plan_steps`
    - `chapters[]`
+   - 注意：`adjustment_questions` 不由本节点的结构化大纲 LLM 生成，而是来自上游 `PlanIntent.adjustment_options`。
 4. 将 chapter sketch 转换为待 normalize 的 `chapter_plan`：
    - `chapter_index`
    - `title`
    - `objective`
    - `required_elements`
    - `writing_instructions`
-5. 如果 JSON 缺失或不合法，调用结构化修复 LLM。
-6. 修复失败时发 `planner.plan.failed` 并抛错。
+5. 结构化大纲通过校验后立即通过 SSE status 事件透出 `plan_preview`，前端可以在保存完成前先渲染只读方案卡。
+6. 如果 `requested_chapter_count` 非空，结构化大纲必须严格等于该章数；首次不匹配时再走一次结构化 LLM 重生成，而不是本地补章或删章。
+7. 用户指定的章数会写入 `build_constraints.requested_chapter_count`，normalize 阶段必须尊重该数量，不再用模式默认 min/max 压缩或补齐。
+8. 结构化输出由 Pydantic 合同校验：`plan_text` 和 `chapters` 必须非空，每章必须有可读标题和 `key_points`。
+   - 章节标题必须由 LLM 生成成“课程目录标题”：像讲义/教材课时主题，直接说明本章讲什么知识对象、方法主题或题型主题。
+   - 学习动作、例题密度、易错点和训练方式放在 `key_points`，不要压进标题里。
+   - 本地代码不做关键词提取、规则截取或规则补标题。
+9. persist/normalize 只做 reindex、去重和超预算合并；不会因为默认最小章节数不足就在本地补章。
+10. 如果结构化合同校验失败，发 `planner.plan.failed` 并抛错；不使用本地规则臆造大纲。
 
 数据库读写：
 
@@ -466,7 +516,7 @@ extract_plan_intent
 
 1. 调用 `normalize_planner_draft`：
    - 补齐课程名、模式、章节索引，并冻结模型生成的章节数。
-   - 规范化 `chapter_plan / build_constraints / plan_steps / plan_summary`。
+   - 规范化 `chapter_plan / build_constraints / plan_steps / plan_summary / adjustment_questions`。
    - append 时吸收 `latest_plan`，保留用户修订语义。
 2. 如果有生成课程名，覆盖 draft course_name。
 3. 发 `planner.plan.ready`。
@@ -588,9 +638,9 @@ extract_plan_intent
 | `existing_doc_context` | 已发布知识文档摘要，重建场景使用 |
 | `planner_context_mode` | `fresh_build / rebuild_existing_doc` |
 | `planner_brief` | 用户可见规划判断 |
-| `plan_intent` | 内部规划意图与 plan_queries |
+| `plan_intent` | 内部规划意图、plan_queries、target_scope、requested_chapter_count 和 adjustment_options |
 | `plan_outline_markdown` | 合成阶段可见 Markdown |
-| `build_plan_draft` | 从隐藏 JSON 解析出的初步大纲 |
+| `build_plan_draft` | 从结构化 LLM 输出得到的初步大纲 |
 | `generated_course_name / generated_course_icon_key` | create 分支展示元信息 |
 
 核心输出字段：
@@ -616,6 +666,7 @@ confirmed_plan
   build_constraints
   plan_summary
   plan_steps
+  adjustment_questions
   selected_file_ids
   planner_session_id
   confirmed_plan_id
@@ -627,7 +678,7 @@ confirmed_plan
 交接原则：
 
 - Planner 冻结“学什么、按什么章节学、模式是什么、用户修改历史是什么”。
-- DocGen 决定“每章怎么写、查哪些资料、如何组织证据和正文”。
+- DocGen 决定“每章怎么写、如何使用资料、如何组织证据和正文”。
 - DocGen 不默认新增、删除、重排用户确认过的章节语义。
 - 首页模型选择必须经过 `model_override` 从 Planner 冻结到 confirmed plan，再被 DocGen 和自动 KG 同步继承。
 
@@ -640,8 +691,15 @@ confirmed_plan
 | `model_override` 贯通 | 必须继续经过 workflow boundary、session meta、confirmed plan 交给 DocGen / KG |
 | confirmed plan 冻结 | append 可以改 latest_plan；确认后 DocGen 只消费 confirmed plan |
 | confirmed plan 版本 | 当前在 `chat_session.meta_json.confirmed_plan_history` 里保留轻量历史，避免重建/再确认覆盖旧方案 |
-| 不下沉为 DocGen | 不加入 RAG、网页检索、证据绑定和章节写作 |
-| JSON repair | 保持 composer + 结构化修复；失败明确返回，不本地猜大纲 |
+| 不下沉为 DocGen | 不加入资料读取、外部 research、证据绑定和章节写作 |
+| 结构化输出 | 主路径使用 `response_model` 生成机器合同；展示流只给用户看，不承载机器合同 |
+| 修订分支 | 必须先由 LLM 判定 `patch_existing` 还是 `replace_existing_outline`；明确新专题/章数时替换旧方案，不保留无关章节 |
+| SSE 过程 | status 事件和 token 都要透出；前端只展示当前状态点、可见 token 和 `plan_preview` 只读方案卡，不展示内部过程历史列表 |
+| 历史上下文 | prompt 默认读取最近 `planner.history_turns=10` 个用户轮次及其间规划器消息；完整 ChatMessage 仍持久化，确认时进入 `planner_context.docgen_history_brief` |
+| 用户输入处理 | `user_prompt` / `feedback_message` 都进入 stream brief、PlanIntent、visible plan 和 structured plan 的 LLM prompt；本地代码只做校验、持久化和合同归一化 |
+| 指定章数 | `requested_chapter_count` 来源于 LLM 结构化意图；结构化大纲和 normalize 都必须尊重该数量，避免默认章节预算覆盖用户要求 |
+| 调整引导 | `adjustment_questions` 来源于 `extract_plan_intent` 的 `adjustment_options`，不是结构化大纲阶段再生成一套 |
+| 章节预算 | sprint/systematic 的默认章节范围和目标长度是 `lib/constants.py` 的 Planner 产品合同常量，不再放项目 settings |
 | 会话表 | 继续使用 `chat_session / chat_message` 的 `source="build_planner"`，不新建第二套 |
 
 一句话收束：

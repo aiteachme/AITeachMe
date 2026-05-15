@@ -117,8 +117,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     STEP_COMPOSE_PLAN: {
         "description": (
-            "基于 material_context、planner_brief、plan_intent、历史消息和 latest_plan 流式生成可见计划说明，"
-            "同时解析隐藏 JSON 机器合同，得到 build_plan_draft。若模型 JSON 不完整，会再走结构化模型修复；修复失败则让 Planner 明确失败。"
+            "基于 material_context、planner_brief、plan_intent、历史消息和 latest_plan 并行生成两类输出："
+            "流式用户可见计划说明，以及通过 response_model 校验的机器大纲合同 build_plan_draft。"
+            "结构化合同不完整时让 Planner 明确失败，不本地猜大纲。"
         ),
         "reads": ["material_context", "planner_brief", "plan_intent", "message_history", "latest_plan"],
         "writes": ["build_plan_draft", "plan_outline_markdown"],
@@ -226,7 +227,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     """构建 Planner 的 LangGraph。
 
     Planner 只负责生成和修订可确认的构建方案：读取资料、理解目标、
-    并行生成标题与大纲、保存方案。不要在这里做 DocGen 的检索写作，
+    并行生成标题与大纲、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
     也不要把 API 持久化细节塞进节点之外的地方。
     """
 

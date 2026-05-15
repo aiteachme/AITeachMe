@@ -72,17 +72,9 @@ class InteractSettings(_SettingsModel):
     history_turns: int
 
 
-class PlannerModeSettings(_SettingsModel):
-    min_chapters: int
-    max_chapters: int
-    target_length: str
-
-
 class PlannerSettings(_SettingsModel):
     default_digest_mode: str
     history_turns: int = Field(ge=1, le=50)
-    sprint: PlannerModeSettings
-    systematic: PlannerModeSettings
 
 
 class DocgenSettings(_SettingsModel):
@@ -322,7 +314,6 @@ __all__ = [
     "LocalRagSettings",
     "ModelsSettings",
     "ObservabilitySettings",
-    "PlannerModeSettings",
     "PlannerSettings",
     "RagSettings",
     "Settings",
