@@ -722,7 +722,7 @@ def build_chapter_guide(
     goal_line = objective.strip() or f"理解《{title}》这一章最核心的知识主线。"
     focus_items = required_elements[:4] or _default_required_elements(normalized_mode)
     evidence_line = (
-        "先抓住本章目标和核心结构，再用例题、条件和易错边界检查理解。"
+        "先看高频入口和速查表，再用例题解析、变式和易错边界检查能不能真的会用。"
         if normalized_mode == "sprint"
         else "先理解本章在整体知识中的位置，再进入定义、推理和应用。"
     )
@@ -785,10 +785,14 @@ def _build_mode_sections(
     resolved_headings = dict(headings or _build_scaffold_headings(title=title, required_elements=required_elements, digest_mode=normalized_mode))
 
     if normalized_mode == "sprint":
-        quick_card = [
-            f"- 这章最先记住：{focus_items[0]}",
-            f"- 这章最常遇到：{focus_items[1] if len(focus_items) > 1 else '核心任务/题型'}",
-            "- 这章最值得快速复习时再扫一遍的，是步骤、条件和易错点。",
+        first_focus = focus_items[0]
+        second_focus = focus_items[1] if len(focus_items) > 1 else "核心任务/题型"
+        quick_table = [
+            "| 复习入口 | 先看什么 | 不能忽略什么 |",
+            "| --- | --- | --- |",
+            f"| {first_focus} | 定义、条件、关键词 | 适用范围和反例 |",
+            f"| {second_focus} | 题眼信号、处理步骤 | 单位、方向、边界条件 |",
+            "| 例题/任务 | 题目给出的对象和目标 | 不要看到熟词就机械套方法 |",
         ]
         return [
             (
@@ -798,10 +802,9 @@ def _build_mode_sections(
                     [
                         resolved_headings["main"],
                         "",
-                        f"- 先明确本章要解决什么问题：{objective or '把本章最关键的主题、条件和处理路径讲清楚。'}",
-                        f"- 第一层先讲清：{focus_text}",
-                        "- 第二层再讲：这些概念在任务、题目或应用里通常怎样出现，怎样判断能不能用。",
-                        "- 第三层再收：哪些结论必须连同条件一起记，哪些地方最容易混淆。",
+                        f"- 本章要解决的问题：{objective or '把本章最关键的主题、条件和处理路径讲清楚。'}",
+                        f"- 高频入口：{focus_text}",
+                        "- 读法：先找题眼或任务目标，再选方法，最后检查适用条件和易错边界。",
                     ]
                 ).strip(),
             ),
@@ -812,16 +815,24 @@ def _build_mode_sections(
                     [
                         resolved_headings["drills"],
                         "",
-                        "1. 先看关键线索，判断它对应哪个概念、性质或方法。",
-                        "2. 再看条件，确认这个任务为什么能走这条处理路径。",
-                        "3. 最后把步骤、常见变形和易错点一起归纳。",
+                        "1. **题眼**：先圈出题目或任务给出的对象、条件和目标。",
+                        "2. **模板**：再匹配本章对应的定义、结论、公式或操作步骤。",
+                        "3. **检查**：最后回到原条件，检查范围、方向、单位或边界是否被破坏。",
                     ]
                 ).strip(),
             ),
             (
                 "memory",
                 resolved_headings["memory"],
-                "\n".join([resolved_headings["memory"], "", *quick_card, "- 不要只背结论，要同时背‘什么时候用’和‘不能怎么误用’。"]).strip(),
+                "\n".join(
+                    [
+                        resolved_headings["memory"],
+                        "",
+                        *quick_table,
+                        "",
+                        "- 不要只背结论，要同时背“什么时候用”和“不能怎么误用”。",
+                    ]
+                ).strip(),
             ),
             (
                 "pitfalls",

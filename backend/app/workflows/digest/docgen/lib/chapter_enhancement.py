@@ -230,20 +230,54 @@ def _build_practice_questions(
 
 
 _PRACTICE_HEADING_RE = re.compile(r"^#{2,4}\s+.*(?:例题|练习|自测|自检|迁移).*$", re.MULTILINE)
+_WORKED_EXAMPLE_TITLE_RE = re.compile(r"^#{3,5}\s+.*(?:例题|案例|任务|变式).*$", re.MULTILINE)
+_PRACTICE_STEM_RE = re.compile(r"(?m)^\s*\*\*(?:题目|任务|案例)\*\*[：:]")
+_PRACTICE_ANALYSIS_RE = re.compile(r"(?m)^\s*\*\*(?:解析|解法|步骤)\*\*[：:]")
+_PRACTICE_PITFALL_RE = re.compile(r"(?m)^\s*\*\*(?:易错点|错因|注意)\*\*[：:]")
+
+
+def _structured_practice_signal_count(markdown: str) -> int:
+    text = str(markdown or "")
+    title_count = len(_WORKED_EXAMPLE_TITLE_RE.findall(text))
+    stem_count = len(_PRACTICE_STEM_RE.findall(text))
+    analysis_count = len(_PRACTICE_ANALYSIS_RE.findall(text))
+    pitfall_count = len(_PRACTICE_PITFALL_RE.findall(text))
+    structured_count = min(stem_count, analysis_count)
+    if structured_count and pitfall_count:
+        structured_count = min(structured_count, pitfall_count)
+    if not structured_count:
+        return 0
+    return max(title_count, structured_count)
+
+
+def _minimum_visible_examples(*, digest_mode: str, question_count: int) -> int:
+    if question_count <= 0:
+        return 0
+    mode_profile = get_docgen_mode_profile(digest_mode)
+    desired = int(mode_profile.example_density_policy.get("worked_examples_per_chapter", 1) or 1)
+    # The deterministic supplement should be enough to make the chapter usable,
+    # while avoiding a large duplicated exercise appendix when the writer already did well.
+    cap = 3 if mode_profile.is_sprint else 2
+    return max(1, min(question_count, desired, cap))
 
 
 def _append_practice_section(markdown: str, questions: list[dict], *, digest_mode: str, title: str = "") -> str:
     if not questions:
         return markdown
-    if has_worked_example_section(markdown) or _PRACTICE_HEADING_RE.search(markdown):
+    minimum_examples = _minimum_visible_examples(digest_mode=digest_mode, question_count=len(questions))
+    existing_examples = _structured_practice_signal_count(markdown)
+    has_practice_area = has_worked_example_section(markdown) or _PRACTICE_HEADING_RE.search(markdown)
+    if has_practice_area and existing_examples >= minimum_examples:
         return markdown
+    supplement_count = max(minimum_examples - existing_examples, minimum_examples if has_practice_area else len(questions))
+    supplement_questions = questions[: max(1, min(len(questions), supplement_count))]
     section = format_worked_example_section(
-        questions,
+        supplement_questions,
         digest_mode=digest_mode,
         fallback_title=title or "本章",
         focus_items=[
             str(item.get("label") or item.get("stem") or item.get("question") or "")
-            for item in questions
+            for item in supplement_questions
         ],
     )
     if not section:

@@ -1,4 +1,6 @@
 from app.workflows.digest.common import pedagogy
+from app.workflows.digest.docgen.lib.chapter_enhancement import _append_practice_section
+from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
 
 def test_chapter_title_resolution_rejects_templates_and_derives_specific_titles() -> None:
@@ -119,3 +121,61 @@ def test_systematic_mode_sections_add_position_and_extension_boundaries() -> Non
     assert "extension" not in first_chapter_keys
     assert "map" not in final_chapter_keys
     assert "extension" in final_chapter_keys
+
+
+def test_sprint_practice_supplement_repairs_weak_existing_practice_heading() -> None:
+    markdown = "# 矩阵分解\n\n## 练习与自检\n\n- 复习一下奇异值分解。\n"
+    questions = [
+        {
+            "label": "奇异值分解",
+            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
+            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
+            "pitfall": "不能只看矩阵大小，还要看近似目标。",
+        },
+        {
+            "label": "低秩近似",
+            "stem": "给定保留阶数，说明如何判断近似是否足够。",
+            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
+            "pitfall": "只保留最大的项不等于一定满足误差要求。",
+        },
+        {
+            "label": "误差判断",
+            "stem": "比较两个低秩近似方案，选出更稳妥的一种。",
+            "analysis_steps": ["先比较目标。", "再比较误差和信息损失。"],
+            "pitfall": "不要把计算方便当成误差更小。",
+        },
+    ]
+
+    supplemented = _append_practice_section(
+        markdown,
+        questions,
+        digest_mode="sprint",
+        title="矩阵分解",
+    )
+
+    assert supplemented != markdown
+    assert supplemented.count("### 例题") >= 3
+    assert "**题目**" in supplemented
+    assert "**解析**" in supplemented
+    assert "**易错点**" in supplemented
+
+
+def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples() -> None:
+    messages = build_docgen_writer_messages(
+        title="矩阵分解",
+        objective="掌握奇异值分解和低秩近似。",
+        digest_mode="sprint",
+        required_elements=["奇异值分解", "低秩近似"],
+        writing_instructions="",
+        source_count=1,
+        dense_context="奇异值分解可用于低秩近似。",
+        execution_contract={
+            "practice_quota": {"worked_examples": 4, "self_check": 2},
+            "example_density_policy": {"policy_text": "高密度例题"},
+        },
+    )
+    prompt = messages[-1]["content"]
+
+    assert "速查表或判断表" in prompt
+    assert "题目/案例-解析-易错点" in prompt
+    assert "不要只写“请自行练习”" in prompt

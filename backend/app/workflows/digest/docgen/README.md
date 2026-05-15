@@ -1,6 +1,6 @@
 # DocGen 流程设计
 
-最后更新：2026-05-02
+最后更新：2026-05-15
 
 这份文档是 `backend/app/workflows/digest/docgen/` 当前唯一的文档文件，同时兼任入口说明和流程权威文档。
 
@@ -58,6 +58,20 @@ DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认�
 - 单章研究、证据、主张、冲突记录。
 - 表现层增强。
 - 内容复核、有限回流和发布级 manifest。
+
+### 0.2 速成课文档质量线
+
+当前产品默认更接近“速成课”使用场景。公开可见的蜂考/高斯课堂类期末速成课通常不是百科式教材，而是把厚材料压成短时长、高密度、应试或任务导向的学习包：先说明高价值章节和常见任务，再给公式/规则速查、典型例题解析、变式训练、易错点和最后串讲。
+
+DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
+
+- **定位要快**：章节开头必须让学生知道本章最常见的任务、题型、操作场景或使用场景是什么。
+- **结构要可扫**：优先用速查表、判断表、步骤表或错因表表达公式、条件、题眼信号和处理路径。
+- **例题要完整**：例题/案例不能只有题干或提示，必须包含“题目/案例、解析步骤、结论或答案、易错点”。
+- **理论要落地**：重要概念、公式、规则或方法后面要尽快接例题、案例、变式、自测或错误诊断。
+- **收束要可复习**：章节末尾应回收到关键结论、适用条件、不能硬套的边界和短自测。
+
+这不是要求固定标题模板。标题仍应来自本章真实知识对象和任务对象，但这些学习功能不能缺位。`mode_profiles.py`、`generation.py`、`chapter_execution_brief.py` 和 `chapter_enhancement.py` 共同保证这条质量线：前两者约束写作和简报，后者在已有“练习”标题但缺少结构化例题时追加可见例题补强。
 
 ### 0.1 本文件同时承担的入口信息
 
@@ -205,6 +219,7 @@ enhance_chapters
     ├─ enhance_chapter 2
     └─ enhance_chapter N
   处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构，以及按构建约束追加例题/练习。
+  对速成课，如果正文已有“练习/自检”标题但缺少“题目/解析/易错点”的结构化例题，会追加补充例题区。
   如果图谱预抽取开启，则在本阶段完成后启动非阻塞 kg_prefetch sidecar：
     - 使用增强后的章节 Markdown 预抽取 section payload。
     - 默认最多 2 路 LLM 并发，并先让后续 DocGen review 调度。
@@ -472,7 +487,8 @@ enhance_chapters
          - image 当前不走大模型生成正文资产
     2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
     3. 统一公式、Mermaid、Markdown 结构。
-    4. 根据 ClaimLedger、ConfusionMap 和构建约束决定是否追加例题/练习；若正文已有自然练习小节，不重复追加固定标题。
+    4. 根据 ClaimLedger、ConfusionMap 和构建约束决定是否追加例题/练习；若正文已有足量结构化例题，不重复追加固定标题。
+       若只有弱练习标题或泛泛复习提示，仍会补一个可见例题解析区。
     5. 产出 asset / practice manifest。
   约束：
     - 不大幅改写知识内容。
@@ -896,7 +912,7 @@ publish_document
 | `build_chapter_execution_briefs` | `build_chapter_execution_briefs` | 已落地 |
 | `assemble_chapter_tasks` | `assemble_chapter_tasks` | 已落地 |
 | `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
-| `enhance` | `enhance_chapters` | 已落地，当前只保留 Mermaid 与交互占位清理 |
+| `enhance` | `enhance_chapters` | 已落地，含 Mermaid/交互占位清理、公式/Markdown 规范化、弱练习区例题补强 |
 | `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则兜底 |
 | `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |

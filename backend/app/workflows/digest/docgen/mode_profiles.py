@@ -156,16 +156,16 @@ class DocGenModeProfile:
 _SPRINT_PROFILE = DocGenModeProfile(
     mode="sprint",
     chapter_format=(
-        "优先点明本章最值得先掌握什么、最常遇到什么任务",
-        "用高价值主题意识提炼重要程度、出现频率和常见任务/题型",
-        "把核心概念压成最短可执行判断路径",
-        "用关键线索、处理模板和变式练习带出方法",
-        "点出易错边界、不能硬套的条件和判定标准",
+        "开头先给本章高价值主题、常见任务/题型和最短学习路径",
+        "用速查表或判断表压缩核心公式、规则、适用条件和题眼信号",
+        "每个重要方法都按“识别信号 -> 处理模板 -> 例题解析 -> 变式/易错”落地",
+        "例题要写出题目/案例、解析步骤、答案或结论、易错点，不能只有提示",
+        "章节末尾用考前速查、易错边界和自测任务收束",
     ),
     course_flow_hints=(
         "课时开头先给高价值主题、常见任务/题型和重要程度，再进入概念或方法",
-        "每个方法尽量接一个短例子、案例或小变式，直接暴露关键线索",
-        "讲完一组任务/题型后，用例子解析、变式练习和易错辨析收束",
+        "每个方法尽量接一个短例题、案例或小变式，直接暴露题眼、步骤和边界",
+        "讲完一组任务/题型后，用例题解析、变式训练、易错辨析和速查表收束",
     ),
     practice_focuses=(
         "快速抓手",
@@ -187,16 +187,18 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "worked_examples_per_chapter": 4,
         "practice_tasks_per_chapter": 4,
         "important_method_min_examples": 2,
-        "policy_text": "速成课模式必须高密度使用例题、案例、变式、自测或实践任务；理论只服务会做题、会操作、会判断、会避坑。",
+        "quick_reference_per_chapter": 1,
+        "policy_text": "速成课模式必须高密度使用例题、案例、变式、自测或实践任务；理论只服务会做题、会操作、会判断、会避坑。每章至少要有速查表或判断表，以及带解析和易错点的例题区。",
     },
     coverage_policy=(
         "优先覆盖高频题型、常见任务、关键方法和易错陷阱。",
         "每个重要方法至少安排一个标准例题/案例和一个变式或错误诊断。",
         "非考试主题把例题表达为操作案例、任务场景、错误诊断和检查标准。",
+        "速成课章节必须能让学生扫到“看到什么信号、套哪条路径、先检查什么坑”。",
     ),
-    mode_writing_rule="速成课模式要突出重点、快速抓手、典型任务/题型解析和易错辨析。",
+    mode_writing_rule="速成课模式要突出重点、速查表、快速抓手、典型任务/题型解析和易错辨析。",
     prompt_label="速成课",
-    prompt_priority="抓重点、抓常见任务/题型、抓易错点",
+    prompt_priority="抓重点、抓常见任务/题型、抓可套用步骤、抓易错点",
     prompt_opening_guidance="如果这是课程开篇，优先用直观场景、常见任务/题型或学习动机破题，再建立概念直觉。",
     prompt_closing_guidance="如果这是课程收束章，优先回收高价值主题、易错点和综合任务/例题解析。",
     prompt_research_focus="高价值主题、任务/题型线索、典型例子和易错点",
@@ -219,6 +221,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
     min_score_gain=0.08,
     max_gap_queries_per_round=2,
     strategy_context_chars=4200,
+    prompt_extra_contract="速成课章节必须显式形成“考点/任务定位 -> 速查表或判断表 -> 例题解析 -> 变式/易错 -> 自测”的学习闭环；标题可以按内容自然命名，但这些学习功能不能缺位。",
 )
 
 _SYSTEMATIC_PROFILE = DocGenModeProfile(
