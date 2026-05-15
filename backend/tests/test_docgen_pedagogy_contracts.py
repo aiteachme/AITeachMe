@@ -377,8 +377,12 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "答案或结论" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
+    assert "> [!EXAMPLE]" in prompt
+    assert "> [!PRACTICE]" in prompt
     assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
+    assert "每个主要 `##` 都要有足够正文" in prompt
+    assert "章末保留一个短练习收束块" in prompt
     assert "训练型章节至少 6 个完整学习活动" in prompt
     assert "概念章至少 2 个左右" in prompt
     assert "不要复用章节标题" in prompt
@@ -430,6 +434,7 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "方法对照" in prompt
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
+    assert "每章末尾应有一个短练习收束块" in prompt
     assert "不要在 action 里给可直接复制的标题" in prompt
     assert "按本章具体对象、方法、任务差异或场景命名" in prompt
     assert "序号占位题型" in prompt

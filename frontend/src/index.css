@@ -1083,7 +1083,7 @@
 }
 
 .build-live-markdown aside {
-  box-shadow: 0 14px 34px -28px rgba(15, 23, 42, 0.42);
+  box-shadow: none;
 }
 
 .build-live-markdown table {

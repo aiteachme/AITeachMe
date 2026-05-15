@@ -44,6 +44,17 @@ def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
 
 
+def test_normalize_supports_practice_callout_blocks() -> None:
+    raw = "[!PRACTICE]\n1. **任务**：判断条件是否满足。\n2. **答案**：满足。"
+
+    fixed = normalize_markdown_rendering(raw)
+    summary = summarize_markdown_presentation(fixed)
+
+    assert fixed.startswith("> [!PRACTICE]\n>\n> 1. **任务**")
+    assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
+    assert summary["callout_count"] == 1
+
+
 def test_display_math_absolute_value_pipes_do_not_trigger_table_boundary() -> None:
     raw = "\n".join(
         [

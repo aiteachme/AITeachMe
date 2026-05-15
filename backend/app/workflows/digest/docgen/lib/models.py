@@ -476,6 +476,7 @@ class ChapterExecutionBrief(DocGenBaseModel):
     teaching_outline: list[str] = Field(default_factory=list)
     content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
     example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
+    chapter_end_practice_plan: list[dict[str, Any]] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
     formula_targets: list[str] = Field(default_factory=list)
@@ -505,7 +506,7 @@ class ChapterExecutionBrief(DocGenBaseModel):
     def _content_role_targets(cls, value: Any) -> dict[str, list[str]]:
         return clean_content_role_targets(value, item_limit=6)
 
-    @field_validator("example_coverage_plan", mode="before")
+    @field_validator("example_coverage_plan", "chapter_end_practice_plan", mode="before")
     @classmethod
     def _example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
         return clean_example_coverage_plan(value, limit=12)
@@ -635,6 +636,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     teaching_outline: list[str] = Field(default_factory=list)
     content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
     example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
+    chapter_end_practice_plan: list[dict[str, Any]] = Field(default_factory=list)
     content_points: list[str] = Field(default_factory=list)
     concept_targets: list[str] = Field(default_factory=list)
     definition_targets: list[str] = Field(default_factory=list)
@@ -704,7 +706,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     def _task_content_role_targets(cls, value: Any) -> dict[str, list[str]]:
         return clean_content_role_targets(value, item_limit=10)
 
-    @field_validator("example_coverage_plan", mode="before")
+    @field_validator("example_coverage_plan", "chapter_end_practice_plan", mode="before")
     @classmethod
     def _task_example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
         return clean_example_coverage_plan(value, limit=24)

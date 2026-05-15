@@ -225,6 +225,7 @@ def _execution_contract_for_writer(
     example_ratio = _unit_float((task.practice_seed_policy or {}).get("example_ratio"))
     practice_ratio = _unit_float((task.practice_seed_policy or {}).get("practice_ratio"))
     density_policy = dict((task.practice_seed_policy or {}).get("example_density_policy") or {})
+    chapter_end_practice_plan = list((task.practice_seed_policy or {}).get("chapter_end_practice_plan") or task.chapter_end_practice_plan or [])
     worked_example_target = int(density_policy.get("worked_examples_per_chapter", 3) or 1)
     if example_ratio >= 0.42:
         worked_example_target = max(worked_example_target, 4)
@@ -245,6 +246,7 @@ def _execution_contract_for_writer(
         "content_mix_policy": dict((task.practice_seed_policy or {}).get("content_mix_policy") or {}),
         "coverage_policy": list((task.practice_seed_policy or {}).get("coverage_policy") or []),
         "example_density_policy": density_policy,
+        "chapter_end_practice_plan": chapter_end_practice_plan,
         "repair_enabled": True,
         "practice_quota": {
             "worked_examples": worked_example_target,
@@ -819,6 +821,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 required_points=targets,
                 dense_context=dense_context,
                 quality=quality,
+                min_word_count=task.min_word_count,
                 max_retries=task.budget_policy.max_writer_retries,
                 extra_metadata=traced_context.trace_metadata(chapter_index=task.chapter_index),
             )

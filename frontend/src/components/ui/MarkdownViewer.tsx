@@ -25,9 +25,9 @@ import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
-type CalloutKind = "note" | "tip" | "important" | "warning" | "caution";
+type CalloutKind = "note" | "tip" | "important" | "warning" | "caution" | "example" | "practice";
 type CollapsibleHeadings = boolean | readonly number[];
-const CALLOUT_PATTERN = "note|tip|important|warning|caution";
+const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice";
 const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
@@ -128,6 +128,8 @@ const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
   important: { label: "重点", Icon: BadgeCheck },
   warning: { label: "注意", Icon: TriangleAlert },
   caution: { label: "警告", Icon: OctagonAlert },
+  example: { label: "例题", Icon: BadgeCheck },
+  practice: { label: "练习", Icon: Lightbulb },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
@@ -152,27 +154,43 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-slate-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-slate-200",
       badge: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
     },
+    example: {
+      shell: "my-4 rounded-2xl border border-violet-200 bg-violet-50/75 px-4 py-3 text-slate-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-slate-200",
+      badge: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    },
+    practice: {
+      shell: "my-4 rounded-2xl border border-teal-200 bg-teal-50/75 px-4 py-3 text-slate-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
+      badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+    },
   },
   document: {
     note: {
-      shell: "my-6 rounded-xl border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(37,99,235,0.45)] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-lg border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/80 px-5 py-4 text-[#1F2329] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
       badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
-      shell: "my-6 rounded-xl border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(16,185,129,0.45)] dark:border-emerald-500/30 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-lg border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50/80 px-5 py-4 text-[#1F2329] dark:border-emerald-500/30 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-6 rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-[#F3F7FF] px-5 py-4 text-[#1F2329] shadow-[0_14px_34px_-28px_rgba(37,99,235,0.5)] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-lg border border-blue-200 border-l-4 border-l-blue-600 bg-[#F3F7FF] px-5 py-4 text-[#1F2329] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
       badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
-      shell: "my-6 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/85 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(245,158,11,0.45)] dark:border-amber-500/30 dark:border-l-amber-400 dark:bg-amber-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/85 px-5 py-4 text-[#1F2329] dark:border-amber-500/30 dark:border-l-amber-400 dark:bg-amber-500/10 dark:text-slate-200",
       badge: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
     },
     caution: {
-      shell: "my-6 rounded-xl border border-rose-200 border-l-4 border-l-rose-500 bg-rose-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(244,63,94,0.45)] dark:border-rose-500/30 dark:border-l-rose-400 dark:bg-rose-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-lg border border-rose-200 border-l-4 border-l-rose-500 bg-rose-50/80 px-5 py-4 text-[#1F2329] dark:border-rose-500/30 dark:border-l-rose-400 dark:bg-rose-500/10 dark:text-slate-200",
       badge: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+    },
+    example: {
+      shell: "my-6 rounded-lg border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50/75 px-5 py-4 text-[#1F2329] dark:border-violet-500/30 dark:border-l-violet-400 dark:bg-violet-500/10 dark:text-slate-200",
+      badge: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    },
+    practice: {
+      shell: "my-6 rounded-lg border border-teal-200 border-l-4 border-l-teal-500 bg-teal-50/75 px-5 py-4 text-[#1F2329] dark:border-teal-500/30 dark:border-l-teal-400 dark:bg-teal-500/10 dark:text-slate-200",
+      badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
     },
   },
   planner: {
@@ -195,6 +213,14 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
     caution: {
       shell: "my-4 rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-zinc-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-slate-200",
       badge: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+    },
+    example: {
+      shell: "my-4 rounded-xl border border-violet-200 bg-violet-50/70 px-4 py-3 text-zinc-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-slate-200",
+      badge: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    },
+    practice: {
+      shell: "my-4 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-zinc-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
+      badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
     },
   },
 };
@@ -248,10 +274,10 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     listItem: "pl-0.5 leading-[1.78] [&>ol]:mt-2 [&>p]:mb-1.5 [&>p]:block [&>ul]:mt-2",
     blockquote: "my-4 rounded-r-lg border-l-4 border-[#CBD5E1] bg-[#F8FAFC] pl-4 pr-3 py-3 text-[15px] leading-[1.72] text-[#475569] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
     codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.8)]",
+    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-slate-800 dark:bg-slate-950",
     codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
     codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-7 overflow-x-auto rounded-xl border border-[#D8E2F0] bg-white shadow-[0_18px_42px_-34px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950/60",
+    tableShell: "my-7 overflow-x-auto rounded-xl border border-[#D8E2F0] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full border-separate border-spacing-0 text-[14px] [&_tbody_tr:nth-child(even)]:bg-[#F8FAFC] dark:[&_tbody_tr:nth-child(even)]:bg-slate-900/50",
     thead: "border-b border-[#D8E2F0] bg-[#F1F5F9] dark:border-slate-800 dark:bg-slate-900/80",
     th: "px-4 py-3 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
@@ -262,7 +288,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     em: "italic text-[#646A73] dark:text-slate-400",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-6",
-    imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
+    imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
     imageCaption: "mt-2 px-1 text-center text-[13px] text-[#646A73] dark:text-slate-400",
   },
@@ -1508,7 +1534,9 @@ function normalizeCalloutKind(value: string | undefined): CalloutKind | null {
     normalized === "tip" ||
     normalized === "important" ||
     normalized === "warning" ||
-    normalized === "caution"
+    normalized === "caution" ||
+    normalized === "example" ||
+    normalized === "practice"
   ) {
     return normalized;
   }
@@ -1527,7 +1555,7 @@ function extractCalloutMarker(paragraph: MarkdownAstNode): CalloutKind | null {
   }
 
   const firstText = children[firstTextIndex];
-  const match = String(firstText.value ?? "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*/i);
+  const match = String(firstText.value ?? "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\][ \t]*/i);
   const kind = normalizeCalloutKind(match?.[1]);
   if (!match || !kind || firstTextIndex > 0) {
     return null;
@@ -2211,7 +2239,7 @@ function InteractiveHtmlEmbed({
       <figure
         data-doc-html-figure="true"
         data-doc-interactive-asset={preview.assetPath}
-        className="my-5 overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm dark:border-sky-500/20 dark:bg-slate-950"
+        className="my-5 overflow-hidden rounded-xl border border-sky-100 bg-white dark:border-sky-500/20 dark:bg-slate-950"
       >
         <figcaption className="flex items-center justify-between gap-3 border-b border-sky-100 bg-sky-50/55 px-4 py-2.5 text-left dark:border-sky-500/20 dark:bg-sky-500/10">
           <span className="min-w-0">
@@ -2279,7 +2307,7 @@ function InteractiveHtmlEmbed({
       data-doc-interactive-embed="true"
       data-doc-interactive-asset={preview.assetPath}
       open={expanded}
-      className="group my-5 overflow-hidden rounded-xl border border-indigo-200 bg-white shadow-sm dark:border-indigo-500/25 dark:bg-slate-950"
+      className="group my-5 overflow-hidden rounded-xl border border-indigo-200 bg-white dark:border-indigo-500/25 dark:bg-slate-950"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-indigo-50/55 focus-visible:ring-2 focus-visible:ring-indigo-500/35 dark:hover:bg-indigo-500/10 [&::-webkit-details-marker]:hidden">
@@ -2343,7 +2371,7 @@ function InteractiveHtmlEmbed({
         {canRegenerate && isRegenerateFormOpen && (
           <form
             onSubmit={handleRegenerateInteractive}
-            className="mb-3 rounded-lg border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-500/20 dark:bg-slate-950"
+            className="mb-3 rounded-lg border border-indigo-100 bg-white p-3 dark:border-indigo-500/20 dark:bg-slate-950"
           >
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`interactive-regenerate-${preview.assetPath}`}>
               输入改进要求后重新生成
@@ -2451,7 +2479,7 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
   }
 
   const firstText = extractText(nodes[0]).trim();
-  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s+(.+))?$/i);
+  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\](?:\s+(.+))?$/i);
   if (!match) {
     return null;
   }

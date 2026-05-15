@@ -50,7 +50,7 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
             "heading_levels": "一级标题只用于章节标题，二/三级标题按内容层级展开，不跳级。",
             "emphasis": "核心概念、关键条件、结论、易错边界可加粗；不要整段加粗。",
             "highlight": "只对短关键句使用 ==...== 或受控 <mark>...</mark>，不要大量高亮。",
-            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"],
+            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION", "EXAMPLE", "PRACTICE"],
             "tables": "表格用于对比、分类、步骤、公式汇总、错因分析和学习路径；建议 3-5 列。",
             "visual_grouping": "定义、公式、步骤、例题、易错点和高频规则清单要有清晰边界，避免连续大段正文把不同学习功能混在一起。",
             "formulas": "行内公式用 $...$，多步推导或长公式用 $$...$$，变量和适用条件要解释。",
@@ -92,9 +92,9 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
 
 可渲染组件：
 - 对比、分类、步骤、公式汇总、错因分析优先用 3-5 列 Markdown 表格。
-- 教学提示块使用 `> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]` / `> [!NOTE]` / `> [!CAUTION]`，每章只在真正关键处使用。
-- 例题建议用清晰小标题或 callout 承载边界，再拆成 **题目**、**解析**、**易错点**；不要把题目、步骤、提醒混写成一段。
-- 一个 callout 只解决一个学习功能：重点、提示、警告、例题或边界说明，不要把多个功能塞进同一个长块。
+- 教学提示块使用 `> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]` / `> [!NOTE]` / `> [!CAUTION]`；例题可用 `> [!EXAMPLE]`，章末练习收束可用 `> [!PRACTICE]`。
+- 例题和练习块必须拆成 **题目/任务**、**解析/判定依据**、**答案/结论**、**易错点**；不要把题目、步骤、提醒混写成一段。
+- 一个 callout 只解决一个学习功能：重点、提示、警告、例题、练习或边界说明，不要把多个功能塞进同一个长块。
 - 公式必须成对闭合：短公式 `$...$`，长推导 `$$...$$`；变量和适用条件要解释。
 - 代码、命令、配置、伪代码必须使用带语言名的 fenced code block。
 - Mermaid 必须使用 ```mermaid 代码块；若表达知识图谱，关系标签只使用：{relation_text}。

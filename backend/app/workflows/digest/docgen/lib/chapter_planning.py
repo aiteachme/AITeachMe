@@ -375,6 +375,10 @@ def assemble_chapter_generation_plan(
             required=list(seed.required_elements),
             mode_profile=mode_profile,
         )
+        chapter_end_practice_plan = clean_example_coverage_plan(
+            getattr(brief, "chapter_end_practice_plan", []),
+            limit=4,
+        ) or clean_example_coverage_plan(example_coverage_plan[:3], limit=3)
         task = ChapterGenerationTask(
             chapter_index=chapter_index,
             confirmed_title=confirmed_title,
@@ -383,6 +387,7 @@ def assemble_chapter_generation_plan(
             teaching_outline=clean_string_list(brief.teaching_outline, limit=3),
             content_role_targets=content_role_targets,
             example_coverage_plan=example_coverage_plan,
+            chapter_end_practice_plan=chapter_end_practice_plan,
             content_points=clean_string_list(seed.required_elements),
             concept_targets=_filter_scope_items(
                 [*brief.concept_targets, *seed.required_elements],
@@ -442,6 +447,7 @@ def assemble_chapter_generation_plan(
                 "example_density_policy": dict(mode_profile.example_density_policy),
                 "coverage_policy": list(mode_profile.coverage_policy),
                 "example_coverage_plan": example_coverage_plan,
+                "chapter_end_practice_plan": chapter_end_practice_plan,
             },
             coverage_threshold=max(mode_profile.coverage_threshold, round(0.55 + intent_profile.review_strictness * 0.25, 3)),
             evidence_support_threshold=max(

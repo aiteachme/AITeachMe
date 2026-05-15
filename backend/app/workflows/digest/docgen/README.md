@@ -69,9 +69,10 @@ DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
 - **结构要可扫**：优先用模型基于本章材料命名的对照表、判断表、步骤表或错因表表达公式、条件和处理路径。
 - **例题要完整**：例题/案例不能只有题干或提示，必须包含“题目/案例、解析步骤、结论或答案、易错点”。
 - **理论要落地**：重要概念、公式、规则或方法后面要尽快接例题、案例、变式、自测或错误诊断。
-- **收束要可复习**：章节末尾应回收到关键结论、适用条件、不能硬套的边界和短自测。
+- **题目要可判**：完整例题用 `> [!EXAMPLE]`，章末练习收束用 `> [!PRACTICE]`；不同学科可以是案例、操作、证明、翻译、设计或诊断任务，但必须有答案、判定依据或解析要点。
+- **收束要可复习**：章节末尾应由模型基于本章内容生成 2-4 个短练习、案例检查、边界辨析或迁移任务，回收到关键结论、适用条件和不能硬套的边界。
 
-这不是要求固定标题模板。标题、题型分类、练习章和例题区都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。确定性展示层只允许做结构性收口：发现重复标题、截断标题、孤立三级标题等结构问题时触发 LLM heading repair，最终 Markdown 只删除同章重复标题；它不负责本地起新标题，也不维护可见标题禁词表。
+这不是要求固定标题模板。标题、题型分类、练习章、例题区和章末练习收束都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。确定性展示层只允许做结构性收口：发现重复标题、截断标题、孤立三级标题等结构问题时触发 LLM heading repair，最终 Markdown 只删除同章重复标题；它不负责本地起新标题，也不维护可见标题禁词表。
 
 ### 0.1 本文件同时承担的入口信息
 
@@ -379,11 +380,12 @@ build_chapter_execution_briefs
     - 统一使用 7 类内容角色：core_knowledge / method_demo / explanation_support / principle_reasoning / practice_assessment / knowledge_organization / application_extension。
     - 输出 content_role_targets，明确本章各角色要覆盖什么。
     - 输出 example_coverage_plan，明确哪些核心知识、方法或任务必须由例题、案例、操作示例或练习覆盖。
+    - 输出 chapter_end_practice_plan，明确章末练习收束应覆盖哪些本章任务、边界、迁移或操作检查。
     - sprint 侧重 method_demo / practice_assessment / application_extension，例题、案例、变式、自测或实践任务目标占比默认不低于 50%。
     - systematic 侧重 core_knowledge / principle_reasoning / explanation_support，但每个核心知识点必须有例题、案例、操作示例或练习支撑。
   约束：
     - teaching_outline 最多 3 条。
-    - content_role_targets 和 example_coverage_plan 是主要输出；concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 只做兼容字段，各最多 2 条。
+    - content_role_targets、example_coverage_plan 和 chapter_end_practice_plan 是主要输出；concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 只做兼容字段，各最多 2 条。
     - retrieval_queries 最多 2 条。
     - 不允许顺带改标题。
     - 不输出 media_requests。
@@ -404,10 +406,10 @@ assemble_chapter_tasks
     - chapter_index / confirmed_title / enhanced_title / objective
     - required_elements / forbidden_scope
     - retrieval_queries / priority_section_refs / source_slices / preferred_sources / fallback_policy
-    - content_role_targets / example_coverage_plan
+    - content_role_targets / example_coverage_plan / chapter_end_practice_plan
     - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets（兼容旧字段，不再作为主合同）
     - allowed_assets / practice_seed_policy（由规则装配阶段派生，不再由 chapter brief 直接产出）
-    - practice_seed_policy 中包含 content_mix_policy / example_density_policy / coverage_policy，作为 writer 和 review 的质量约束。
+    - practice_seed_policy 中包含 content_mix_policy / example_density_policy / coverage_policy / chapter_end_practice_plan，作为 writer 和 review 的质量约束；其中章末练习计划只做结构化透传和裁剪，不由规则生成题目。
     - dependency_refs / forward_refs / claim_targets / confusion_targets
   当前模型方案：
     - 当前无 LLM 调用；纯规则装配和 backbone 回填。
@@ -461,8 +463,8 @@ generate_chapters
            - `timeout_s=300`，`max_retries=3`
            - 默认映射到 `qwen-flash`
   模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
-    - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析”节奏。
-    - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收”节奏。
+    - sprint：短、密、题型导向，参考突击课常见的“考点/分值感/题型 -> 题眼 -> 最短方法 -> 变式练习 -> 易错辨析 -> 章末短练习收束”节奏。
+    - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收 -> 章末短练习收束”节奏。
     - 这些节奏只作为写作建议，不是固定目录；章节标题应由本章内容自然决定。
 
 enhance_chapters

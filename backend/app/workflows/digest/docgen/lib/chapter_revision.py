@@ -61,6 +61,7 @@ async def maybe_rewrite_chapter(
     required_points: list[str],
     dense_context: str,
     quality: ChapterQualitySignals,
+    min_word_count: int,
     max_retries: int,
     extra_metadata: dict,
 ) -> tuple[str, ChapterQualitySignals]:
@@ -94,7 +95,7 @@ async def maybe_rewrite_chapter(
         required_points=required_points,
         digest_mode=digest_mode,
         source_count=1,
-        min_word_count=max(1, int(count_words(markdown) * 0.7)),
+        min_word_count=max(1, int(min_word_count or count_words(markdown) * 0.7)),
     )
     repaired_quality.rewrite_used = True
     return rewritten_text + "\n", repaired_quality

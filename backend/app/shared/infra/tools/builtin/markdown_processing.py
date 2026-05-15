@@ -59,12 +59,13 @@ STUCK_MATH_FENCE_PATTERN = re.compile(
 )
 BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
 MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
+CALLOUT_KINDS_PATTERN = r"NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE"
 CALLOUT_LINE_PATTERN = re.compile(
-    r"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?P<rest>.*)$",
+    rf"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\](?P<rest>.*)$",
     re.IGNORECASE,
 )
 BARE_CALLOUT_PATTERN = re.compile(
-    r"(?m)^(?!\s*>)\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
+    rf"(?m)^(?!\s*>)\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]",
     re.IGNORECASE,
 )
 RAW_MARK_OPEN_PATTERN = re.compile(r"<mark\b[^>]*>", re.IGNORECASE)
@@ -93,12 +94,12 @@ KNOWLEDGE_GRAPH_RELATION_LABELS = {
 }
 MATH_MARKDOWN_BOUNDARY_PATTERN = re.compile(
     r"^(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
-    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|```)",
+    rf"\[!(?:{CALLOUT_KINDS_PATTERN})\]|```)",
     re.IGNORECASE,
 )
 INLINE_MATH_MARKDOWN_PATTERN = re.compile(
     r"(^|\n)\s*(?:#{1,6}\s+\S|[-*+]\s+(?:\*\*|`|\[|.{12,})|\d+\.\s+\S|>\s*\S|"
-    r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]|```)",
+    rf"\[!(?:{CALLOUT_KINDS_PATTERN})\]|```)",
     re.IGNORECASE,
 )
 _MARKDOWN_PARSER = MarkdownIt("commonmark")
@@ -1373,7 +1374,7 @@ def summarize_markdown_presentation(markdown: str) -> dict[str, object]:
         "issue_count": len(issues),
         "issues": issues[:20],
         "heading_count": len(HEADER_PATTERN.findall(text)),
-        "callout_count": len(re.findall(r"(?m)^>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", text, re.IGNORECASE)),
+        "callout_count": len(re.findall(rf"(?m)^>\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]", text, re.IGNORECASE)),
         "table_count": _count_gfm_tables(text),
         "code_block_count": text.count("```") // 2,
         "mermaid_block_count": _parsed_mermaid_fence_count(text),
