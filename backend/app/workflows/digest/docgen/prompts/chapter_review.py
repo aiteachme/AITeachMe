@@ -201,7 +201,8 @@ def build_chapter_review_messages(
 3. 自测、辨析或思考题必须有参考答案、判定依据、解析步骤或结论；系统课核心知识点也要有例题、案例、操作示例或练习任务支撑。
 4. 检查展示质量：标题层级、加粗/高亮闭合、callout、表格、公式、代码块、Mermaid 是否可渲染。孤立三级标题属于层级过度切分，应要求合并成更具体的 `##` 或改成正文加粗小节。
 5. 检查知识图谱相关内容是否只使用 7 类学习节点与 8 类关系；关系方向明显错误时输出 `section_patch`。
-6. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`；只做复核判断，不输出修补后的正文。
+6. 如果要求新增或改写小节，不要在 action 里给可直接复制的泛标题；只说明这个小节要解决什么学习问题，并要求修复模型按本章具体对象命名。尤其不要建议“知识速查表”“核心概念速查表”“综合训练”“快速自测”“常见任务整理”“补充讲解”这类目录里看不出内容的标题。
+7. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`；只做复核判断，不输出修补后的正文。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

@@ -7,8 +7,12 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import (
 )
 from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ChapterGenerationTask, EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
-from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
+from app.workflows.digest.docgen.prompts.generation import (
+    build_docgen_heading_repair_messages,
+    build_docgen_writer_messages,
+)
 
 
 def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() -> None:
@@ -282,6 +286,31 @@ def test_sprint_practice_supplement_only_fills_missing_example_gap() -> None:
     assert "误差判断" in supplemented
 
 
+def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> None:
+    markdown = (
+        "# 计算机硬件组成与指令系统基础\n\n"
+        "## 核心概念速查表\n\n"
+        "CPU、运算器、控制器和内存储器需要放在同一张结构图里理解。\n\n"
+        "## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解\n\n"
+        "这里补充说明各部件如何协作。\n\n"
+        "## 综合训练与检查标准\n\n"
+        "1. 判断指令由哪些部分组成。\n"
+    )
+
+    normalized = normalize_textbook_headings(
+        markdown,
+        digest_mode="sprint",
+        fallback_title="计算机硬件组成与指令系统基础",
+        focus_items=["CPU、运算器、控制器与内存储器的构成关系"],
+    )
+
+    assert "\n## 核心概念速查表" not in normalized
+    assert "\n## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解" not in normalized
+    assert "\n## 综合训练与检查标准" not in normalized
+    assert "的补充讲解" not in normalized
+    assert "核心概念速查表" not in normalized
+
+
 def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
     questions = _build_practice_questions(
         ChapterDraft(chapter_index=1, title="极限计算"),
@@ -338,7 +367,8 @@ def test_sprint_rule_review_requires_model_generated_problem_organization() -> N
     assert organization_actions
     instruction = organization_actions[0].instruction
     assert "自然生成" in instruction
-    assert "不要按固定词表拼接" in instruction
+    assert "修复模型根据本章语义命名" in instruction
+    assert "离开上下文看不懂的泛标题" in instruction
     assert "具体题型对象" in instruction
     assert "| 题型/任务 |" not in instruction
     assert report.passed is False
@@ -465,6 +495,24 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "处理模板" not in prompt
 
 
+def test_heading_repair_prompt_requires_content_specific_section_titles() -> None:
+    messages = build_docgen_heading_repair_messages(
+        title="计算机硬件组成与指令系统基础",
+        objective="让学生理解 CPU、内存和指令系统的关系。",
+        digest_mode="sprint",
+        required_elements=["CPU、运算器、控制器与内存储器", "指令系统"],
+        writing_instructions="标题要清楚。",
+        source_count=2,
+        markdown="# 计算机硬件组成与指令系统基础\n\n## 核心概念速查表\n\nCPU 与内存协作。\n",
+        dense_context="CPU 由运算器和控制器组成，指令包含操作码和地址码。",
+    )
+    prompt = messages[-1]["content"]
+
+    assert "必须按小节正文改成具体内容名" in prompt
+    assert "不要保留这些词当目录标题" in prompt
+    assert "知识速查表" in prompt
+
+
 def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     messages = build_chapter_review_messages(
         chapter_title="矩阵分解",
@@ -482,6 +530,8 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "方法对照" in prompt
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
+    assert "不要在 action 里给可直接复制的泛标题" in prompt
+    assert "目录里看不出内容的标题" in prompt
     assert "参考答案" in prompt
     assert "孤立三级标题属于层级过度切分" in prompt
     assert "题眼信号" not in prompt

@@ -2,9 +2,9 @@
 
 The writer/review pipeline may reason in terms of review, recap, coverage,
 or repair. Those words are useful internally, but they should not leak into
-the final Markdown as section titles. This module is the single place that
-turns internal teaching intent into visible textbook-like headings and worked
-example blocks.
+the final Markdown as section titles. This module only cleans structural
+noise; it must not invent semantic section titles that should have been
+chosen by the model from chapter content.
 """
 
 from __future__ import annotations
@@ -119,19 +119,17 @@ _MALFORMED_HEADING_CONNECTOR_RE = re.compile(
     r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用)\s*的"
 )
 
-_KIND_SUFFIX = {
-    "coverage": "补充讲解",
-    "points": "核心要点",
-    "questions": "典型判断问题",
-    "links": "知识联系",
-    "summary": "核心总结",
-    "examples": "典型例题解析",
-    "practice": "练习与巩固",
-    "structure": "知识结构",
-    "quickref": "公式与判定速查",
-}
 _DUPLICATE_GENERATED_HEADING_RE = re.compile(
     r"^.+的(?P<label>典型例题解析|例题与迁移|典型判断问题|知识联系|核心总结|知识结构|公式与判定速查|补充讲解)$"
+)
+_LOW_VALUE_VISIBLE_HEADING_RE = re.compile(
+    r"^(?:"
+    r"核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
+    r"学习大纲(?:[:：].*)?|章节目标|本章目标|补充掌握检查|"
+    r"快速复习自测区|快速自测|自测任务|考前速查与自测|"
+    r"常见任务整理|常见任务与题型整理|常见题型整理|题型整理|"
+    r"综合训练|综合训练与检查标准|典型例题与易错诊断"
+    r")$"
 )
 _CALLOUT_WARNING_START_RE = re.compile(
     r"^\s*(?:⚠️?|❗|❌|⛔|🚫)?\s*(?:\*\*)?"
@@ -254,25 +252,32 @@ def build_textbook_heading(
     fallback_title: str = "",
     level: int = 2,
 ) -> str:
-    """Build a student-facing heading from a semantic kind and content focus."""
+    """Return a cleaned visible heading without locally inventing semantics."""
 
     prefix = "#" * max(2, min(6, int(level or 2)))
-    normalized_mode = str(digest_mode or "systematic").strip().lower()
     resolved_focus = clean_heading_focus(focus) or clean_heading_focus(fallback_title)
     if _looks_like_generic_visible_focus(resolved_focus):
         resolved_focus = ""
-    suffix = _KIND_SUFFIX.get(kind, "核心内容")
-    if kind == "examples":
-        suffix = "典型例题解析" if normalized_mode == "sprint" else "例题与迁移"
-    if kind == "practice":
-        return f"{prefix} 练习与巩固"
-    if kind == "questions" and not resolved_focus:
-        return f"{prefix} 典型判断问题"
-    if kind == "points" and not resolved_focus:
-        return f"{prefix} 核心要点"
-    if not resolved_focus:
-        return f"{prefix} {suffix}"
-    return f"{prefix} {resolved_focus}的{suffix}"
+    fallback = _numberless_fallback_title(fallback_title, default="")
+    heading = resolved_focus or fallback
+    if not heading:
+        return ""
+    return f"{prefix} {heading}"
+
+
+def _demote_heading_title(title: str) -> str:
+    return ""
+
+
+def _is_low_value_visible_heading(title: str) -> bool:
+    """Detect TOC noise without generating a replacement title locally."""
+
+    cleaned = str(title or "").strip()
+    if not cleaned:
+        return False
+    if _LOW_VALUE_VISIBLE_HEADING_RE.match(cleaned):
+        return True
+    return _DUPLICATE_GENERATED_HEADING_RE.match(cleaned) is not None
 
 
 def strip_heading_number_prefix(value: str) -> str:
@@ -337,16 +342,9 @@ def rewrite_textbook_heading_line(
         if numberless_title != raw_title:
             return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
         return line
-    focus = choose_heading_focus(focus_items, fallback=fallback_title)
     kind = _classify_non_textbook_heading(heading_title)
-    if kind:
-        return build_textbook_heading(
-            kind,
-            digest_mode=digest_mode,
-            focus=focus,
-            fallback_title=fallback_title,
-            level=level,
-        )
+    if kind or _is_low_value_visible_heading(heading_title):
+        return _demote_heading_title(heading_title)
     if heading_title and heading_title != numberless_title:
         return f"{match.group('prefix')} {heading_title}"
     if numberless_title and numberless_title != raw_title:
@@ -397,9 +395,7 @@ def _demote_repeated_generated_heading_line(line: str, seen_counts: dict[str, in
     if duplicate_match is None:
         return line
     seen_counts[title] = seen_counts.get(title, 0) + 1
-    if seen_counts[title] == 1:
-        return line
-    return f"**{duplicate_match.group('label')}**"
+    return ""
 
 
 def _looks_like_non_content_phrase(text: str) -> bool:
@@ -577,16 +573,7 @@ def format_worked_example_section(
 
     if not examples:
         return ""
-    focus = choose_heading_focus(focus_items, fallback=fallback_title)
-    lines = [
-        build_textbook_heading(
-            "examples",
-            digest_mode=digest_mode,
-            focus=focus,
-            fallback_title=fallback_title,
-        ),
-        "",
-    ]
+    lines: list[str] = []
     seen_labels: set[str] = set()
     for index, item in enumerate(examples, start=1):
         label = clean_heading_focus(str(item.get("label") or item.get("type") or ""), max_chars=24)

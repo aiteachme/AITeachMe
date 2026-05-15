@@ -13,7 +13,6 @@ from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
-    ensure_chapter_learning_scaffold,
     resolve_effective_chapter_title,
 )
 from app.workflows.digest.docgen.prompts.generation import (
@@ -32,11 +31,6 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     normalize_docgen_presentation,
     summarize_docgen_presentation,
 )
-from app.workflows.digest.docgen.lib.textbook_style import (
-    build_textbook_heading,
-    choose_heading_focus,
-)
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
@@ -193,22 +187,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
 
         scaffold_fallback_applied = False
-        if bool(heading_quality.get("needs_scaffold_fallback")):
-            markdown = ensure_chapter_learning_scaffold(
-                markdown,
-                title=title,
-                objective=objective,
-                required_elements=required_elements,
-                digest_mode=digest_mode,
-                source_count=source_count,
-                chapter_index=chapter_index,
-                chapter_count=chapter_count,
-            )
-            scaffold_fallback_applied = True
-            heading_quality = analyze_chapter_heading_quality(
-                markdown,
-                digest_mode=digest_mode,
-            )
 
         markdown = self._ensure_media_placeholders(
             markdown,
@@ -351,23 +329,10 @@ class DocGenWriterRuntime(BaseTracedExecution):
             coverage_requirements=coverage_requirements,
         )
         if missing_requirements:
-            repaired = repaired.rstrip() + "\n\n" + self._build_repair_section(
-                title=title,
-                objective=objective,
-                digest_mode=digest_mode,
-                missing_requirements=missing_requirements,
-                dense_context=dense_context,
-            )
-            repair_actions.append("coverage")
+            repair_actions.append("coverage_unresolved")
 
         if min_word_count > 0 and count_words(repaired) < min_word_count:
-            repaired = repaired.rstrip() + "\n\n" + self._build_expansion_section(
-                title=title,
-                digest_mode=digest_mode,
-                required_elements=required_elements,
-                dense_context=dense_context,
-            )
-            repair_actions.append("length")
+            repair_actions.append("length_unresolved")
 
         before_presentation_issues = find_docgen_presentation_issues(repaired)
         if before_presentation_issues:
@@ -404,87 +369,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             "presentation": summarize_docgen_presentation(repaired),
             "presentation_issues": before_presentation_issues[:12],
         }
-
-    def _build_repair_section(
-        self,
-        *,
-        title: str,
-        objective: str,
-        digest_mode: str,
-        missing_requirements: list[str],
-        dense_context: str,
-    ) -> str:
-        mode_profile = get_docgen_mode_profile(digest_mode)
-        lines = [
-            "## 补充掌握检查",
-            "",
-            f"围绕《{title}》，可以把注意力集中到几个容易漏掉的连接点上。",
-        ]
-        if objective.strip():
-            lines.append(f"本章目标仍然是：{objective.strip()}")
-        lines.extend(["", "复习时优先检查这些点是否已经能用自己的话讲清："])
-        for item in missing_requirements[:5]:
-            lines.append(
-                f"- **{item}**：它和本章主线是什么关系，在哪类题目或场景里会被触发，最容易和哪个相邻概念混淆。"
-            )
-        if mode_profile.is_sprint:
-            lines.extend(
-                [
-                    "",
-                    "处理任务前不必重新背一遍整章，先抓住场景给出的结构条件，再判断它对应本章哪一种方法、步骤或判断标准。",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "",
-                    "如果后续继续系统学习，可以把这些点放回定义、推理和例子的链条中检查，而不是孤立记忆。",
-                ]
-            )
-        return "\n".join(lines).strip()
-
-    def _build_expansion_section(
-        self,
-        *,
-        title: str,
-        digest_mode: str,
-        required_elements: list[str],
-        dense_context: str,
-    ) -> str:
-        mode_profile = get_docgen_mode_profile(digest_mode)
-        focus_items = required_elements[:4] or (
-            ["核心概念", "关键方法", "典型例子"] if mode_profile.is_sprint else ["定义", "推理", "应用"]
-        )
-        focus = choose_heading_focus(focus_items, fallback=title)
-        heading = build_textbook_heading(
-            "summary",
-            digest_mode=digest_mode,
-            focus=focus,
-            fallback_title=title,
-        )
-        lines = [
-            heading,
-            "",
-            f"为了让《{title}》这一章更完整，可以把正文再向外补一层复习抓手。",
-            "",
-        ]
-        for item in focus_items:
-            lines.append(f"- **{item}**：回到正文里找到它承担的角色，再确认它对应的条件、步骤或例子。")
-        if mode_profile.is_sprint:
-            lines.extend(
-                [
-                    "",
-                    "突击复习时，把这些抓手压缩成“看条件、选方法、验结论”的三步即可。",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "",
-                    "系统学习时，重点不是把清单背完，而是把概念、推理和应用之间的因果关系串起来。",
-                ]
-            )
-        return "\n".join(lines).strip()
 
     def _sanitize_student_facing_markdown(
         self,
