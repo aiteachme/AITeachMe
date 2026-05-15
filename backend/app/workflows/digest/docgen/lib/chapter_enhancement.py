@@ -144,7 +144,7 @@ def _build_practice_questions(
                     "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
                 }
             )
-        while len(examples) < 5:
+        while len(examples) < 6:
             focus = focus_terms[min(len(examples) - 1, len(focus_terms) - 1)] if focus_terms else title
             examples.append(
                 {

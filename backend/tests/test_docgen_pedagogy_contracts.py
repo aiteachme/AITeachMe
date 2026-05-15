@@ -227,7 +227,7 @@ def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
         digest_mode="sprint",
     )
 
-    assert len(questions) >= 5
+    assert len(questions) >= 6
     assert _minimum_visible_examples(digest_mode="sprint", question_count=len(questions)) == 4
 
     supplemented = _append_practice_section(
@@ -237,7 +237,7 @@ def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
         title="极限计算",
     )
 
-    assert supplemented.count("> **例题") >= 5
+    assert supplemented.count("> **例题") >= 6
     assert "易错点" in supplemented
 
 
@@ -276,8 +276,53 @@ def test_sprint_rule_review_requires_model_generated_problem_organization() -> N
     instruction = organization_actions[0].instruction
     assert "自然生成" in instruction
     assert "不要按固定词表拼接" in instruction
-    assert "常见题型整理" in instruction
+    assert "具体题型对象" in instruction
     assert "| 题型/任务 |" not in instruction
+    assert report.passed is False
+
+
+def test_sprint_rule_review_rejects_unanswered_self_check() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="定积分计算",
+        markdown=(
+            "# 定积分计算\n\n"
+            "## 换元积分题型\n\n"
+            "| 题型 | 适用条件 | 做法 | 易错 |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 换元积分 | 复合函数可凑微分 | 换元后改上下限 | 忘记改上下限 |\n\n"
+            "## 考前速查与自测\n\n"
+            "1. 练习：计算 $\\int_0^1 xe^{-x^2}\\,dx$。（提示：凑微分）\n"
+            "2. 思考：为什么换元后积分上下限要同步变化？\n"
+        ),
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="定积分计算",
+        required_elements=["换元积分", "分部积分"],
+        practice_seed_policy={
+            "digest_mode": "sprint",
+            "example_density_policy": {
+                "worked_examples_per_chapter": 1,
+                "practice_tasks_per_chapter": 1,
+            },
+        },
+    )
+
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="sprint",
+    )
+
+    unanswered_actions = [
+        action for action in actions if action.action_id.endswith("_sprint_unanswered_self_check")
+    ]
+    assert unanswered_actions
+    assert "答案/结论" in unanswered_actions[0].instruction
     assert report.passed is False
 
 
@@ -297,15 +342,16 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     )
     prompt = messages[-1]["content"]
 
-    assert "题型整理或常见问法整理" in prompt
-    assert "条件与方法速查" in prompt
+    assert "题型分类或常见问法整理" in prompt
+    assert "答案或结论" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
     assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
-    assert "至少 5 个带解析和易错点" in prompt
+    assert "至少 6 个带题目、解析、答案/结论和易错点" in prompt
     assert "不能反复复用章节标题" in prompt
-    assert "带解析和易错点的例题/案例/变式/自测" in prompt
+    assert "必须给出参考答案" in prompt
+    assert "考前速查与自测" in prompt
     assert "不要只写“请自行练习”" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt
@@ -325,8 +371,9 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     prompt = messages[-1]["content"]
 
     assert "题型或任务整理" in prompt
-    assert "条件与方法速查" in prompt
-    assert "例题解析" in prompt
+    assert "方法对照" in prompt
+    assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
+    assert "参考答案" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt

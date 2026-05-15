@@ -31,6 +31,11 @@ _PROBLEM_ORGANIZATION_RE = re.compile(
     r"(?:题型整理|题型归纳|题型分类|常见题型|典型题|常见问法|题目类型|常见任务|任务整理|"
     r"适用条件|解题思路|做法|常见失误|易错|误区)"
 )
+_SELF_CHECK_SECTION_RE = re.compile(
+    r"(?ms)^#{2,4}\s+[^\n]*(?:自测|思考|辨析|练习)[^\n]*\n(?:[ \t]*\n)*(?P<body>.*?)(?=^#{1,4}\s+|\Z)"
+)
+_SELF_CHECK_QUESTION_RE = re.compile(r"(?:计算|判断|求|证明|说明|为什么|是否|能否|练习|辨析|思考|自测|？|\?)")
+_SELF_CHECK_ANSWER_RE = re.compile(r"(?:答案|参考答案|解析|解法|步骤|要点|结论|判定依据|错因|易错)")
 
 
 def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
@@ -66,6 +71,14 @@ def _has_problem_organization(markdown: str) -> bool:
     heading_like = re.search(r"(?m)^#{2,4}\s+.*(?:题型|任务|问法|做法|易错|误区)", text)
     list_like_rows = re.findall(r"(?m)^\s*(?:[-*]|\d+[.、])\s+.*(?:题|任务|条件|做法|易错|误区)", text)
     return bool(heading_like and (signal_count >= 3 or len(table_like_rows) >= 3 or len(list_like_rows) >= 3))
+
+
+def _has_unanswered_self_check(markdown: str) -> bool:
+    for match in _SELF_CHECK_SECTION_RE.finditer(str(markdown or "")):
+        body = match.group("body") or ""
+        if _SELF_CHECK_QUESTION_RE.search(body) and not _SELF_CHECK_ANSWER_RE.search(body):
+            return True
+    return False
 
 
 def _planned_example_count(task: ChapterGenerationTask) -> int:
@@ -222,7 +235,7 @@ def _rule_review_chapter(
                     reason="快速复习章节缺少可扫描的题型或任务整理。",
                     target_anchor=_chapter_anchor(draft),
                     instruction=(
-                        "补一个由本章内容自然生成的整理小节。考试、计算、刷题类章节可用“常见题型整理”或更贴合内容的标题；"
+                        "补一个由本章内容自然生成的题型或任务整理小节。考试、计算、刷题类章节的标题应直接写本章具体题型对象，"
                         "操作、项目、概念辨析类章节可用“常见任务整理”或更贴合内容的标题。标题、表头和条目必须来自本章语义，"
                         "不要按固定词表拼接。整理内容至少覆盖：典型问法或任务、适用条件、做法、常见失误，并配 1-2 个小例题或变式。"
                     ),
@@ -232,6 +245,28 @@ def _rule_review_chapter(
                         "不要引入本章证据之外的新知识点。",
                     ],
                     expected_effect="本章能让学生快速看出常见考法或任务类型、适用条件、做法和易错点。",
+                )
+            )
+        if _has_unanswered_self_check(draft.markdown):
+            warnings.append("快速复习章节存在只有问题、没有答案或解析要点的自测/思考区。")
+            actions.append(
+                ReviewAction(
+                    action_id=f"review_ch{draft.chapter_index:02d}_sprint_unanswered_self_check",
+                    action_type="section_patch",
+                    chapter_index=draft.chapter_index,
+                    severity="warning",
+                    reason="快速复习自测或思考题缺少参考答案、解析要点或判定依据。",
+                    target_anchor=_chapter_anchor(draft),
+                    instruction=(
+                        "把只有提示或问题的自测/思考区改成可直接使用的训练区：每道题必须补齐题目条件、解析步骤、答案/结论和易错点；"
+                        "如果题目太泛，改成围绕本章具体题型或方法的标准例题、变式题或错误诊断。"
+                    ),
+                    constraints=[
+                        "不引入本章证据之外的新知识点。",
+                        "不把非考试主题硬改成试卷题。",
+                        "标题和题目内容必须来自本章语义，不能按固定词表拼接。",
+                    ],
+                    expected_effect="自测区不再只是提醒学生复习，而是变成有答案、有过程、能检查掌握情况的题型训练。",
                 )
             )
     else:

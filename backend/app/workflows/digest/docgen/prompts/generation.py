@@ -101,6 +101,21 @@ def build_docgen_writer_messages(
         if str(item).strip()
     ]
     min_worked_examples = int(mode_profile.example_density_policy.get("worked_examples_per_chapter", 4) or 4)
+    sprint_problem_contract = ""
+    if mode_profile.is_sprint:
+        sprint_problem_contract = f"""
+快速复习题型化要求：
+- 如果本章是考试、计算、刷题或方法训练主题，正文必须像可直接复习的应试讲义：先把题目分成若干类，再分别给“什么时候用、怎么做、怎么算完、哪里会错”。
+- 题型整理不能停留在口号或空表；每一类至少要能看到一个贴合本章的短题、条件变化或错因例子。
+- 至少写 {min_worked_examples} 个完整学习活动，优先是标准例题、变式题、错误诊断或综合小题；每个活动必须包含 **题目/任务**、**解析步骤**、**答案或结论**、**易错点**。
+- 如果使用“自测”“辨析”“思考”这类形式，必须给出参考答案、判定依据或解题要点；不要只抛问题让学生自己想。
+- 不要把“考前速查与自测”“自测任务”“学习路径”这类泛标题当默认收尾。需要收束时，标题要由本章具体题型或方法自然命名，例如“分部积分的选法训练”“变上限积分的求导题”“闭区间最值的综合小题”。这些只是风格例子，不是候选词表。
+""".strip()
+    sprint_problem_contract_summary = (
+        sprint_problem_contract.replace("快速复习题型化要求：\n", "").replace("\n", "；")
+        if sprint_problem_contract
+        else ""
+    )
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
         f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
@@ -110,6 +125,7 @@ def build_docgen_writer_messages(
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
         f"- 练习配额：例题解析 {practice_quota.get('worked_examples', 0)} / 简答 {practice_quota.get('short_answer', 0)} / 快速检测 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
         f"- 例题密度策略：{example_density_policy.get('policy_text') or '例题、案例和任务必须服务当前知识点。'}\n"
+        f"{('- 快速复习题型化要求：' + sprint_problem_contract_summary) if sprint_problem_contract_summary else ''}\n"
         f"- 内容角色目标：{content_role_targets}\n"
         f"- 例题覆盖计划：{example_coverage_plan}\n"
         f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按学习大纲覆盖核心知识和例题。'}\n"
@@ -149,7 +165,8 @@ def build_docgen_writer_messages(
 {_presentation_contract(digest_mode=normalized_mode)}
 练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
 例题优先级：例题、案例、操作示例、变式训练和自测是核心内容，不是附录。快速复习节奏要明显提高例题/任务密度，按高频题型、重要方法、题目条件、易错点组织；系统学习要保证每个核心知识点都有例题、案例或练习支撑。
-快速复习质量线：如果是快速复习节奏，本章必须让学生一眼看到“这章常考/常用什么、题目或任务条件是什么、下一步怎么做、哪里最容易错”。考试、计算、刷题类章节必须有一个由本章材料自然生成的题型整理或常见问法整理；非考试主题也要有常见任务整理。不要把内部检查词直接写成学生可见表头。正文还要包含条件与方法速查、至少 {min_worked_examples} 个带解析和易错点的例题/案例/变式/自测；执行合同要求更多时按更多写。
+快速复习质量线：如果是快速复习节奏，本章必须让学生一眼看到“这章会遇到哪些题、题目条件怎么变、每类题下一步怎么做、哪里最容易错”。考试、计算、刷题类章节必须有由本章材料自然生成的题型分类或常见问法整理，并把分类落到具体题目里；非考试主题也要有常见任务整理。不要把内部检查词直接写成学生可见表头。正文还要包含可扫描的题型/方法对照区、至少 {min_worked_examples} 个带题目、解析、答案/结论和易错点的例题/案例/变式/自测；执行合同要求更多时按更多写。
+{sprint_problem_contract}
 版式表达：快速复习章节不要写成大段平铺笔记，也不要把公式、说明、步骤、提醒和例题揉在同一段里。连续解释两段后，下一段优先改成速查表、步骤列表、例题块、易错提醒或短小结，除非内容本身不适合。高频结论、题目条件、解题步骤、易错提醒和例题可使用 GitHub 风格 callout，例如 `> [!IMPORTANT]`、`> [!TIP]`、`> [!WARNING]`；关键条件、限制和结论要适度加粗，但不要整段加粗。
 学习内容角色：正文需要自然覆盖核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织和应用拓展中的本章必要部分；这些是写作检查维度，不要求作为固定标题原样出现。
 
@@ -169,7 +186,7 @@ def build_docgen_writer_messages(
 10. 二级、三级标题必须比上一级更具体，不能反复复用章节标题、课程名或“建立基本语言与常见题”这类泛标题；快速复习标题优先写题型、方法动作、适用条件、易错边界或综合任务。
 11. 快速复习章节不能长时间只讲理论；每个重要方法后尽快接例题、案例、变式任务或错误诊断，题目内容必须由本章知识和材料语义生成。
 12. 系统课章节不能只有理论覆盖；每个核心知识点都要能在正文里找到对应例题、案例、操作示例或练习任务。
-13. 快速复习例题必须有可执行解析步骤和易错点；不要只写“请自行练习”“复习一下”这类空泛提醒。
+13. 快速复习例题必须有可执行解析步骤、答案或结论和易错点；不要只写“请自行练习”“复习一下”这类空泛提醒，也不要把“思考一下为什么”当成没有答案的自测题。
 14. 信息块要有清晰边界：公式后解释适用条件，步骤后给检查点，例题后给错因；不要让不同文本类型混在一起看不清。
 15. 少写抒情句、鼓励句和聊天式口吻，保持清楚、克制、可信。
 16. 不输出原始来源列表、内部课程标识、研究笔记标题或草稿修补痕迹。

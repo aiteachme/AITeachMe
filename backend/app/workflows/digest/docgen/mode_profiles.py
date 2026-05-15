@@ -126,7 +126,7 @@ class DocGenModeProfile:
 
         depth = str(depth_level or "").strip().lower()
         if self.is_sprint:
-            return 520, 850 if depth == "compact" else 1050
+            return 760, 1150 if depth == "compact" else 1450
 
         base = 1500 if depth == "deep" else 1250
         return 850, max(1100, base if chapter_count <= 8 else 1200)
@@ -160,7 +160,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "用速查表或判断表压缩核心公式、规则、适用条件和常见问法",
         "每个重要方法都按“题目或任务条件 -> 处理步骤 -> 例题解析 -> 变式/易错”落地，并用表格、callout 或小标题把信息块分开",
         "例题要写出题目/案例、解析步骤、答案或结论、易错点，不能只有提示",
-        "章节末尾用考前速查、易错边界和自测任务收束",
+        "章节收束优先回到本章真实题型：用题型族、完整例题、变式题和错因复盘检验会不会做，不能只给泛泛速查清单或空自测题",
     ),
     course_flow_hints=(
         "课时开头先给高价值主题、常见任务/题型和重要程度，再进入概念或方法",
@@ -168,42 +168,43 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "讲完一组任务/题型后，用例题解析、变式训练、易错辨析和速查表收束",
     ),
     practice_focuses=(
-        "快速抓手",
-        "关键线索定位",
-        "变式训练",
-        "易错辨析",
+        "题型分类整理",
+        "完整例题解析",
+        "变式题训练",
+        "错因复盘",
     ),
     content_mix_policy={
-        "core_knowledge": 0.22,
-        "method_demo": 0.28,
-        "explanation_support": 0.10,
-        "principle_reasoning": 0.08,
-        "practice_assessment": 0.26,
+        "core_knowledge": 0.18,
+        "method_demo": 0.30,
+        "explanation_support": 0.08,
+        "principle_reasoning": 0.06,
+        "practice_assessment": 0.32,
         "knowledge_organization": 0.06,
         "application_extension": 0.16,
     },
     example_density_policy={
         "minimum_practice_share": 0.55,
-        "worked_examples_per_chapter": 5,
-        "practice_tasks_per_chapter": 5,
+        "worked_examples_per_chapter": 6,
+        "practice_tasks_per_chapter": 6,
         "important_method_min_examples": 2,
         "quick_reference_per_chapter": 1,
-        "policy_text": "快速复习节奏必须高密度使用例题、案例、变式、自测或实践任务；理论只服务会做题、会操作、会判断、会避坑。考试、计算或刷题类章节必须有自然生成的常见题型整理，并配足带解析和易错点的例题区，优先让学生通过例子学会用法。",
+        "policy_text": "快速复习节奏必须高密度使用完整例题、变式题、错因诊断和少量必要速查；理论只服务会做题、会操作、会判断、会避坑。考试、计算或刷题类章节要像应试讲义一样先把题分成几类，再给每类的条件、做法、完整例题和常见失误；不能用只有提示的问题或泛泛自测凑数量。",
     },
     coverage_policy=(
-        "优先覆盖高频题型、常见任务、关键方法和易错陷阱。",
-        "每个重要方法至少安排一个标准例题/案例和一个变式或错误诊断；计算、考试或刷题类章节要明显多给例子，不能只列规则。",
+        "优先覆盖高频题型、常见任务、关键方法和易错陷阱；考试、计算或刷题类章节要先整理题型族，再讲方法。",
+        "每个重要方法至少安排一个标准例题/案例和一个变式或错误诊断；每个题型族至少要能看到题目条件、完整步骤、答案/结论和错因复盘。",
+        "如果章节明显面向考试或计算训练，不要把收尾写成“考前速查与自测”这类泛标题；收尾应继续围绕本章具体题型、变式题和综合小题展开。",
         "非考试主题把例题表达为操作案例、任务场景、错误诊断和检查标准。",
         "快速复习章节必须能让学生扫到本章常见考法或任务类型、适用条件、处理步骤和容易失误的地方。",
     ),
-    mode_writing_rule="快速复习节奏要突出重点、题型或任务整理、典型例题解析和易错辨析。",
+    mode_writing_rule="快速复习节奏要突出题型分类、完整例题解析、变式训练和错因复盘；少写泛泛清单，多给能直接做的题。",
     prompt_label="快速复习",
-    prompt_priority="重点、常见任务/题型、可执行步骤、易错点",
+    prompt_priority="题型分类、完整例题、可执行步骤、易错点和错因复盘",
     prompt_opening_guidance="如果这是课程开篇，优先用直观场景、常见任务/题型或学习动机破题，再建立概念直觉。",
-    prompt_closing_guidance="如果这是课程收束章，优先回收高价值主题、易错点和综合任务/例题解析。",
+    prompt_closing_guidance="如果这是课程收束章，优先用综合题型、典型变式和错因复盘回收高价值主题。",
     prompt_research_focus="高价值主题、任务/题型线索、典型例子和易错点",
     seed_target_length=950,
-    fallback_teaching_outline=("先标出高价值主题和常见任务/题型", "用典型例子带出最短方法", "最后辨析易错边界"),
+    fallback_teaching_outline=("先标出本章题型族和适用条件", "用完整例题带出最短方法", "最后用变式和错因复盘收口"),
     gap_query_suffixes=("常见任务", "易错点", "典型例子"),
     practice_style="task_driven",
     coverage_threshold=0.6,
@@ -221,7 +222,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
     min_score_gain=0.08,
     max_gap_queries_per_round=2,
     strategy_context_chars=4200,
-    prompt_extra_contract="快速复习章节必须显式形成“题型或任务整理 -> 条件与方法速查 -> 例题解析 -> 变式/易错 -> 自测”的学习闭环；标题必须按本章内容自然命名，不能由固定短语硬拼，但这些学习功能不能缺位。",
+    prompt_extra_contract="快速复习章节必须形成题型化学习路径：先让学生看出本章有哪些题/任务，再用完整例题和变式题教会做法，最后用错因复盘检查是否真的会。标题、表头和题目必须由本章内容自然命名，不要把“考前速查与自测”“常见题型整理”这类泛标题当作默认收尾；如果需要类似功能，也要改写成贴合本章具体题型的方法标题。",
 )
 
 _SYSTEMATIC_PROFILE = DocGenModeProfile(

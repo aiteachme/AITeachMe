@@ -89,8 +89,8 @@ def build_chapter_execution_brief_messages(
 2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
 3. `content_role_targets` 是主合同，要按 7 类学习内容角色列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
 4. `example_coverage_plan` 必须列出本章需要用例题、案例、操作示例、变式训练或自测覆盖的重点；快速复习节奏更密，系统学习要保证核心知识点有例题覆盖。
-5. 快速复习节奏的 `example_coverage_plan` 要优先覆盖常见题型/任务、题目或任务条件、标准例题、变式检查和易错复盘；计算、考试或刷题类章节要尽量规划更多例题角度，而不是只规划概念说明；`content_role_targets.knowledge_organization` 要说明题型整理、任务整理、速查表或判断表应覆盖哪些对象。
-6. 每个 `example_coverage_plan` 项的 `purpose` 要说明这道例题/案例帮助学生学会什么，不要写成“复习一下”。
+5. 快速复习节奏的 `example_coverage_plan` 要优先围绕题型族来设计：常见问法/任务、题目条件、标准例题、变式检查、错误诊断都要服务“会做题”。计算、考试或刷题类章节要尽量规划更多例题角度，而不是只规划概念说明；`content_role_targets.knowledge_organization` 要说明题型分类、任务整理、方法对照或判断表应覆盖哪些对象。
+6. 每个 `example_coverage_plan` 项的 `purpose` 要说明这道例题/案例帮助学生学会什么，不要写成“复习一下”；如果输出的是自测、辨析或思考题，也必须规划参考答案、判定依据或解题要点，不能只给问题。
 7. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
 8. `retrieval_queries` 最多 2 条。
 9. 不允许顺带修改标题。
