@@ -69,6 +69,7 @@ import {
 import { publicAssetPath } from "../lib/publicAsset";
 import { buildCoursePath } from "../lib/courseNavigation";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 
 type ChatRole = "user" | "assistant" | "system";
 
@@ -2199,12 +2200,7 @@ export function BuildPlanPage() {
 
       <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
-          <div className="flex items-center justify-center pb-2 pt-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-400 shadow-sm">
-              <Sparkles className="h-3 w-3" />
-              方案规划
-            </div>
-          </div>
+          <CoursePagePillTitle icon={Sparkles} label="方案规划" />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">

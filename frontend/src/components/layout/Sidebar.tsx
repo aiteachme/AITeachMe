@@ -423,6 +423,7 @@ export function Sidebar({
     <>
       <button
         type="button"
+        data-mobile-nav-toggle="true"
         onClick={() => setIsMobileOpen((prev) => !prev)}
         className={cn(
           "fixed left-4 top-[calc(1.125rem+env(safe-area-inset-top))] z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-[transform,opacity,background-color,box-shadow,color] duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 lg:hidden",
@@ -443,7 +444,7 @@ export function Sidebar({
         data-app-sidebar="true"
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/80 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/70 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] ring-1 ring-slate-900/5 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
-          isAssistantPage ? "rounded-none" : "rounded-r-[22px]",
+          "rounded-none",
           isMobileOpen ? "w-[80vw] lg:w-[240px]" : effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -909,7 +910,6 @@ export function Sidebar({
             onNavigate={closeMobileNavigation}
             targetScope={sidebarConversationScope}
             title={isCourseConversationScope ? "课程最近" : "全局最近"}
-            showTopBorder={false}
             showCourseBadge={false}
             emptyText={isMobileOpen && !isCourseConversationScope ? "" : isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />

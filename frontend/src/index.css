@@ -959,6 +959,12 @@
   background: rgba(2, 6, 23, 0.45);
 }
 
+@media (max-width: 1023px) {
+  .knowledge-graph-panel-open [data-mobile-nav-toggle="true"] {
+    display: none !important;
+  }
+}
+
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .modal-backdrop {
     background: rgba(248, 250, 252, 0.42);

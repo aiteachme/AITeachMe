@@ -32,7 +32,7 @@ def test_structured_repair_prompt_includes_invalid_response_context() -> None:
     assert "Previous structured output did not validate." in repair_prompt
     assert "chapters.1 Input should be an object" in repair_prompt
     assert '"chapters":[{"title":"函数","key_points":["定义"]},-1]' in repair_prompt
-    assert "do not output placeholder values such as -1" in repair_prompt
+    assert "sentinel, null, primitive, or omitted placeholder values" in repair_prompt
     assert "Regenerate the full JSON object from scratch" in repair_prompt
 
 

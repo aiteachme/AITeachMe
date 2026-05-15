@@ -345,14 +345,14 @@ export function DigestBuildProgress({
           : "border-slate-200 bg-white";
 
     return (
-      <section className={`rounded-lg border px-3 py-2.5 shadow-sm ${compactTone} ${className}`.trim()}>
-        <div className="flex min-w-0 items-start justify-between gap-3">
+      <section className={`rounded-lg border px-2.5 py-2 shadow-sm sm:px-3 sm:py-2.5 ${compactTone} ${className}`.trim()}>
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 sm:flex-nowrap sm:gap-3">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-50 ring-1 ring-slate-200">
               {icon}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
                 <p className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-900">{state.statusText}</p>
                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeTone(state)}`}>
                   {statusBadgeLabel(state)}
@@ -364,17 +364,17 @@ export function DigestBuildProgress({
               </div>
             </div>
           </div>
-          <div className="shrink-0 text-right tabular-nums">
+          <div className="ml-8 shrink-0 text-right tabular-nums sm:ml-0">
             <span className="text-sm font-semibold text-slate-900">{animatedProgress}</span>
             <span className="ml-0.5 text-[11px] text-slate-400">%</span>
           </div>
         </div>
 
-        <div className="mt-2.5">
+        <div className="mt-2">
           <BuildProgressBar state={state} value={animatedProgress} />
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-500 sm:mt-2 sm:gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {state.activeLane.started_at ? (
               <span className="inline-flex items-center gap-1">

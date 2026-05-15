@@ -1,6 +1,6 @@
 import {
   ChevronDown,
-  ChevronsLeft,
+  ChevronsRight,
   CirclePlus,
   Maximize2,
   PanelRight,
@@ -92,7 +92,7 @@ export function AiConversationReturnToSidebarButton({
       aria-label="回到侧边栏"
       title="回到侧边栏"
     >
-      <ChevronsLeft className="h-4 w-4 shrink-0" strokeWidth={2} />
+      <ChevronsRight className="h-4 w-4 shrink-0" strokeWidth={2} />
       {showLabel ? <span className="text-[13px] font-medium">侧边栏</span> : null}
     </button>
   );
@@ -121,7 +121,7 @@ export function AiConversationCollapseButton({
       aria-label="收起"
       title="收起"
     >
-      <ChevronsLeft className="h-4 w-4 shrink-0" strokeWidth={2} />
+      <ChevronsRight className="h-4 w-4 shrink-0" strokeWidth={2} />
       {showLabel ? <span className="text-[13px] font-medium">收起</span> : null}
     </button>
   );

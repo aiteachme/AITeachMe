@@ -61,7 +61,7 @@ def _build_structured_fallback_messages(
         "Do not include markdown code fences, commentary, or extra text.",
         (
             "Every array element must satisfy the schema item type; do not output "
-            "placeholder values such as -1, null, or omitted objects."
+            "sentinel, null, primitive, or omitted placeholder values where the schema expects objects."
         ),
         (
             "Regenerate the full JSON object from scratch. "

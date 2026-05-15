@@ -156,23 +156,24 @@ export function KnowledgeGraphSidePanel({
 
   return (
     <div className="flex h-full w-full flex-col bg-white dark:bg-slate-950">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 pb-2 pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800 dark:bg-slate-950 lg:py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {onClose && (
             <>
               <button
                 type="button"
                 onClick={onClose}
-                className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:h-auto lg:rounded-md lg:px-2 lg:py-1.5"
               >
                 <ChevronRight className="h-4 w-4 shrink-0" />
+                <span className="lg:hidden">返回</span>
                 <span className="hidden lg:inline">收起</span>
               </button>
-              <div className="mx-1 h-4 w-px bg-slate-200 dark:bg-slate-800" />
+              <div className="mx-1 hidden h-4 w-px bg-slate-200 dark:bg-slate-800 lg:block" />
             </>
           )}
           <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950">
+            <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950 lg:flex">
               <Network className="h-4 w-4" />
             </span>
             <div className="min-w-0">
@@ -184,7 +185,7 @@ export function KnowledgeGraphSidePanel({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {graphIsActive ? (
             <button
               type="button"
@@ -219,7 +220,7 @@ export function KnowledgeGraphSidePanel({
           <button
             type="button"
             onClick={() => setShowClearConfirm(true)}
-            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+            className="hidden rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 lg:inline-flex"
             title="清空当前课程知识结构"
           >
             <Trash2 className="h-4 w-4" />
@@ -227,7 +228,7 @@ export function KnowledgeGraphSidePanel({
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900/60 lg:py-2">
         <DigestBuildProgress course={courseId} compact focus="graph" />
         {showBuildMessages ? (
           <div className="mt-2 grid gap-2">

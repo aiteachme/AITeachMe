@@ -87,14 +87,14 @@ export function KnowledgeGraphView({
   const displayPage = listData?.page ?? page;
 
   const viewButtonClass = (active: boolean) =>
-    `flex h-8 items-center gap-1.5 rounded-md px-3 text-xs transition-all ${
+    `flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-all sm:px-3 ${
       active
         ? "bg-white text-slate-900 shadow-sm font-semibold dark:bg-slate-800 dark:text-slate-100"
         : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
     }`;
 
   const viewToggle = (
-    <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
+    <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
       <button
         type="button"
         aria-pressed={viewMode === "graph"}

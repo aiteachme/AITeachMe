@@ -1,4 +1,4 @@
-import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
+import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import ReactMarkdown from "react-markdown";
@@ -8,6 +8,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import { useLocation } from "react-router-dom";
 import {
+  BookOpen,
   FileText,
   ChevronRight,
   ChevronsLeft,
@@ -40,6 +41,7 @@ import {
 import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
+import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
@@ -1997,6 +1999,16 @@ export function KnowledgeDocsPage() {
     maxWidth: isNarrowInitialViewport ? initialViewportWidth : graphDesktopMaxWidth,
     liveResizeRef: graphDrawerRef,
   });
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.body.classList.toggle("knowledge-graph-panel-open", isGraphDrawerOpen);
+    return () => {
+      document.body.classList.remove("knowledge-graph-panel-open");
+    };
+  }, [isGraphDrawerOpen]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -5098,17 +5110,17 @@ export function KnowledgeDocsPage() {
     return () => window.removeEventListener("resize", syncThumb);
   }, [collapsedTocIds, isTocVisible, tocTree, updateTocScrollThumb]);
 
-  const tocNav = (
+  const renderTocNav = (showBulkControls: boolean) => (
     <div className="relative h-full">
       <nav
         ref={tocNavRef}
-        className="toc-scroll h-full overflow-y-auto py-2 pr-2"
+        className={cn("toc-scroll h-full overflow-y-auto pr-2", showBulkControls ? "py-2" : "pb-2 pt-0")}
         onWheel={handleTocManualScrollStart}
         onTouchStart={handleTocManualScrollStart}
         onPointerDown={handleTocManualScrollStart}
         onScroll={handleTocNavScroll}
       >
-        {tocTree.length > 0 && (
+        {showBulkControls && tocTree.length > 0 && (
           <div className="sticky top-0 z-10 mb-1 flex h-8 items-center justify-end bg-white/95 px-1 pb-1 pt-0.5 backdrop-blur dark:bg-slate-950/95">
             <div className="flex items-center gap-0.5 text-slate-400">
               <button
@@ -5154,6 +5166,8 @@ export function KnowledgeDocsPage() {
       )}
     </div>
   );
+  const compactTocNav = renderTocNav(true);
+  const desktopTocNav = renderTocNav(false);
 
   const commentPanel = (
     <div
@@ -5492,7 +5506,7 @@ export function KnowledgeDocsPage() {
     <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
       <div className="relative z-10 flex min-h-0 h-full w-full bg-white dark:bg-slate-900">
       {hasCompactTocControl && (
-          <div className="fixed left-3 top-3 z-[79] flex items-center gap-2">
+          <div className="fixed left-[4.75rem] top-[calc(1.25rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
             <button
               onClick={openTocDrawer}
               className={cn(
@@ -5539,7 +5553,7 @@ export function KnowledgeDocsPage() {
       {hasCompactTocControl && (
           <aside
             className={cn(
-              "fixed bottom-4 left-3 top-14 z-[78] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/98 shadow-2xl transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950/98",
+              "fixed bottom-4 left-3 top-[calc(3.875rem+env(safe-area-inset-top))] z-[78] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950",
               isTocVisible ? "translate-x-0" : "-translate-x-[110%] pointer-events-none"
             )}
           >
@@ -5556,14 +5570,14 @@ export function KnowledgeDocsPage() {
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-hidden px-1 pb-2">{tocNav}</div>
+            <div className="flex-1 overflow-hidden px-1 pb-2">{compactTocNav}</div>
           </aside>
       )}
 
       {hasCompactCommentControl && (
         <aside
           className={cn(
-            "fixed right-3 top-14 bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
+            "fixed right-3 top-[calc(3.875rem+env(safe-area-inset-top))] bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
             isCommentVisible ? "translate-x-0" : "translate-x-[110%] pointer-events-none"
           )}
         >
@@ -5592,7 +5606,7 @@ export function KnowledgeDocsPage() {
               </div>
             ) : (
               <>
-                <div className="sticky top-0 z-10 bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md dark:bg-slate-950/92">
+                <div className="sticky top-0 z-10 flex items-center justify-between bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md dark:bg-slate-950/92">
                   <button
                     onClick={() => setIsTocCollapsed(true)}
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4F46E5] transition-colors hover:bg-[#EEF2FF] hover:text-[#4338CA] dark:text-indigo-300 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
@@ -5601,9 +5615,31 @@ export function KnowledgeDocsPage() {
                   >
                     <ChevronsLeft className="h-4 w-4" />
                   </button>
+                  <div className="flex items-center gap-0.5 text-slate-400">
+                    <button
+                      type="button"
+                      onClick={expandAllTocLevels}
+                      disabled={!canExpandAllTocLevels}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-[4px] transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500"
+                      aria-label="展开所有目录层级"
+                      title="展开所有层级"
+                    >
+                      <ListTree className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={collapseAllTocLevels}
+                      disabled={!canCollapseAllTocLevels}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-[4px] transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500"
+                      aria-label="收起所有目录层级"
+                      title="收起所有层级"
+                    >
+                      <ListCollapse className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden px-2 pb-3 pt-0.5">
-                  {tocNav}
+                  {desktopTocNav}
                 </div>
               </>
             )}
@@ -5624,13 +5660,19 @@ export function KnowledgeDocsPage() {
           </aside>
         )}
 
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+        />
+
         <div
           ref={scrollRef}
           className="relative h-full overflow-y-auto doc-scroll-container content-scroll"
           onMouseUp={handleTextSelect}
         >
           <div
-            className="min-h-full px-4 py-8 md:px-6 lg:px-8"
+            className="min-h-full px-4 pb-8 pt-4 md:px-6 lg:px-8"
             style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
           >
             <div
@@ -6007,7 +6049,7 @@ export function KnowledgeDocsPage() {
           onClick={openGraphPanel}
           className={cn(
             "fixed bottom-[4.5rem] right-6 z-[86] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
-            isGraphDrawerOpen || isSettingsPanelOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
+            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
           )}
           aria-label="打开知识图谱"
         >
@@ -6020,18 +6062,18 @@ export function KnowledgeDocsPage() {
       <div
         ref={graphDrawerRef}
         className={cn(
-          "fixed bottom-0 right-0 top-0 z-[84] flex border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)]",
+          "fixed bottom-0 right-0 top-0 z-[110] flex w-screen border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)] lg:z-[84] lg:w-[var(--graph-panel-width)]",
           isGraphDrawerOpen && courseId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}
         style={{
-          width: graphPanelWidth,
+          "--graph-panel-width": `${graphPanelWidth}px`,
           willChange: isGraphDragging ? "width" : undefined,
-        }}
+        } as CSSProperties}
       >
         <div
           className={cn(
-            "absolute bottom-0 left-0 top-0 z-50 -ml-[1px] hidden w-2 cursor-col-resize transition-colors hover:bg-indigo-500/30 sm:block",
+            "absolute bottom-0 left-0 top-0 z-50 -ml-[1px] hidden w-2 cursor-col-resize transition-colors hover:bg-indigo-500/30 lg:block",
             isGraphDragging && "bg-indigo-500/30"
           )}
           onMouseDown={handleGraphMouseDown}
