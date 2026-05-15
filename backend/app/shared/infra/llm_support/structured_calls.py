@@ -124,15 +124,66 @@ def _is_response_format_unsupported_error(exc: Exception) -> bool:
     )
 
 
+def _object_get(value: Any, key: str) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
+def _completion_response_text(response: Any) -> str:
+    choices = _object_get(response, "choices")
+    if not choices:
+        return ""
+    choice = choices[0]
+    message = _object_get(choice, "message")
+    if message is None:
+        return ""
+
+    tool_calls = _object_get(message, "tool_calls")
+    if tool_calls:
+        function = _object_get(tool_calls[0], "function")
+        arguments = _object_get(function, "arguments")
+        if arguments:
+            return str(arguments)
+
+    function_call = _object_get(message, "function_call")
+    if function_call is not None:
+        arguments = _object_get(function_call, "arguments")
+        if arguments:
+            return str(arguments)
+
+    content = _object_get(message, "content")
+    return str(content or "")
+
+
+def _structured_failure_feedback(exc: Exception) -> tuple[str, str]:
+    failed_attempts = list(getattr(exc, "failed_attempts", None) or [])
+    for failed_attempt in reversed(failed_attempts):
+        reason = str(getattr(failed_attempt, "exception", None) or "").strip()
+        raw_text = _completion_response_text(getattr(failed_attempt, "completion", None))
+        if reason or raw_text:
+            return reason, raw_text
+
+    raw_text = _completion_response_text(getattr(exc, "last_completion", None))
+    return str(exc).strip(), raw_text
+
+
 def _build_structured_repair_call_kwargs(
     *,
     call_kwargs: Mapping[str, Any],
     response_model: type[T],
     messages: list[ChatMessage],
     use_json_response_format: bool,
+    failure_reason: str | None = None,
+    invalid_response: str | None = None,
 ) -> dict[str, Any]:
     repair_kwargs = dict(call_kwargs)
-    repair_kwargs["messages"] = _build_structured_fallback_messages(response_model, messages)
+    repair_kwargs["messages"] = _build_structured_fallback_messages(
+        response_model,
+        messages,
+        failure_reason=failure_reason,
+        invalid_response=invalid_response,
+    )
     if use_json_response_format:
         _with_json_object_response_format(repair_kwargs)
     else:
@@ -262,6 +313,7 @@ async def acompletion_structured(
                         except asyncio.CancelledError:
                             raise
                         except Exception as instructor_exc:
+                            failure_reason, invalid_response = _structured_failure_feedback(instructor_exc)
                             logger.warning(
                                 "llm_structured_instructor_parse_failed_trying_repair",
                                 response_model=response_model.__name__,
@@ -277,18 +329,15 @@ async def acompletion_structured(
                                 response_model=response_model,
                                 messages=messages,
                                 use_json_response_format=repair_use_json_response_format,
+                                failure_reason=failure_reason,
+                                invalid_response=invalid_response,
                             )
                             raw_response = await asyncio.wait_for(
                                 litellm.acompletion(**repair_call_kwargs),
                                 timeout=context_request_timeout_s(context, repair_call_kwargs),
                             )
                             prompt_t, completion_t, total_t = extract_usage(raw_response)
-                            raw_text = ""
-                            tool_calls = getattr(raw_response.choices[0].message, "tool_calls", None)
-                            if tool_calls:
-                                raw_text = tool_calls[0].function.arguments or ""
-                            if not raw_text:
-                                raw_text = raw_response.choices[0].message.content or ""
+                            raw_text = _completion_response_text(raw_response)
                             assistant_text = raw_text
                             result = _parse_structured_response_text(response_model, raw_text)
                     else:

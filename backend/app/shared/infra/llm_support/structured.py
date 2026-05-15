@@ -32,23 +32,55 @@ def _model_json_schema(response_model: type[T]) -> dict[str, Any]:
     return {}
 
 
+_STRUCTURED_REPAIR_CONTEXT_CHARS = 6000
+
+
+def _clip_structured_repair_text(value: Any, *, limit: int = _STRUCTURED_REPAIR_CONTEXT_CHARS) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    head = limit // 2
+    tail = limit - head
+    return f"{text[:head].rstrip()}\n...\n{text[-tail:].lstrip()}"
+
+
 def _build_structured_fallback_messages(
     response_model: type[T],
     messages: list[ChatMessage],
+    *,
+    failure_reason: str | None = None,
+    invalid_response: str | None = None,
 ) -> list[ChatMessage]:
     schema = json.dumps(
         _model_json_schema(response_model),
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    fallback_instruction = (
-        "Return only valid JSON that can be parsed directly. "
-        "Do not include markdown code fences, commentary, or extra text. "
-        f"The JSON must satisfy this schema: {schema}"
-    )
+    fallback_lines = [
+        "Return only valid JSON that can be parsed directly.",
+        "Do not include markdown code fences, commentary, or extra text.",
+        (
+            "Every array element must satisfy the schema item type; do not output "
+            "placeholder values such as -1, null, or omitted objects."
+        ),
+        (
+            "Regenerate the full JSON object from scratch. "
+            "Do not return a patch or partial continuation."
+        ),
+        f"The JSON must satisfy this schema: {schema}",
+    ]
+    clipped_reason = _clip_structured_repair_text(failure_reason)
+    clipped_response = _clip_structured_repair_text(invalid_response)
+    if clipped_reason or clipped_response:
+        repair_context = ["Previous structured output did not validate."]
+        if clipped_reason:
+            repair_context.extend(["Validation/parsing error:", clipped_reason])
+        if clipped_response:
+            repair_context.extend(["Previous invalid response:", clipped_response])
+        fallback_lines.append("\n".join(repair_context))
     return [
         *messages,
-        {"role": "user", "content": fallback_instruction},
+        {"role": "user", "content": "\n".join(fallback_lines)},
     ]
 
 
