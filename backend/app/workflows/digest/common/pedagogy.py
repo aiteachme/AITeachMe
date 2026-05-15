@@ -37,18 +37,7 @@ _TITLE_ONLY_NUMBER_RE = re.compile(
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _COURSE_SLUG_RE = re.compile(r"^(?:course|subj)_[a-z0-9_-]+$", re.IGNORECASE)
-_LOW_VALUE_HEADING_RE = re.compile(
-    r"^(?:"
-    r"核心内容|核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
-    r"学习大纲(?:[:：].*)?|学习大纲与核心定义|章节目标|本章目标|补充掌握检查|"
-    r"核心要点速查|快速复习(?:[:：].*)?|快速复习自测区|快速自测|自测任务|考前速查与自测|"
-    r"常见任务整理|常见任务与题型整理|常见题型整理|题型整理|"
-    r"题型[一二三四五六七八九十\d]+|典型例题与易错诊断|综合训练|综合训练与辨析|综合实战训练区|综合训练与检查标准|"
-    r"例题(?:\s*\d+)?|练习|自测|知识结构|补充讲解|"
-    r".*证据补充.*|.+的(?:知识结构|补充讲解|核心要点)"
-    r")$"
-)
-_MALFORMED_HEADING_TAIL_RE = re.compile(r"(?:与应|及断|与断|和断|[与及和的、，,：:])$")
+_MALFORMED_HEADING_TAIL_RE = re.compile(r"[与及和的、，,：:]$")
 
 
 def clean_generated_chapter_title(raw_title: str) -> str:
@@ -160,7 +149,7 @@ def build_chapter_title_resolution_messages(
 - 标题示例只展示“短、具体、像真实目录”的形状，不是候选词表，也不能照抄。
 - 可迁移的标题形状：知识对象型如“现金流表”“视图生命周期”“句法结构”；方法任务型如“需求拆解”“异常处理”“实验设计”；问题场景型如“边界条件判断”“证据链梳理”“方案取舍题”。
 - 如果本章不属于这些领域，必须根据 objective / required_elements / source 内容重新生成同等清晰度的标题。
-- 避免“核心概念”“方法总结”“章节目标”这类离开上下文看不懂的标题，也不要统一套成“X技巧”“X速查”“X应用”。
+- 避免离开上下文看不懂的标题，也不要统一套成固定句式或模块标签。
 
 输出要求：
 1. 只输出一个中文标题。
@@ -309,19 +298,19 @@ def _generic_heading_titles(titles: list[str]) -> list[str]:
     return list(dict.fromkeys(generic))
 
 
-def _low_value_heading_titles(titles: list[str]) -> list[str]:
-    """Detect headings that should be repaired by the LLM, without inventing replacements."""
+def _malformed_heading_titles(titles: list[str]) -> list[str]:
+    """Detect malformed heading shapes without maintaining semantic wordlists."""
 
-    low_value: list[str] = []
+    malformed: list[str] = []
     for title in titles:
         cleaned = clean_generated_chapter_title(title)
         if not cleaned:
             continue
         if cleaned in _UNUSABLE_CHAPTER_TITLES:
             continue
-        if _LOW_VALUE_HEADING_RE.match(cleaned) or _MALFORMED_HEADING_TAIL_RE.search(cleaned):
-            low_value.append(cleaned)
-    return list(dict.fromkeys(low_value))
+        if _MALFORMED_HEADING_TAIL_RE.search(cleaned):
+            malformed.append(cleaned)
+    return list(dict.fromkeys(malformed))
 
 
 def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[str, object]:
@@ -330,16 +319,18 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
     duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
     generic_titles = _generic_heading_titles(cleaned_titles)
-    low_value_titles = _low_value_heading_titles(cleaned_titles)
+    malformed_titles = _malformed_heading_titles(cleaned_titles)
     singleton_subheading_paths = _singleton_subheading_paths(markdown)
     missing_modules: list[str] = []
     min_h2_count = 3 if normalized_mode == "sprint" else 4
     h2_count = _count_headings(markdown, level=2)
+    force_model_heading_review = normalized_mode == "sprint"
     needs_agent_repair = bool(
-        h2_count < min_h2_count
+        force_model_heading_review
+        or h2_count < min_h2_count
         or duplicates
         or generic_titles
-        or low_value_titles
+        or malformed_titles
         or singleton_subheading_paths
     )
     needs_scaffold_fallback = False
@@ -349,9 +340,10 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         "heading_titles": cleaned_titles,
         "duplicate_titles": duplicates,
         "generic_titles": generic_titles,
-        "low_value_titles": low_value_titles,
+        "malformed_titles": malformed_titles,
         "singleton_subheading_paths": singleton_subheading_paths,
         "missing_modules": missing_modules,
+        "force_model_heading_review": force_model_heading_review,
         "needs_agent_repair": needs_agent_repair,
         "needs_scaffold_fallback": needs_scaffold_fallback,
     }

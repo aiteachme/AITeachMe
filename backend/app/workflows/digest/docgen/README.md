@@ -61,7 +61,7 @@ DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认�
 
 ### 0.2 速成课文档质量线
 
-当前产品默认更接近“速成课”使用场景。公开可见的蜂考/高斯课堂类期末速成课通常不是百科式教材，而是把厚材料压成短时长、高密度、应试或任务导向的学习包：先说明高价值章节和常见任务，再给公式/规则速查、典型例题解析、变式训练、易错点和最后串讲。
+当前产品默认更接近“速成课”使用场景。公开可见的蜂考/高斯课堂类期末速成课通常不是百科式教材，而是把厚材料压成短时长、高密度、应试或任务导向的学习包：先说明高价值章节和常见任务，再给高频公式/规则清单、典型例题解析、变式训练、易错点和最后串讲。
 
 DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
 
@@ -71,7 +71,7 @@ DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
 - **理论要落地**：重要概念、公式、规则或方法后面要尽快接例题、案例、变式、自测或错误诊断。
 - **收束要可复习**：章节末尾应回收到关键结论、适用条件、不能硬套的边界和短自测。
 
-这不是要求固定标题模板。标题、题型分类、练习章和例题区都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。
+这不是要求固定标题模板。标题、题型分类、练习章和例题区都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。确定性展示层只允许做结构性收口：发现重复标题、截断标题、孤立三级标题等结构问题时触发 LLM heading repair，最终 Markdown 只删除同章重复标题；它不负责本地起新标题，也不维护可见标题禁词表。
 
 ### 0.1 本文件同时承担的入口信息
 
@@ -148,7 +148,7 @@ image_generation -> settings.models.image_generation（默认未配置）
 | `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 研究问题拆解仍然适合推理式规划 |
 | `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
 | `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-flash` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，速成课更偏快速成文 |
-| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 修正章节标题层级、学习脚手架和结构格式 | 轻量结构修正，不值得用更贵模型 |
+| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 按正文语义修正章节标题层级和结构格式；速成课章节默认走一次模型标题复核 | 轻量结构修正，不值得用更贵模型 |
 | `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-flash` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
 | `enhance_chapters.mermaid_placeholder` | `lib/asset_rendering.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
 | `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-flash` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
@@ -451,6 +451,8 @@ generate_chapters
            - `model="light"`
            - `timeout_s=180`，`max_retries=3`
            - 默认映射到 `qwen-flash`
+           - `sprint` 模式默认执行一次；其它模式在标题过少、重复、截断或层级异常时执行。
+           - 触发条件不维护可见标题禁词表，修复标题必须由模型根据本章正文语义命名。
     8. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
        当前模型方案：
          - critic 本身是规则判断，不调模型
@@ -493,7 +495,7 @@ enhance_chapters
     - 不大幅改写知识内容。
     - 不修核心定义。
     - 不自行引入新结论。
-    - 不用本地关键词判断章节是否“训练型”，不拼接“题型一 / 快速复习 / 核心内容”等可见标题。
+    - 不用本地关键词判断章节是否“训练型”，不拼接泛化模块标题、学习动作标题或序号占位题型。
     - 不改变 claim / evidence 关系。
     - 不把原始 HTML 直接嵌进正文 Markdown。
     - 交互页默认走独立 sidecar 资产，由前端预览页以 sandboxed iframe 打开。

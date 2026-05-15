@@ -95,7 +95,7 @@ def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
     assert "核心概念总览" not in overview
 
 
-def test_heading_quality_detects_duplicate_low_value_titles() -> None:
+def test_heading_quality_detects_duplicate_titles_without_local_semantic_wordlist() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         "# 线性代数\n\n## 核心概念\nA\n\n## 核心概念\nB",
         digest_mode="systematic",
@@ -105,7 +105,7 @@ def test_heading_quality_detects_duplicate_low_value_titles() -> None:
     assert quality["h2_count"] == 2
     assert quality["duplicate_titles"] == ["核心概念"]
     assert quality["generic_titles"] == []
-    assert quality["low_value_titles"] == ["核心概念"]
+    assert quality["malformed_titles"] == []
     assert quality["needs_agent_repair"] is True
     assert quality["needs_scaffold_fallback"] is False
     assert quality["missing_modules"] == []
@@ -136,33 +136,30 @@ def test_heading_quality_detects_singleton_h3_sections() -> None:
     assert quality["needs_agent_repair"] is True
 
 
-def test_heading_quality_detects_low_value_generated_toc_titles() -> None:
+def test_heading_quality_forces_sprint_heading_model_review_without_title_wordlist() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         (
             "# 计算机基础\n\n"
-            "## 核心概念速查表\n\n"
-            "## 掌握 CPU、运算器、控制器与内存储的补充讲解\n\n"
-            "## 典型例题与易错诊断\n\n"
-            "### 例题 1\n\n"
-            "## 学习大纲与核心定义\n\n"
-            "### 题型一\n\n"
-            "## 快速复习\n\n"
-            "## 字长定义与应\n\n"
+            "## CPU 与内存协作\n\n"
+            "## 指令执行路径\n\n"
+            "## 存储层级差异\n\n"
         ),
         digest_mode="sprint",
     )
 
     assert quality["needs_agent_repair"] is True
-    assert quality["low_value_titles"] == [
-        "核心概念速查表",
-        "掌握 CPU、运算器、控制器与内存储的补充讲解",
-        "典型例题与易错诊断",
-        "例题 1",
-        "学习大纲与核心定义",
-        "题型一",
-        "快速复习",
-        "字长定义与应",
-    ]
+    assert quality["force_model_heading_review"] is True
+    assert quality["malformed_titles"] == []
+
+
+def test_heading_quality_detects_malformed_heading_shape_without_semantic_wordlist() -> None:
+    quality = pedagogy.analyze_chapter_heading_quality(
+        "# 计算机基础\n\n## CPU 与\n\n## 指令执行路径\n\n## 存储层级差异\n\n",
+        digest_mode="systematic",
+    )
+
+    assert quality["malformed_titles"] == ["CPU 与"]
+    assert quality["needs_agent_repair"] is True
 
 
 def test_learning_scaffold_does_not_generate_local_sections() -> None:
@@ -195,18 +192,14 @@ def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:
     )
 
 
-def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> None:
+def test_textbook_heading_normalization_drops_duplicate_headings_without_local_titles() -> None:
     markdown = (
         "# 计算机硬件组成与指令系统基础\n\n"
-        "## 核心概念速查表\n\n"
-        "CPU、运算器、控制器和内存储器需要放在同一张结构图里理解。\n\n"
-        "## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解\n\n"
-        "这里补充说明各部件如何协作。\n\n"
-        "## 综合训练与检查标准\n\n"
-        "1. 判断指令由哪些部分组成。\n\n"
-        "## 学习大纲与核心定义\n\n"
-        "CPU 和指令系统的定义说明。\n\n"
-        "### 题型一\n\n"
+        "## CPU 与内存协作\n\n"
+        "CPU 取指、译码和执行需要内存提供指令与数据。\n\n"
+        "## CPU 与内存协作\n\n"
+        "重复标题不能进入最终目录。\n\n"
+        "## 指令执行路径\n\n"
         "判断指令由哪些部分组成。\n"
     )
 
@@ -217,13 +210,8 @@ def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> 
         focus_items=["CPU、运算器、控制器与内存储器的构成关系"],
     )
 
-    assert "\n## 核心概念速查表" not in normalized
-    assert "\n## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解" not in normalized
-    assert "\n## 综合训练与检查标准" not in normalized
-    assert "\n## 学习大纲与核心定义" not in normalized
-    assert "\n### 题型一" not in normalized
-    assert "的补充讲解" not in normalized
-    assert "核心概念速查表" not in normalized
+    assert normalized.count("## CPU 与内存协作") == 1
+    assert "\n## 指令执行路径" in normalized
 
 
 def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywords() -> None:
@@ -325,7 +313,7 @@ def test_sprint_rule_review_does_not_force_problem_table_for_concept_chapter() -
     assert not any(action.action_id.endswith("_sprint_problem_organization") for action in actions)
 
 
-def test_sprint_rule_review_does_not_keyword_reject_unanswered_self_check() -> None:
+def test_sprint_rule_review_does_not_keyword_reject_unanswered_practice() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="定积分计算",
@@ -335,7 +323,7 @@ def test_sprint_rule_review_does_not_keyword_reject_unanswered_self_check() -> N
             "| 题型 | 适用条件 | 做法 | 易错 |\n"
             "| --- | --- | --- | --- |\n"
             "| 换元积分 | 复合函数可凑微分 | 换元后改上下限 | 忘记改上下限 |\n\n"
-            "## 考前速查与自测\n\n"
+            "## 换元积分边界判断\n\n"
             "1. 练习：计算 $\\int_0^1 xe^{-x^2}\\,dx$。（提示：凑微分）\n"
             "2. 思考：为什么换元后积分上下限要同步变化？\n"
         ),
@@ -395,8 +383,9 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "概念章至少 2 个左右" in prompt
     assert "不要复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
-    assert "考前速查与自测" in prompt
-    assert "题型一/题型二/题型三" in prompt
+    assert "带答案的理解检查活动" in prompt
+    assert "学习动作、检查动作或配额标签复制成目录标题" in prompt
+    assert "泛化目录标题、学习动作标题、内部检查标题、序号占位题型" in prompt
     assert "固定词表、关键词抽取或字符串拼接" in prompt
     assert "本章边界外主题" in prompt
     assert "接口权限的判断题" not in prompt
@@ -414,16 +403,14 @@ def test_heading_repair_prompt_requires_content_specific_section_titles() -> Non
         required_elements=["CPU、运算器、控制器与内存储器", "指令系统"],
         writing_instructions="标题要清楚。",
         source_count=2,
-        markdown="# 计算机硬件组成与指令系统基础\n\n## 核心概念速查表\n\nCPU 与内存协作。\n",
+        markdown="# 计算机硬件组成与指令系统基础\n\n## 模块检查标题\n\nCPU 与内存协作。\n",
         dense_context="CPU 由运算器和控制器组成，指令包含操作码和地址码。",
     )
     prompt = messages[-1]["content"]
 
     assert "必须按小节正文改成具体内容名" in prompt
-    assert "不要保留这些词当目录标题" in prompt
-    assert "知识速查表" in prompt
-    assert "学习大纲与核心定义" in prompt
-    assert "题型一/题型二/题型三" in prompt
+    assert "不要保留这些标签当目录标题" in prompt
+    assert "泛化目录标题、学习动作标题、内部检查标题、序号占位题型" in prompt
 
 
 def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
@@ -443,8 +430,9 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "方法对照" in prompt
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
-    assert "不要在 action 里给可直接复制的泛标题" in prompt
-    assert "目录里看不出内容的标题" in prompt
+    assert "不要在 action 里给可直接复制的标题" in prompt
+    assert "按本章具体对象、方法、任务差异或场景命名" in prompt
+    assert "序号占位题型" in prompt
     assert "参考答案" in prompt
     assert "孤立三级标题属于层级过度切分" in prompt
     assert "题眼信号" not in prompt

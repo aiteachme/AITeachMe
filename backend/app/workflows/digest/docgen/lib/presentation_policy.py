@@ -52,7 +52,7 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
             "highlight": "只对短关键句使用 ==...== 或受控 <mark>...</mark>，不要大量高亮。",
             "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"],
             "tables": "表格用于对比、分类、步骤、公式汇总、错因分析和学习路径；建议 3-5 列。",
-            "visual_grouping": "定义、公式、步骤、例题、易错点和速查信息要有清晰边界，避免连续大段正文把不同学习功能混在一起。",
+            "visual_grouping": "定义、公式、步骤、例题、易错点和高频规则清单要有清晰边界，避免连续大段正文把不同学习功能混在一起。",
             "formulas": "行内公式用 $...$，多步推导或长公式用 $$...$$，变量和适用条件要解释。",
             "code_blocks": "代码、配置、命令、伪代码必须使用 fenced code block 并标注语言。",
             "mermaid": "Mermaid 必须放在 ```mermaid 代码块；知识图谱关系标签只使用 8 类关系。",
@@ -76,7 +76,7 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
     role_text = "、".join(LEARNING_ROLE_LABELS.values())
     relation_text = "、".join(RELATION_LABELS.values())
     return f"""
-使用清晰、美观、可渲染的 Markdown。样式服务学习，不做纯装饰；读者应能一眼分清定义、公式、步骤、例题、易错点和速查表。
+使用清晰、美观、可渲染的 Markdown。样式服务学习，不做纯装饰；读者应能一眼分清定义、公式、步骤、例题、易错点和高频规则清单。
 
 结构：
 - 一级标题只用于章节标题，二级/三级标题按内容自然展开，不跳级，不写内部流程名。

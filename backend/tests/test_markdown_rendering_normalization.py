@@ -472,11 +472,11 @@ def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
 def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> None:
     raw = "\n".join(
         [
-            "## 区分不定积分、定积分及其几何意义，先的典型例题解析",
+            "## 区分不定积分、定积分及其几何意义，先的边界说明",
             "### 解题步骤",
             "### 题目条件",
             "### 易错诊断",
-            "## 理解多元函数、偏导数、全微分、方向导的公式与判定速查",
+            "## 理解多元函数、偏导数、全微分、方向导的判定规则",
         ]
     )
 
@@ -490,25 +490,25 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
     )
 
     assert "区分不定积分、定积分及其几何意义，先的" not in fixed
-    assert "典型例题解析" not in fixed
+    assert "区分不定积分、定积分及其几何意义的边界说明" in fixed
     assert "### 解题步骤" in fixed
     assert "### 题目条件" in fixed
     assert "### 易错诊断" in fixed
-    assert "方向导的公式与判定速查" not in fixed
-    assert "方向导数的公式与判定速查" not in fixed
+    assert "方向导的判定规则" not in fixed
+    assert "方向导数的判定规则" in fixed
 
 
-def test_textbook_heading_normalization_demotes_repeated_generated_titles() -> None:
+def test_textbook_heading_normalization_drops_repeated_visible_titles() -> None:
     raw = "\n".join(
         [
-            "### 极限题型入口的典型例题解析",
+            "### 极限题型入口",
             "第一题。",
-            "### 极限题型入口的典型例题解析",
+            "### 极限题型入口",
             "第二题。",
-            "### 极限题型入口的公式与判定速查",
-            "速查一。",
-            "### 极限题型入口的公式与判定速查",
-            "速查二。",
+            "### 极限公式判定",
+            "清单一。",
+            "### 极限公式判定",
+            "清单二。",
         ]
     )
 
@@ -519,12 +519,12 @@ def test_textbook_heading_normalization_demotes_repeated_generated_titles() -> N
         focus_items=[],
     )
 
-    assert "### 极限题型入口的典型例题解析" not in fixed
-    assert "### 极限题型入口的公式与判定速查" not in fixed
+    assert fixed.count("### 极限题型入口") == 1
+    assert fixed.count("### 极限公式判定") == 1
     assert "第一题。" in fixed
     assert "第二题。" in fixed
-    assert "速查一。" in fixed
-    assert "速查二。" in fixed
+    assert "清单一。" in fixed
+    assert "清单二。" in fixed
 
 
 def test_normalize_keeps_loose_display_math_inside_callout() -> None:

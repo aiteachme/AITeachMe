@@ -41,19 +41,6 @@ _MALFORMED_HEADING_CONNECTOR_RE = re.compile(
     r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用)\s*的"
 )
 
-_DUPLICATE_GENERATED_HEADING_RE = re.compile(
-    r"^.+的(?P<label>典型例题解析|例题与迁移|典型判断问题|知识联系|核心总结|知识结构|公式与判定速查|补充讲解)$"
-)
-_LOW_VALUE_VISIBLE_HEADING_RE = re.compile(
-    r"^(?:"
-    r"核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
-    r"学习大纲(?:[:：].*)?|学习大纲与核心定义|章节目标|本章目标|补充掌握检查|"
-    r"核心要点速查|快速复习(?:[:：].*)?|快速复习自测区|快速自测|自测任务|考前速查与自测|"
-    r"常见任务整理|常见任务与题型整理|常见题型整理|题型整理|"
-    r"题型[一二三四五六七八九十\d]+|综合训练|综合训练与辨析|综合实战训练区|综合训练与检查标准|"
-    r"典型例题与易错诊断|.*证据补充.*"
-    r")$"
-)
 _CALLOUT_WARNING_START_RE = re.compile(
     r"^\s*(?:⚠️?|❗|❌|⛔|🚫)?\s*(?:\*\*)?"
     r"(?:易错|误区|陷阱|警示|注意|不能|不要|失分|关键区别|使用前提|混淆|风险|坑点|防坑|常见错误|限制)",
@@ -153,21 +140,6 @@ def _strip_generic_visible_heading_prefix(value: str) -> str:
     return cleaned
 
 
-def _demote_heading_title(title: str) -> str:
-    return ""
-
-
-def _is_low_value_visible_heading(title: str) -> bool:
-    """Detect TOC noise without generating a replacement title locally."""
-
-    cleaned = str(title or "").strip()
-    if not cleaned:
-        return False
-    if _LOW_VALUE_VISIBLE_HEADING_RE.match(cleaned):
-        return True
-    return _DUPLICATE_GENERATED_HEADING_RE.match(cleaned) is not None
-
-
 def strip_heading_number_prefix(value: str) -> str:
     """Remove display numbering from the beginning of a visible heading title."""
 
@@ -229,8 +201,6 @@ def rewrite_textbook_heading_line(
     heading_title = _strip_generic_visible_heading_prefix(clean_heading_focus(numberless_title, max_chars=80))
     if not heading_title:
         return "" if numberless_title != raw_title else line
-    if _is_low_value_visible_heading(heading_title):
-        return _demote_heading_title(heading_title)
     if heading_title and heading_title != numberless_title:
         return f"{match.group('prefix')} {heading_title}"
     if numberless_title and numberless_title != raw_title:
@@ -238,16 +208,20 @@ def rewrite_textbook_heading_line(
     return line
 
 
-def _demote_repeated_generated_heading_line(line: str, seen_counts: dict[str, int]) -> str:
+def _drop_repeated_visible_heading_line(line: str, seen_titles: set[str]) -> str:
     match = _HEADING_LINE_RE.match(str(line or "").strip())
     if match is None:
         return line
-    title = match.group("title").strip()
-    duplicate_match = _DUPLICATE_GENERATED_HEADING_RE.match(title)
-    if duplicate_match is None:
+    if match.group("prefix").count("#") <= 1:
         return line
-    seen_counts[title] = seen_counts.get(title, 0) + 1
-    return ""
+    title = strip_heading_number_prefix(match.group("title").strip())
+    title = re.sub(r"\s+", "", title).casefold()
+    if not title:
+        return line
+    if title in seen_titles:
+        return ""
+    seen_titles.add(title)
+    return line
 
 
 def normalize_textbook_headings(
@@ -261,7 +235,7 @@ def normalize_textbook_headings(
 
     lines: list[str] = []
     in_code_fence = False
-    seen_generated_headings: dict[str, int] = {}
+    seen_visible_headings: set[str] = set()
     for line in str(markdown or "").splitlines():
         if line.lstrip().startswith("```"):
             in_code_fence = not in_code_fence
@@ -276,7 +250,7 @@ def normalize_textbook_headings(
             fallback_title=fallback_title,
             focus_items=focus_items,
         )
-        lines.append(_demote_repeated_generated_heading_line(rewritten, seen_generated_headings))
+        lines.append(_drop_repeated_visible_heading_line(rewritten, seen_visible_headings))
     return "\n".join(lines)
 
 
