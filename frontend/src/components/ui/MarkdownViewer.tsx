@@ -165,32 +165,32 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   document: {
     note: {
-      shell: "my-6 rounded-lg border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/80 px-5 py-4 text-[#1F2329] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
-      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+      shell: "my-5 rounded-md border border-[#DDE8F7] border-l-4 border-l-[#4E83FD] bg-[#F7FAFF] px-4 py-3 text-[#1F2329] dark:border-blue-500/25 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "text-[#245FD6] dark:text-blue-300",
     },
     tip: {
-      shell: "my-6 rounded-lg border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50/80 px-5 py-4 text-[#1F2329] dark:border-emerald-500/30 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:text-slate-200",
-      badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+      shell: "my-5 rounded-md border border-[#D8F0E4] border-l-4 border-l-[#20B26B] bg-[#F7FCFA] px-4 py-3 text-[#1F2329] dark:border-emerald-500/25 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:text-slate-200",
+      badge: "text-[#087A4A] dark:text-emerald-300",
     },
     important: {
-      shell: "my-6 rounded-lg border border-blue-200 border-l-4 border-l-blue-600 bg-[#F3F7FF] px-5 py-4 text-[#1F2329] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
-      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+      shell: "my-5 rounded-md border border-[#DDE8F7] border-l-4 border-l-[#336DFF] bg-[#F7FAFF] px-4 py-3 text-[#1F2329] dark:border-blue-500/25 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      badge: "text-[#1D4ED8] dark:text-blue-300",
     },
     warning: {
-      shell: "my-6 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/85 px-5 py-4 text-[#1F2329] dark:border-amber-500/30 dark:border-l-amber-400 dark:bg-amber-500/10 dark:text-slate-200",
-      badge: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+      shell: "my-5 rounded-md border border-[#F4DFB3] border-l-4 border-l-[#F59E0B] bg-[#FFFBF0] px-4 py-3 text-[#1F2329] dark:border-amber-500/25 dark:border-l-amber-400 dark:bg-amber-500/10 dark:text-slate-200",
+      badge: "text-[#B45309] dark:text-amber-300",
     },
     caution: {
-      shell: "my-6 rounded-lg border border-rose-200 border-l-4 border-l-rose-500 bg-rose-50/80 px-5 py-4 text-[#1F2329] dark:border-rose-500/30 dark:border-l-rose-400 dark:bg-rose-500/10 dark:text-slate-200",
-      badge: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+      shell: "my-5 rounded-md border border-[#F6D5DC] border-l-4 border-l-[#E5484D] bg-[#FFF8F8] px-4 py-3 text-[#1F2329] dark:border-rose-500/25 dark:border-l-rose-400 dark:bg-rose-500/10 dark:text-slate-200",
+      badge: "text-[#C81E1E] dark:text-rose-300",
     },
     example: {
-      shell: "my-6 rounded-lg border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50/75 px-5 py-4 text-[#1F2329] dark:border-violet-500/30 dark:border-l-violet-400 dark:bg-violet-500/10 dark:text-slate-200",
-      badge: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+      shell: "my-5 rounded-md border border-[#E4DDF8] border-l-4 border-l-[#7C3AED] bg-[#FAF8FF] px-4 py-3 text-[#1F2329] dark:border-violet-500/25 dark:border-l-violet-400 dark:bg-violet-500/10 dark:text-slate-200",
+      badge: "text-[#6D28D9] dark:text-violet-300",
     },
     practice: {
-      shell: "my-6 rounded-lg border border-teal-200 border-l-4 border-l-teal-500 bg-teal-50/75 px-5 py-4 text-[#1F2329] dark:border-teal-500/30 dark:border-l-teal-400 dark:bg-teal-500/10 dark:text-slate-200",
-      badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+      shell: "my-5 rounded-md border border-[#CFECE8] border-l-4 border-l-[#14B8A6] bg-[#F6FCFB] px-4 py-3 text-[#1F2329] dark:border-teal-500/25 dark:border-l-teal-400 dark:bg-teal-500/10 dark:text-slate-200",
+      badge: "text-[#0F766E] dark:text-teal-300",
     },
   },
   planner: {
@@ -261,27 +261,27 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-8 mb-5 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
-      2: "mt-10 mb-4 border-b border-[#E5E7EB] pb-2.5 text-[25px] font-semibold leading-[1.35] text-[#111827] dark:border-slate-700 dark:text-slate-100",
-      3: "mt-8 mb-3 text-[20px] font-semibold leading-[1.45] text-[#1F2329] dark:text-slate-200",
-      4: "mt-6 mb-2.5 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
-      5: "mt-5 mb-2 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
-      6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
+      1: "mt-6 mb-5 border-b border-[#DFE3E8] pb-3 text-[30px] font-semibold leading-[1.28] text-[#111827] dark:border-slate-700 dark:text-slate-100",
+      2: "mt-9 mb-3 text-[23px] font-semibold leading-[1.38] text-[#111827] dark:text-slate-100",
+      3: "mt-7 mb-2.5 text-[19px] font-semibold leading-[1.45] text-[#1F2329] dark:text-slate-200",
+      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.55] text-[#1F2329] dark:text-slate-200",
+      5: "mt-4 mb-1.5 text-[14px] font-semibold leading-[1.55] text-[#646A73] dark:text-slate-400",
+      6: "mt-3 mb-1 text-[13px] font-semibold leading-[1.55] text-[#646A73] dark:text-slate-400",
     },
-    paragraph: "mb-4 text-[16px] leading-[1.78] text-[#1F2329] dark:text-slate-300",
-    list: "my-5 list-disc space-y-2.5 pl-6 text-[16px] leading-[1.78] text-[#1F2329] marker:text-[#2563EB] dark:text-slate-300 dark:marker:text-blue-300",
-    orderedList: "my-5 list-decimal space-y-2.5 pl-6 text-[16px] leading-[1.78] text-[#1F2329] marker:font-semibold marker:text-[#2563EB] dark:text-slate-300 dark:marker:text-blue-300",
-    listItem: "pl-0.5 leading-[1.78] [&>ol]:mt-2 [&>p]:mb-1.5 [&>p]:block [&>ul]:mt-2",
-    blockquote: "my-4 rounded-r-lg border-l-4 border-[#CBD5E1] bg-[#F8FAFC] pl-4 pr-3 py-3 text-[15px] leading-[1.72] text-[#475569] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
-    codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-slate-800 dark:bg-slate-950",
-    codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
-    codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-7 overflow-x-auto rounded-xl border border-[#D8E2F0] bg-white dark:border-slate-800 dark:bg-slate-950/60",
-    table: "min-w-full border-separate border-spacing-0 text-[14px] [&_tbody_tr:nth-child(even)]:bg-[#F8FAFC] dark:[&_tbody_tr:nth-child(even)]:bg-slate-900/50",
-    thead: "border-b border-[#D8E2F0] bg-[#F1F5F9] dark:border-slate-800 dark:bg-slate-900/80",
-    th: "px-4 py-3 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
-    td: "border-t border-[#E9EEF5] px-4 py-3 text-[#1F2329] first:font-semibold first:text-[#1D4ED8] dark:border-slate-800 dark:text-slate-300 dark:first:text-blue-200",
+    paragraph: "mb-4 text-[16px] leading-[1.82] text-[#24292F] dark:text-slate-300",
+    list: "my-4 list-disc space-y-2 pl-6 text-[16px] leading-[1.82] text-[#24292F] marker:text-[#6B7280] dark:text-slate-300 dark:marker:text-slate-500",
+    orderedList: "my-4 list-decimal space-y-2 pl-6 text-[16px] leading-[1.82] text-[#24292F] marker:font-medium marker:text-[#6B7280] dark:text-slate-300 dark:marker:text-slate-500",
+    listItem: "pl-0.5 leading-[1.82] [&>ol]:mt-2 [&>p]:mb-1.5 [&>p]:block [&>ul]:mt-2",
+    blockquote: "my-4 border-l-4 border-[#D0D7DE] bg-[#F6F8FA] pl-4 pr-3 py-2.5 text-[15px] leading-[1.72] text-[#57606A] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
+    codeInline: "rounded-md border border-[#D0D7DE] bg-[#F6F8FA] px-1.5 py-0.5 font-mono text-[0.9em] text-[#24292F] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "my-6 overflow-hidden rounded-md border border-[#D0D7DE] bg-[#F6F8FA] dark:border-slate-800 dark:bg-slate-950",
+    codeLanguageBadge: "border-b border-[#D0D7DE] bg-[#F6F8FA] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[#57606A] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
+    codePre: "overflow-x-auto bg-[#F6F8FA] px-4 py-4 text-[13px] leading-6 text-[#24292F] font-mono dark:bg-slate-950 dark:text-slate-100",
+    tableShell: "my-6 overflow-x-auto rounded-md border border-[#D0D7DE] bg-white dark:border-slate-800 dark:bg-slate-950/60",
+    table: "min-w-full border-separate border-spacing-0 text-[14px] dark:[&_tbody_tr:nth-child(even)]:bg-slate-900/50",
+    thead: "border-b border-[#D0D7DE] bg-[#F6F8FA] dark:border-slate-800 dark:bg-slate-900/80",
+    th: "px-4 py-2.5 text-left text-[13px] font-semibold text-[#24292F] dark:text-slate-100",
+    td: "border-t border-[#D8DEE4] px-4 py-2.5 text-[#24292F] dark:border-slate-800 dark:text-slate-300",
     hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
     link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
     strong: "font-semibold text-[#111827] dark:text-slate-100",
@@ -2698,10 +2698,19 @@ export function MarkdownViewer({
           const tone = CALLOUT_STYLES[variant][callout.kind];
           const calloutMeta = CALLOUT_META[callout.kind];
           const CalloutIcon = calloutMeta.Icon;
+          const isDocumentCallout = variant === "document";
           return (
             <aside className={tone.shell}>
-              <div className="mb-3 flex items-center gap-2">
-                <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.08em]", tone.badge)}>
+              <div className={cn("flex items-center gap-2", isDocumentCallout ? "mb-2" : "mb-3")}>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 font-semibold",
+                    isDocumentCallout
+                      ? "text-[13px] leading-5"
+                      : "rounded-full px-2.5 py-1 text-[11px] tracking-[0.08em]",
+                    tone.badge,
+                  )}
+                >
                   <CalloutIcon className="h-3.5 w-3.5" />
                   {calloutMeta.label}
                 </span>
