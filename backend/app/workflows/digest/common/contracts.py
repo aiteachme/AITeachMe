@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -12,6 +11,14 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 DEFAULT_DIGEST_MODE = "systematic"
 SPRINT_DIGEST_MODE = "sprint"
 PLANNER_RETRIEVAL_PROFILE = "planner_grounding"
+DOCGEN_BALANCED_RETRIEVAL_PROFILE = "docgen_balanced"
+DOCGEN_ALLOWED_RETRIEVAL_PROFILES = frozenset(
+    {
+        DOCGEN_BALANCED_RETRIEVAL_PROFILE,
+        "docgen_oi",
+        "docgen_zh_math",
+    }
+)
 
 
 def _clean_text(value: Any) -> str:
@@ -150,6 +157,7 @@ class DigestConfirmedPlanContract(BaseModel):
     confirmed_plan_id: str = ""
     model_override: str = ""
     mode_reason: str = ""
+    retrieval_profile: str = ""
 
     @field_validator(
         "course_name",
@@ -160,6 +168,7 @@ class DigestConfirmedPlanContract(BaseModel):
         "confirmed_plan_id",
         "model_override",
         "mode_reason",
+        "retrieval_profile",
         mode="before",
     )
     @classmethod
@@ -177,8 +186,7 @@ class DigestConfirmedPlanContract(BaseModel):
     def resolve_retrieval_profile(self) -> str:
         return resolve_digest_retrieval_profile(
             self.digest_mode,
-            user_prompt=self.user_prompt,
-            course_name=self.course_name,
+            retrieval_profile=self.retrieval_profile,
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -223,109 +231,30 @@ def normalize_digest_mode(digest_mode: str | None) -> str:
     return DEFAULT_DIGEST_MODE
 
 
-_OI_TOPIC_KEYWORDS: tuple[str, ...] = (
-    "信息学奥赛",
-    "信息学竞赛",
-    "算法竞赛",
-    "程序设计竞赛",
-)
-_OI_ASCII_TOPIC_KEYWORDS: tuple[str, ...] = (
-    "oi",
-    "oi-wiki",
-    "oiwiki",
-    "noi",
-    "noip",
-    "csp-s",
-    "csp-j",
-    "acm",
-    "icpc",
-    "codeforces",
-    "atcoder",
-)
-_MATH_TOPIC_KEYWORDS: tuple[str, ...] = (
-    "数学",
-    "初中数学",
-    "小学数学",
-    "高中数学",
-    "高等数学",
-    "线性代数",
-    "概率论",
-    "数与代数",
-    "中考数学",
-    "数学竞赛",
-)
-_MATH_ASCII_TOPIC_KEYWORDS: tuple[str, ...] = (
-    "math",
-    "mathematics",
-    "calculus",
-)
-_ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)?")
-
-
-def _looks_like_oi_topic(
-    *,
-    user_prompt: str | None,
-    course_name: str | None,
-) -> bool:
-    """Return True when the requested course reads like an OI/algorithm-contest topic.
-
-    We intentionally key off the user-facing labels (course name and the
-    build prompt) rather than content-derived signals. For non-file builds
-    (e.g. "初中数学") a course profile has not been recognized yet, so we
-    must decide profile selection from what the user typed.
-    """
-
-    haystack = " ".join(
-        part for part in (user_prompt, course_name) if part and str(part).strip()
-    ).lower()
-    if not haystack:
-        return False
-    for keyword in _OI_TOPIC_KEYWORDS:
-        if keyword in haystack:
-            return True
-    ascii_tokens = set(_ASCII_TOKEN_RE.findall(haystack))
-    if ascii_tokens.intersection(_OI_ASCII_TOPIC_KEYWORDS):
-        return True
-    return False
-
-
-def _looks_like_math_topic(
-    *,
-    user_prompt: str | None,
-    course_name: str | None,
-) -> bool:
-    haystack = " ".join(
-        part for part in (user_prompt, course_name) if part and str(part).strip()
-    ).lower()
-    if not haystack:
-        return False
-    for keyword in _MATH_TOPIC_KEYWORDS:
-        if keyword in haystack:
-            return True
-    ascii_tokens = set(_ASCII_TOKEN_RE.findall(haystack))
-    if ascii_tokens.intersection(_MATH_ASCII_TOPIC_KEYWORDS):
-        return True
-    return False
+def _normalize_docgen_retrieval_profile(value: str | None) -> str:
+    profile = str(value or "").strip().lower()
+    if profile in DOCGEN_ALLOWED_RETRIEVAL_PROFILES:
+        return profile
+    return ""
 
 
 def resolve_digest_retrieval_profile(
     digest_mode: str | None,
     *,
+    retrieval_profile: str | None = None,
     user_prompt: str | None = None,
     course_name: str | None = None,
 ) -> str:
     """Resolve the retrieval profile that should be used for doc generation.
 
-    This is an internal retriever preset, not a teaching-mode label. Sprint
-    and systematic affect writing rhythm elsewhere; they should not leak as
-    meaningful retrieval semantics.
+    This is an internal retriever preset, not a teaching-mode label. Local code
+    must not infer subject semantics from user-facing text. A specialized
+    profile is used only when an upstream model-produced contract supplies it
+    explicitly; otherwise the generic DocGen profile is safer.
     """
 
-    if _looks_like_oi_topic(user_prompt=user_prompt, course_name=course_name):
-        return "docgen_oi"
-    if _looks_like_math_topic(user_prompt=user_prompt, course_name=course_name):
-        return "docgen_zh_math"
-    return "docgen_balanced"
+    del digest_mode, user_prompt, course_name
+    return _normalize_docgen_retrieval_profile(retrieval_profile) or DOCGEN_BALANCED_RETRIEVAL_PROFILE
 
 
 def build_digest_retrieval_policy(
@@ -339,20 +268,19 @@ def build_digest_retrieval_policy(
 ) -> dict[str, Any]:
     """Build the user-facing retrieval policy from the internal preset."""
 
-    profile = str(internal_profile or "").strip() or resolve_digest_retrieval_profile(
+    profile = _normalize_docgen_retrieval_profile(internal_profile) or resolve_digest_retrieval_profile(
         digest_mode,
-        user_prompt=user_prompt,
-        course_name=course_name,
     )
+    del user_prompt, course_name
     if profile == "docgen_oi":
         focus = "algorithm_contest_sources"
-        reason = "用户请求明确指向信息学竞赛/算法竞赛，允许使用对应垂直来源补充。"
+        reason = "上游结构化合同显式选择信息学/算法竞赛检索 profile，允许使用对应垂直来源补充。"
     elif profile == "docgen_zh_math":
         focus = "math_learning_sources"
-        reason = "用户请求明确指向数学学习主题，优先使用数学学习资料补充。"
+        reason = "上游结构化合同显式选择数学学习检索 profile，优先使用数学学习资料补充。"
     else:
         focus = "general_learning_sources"
-        reason = "未识别到需要专门检索域的强信号，使用通用学习资料检索策略。"
+        reason = "未提供结构化专门检索 profile，使用通用学习资料检索策略。"
     return {
         "schema_version": 1,
         "local_first": bool(has_local_materials),
@@ -379,6 +307,8 @@ def resolve_teaching_action(action: str | None, *, fallback: str) -> str:
 
 __all__ = [
     "DEFAULT_DIGEST_MODE",
+    "DOCGEN_ALLOWED_RETRIEVAL_PROFILES",
+    "DOCGEN_BALANCED_RETRIEVAL_PROFILE",
     "DigestBuildConstraints",
     "DigestChapterContract",
     "DigestConfirmedPlanContract",

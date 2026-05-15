@@ -41,22 +41,6 @@ _MALFORMED_HEADING_CONNECTOR_RE = re.compile(
     r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用)\s*的"
 )
 
-_CALLOUT_WARNING_START_RE = re.compile(
-    r"^\s*(?:⚠️?|❗|❌|⛔|🚫)?\s*(?:\*\*)?"
-    r"(?:易错|误区|陷阱|警示|注意|不能|不要|失分|关键区别|使用前提|混淆|风险|坑点|防坑|常见错误|限制)",
-)
-_CALLOUT_TIP_START_RE = re.compile(
-    r"^\s*(?:💡|📌|🎯|🔍|🧩|🚀|✨)?\s*(?:\*\*)?"
-    r"(?:技巧|速判|口诀|模板|题眼|捷径|快速|实战|应用提示|转化技巧|快捷|定位|冲刺策略|快速抓手|关键线索|处理模板|操作要领|实践提示|案例提示)",
-)
-_CALLOUT_IMPORTANT_START_RE = re.compile(
-    r"^\s*(?:✅|🔥|⭐)?\s*(?:\*\*)?"
-    r"(?:核心|关键|重点|高频|结论|前提|原理|价值|判断标准|正确逻辑|正确判断|本章定位|高价值|必备|主线|核心判断)",
-)
-_CALLOUT_NOTE_START_RE = re.compile(
-    r"^\s*(?:📝|🔗|📚|📌)?\s*(?:\*\*)?"
-    r"(?:补充|延伸|联系|学习价值|提示|应用价值|背景|拓展|小贴士)",
-)
 _CALLOUT_EMOJI_KIND = {
     "💡": "TIP",
     "📌": "TIP",
@@ -65,7 +49,6 @@ _CALLOUT_EMOJI_KIND = {
     "🧩": "TIP",
     "🚀": "TIP",
     "✨": "TIP",
-    "✅": "IMPORTANT",
     "🔥": "IMPORTANT",
     "⭐": "IMPORTANT",
     "⚠": "WARNING",
@@ -78,7 +61,7 @@ _CALLOUT_EMOJI_KIND = {
     "📚": "NOTE",
 }
 _CALLOUT_LEADING_ICON_RE = re.compile(
-    r"^\s*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️?|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+"
+    r"^\s*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|🔥|⭐|⚠️?|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+"
 )
 _GENERIC_VISIBLE_FOCUS_TITLES = {
     "未命名章节",
@@ -258,16 +241,6 @@ def _infer_callout_kind(body_lines: Iterable[str]) -> str:
     first_line = next((str(item or "").strip() for item in body_lines if str(item or "").strip()), "")
     if not first_line:
         return ""
-    if "答案" in first_line and not any(marker in first_line for marker in ("题眼", "易错", "技巧", "结论", "前提")):
-        return ""
-    if _CALLOUT_WARNING_START_RE.search(first_line):
-        return "WARNING"
-    if _CALLOUT_TIP_START_RE.search(first_line):
-        return "TIP"
-    if _CALLOUT_IMPORTANT_START_RE.search(first_line):
-        return "IMPORTANT"
-    if _CALLOUT_NOTE_START_RE.search(first_line):
-        return "NOTE"
     first_char = first_line[0]
     if first_char in _CALLOUT_EMOJI_KIND and re.search(r"(?:\*\*|[:：])", first_line):
         return _CALLOUT_EMOJI_KIND[first_char]
@@ -319,11 +292,11 @@ def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
 def normalize_educational_callouts(markdown: str) -> str:
     """Promote legacy emoji blockquotes into GitHub-style teaching callouts.
 
-    Writer models often produce useful learner-facing blocks such as
-    ``> ✅ **速判技巧**`` or ``> ⚠️ **易错点**``. The frontend only renders
+    Writer models may produce learner-facing blockquotes with an explicit
+    leading icon instead of a GitHub-style marker. The frontend only renders
     first-class callouts for ``> [!TIP]`` / ``> [!WARNING]`` markers, so this
-    deterministic pass adds the stable marker expected by the renderer and
-    removes redundant leading icons from the visible body.
+    deterministic pass uses the icon as a presentational signal and removes it
+    from the visible body.
     """
 
     text = str(markdown or "")

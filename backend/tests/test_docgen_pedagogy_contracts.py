@@ -1,4 +1,9 @@
 from app.workflows.digest.common import pedagogy
+from app.workflows.digest.common.contracts import (
+    DigestConfirmedPlanContract,
+    build_digest_retrieval_policy,
+    resolve_digest_retrieval_profile,
+)
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _ensure_requested_placeholders,
 )
@@ -60,6 +65,46 @@ def test_title_resolution_prompt_uses_generalizable_examples_not_math_wordlist()
     assert "如果本章不属于这些领域" in prompt
     assert "现金流表" in prompt
     assert "洛必达法则" not in prompt
+
+
+def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
+    assert (
+        resolve_digest_retrieval_profile(
+            "sprint",
+            user_prompt="NOIP 数学竞赛快速复习",
+            course_name="高等数学与算法竞赛",
+        )
+        == "docgen_balanced"
+    )
+
+    policy = build_digest_retrieval_policy(
+        None,
+        has_local_materials=False,
+        user_prompt="OI-Wiki 线性代数",
+        course_name="数学竞赛",
+    )
+
+    assert policy["internal_profile"] == "docgen_balanced"
+    assert policy["external_focus"] == "general_learning_sources"
+    assert "未提供结构化专门检索 profile" in policy["reason"]
+
+
+def test_docgen_retrieval_profile_accepts_explicit_structured_contract() -> None:
+    plan = DigestConfirmedPlanContract.model_validate(
+        {
+            "course_name": "算法专题",
+            "retrieval_profile": "docgen_oi",
+        }
+    )
+
+    assert plan.resolve_retrieval_profile() == "docgen_oi"
+    assert (
+        build_digest_retrieval_policy(
+            plan.resolve_retrieval_profile(),
+            has_local_materials=True,
+        )["external_focus"]
+        == "algorithm_contest_sources"
+    )
 
 
 def test_mermaid_placeholder_not_added_when_writer_already_rendered_diagram() -> None:

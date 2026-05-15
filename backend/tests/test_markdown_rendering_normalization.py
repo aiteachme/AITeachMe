@@ -326,7 +326,7 @@ def test_normalize_repairs_previous_inline_code_dollar_corruption() -> None:
             "```",
             "显示为 `C>`。",
             "[!TIP]",
-            "记忆口诀：组合即得标准提示符。",
+            "观察提示：组合即得标准提示符。",
         ]
     )
 
@@ -334,7 +334,7 @@ def test_normalize_repairs_previous_inline_code_dollar_corruption() -> None:
 
     assert "  - `$$`：显示 `$` 符号。" in fixed
     assert "- **示例**：\n```dos\nPROMPT $P$G\n```" in fixed
-    assert "> [!TIP]\n>\n> 记忆口诀：组合即得标准提示符。" in fixed
+    assert "> [!TIP]\n>\n> 观察提示：组合即得标准提示符。" in fixed
     assert "> **自测例题**" not in fixed
     assert "display math 疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
     assert "display math 分隔符数量不成对。" not in find_markdown_rendering_issues(fixed)
@@ -435,11 +435,11 @@ def test_normalize_splits_adjacent_quoted_callouts_without_blank_line() -> None:
 def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
     raw = "\n".join(
         [
-            "> 💡 **速判技巧**：看到平方差就先想共轭或因式分解。",
+            "> 💡 **观察提示**：看到平方差就先想共轭或因式分解。",
             "",
-            "> ✅ **高频考点**：先抓题目条件，再选公式。",
+            "> ⭐ **关键结论**：先抓题目条件，再选公式。",
             "",
-            "> ⚠️ **易错点**：不要把定义域限制漏掉。",
+            "> ⚠️ **边界提醒**：不要把定义域限制漏掉。",
             "",
             "> ✅ **答案**：5",
             "",
@@ -451,9 +451,9 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
 
     fixed = normalize_educational_callouts(raw)
 
-    assert "> [!TIP]\n>\n> **速判技巧**：看到平方差就先想共轭或因式分解。" in fixed
-    assert "> [!IMPORTANT]\n>\n> **高频考点**：先抓题目条件，再选公式。" in fixed
-    assert "> [!WARNING]\n>\n> **易错点**：不要把定义域限制漏掉。" in fixed
+    assert "> [!TIP]\n>\n> **观察提示**：看到平方差就先想共轭或因式分解。" in fixed
+    assert "> [!IMPORTANT]\n>\n> **关键结论**：先抓题目条件，再选公式。" in fixed
+    assert "> [!WARNING]\n>\n> **边界提醒**：不要把定义域限制漏掉。" in fixed
     assert "> ✅ **答案**：5" in fixed
     assert "> [!IMPORTANT]\n>\n> ✅ **答案**：5" not in fixed
     assert "> 这是一段普通引用，后面会提醒注意事项。" in fixed
