@@ -23,13 +23,22 @@ from app.workflows.digest.docgen.lib.models import (
     PracticeManifest,
 )
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
-from app.workflows.digest.docgen.lib.static_html_figure import generate_static_html_figure_assets
 from app.workflows.digest.docgen.lib.textbook_style import (
     choose_heading_focus,
     format_worked_example_section,
     has_worked_example_section,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+
+
+def _sanitize_public_doc_terms(markdown: str) -> str:
+    return (
+        str(markdown or "")
+        .replace("速成课模式", "快速复习节奏")
+        .replace("速成课", "快速复习")
+        .replace("系统课", "系统学习")
+        .replace("章节合同", "学习大纲")
+    )
 
 
 def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
@@ -81,20 +90,20 @@ def _build_practice_questions(
                 "chapter_index": draft.chapter_index,
                 "type": "worked_example",
                 "label": choose_heading_focus([first_claim], fallback=title),
-                "stem": f"围绕《{title}》中的“{first_claim}”完成一个基础判断：先说清对象和条件，再说明应使用哪个定义、结论或方法。",
+                "stem": f"用《{title}》中的“{first_claim}”完成一个基础判断：先说清对象和条件，再说明应使用哪个定义、结论或方法。",
                 "analysis_steps": [
                     "先圈出任务给出的对象、条件和要求，确认它对应本章哪一个知识点。",
                     "再选择相应的定义、结论或判定方法，并说明为什么能用。",
                     "最后把结果代回原条件，检查范围、单位或逻辑方向是否一致。",
                 ],
-                "pitfall": "只看到熟悉关键词就套方法，容易忽略题目条件是否满足。",
+                "pitfall": "只看到熟悉说法就套方法，容易忽略题目条件是否满足。",
             },
             {
                 "practice_id": f"ch{draft.chapter_index:02d}_p02",
                 "chapter_index": draft.chapter_index,
                 "type": "worked_example",
                 "label": choose_heading_focus([second_claim], fallback=title),
-                "stem": f"围绕“{second_claim}”做一次变式检查：条件稍作变化时，判断原方法是否仍然适用。",
+                "stem": f"把“{second_claim}”换一个条件做检查：判断原方法是否仍然适用。",
                 "analysis_steps": [
                     "先比较变式任务和基础任务的条件差异。",
                     "再判断原结论的适用前提是否仍然成立。",
@@ -143,13 +152,13 @@ def _build_practice_questions(
                     "chapter_index": draft.chapter_index,
                     "type": "worked_example",
                     "label": choose_heading_focus([focus], fallback=title),
-                    "stem": f"围绕“{focus}”设计一个速成课练习：给出条件、识别信号，并说明最短处理路径。",
+                    "stem": f"完成一道与“{focus}”直接相关的小题：先判断条件是否满足，再写出处理步骤和最后检查。",
                     "analysis_steps": [
                         "先判断任务属于哪类高频场景、常见题型或操作任务。",
-                        "再写出触发该方法的条件或关键词。",
+                        "再写出使用该方法必须满足的条件。",
                         "最后按模板完成步骤，并做一次易错检查。",
                     ],
-                    "pitfall": "速成课的关键是识别信号和方法边界，不能只背答案。",
+                    "pitfall": "重点是先看条件和方法边界，不能只背答案。",
                 }
             )
         return examples
@@ -160,7 +169,7 @@ def _build_practice_questions(
             "chapter_index": draft.chapter_index,
             "type": "worked_example",
             "label": choose_heading_focus([first_claim], fallback=title),
-            "stem": f"围绕《{title}》中的“{first_claim}”完成一个概念自检：说明它检验了哪些定义条件。",
+            "stem": f"用《{title}》中的“{first_claim}”完成一个概念自检：说明它检验了哪些定义条件。",
             "analysis_steps": [
                 "先写清讨论对象和需要验证的定义条件。",
                 "再逐条检查条件是否成立。",
@@ -217,7 +226,7 @@ def _build_practice_questions(
                 "chapter_index": draft.chapter_index,
                 "type": "worked_example",
                 "label": choose_heading_focus([claim], fallback=title),
-                "stem": f"围绕“{claim}”补一个覆盖例题或应用案例，说明它如何落到具体任务中。",
+                "stem": f"给“{claim}”补一个覆盖例题或应用案例，说明它如何落到具体任务中。",
                 "analysis_steps": [
                     "先回到该知识点的定义、条件或结构。",
                     "再构造一个能使用它的具体任务。",
@@ -234,91 +243,6 @@ _WORKED_EXAMPLE_TITLE_RE = re.compile(r"(?m)^(?:#{3,5}\s+.*(?:例题|案例|任�
 _PRACTICE_STEM_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:题目|任务|案例)\*\*[：:]")
 _PRACTICE_ANALYSIS_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:解析|解法|步骤)\*\*[：:]")
 _PRACTICE_PITFALL_RE = re.compile(r"(?m)^\s*(?:>\s*)?\*\*(?:易错点|错因|注意)\*\*[：:]")
-
-
-_PROBLEM_PATTERN_TABLE_RE = re.compile(
-    r"(?m)^\|\s*(?:题型/任务|题型|任务类型)\s*\|.*(?:题眼|识别信号).*(?:处理模板|解题模板).*(?:易错|错因|注意).*\|\s*$",
-    re.IGNORECASE,
-)
-_PROBLEM_PATTERN_TABLE_ROW_RE = re.compile(r"(?m)^\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|\s*$")
-
-
-def _safe_table_cell(value: object, *, fallback: str, max_chars: int = 48) -> str:
-    text = re.sub(r"\s+", " ", str(value or "").strip()).replace("|", "｜")
-    if not text:
-        text = fallback
-    if len(text) > max_chars:
-        text = text[: max_chars - 3].rstrip() + "..."
-    return text
-
-
-def _compact_template_steps(steps: object) -> str:
-    if not isinstance(steps, list):
-        return ""
-    cleaned = [
-        re.sub(r"^\s*(?:\d+[.、]\s*)?", "", str(item or "").strip())
-        for item in steps
-        if str(item or "").strip()
-    ]
-    return " -> ".join(cleaned[:3])
-
-
-def _derive_problem_signal(item: dict) -> str:
-    stem = str(item.get("stem") or item.get("question") or "").strip()
-    label = str(item.get("label") or "").strip()
-    if "条件" in stem:
-        return f"题干给出条件变化时，先锁定{label or '适用前提'}"
-    if "判断" in stem:
-        return f"看到判断/辨析任务，先找{label or '判定依据'}"
-    if "比较" in stem or "辨析" in stem:
-        return f"出现比较或辨析时，先分清{label or '边界条件'}"
-    if "步骤" in stem or "路径" in stem:
-        return f"要求步骤或路径时，先写{label or '处理顺序'}"
-    return f"先看对象、条件和目标，再定位{label or '对应方法'}"
-
-
-def _has_problem_pattern_table(markdown: str) -> bool:
-    header_match = _PROBLEM_PATTERN_TABLE_RE.search(str(markdown or ""))
-    if not header_match:
-        return False
-    return bool(_PROBLEM_PATTERN_TABLE_ROW_RE.search(markdown[header_match.end() :]))
-
-
-def _append_problem_pattern_section(markdown: str, questions: list[dict], *, digest_mode: str, title: str = "") -> str:
-    mode_profile = get_docgen_mode_profile(digest_mode)
-    if not mode_profile.is_sprint or not questions:
-        return markdown
-    if _has_problem_pattern_table(markdown):
-        return markdown
-    focus = choose_heading_focus(
-        [title, *(str(item.get("label") or item.get("stem") or "") for item in questions[:3])],
-        fallback=title or "本章重点",
-    )
-    heading = f"## {focus}的题型归纳与速练" if focus else "## 题型归纳与速练"
-    rows = [
-        "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |",
-        "| --- | --- | --- | --- |",
-    ]
-    for index, item in enumerate(questions[:4], start=1):
-        label = _safe_table_cell(item.get("label"), fallback=f"题型 {index}", max_chars=28)
-        signal = _safe_table_cell(_derive_problem_signal(item), fallback="先看对象、条件和目标", max_chars=42)
-        template = _safe_table_cell(
-            _compact_template_steps(item.get("analysis_steps")),
-            fallback="识别条件 -> 选择方法 -> 检查边界",
-            max_chars=58,
-        )
-        pitfall = _safe_table_cell(item.get("pitfall"), fallback="不要只背结论，先验适用条件", max_chars=48)
-        rows.append(f"| {label} | {signal} | {template} | {pitfall} |")
-    section = "\n".join(
-        [
-            heading,
-            "",
-            "这部分用于速成课快速定位：先看题型/任务，再看题眼信号、处理模板和易错诊断。",
-            "",
-            *rows,
-        ]
-    )
-    return markdown.rstrip() + "\n\n" + section + "\n"
 
 
 def _structured_practice_signal_count(markdown: str) -> int:
@@ -459,21 +383,8 @@ async def enhance_chapter_draft(
         ],
     )
 
-    static_figure_assets: list[dict[str, object]] = []
-    try:
-        traced_context.asset_kind = "static_html_figure"
-        static_figure_assets = await generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=traced_context,
-            digest_mode=digest_mode,
-            claim_ledger=claim_ledger,
-            markdown=markdown,
-        )
-        if static_figure_assets:
-            markdown = _insert_asset_links(markdown, static_figure_assets)
-            assets.extend(static_figure_assets)
-    except Exception as exc:
-        warnings.append(f"静态图示生成失败，已跳过图示增强：{str(exc)[:120]}")
+    # Do not run model-backed static HTML figures in per-chapter enhancement:
+    # the readable Markdown path must finish before optional visual sidecars.
 
     interactive_assets: list[dict[str, object]] = []
     if settings.docgen.generate_interactive_html:
@@ -500,9 +411,11 @@ async def enhance_chapter_draft(
         if include_practice
         else []
     )
-    markdown = _append_problem_pattern_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
-    markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
+    mode_profile = get_docgen_mode_profile(digest_mode)
+    if not mode_profile.is_sprint:
+        markdown = _append_practice_section(markdown, questions, digest_mode=digest_mode, title=draft.title)
     markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
+    markdown = _sanitize_public_doc_terms(markdown)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,
         title=draft.title,

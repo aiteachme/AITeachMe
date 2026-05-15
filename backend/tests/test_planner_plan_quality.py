@@ -18,8 +18,8 @@ from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_p
 
 
 def test_planner_mode_label_is_student_facing() -> None:
-    assert planner_mode_label("sprint") == "速成课"
-    assert planner_mode_label("systematic") == "系统课"
+    assert planner_mode_label("sprint") == "快速复习"
+    assert planner_mode_label("systematic") == "系统学习"
 
 
 def test_chapter_contract_mentions_range_and_total_length_budget() -> None:
@@ -56,6 +56,8 @@ def test_normalize_planner_draft_caps_over_split_chapters() -> None:
     assert len(draft.chapter_plan) == config.max_chapters
     assert [chapter.chapter_index for chapter in draft.chapter_plan] == list(range(1, config.max_chapters + 1))
     assert any("超出章节预算后合并覆盖" in item for item in draft.chapter_plan[-1].required_elements)
+    assert "速成课" not in draft.plan_summary
+    assert "快速复习" in draft.plan_summary
 
 
 def test_normalize_planner_draft_respects_user_requested_chapter_count() -> None:

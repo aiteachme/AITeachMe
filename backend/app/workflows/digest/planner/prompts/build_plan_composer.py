@@ -82,7 +82,7 @@ def _render_task_chapter_contract(*, digest_mode: str, is_revision: bool, is_rep
     if is_replacement_revision:
         return "\n".join(
             [
-                "范围重定向章节合同：",
+                "范围重定向学习大纲：",
                 "- 本轮不是在上一版方案上做局部补丁，而是把上一版完整替换成新的 target_scope 方案。",
                 "- 上一版方案 JSON 只能作为上下文和被替换对象，不得继承旧章节、旧标题或旧 required_elements。",
                 "- chapters 必须围绕本轮 target_scope 重新生成完整列表；旧方案中不属于 target_scope 的章节必须消失。",
@@ -92,7 +92,7 @@ def _render_task_chapter_contract(*, digest_mode: str, is_revision: bool, is_rep
         )
     return "\n".join(
         [
-            "修订章节合同：",
+            "修订学习大纲：",
             "- 上一版方案 JSON 是本轮 chapters 的源对象，先按它的章节顺序、标题和 required_elements/key_points 建立工作副本。",
             "- 上一版 JSON 的 chapter_plan[].required_elements 对应本轮输出 chapters[].key_points。",
             "- 本轮最新输入/修改意见是作用在工作副本上的最小补丁；仅当 plan_change_mode=patch_existing 时使用本合同。",

@@ -27,6 +27,10 @@ from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_rev
 _LEARNING_ACTIVITY_RE = re.compile(
     r"(?:例题|案例|示例|练习|自测|实践任务|实践案例|操作案例|操作示例|变式|错误诊断|任务场景|复盘任务)"
 )
+_PROBLEM_ORGANIZATION_RE = re.compile(
+    r"(?:题型整理|题型归纳|题型分类|常见题型|典型题|常见问法|题目类型|常见任务|任务整理|"
+    r"适用条件|解题思路|做法|常见失误|易错|误区)"
+)
 
 
 def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
@@ -53,6 +57,15 @@ def _safe_int(value: object, *, default: int = 0) -> int:
 
 def _learning_activity_count(markdown: str) -> int:
     return len(_LEARNING_ACTIVITY_RE.findall(str(markdown or "")))
+
+
+def _has_problem_organization(markdown: str) -> bool:
+    text = str(markdown or "")
+    signal_count = len(_PROBLEM_ORGANIZATION_RE.findall(text))
+    table_like_rows = re.findall(r"(?m)^\|\s*[^|\-\s][^|]*\|\s*[^|\-\s][^|]*\|", text)
+    heading_like = re.search(r"(?m)^#{2,4}\s+.*(?:题型|任务|问法|做法|易错|误区)", text)
+    list_like_rows = re.findall(r"(?m)^\s*(?:[-*]|\d+[.、])\s+.*(?:题|任务|条件|做法|易错|误区)", text)
+    return bool(heading_like and (signal_count >= 3 or len(table_like_rows) >= 3 or len(list_like_rows) >= 3))
 
 
 def _planned_example_count(task: ChapterGenerationTask) -> int:
@@ -150,9 +163,9 @@ def _rule_review_chapter(
                 action_type="section_patch",
                 chapter_index=draft.chapter_index,
                 severity="warning",
-                reason="缺少章节合同项：" + "、".join(missing[:5]),
+                reason="缺少学习大纲项：" + "、".join(missing[:5]),
                 target_anchor=_chapter_anchor(draft),
-                instruction="补齐章节中缺失的合同项：" + "、".join(missing[:8]),
+                instruction="补齐章节中缺失的学习大纲项：" + "、".join(missing[:8]),
                 constraints=[
                     "不得新增、删除或重排 confirmed plan 章节。",
                     "只允许修改本章相关小节。",
@@ -165,28 +178,30 @@ def _rule_review_chapter(
     planned_examples = _planned_example_count(task)
     density_policy = dict(task.practice_seed_policy.get("example_density_policy") or {})
     if str(digest_mode or task.practice_seed_policy.get("digest_mode") or "").strip().lower() == "sprint":
+        policy_activity_count = _safe_int(density_policy.get("worked_examples_per_chapter"), default=4) + _safe_int(
+            density_policy.get("practice_tasks_per_chapter"),
+            default=4,
+        )
         expected_activity_count = max(
-            3,
+            6,
             min(
-                8,
-                planned_examples
-                or _safe_int(density_policy.get("worked_examples_per_chapter"), default=4)
-                + _safe_int(density_policy.get("practice_tasks_per_chapter"), default=4),
+                10,
+                planned_examples or policy_activity_count or 8,
             ),
         )
         if activity_count < expected_activity_count:
-            warnings.append("速成课模式例题、案例、训练或实践任务密度不足。")
+            warnings.append("快速复习节奏下，例题、案例、训练或实践任务密度不足。")
             actions.append(
                 ReviewAction(
                     action_id=f"review_ch{draft.chapter_index:02d}_sprint_examples",
                     action_type="section_patch",
                     chapter_index=draft.chapter_index,
                     severity="warning",
-                    reason=f"速成课模式学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
+                    reason=f"快速复习学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
                     target_anchor=_chapter_anchor(draft),
                     instruction=(
-                        "补充高价值例题、操作案例、变式训练、自测或错误诊断；每个重要方法要有识别信号、"
-                        "步骤过程、答案/结果和易错复盘。"
+                        "补充由本章内容自然生成的高价值例题、操作案例、变式训练、自测或错误诊断；"
+                        "每个重要方法都要写清题目或任务条件、步骤过程、答案/结果和容易失误的地方。"
                     ),
                     constraints=[
                         "不把非考试主题硬改成试卷题。",
@@ -194,6 +209,29 @@ def _rule_review_chapter(
                         "理论说明必须服务会做题、会操作、会判断、会避坑。",
                     ],
                     expected_effect="本章形成题型/场景/任务驱动的例题和训练密度。",
+                )
+            )
+        if not _has_problem_organization(draft.markdown):
+            warnings.append("快速复习章节缺少面向考试或任务的题型/任务整理。")
+            actions.append(
+                ReviewAction(
+                    action_id=f"review_ch{draft.chapter_index:02d}_sprint_problem_organization",
+                    action_type="section_patch",
+                    chapter_index=draft.chapter_index,
+                    severity="warning",
+                    reason="快速复习章节缺少可扫描的题型或任务整理。",
+                    target_anchor=_chapter_anchor(draft),
+                    instruction=(
+                        "补一个由本章内容自然生成的整理小节。考试、计算、刷题类章节可用“常见题型整理”或更贴合内容的标题；"
+                        "操作、项目、概念辨析类章节可用“常见任务整理”或更贴合内容的标题。标题、表头和条目必须来自本章语义，"
+                        "不要按固定词表拼接。整理内容至少覆盖：典型问法或任务、适用条件、做法、常见失误，并配 1-2 个小例题或变式。"
+                    ),
+                    constraints=[
+                        "不要只补一个空表或抽象口号，必须能直接帮助学生判断下一步怎么做。",
+                        "不要改变 confirmed plan 的章节边界。",
+                        "不要引入本章证据之外的新知识点。",
+                    ],
+                    expected_effect="本章能让学生快速看出常见考法或任务类型、适用条件、做法和易错点。",
                 )
             )
     else:

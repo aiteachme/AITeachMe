@@ -92,7 +92,7 @@ NODE_DISPLAY_NAMES = {
 NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_LOAD_CONTEXT: {
         "description": (
-            "读取用户已经确认的构建方案、资料理解包和 Planner 会话上下文，校验章节合同是否完整，"
+            "读取用户已经确认的构建方案、资料理解包和 Planner 会话上下文，校验学习大纲是否完整，"
             "并组装 DocGenContext、document_context、chapter_assignments 与检索画像。这个节点只做入口合同冻结，"
             "不调用 LLM，也不静默改写用户确认过的章节语义。"
         ),
@@ -280,7 +280,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_REVIEW_CHAPTERS: {
         "description": (
-            "LangGraph Send fan-out 后的单章复核节点。每个分支检查章节合同覆盖、证据支撑、写作质量和风险信号，"
+            "LangGraph Send fan-out 后的单章复核节点。每个分支检查学习大纲覆盖、证据支撑、写作质量和风险信号，"
             "产出 reviewed draft、review report 和后续 repair action，随后 fan-in 到整本一致性复核。"
         ),
         "reads": [

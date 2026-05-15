@@ -43,12 +43,22 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().split())
 
 
+def _student_facing_text(value: Any) -> str:
+    return (
+        _text(value)
+        .replace("速成课模式", "快速复习节奏")
+        .replace("速成课", "快速复习")
+        .replace("系统课", "系统学习")
+        .replace("章节合同", "学习大纲")
+    )
+
+
 def _strings(value: Any) -> list[str]:
     items = value if isinstance(value, (list, tuple, set)) else [value]
     cleaned: list[str] = []
     seen: set[str] = set()
     for item in items:
-        text = _text(item)
+        text = _student_facing_text(item)
         key = text.casefold()
         if text and key not in seen:
             seen.add(key)
@@ -83,7 +93,7 @@ def _normalize_digest_mode(value: Any) -> str:
 
 
 def planner_mode_label(value: Any) -> str:
-    return "速成课" if _normalize_digest_mode(value) == "sprint" else "系统课"
+    return "快速复习" if _normalize_digest_mode(value) == "sprint" else "系统学习"
 
 
 def render_planner_chapter_contract(value: Any) -> str:
@@ -156,9 +166,9 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
     return PlannerChapterPlan(
         chapter_index=_positive_int(raw.get("chapter_index")) or index,
         title=title,
-        objective=_text(raw.get("objective")) or "；".join(key_points),
+        objective=_student_facing_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
-        writing_instructions=_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
+        writing_instructions=_student_facing_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
     )
 
 
@@ -319,7 +329,7 @@ def normalize_planner_draft(
         digest_mode=mode,
         requested_chapter_count=requested_chapter_count,
     )
-    plan_summary = _text(current.get("plan_summary") or previous.get("plan_summary"))
+    plan_summary = _student_facing_text(current.get("plan_summary") or previous.get("plan_summary"))
     if not plan_summary:
         raise ValueError("planner plan is missing plan_summary")
     plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))

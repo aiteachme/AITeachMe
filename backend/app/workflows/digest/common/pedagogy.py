@@ -381,7 +381,7 @@ def build_chapter_title_resolution_messages(
     web_hits: int,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "速成课" if normalized_mode == "sprint" else "系统课"
+    mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
     required_text = "、".join(item for item in required_elements if item.strip()) or "核心概念、推理路径、典型例子"
     query_text = "；".join(item for item in search_queries if item.strip()) or "无明确检索词"
     source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 当前没有明确来源标题"
@@ -405,7 +405,7 @@ def build_chapter_title_resolution_messages(
 {source_text}
 
 研究笔记：
-{dense_context or "暂无研究笔记，请根据章节合同稳健命名。"}
+{dense_context or "暂无研究笔记，请根据学习大纲稳健命名。"}
 
 输出要求：
 1. 只输出一个中文标题。
@@ -431,7 +431,7 @@ def build_document_overview(
     """构建知识文档开头的总览页。"""
 
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "速成课" if normalized_mode == "sprint" else "系统课"
+    mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
     display_course = _resolve_course_name(course_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
     goal_line = user_prompt.strip() or f"围绕 {display_course} 生成一份结构化学习文档。"
@@ -790,8 +790,8 @@ def _build_mode_sections(
         quick_table = [
             "| 复习入口 | 先看什么 | 不能忽略什么 |",
             "| --- | --- | --- |",
-            f"| {first_focus} | 定义、条件、关键词 | 适用范围和反例 |",
-            f"| {second_focus} | 题眼信号、处理步骤 | 单位、方向、边界条件 |",
+            f"| {first_focus} | 定义和适用条件 | 适用范围和反例 |",
+            f"| {second_focus} | 题目或任务给出的条件 | 单位、方向、边界条件 |",
             "| 例题/任务 | 题目给出的对象和目标 | 不要看到熟词就机械套方法 |",
         ]
         return [
@@ -804,7 +804,7 @@ def _build_mode_sections(
                         "",
                         f"- 本章要解决的问题：{objective or '把本章最关键的主题、条件和处理路径讲清楚。'}",
                         f"- 高频入口：{focus_text}",
-                        "- 读法：先找题眼或任务目标，再选方法，最后检查适用条件和易错边界。",
+                        "- 读法：先看题目或任务目标，再选方法，最后检查适用条件和易错边界。",
                     ]
                 ).strip(),
             ),
@@ -815,8 +815,8 @@ def _build_mode_sections(
                     [
                         resolved_headings["drills"],
                         "",
-                        "1. **题眼**：先圈出题目或任务给出的对象、条件和目标。",
-                        "2. **模板**：再匹配本章对应的定义、结论、公式或操作步骤。",
+                        "1. **条件**：先圈出题目或任务给出的对象、条件和目标。",
+                        "2. **方法**：再选择本章对应的定义、结论、公式或操作步骤。",
                         "3. **检查**：最后回到原条件，检查范围、方向、单位或边界是否被破坏。",
                     ]
                 ).strip(),
@@ -995,7 +995,7 @@ def _chapter_evidence(chapter: Mapping[str, object]) -> str:
 
 
 def _default_plan_summary(*, course_name: str, digest_mode: str, chapters: list[Mapping[str, object]]) -> str:
-    mode_label = "速成课" if digest_mode == "sprint" else "系统课"
+    mode_label = "快速复习" if digest_mode == "sprint" else "系统学习"
     return f"围绕 {course_name} 设计的一条 {mode_label} 学习路径，共 {len(chapters)} 章。"
 
 

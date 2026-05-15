@@ -116,7 +116,7 @@ def build_evidence_ledger(
             EvidenceItem(
                 evidence_id=f"ch{chapter_index:02d}_ev001",
                 kind="background",
-                claim="当前章节缺少可抽取的细粒度证据，已退回基于章节合同生成。",
+                claim="当前章节缺少可抽取的细粒度证据，已退回基于学习大纲生成。",
                 source_type="generated",
                 source_ref=f"generated://chapter/{chapter_index}",
                 confidence=0.35,

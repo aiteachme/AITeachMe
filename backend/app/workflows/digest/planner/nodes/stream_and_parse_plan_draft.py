@@ -334,9 +334,9 @@ async def _compose_outline_sketch_with_llm(
         state,
         event="planner.plan.structure_started",
         detail=(
-            f"正在围绕“{plan_intent.target_scope.strip()}”生成可确认章节合同..."
+            f"正在围绕“{plan_intent.target_scope.strip()}”梳理可确认学习大纲..."
             if plan_intent.target_scope.strip()
-            else "正在生成可确认章节合同..."
+            else "正在梳理可确认学习大纲..."
         ),
         payload={
             "target_scope": plan_intent.target_scope.strip(),

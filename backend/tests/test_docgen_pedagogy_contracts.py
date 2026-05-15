@@ -1,8 +1,9 @@
 from app.workflows.digest.common import pedagogy
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _append_practice_section,
-    _append_problem_pattern_section,
 )
+from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
+from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
@@ -219,59 +220,44 @@ def test_sprint_practice_supplement_only_fills_missing_example_gap() -> None:
     assert "误差判断" in supplemented
 
 
-def test_sprint_problem_pattern_section_adds_question_type_table() -> None:
-    markdown = "# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。\n"
-    questions = [
-        {
-            "label": "奇异值分解",
-            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
-            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。", "最后检查误差要求。"],
-            "pitfall": "不能只看矩阵大小，还要看近似目标。",
-        },
-        {
-            "label": "低秩近似",
-            "stem": "给定保留阶数，说明如何判断近似是否足够。",
-            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
-            "pitfall": "只保留最大项不等于一定满足误差要求。",
-        },
-    ]
-
-    supplemented = _append_problem_pattern_section(
-        markdown,
-        questions,
-        digest_mode="sprint",
+def test_sprint_rule_review_requires_model_generated_problem_organization() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
         title="矩阵分解",
+        markdown="# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。\n",
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="矩阵分解",
+        required_elements=["奇异值分解", "低秩近似"],
+        practice_seed_policy={
+            "digest_mode": "sprint",
+            "example_density_policy": {
+                "worked_examples_per_chapter": 4,
+                "practice_tasks_per_chapter": 4,
+            },
+        },
     )
 
-    assert supplemented != markdown
-    assert "题型归纳与速练" in supplemented
-    assert "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |" in supplemented
-    assert "奇异值分解" in supplemented
-    assert "先看矩阵和目标" in supplemented
-    assert _append_problem_pattern_section(markdown, questions, digest_mode="systematic", title="矩阵分解") == markdown
-
-
-def test_sprint_problem_pattern_section_does_not_accept_keyword_only_heading() -> None:
-    markdown = "# 矩阵分解\n\n## 题型归纳\n\n本章要注意题眼、处理模板和易错诊断。\n"
-    questions = [
-        {
-            "label": "奇异值分解",
-            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
-            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
-            "pitfall": "不能只看矩阵大小，还要看近似目标。",
-        }
-    ]
-
-    supplemented = _append_problem_pattern_section(
-        markdown,
-        questions,
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
         digest_mode="sprint",
-        title="矩阵分解",
     )
 
-    assert supplemented != markdown
-    assert "| 题型/任务 | 题眼信号 | 处理模板 | 易错诊断 |" in supplemented
-    assert "奇异值分解" in supplemented
+    organization_actions = [
+        action for action in actions if action.action_id.endswith("_sprint_problem_organization")
+    ]
+    assert organization_actions
+    instruction = organization_actions[0].instruction
+    assert "自然生成" in instruction
+    assert "不要按固定词表拼接" in instruction
+    assert "常见题型整理" in instruction
+    assert "| 题型/任务 |" not in instruction
+    assert report.passed is False
 
 
 def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples() -> None:
@@ -290,13 +276,15 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     )
     prompt = messages[-1]["content"]
 
-    assert "速查表或判断表" in prompt
-    assert "题型归纳表" in prompt
+    assert "题型整理或常见问法整理" in prompt
+    assert "条件与方法速查" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
     assert "不能反复复用章节标题" in prompt
-    assert "题目/案例-解析-易错点" in prompt
+    assert "带解析和易错点的例题/案例/变式/自测" in prompt
     assert "不要只写“请自行练习”" in prompt
+    assert "题眼信号" not in prompt
+    assert "处理模板" not in prompt
 
 
 def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
@@ -312,7 +300,9 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     )
     prompt = messages[-1]["content"]
 
-    assert "题型归纳" in prompt
-    assert "题眼信号" in prompt
-    assert "处理模板" in prompt
-    assert "易错诊断" in prompt
+    assert "题型或任务整理" in prompt
+    assert "条件与方法速查" in prompt
+    assert "例题解析" in prompt
+    assert "固定口号或本地模板" in prompt
+    assert "题眼信号" not in prompt
+    assert "处理模板" not in prompt

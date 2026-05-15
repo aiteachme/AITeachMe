@@ -27,7 +27,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
             key=lambda item: int(item.get("chapter_index", 0) or 0),
         )
         if not chapters:
-            return {"error": "缺少可锁定标题的章节合同。"}
+            return {"error": "缺少可锁定标题的学习大纲。"}
         docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
 
         async def _lock_one(chapter: dict) -> dict:

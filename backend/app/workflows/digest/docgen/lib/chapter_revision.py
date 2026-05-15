@@ -35,7 +35,7 @@ def critique_chapter(
         if str(item).strip() and "".join(str(item).split()).casefold() not in normalized
     ]
     if missing:
-        warnings.append("缺少章节合同项：" + "、".join(missing[:5]))
+        warnings.append("缺少学习大纲项：" + "、".join(missing[:5]))
     if source_count <= 0:
         warnings.append("缺少可追踪来源。")
     quality_score = estimate_quality_from_markdown(

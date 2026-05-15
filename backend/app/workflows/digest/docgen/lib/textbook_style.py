@@ -17,6 +17,7 @@ from typing import Any
 _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
 _CALLOUT_MARKER_RE = re.compile(r"^\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
+_SUPPORTED_CALLOUT_KINDS = {"NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"}
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
@@ -604,7 +605,10 @@ def format_worked_example_section(
         if not stem:
             continue
         title = f"例题 {index}" + (f"：{label}" if label else "")
-        lines.extend(["> [!IMPORTANT]", ">", f"> **{title}**", ">", f"> **题目**：{stem}", ">", "> **解析**："])
+        callout_kind = str(item.get("callout_kind") or "IMPORTANT").strip().upper()
+        if callout_kind not in _SUPPORTED_CALLOUT_KINDS:
+            callout_kind = "IMPORTANT"
+        lines.extend([f"> [!{callout_kind}]", ">", f"> **{title}**", ">", f"> **题目**：{stem}", ">", "> **解析**："])
         if analysis_steps:
             lines.extend(f"> {step_index}. {step}" for step_index, step in enumerate(analysis_steps, start=1))
         else:

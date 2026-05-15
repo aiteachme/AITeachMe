@@ -473,8 +473,8 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
     raw = "\n".join(
         [
             "## 区分不定积分、定积分及其几何意义，先的典型例题解析",
-            "### 处理模板",
-            "### 题眼信号",
+            "### 解题步骤",
+            "### 题目条件",
             "### 易错诊断",
             "## 理解多元函数、偏导数、全微分、方向导的公式与判定速查",
         ]
@@ -491,8 +491,8 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
 
     assert "区分不定积分、定积分及其几何意义，先的" not in fixed
     assert "## 区分不定积分、定积分及其几何意义的典型例题解析" in fixed
-    assert "### 处理模板" in fixed
-    assert "### 题眼信号" in fixed
+    assert "### 解题步骤" in fixed
+    assert "### 题目条件" in fixed
     assert "### 易错诊断" in fixed
     assert "方向导的公式与判定速查" not in fixed
     assert "方向导数的公式与判定速查" in fixed

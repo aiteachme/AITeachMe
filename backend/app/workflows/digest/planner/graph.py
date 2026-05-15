@@ -96,7 +96,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     STEP_UNDERSTAND_GOAL: {
         "description": (
             "并行执行两个轻规划动作：一边流式生成用户可见的资料边界/学习目标判断，一边抽取内部 PlanIntent。"
-            "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终章节合同。"
+            "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终学习大纲。"
         ),
         "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
         "writes": ["planner_brief", "plan_intent"],

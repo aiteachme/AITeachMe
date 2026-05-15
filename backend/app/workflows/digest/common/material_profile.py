@@ -183,11 +183,11 @@ def decide_digest_mode(
     if user_prompt:
         prompt_lower = user_prompt.lower()
         if any(kw in prompt_lower for kw in ["速成", "冲刺", "快速", "sprint", "考前"]):
-            evidence["user_prompt"] = "用户明确要求速成课模式"
+            evidence["user_prompt"] = "用户明确要求快速复习节奏"
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.95,
-                reason="用户明确要求速成课模式",
+                reason="用户明确要求快速复习节奏",
                 user_override=True,
                 evidence=evidence,
             )
@@ -209,7 +209,7 @@ def decide_digest_mode(
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.85,
-                reason="材料识别为试卷/考题，适合速成课",
+                reason="材料识别为试卷/考题，适合快速复习",
                 evidence=evidence,
             )
         if course_profile.difficulty_level == "advanced":
@@ -223,7 +223,7 @@ def decide_digest_mode(
         return DigestModeDecision(
             mode=DigestMode.SPRINT,
             confidence=0.80,
-            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合速成课",
+            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合快速复习",
             evidence=evidence,
         )
 
