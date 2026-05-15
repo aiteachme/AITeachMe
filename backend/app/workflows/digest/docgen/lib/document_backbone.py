@@ -23,18 +23,6 @@ from app.workflows.digest.docgen.lib.models import (
 )
 
 
-def _claim_type(text: str) -> str:
-    if any(marker in text for marker in ("公式", "定理", "性质", "$", "=")):
-        return "formula"
-    if any(marker in text for marker in ("例题", "题型", "练习", "应用")):
-        return "example"
-    if any(marker in text for marker in ("易错", "误区", "注意", "不能")):
-        return "pitfall"
-    if any(marker in text for marker in ("定义", "概念", "称为", "是指")):
-        return "definition"
-    return "core"
-
-
 def _target_chapters_for_term(term: str, task_seeds: Sequence[ChapterGenerationTaskSeed]) -> list[int]:
     normalized = "".join(str(term or "").split()).casefold()
     if not normalized:
@@ -111,7 +99,7 @@ def build_document_backbone(
             claims.append(
                 CanonicalClaim(
                     claim_id=f"bb_ch{task.chapter_index:02d}_claim_{len(claims) + 1:03d}",
-                    claim_type=_claim_type(item),
+                    claim_type="core",
                     claim_text=item,
                     target_chapter=task.chapter_index,
                     importance=0.72,

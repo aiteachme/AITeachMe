@@ -270,8 +270,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_ENHANCE_CHAPTERS: {
         "description": (
-            "对单章草稿做增强处理：生成或修复 Mermaid、交互 HTML sidecar、公式/Markdown 结构，并按模式补充必要例题或练习。"
-            "该节点不重写核心知识，不改变 claim/evidence 绑定，只做发布前内容增强。"
+            "对单章草稿做表现层增强：生成或修复 Mermaid、交互 HTML sidecar、公式/Markdown 结构。"
+            "该节点不重写核心知识，不改变 claim/evidence 绑定，也不按本地关键词补标题、例题或练习。"
         ),
         "reads": ["chapter_drafts", "claim_ledgers", "document_backbone", "digest_mode"],
         "writes": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests"],

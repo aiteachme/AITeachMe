@@ -94,16 +94,22 @@ def _sanitize_mermaid_body(body: str, *, topic: str) -> str:
         if line.strip()
     ]
     if not lines:
-        return _build_simple_mindmap(topic, body)
+        raise ValueError("Mermaid model returned empty content.")
     lines = _trim_context_echo_lines(lines)
     if not lines:
-        return _build_simple_mindmap(topic, body)
+        raise ValueError("Mermaid model only returned echoed context.")
     first_line = lines[0].strip()
     if first_line.lower().startswith("mindmap"):
-        return _sanitize_mindmap_body("\n".join(lines), topic=topic)
+        sanitized = _sanitize_mindmap_body("\n".join(lines), topic=topic)
+        if not sanitized.strip():
+            raise ValueError("Mermaid mindmap content is not usable.")
+        return sanitized
     if _FLOWCHART_HEADER_RE.match(first_line) or any(token in "\n".join(lines) for token in ("-->", "==>")):
-        return _sanitize_flowchart_body("\n".join(lines), topic=topic)
-    return "\n".join(lines).strip()
+        sanitized = _sanitize_flowchart_body("\n".join(lines), topic=topic)
+        if not sanitized.strip():
+            raise ValueError("Mermaid flowchart content is not usable.")
+        return sanitized
+    raise ValueError("Mermaid model did not return a supported diagram.")
 
 
 def _trim_context_echo_lines(lines: list[str]) -> list[str]:
@@ -115,70 +121,16 @@ def _trim_context_echo_lines(lines: list[str]) -> list[str]:
     return trimmed
 
 
-def _extract_mindmap_labels(text: str, *, limit: int = 6) -> list[str]:
-    labels: list[str] = []
-    seen: set[str] = set()
-
-    def _push(value: str) -> None:
-        cleaned = _sanitize_mindmap_label(value)
-        if not cleaned:
-            return
-        key = cleaned.casefold()
-        if key in seen:
-            return
-        seen.add(key)
-        labels.append(cleaned)
-
-    for match in re.finditer(r"root\(\((.+?)\)\)", text, re.IGNORECASE):
-        _push(match.group(1))
-    for match in re.finditer(r"\[([^\]]+)\]", text):
-        _push(match.group(1))
-
-    for raw_line in _normalize_mermaid_text(text).splitlines():
-        line = raw_line.strip()
-        if not line or line.lower() == "mindmap" or line.startswith("```"):
-            continue
-        if _is_markdown_context_echo_line(line):
-            continue
-        root_match = _MINDMAP_ROOT_RE.match(line)
-        if root_match is not None:
-            _push(root_match.group(1))
-            continue
-        if _MINDMAP_MIXED_SYNTAX_RE.search(line):
-            arrow_bits = re.findall(r"\[([^\]]+)\]", line)
-            if arrow_bits:
-                for item in arrow_bits:
-                    _push(item)
-            else:
-                _push(line.split("-->")[-1].split("==>")[-1])
-            continue
-        _push(re.sub(r"^[-*+]\s+", "", line))
-        if len(labels) >= limit:
-            break
-
-    return labels[:limit]
-
-
-def _build_simple_mindmap(topic: str, source_text: str) -> str:
-    labels = _extract_mindmap_labels(source_text, limit=6)
-    root = labels[0] if labels else _sanitize_mindmap_label(topic)
-    if not root:
-        root = "核心主题"
-    lines = ["mindmap", f"  root(({root}))"]
-    for label in labels[1:]:
-        lines.append(f"    {label}")
-    return "\n".join(lines)
-
-
 def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
+    del topic
     normalized = _extract_mermaid_body(body)
     if not normalized.lower().startswith("mindmap"):
-        return _build_simple_mindmap(topic, body)
+        return ""
 
     raw_lines = normalized.splitlines()
     body_lines = [line for line in raw_lines[1:] if line.strip()]
     if any(_MINDMAP_MIXED_SYNTAX_RE.search(line) for line in body_lines):
-        return _build_simple_mindmap(topic, normalized)
+        return ""
 
     output = ["mindmap"]
     has_root = False
@@ -214,7 +166,7 @@ def _sanitize_mindmap_body(body: str, *, topic: str) -> str:
             break
 
     if not has_root:
-        return _build_simple_mindmap(topic, normalized)
+        return ""
     return "\n".join(output)
 
 
@@ -222,7 +174,7 @@ def _sanitize_flowchart_body(body: str, *, topic: str) -> str:
     del topic
     normalized = _extract_mermaid_body(body)
     sanitized = sanitize_mermaid_source(normalized)
-    return sanitized.strip() or "flowchart TD"
+    return sanitized.strip()
 
 
 class _MermaidPlaceholderRuntime(BaseTracedExecution):
@@ -260,11 +212,7 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
             raw_body = _extract_mermaid_body(str(response))
             body = _sanitize_mermaid_body(str(response), topic=topic)
         except Exception as exc:
-            body = self._fallback_mermaid(topic, context)
-            return TracedExecutionResult(
-                content=f"```mermaid\n{body}\n```",
-                metadata={"fallback_used": True, "error": str(exc)[:240], "body_preview": body[:240]},
-            )
+            raise RuntimeError(f"Mermaid placeholder rendering failed: {str(exc)[:240]}") from exc
         return TracedExecutionResult(
             content=f"```mermaid\n{body}\n```",
             metadata={
@@ -296,13 +244,6 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
 
         processed, reports = await replace_asset_requests_with_results(markdown, kind="mermaid", renderer=render)
         return processed, reports
-
-    def _fallback_mermaid(self, topic: str, context: str) -> str:
-        fallback_source = "\n".join(
-            [topic, *[token.strip() for token in re.split(r"[,:;\n]", context) if token.strip()][:4]]
-        )
-        return _build_simple_mindmap(topic, fallback_source)
-
 
 class DocGenAssetRuntime:
     def __init__(self, context: TracedExecutionContext) -> None:

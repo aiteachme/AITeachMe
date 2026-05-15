@@ -11,13 +11,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import re
-from typing import Any
 
 
 _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
 _CALLOUT_MARKER_RE = re.compile(r"^\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]", re.IGNORECASE)
-_SUPPORTED_CALLOUT_KINDS = {"NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"}
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
@@ -32,82 +30,6 @@ _HEADING_OUTLINE_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-_CONTENT_HEADING_TERMS = (
-    "定义",
-    "概念",
-    "含义",
-    "性质",
-    "定理",
-    "公式",
-    "判定",
-    "计算",
-    "证明",
-    "推导",
-    "方法",
-    "模板",
-    "步骤",
-    "流程",
-    "思路",
-    "信号",
-    "题眼",
-    "条件",
-    "前提",
-    "边界",
-    "结构",
-    "关系",
-    "对照",
-    "分布",
-    "概率",
-    "期望",
-    "方差",
-    "矩阵",
-    "向量",
-    "函数",
-    "方程",
-    "系统",
-    "进程",
-    "线程",
-    "内存",
-    "文件",
-    "调度",
-    "I/O",
-    "IO",
-    "例题",
-    "题型",
-    "任务",
-    "自测",
-    "变式",
-    "解析",
-    "解法",
-    "应用",
-    "实验",
-    "误差",
-    "易错",
-    "错因",
-    "误区",
-    "诊断",
-    "速查",
-    "估计",
-    "检验",
-)
-
-_LOW_INFORMATION_HEADING_MARKERS = (
-    "本章",
-    "这一",
-    "这章",
-    "这些",
-    "关键",
-    "重点",
-    "内容",
-    "要点",
-    "目标",
-    "清单",
-)
-_ACTION_STYLE_RE = re.compile(
-    r"(?:先|再|最后|优先|应该|需要|必须|可以|怎么|如何|为什么|什么|哪些|"
-    r"看|问|记|补|抓|拿|学|做|掌握|检查|确认|串联|整理)"
-)
-_QUESTION_STYLE_RE = re.compile(r"(?:吗|呢|么|怎么|如何|为什么|什么|哪些|？|\?)")
 _FOCUS_ACTION_CLAUSE_RE = re.compile(
     r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|"
     r"学会|明确|减少|进入|形成|覆盖|整理|把|用|帮助|让|能够).*$"
@@ -125,10 +47,11 @@ _DUPLICATE_GENERATED_HEADING_RE = re.compile(
 _LOW_VALUE_VISIBLE_HEADING_RE = re.compile(
     r"^(?:"
     r"核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
-    r"学习大纲(?:[:：].*)?|章节目标|本章目标|补充掌握检查|"
-    r"快速复习自测区|快速自测|自测任务|考前速查与自测|"
+    r"学习大纲(?:[:：].*)?|学习大纲与核心定义|章节目标|本章目标|补充掌握检查|"
+    r"核心要点速查|快速复习(?:[:：].*)?|快速复习自测区|快速自测|自测任务|考前速查与自测|"
     r"常见任务整理|常见任务与题型整理|常见题型整理|题型整理|"
-    r"综合训练|综合训练与检查标准|典型例题与易错诊断"
+    r"题型[一二三四五六七八九十\d]+|综合训练|综合训练与辨析|综合实战训练区|综合训练与检查标准|"
+    r"典型例题与易错诊断|.*证据补充.*"
     r")$"
 )
 _CALLOUT_WARNING_START_RE = re.compile(
@@ -206,20 +129,6 @@ def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
     return text
 
 
-def choose_heading_focus(items: Iterable[str], *, fallback: str = "", max_chars: int = 18) -> str:
-    """Pick a content-specific focus phrase and avoid internal scaffold words."""
-
-    fallback_focus = clean_heading_focus(fallback, max_chars=max_chars)
-    for item in items:
-        focus = clean_heading_focus(str(item), max_chars=max_chars)
-        if not focus:
-            continue
-        if _looks_like_non_content_phrase(focus):
-            continue
-        return focus
-    return fallback_focus
-
-
 def _looks_like_generic_visible_focus(value: str) -> bool:
     cleaned = clean_heading_focus(value, max_chars=80)
     if not cleaned:
@@ -242,27 +151,6 @@ def _strip_generic_visible_heading_prefix(value: str) -> str:
     if match is not None:
         return match.group(1).strip(" ：:，,。；;|-")
     return cleaned
-
-
-def build_textbook_heading(
-    kind: str,
-    *,
-    digest_mode: str,
-    focus: str = "",
-    fallback_title: str = "",
-    level: int = 2,
-) -> str:
-    """Return a cleaned visible heading without locally inventing semantics."""
-
-    prefix = "#" * max(2, min(6, int(level or 2)))
-    resolved_focus = clean_heading_focus(focus) or clean_heading_focus(fallback_title)
-    if _looks_like_generic_visible_focus(resolved_focus):
-        resolved_focus = ""
-    fallback = _numberless_fallback_title(fallback_title, default="")
-    heading = resolved_focus or fallback
-    if not heading:
-        return ""
-    return f"{prefix} {heading}"
 
 
 def _demote_heading_title(title: str) -> str:
@@ -334,56 +222,20 @@ def rewrite_textbook_heading_line(
         if numberless_title and numberless_title != raw_title:
             return f"{match.group('prefix')} {numberless_title}"
         if not numberless_title and fallback_title:
-            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
+            fallback = _numberless_fallback_title(fallback_title, default="")
+            return f"{match.group('prefix')} {fallback}" if fallback else line
         return line
 
     heading_title = _strip_generic_visible_heading_prefix(clean_heading_focus(numberless_title, max_chars=80))
     if not heading_title:
-        if numberless_title != raw_title:
-            return f"{match.group('prefix')} {_numberless_fallback_title(fallback_title, default='本章内容')}"
-        return line
-    kind = _classify_non_textbook_heading(heading_title)
-    if kind or _is_low_value_visible_heading(heading_title):
+        return "" if numberless_title != raw_title else line
+    if _is_low_value_visible_heading(heading_title):
         return _demote_heading_title(heading_title)
     if heading_title and heading_title != numberless_title:
         return f"{match.group('prefix')} {heading_title}"
     if numberless_title and numberless_title != raw_title:
         return f"{match.group('prefix')} {numberless_title}"
     return line
-
-
-def _classify_non_textbook_heading(title: str) -> str:
-    """Classify non-textbook headings by quality signals instead of title rewrites."""
-
-    cleaned = str(title or "").strip()
-    if not cleaned:
-        return ""
-    has_content_term = any(term in cleaned for term in _CONTENT_HEADING_TERMS)
-    if re.search(r"(?:例题|题型|练习|解析|变式|自测|任务)", cleaned):
-        if len(cleaned) <= 12:
-            return ""
-        if _looks_like_non_content_phrase(cleaned):
-            return "examples"
-        return ""
-    if "公式" in cleaned or "速查" in cleaned or "结论" in cleaned:
-        return "" if has_content_term else "quickref"
-    if "关系" in cleaned or "联系" in cleaned:
-        return "" if has_content_term else "links"
-    if _looks_like_non_content_phrase(cleaned):
-        if "要点" in cleaned:
-            return "points"
-        if "问题" in cleaned:
-            return "questions"
-        if _QUESTION_STYLE_RE.search(cleaned):
-            return "questions"
-        if re.search(r"(?:补|缺|覆盖|关键|重点)", cleaned):
-            return "coverage"
-        if re.search(r"(?:总结|整理|归纳|小结|带走)", cleaned):
-            return "summary"
-        return "structure"
-    if cleaned.startswith(("第", "本节", "本章", "这一章", "这章")) and not has_content_term:
-        return "structure"
-    return ""
 
 
 def _demote_repeated_generated_heading_line(line: str, seen_counts: dict[str, int]) -> str:
@@ -396,28 +248,6 @@ def _demote_repeated_generated_heading_line(line: str, seen_counts: dict[str, in
         return line
     seen_counts[title] = seen_counts.get(title, 0) + 1
     return ""
-
-
-def _looks_like_non_content_phrase(text: str) -> bool:
-    """Return true when a heading/focus phrase is instructional wording, not a topic."""
-
-    cleaned = str(text or "").strip()
-    if not cleaned:
-        return True
-    has_content_term = any(term in cleaned for term in _CONTENT_HEADING_TERMS)
-    if has_content_term:
-        return False
-    marker_count = sum(1 for marker in _LOW_INFORMATION_HEADING_MARKERS if marker in cleaned)
-    has_action_style = bool(_ACTION_STYLE_RE.search(cleaned))
-    if marker_count and has_action_style:
-        return True
-    if _QUESTION_STYLE_RE.search(cleaned):
-        return True
-    if len(cleaned) <= 8 and (marker_count or has_action_style):
-        return True
-    if cleaned.startswith(("第", "本节", "本章", "这一章", "这章")):
-        return True
-    return False
 
 
 def normalize_textbook_headings(
@@ -553,71 +383,8 @@ def normalize_educational_callouts(markdown: str) -> str:
     return "\n".join(output)
 
 
-def has_worked_example_section(markdown: str) -> bool:
-    return bool(
-        re.search(
-            r"(?m)^#{2,4}\s+.*(?:例题|题型|解析|练习|迁移).*$",
-            str(markdown or ""),
-        )
-    )
-
-
-def format_worked_example_section(
-    examples: list[dict[str, Any]],
-    *,
-    digest_mode: str,
-    fallback_title: str,
-    focus_items: Iterable[str] = (),
-) -> str:
-    """Render examples as a textbook-style worked-example section."""
-
-    if not examples:
-        return ""
-    lines: list[str] = []
-    seen_labels: set[str] = set()
-    for index, item in enumerate(examples, start=1):
-        label = clean_heading_focus(str(item.get("label") or item.get("type") or ""), max_chars=24)
-        label_key = label.casefold()
-        if label_key and label_key in seen_labels:
-            label = ""
-        elif label_key:
-            seen_labels.add(label_key)
-        stem = str(item.get("stem") or item.get("question") or "").strip()
-        analysis_steps = [
-            str(step).strip()
-            for step in list(item.get("analysis_steps") or [])
-            if str(step).strip()
-        ]
-        pitfall = str(item.get("pitfall") or "").strip()
-        if not stem:
-            continue
-        title = f"例题 {index}" + (f"：{label}" if label else "")
-        callout_kind = str(item.get("callout_kind") or "IMPORTANT").strip().upper()
-        if callout_kind not in _SUPPORTED_CALLOUT_KINDS:
-            callout_kind = "IMPORTANT"
-        lines.extend([f"> [!{callout_kind}]", ">", f"> **{title}**", ">", f"> **题目**：{stem}", ">", "> **解析**："])
-        if analysis_steps:
-            lines.extend(f"> {step_index}. {step}" for step_index, step in enumerate(analysis_steps, start=1))
-        else:
-            lines.extend(
-                [
-                    "> 1. 先识别题目给出的对象、条件和要求。",
-                    "> 2. 再选择本章对应的定义、公式或判定方法。",
-                    "> 3. 最后检查结论是否满足题目条件和单位/范围要求。",
-                ]
-            )
-        if pitfall:
-            lines.extend([">", f"> **易错点**：{pitfall}"])
-        lines.append("")
-    return "\n".join(lines).strip()
-
-
 __all__ = [
-    "build_textbook_heading",
-    "choose_heading_focus",
     "clean_heading_focus",
-    "format_worked_example_section",
-    "has_worked_example_section",
     "normalize_educational_callouts",
     "normalize_textbook_headings",
     "rewrite_textbook_heading_line",

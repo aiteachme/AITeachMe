@@ -35,72 +35,7 @@ logger = structlog.get_logger(__name__)
 
 InteractiveMode = Literal["parameter_explorer", "process_stepper", "concept_mapper"]
 
-_VISUAL_STRONG_MARKERS = (
-    "函数",
-    "图像",
-    "几何",
-    "空间",
-    "导数",
-    "微分",
-    "积分",
-    "方程",
-    "概率",
-    "分布",
-    "变化",
-    "单调性",
-    "极值",
-    "轨迹",
-    "流程",
-    "机制",
-    "结构",
-    "关系",
-    "模拟",
-    "实验",
-)
-_VISUAL_WEAK_MARKERS = (
-    "公式",
-    "定理",
-    "性质",
-    "方法",
-    "步骤",
-    "路径",
-    "模型",
-    "判定",
-)
-_EXCLUDE_MARKERS = (
-    "提分策略",
-    "易错点汇总",
-    "复盘",
-    "总结",
-    "概述",
-    "导论",
-)
 _ANY_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
-_INTERACTIVE_TITLE_MARKERS = (
-    "图",
-    "函数",
-    "变化",
-    "关系",
-    "步骤",
-    "流程",
-    "推导",
-    "计算",
-    "换算",
-    "比较",
-    "辨析",
-    "应用",
-    "案例",
-    "实验",
-    "模拟",
-)
-_INTERACTIVE_LOW_VALUE_MARKERS = (
-    "快速检测",
-    "检测题",
-    "自测",
-    "练习",
-    "总结",
-    "复盘",
-)
 
 
 @dataclass(frozen=True)
@@ -121,10 +56,6 @@ class _GeneratedInteractiveHtml:
     quality_report: InteractiveHtmlQualityReport
 
 
-def _normalize_blob(value: str) -> str:
-    return re.sub(r"\s+", "", str(value or "").strip()).casefold()
-
-
 def _plain_heading_text(raw: str) -> str:
     text = re.sub(r"`([^`]*)`", r"\1", str(raw or ""))
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
@@ -137,38 +68,13 @@ def _heading_text_to_id(text: str) -> str:
     return slug or "section"
 
 
-def _build_signal_text(
-    draft: ChapterDraft,
-    *,
-    claim_ledger: ClaimLedger | None = None,
-) -> str:
-    claims = [item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text][:6]
-    return "\n".join(
-        [
-            draft.title,
-            draft.summary_draft,
-            *claims,
-            *[str(item.get("description") or "") for item in draft.placeholder_requests if isinstance(item, dict)],
-        ]
-    )
-
-
 def _score_interactive_signal(title: str, context: str) -> float:
-    signal = "\n".join([title, context])
-    normalized = _normalize_blob(signal)
-    strong_hits = sum(1 for marker in _VISUAL_STRONG_MARKERS if _normalize_blob(marker) in normalized)
-    weak_hits = sum(1 for marker in _VISUAL_WEAK_MARKERS if _normalize_blob(marker) in normalized)
     formula_count = min(5, context.count("$$") + context.count("$"))
-    score = strong_hits * 5 + weak_hits * 2 + formula_count
-    if any(marker in title for marker in _INTERACTIVE_TITLE_MARKERS):
-        score += 4
-    if any(marker in title for marker in _INTERACTIVE_LOW_VALUE_MARKERS):
-        score -= 4
-    if any(_normalize_blob(marker) in normalized for marker in _EXCLUDE_MARKERS):
-        score -= 5
-    if len(_normalize_blob(context)) < 120:
+    text_len = len(re.sub(r"\s+", "", context))
+    score = formula_count + min(3, text_len // 500)
+    if text_len < 120:
         score -= 2
-    return score
+    return float(score)
 
 
 def _section_end_for_heading(
@@ -218,17 +124,20 @@ def _iter_interactive_section_candidates(markdown: str, *, fallback_title: str) 
         return candidates
 
     fallback_context = _chapter_context_excerpt_from_markdown(text)
+    fallback_heading = _plain_heading_text(fallback_title)
+    if not fallback_context or not fallback_heading:
+        return []
     return [
         _InteractiveSectionCandidate(
             index=1,
             heading_id=_heading_text_to_id(fallback_title),
-            title=_plain_heading_text(fallback_title) or "本章核心概念",
+            title=fallback_heading,
             level=1,
             context=fallback_context,
             insert_at=len(text),
             score=_score_interactive_signal(fallback_title, fallback_context),
         )
-    ] if fallback_context else []
+    ]
 
 
 def _select_interactive_section_candidates(
@@ -266,10 +175,11 @@ def choose_interactive_mode(
     *,
     claim_ledger: ClaimLedger | None = None,
 ) -> InteractiveMode:
-    text = _build_signal_text(draft, claim_ledger=claim_ledger)
-    if any(marker in text for marker in ("步骤", "方法", "流程", "推导", "计算", "求解", "操作")):
+    del draft
+    claim_types = {item.claim_type for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_type}
+    if claim_types & {"method", "procedure", "algorithm"}:
         return "process_stepper"
-    if any(marker in text for marker in ("结构", "关系", "依赖", "网络", "概念图")):
+    if len(claim_types) >= 3:
         return "concept_mapper"
     return "parameter_explorer"
 

@@ -16,7 +16,7 @@ from app.shared.infra.knowledge.build_store import (
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
-from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger, DocumentBackbone
+from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch
@@ -26,11 +26,12 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
     """构建章节增强节点。
 
     该节点在所有章节草稿 fan-in 后运行，但内部会并行增强每章。增强只
-    处理表现层：资产占位、公式、Markdown 结构和例题/练习，不负责修核心知识。
+    处理表现层：资产占位、公式和 Markdown 结构，不负责生成标题、
+    练习或其它语义内容。
     """
 
     async def enhance_chapters_node(state: DocGenState) -> dict:
-        """并行增强章节草稿并产出资产/练习 manifest。"""
+        """并行增强章节草稿并产出资产 manifest。"""
 
         started_at = perf_counter()
         drafts = [
@@ -42,13 +43,10 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         ]
         if not drafts:
             return {"error": "没有可增强的章节草稿。"}
-        build_constraints = dict((state.get("confirmed_plan") or {}).get("build_constraints") or {})
-        include_practice = bool(build_constraints.get("include_exercises", True))
         claim_ledgers_by_chapter = {
             int(item.get("chapter_index", 0) or 0): ClaimLedger.model_validate(item)
             for item in list(state.get("claim_ledgers") or [])
         }
-        document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
@@ -88,8 +86,6 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 traced_context=traced_context,
                 digest_mode=state.get("digest_mode") or "systematic",
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
-                document_backbone=document_backbone,
-                include_practice=include_practice,
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
@@ -123,7 +119,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                     "stage": "chapter_enhanced",
                     "chapter_index": draft.chapter_index,
                     "title": enhanced.title,
-                    "summary": f"{enhanced.title} 章节增强完成，资产 {len(asset_manifest.assets)} 个，练习题 {len(practice_manifest.questions)} 个。",
+                    "summary": f"{enhanced.title} 章节展示增强完成，资产 {len(asset_manifest.assets)} 个。",
                     "created_at": utcnow(),
                 },
             )

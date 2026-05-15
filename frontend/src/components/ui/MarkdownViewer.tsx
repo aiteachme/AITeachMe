@@ -237,7 +237,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     heading: {
       1: "mt-8 mb-5 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
       2: "mt-10 mb-4 border-b border-[#E5E7EB] pb-2.5 text-[25px] font-semibold leading-[1.35] text-[#111827] dark:border-slate-700 dark:text-slate-100",
-      3: "mt-8 mb-3 rounded-r-lg border-l-4 border-[#2563EB] bg-[#F7FAFF] py-1.5 pl-3 text-[20px] font-semibold leading-[1.45] text-[#1F2329] dark:border-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      3: "mt-8 mb-3 text-[20px] font-semibold leading-[1.45] text-[#1F2329] dark:text-slate-200",
       4: "mt-6 mb-2.5 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
       5: "mt-5 mb-2 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
       6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
@@ -258,7 +258,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     td: "border-t border-[#E9EEF5] px-4 py-3 text-[#1F2329] first:font-semibold first:text-[#1D4ED8] dark:border-slate-800 dark:text-slate-300 dark:first:text-blue-200",
     hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
     link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
-    strong: "font-semibold text-[#1D4ED8] dark:text-blue-200",
+    strong: "font-semibold text-[#111827] dark:text-slate-100",
     em: "italic text-[#646A73] dark:text-slate-400",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-6",

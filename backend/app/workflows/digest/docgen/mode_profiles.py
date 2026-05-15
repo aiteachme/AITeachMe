@@ -74,8 +74,6 @@ class DocGenModeProfile:
     prompt_closing_guidance: str
     prompt_research_focus: str
     seed_target_length: int
-    fallback_teaching_outline: tuple[str, ...]
-    gap_query_suffixes: tuple[str, ...]
     practice_style: str
     coverage_threshold: float
     evidence_support_threshold: float
@@ -156,22 +154,22 @@ class DocGenModeProfile:
 _SPRINT_PROFILE = DocGenModeProfile(
     mode="sprint",
     chapter_format=(
-        "开头先说明本章最值得抓住的对象、方法或题目类型，让学生知道为什么先学这里",
-        "考试、计算、刷题或综合训练章节优先按题型成组组织；概念和方法章节用短例子、反例或小任务支撑，不强行写成测验章",
-        "重要方法要落到题目、案例或任务里：写清条件、步骤、结论和容易错的边界，并用表格、callout 或小标题把信息块分开",
+        "开头由模型根据本章材料判断最值得抓住的具体对象、方法或任务，让学生知道为什么先学这里",
+        "只有当本章材料天然适合集中练习或操作训练时，才按真实差异组织任务分组；概念和方法章节用短例子、反例或小任务支撑，不强行写成测验章",
+        "重要方法要落到本章材料支撑的题目、案例或任务里：写清条件、步骤、结论和容易错的边界，并用表格、callout 或小标题把信息块分开",
         "例题要写出题目/案例、解析步骤、答案或结论、易错点；自测题必须有答案或解析要点",
         "整份文档的练习、测验和综合题可以集中在最适合的 1-2 个章节或章末，不要求每一章都长成同一种模板",
     ),
     course_flow_hints=(
-        "课时开头先给本章抓手和重要程度，再进入概念、方法或题型",
+        "课时开头先给本章具体抓手和重要程度，再进入概念、方法或任务",
         "方法后尽量接短例题、案例或小变式，直接写清条件、步骤和边界，避免整段平铺",
-        "讲完一组题型或任务后，用例题解析、变式训练、易错辨析和速查表收束；不适合训练的章节用小结收束即可",
+        "讲完一组由模型判定的真实任务后，用例题解析、变式训练和易错辨析收束；不适合训练的章节用本章语义小结收束即可",
     ),
     practice_focuses=(
-        "按题型成组的例题",
-        "条件变化与变式",
-        "错因诊断",
-        "综合小题",
+        "由本章内容命名的完整例题或任务",
+        "真实条件变化形成的变式",
+        "基于本章边界的错因诊断",
+        "需要整合本章多个知识点的小题或任务",
     ),
     content_mix_policy={
         "core_knowledge": 0.18,
@@ -190,24 +188,22 @@ _SPRINT_PROFILE = DocGenModeProfile(
         "concept_chapter_min_examples": 2,
         "important_method_min_examples": 2,
         "quick_reference_per_chapter": 1,
-        "policy_text": "快速复习节奏要多用完整例题、变式题、错因诊断和必要速查，但组织方式由本章内容决定。考试、计算、刷题或综合训练章节要按题型成组讲；概念和方法章节可以用短例子、反例、条件辨析或小任务支撑，不要每章都强行套测验模板。",
+        "policy_text": "快速复习节奏要多用完整例题、变式题和错因诊断，但组织方式必须由模型根据本章材料决定。只有本章天然适合集中练习时才组织任务分组；概念和方法章节可以用短例子、反例、条件辨析或小任务支撑，不要每章都强行套测验模板。",
     },
     coverage_policy=(
-        "优先覆盖高频题型、常见任务、关键方法和易错陷阱；考试、计算或刷题类章节要先整理题型族，再讲方法。",
-        "每个重要方法至少安排一个贴合本章的例题、案例、反例或条件辨析；题型训练章节还要有变式题和错因复盘。",
+        "优先覆盖模型从本章材料判断出的高价值任务、关键方法和易错边界；训练型组织必须来自本章真实任务差异。",
+        "每个重要方法至少安排一个贴合本章的例题、案例、反例或条件辨析；集中训练章节还要有变式和错因复盘。",
         "例题、测验和综合训练一般集中在自然适合的 1-2 个章节或章末；其他章节只在关键处插入短例子，不要为凑结构硬写自测。",
-        "如果章节明显面向考试或计算训练，不要把收尾写成“考前速查与自测”这类泛标题；收尾应继续围绕本章具体题型、变式题和综合小题展开。",
+        "不要把收尾写成“考前速查与自测”这类泛标题；收尾应继续围绕本章具体对象、方法、任务或变式展开。",
         "非考试主题把例题表达为操作案例、任务场景、错误诊断和检查标准。",
     ),
-    mode_writing_rule="快速复习节奏要突出可做、可判、可检查的内容；训练型章节多给题型和完整例题，概念型章节用短例子和反例把条件讲清。",
+    mode_writing_rule="快速复习节奏要突出可做、可判、可检查的内容；是否组织成训练型章节必须由模型根据本章材料判断，不能由本地关键词决定。",
     prompt_label="快速复习",
-    prompt_priority="题型分类、完整例题、可执行步骤、易错点和错因复盘",
-    prompt_opening_guidance="如果这是课程开篇，优先用直观场景、常见任务/题型或学习动机破题，再建立概念直觉。",
-    prompt_closing_guidance="如果这是课程收束章，优先用综合题型、典型变式和错因复盘回收高价值主题。",
-    prompt_research_focus="高价值主题、任务/题型线索、典型例子和易错点",
+    prompt_priority="由模型判断的任务分组、完整例题、可执行步骤、易错点和错因复盘",
+    prompt_opening_guidance="如果这是课程开篇，优先用直观场景、真实任务或学习动机破题，再建立概念直觉。",
+    prompt_closing_guidance="如果这是课程收束章，优先用本章材料支撑的综合任务、典型变式和错因复盘回收高价值主题。",
+    prompt_research_focus="高价值主题、真实任务线索、典型例子和易错点",
     seed_target_length=950,
-    fallback_teaching_outline=("先标出本章题型族和适用条件", "用完整例题带出最短方法", "最后用变式和错因复盘收口"),
-    gap_query_suffixes=("常见任务", "易错点", "典型例子"),
     practice_style="task_driven",
     coverage_threshold=0.6,
     evidence_support_threshold=0.48,
@@ -224,7 +220,7 @@ _SPRINT_PROFILE = DocGenModeProfile(
     min_score_gain=0.08,
     max_gap_queries_per_round=2,
     strategy_context_chars=4200,
-    prompt_extra_contract="快速复习不是把每章套成同一种题型表。请先判断本章角色：训练型章节要形成题型化学习路径，用完整例题和变式题教会做法；概念型或过渡型章节用少量短例子、反例和边界提醒讲清条件。标题、表头和题目必须由本章内容自然命名，不要把“考前速查与自测”“常见题型整理”这类泛标题当作默认收尾；如果需要类似功能，也要改写成贴合本章具体题型的方法标题。",
+    prompt_extra_contract="快速复习不是把每章套成同一种题型表。请先由模型根据材料判断本章角色：训练型章节要形成由真实任务差异命名的学习路径，用完整例题和变式题教会做法；概念型或过渡型章节用少量短例子、反例和边界提醒讲清条件。标题、表头和题目必须由本章内容自然命名，不要把“考前速查与自测”“常见题型整理”这类泛标题当作默认收尾。",
 )
 
 _SYSTEMATIC_PROFILE = DocGenModeProfile(
@@ -277,8 +273,6 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
     prompt_research_focus="定义、推导、适用条件、结构关系和可迁移例子",
     prompt_extra_contract="如果涉及公式或定理，不能只写结论，必须解释适用前提、推理过程和常见边界。",
     seed_target_length=1300,
-    fallback_teaching_outline=("先讲清知识地图和定义", "再讲结构、条件与推理", "最后用例子和迁移收口"),
-    gap_query_suffixes=("定义", "推导", "联系", "典型例子"),
     practice_style="reasoning",
     coverage_threshold=0.72,
     evidence_support_threshold=0.56,

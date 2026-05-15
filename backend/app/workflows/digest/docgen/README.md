@@ -65,13 +65,13 @@ DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认�
 
 DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
 
-- **定位要快**：章节开头必须让学生知道本章最常见的任务、题型、操作场景或使用场景是什么。
-- **结构要可扫**：优先用速查表、判断表、步骤表或错因表表达公式、条件、题眼信号和处理路径。
+- **定位要快**：章节开头必须让学生知道本章最值得抓住的具体对象、方法、任务或使用场景是什么。
+- **结构要可扫**：优先用模型基于本章材料命名的对照表、判断表、步骤表或错因表表达公式、条件和处理路径。
 - **例题要完整**：例题/案例不能只有题干或提示，必须包含“题目/案例、解析步骤、结论或答案、易错点”。
 - **理论要落地**：重要概念、公式、规则或方法后面要尽快接例题、案例、变式、自测或错误诊断。
 - **收束要可复习**：章节末尾应回收到关键结论、适用条件、不能硬套的边界和短自测。
 
-这不是要求固定标题模板。标题仍应来自本章真实知识对象和任务对象，但这些学习功能不能缺位。`mode_profiles.py`、`generation.py`、`chapter_execution_brief.py` 和 `chapter_enhancement.py` 共同保证这条质量线：前两者约束写作和简报，后者在已有“练习”标题但缺少结构化例题时追加可见例题补强。
+这不是要求固定标题模板。标题、题型分类、练习章和例题区都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。
 
 ### 0.1 本文件同时承担的入口信息
 
@@ -218,8 +218,8 @@ enhance_chapters
     ├─ enhance_chapter 1
     ├─ enhance_chapter 2
     └─ enhance_chapter N
-  处理 Mermaid、交互 HTML sidecar、公式清洗、Markdown 结构，以及按构建约束追加例题/练习。
-  对速成课，如果正文已有“练习/自检”标题但缺少“题目/解析/易错点”的结构化例题，会追加补充例题区。
+  处理 Mermaid、交互 HTML sidecar、公式清洗和 Markdown 结构。
+  不根据关键词追加例题/练习，不生成小节标题；练习、题型分类和二级标题必须由 writer / review / repair 的模型链路产出。
   如果图谱预抽取开启，则在本阶段完成后启动非阻塞 kg_prefetch sidecar：
     - 使用增强后的章节 Markdown 预抽取 section payload。
     - 默认最多 2 路 LLM 并发，并先让后续 DocGen review 调度。
@@ -368,7 +368,7 @@ build_document_backbone
     - CanonicalClaimPool：整本文档必须讲清的核心主张池。
     - ConfusionMap：易混点、误区和边界。
   当前模型方案：
-    - 当前无 LLM 调用；纯规则骨架构建 + fallback backbone。
+    - 当前无 LLM 调用；只把上游模型产出的 confirmed plan、执行简报和证据摘要整理成结构化骨架，不生成学生可见标题或正文。
 
 build_chapter_execution_briefs
   输入：ChapterGenerationTaskSeed / DocumentBackbone / intent_core
@@ -467,12 +467,12 @@ enhance_chapters
   ├─ enhance_chapter 1
   ├─ enhance_chapter 2
   └─ enhance_chapter N
-  输入：ChapterDraft / ClaimLedger / ConfusionMap / placeholder_requests / asset settings / digest_mode
+  输入：ChapterDraft / ClaimLedger / placeholder_requests / asset settings / digest_mode
   输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
     - EnhancedChapterDraft：增强后的章节正文。
     - AssetManifest：Mermaid、交互块等资产清单。
-    - PracticeManifest：典型例题解析、变式题和迁移练习种子。
-  作用：处理 Mermaid、交互 HTML sidecar、公式清洗、例题解析与练习；image 占位会被剥离，不进入发布正文。
+    - PracticeManifest：兼容保留的产物，当前不由本地代码生成练习种子。
+  作用：处理 Mermaid、交互 HTML sidecar、公式清洗和 Markdown 展示结构；image 占位会被剥离，不进入发布正文。
   enhance_chapter 内部步骤：
     1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
        当前模型方案：
@@ -487,13 +487,13 @@ enhance_chapters
          - image 当前不走大模型生成正文资产
     2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
     3. 统一公式、Mermaid、Markdown 结构。
-    4. 根据 ClaimLedger、ConfusionMap 和构建约束决定是否追加例题/练习；若正文已有足量结构化例题，不重复追加固定标题。
-       若只有弱练习标题或泛泛复习提示，仍会补一个可见例题解析区。
-    5. 产出 asset / practice manifest。
+    4. 不做语义补写：不根据 ClaimLedger、ConfusionMap、标题词或构建约束追加例题、练习或小节标题。
+    5. 产出 asset manifest 和空的兼容 PracticeManifest。
   约束：
     - 不大幅改写知识内容。
     - 不修核心定义。
     - 不自行引入新结论。
+    - 不用本地关键词判断章节是否“训练型”，不拼接“题型一 / 快速复习 / 核心内容”等可见标题。
     - 不改变 claim / evidence 关系。
     - 不把原始 HTML 直接嵌进正文 Markdown。
     - 交互页默认走独立 sidecar 资产，由前端预览页以 sandboxed iframe 打开。
@@ -516,10 +516,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     2. 主张支撑：claim 是否有足够 evidence 支撑。
     3. 结构风格：长度、节奏、模式、用词是否符合。
     4. 风险信号：定义模糊、低支撑断言、unresolved conflict。
-    5. 学习分类覆盖：7 类内容角色是否服务于本章目标，是否出现只有理论没有例题落地。
-    6. 例题驱动质量：
-       - sprint：例题、案例、训练、实践任务密度不足时给 section_patch，重点检查高频方法、识别信号、变式和易错陷阱。
-       - systematic：核心知识点缺少例题、案例、操作示例或练习覆盖时给 section_patch，重要/易错/核心方法优先要求两个角度的例题或任务。
+    5. 学习分类覆盖和例题驱动质量由 LLM 结构化复核判断：是否训练型、是否需要题型/任务分类、例题数量和自测答案完整度，都不能用本地关键词判断。
   document_consistency_review 检查：
     1. 跨章术语和符号是否一致。
     2. 定义是否冲突。
@@ -527,7 +524,7 @@ review_content / 当前 review_chapter Send x N + document_consistency_review
     4. 是否重复讲或某章吃掉下一章内容。
     5. 整本风格是否断裂。
   当前实现补充：
-    - review_chapter 使用 LLM 结构化复核 + 规则 guardrail。
+    - review_chapter 使用 LLM 结构化复核 + 机械 guardrail；规则只保留精确合同覆盖、证据分、长度和 Markdown 渲染检查。
     - review_chapter 当前通过 LangGraph Send 按章 fan-out，在 LangSmith 中可见为并行章节复核分支。
     - review_chapter 子分支只携带本章 task / claim / evidence / conflict，不再把整本列表复制到每个 review run。
     - review_chapter 子分支只输出 review overlay、report 和 action；完整 ReviewedChapterDraft 在 fan-in 后由 document_consistency_review materialize，避免每个复核分支重复输出整章 Markdown。
@@ -908,12 +905,12 @@ publish_document
 | `prepare_global_seed.summarize_files` | `prepare_global_seed` 内部 | 已落地，已输出 evidence candidates |
 | `lock_titles_for_chapters` | `lock_titles_for_chapters` | 已落地 |
 | `confirm_and_seed_backbone` | `confirm_and_seed_backbone` | 已落地 |
-| `build_document_backbone` | `build_document_backbone` | 已落地，含 fallback backbone |
+| `build_document_backbone` | `build_document_backbone` | 已落地，含结构化 backbone |
 | `build_chapter_execution_briefs` | `build_chapter_execution_briefs` | 已落地 |
 | `assemble_chapter_tasks` | `assemble_chapter_tasks` | 已落地 |
 | `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
-| `enhance` | `enhance_chapters` | 已落地，含 Mermaid/交互占位清理、公式/Markdown 规范化、弱练习区例题补强 |
-| `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则兜底 |
+| `enhance` | `enhance_chapters` | 已落地，含 Mermaid/交互占位清理、公式/Markdown 规范化；不做本地练习补强 |
+| `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则 guardrail |
 | `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
 | `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
 | `merge_review` | `merge_review` | 已落地 |
@@ -945,7 +942,7 @@ publish_document
 | regenerate chapter | 只允许问题章节重写，重写后必须重新 enhance 和 review |
 | final merge patch | 可选，只修目录重复、跨章过渡、manifest 缺字段等合并后小问题 |
 | generate_chapters 边界 | 可以研究和写草稿；不能修改 confirmed plan、不能把未打开搜索结果当证据 |
-| enhance_chapters 边界 | 可以处理 Mermaid、交互、公式、练习；不能引入新核心结论或改变 claim/evidence |
+| enhance_chapters 边界 | 只处理 Mermaid、交互、公式和 Markdown 展示；不能引入新核心结论、标题、例题、练习或改变 claim/evidence |
 | review_content 边界 | 只做裁判和产出 ReviewAction；不检索、不 patch 正文 |
 | repair_or_route 边界 | 可以 patch 或记录重动作；不能无限循环、不能静默推翻 confirmed plan |
 | 不要做 | 不改成完整多 Agent 动态队列，不恢复旧 prompt 扩展层，不新建第二套 search/tool registry |

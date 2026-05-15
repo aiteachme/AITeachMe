@@ -23,6 +23,8 @@ def build_chapter_patch_messages(
 - 不要编造书名、页码、URL、实验结果或外部事实。
 可见标题保持课程讲义口吻，必要时去掉草稿痕迹或内部修补口吻。
 修补内容优先融入现有相关小节，避免新增生硬的“修补说明”小节。
+标题必须由本章上下文自然命名，禁止把关键词拼成“X 基础”“X 速查”“X 诊断”，禁止输出“学习大纲与核心定义”“综合实战训练区”“快速复习”“题型一/题型二/题型三”“证据补充”等占位标题。
+如果动作要求补入 forbidden_scope 或明显属于其它章节的主题，只能返回 no_change，并把对应 action 放入 unresolved_action_ids。
 """.strip()
     user_prompt = f"""
 章节标题：{chapter_title}
@@ -43,7 +45,7 @@ def build_chapter_patch_messages(
 3. 尽量在这一段 patch 内一次性处理所有可安全处理的复核动作。
 4. 如果无法安全修补，返回 no_change。
 5. 如果需要新增例题，要保留题目、推理/解析和易错提醒等学习价值。
-6. 标题、列表和解析步骤保持标准 Markdown 结构。
+6. 新增标题必须具体说明本章知识对象、方法、题型或操作任务；不要使用固定表头、泛标题或序号占位题型名。
 7. 保留已有 `> [!TIP]`、`> [!IMPORTANT]`、`> [!WARNING]` 提示块风格；新增快速抓手、核心前提或易错提醒时也优先使用标准提示块。
 8. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
 """.strip()

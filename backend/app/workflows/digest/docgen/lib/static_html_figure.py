@@ -22,68 +22,6 @@ logger = structlog.get_logger(__name__)
 
 _ANY_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
 
-_FIGURE_STRONG_MARKERS = (
-    "函数",
-    "图像",
-    "坐标",
-    "直线",
-    "曲线",
-    "抛物线",
-    "斜率",
-    "数轴",
-    "几何",
-    "三角形",
-    "四边形",
-    "圆",
-    "角",
-    "边",
-    "辅助线",
-    "面积",
-    "周长",
-    "体积",
-    "向量",
-    "波形",
-    "正弦",
-    "余弦",
-    "频率",
-    "幅度",
-    "单位换算",
-    "比例尺",
-    "统计图",
-    "分布图",
-)
-_FIGURE_WEAK_MARKERS = (
-    "变化",
-    "比较",
-    "对应",
-    "位置",
-    "距离",
-    "高度",
-    "长度",
-    "方向",
-    "交点",
-    "轨迹",
-    "范围",
-    "示意",
-)
-_STRUCTURE_ONLY_MARKERS = (
-    "结构关系",
-    "流程",
-    "层次",
-    "机制",
-    "路径",
-    "知识图谱",
-)
-_LOW_VALUE_MARKERS = (
-    "总结",
-    "复盘",
-    "快速检测",
-    "自测",
-    "概述",
-    "导论",
-)
-
-
 @dataclass(frozen=True)
 class _StaticFigureCandidate:
     index: int
@@ -94,10 +32,6 @@ class _StaticFigureCandidate:
     insert_at: int
     score: int
     goal: str
-
-
-def _normalize_blob(value: str) -> str:
-    return re.sub(r"\s+", "", str(value or "").strip()).casefold()
 
 
 def _plain_heading_text(raw: str) -> str:
@@ -139,23 +73,8 @@ def _section_end_for_heading(
 
 
 def _score_static_figure_signal(title: str, context: str) -> tuple[int, str]:
-    signal = "\n".join([title, context])
-    normalized = _normalize_blob(signal)
-    strong_hits = [marker for marker in _FIGURE_STRONG_MARKERS if _normalize_blob(marker) in normalized]
-    weak_hits = [marker for marker in _FIGURE_WEAK_MARKERS if _normalize_blob(marker) in normalized]
-    score = len(strong_hits) * 5 + len(weak_hits) * 2
-    if any(_normalize_blob(marker) in normalized for marker in _STRUCTURE_ONLY_MARKERS):
-        score -= 4
-    if any(marker in title for marker in _LOW_VALUE_MARKERS):
-        score -= 5
-    if "```mermaid" in context or "knowledge-docs/interactive" in context:
-        score -= 3
-    if len(_normalize_blob(context)) < 160:
-        score -= 3
-    if not strong_hits:
-        score -= 4
-    goal_terms = "、".join(strong_hits[:3] or weak_hits[:3]) or "关键图形关系"
-    return score, f"用静态图示呈现：{goal_terms}"
+    del title, context
+    return 0, ""
 
 
 def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> list[_StaticFigureCandidate]:
@@ -193,14 +112,15 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
         return candidates
 
     fallback_context = re.sub(r"```.*?```", "", text, flags=re.DOTALL).strip()[:2200]
-    if not fallback_context:
+    fallback_heading = _plain_heading_text(fallback_title)
+    if not fallback_context or not fallback_heading:
         return []
     score, goal = _score_static_figure_signal(fallback_title, fallback_context)
     return [
         _StaticFigureCandidate(
             index=1,
             heading_id=_heading_text_to_id(fallback_title),
-            title=_plain_heading_text(fallback_title) or "本章图示",
+            title=fallback_heading,
             level=1,
             context=fallback_context,
             insert_at=len(text),

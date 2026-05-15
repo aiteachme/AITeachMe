@@ -36,24 +36,6 @@ _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
 }
 
-_GENERIC_REQUIREMENT_TOKENS = {
-    "说明",
-    "定义",
-    "适用",
-    "条件",
-    "常见",
-    "问法",
-    "核心",
-    "要点",
-    "典型",
-    "判断",
-    "问题",
-    "应用",
-    "讲清",
-    "分析",
-}
-
-
 STREAM_CALLBACK_MIN_DELTA_CHARS = get_env_bounded_int(
     "DOCGEN_WRITER_STREAM_CALLBACK_MIN_DELTA_CHARS",
     32,
@@ -438,15 +420,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
     def _is_requirement_covered(self, normalized_markdown: str, requirement: str) -> bool:
         needle = self._normalize_blob(requirement)
-        if needle and needle in normalized_markdown:
-            return True
-        tokens = self._requirement_tokens(requirement)
-        if not tokens:
-            return False
-        matched = [token for token in tokens if self._normalize_blob(token) in normalized_markdown]
-        if len(matched) >= min(2, len(tokens)):
-            return True
-        return any(len(self._normalize_blob(token)) >= 4 for token in matched)
+        return bool(needle and needle in normalized_markdown)
 
     def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
         word_count = count_words(markdown)
@@ -456,40 +430,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
         score = (coverage_score * 0.55) + (length_score * 0.3) + (heading_score * 0.15) + placeholder_bonus
         return round(min(1.0, score), 4)
 
-    def _extract_context_points(self, dense_context: str, *, limit: int) -> list[str]:
-        fragments: list[str] = []
-        for raw_fragment in re.split(r"[\n。；;]+", str(dense_context or "").strip()):
-            fragment = raw_fragment.strip(" -")
-            fragment = re.sub(r"^#{1,6}\s*", "", fragment).strip()
-            if not fragment or fragment.startswith(("[!", "![", "```")):
-                continue
-            fragments.append(fragment)
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for fragment in fragments:
-            normalized = fragment.casefold()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            deduped.append(fragment[:140])
-            if len(deduped) >= limit:
-                break
-        return deduped
-
     def _normalize_blob(self, value: str) -> str:
         return re.sub(r"\s+", "", str(value or "").strip()).casefold()
-
-    def _requirement_tokens(self, value: str) -> list[str]:
-        tokens: list[str] = []
-        for raw in re.split(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+|作为|以及|并且|和|与|及|的", str(value or "")):
-            token = raw.strip()
-            if len(token) < 2 or token in _GENERIC_REQUIREMENT_TOKENS:
-                continue
-            if token.endswith("的") and len(token) > 2:
-                token = token[:-1]
-            if token and token not in _GENERIC_REQUIREMENT_TOKENS:
-                tokens.append(token)
-        return list(dict.fromkeys(tokens))
 
 
 __all__ = ["DocGenWriterRuntime"]

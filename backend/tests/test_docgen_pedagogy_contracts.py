@@ -1,12 +1,10 @@
 from app.workflows.digest.common import pedagogy
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
-    _append_practice_section,
-    _build_practice_questions,
     _ensure_requested_placeholders,
-    _minimum_visible_examples,
 )
-from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
-from app.workflows.digest.docgen.lib.models import ChapterDraft, ChapterGenerationTask, EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
+from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
+from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import (
@@ -97,7 +95,7 @@ def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
     assert "核心概念总览" not in overview
 
 
-def test_heading_quality_detects_duplicate_generic_titles() -> None:
+def test_heading_quality_detects_duplicate_low_value_titles() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         "# 线性代数\n\n## 核心概念\nA\n\n## 核心概念\nB",
         digest_mode="systematic",
@@ -106,8 +104,8 @@ def test_heading_quality_detects_duplicate_generic_titles() -> None:
     assert quality["digest_mode"] == "systematic"
     assert quality["h2_count"] == 2
     assert quality["duplicate_titles"] == ["核心概念"]
-    assert quality["generic_titles"] == ["核心概念"]
-    assert quality["low_value_titles"] == []
+    assert quality["generic_titles"] == []
+    assert quality["low_value_titles"] == ["核心概念"]
     assert quality["needs_agent_repair"] is True
     assert quality["needs_scaffold_fallback"] is False
     assert quality["missing_modules"] == []
@@ -146,6 +144,9 @@ def test_heading_quality_detects_low_value_generated_toc_titles() -> None:
             "## 掌握 CPU、运算器、控制器与内存储的补充讲解\n\n"
             "## 典型例题与易错诊断\n\n"
             "### 例题 1\n\n"
+            "## 学习大纲与核心定义\n\n"
+            "### 题型一\n\n"
+            "## 快速复习\n\n"
             "## 字长定义与应\n\n"
         ),
         digest_mode="sprint",
@@ -157,6 +158,9 @@ def test_heading_quality_detects_low_value_generated_toc_titles() -> None:
         "掌握 CPU、运算器、控制器与内存储的补充讲解",
         "典型例题与易错诊断",
         "例题 1",
+        "学习大纲与核心定义",
+        "题型一",
+        "快速复习",
         "字长定义与应",
     ]
 
@@ -191,98 +195,6 @@ def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:
     )
 
 
-def test_sprint_practice_supplement_repairs_weak_existing_practice_heading() -> None:
-    markdown = "# 矩阵分解\n\n## 练习与自检\n\n- 复习一下奇异值分解。\n"
-    questions = [
-        {
-            "label": "奇异值分解",
-            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
-            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
-            "pitfall": "不能只看矩阵大小，还要看近似目标。",
-        },
-        {
-            "label": "低秩近似",
-            "stem": "给定保留阶数，说明如何判断近似是否足够。",
-            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
-            "pitfall": "只保留最大的项不等于一定满足误差要求。",
-        },
-        {
-            "label": "误差判断",
-            "stem": "比较两个低秩近似方案，选出更稳妥的一种。",
-            "analysis_steps": ["先比较目标。", "再比较误差和信息损失。"],
-            "pitfall": "不要把计算方便当成误差更小。",
-        },
-    ]
-
-    supplemented = _append_practice_section(
-        markdown,
-        questions,
-        digest_mode="sprint",
-        title="矩阵分解",
-    )
-
-    assert supplemented != markdown
-    assert supplemented.count("> **例题") >= 3
-    assert "> [!IMPORTANT]" in supplemented
-    assert "**题目**" in supplemented
-    assert "**解析**" in supplemented
-    assert "**易错点**" in supplemented
-
-
-def test_sprint_practice_supplement_only_fills_missing_example_gap() -> None:
-    markdown = """# 矩阵分解
-
-## 练习与自检
-
-### 例题 1：奇异值分解
-
-**题目**：判断一个矩阵是否适合用奇异值分解做低秩近似。
-
-**解析**：先看矩阵和目标。
-
-**易错点**：不能只看矩阵大小。
-
-### 例题 2：低秩近似
-
-**题目**：给定保留阶数，说明如何判断近似是否足够。
-
-**解析**：先看保留的奇异值。
-
-**易错点**：不要忽略误差要求。
-"""
-    questions = [
-        {
-            "label": "奇异值分解",
-            "stem": "判断一个矩阵是否适合用奇异值分解做低秩近似。",
-            "analysis_steps": ["先看矩阵和目标。", "再选择分解路径。"],
-            "pitfall": "不能只看矩阵大小，还要看近似目标。",
-        },
-        {
-            "label": "低秩近似",
-            "stem": "给定保留阶数，说明如何判断近似是否足够。",
-            "analysis_steps": ["先看保留的奇异值。", "再检查误差要求。"],
-            "pitfall": "只保留最大项不等于一定满足误差要求。",
-        },
-        {
-            "label": "误差判断",
-            "stem": "比较两个低秩近似方案，选出更稳妥的一种。",
-            "analysis_steps": ["先比较目标。", "再比较误差和信息损失。"],
-            "pitfall": "不要把计算方便当成误差更小。",
-        },
-    ]
-
-    supplemented = _append_practice_section(
-        markdown,
-        questions,
-        digest_mode="sprint",
-        title="矩阵分解",
-    )
-
-    assert supplemented != markdown
-    assert supplemented.count("### 例题") + supplemented.count("> **例题") == 3
-    assert "误差判断" in supplemented
-
-
 def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> None:
     markdown = (
         "# 计算机硬件组成与指令系统基础\n\n"
@@ -291,7 +203,11 @@ def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> 
         "## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解\n\n"
         "这里补充说明各部件如何协作。\n\n"
         "## 综合训练与检查标准\n\n"
-        "1. 判断指令由哪些部分组成。\n"
+        "1. 判断指令由哪些部分组成。\n\n"
+        "## 学习大纲与核心定义\n\n"
+        "CPU 和指令系统的定义说明。\n\n"
+        "### 题型一\n\n"
+        "判断指令由哪些部分组成。\n"
     )
 
     normalized = normalize_textbook_headings(
@@ -304,31 +220,13 @@ def test_textbook_heading_normalization_does_not_generate_local_toc_titles() -> 
     assert "\n## 核心概念速查表" not in normalized
     assert "\n## 掌握 CPU、运算器、控制器与内存储器的构成关系的补充讲解" not in normalized
     assert "\n## 综合训练与检查标准" not in normalized
+    assert "\n## 学习大纲与核心定义" not in normalized
+    assert "\n### 题型一" not in normalized
     assert "的补充讲解" not in normalized
     assert "核心概念速查表" not in normalized
 
 
-def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
-    questions = _build_practice_questions(
-        ChapterDraft(chapter_index=1, title="极限计算"),
-        digest_mode="sprint",
-    )
-
-    assert len(questions) >= 6
-    assert _minimum_visible_examples(digest_mode="sprint", question_count=len(questions)) == 4
-
-    supplemented = _append_practice_section(
-        "# 极限计算\n\n## 核心方法\n\n用条件判断选择方法。\n",
-        questions,
-        digest_mode="sprint",
-        title="极限计算",
-    )
-
-    assert supplemented.count("> **例题") >= 6
-    assert "易错点" in supplemented
-
-
-def test_sprint_rule_review_requires_model_generated_problem_organization() -> None:
+def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywords() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="定积分计算",
@@ -361,14 +259,29 @@ def test_sprint_rule_review_requires_model_generated_problem_organization() -> N
     organization_actions = [
         action for action in actions if action.action_id.endswith("_sprint_problem_organization")
     ]
-    assert organization_actions
-    instruction = organization_actions[0].instruction
-    assert "自然生成" in instruction
-    assert "修复模型根据本章语义命名" in instruction
-    assert "离开上下文看不懂的泛标题" in instruction
-    assert "具体题型对象" in instruction
-    assert "| 题型/任务 |" not in instruction
+    assert organization_actions == []
     assert report.passed is False
+
+
+def test_rule_review_coverage_uses_exact_contract_text_not_keyword_tokens() -> None:
+    score, missing = _coverage(
+        "CPU 由运算器和控制器组成，内存储器负责保存正在处理的数据。",
+        ["CPU、运算器、控制器与内存储器"],
+    )
+
+    assert score == 0.0
+    assert missing == ["CPU、运算器、控制器与内存储器"]
+
+
+def test_chapter_scope_filter_removes_other_chapter_targets_without_title_generation() -> None:
+    filtered = _filter_scope_items(
+        ["Internet 的功能与信息服务", "DOS 命令执行环境与文件管理", "网络覆盖地域的分类标准"],
+        local_scope=["计算机网络架构与互联基础", "网络覆盖地域的分类标准"],
+        forbidden_scope=["操作系统原理与软件管理", "DOS 命令执行环境与文件管理", "数制转换与数据编码原理"],
+        limit=4,
+    )
+
+    assert filtered == ["Internet 的功能与信息服务", "网络覆盖地域的分类标准"]
 
 
 def test_sprint_rule_review_does_not_force_problem_table_for_concept_chapter() -> None:
@@ -412,7 +325,7 @@ def test_sprint_rule_review_does_not_force_problem_table_for_concept_chapter() -
     assert not any(action.action_id.endswith("_sprint_problem_organization") for action in actions)
 
 
-def test_sprint_rule_review_rejects_unanswered_self_check() -> None:
+def test_sprint_rule_review_does_not_keyword_reject_unanswered_self_check() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="定积分计算",
@@ -452,8 +365,7 @@ def test_sprint_rule_review_rejects_unanswered_self_check() -> None:
     unanswered_actions = [
         action for action in actions if action.action_id.endswith("_sprint_unanswered_self_check")
     ]
-    assert unanswered_actions
-    assert "答案/结论" in unanswered_actions[0].instruction
+    assert unanswered_actions == []
     assert report.passed is False
 
 
@@ -473,7 +385,7 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     )
     prompt = messages[-1]["content"]
 
-    assert "题型分类或常见问法整理" in prompt
+    assert "真实分类或常见问法整理" in prompt
     assert "答案或结论" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
@@ -484,8 +396,10 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "不要复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "考前速查与自测" in prompt
-    assert "接口权限的判断题" in prompt
-    assert "不能照抄或当候选词表" in prompt
+    assert "题型一/题型二/题型三" in prompt
+    assert "固定词表、关键词抽取或字符串拼接" in prompt
+    assert "本章边界外主题" in prompt
+    assert "接口权限的判断题" not in prompt
     assert "孤立三级标题" in prompt
     assert "不要只写“请自行练习”" in prompt
     assert "题眼信号" not in prompt
@@ -508,6 +422,8 @@ def test_heading_repair_prompt_requires_content_specific_section_titles() -> Non
     assert "必须按小节正文改成具体内容名" in prompt
     assert "不要保留这些词当目录标题" in prompt
     assert "知识速查表" in prompt
+    assert "学习大纲与核心定义" in prompt
+    assert "题型一/题型二/题型三" in prompt
 
 
 def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:

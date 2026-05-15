@@ -118,30 +118,6 @@ def _serialize_query_context(context: Sequence[str | Mapping[str, Any]] | None) 
     return serialized
 
 
-def _fallback_sub_queries(
-    query: str,
-    *,
-    context: Sequence[str | Mapping[str, Any]] | None = None,
-    max_queries: int = 3,
-) -> list[str]:
-    normalized_query = " ".join(str(query or "").split()).strip()
-    if not normalized_query:
-        return []
-    hints = [str(item.get("text") or "").strip() for item in _serialize_query_context(context)]
-    candidates = [
-        f"{normalized_query} 核心定义 直观理解",
-        f"{normalized_query} 公式 推导 适用条件",
-        f"{normalized_query} 例题 应用 易错点",
-    ]
-    for hint in hints:
-        candidates.append(f"{normalized_query} {hint}")
-    return [
-        item
-        for item in dedupe_queries(candidates, limit=max_queries)
-        if item != normalized_query
-    ]
-
-
 async def generate_sub_queries(
     query: str,
     *,
@@ -159,11 +135,6 @@ async def generate_sub_queries(
 
     safe_max_queries = max(1, int(max_queries or 1))
     serialized_context = _serialize_query_context(context)
-    fallback_queries = _fallback_sub_queries(
-        normalized_query,
-        context=context,
-        max_queries=safe_max_queries,
-    )
     caller = llm_caller or acompletion_with_fallback
 
     response = await caller(
@@ -172,7 +143,6 @@ async def generate_sub_queries(
             context_summary=serialized_context,
             max_queries=safe_max_queries,
             domain=domain,
-            fallback_queries=fallback_queries,
         ),
         **docgen_completion_kwargs_with_metadata(
             DocGenModelStep.QUERY_PLANNING,

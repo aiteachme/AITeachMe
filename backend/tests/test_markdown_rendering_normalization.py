@@ -490,12 +490,12 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
     )
 
     assert "区分不定积分、定积分及其几何意义，先的" not in fixed
-    assert "## 区分不定积分、定积分及其几何意义的典型例题解析" in fixed
+    assert "典型例题解析" not in fixed
     assert "### 解题步骤" in fixed
     assert "### 题目条件" in fixed
     assert "### 易错诊断" in fixed
     assert "方向导的公式与判定速查" not in fixed
-    assert "方向导数的公式与判定速查" in fixed
+    assert "方向导数的公式与判定速查" not in fixed
 
 
 def test_textbook_heading_normalization_demotes_repeated_generated_titles() -> None:
@@ -519,10 +519,12 @@ def test_textbook_heading_normalization_demotes_repeated_generated_titles() -> N
         focus_items=[],
     )
 
-    assert fixed.count("### 极限题型入口的典型例题解析") == 1
-    assert fixed.count("### 极限题型入口的公式与判定速查") == 1
-    assert fixed.count("**典型例题解析**") == 1
-    assert fixed.count("**公式与判定速查**") == 1
+    assert "### 极限题型入口的典型例题解析" not in fixed
+    assert "### 极限题型入口的公式与判定速查" not in fixed
+    assert "第一题。" in fixed
+    assert "第二题。" in fixed
+    assert "速查一。" in fixed
+    assert "速查二。" in fixed
 
 
 def test_normalize_keeps_loose_display_math_inside_callout() -> None:

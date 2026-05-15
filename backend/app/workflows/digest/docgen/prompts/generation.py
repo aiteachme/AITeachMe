@@ -47,8 +47,10 @@ def _build_mode_contract(
 写作优先级是{profile.prompt_priority}。
 这些只是参考侧重点，不是固定目录：{"、".join(profile.chapter_format)}。
 课程化节奏也只是参考：{"、".join(profile.course_flow_hints)}。
-请根据本章真实内容取舍和命名二级标题，优先体现本章主题、学习路径、例题价值与知识主线。
-二级标题要像真实教材或课程讲义目录，应该是从本章材料中自然抽出的内容名词短语，例如“核心对象与边界条件”“关键方法与使用步骤”“典型场景与错误诊断”，不要写成提醒读者行动的口号或内部流程。
+请根据本章真实内容取舍和命名二级标题，优先体现本章主题、知识对象、方法路径、例题价值与知识主线。
+二级标题必须由模型根据本章上下文重新判断生成，像真实教材或课程讲义目录；不要从固定词表、关键词抽取或字符串拼接中凑标题。
+不要把“核心/要点/速查/综合训练/快速复习/题型一”这类内部检查词写成学生可见目录，也不要统一套成“X 基础”“X 速查”“X 诊断”。
+如果无法确定一个具体标题，宁可保留正文段落或合并进相邻小节，不要生成假标题。
 标题层级要自然：`##` 是主要内容块，`###` 只用于同一 `##` 下至少两个并列子主题；孤立三级标题应并入 `##` 或改成正文加粗小节。
 标题只表达语义，不承担编号或样式说明。
 不要为了凑齐参考模块而硬塞小节。{extra_contract}
@@ -101,6 +103,11 @@ def build_docgen_writer_messages(
         for item in list(execution_contract.get("conflict_warnings") or [])
         if str(item).strip()
     ]
+    forbidden_scope = [
+        str(item).strip()
+        for item in list(execution_contract.get("forbidden_scope") or [])
+        if str(item).strip()
+    ]
     min_worked_examples = int(mode_profile.example_density_policy.get("worked_examples_per_chapter", 4) or 4)
     training_min_examples = int(mode_profile.example_density_policy.get("training_chapter_min_examples", 6) or 6)
     concept_min_examples = int(mode_profile.example_density_policy.get("concept_chapter_min_examples", 2) or 2)
@@ -108,16 +115,17 @@ def build_docgen_writer_messages(
     if mode_profile.is_sprint:
         sprint_problem_contract = f"""
 快速复习组织要求：
-- 先判断本章角色，再决定组织形式。考试、计算、刷题、综合训练或方法训练章节，要像可直接复习的讲义：把题目按本章真实差异分组，再分别讲“什么时候用、怎么做、怎么算完、哪里会错”。
+- 先由模型根据本章材料判断本章角色，再决定组织形式。只有天然适合集中练习或任务训练的章节，才把题目或任务按本章真实差异分组，再分别讲“什么时候用、怎么做、怎么算完、哪里会错”。
 - 概念、定义、过渡或铺垫章节不要硬改成测验章；用 {concept_min_examples} 个左右的短例子、反例、条件辨析或小任务把条件和边界讲清即可。
 - 训练型章节至少写 {training_min_examples} 个完整学习活动，普通方法章至少写 {min_worked_examples} 个左右；每个完整活动必须包含 **题目/任务**、**解析步骤**、**答案或结论**、**易错点**。
-- 题型整理不能停留在口号或空表；每一类至少要能看到一个贴合本章的短题、条件变化或错因例子。
+- 真实题型或任务分类不能停留在口号或空表；每一类至少要能看到一个贴合本章的短题、条件变化或错因例子。
 - 如果使用“自测”“辨析”“思考”这类形式，必须给出参考答案、判定依据或解题要点；不要只抛问题让学生自己想。
 - 整份文档里的集中练习、测验或综合训练通常放在自然适合的 1-2 个章节或章末，不要让每一章都长成同一套“速查+自测”。
-- 不要把“考前速查与自测”“自测任务”“学习路径”这类泛标题当默认收尾。需要收束时，标题要由本章具体题型或方法自然命名；参考形状可以是“分部积分的选法训练”“接口权限的判断题”“论证结构的改写题”“现金流表的综合小题”。这些跨领域例子只说明清晰度，不能照抄或当候选词表。
+- 不要把“考前速查与自测”“自测任务”“学习路径”“快速复习”“题型一/题型二/题型三”这类泛标题当默认收尾。需要收束时，标题必须由模型根据本章具体题型、方法或知识对象自然命名。
+- 如果要写题型分类，先判断每类题真正考的对象、条件变化或操作步骤，再用这个差异命名；不要用序号占位名，不要把关键词拼成标题。
 """.strip()
     sprint_problem_contract_summary = (
-        sprint_problem_contract.replace("快速复习题型化要求：\n", "").replace("\n", "；")
+        sprint_problem_contract.replace("快速复习练习组织要求：\n", "").replace("\n", "；")
         if sprint_problem_contract
         else ""
     )
@@ -130,11 +138,12 @@ def build_docgen_writer_messages(
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
         f"- 练习配额：例题解析 {practice_quota.get('worked_examples', 0)} / 简答 {practice_quota.get('short_answer', 0)} / 快速检测 {practice_quota.get('self_check', 0)} / 推理 {practice_quota.get('reasoning', 0)} / 应用 {practice_quota.get('application', 0)}\n"
         f"- 例题密度策略：{example_density_policy.get('policy_text') or '例题、案例和任务必须服务当前知识点。'}\n"
-        f"{('- 快速复习题型化要求：' + sprint_problem_contract_summary) if sprint_problem_contract_summary else ''}\n"
+        f"{('- 快速复习练习组织要求：' + sprint_problem_contract_summary) if sprint_problem_contract_summary else ''}\n"
         f"- 内容角色目标：{content_role_targets}\n"
         f"- 例题覆盖计划：{example_coverage_plan}\n"
         f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按学习大纲覆盖核心知识和例题。'}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按学习大纲覆盖'}\n"
+        f"- 本章边界外主题：{'；'.join(forbidden_scope) if forbidden_scope else '无显式边界外主题'}\n"
         f"- 需谨慎处理的冲突/低证据点：{'；'.join(conflict_warnings) if conflict_warnings else '无'}"
     )
     system_prompt = """
@@ -165,14 +174,15 @@ def build_docgen_writer_messages(
 
 写作口径：
 表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
-标题口径：二级标题来自本章知识对象、公式、方法、任务/题型或应用场景；标题要像成熟讲义目录，具体、可扫描、有信息增量，不要用固定表头或通用短语拼接。
+标题口径：二级标题来自本章知识对象、公式、方法、真实任务或应用场景；标题要像成熟讲义目录，具体、可扫描、有信息增量，不要用固定表头或通用短语拼接。
+章节边界：执行合同中的“本章边界外主题”属于其它章节；除非本章材料明确用它作一句前后联系，否则不要扩写成独立小节、例题或练习。
 版式口径：
 {_presentation_contract(digest_mode=normalized_mode)}
 练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
-例题优先级：例题、案例、操作示例、变式训练和自测是核心内容，不是附录。快速复习节奏要提高例题/任务密度，但密度要跟章节角色匹配：训练型章节多给完整题和变式，概念型章节用短例子、反例和条件辨析支撑理解；系统学习要保证每个核心知识点都有例题、案例或练习支撑。
-快速复习质量线：如果是快速复习节奏，先判断本章是不是考试、计算、刷题、综合训练或方法训练主题。训练型章节必须让学生一眼看到“这章会遇到哪些题、题目条件怎么变、每类题下一步怎么做、哪里最容易错”，并有由本章材料自然生成的题型分类或常见问法整理；普通概念/方法章节不强制题型表，但要有贴合本章的短例子、反例、边界提醒或小任务。不要把内部检查词直接写成学生可见表头。训练型章节至少 {training_min_examples} 个完整学习活动，普通方法章至少 {min_worked_examples} 个左右，概念章至少 {concept_min_examples} 个左右；执行合同要求更多时按更多写。
+例题优先级：例题、案例、操作示例、变式训练和自测是正文重点，不是附录。快速复习节奏要提高例题/任务密度，但密度要跟章节角色匹配：训练型章节多给完整题和变式，概念型章节用短例子、反例和条件辨析支撑理解；系统学习要保证每个核心知识点都有例题、案例或练习支撑。
+快速复习质量线：如果是快速复习节奏，先由模型根据本章材料判断是否适合集中训练。训练型章节必须让学生一眼看到“这章会遇到哪些题或任务、条件怎么变、下一步怎么做、哪里最容易错”，并有由本章材料自然生成的真实分类或常见问法整理；普通概念/方法章节不强制分类表，但要有贴合本章的短例子、反例、边界提醒或小任务。不要把内部检查词直接写成学生可见表头。训练型章节至少 {training_min_examples} 个完整学习活动，普通方法章至少 {min_worked_examples} 个左右，概念章至少 {concept_min_examples} 个左右；执行合同要求更多时按更多写。
 {sprint_problem_contract}
-版式表达：快速复习章节不要写成大段平铺笔记，也不要把公式、说明、步骤、提醒和例题揉在同一段里。连续解释两段后，下一段优先改成速查表、步骤列表、例题块、易错提醒或短小结，除非内容本身不适合。高频结论、题目条件、解题步骤、易错提醒和例题可使用 GitHub 风格 callout，例如 `> [!IMPORTANT]`、`> [!TIP]`、`> [!WARNING]`；关键条件、限制和结论要适度加粗，但不要整段加粗。
+版式表达：快速复习章节不要写成大段平铺笔记，也不要把公式、说明、步骤、提醒和例题揉在同一段里。连续解释两段后，下一段优先改成对照表、步骤列表、例题块、易错提醒或短小结，除非内容本身不适合。高频结论、题目条件、解题步骤、易错提醒和例题可使用 GitHub 风格 callout，例如 `> [!IMPORTANT]`、`> [!TIP]`、`> [!WARNING]`；关键条件、限制和结论要适度加粗，但不要整段加粗。
 学习内容角色：正文需要自然覆盖核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织和应用拓展中的本章必要部分；这些是写作检查维度，不要求作为固定标题原样出现。
 
 参考写作路径，不要照抄为目录：
@@ -182,11 +192,12 @@ def build_docgen_writer_messages(
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
 3. 标题直接写语义短语，层级要有并列关系；不要复用章节标题，不要制造孤立三级标题，也不要把样式说明写进正文。
-4. 内容必须来自本章课程语境和研究材料：不编造来源事实，不原样贴研究材料，不跨课程凑例子。
-5. 先讲清概念、条件和判断依据，再讲任务/题型、例子或应用；训练型章节要多给可解析的例题、案例、变式或错误诊断，系统课核心知识点也要有例子支撑。
-6. 例题和自测必须有解析步骤、答案或结论、易错点；不要只写“请自行练习”“思考一下”。
-7. 信息块要清楚分层：公式后解释适用条件，步骤后给检查点，例题后给错因；不要把公式、说明、步骤、提醒和例题揉成一段。
-8. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
+4. 不要输出“学习大纲与核心定义”“综合实战训练区”“综合训练与辨析”“快速复习”“核心要点速查”“题型一/题型二/题型三”“证据补充”这类目录标题；练习章可以写“本章练习”或材料中真实存在的练习名，普通章节必须用具体语义标题。
+5. 内容必须来自本章课程语境和研究材料：不编造来源事实，不原样贴研究材料，不跨课程凑例子，不把其它章节主题补成独立小节。
+6. 先讲清概念、条件和判断依据，再讲真实任务、例子或应用；训练型章节要多给可解析的例题、案例、变式或错误诊断，系统课核心知识点也要有例子支撑。
+7. 例题和自测必须有解析步骤、答案或结论、易错点；不要只写“请自行练习”“思考一下”。
+8. 信息块要清楚分层：公式后解释适用条件，步骤后给检查点，例题后给错因；不要把公式、说明、步骤、提醒和例题揉成一段。
+9. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 
 研究材料：
 {dense_context}
@@ -254,7 +265,7 @@ def build_docgen_heading_repair_messages(
 2. 一级标题必须保持为 `# {title}`。
 3. 可以重命名、合并或降级标题；孤立三级标题要并入更具体的 `##`，或改成正文加粗小节。
 4. 标题要来自本章知识对象、方法、任务/题型或应用场景；不要套固定表头。
-5. 如果原文有“知识速查表”“核心概念速查表”“综合训练”“快速自测”“常见任务整理”“补充讲解”等泛标题，必须按小节正文改成具体内容名，或合并进相邻小节；不要保留这些词当目录标题。
+5. 如果原文有“知识速查表”“核心概念速查表”“核心要点速查”“学习大纲与核心定义”“综合训练”“综合实战训练区”“综合训练与辨析”“快速复习”“快速自测”“常见任务整理”“补充讲解”“证据补充”“题型一/题型二/题型三”等泛标题，必须按小节正文改成具体内容名，或合并进相邻小节；不要保留这些词当目录标题。
 6. 保留已有正文、例子、公式和重点提示块的学习价值，只删除重复、跑题、草稿痕迹、原始来源清单和内部调试信息。
 7. 只在结构确实不完整时补少量过渡句、总结句或提示句；不能凭空编造来源事实，不能改变公式和代码字面量的原意。
 
@@ -374,14 +385,12 @@ def build_docgen_sub_query_messages(
     context_summary: list[dict[str, str]],
     max_queries: int,
     domain: str,
-    fallback_queries: list[str],
 ) -> list[dict[str, str]]:
     context_lines = "\n".join(
         f"- {item['text']}"
         for item in context_summary
         if str(item.get("text") or "").strip()
     ) or "- 当前没有额外上下文"
-    fallback_lines = "\n".join(f"- {item}" for item in fallback_queries if str(item).strip()) or "- 无"
     system_prompt = """
 你是 AITeachMe 的研究规划助手。
 你的任务是把单个教学主题拆成可检索、可抓取、可用于知识整理的中文子查询。
@@ -405,9 +414,6 @@ def build_docgen_sub_query_messages(
 5. 如果主题更偏快速复习，可适当补“真实任务/真实案例”“常见任务/高频题型”“防坑提醒”；只有材料明确包含考试或真题时才使用“真题”措辞。
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
-
-可参考但不要机械照抄的兜底方向：
-{fallback_lines}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -420,7 +426,6 @@ def build_docgen_sub_query_messages(
             "domain": domain,
             "max_queries": max_queries,
             "context_count": len(context_summary),
-            "fallback_query_count": len(fallback_queries),
         },
         output=messages,
     )

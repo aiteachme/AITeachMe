@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
@@ -26,6 +27,8 @@ from app.workflows.digest.docgen.lib.models import (
     clean_example_coverage_plan,
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+
+_SCOPE_PUNCT_RE = re.compile(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+")
 
 
 def _priority_files_for_chapter(
@@ -92,6 +95,89 @@ def _example_coverage_plan(
         return plan
     raise ValueError("chapter execution brief is missing example_coverage_plan")
 
+
+def _scope_text(value: object) -> str:
+    return _SCOPE_PUNCT_RE.sub("", str(value or "")).casefold()
+
+
+def _scope_match(value: str, scopes: Sequence[str], *, min_chars: int = 4) -> bool:
+    candidate = _scope_text(value)
+    if len(candidate) < 2:
+        return False
+    for scope in scopes:
+        normalized_scope = _scope_text(scope)
+        if len(normalized_scope) < min_chars:
+            continue
+        if normalized_scope in candidate or candidate in normalized_scope:
+            return True
+    return False
+
+
+def _chapter_local_scope(
+    *,
+    title: str,
+    objective: str,
+    required: Sequence[str],
+) -> list[str]:
+    return clean_string_list([title, objective, *required], limit=24)
+
+
+def _chapter_forbidden_scope(
+    *,
+    current_index: int,
+    confirmed_chapters: Sequence[Mapping[str, Any]],
+    locked_by_index: Mapping[int, LockedChapterTitle],
+) -> list[str]:
+    items: list[str] = []
+    for index, chapter in enumerate(confirmed_chapters, start=1):
+        chapter_index = int(chapter.get("chapter_index", index) or index)
+        if chapter_index == current_index:
+            continue
+        locked = locked_by_index.get(chapter_index)
+        title = (locked.enhanced_title if locked is not None else "") or resolve_effective_chapter_title(
+            chapter,
+            chapter_index=chapter_index,
+        )
+        items.extend([title, str(chapter.get("objective") or "")])
+        items.extend(clean_string_list(chapter.get("required_elements", []), limit=8))
+    return clean_string_list(items, limit=48)
+
+
+def _filter_scope_items(
+    values: Sequence[str],
+    *,
+    local_scope: Sequence[str],
+    forbidden_scope: Sequence[str],
+    limit: int,
+) -> list[str]:
+    filtered: list[str] = []
+    for item in clean_string_list(values, limit=limit * 2):
+        if _scope_match(item, forbidden_scope) and not _scope_match(item, local_scope):
+            continue
+        filtered.append(item)
+        if len(filtered) >= limit:
+            break
+    return filtered
+
+
+def _filter_content_role_targets(
+    value: Mapping[str, Sequence[str]] | dict[str, list[str]],
+    *,
+    local_scope: Sequence[str],
+    forbidden_scope: Sequence[str],
+) -> dict[str, list[str]]:
+    cleaned = clean_content_role_targets(value, item_limit=10)
+    return {
+        role: _filter_scope_items(
+            list(items),
+            local_scope=local_scope,
+            forbidden_scope=forbidden_scope,
+            limit=10,
+        )
+        for role, items in cleaned.items()
+    }
+
+
 def compose_seed_plan_and_backbone_agenda(
     *,
     docgen_context: DocGenContext,
@@ -141,6 +227,11 @@ def compose_seed_plan_and_backbone_agenda(
             if chapter_index in unit.chapter_affinity
         )
         required = clean_string_list(chapter.get("required_elements", []))
+        forbidden_scope = _chapter_forbidden_scope(
+            current_index=chapter_index,
+            confirmed_chapters=confirmed_chapters,
+            locked_by_index=locked_by_index,
+        )
         retrieval_queries = clean_string_list([locked.enhanced_title, *required], limit=2)
         task_seeds.append(
             ChapterGenerationTaskSeed(
@@ -151,6 +242,7 @@ def compose_seed_plan_and_backbone_agenda(
                 mode=docgen_context.digest_mode,
                 priority_file_ids=priority_file_ids,
                 required_elements=required,
+                forbidden_scope=forbidden_scope,
                 retrieval_queries=retrieval_queries,
                 priority_section_refs=priority_section_refs,
                 source_slices=source_slices,
@@ -162,7 +254,6 @@ def compose_seed_plan_and_backbone_agenda(
         )
         topics.extend([locked.enhanced_title, *required])
         glossary_candidates.extend(required)
-        confusion_candidates.extend([item for item in required if any(marker in item for marker in ("易错", "误区", "混淆", "边界"))])
         section_refs.extend(priority_section_refs)
         evidence_unit_ids.extend(
             unit.evidence_id
@@ -256,6 +347,27 @@ def assemble_chapter_generation_plan(
             source_slices = list(seed.source_slices)
         placeholder_requests: list[dict[str, str]] = []
         content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
+        local_scope = _chapter_local_scope(
+            title=locked.enhanced_title or confirmed_title,
+            objective=seed.chapter_goal or str(chapter.get("objective") or ""),
+            required=seed.required_elements,
+        )
+        forbidden_scope = clean_string_list(
+            [
+                *seed.forbidden_scope,
+                *_chapter_forbidden_scope(
+                    current_index=chapter_index,
+                    confirmed_chapters=confirmed_chapters,
+                    locked_by_index=locked_by_index,
+                ),
+            ],
+            limit=48,
+        )
+        content_role_targets = _filter_content_role_targets(
+            content_role_targets,
+            local_scope=local_scope,
+            forbidden_scope=forbidden_scope,
+        )
         if not content_role_targets:
             raise ValueError(f"chapter execution brief is missing role targets for chapter {chapter_index}")
         example_coverage_plan = _example_coverage_plan(
@@ -272,18 +384,48 @@ def assemble_chapter_generation_plan(
             content_role_targets=content_role_targets,
             example_coverage_plan=example_coverage_plan,
             content_points=clean_string_list(seed.required_elements),
-            concept_targets=clean_string_list([*brief.concept_targets, *seed.required_elements], limit=8),
-            definition_targets=clean_string_list(brief.definition_targets, limit=4),
-            formula_targets=clean_string_list(brief.formula_targets, limit=4),
-            example_targets=clean_string_list(brief.example_targets, limit=4),
-            pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
+            concept_targets=_filter_scope_items(
+                [*brief.concept_targets, *seed.required_elements],
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=8,
+            ),
+            definition_targets=_filter_scope_items(
+                list(brief.definition_targets),
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=4,
+            ),
+            formula_targets=_filter_scope_items(
+                list(brief.formula_targets),
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=4,
+            ),
+            example_targets=_filter_scope_items(
+                list(brief.example_targets),
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=4,
+            ),
+            pitfall_targets=_filter_scope_items(
+                list(brief.pitfall_targets),
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=4,
+            ),
             priority_file_ids=priority_file_ids or clean_string_list(chapter.get("source_file_ids", [])),
             priority_section_refs=priority_section_refs or seed.priority_section_refs,
             source_slices=source_slices,
-            retrieval_queries=clean_string_list(brief.retrieval_queries or seed.retrieval_queries, limit=2),
+            retrieval_queries=_filter_scope_items(
+                list(brief.retrieval_queries or seed.retrieval_queries),
+                local_scope=local_scope,
+                forbidden_scope=forbidden_scope,
+                limit=2,
+            ),
             writing_rules=list(global_rules),
             required_elements=list(seed.required_elements),
-            forbidden_scope=list(seed.forbidden_scope),
+            forbidden_scope=forbidden_scope,
             preferred_sources=list(seed.preferred_sources),
             fallback_policy=seed.fallback_policy,
             style_rules=list(seed.style_rules or global_rules),

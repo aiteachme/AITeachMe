@@ -241,6 +241,7 @@ def _execution_contract_for_writer(
         "conflict_warnings": _conflict_warnings_for_writer(conflict_report),
         "content_role_targets": dict(task.content_role_targets or {}),
         "example_coverage_plan": list(task.example_coverage_plan or []),
+        "forbidden_scope": list(task.forbidden_scope or []),
         "content_mix_policy": dict((task.practice_seed_policy or {}).get("content_mix_policy") or {}),
         "coverage_policy": list((task.practice_seed_policy or {}).get("coverage_policy") or []),
         "example_density_policy": density_policy,

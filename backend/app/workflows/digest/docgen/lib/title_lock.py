@@ -57,7 +57,7 @@ def _resolve_locked_title(
 ) -> tuple[str, str | None]:
     raw_candidate = clean_text(candidate_title)
     candidate = clean_generated_chapter_title(raw_candidate)
-    confirmed = clean_generated_chapter_title(clean_text(confirmed_title)) or "本章内容"
+    confirmed = clean_generated_chapter_title(clean_text(confirmed_title))
     if not candidate:
         label = raw_candidate or "空标题"
         return confirmed, f"标题 `{label}` 不是可发布标题形态，已回退到 `{confirmed}`。"

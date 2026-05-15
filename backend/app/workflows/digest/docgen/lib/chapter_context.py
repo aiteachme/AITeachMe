@@ -925,13 +925,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         digest_mode: str,
         max_queries: int,
     ) -> list[str]:
-        suffixes = get_docgen_mode_profile(digest_mode).gap_query_suffixes
         seeds = gaps[: max(1, max_queries)]
         if objective.strip():
             seeds.extend(self._extract_objective_terms(objective)[:1])
         gap_queries: list[str] = []
-        for index, seed in enumerate(seeds):
-            gap_queries.append(f"{chapter_title} {seed} {suffixes[index % len(suffixes)]}")
+        for seed in seeds:
+            gap_queries.append(f"{chapter_title} {seed}".strip())
         return dedupe_queries(gap_queries, limit=max(1, max_queries))
 
     def _classify_source_breakdown(self, results: list[SearchResult]) -> dict[str, int]:

@@ -8,26 +8,6 @@ from dataclasses import dataclass
 from html import unescape
 
 
-_CASE_REQUEST_MARKERS = ("例子", "案例", "题目", "应用", "场景", "演示")
-_QUANTITATIVE_VISUAL_MARKERS = (
-    "函数",
-    "图像",
-    "曲线",
-    "极限",
-    "导数",
-    "积分",
-    "无穷小",
-    "近似",
-    "误差",
-    "比值",
-    "变化率",
-)
-_GEOMETRY_VISUAL_MARKERS = ("几何", "三角形", "四边形", "圆", "角", "边", "面积", "周长", "坐标")
-_UNIT_SCALE_MARKERS = ("单位", "换算", "数量级", "比例", "尺度", "百分比", "千克", "米", "秒")
-_PROCESS_VISUAL_MARKERS = ("步骤", "流程", "推导", "算法", "方法", "路径", "计算", "求解")
-_CONTRAST_VISUAL_MARKERS = ("区别", "比较", "分类", "辨析", "关系", "条件", "判定", "边界")
-
-
 @dataclass(frozen=True)
 class InteractionDesignBrief:
     learning_goal: str
@@ -67,53 +47,24 @@ def _normalize_blob(value: str) -> str:
     return re.sub(r"\s+", "", str(value or "").strip()).casefold()
 
 
-def _contains_any_marker(text: str, markers: Sequence[str]) -> bool:
-    normalized = _normalize_blob(text)
-    return any(_normalize_blob(marker) in normalized for marker in markers)
-
-
 def _brief_focus_for_signal(signal: str, *, user_prompt: str = "", interaction_mode: str = "") -> tuple[str, str, str]:
-    combined = "\n".join([user_prompt, signal])
-    if user_prompt and _contains_any_marker(user_prompt, _CASE_REQUEST_MARKERS):
+    del signal, user_prompt
+    if interaction_mode == "process_stepper":
         return (
-            "案例推演",
-            "切换或调节具体例子中的关键条件",
-            "观察同一知识点在不同情境下的结果差异和易错边界",
+            "过程推演",
+            "推进步骤、切换条件或修正中间状态",
+            "观察每一步如何影响后续结果以及关键差异从哪里出现",
         )
-    if _contains_any_marker(combined, _QUANTITATIVE_VISUAL_MARKERS):
+    if interaction_mode == "concept_mapper":
         return (
-            "局部变化观察",
-            "拖动变量、范围或对比对象",
-            "观察曲线、比值、误差或放大视图如何随状态改变",
-        )
-    if _contains_any_marker(combined, _GEOMETRY_VISUAL_MARKERS):
-        return (
-            "几何条件验证",
-            "拖动图形元素或切换条件",
-            "观察长度、角度、面积或判定结论何时保持、何时失效",
-        )
-    if _contains_any_marker(combined, _UNIT_SCALE_MARKERS):
-        return (
-            "单位尺度映射",
-            "调节数值、单位或数量级",
-            "观察换算结果、现实含义和常见误判如何变化",
-        )
-    if _contains_any_marker(combined, _PROCESS_VISUAL_MARKERS) or interaction_mode == "process_stepper":
-        return (
-            "步骤误区诊断",
-            "推进步骤、切换做法或修正中间状态",
-            "观察每一步如何影响后续结果以及错误从哪里出现",
-        )
-    if _contains_any_marker(combined, _CONTRAST_VISUAL_MARKERS) or interaction_mode == "concept_mapper":
-        return (
-            "分类边界切换",
-            "改变案例特征、关系节点或判断条件",
-            "观察类别、关系或结论为什么发生变化",
+            "关系映射",
+            "切换节点、条件或关系强弱",
+            "观察关系变化如何影响理解路径和最终判断",
         )
     return (
-        "核心概念操作化",
-        "调节一个能代表概念状态的变量或选项",
-        "观察概念表征、结果反馈或关键差异如何变化",
+        "内容微实验",
+        "调节一个能代表本节内容的变量、状态或选项",
+        "观察表征、结果反馈或关键差异如何变化",
     )
 
 
@@ -225,26 +176,6 @@ def _has_meaningful_context_overlap(visible_text: str, *, title: str, context: s
     return hits >= 1
 
 
-def _design_expects_rich_visual(design_brief: str, context: str) -> bool:
-    signal = "\n".join([design_brief, context])
-    return _contains_any_marker(
-        signal,
-        (
-            "曲线",
-            "坐标",
-            "误差",
-            "比值",
-            "放大视图",
-            "几何",
-            "拖动图形",
-            "面积",
-            "角度",
-            "尺度",
-            "数量级",
-        ),
-    )
-
-
 def assess_interactive_html_quality(
     html: str,
     *,
@@ -282,10 +213,6 @@ def assess_interactive_html_quality(
         re.findall(r"<(?:div|span|section|article|li|p|table|tr|td)\b", raw, re.IGNORECASE)
     )
     has_dom_visual = dom_visual_element_count >= 8 and has_script_state_update
-    has_feedback_copy = any(
-        marker in visible_text
-        for marker in ("观察", "提示", "现在", "变化", "结果", "比较", "误差", "为什么", "注意", "反馈")
-    )
     has_reset = bool(re.search(r"重置|恢复|reset", visible_text + "\n" + raw, re.IGNORECASE))
 
     if (control_count == 0 or (control_count <= 1 and has_reset)) and not has_event_hook:
@@ -296,19 +223,11 @@ def assess_interactive_html_quality(
         issues.append("缺少随状态变化的可视表达；不能只依赖静态说明或占位块。")
     if not has_script_state_update:
         issues.append("交互没有明显更新文本、图形、样式或绘制状态。")
-    if not has_feedback_copy:
-        issues.append("缺少随操作理解的观察提示或结果反馈。")
     if not has_reset:
         issues.append("缺少能恢复初始状态的重置逻辑。")
-    if _design_expects_rich_visual(design_brief, context) and not (has_svg_or_canvas or has_dom_visual):
-        issues.append("设计 brief 指向连续变化或图形观察，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。")
     if not _has_meaningful_context_overlap(visible_text, title=title, context=context, design_brief=design_brief):
         issues.append("页面可见文本与当前知识点关联过弱，可能生成了泛化演示。")
-    if (
-        not has_svg_or_canvas
-        and re.search(r"(background(?:-color)?\s*:\s*(?:gray|grey|#(?:aaa|bbb|ccc|ddd|eee)\b)|灰色|占位)", lower)
-        and not any(marker in visible_text for marker in ("坐标", "曲线", "节点", "误差", "比例", "关系", "步骤", "结果"))
-    ):
+    if not has_svg_or_canvas and re.search(r"(background(?:-color)?\s*:\s*(?:gray|grey|#(?:aaa|bbb|ccc|ddd|eee)\b)|灰色|占位)", lower):
         issues.append("疑似使用灰色占位块替代真实可视化。")
 
     return InteractiveHtmlQualityReport(

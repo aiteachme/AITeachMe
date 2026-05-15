@@ -76,12 +76,12 @@ def build_interactive_html_messages(
 请围绕下面这一章生成一个交互式教学页面。
 
 章节标题：{chapter_title}
-章节目标：{chapter_objective or "帮助学生直观理解本章核心概念。"}
+章节目标：{chapter_objective or "帮助学生直观理解本章材料中最需要操作验证的一点。"}
 文档模式：{mode_label}
 建议交互模式：{interaction_label}
-核心概念：{"、".join(concept_targets) or "未提供"}
+概念线索：{"、".join(concept_targets) or "未提供"}
 关键公式：{"、".join(formula_targets) or "未提供"}
-核心主张：{"、".join(claim_targets) or "未提供"}
+主张线索：{"、".join(claim_targets) or "未提供"}
 
 微实验设计 brief：
 {design_brief or "未提供，请自行判断最能帮助学生理解的互动方式。"}

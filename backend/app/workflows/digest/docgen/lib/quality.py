@@ -29,10 +29,6 @@ from app.workflows.digest.docgen.lib.models import (
 )
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
-_FORMULA_MARKERS = ("公式", "定理", "性质", "$", "=")
-_METHOD_MARKERS = ("步骤", "方法", "算法", "路径", "流程", "判断")
-_EXAMPLE_MARKERS = ("例", "题", "应用", "场景")
-_PITFALL_MARKERS = ("易错", "误区", "注意", "不能", "陷阱")
 
 
 def _source_type(url: str) -> str:
@@ -41,20 +37,6 @@ def _source_type(url: str) -> str:
     if str(url or "").strip():
         return "web"
     return "generated"
-
-
-def _kind_for_claim(text: str) -> str:
-    if any(marker in text for marker in _FORMULA_MARKERS):
-        return "formula"
-    if any(marker in text for marker in _METHOD_MARKERS):
-        return "method"
-    if any(marker in text for marker in _EXAMPLE_MARKERS):
-        return "example"
-    if any(marker in text for marker in _PITFALL_MARKERS):
-        return "pitfall"
-    if any(marker in text for marker in ("定义", "概念", "称为", "是指")):
-        return "definition"
-    return "background"
 
 
 def _candidate_claims(dense_context: str, targets: Sequence[str], *, limit: int) -> list[str]:
@@ -67,8 +49,7 @@ def _candidate_claims(dense_context: str, targets: Sequence[str], *, limit: int)
     ranked: list[tuple[int, int, str]] = []
     for fragment in fragments:
         hit_count = sum(1 for term in target_terms if term and term in fragment)
-        marker_bonus = 1 if _kind_for_claim(fragment) != "background" else 0
-        ranked.append((hit_count + marker_bonus, len(fragment), fragment))
+        ranked.append((hit_count, len(fragment), fragment))
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
     claims: list[str] = []
     seen: set[str] = set()
@@ -101,7 +82,7 @@ def build_evidence_ledger(
         items.append(
             EvidenceItem(
                 evidence_id=f"ch{chapter_index:02d}_ev{index:03d}",
-                kind=_kind_for_claim(claim),
+                kind="core",
                 claim=claim[:180],
                 source_type=_source_type(url),
                 source_ref=url or f"generated://chapter/{chapter_index}",
@@ -109,17 +90,6 @@ def build_evidence_ledger(
                 source_span=str(source.get("source") or source.get("chunk_uid") or ""),
                 confidence=0.84 if url.startswith("local://") else (0.68 if url else 0.45),
                 used_in_markdown=False,
-            )
-        )
-    if not items:
-        items.append(
-            EvidenceItem(
-                evidence_id=f"ch{chapter_index:02d}_ev001",
-                kind="background",
-                claim="当前章节缺少可抽取的细粒度证据，已退回基于学习大纲生成。",
-                source_type="generated",
-                source_ref=f"generated://chapter/{chapter_index}",
-                confidence=0.35,
             )
         )
     return EvidenceLedger(chapter_index=chapter_index, items=items)
@@ -160,7 +130,7 @@ def build_claim_ledger(
             ClaimItem(
                 claim_id=f"ch{task.chapter_index:02d}_claim_{index:03d}",
                 chapter_index=task.chapter_index,
-                claim_type=_kind_for_claim(claim_text),
+                claim_type="core",
                 claim_text=claim_text[:240],
                 importance=0.78 if claim_text in task.claim_targets else 0.58,
                 requires_evidence=True,
@@ -176,7 +146,7 @@ def build_claim_ledger(
                 claim_text=task.objective or task.enhanced_title,
                 importance=0.4,
                 requires_evidence=False,
-                source_hint="fallback_task_objective",
+                source_hint="task_objective",
             )
         )
         return ClaimLedger(chapter_index=task.chapter_index, items=items, fallback_used=True)

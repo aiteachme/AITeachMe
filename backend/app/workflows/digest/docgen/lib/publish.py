@@ -105,7 +105,7 @@ def _finalize_markdown_rendering(markdown: str) -> str:
 
 
 def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
-    """Keep published docs readable: one h1, at least one h2."""
+    """Keep published docs readable without inventing local section titles."""
 
     cleaned = str(markdown or "").strip()
     if not cleaned:
@@ -122,13 +122,6 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     elif not lines[first_heading_index].lstrip().startswith("# "):
         visible_title = lines[first_heading_index].lstrip("#").strip() or fallback_title
         lines[first_heading_index] = f"# {visible_title}"
-
-    if not any(line.startswith("## ") for line in lines):
-        insert_at = 1
-        while insert_at < len(lines) and not lines[insert_at].strip():
-            insert_at += 1
-        lines.insert(insert_at, "## 核心内容")
-        lines.insert(insert_at + 1, "")
 
     return "\n".join(lines).strip() + "\n"
 

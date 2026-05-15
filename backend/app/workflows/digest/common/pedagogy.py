@@ -37,46 +37,15 @@ _TITLE_ONLY_NUMBER_RE = re.compile(
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _COURSE_SLUG_RE = re.compile(r"^(?:course|subj)_[a-z0-9_-]+$", re.IGNORECASE)
-_GENERIC_FOCUS_TERMS = {
-    "核心概念",
-    "高频考点",
-    "直观理解",
-    "核心公式",
-    "使用条件",
-    "方法判断",
-    "典型题型",
-    "步骤拆解",
-    "变式提醒",
-    "易错点",
-    "混淆概念",
-    "失分原因",
-    "综合变式",
-    "得分策略",
-    "学习目标",
-    "前置关系",
-    "核心问题",
-    "关键概念",
-    "符号说明",
-    "关键结构",
-    "核心定义",
-    "关键公式",
-    "成立条件",
-    "推理过程",
-    "方法步骤",
-    "判断依据",
-    "应用场景",
-    "复习建议",
-    "本章内容",
-}
 _LOW_VALUE_HEADING_RE = re.compile(
     r"^(?:"
-    r"核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
-    r"学习大纲(?:[:：].*)?|章节目标|本章目标|补充掌握检查|"
-    r"快速复习自测区|快速自测|自测任务|考前速查与自测|"
+    r"核心内容|核心概念|核心概念速查|核心概念速查表|知识速查|知识速查表|公式速查|方法速查|"
+    r"学习大纲(?:[:：].*)?|学习大纲与核心定义|章节目标|本章目标|补充掌握检查|"
+    r"核心要点速查|快速复习(?:[:：].*)?|快速复习自测区|快速自测|自测任务|考前速查与自测|"
     r"常见任务整理|常见任务与题型整理|常见题型整理|题型整理|"
-    r"典型例题与易错诊断|综合训练|综合训练与检查标准|"
+    r"题型[一二三四五六七八九十\d]+|典型例题与易错诊断|综合训练|综合训练与辨析|综合实战训练区|综合训练与检查标准|"
     r"例题(?:\s*\d+)?|练习|自测|知识结构|补充讲解|"
-    r".+的(?:知识结构|补充讲解|核心要点)"
+    r".*证据补充.*|.+的(?:知识结构|补充讲解|核心要点)"
     r")$"
 )
 _MALFORMED_HEADING_TAIL_RE = re.compile(r"(?:与应|及断|与断|和断|[与及和的、，,：:])$")
@@ -335,7 +304,7 @@ def _generic_heading_titles(titles: list[str]) -> list[str]:
         cleaned = clean_generated_chapter_title(title)
         if not cleaned:
             continue
-        if cleaned in _GENERIC_FOCUS_TERMS or cleaned in _UNUSABLE_CHAPTER_TITLES:
+        if cleaned in _UNUSABLE_CHAPTER_TITLES:
             generic.append(cleaned)
     return list(dict.fromkeys(generic))
 
@@ -348,7 +317,7 @@ def _low_value_heading_titles(titles: list[str]) -> list[str]:
         cleaned = clean_generated_chapter_title(title)
         if not cleaned:
             continue
-        if cleaned in _GENERIC_FOCUS_TERMS or cleaned in _UNUSABLE_CHAPTER_TITLES:
+        if cleaned in _UNUSABLE_CHAPTER_TITLES:
             continue
         if _LOW_VALUE_HEADING_RE.match(cleaned) or _MALFORMED_HEADING_TAIL_RE.search(cleaned):
             low_value.append(cleaned)
