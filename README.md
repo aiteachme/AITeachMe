@@ -72,6 +72,12 @@ AITeachMe 当前处于 MVP 到早期产品化阶段，核心链路已经按真�
   </a>
 </p>
 
+也欢迎扫码加入 AITeachMe 微信群，直接交流产品想法、使用反馈和后续共创计划。
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aiteachme/assets/main/community/wechat-qr.jpg" alt="AITeachMe 微信群聊二维码" width="260" />
+</p>
+
 ## 核心能力
 
 | 模块 | 做什么 | 现在的边界 |
