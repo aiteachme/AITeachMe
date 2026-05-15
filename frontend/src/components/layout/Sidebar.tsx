@@ -13,6 +13,7 @@ import {
   Loader2,
   Menu,
   MoreVertical,
+  PackagePlus,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -36,6 +37,7 @@ import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive } from "../../lib/courseNavigation";
 import { CourseExportModal } from "../course/CourseExportModal";
+import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
@@ -209,6 +211,7 @@ export function Sidebar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -501,25 +504,26 @@ export function Sidebar({
           )}
         </div>
 
-        <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : isMobileOpen ? "px-4 pb-2 pt-2" : "px-3 pb-2 pt-1")}>
-          {effectiveCollapsed ? (
-            <div className="flex flex-col items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCollapsed(false);
-                  openCreateCoursePage();
-                }}
-                title="新建课程"
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-                  isCreateCourseActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              </button>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className={cn("shrink-0 space-y-1", effectiveCollapsed ? "px-0 pb-2 pt-1" : isMobileOpen ? "px-4 pb-2 pt-2" : "px-3 pb-2 pt-1")}>
+            {effectiveCollapsed ? (
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCollapsed(false);
+                    openCreateCoursePage();
+                  }}
+                  title="新建课程"
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                    isCreateCourseActive
+                      ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
+                      : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                  )}
+                >
+                  <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+                </button>
 
               <button
                 type="button"
@@ -689,7 +693,7 @@ export function Sidebar({
           )}
         >
           {!effectiveCollapsed ? (
-            <div className="flex h-8 items-center">
+            <div className="flex h-8 items-center gap-1">
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
@@ -704,6 +708,22 @@ export function Sidebar({
                   )}
                 />
                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" /> : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCourseActionError(undefined);
+                  setOpenMenuId(null);
+                  setIsImportModalOpen(true);
+                }}
+                className={cn(
+                  "flex shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
+                  isMobileOpen ? "h-10 w-10" : "h-8 w-8",
+                )}
+                title="导入课程包"
+                aria-label="导入课程包"
+              >
+                <PackagePlus className={cn(isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
               </button>
             </div>
           ) : (
@@ -914,6 +934,7 @@ export function Sidebar({
             emptyText={isMobileOpen && !isCourseConversationScope ? "" : isCourseConversationScope ? "暂无课程对话" : "暂无全局对话"}
           />
         </div>
+        </div>
 
         {/* Bottom actions */}
         <div
@@ -984,6 +1005,10 @@ export function Sidebar({
 
       {exportCourseId ? (
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
+      ) : null}
+
+      {isImportModalOpen ? (
+        <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
       <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />

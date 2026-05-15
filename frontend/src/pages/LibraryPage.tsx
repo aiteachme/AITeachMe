@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   Clock3,
   Database,
@@ -77,6 +79,14 @@ async function fetchLibraryFiles(): Promise<FilesData> {
     failed_count: 0,
     items: [],
   };
+}
+
+async function fetchLibraryFile(fileId: string): Promise<FileRecord | null> {
+  const response = await apiClient<ApiResponse<FilesData>>({
+    method: "GET",
+    url: `/api/v1/files?file_ids=${encodeURIComponent(fileId)}`,
+  });
+  return response.data?.items?.[0] ?? null;
 }
 
 async function uploadLibraryFiles(files: File[]): Promise<FilesUploadData> {
@@ -166,6 +176,7 @@ function statusMeta(file: FileRecord) {
 export function LibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -550,7 +561,21 @@ export function LibraryPage() {
             {visibleFiles.map((file) => {
               const meta = statusMeta(file);
               return (
-                <div key={file.id} className="atm-deferred-row group grid gap-3 px-4 py-4 transition hover:bg-slate-50/70 dark:hover:bg-slate-800/35 md:grid-cols-[minmax(0,1.7fr)_120px_170px_120px_48px] md:items-center md:gap-4">
+                <div
+                  key={file.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/library/${encodeURIComponent(file.id)}`)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigate(`/library/${encodeURIComponent(file.id)}`);
+                    }
+                  }}
+                  className="atm-deferred-row group grid cursor-pointer gap-3 px-4 py-4 transition hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:hover:bg-slate-800/35 dark:focus-visible:ring-slate-600 md:grid-cols-[minmax(0,1.7fr)_120px_170px_120px_48px] md:items-center md:gap-4"
+                  aria-label={`查看资料 ${file.filename}`}
+                >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
                       {fileIcon(file)}
@@ -587,7 +612,10 @@ export function LibraryPage() {
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => deleteMutation.mutate(file.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteMutation.mutate(file.id);
+                      }}
                       disabled={deleteMutation.isPending}
                       className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30 dark:hover:text-red-300"
                       title="删除资料"
@@ -623,6 +651,116 @@ export function LibraryPage() {
               ) : null}
             </div>
           ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function LibraryFilePage() {
+  const { fileId = "" } = useParams<{ fileId: string }>();
+  const navigate = useNavigate();
+  const decodedFileId = decodeURIComponent(fileId);
+
+  const fileQuery = useQuery({
+    queryKey: ["files-library-file", decodedFileId],
+    queryFn: () => fetchLibraryFile(decodedFileId),
+    enabled: decodedFileId.length > 0,
+    refetchInterval: (query) => {
+      const file = query.state.data;
+      return file && getFileStatusKind(file) === "processing" ? 2000 : false;
+    },
+  });
+
+  const file = fileQuery.data ?? null;
+  const meta = file ? statusMeta(file) : null;
+  const markdownContent = file?.markdown_content?.trim() ?? "";
+  const fileExt = file ? normalizeFileExt(file.filetype).toUpperCase() || "FILE" : "FILE";
+
+  return (
+    <div className="min-h-full pb-24 sm:pb-12">
+      <button
+        type="button"
+        onClick={() => navigate("/library")}
+        className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        返回资料库
+      </button>
+
+      {fileQuery.isLoading ? (
+        <div className="mt-10 flex min-h-[260px] items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            正在加载资料...
+          </div>
+        </div>
+      ) : null}
+
+      {fileQuery.isError ? (
+        <div className="mt-6 rounded-xl border border-red-100 bg-red-50 px-4 py-4 text-sm leading-6 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          {getApiErrorMessage(fileQuery.error, "资料加载失败")}
+        </div>
+      ) : null}
+
+      {!fileQuery.isLoading && !fileQuery.isError && !file ? (
+        <div className="mt-10 flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/80 px-6 text-center dark:border-slate-800 dark:bg-slate-900/70">
+          <FolderOpen className="h-8 w-8 text-slate-400" />
+          <h1 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">没有找到这份资料</h1>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">它可能已经被删除，或当前资料库还没有同步完成。</p>
+        </div>
+      ) : null}
+
+      {file && meta ? (
+        <div className="mt-4 space-y-5">
+          <section className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                  {fileIcon(file)}
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{file.filename}</h1>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span>{fileExt}</span>
+                    <span>{formatFileSize(file.file_size_bytes)}</span>
+                    {file.parser_used ? <span>{file.parser_used}</span> : null}
+                    <span>更新于 {new Date(file.latest_updated_at || file.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <span className={cn("inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1", meta.className)} title={resolveFileProcessingLabel(file)}>
+                {meta.icon}
+                {meta.label}
+              </span>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600 dark:border-slate-800 dark:bg-slate-950/35 dark:text-slate-300">
+              这里展示的是系统解析出来的 Markdown 文档，用于核对入库后的正文内容；它不是原始文件预览。
+            </div>
+
+            {file.error_message ? (
+              <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-sm leading-6 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                {file.error_message}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            {markdownContent ? (
+              <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
+                {markdownContent}
+              </pre>
+            ) : (
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-6 text-center dark:border-slate-800 dark:bg-slate-950/30">
+                <FileText className="h-8 w-8 text-slate-400" />
+                <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">暂无可展示的 Markdown</h2>
+                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {getFileStatusKind(file) === "ready" ? "这份资料解析完成了，但暂时没有返回正文内容。" : "解析完成后会在这里展示完整 Markdown 文档。"}
+                </p>
+              </div>
+            )}
+          </section>
         </div>
       ) : null}
     </div>
