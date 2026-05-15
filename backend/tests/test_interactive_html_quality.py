@@ -28,7 +28,7 @@ def test_interactive_html_quality_rejects_static_card() -> None:
 
     assert not report.passed
     assert "缺少学生能主动操作的控件或交互事件。" in report.issues
-    assert "设计 brief 指向连续变化或图形观察，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。" in report.issues
+    assert "设计 brief 已建立可观察变化合同，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。" in report.issues
 
 
 def test_interactive_html_quality_accepts_state_driven_svg() -> None:
