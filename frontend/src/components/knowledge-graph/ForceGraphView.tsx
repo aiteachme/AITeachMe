@@ -193,8 +193,36 @@ const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxCo
   application_extension: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
 };
 const LAYER_GUIDE_COLORS = ["#6366f1", "#2563eb", "#0f766e", "#f59e0b", "#f43f5e"];
-const GRAPH_LAYOUT_VERSION = 10;
-const NODE_CARD_HEIGHT = 28;
+const GRAPH_LAYOUT_VERSION = 13;
+const NODE_CARD_HEIGHT = 30;
+const NODE_COLUMN_GAP = 60;
+const NODE_ROW_GAP = 66;
+const ZONE_GUTTER = 44;
+const ZONE_HEADER_HEIGHT = 66;
+const LAYER_ZONE_PREFS = [
+  { minWidth: 390, maxColumns: 3, weight: 1.0 },
+  { minWidth: 720, maxColumns: 6, weight: 1.65 },
+  { minWidth: 460, maxColumns: 4, weight: 1.05 },
+  { minWidth: 700, maxColumns: 6, weight: 1.5 },
+  { minWidth: 740, maxColumns: 6, weight: 1.58 },
+] as const;
+type LayerZoneFrame = { x: number; y: number; width: number; height: number };
+type StructuredGraphMetrics = {
+  canvasWidth: number;
+  leftPad: number;
+  rightPad: number;
+  topPad: number;
+  bottomPad: number;
+  usableWidth: number;
+  usableHeight: number;
+  layerStep: number;
+  centerX: number;
+  centerY: number;
+  clusterCellX: number;
+  clusterCellY: number;
+  regionSurface: LayerZoneFrame;
+  layerZones: LayerZoneFrame[];
+};
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
   return DETAIL_NODE_TYPES.has(node.knowledge_unit_type);
@@ -202,24 +230,121 @@ function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolea
 
 function graphNodeCardWidth(node: GraphNode): number {
   const labelWidth = estimateGraphLabelWidth(node.canonical_name, graphNodeLabelLimit(node, null));
-  return Math.min(180, Math.max(isAssessmentCoreNode(node) ? 126 : 114, labelWidth + 28));
+  return Math.min(210, Math.max(isAssessmentCoreNode(node) ? 136 : 124, labelWidth + 32));
 }
 
-function getStructuredGraphMetrics(nodeCount: number, width: number, height: number) {
-  const canvasWidth = Math.max(width, 1180);
-  const densityScale = Math.min(1.12, 1 + Math.max(0, nodeCount - 36) * 0.003);
-  const leftPad = Math.min(128, Math.max(64, canvasWidth * 0.058));
-  const rightPad = Math.min(128, Math.max(64, canvasWidth * 0.058));
-  const topPad = Math.min(112, Math.max(76, height * 0.1));
-  const bottomPad = Math.min(96, Math.max(66, height * 0.085));
-  const usableWidth = Math.max(360, canvasWidth - leftPad - rightPad);
-  const densityHeight = Math.max(620, 620 + Math.max(0, nodeCount - 42) * 14);
-  const usableHeight = Math.max(620, height - topPad - bottomPad, densityHeight);
+function nodesForLayer(nodes: GraphNode[], layerIndex: number): GraphNode[] {
+  return nodes.filter((node) => clampGraphLayer(node.layout_layer) === layerIndex);
+}
+
+function layerAverageCardWidth(nodes: GraphNode[]): number {
+  if (!nodes.length) return 148;
+  const total = nodes.reduce((sum, node) => sum + graphNodeCardWidth(node), 0);
+  return Math.min(188, Math.max(142, total / nodes.length));
+}
+
+function layerContentInsetX(zoneWidth: number): number {
+  return Math.max(34, Math.min(58, zoneWidth * 0.06));
+}
+
+function layerContentInsetY(zoneHeight: number): number {
+  return Math.max(30, Math.min(56, zoneHeight * 0.08));
+}
+
+function columnsForLayerNodes(nodes: GraphNode[], zoneWidth: number, layerIndex: number): number {
+  if (!nodes.length) return 1;
+  const pref = LAYER_ZONE_PREFS[layerIndex] ?? LAYER_ZONE_PREFS[2];
+  const innerWidth = Math.max(140, zoneWidth - layerContentInsetX(zoneWidth) * 2);
+  const averageCard = layerAverageCardWidth(nodes);
+  const maxCard = Math.max(averageCard, ...nodes.map((node) => graphNodeCardWidth(node)));
+  const centerRange = Math.max(0, innerWidth - maxCard);
+  const byWidth = Math.max(1, Math.floor(centerRange / (maxCard + NODE_COLUMN_GAP)) + 1);
+  const byDensity = Math.ceil(Math.sqrt(nodes.length * (layerIndex === 1 || layerIndex >= 3 ? 1.28 : 1.05)));
+  return Math.max(1, Math.min(pref.maxColumns, byWidth, Math.max(2, byDensity), nodes.length));
+}
+
+function requiredLayerHeight(nodes: GraphNode[], zoneWidth: number, layerIndex: number): number {
+  const columns = columnsForLayerNodes(nodes, zoneWidth, layerIndex);
+  const rows = Math.max(1, Math.ceil(Math.max(1, nodes.length) / columns));
+  const contentInsetY = 38;
+  return ZONE_HEADER_HEIGHT + contentInsetY * 2 + NODE_CARD_HEIGHT + Math.max(0, rows - 1) * NODE_ROW_GAP;
+}
+
+function distributeLayerWidths(indices: number[], minWidths: number[], targetWidth: number): number[] {
+  const totalMin = indices.reduce((sum, layerIndex) => sum + minWidths[layerIndex], 0);
+  const extra = Math.max(0, targetWidth - totalMin - ZONE_GUTTER * Math.max(0, indices.length - 1));
+  const totalWeight = indices.reduce((sum, layerIndex) => sum + (LAYER_ZONE_PREFS[layerIndex]?.weight ?? 1), 0);
+  return indices.map((layerIndex) => {
+    const weight = LAYER_ZONE_PREFS[layerIndex]?.weight ?? 1;
+    return minWidths[layerIndex] + (totalWeight > 0 ? (extra * weight) / totalWeight : 0);
+  });
+}
+
+function getStructuredGraphMetrics(nodes: GraphNode[], width: number, height: number): StructuredGraphMetrics {
+  const nodeCount = nodes.length;
+  const nodesByLayer = GRAPH_LAYERS.map((_, index) => nodesForLayer(nodes, index));
+  const minWidths = GRAPH_LAYERS.map((_, index) => {
+    const pref = LAYER_ZONE_PREFS[index] ?? LAYER_ZONE_PREFS[2];
+    const layerNodes = nodesByLayer[index] ?? [];
+    const averageCard = layerAverageCardWidth(layerNodes);
+    const preferredColumns = Math.min(pref.maxColumns, Math.max(2, Math.ceil(Math.sqrt(Math.max(1, layerNodes.length) * 1.35))));
+    return Math.max(pref.minWidth, preferredColumns * averageCard + (preferredColumns - 1) * NODE_COLUMN_GAP + 92);
+  });
+  const topIndices = [0, 1, 2];
+  const bottomIndices = [4, 3];
+  const minTopWidth = topIndices.reduce((sum, index) => sum + minWidths[index], 0) + ZONE_GUTTER * 2;
+  const minBottomWidth = bottomIndices.reduce((sum, index) => sum + minWidths[index], 0) + ZONE_GUTTER;
+  const desiredSurfaceWidth = Math.max(width - 96, minTopWidth, minBottomWidth, 1180);
+  const canvasWidth = Math.max(width, Math.ceil(desiredSurfaceWidth + 112));
+  const leftPad = Math.min(86, Math.max(38, canvasWidth * 0.032));
+  const rightPad = leftPad;
+  const topPad = Math.min(92, Math.max(64, height * 0.085));
+  const bottomPad = Math.min(78, Math.max(48, height * 0.065));
+  const surfaceWidth = Math.max(720, canvasWidth - leftPad - rightPad);
+  const topWidths = distributeLayerWidths(topIndices, minWidths, surfaceWidth);
+  const bottomWidths = distributeLayerWidths(bottomIndices, minWidths, surfaceWidth);
+  const topHeights = topIndices.map((layerIndex, index) =>
+    requiredLayerHeight(nodesByLayer[layerIndex] ?? [], topWidths[index] ?? minWidths[layerIndex], layerIndex),
+  );
+  const bottomHeights = bottomIndices.map((layerIndex, index) =>
+    requiredLayerHeight(nodesByLayer[layerIndex] ?? [], bottomWidths[index] ?? minWidths[layerIndex], layerIndex),
+  );
+  const topHeight = Math.max(320, ...topHeights);
+  const bottomHeight = Math.max(340, ...bottomHeights);
+  const surfaceHeight = topHeight + ZONE_GUTTER + bottomHeight;
+  const densityHeight = Math.max(620, 620 + Math.max(0, nodeCount - 42) * 15);
+  const usableHeight = Math.max(surfaceHeight, height - topPad - bottomPad, densityHeight);
+  const regionSurface = {
+    x: leftPad,
+    y: topPad,
+    width: surfaceWidth,
+    height: usableHeight,
+  };
+  const layerZones: LayerZoneFrame[] = [];
+  let cursorX = regionSurface.x;
+  topIndices.forEach((layerIndex, index) => {
+    const zoneWidth = topWidths[index] ?? minWidths[layerIndex];
+    layerZones[layerIndex] = { x: cursorX, y: regionSurface.y, width: zoneWidth, height: topHeight };
+    cursorX += zoneWidth + ZONE_GUTTER;
+  });
+  cursorX = regionSurface.x;
+  bottomIndices.forEach((layerIndex, index) => {
+    const zoneWidth = bottomWidths[index] ?? minWidths[layerIndex];
+    layerZones[layerIndex] = {
+      x: cursorX,
+      y: regionSurface.y + topHeight + ZONE_GUTTER,
+      width: zoneWidth,
+      height: bottomHeight,
+    };
+    cursorX += zoneWidth + ZONE_GUTTER;
+  });
+
+  const usableWidth = regionSurface.width;
   const layerStep = usableWidth / Math.max(1, GRAPH_LAYERS.length - 1);
   const centerX = canvasWidth / 2;
   const centerY = topPad + usableHeight * 0.52;
-  const clusterCellX = Math.min(132, Math.max(108, canvasWidth * 0.078)) * densityScale;
-  const clusterCellY = Math.min(92, Math.max(58, usableHeight * 0.055)) * densityScale;
+  const clusterCellX = Math.min(160, Math.max(118, canvasWidth * 0.07));
+  const clusterCellY = Math.min(110, Math.max(68, usableHeight * 0.052));
 
   return {
     canvasWidth,
@@ -234,65 +359,36 @@ function getStructuredGraphMetrics(nodeCount: number, width: number, height: num
     centerY,
     clusterCellX,
     clusterCellY,
+    regionSurface,
+    layerZones,
   };
 }
 
-function getRegionSurface(metrics: ReturnType<typeof getStructuredGraphMetrics>, height: number) {
-  const x = Math.max(24, metrics.leftPad - 20);
-  const y = Math.max(58, metrics.topPad - 6);
-  const width = Math.max(720, metrics.canvasWidth - x - Math.max(24, metrics.rightPad - 20));
-  const viewportHeight = Math.max(620, height - y - 20);
-  const frameHeight = Math.max(viewportHeight, metrics.usableHeight + 80);
-
-  return { x, y, width, height: frameHeight };
+function getRegionSurface(metrics: StructuredGraphMetrics, _height: number) {
+  return metrics.regionSurface;
 }
 
 function getLayerZoneFrame(
-  metrics: ReturnType<typeof getStructuredGraphMetrics>,
+  metrics: StructuredGraphMetrics,
   layerIndex: number,
-  height: number,
+  _height: number,
 ) {
-  const surface = getRegionSurface(metrics, height);
-  const gutter = Math.min(38, Math.max(28, surface.width * 0.02));
-  const topHeight = Math.max(250, Math.min(surface.height * 0.46, surface.height - 340));
-  const bottomHeight = surface.height - topHeight - gutter;
-  const topWidth = surface.width - gutter * 2;
-  const firstTopWidth = topWidth * 0.28;
-  const secondTopWidth = topWidth * 0.31;
-  const thirdTopWidth = topWidth - firstTopWidth - secondTopWidth;
-  const bottomLeftWidth = (surface.width - gutter) * 0.54;
-  const bottomRightWidth = surface.width - gutter - bottomLeftWidth;
-
-  switch (layerIndex) {
-    case 0:
-      return { x: surface.x, y: surface.y, width: firstTopWidth, height: topHeight };
-    case 1:
-      return { x: surface.x + firstTopWidth + gutter, y: surface.y, width: secondTopWidth, height: topHeight };
-    case 2:
-      return { x: surface.x + firstTopWidth + secondTopWidth + gutter * 2, y: surface.y, width: thirdTopWidth, height: topHeight };
-    case 3:
-      return { x: surface.x + bottomLeftWidth + gutter, y: surface.y + topHeight + gutter, width: bottomRightWidth, height: bottomHeight };
-    case 4:
-      return { x: surface.x, y: surface.y + topHeight + gutter, width: bottomLeftWidth, height: bottomHeight };
-    default:
-      return surface;
-  }
+  return metrics.layerZones[layerIndex] ?? metrics.regionSurface;
 }
 
 function getLayerZoneContentBounds(
-  metrics: ReturnType<typeof getStructuredGraphMetrics>,
+  metrics: StructuredGraphMetrics,
   layerIndex: number,
   height: number,
 ) {
   const zone = getLayerZoneFrame(metrics, layerIndex, height);
-  const headerHeight = 58;
-  const contentInsetX = Math.max(26, Math.min(54, zone.width * 0.068));
-  const contentInsetY = Math.max(30, Math.min(52, zone.height * 0.12));
+  const contentInsetX = layerContentInsetX(zone.width);
+  const contentInsetY = layerContentInsetY(zone.height);
 
   return {
     zone,
     left: zone.x + contentInsetX,
-    top: zone.y + headerHeight + contentInsetY,
+    top: zone.y + ZONE_HEADER_HEIGHT + contentInsetY,
     right: zone.x + zone.width - contentInsetX,
     bottom: zone.y + zone.height - contentInsetY,
   };
@@ -388,7 +484,7 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
   const positions = new Map<number, { x: number; y: number }>();
   if (!nodes.length) return positions;
 
-  const metrics = getStructuredGraphMetrics(nodes.length, width, height);
+  const metrics = getStructuredGraphMetrics(nodes, width, height);
   const groupedByLayer = new Map<number, GraphNode[]>();
   for (const node of nodes) {
     const layer = clampGraphLayer(node.layout_layer);
@@ -417,30 +513,25 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
     });
     const { zone, left: innerLeft, top: innerTop, right: innerRight, bottom: innerBottom } =
       getLayerZoneContentBounds(metrics, layerIndex, height);
-    const innerWidth = Math.max(160, innerRight - innerLeft);
     const innerHeight = Math.max(96, innerBottom - innerTop);
-    const averageCardWidth = sorted.length
-      ? sorted.reduce((total, node) => total + graphNodeCardWidth(node), 0) / sorted.length
-      : 124;
-    const comfortableColumnWidth = Math.max(132, averageCardWidth + 28);
-    const maxColumnsByWidth = Math.max(1, Math.floor((innerWidth + 28) / comfortableColumnWidth));
-    const basePreferredColumns = [2, 3, 4, 4, 5][layerIndex] ?? 4;
-    const preferredColumns = sorted.length >= 18 ? basePreferredColumns + 1 : basePreferredColumns;
-    const columns = Math.max(1, Math.min(preferredColumns, maxColumnsByWidth, sorted.length));
+    const columns = columnsForLayerNodes(sorted, zone.width, layerIndex);
     const rows = Math.max(1, Math.ceil(sorted.length / columns));
-    const cellX = columns <= 1 ? 0 : innerWidth / (columns - 1);
+    const maxHalfCard = Math.max(...sorted.map((node) => graphNodeCardWidth(node))) / 2;
+    const centerLeft = innerLeft + maxHalfCard;
+    const centerRight = innerRight - maxHalfCard;
+    const centerWidth = Math.max(0, centerRight - centerLeft);
+    const cellX = columns <= 1 ? 0 : centerWidth / (columns - 1);
     const cellY = rows <= 1 ? 0 : innerHeight / Math.max(1, rows - 1);
 
     sorted.forEach((node, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
-      const halfCard = graphNodeCardWidth(node) / 2;
       const rowOffset = rows > 2 && columns > 1 ? (row % 2 === 0 ? -0.08 : 0.08) * cellX : 0;
-      const x = columns <= 1 ? zone.x + zone.width / 2 : innerLeft + column * cellX + rowOffset;
+      const x = columns <= 1 ? zone.x + zone.width / 2 : centerLeft + column * cellX + rowOffset;
       const y = rows <= 1 ? innerTop + innerHeight / 2 : innerTop + row * cellY;
 
       positions.set(node.id, {
-        x: Math.min(innerRight - halfCard, Math.max(innerLeft + halfCard, x)),
+        x: Math.min(innerRight - graphNodeCardWidth(node) / 2, Math.max(innerLeft + graphNodeCardWidth(node) / 2, x)),
         y: Math.min(innerBottom - NODE_CARD_HEIGHT / 2, Math.max(innerTop + NODE_CARD_HEIGHT / 2, y)),
       });
     });
@@ -795,7 +886,7 @@ export function ForceGraphView({
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
-  const [showAllNodeLabels, setShowAllNodeLabels] = useState(false);
+  const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
   const [showDetailNodes, setShowDetailNodes] = useState(true);
   const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(() => new Set(["similar", "contrast"]));
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -815,7 +906,7 @@ export function ForceGraphView({
   const showEdgeLabelsRef = useRef(false);
   const showAllEdgesRef = useRef(false);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(false);
+  const showAllNodeLabelsRef = useRef(true);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
 
@@ -886,7 +977,7 @@ export function ForceGraphView({
     lastGraphCountsRef.current = null;
     setHiddenRelationTypes(new Set(["similar", "contrast"]));
     setShowDetailNodes(true);
-    setShowAllNodeLabels(false);
+    setShowAllNodeLabels(true);
     setShowSettingsPanel(false);
     setNodeSearchQuery("");
     setGraphDelta(null);
@@ -1344,7 +1435,7 @@ export function ForceGraphView({
     d3.select(svg).selectAll("*").remove();
 
     const structuredPositions = buildStructuredNodePositions(nodes, width, height);
-    const layoutMetrics = getStructuredGraphMetrics(nodes.length, width, height);
+    const layoutMetrics = getStructuredGraphMetrics(nodes, width, height);
     const regionSurface = getRegionSurface(layoutMetrics, height);
     const workspaceHeight = Math.max(height, regionSurface.y + regionSurface.height + 40);
 
@@ -1521,9 +1612,13 @@ export function ForceGraphView({
 
     const layerBand = g.append("g").attr("class", "graph-layer-guides").attr("pointer-events", "none");
     const layerNodeCounts = new Map<number, number>();
+    const layerTypeCounts = new Map<number, Map<string, number>>();
     for (const node of simNodes) {
       const layer = clampGraphLayer(node.layout_layer);
       layerNodeCounts.set(layer, (layerNodeCounts.get(layer) ?? 0) + 1);
+      const typeCounts = layerTypeCounts.get(layer) ?? new Map<string, number>();
+      typeCounts.set(node.knowledge_unit_type, (typeCounts.get(node.knowledge_unit_type) ?? 0) + 1);
+      layerTypeCounts.set(layer, typeCounts);
     }
     layerBand.append("rect")
       .attr("class", "layer-region-surface")
@@ -1538,6 +1633,11 @@ export function ForceGraphView({
     GRAPH_LAYERS.forEach((layer, index) => {
       const zone = getLayerZoneFrame(layoutMetrics, index, height);
       const zoneColor = LAYER_GUIDE_COLORS[index] ?? "#2563eb";
+      const typeSummary = Array.from((layerTypeCounts.get(index) ?? new Map<string, number>()).entries())
+        .map(([type, count]) => ({ type, count, style: nodeStyle(type) }))
+        .sort((left, right) => right.count - left.count || left.style.label.localeCompare(right.style.label))
+        .slice(0, 3);
+      const headerWidth = Math.min(246, Math.max(176, zone.width - 32));
       layerBand.append("rect")
         .attr("class", "layer-zone-frame")
         .attr("x", zone.x)
@@ -1554,8 +1654,8 @@ export function ForceGraphView({
       layerBand.append("rect")
         .attr("x", zone.x + 16)
         .attr("y", zone.y + 14)
-        .attr("width", Math.min(156, zone.width - 32))
-        .attr("height", 42)
+        .attr("width", headerWidth)
+        .attr("height", 46)
         .attr("rx", 10)
         .attr("fill", "rgba(255,255,255,0.9)")
         .attr("stroke", zoneColor)
@@ -1584,7 +1684,9 @@ export function ForceGraphView({
         .attr("font-weight", 600)
         .attr("font-family", "system-ui, sans-serif")
         .attr("fill", "#64748b")
-        .text(layer.description.split("/")[0].trim());
+        .text(typeSummary.length
+          ? typeSummary.map((item) => `${item.style.label} ${item.count}`).join(" / ")
+          : layer.description.split("/")[0].trim());
     });
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -2068,7 +2170,7 @@ export function ForceGraphView({
       const availableWidth = Math.max(isMobileViewport ? 280 : 320, width - (isMobileViewport ? 16 : 24));
       const availableHeight = Math.max(isMobileViewport ? 280 : 320, height - topReserve - bottomReserve);
       const fittedScale = Math.min(availableWidth / gw, availableHeight / gh, isMobileViewport ? 1.72 : 1.62);
-      const readableScaleFloor = width < 520 ? 0.72 : 0;
+      const readableScaleFloor = width < 520 ? 0.66 : width < 900 ? 0.5 : 0.48;
       const scale = Math.max(readableScaleFloor, fittedScale);
       const graphWidth = (visualXMax - visualXMin) * scale;
       const graphHeight = (visualYMax - visualYMin) * scale;

@@ -107,6 +107,7 @@ def test_heading_quality_detects_duplicate_generic_titles() -> None:
     assert quality["h2_count"] == 2
     assert quality["duplicate_titles"] == ["核心概念"]
     assert quality["generic_titles"] == ["核心概念"]
+    assert quality["low_value_titles"] == []
     assert quality["needs_agent_repair"] is True
     assert quality["needs_scaffold_fallback"] is False
     assert quality["missing_modules"] == []
@@ -137,7 +138,30 @@ def test_heading_quality_detects_singleton_h3_sections() -> None:
     assert quality["needs_agent_repair"] is True
 
 
-def test_learning_scaffold_inserts_required_sections_without_duplication() -> None:
+def test_heading_quality_detects_low_value_generated_toc_titles() -> None:
+    quality = pedagogy.analyze_chapter_heading_quality(
+        (
+            "# 计算机基础\n\n"
+            "## 核心概念速查表\n\n"
+            "## 掌握 CPU、运算器、控制器与内存储的补充讲解\n\n"
+            "## 典型例题与易错诊断\n\n"
+            "### 例题 1\n\n"
+            "## 字长定义与应\n\n"
+        ),
+        digest_mode="sprint",
+    )
+
+    assert quality["needs_agent_repair"] is True
+    assert quality["low_value_titles"] == [
+        "核心概念速查表",
+        "掌握 CPU、运算器、控制器与内存储的补充讲解",
+        "典型例题与易错诊断",
+        "例题 1",
+        "字长定义与应",
+    ]
+
+
+def test_learning_scaffold_does_not_generate_local_sections() -> None:
     scaffold = pedagogy.ensure_chapter_learning_scaffold(
         "只有一段内容",
         title="矩阵分解",
@@ -146,28 +170,16 @@ def test_learning_scaffold_inserts_required_sections_without_duplication() -> No
         digest_mode="sprint",
         source_count=2,
     )
-    repeated = pedagogy.ensure_chapter_learning_scaffold(
-        scaffold,
-        title="矩阵分解",
-        objective="掌握矩阵分解",
-        required_elements=["奇异值分解", "低秩近似"],
-        digest_mode="sprint",
-        source_count=2,
-    )
 
     assert scaffold.startswith("# 矩阵分解\n")
-    assert "> [!TIP]" in scaffold
-    assert "奇异值分解" in scaffold
-    assert "低秩近似" in scaffold
-    assert scaffold.count("核心总结") == 1
-    assert repeated.count("核心总结") == 1
-    assert repeated.count("> [!TIP]") == 1
+    assert "只有一段内容" in scaffold
+    assert "> [!TIP]" not in scaffold
+    assert "核心总结" not in scaffold
 
 
-def test_systematic_mode_sections_add_position_and_extension_boundaries() -> None:
-    first_chapter_keys = [
-        key
-        for key, _heading, _block in pedagogy._build_mode_sections(
+def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:
+    assert (
+        pedagogy._build_mode_sections(
             title="矩阵分解",
             objective="理解矩阵分解在课程中的位置",
             required_elements=["奇异值分解", "低秩近似"],
@@ -175,23 +187,8 @@ def test_systematic_mode_sections_add_position_and_extension_boundaries() -> Non
             chapter_index=1,
             chapter_count=3,
         )
-    ]
-    final_chapter_keys = [
-        key
-        for key, _heading, _block in pedagogy._build_mode_sections(
-            title="综合应用",
-            objective="串联课程知识",
-            required_elements=["综合题", "迁移应用"],
-            digest_mode="systematic",
-            chapter_index=3,
-            chapter_count=3,
-        )
-    ]
-
-    assert "map" in first_chapter_keys
-    assert "extension" not in first_chapter_keys
-    assert "map" not in final_chapter_keys
-    assert "extension" in final_chapter_keys
+        == []
+    )
 
 
 def test_sprint_practice_supplement_repairs_weak_existing_practice_heading() -> None:
