@@ -21,6 +21,7 @@ from app.workflows.digest.planner.lib.plans import _resolve_course_name
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     build_plan_structured_count_retry_messages,
     build_plan_structured_messages,
+    build_plan_structured_title_retry_messages,
     build_plan_visible_messages,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -113,6 +114,34 @@ def _coerce_string_list(value: Any) -> list[str]:
         seen.add(key)
         cleaned.append(text)
     return cleaned
+
+
+def _title_display_units(text: str) -> int:
+    return sum(2 if ord(char) > 127 else 1 for char in text)
+
+
+def _chapter_title_quality_issues(sketch: PlannerOutlineSketch) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for index, chapter in enumerate(sketch.chapters, start=1):
+        title = chapter.title.strip()
+        if "：" in title or ":" in title:
+            issues.append(
+                {
+                    "chapter_index": index,
+                    "title": title,
+                    "reason": "contains_colon_subtitle",
+                }
+            )
+            continue
+        if _title_display_units(title) > 32:
+            issues.append(
+                {
+                    "chapter_index": index,
+                    "title": title,
+                    "reason": "too_long_for_catalog",
+                }
+            )
+    return issues
 
 
 def _adjustment_questions_from_intent(plan_intent: PlanIntent) -> list[str]:
@@ -313,6 +342,52 @@ async def _retry_outline_for_requested_count(
     return result if isinstance(result, PlannerOutlineSketch) else PlannerOutlineSketch.model_validate(result)
 
 
+async def _retry_outline_for_title_quality(
+    state: BuildPlannerState,
+    *,
+    material_context,
+    planner_brief: PlannerBrief,
+    plan_intent: PlanIntent,
+    previous_sketch: PlannerOutlineSketch,
+    title_issues: list[dict[str, Any]],
+) -> PlannerOutlineSketch:
+    await emit_planner_event(
+        state,
+        event="planner.plan.structure_retrying",
+        detail="结构化大纲标题不够像课程目录，正在交给模型重新命名。",
+        payload={
+            "target_scope": plan_intent.target_scope.strip(),
+            "title_issue_count": len(title_issues),
+        },
+    )
+    result = await acompletion_with_fallback(
+        build_plan_structured_title_retry_messages(
+            course_name=_course_for_prompt(state),
+            user_prompt=state.get("user_prompt") or "",
+            digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
+            material_context=material_context,
+            planner_brief=planner_brief,
+            plan_intent=plan_intent,
+            previous_outline=previous_sketch.model_dump(mode="json"),
+            title_issues=title_issues,
+            message_history=list(state.get("message_history", [])),
+            latest_feedback=state.get("feedback_message") or "",
+            latest_plan=state.get("latest_plan"),
+            existing_doc_context=state.get("existing_doc_context"),
+            planner_context_mode=state.get("planner_context_mode") or "fresh_build",
+        ),
+        **planner_completion_kwargs_with_metadata(
+            PlannerModelStep.STRUCTURED_PLAN,
+            model_override=state.get("model_override"),
+            planner_session_id=state.get("planner_session_id") or "",
+            substep="按目录可读性重写计划标题",
+            repair_reason="chapter_title_quality",
+        ),
+        response_model=PlannerOutlineSketch,
+    )
+    return result if isinstance(result, PlannerOutlineSketch) else PlannerOutlineSketch.model_validate(result)
+
+
 async def _compose_outline_sketch_with_llm(
     state: BuildPlannerState,
     *,
@@ -376,10 +451,32 @@ async def _compose_outline_sketch_with_llm(
             previous_sketch=sketch,
             required_chapter_count=required_chapter_count,
         )
+    title_issues = _chapter_title_quality_issues(sketch)
+    if title_issues:
+        sketch = await _retry_outline_for_title_quality(
+            state,
+            material_context=material_context,
+            planner_brief=planner_brief,
+            plan_intent=plan_intent,
+            previous_sketch=sketch,
+            title_issues=title_issues,
+        )
+    if required_chapter_count is not None and len(sketch.chapters) != required_chapter_count:
+        sketch = await _retry_outline_for_requested_count(
+            state,
+            material_context=material_context,
+            planner_brief=planner_brief,
+            plan_intent=plan_intent,
+            previous_sketch=sketch,
+            required_chapter_count=required_chapter_count,
+        )
     if required_chapter_count is not None and len(sketch.chapters) != required_chapter_count:
         raise ValueError(
             f"planner outline chapter count {len(sketch.chapters)} does not match requested {required_chapter_count}"
         )
+    title_issues = _chapter_title_quality_issues(sketch)
+    if title_issues:
+        raise ValueError(f"planner outline contains non-catalog chapter titles: {title_issues}")
     logger.info(
         "planner_structured_outline_llm_completed",
         planner_session_id=state.get("planner_session_id") or "",

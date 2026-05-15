@@ -12,7 +12,10 @@ from app.workflows.digest.planner.lib.plans import (
     render_planner_chapter_contract,
 )
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
-from app.workflows.digest.planner.prompts.build_plan_composer import build_plan_structured_messages
+from app.workflows.digest.planner.prompts.build_plan_composer import (
+    build_plan_structured_messages,
+    build_plan_structured_title_retry_messages,
+)
 from app.workflows.digest.planner.prompts.plan_intent import build_plan_intent_messages
 from app.workflows.digest.planner.prompts.plan_sketch import build_plan_sketch_prompt
 
@@ -29,7 +32,65 @@ def test_chapter_contract_mentions_range_and_total_length_budget() -> None:
     assert f"{config.min_chapters}-{config.max_chapters} 章" in contract
     assert config.target_length in contract
     assert "整份知识文档的预算" in contract
+    assert "不使用冒号副标题" in contract
     assert "冻结执行合同" not in contract
+
+
+def test_normalize_planner_draft_does_not_rewrite_model_titles_locally() -> None:
+    draft = normalize_planner_draft(
+        {
+            "plan_summary": "围绕高数生成一份可确认的复习计划。",
+            "chapter_plan": [
+                {
+                    "title": "极限与连续：核心概念与计算技巧",
+                    "key_points": ["极限定义", "等价无穷小", "洛必达法则"],
+                },
+                {
+                    "title": "导数与微分：定义、法则与计算",
+                    "key_points": ["导数定义", "链式法则", "隐函数求导"],
+                },
+                {
+                    "title": "微分中值定理及其应用",
+                    "key_points": ["罗尔定理", "拉格朗日中值定理"],
+                },
+            ],
+        },
+        course_id="高数",
+        user_prompt="高数速成",
+        requested_digest_mode="sprint",
+    )
+
+    titles = [chapter.title for chapter in draft.chapter_plan]
+    assert titles == ["极限与连续：核心概念与计算技巧", "导数与微分：定义、法则与计算", "微分中值定理及其应用"]
+
+
+def test_planner_title_quality_flags_titles_for_llm_retry() -> None:
+    sketch = plan_draft_node.PlannerOutlineSketch.model_validate(
+        {
+            "plan_text": "围绕高数生成可确认大纲。",
+            "plan_steps": ["判断范围", "拆分章节"],
+            "chapters": [
+                {
+                    "title": "极限与连续：核心概念与计算技巧",
+                    "key_points": ["极限定义", "计算方法"],
+                },
+                {
+                    "title": "微分中值定理及其应用",
+                    "key_points": ["罗尔定理", "拉格朗日中值定理"],
+                },
+            ],
+        }
+    )
+
+    issues = plan_draft_node._chapter_title_quality_issues(sketch)
+
+    assert issues == [
+        {
+            "chapter_index": 1,
+            "title": "极限与连续：核心概念与计算技巧",
+            "reason": "contains_colon_subtitle",
+        }
+    ]
 
 
 def test_normalize_planner_draft_caps_over_split_chapters() -> None:
@@ -383,6 +444,50 @@ def test_structured_plan_prompt_requires_course_catalog_titles() -> None:
 
     assert "章节标题合同" in prompt
     assert "title 是课程目录标题，不是学习策略句" in prompt
+    assert "title 要短而可扫读" in prompt
+    assert "title 不使用冒号、副标题、分号或长串枚举" in prompt
     assert "key_points 才写学习动作" in prompt
     assert "本地代码不会做关键词提取" in prompt
     assert "行列式、矩阵、初等变换、向量、线性方程组、特征值、二次型" in prompt
+
+
+def test_title_retry_prompt_sends_bad_titles_back_to_llm() -> None:
+    material_context = DigestMaterialContext(
+        course_mode_decision=DigestModeDecision(mode=DigestMode.SPRINT),
+        material_digest="高数复习资料摘要",
+    )
+    plan_intent = PlanIntent(
+        plan_intent="用户想要高数快速复习。",
+        target_scope="高数",
+        plan_queries=["极限", "导数", "积分"],
+    )
+    messages = build_plan_structured_title_retry_messages(
+        course_name="高数",
+        user_prompt="高数",
+        digest_mode="sprint",
+        material_context=material_context,
+        planner_brief=PlannerBrief(markdown="应围绕高数复习规划。"),
+        plan_intent=plan_intent,
+        previous_outline={
+            "plan_text": "围绕高数生成计划。",
+            "chapters": [
+                {
+                    "title": "极限与连续：核心概念与计算技巧",
+                    "key_points": ["极限定义", "等价无穷小"],
+                }
+            ],
+        },
+        title_issues=[
+            {
+                "chapter_index": 1,
+                "title": "极限与连续：核心概念与计算技巧",
+                "reason": "contains_colon_subtitle",
+            }
+        ],
+    )
+    prompt = "\n".join(message["content"] for message in messages)
+
+    assert "请重新生成完整结构化结果" in prompt
+    assert "由你基于用户目标、资料画像、上下文和章节边界重新命名 title" in prompt
+    assert "不要依赖本地截取、字符串拼接或固定词表" in prompt
+    assert "极限与连续：核心概念与计算技巧" in prompt

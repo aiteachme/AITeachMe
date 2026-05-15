@@ -23,6 +23,9 @@ REPLACE_EXISTING_OUTLINE_MODE = "replace_existing_outline"
 COURSE_CATALOG_TITLE_CONTRACT = """
 章节标题合同：
 - title 是课程目录标题，不是学习策略句；它应该像讲义/教材里的课时主题，优先写具体知识对象、方法主题或题型主题。
+- title 要短而可扫读，通常 4-12 个中文字符，最多 16 个中文字符/8 个英文词；一个 title 只表达一个主主题。
+- title 不使用冒号、副标题、分号或长串枚举；不要写“主题：核心概念与计算技巧”这种解释型标题，细节全部放进 key_points。
+- 示例：写“极限与连续”，不要写“极限与连续：核心概念与计算技巧”；写“导数与微分”，不要写“导数与微分：定义、法则与计算”；写“定积分计算”，不要写“定积分：计算方法与几何物理应用”。
 - key_points 才写学习动作、练习方式、易错边界和题型处理；不要把这些动作压进 title。
 - 对线性代数这类完整课程，优先按标准课时或教材边界拆分，例如行列式、矩阵、初等变换、向量、线性方程组、特征值、二次型这类可直接上课的主题；速成模式只影响取舍和 key_points 密度，不把标题改成抽象能力标签。
 - 对窄范围专题，title 仍然是该专题内部的目录主题，例如适用条件、公式结构、计算方法、典型题型、易错边界；不要扩展成整门课。
@@ -88,6 +91,7 @@ def _render_task_chapter_contract(*, digest_mode: str, is_revision: bool, is_rep
                 "- chapters 必须围绕本轮 target_scope 重新生成完整列表；旧方案中不属于 target_scope 的章节必须消失。",
                 "- 如果 requested_chapter_count 非空，chapters 数量必须严格等于该数字。",
                 "- 每章标题必须像课程目录，直接体现 target_scope 内部的一个知识主题、方法主题、题型主题或易错边界。",
+                "- 每章标题必须短而清楚，不使用冒号副标题；拆不清的说明放进 key_points。",
             ]
         )
     return "\n".join(
@@ -414,6 +418,7 @@ def build_plan_structured_messages(
 2. {plan_steps_requirement}
 3. {chapter_count_instruction}
 4. 每章 title 必须是让人一眼看懂的课程目录标题；每章 key_points 输出 2-4 条，服务后续知识文档生成器继续过大模型写正文。
+   title 要短，不使用冒号副标题；若需要解释“讲什么、怎么练、哪里易错”，写进 key_points。
 5. chapters 只写课程骨架和 key_points，不要放来源、媒体计划、后端字段、已读取未完成资料、已确定证据来源或已生成正文的表述。
 6. 没有上传资料时，只能基于用户提示生成通用初步计划，不要声称读过具体文件。
 7. 若当前规划模式为已有文档重建/调整，必须围绕已有版本如何改造来生成大纲。
@@ -496,8 +501,57 @@ def build_plan_structured_count_retry_messages(
     return [*messages, {"role": "user", "content": retry_prompt}]
 
 
+def build_plan_structured_title_retry_messages(
+    *,
+    course_name: str,
+    user_prompt: str | None = None,
+    digest_mode: str,
+    material_context: DigestMaterialContext,
+    planner_brief: PlannerBrief,
+    plan_intent: PlanIntent,
+    previous_outline: dict[str, Any],
+    title_issues: list[dict[str, Any]],
+    message_history: list[str] | None = None,
+    latest_feedback: str | None = None,
+    latest_plan: dict[str, Any] | None = None,
+    existing_doc_context: str | None = None,
+    planner_context_mode: str = "fresh_build",
+) -> list[dict[str, str]]:
+    messages = build_plan_structured_messages(
+        course_name=course_name,
+        user_prompt=user_prompt,
+        digest_mode=digest_mode,
+        material_context=material_context,
+        planner_brief=planner_brief,
+        plan_intent=plan_intent,
+        message_history=message_history,
+        latest_feedback=latest_feedback,
+        latest_plan=latest_plan,
+        existing_doc_context=existing_doc_context,
+        planner_context_mode=planner_context_mode,
+    )
+    retry_prompt = f"""
+上一轮结构化大纲的章节标题不够像可扫读的课程目录，请重新生成完整结构化结果。
+
+必须严格满足：
+- 由你基于用户目标、资料画像、上下文和章节边界重新命名 title；不要依赖本地截取、字符串拼接或固定词表。
+- 每个 title 是短目录名，不写冒号副标题、分号说明或长串枚举。
+- 需要解释“讲什么、怎么练、哪里易错”的内容，全部放进 key_points，不压进 title。
+- 保持上一轮已经判断出的章节边界和章节数量，除非用户本轮明确要求改变。
+- 不输出解释、Markdown 或额外文本，只输出 response_model 需要的结构化结果。
+
+需要重写的标题问题：
+{json.dumps(title_issues, ensure_ascii=False, indent=2)}
+
+上一轮输出：
+{json.dumps(previous_outline, ensure_ascii=False, indent=2)}
+""".strip()
+    return [*messages, {"role": "user", "content": retry_prompt}]
+
+
 __all__ = [
     "build_plan_structured_messages",
     "build_plan_structured_count_retry_messages",
+    "build_plan_structured_title_retry_messages",
     "build_plan_visible_messages",
 ]
