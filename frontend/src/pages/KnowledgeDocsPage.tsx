@@ -5009,7 +5009,7 @@ export function KnowledgeDocsPage() {
       const isCollapsed = collapsedTocIds.has(item.id);
       const isActive = visibleActiveHeading === item.id;
       const count = commentsForAnchor(item.id);
-      const indent = depth * 16;
+      const indent = depth * 12;
 
       return (
         <div key={item.id}>
@@ -5021,7 +5021,7 @@ export function KnowledgeDocsPage() {
                 ? "bg-indigo-50/80 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300"
                 : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
             )}
-            style={{ paddingLeft: indent + 4 }}
+            style={{ paddingLeft: indent + 2 }}
           >
             {/* Left active indicator (Feishu-style) */}
             {isActive && (
@@ -5040,6 +5040,8 @@ export function KnowledgeDocsPage() {
                   "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
                   isActive ? "text-indigo-500 hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-500/10" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 )}
+                title={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
+                aria-label={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
               >
                 <ChevronRight
                   className={cn(
@@ -5056,10 +5058,13 @@ export function KnowledgeDocsPage() {
             <button
               type="button"
               onClick={() => handleTocItemClick(item.id)}
+              title={item.text}
+              aria-label={`跳转到：${item.text}`}
               className={cn(
-                "flex-1 min-w-0 text-left py-1.5 pr-1 text-[13px] truncate transition-colors",
+                "flex-1 min-w-0 text-left py-1.5 pr-1 text-[14px] leading-5 truncate transition-colors",
                 isActive ? "font-semibold" : "font-normal",
-                item.level === 1 && "font-semibold text-[13.5px]"
+                item.level === 1 && "font-semibold text-[14.5px]",
+                item.level >= 3 && "text-[13.5px]"
               )}
             >
               {item.text}
