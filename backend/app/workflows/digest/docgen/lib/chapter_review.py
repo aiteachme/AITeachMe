@@ -31,6 +31,10 @@ _PROBLEM_ORGANIZATION_RE = re.compile(
     r"(?:题型整理|题型归纳|题型分类|常见题型|典型题|常见问法|题目类型|常见任务|任务整理|"
     r"适用条件|解题思路|做法|常见失误|易错|误区)"
 )
+_TRAINING_INTENT_RE = re.compile(
+    r"(?:考试|考点|考法|题型|题目|真题|例题|练习|自测|训练|变式|错因|解题|证明|计算|求导|"
+    r"积分|极限|最值|方程|不等式|应用题|综合题|综合训练)"
+)
 _SELF_CHECK_SECTION_RE = re.compile(
     r"(?ms)^#{2,4}\s+[^\n]*(?:自测|思考|辨析|练习)[^\n]*\n(?:[ \t]*\n)*(?P<body>.*?)(?=^#{1,4}\s+|\Z)"
 )
@@ -87,6 +91,39 @@ def _planned_example_count(task: ChapterGenerationTask) -> int:
         if isinstance(item, dict):
             total += max(1, _safe_int(item.get("min_examples"), default=1))
     return total
+
+
+def _is_problem_training_chapter(markdown: str, task: ChapterGenerationTask) -> bool:
+    """Return whether sprint review should enforce full problem-set structure."""
+
+    plan_bits: list[str] = []
+    for item in task.example_coverage_plan or []:
+        if not isinstance(item, dict):
+            continue
+        plan_bits.append(str(item.get("target") or ""))
+    role_bits = [
+        value
+        for values in dict(task.content_role_targets or {}).values()
+        for value in list(values or [])
+    ]
+    haystack = "\n".join(
+        [
+            task.confirmed_title,
+            task.enhanced_title,
+            task.objective,
+            *task.required_elements,
+            *task.content_points,
+            *task.example_targets,
+            *task.pitfall_targets,
+            *plan_bits,
+            *role_bits,
+        ]
+    )
+    if _TRAINING_INTENT_RE.search(haystack):
+        return True
+    if _has_problem_organization(markdown):
+        return True
+    return False
 
 
 def _missing_example_targets(markdown: str, task: ChapterGenerationTask, *, limit: int = 8) -> list[str]:
@@ -191,19 +228,51 @@ def _rule_review_chapter(
     planned_examples = _planned_example_count(task)
     density_policy = dict(task.practice_seed_policy.get("example_density_policy") or {})
     if str(digest_mode or task.practice_seed_policy.get("digest_mode") or "").strip().lower() == "sprint":
+        is_training_chapter = _is_problem_training_chapter(draft.markdown, task)
         policy_activity_count = _safe_int(density_policy.get("worked_examples_per_chapter"), default=4) + _safe_int(
             density_policy.get("practice_tasks_per_chapter"),
             default=4,
         )
-        expected_activity_count = max(
-            6,
-            min(
-                10,
-                planned_examples or policy_activity_count or 8,
-            ),
-        )
+        training_min_examples = _safe_int(density_policy.get("training_chapter_min_examples"), default=6)
+        concept_min_examples = _safe_int(density_policy.get("concept_chapter_min_examples"), default=2)
+        if is_training_chapter:
+            expected_activity_count = max(
+                training_min_examples,
+                min(
+                    10,
+                    planned_examples or policy_activity_count or training_min_examples,
+                ),
+            )
+        else:
+            expected_activity_count = max(
+                concept_min_examples,
+                min(
+                    4,
+                    planned_examples or concept_min_examples,
+                ),
+            )
         if activity_count < expected_activity_count:
-            warnings.append("快速复习节奏下，例题、案例、训练或实践任务密度不足。")
+            warnings.append(
+                "快速复习节奏下，训练题、例子、案例或实践任务密度不足。"
+                if is_training_chapter
+                else "快速复习节奏下，支撑理解的短例子、反例或小任务不足。"
+            )
+            instruction = (
+                (
+                    "补充由本章内容自然生成的高价值例题、操作案例、变式训练、自测或错误诊断；"
+                    "每个重要方法都要写清题目或任务条件、步骤过程、答案/结果和容易失误的地方。"
+                )
+                if is_training_chapter
+                else (
+                    "补充由本章内容自然生成的短例子、反例、条件辨析或小任务；"
+                    "重点讲清概念或方法什么时候能用、不能怎么用、和相邻概念差在哪里。"
+                )
+            )
+            expected_effect = (
+                "本章形成题型/场景/任务驱动的例题和训练密度。"
+                if is_training_chapter
+                else "本章不强行套题型表，但概念和方法都有直观例子支撑。"
+            )
             actions.append(
                 ReviewAction(
                     action_id=f"review_ch{draft.chapter_index:02d}_sprint_examples",
@@ -212,19 +281,16 @@ def _rule_review_chapter(
                     severity="warning",
                     reason=f"快速复习学习活动密度不足：当前约 {activity_count} 处，目标至少 {expected_activity_count} 处。",
                     target_anchor=_chapter_anchor(draft),
-                    instruction=(
-                        "补充由本章内容自然生成的高价值例题、操作案例、变式训练、自测或错误诊断；"
-                        "每个重要方法都要写清题目或任务条件、步骤过程、答案/结果和容易失误的地方。"
-                    ),
+                    instruction=instruction,
                     constraints=[
                         "不把非考试主题硬改成试卷题。",
                         "优先补本章已有知识点、方法或场景的例子，不新增无来源的新主题。",
                         "理论说明必须服务会做题、会操作、会判断、会避坑。",
                     ],
-                    expected_effect="本章形成题型/场景/任务驱动的例题和训练密度。",
+                    expected_effect=expected_effect,
                 )
             )
-        if not _has_problem_organization(draft.markdown):
+        if is_training_chapter and not _has_problem_organization(draft.markdown):
             warnings.append("快速复习章节缺少面向考试或任务的题型/任务整理。")
             actions.append(
                 ReviewAction(

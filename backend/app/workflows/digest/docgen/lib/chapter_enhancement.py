@@ -30,6 +30,11 @@ from app.workflows.digest.docgen.lib.textbook_style import (
 )
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
+_TRAINING_TITLE_RE = re.compile(
+    r"(?:考试|考点|考法|题型|题目|真题|例题|练习|自测|训练|变式|错因|解题|证明|计算|求导|"
+    r"积分|极限|最值|方程|不等式|应用题|综合题|综合训练)"
+)
+
 
 def _sanitize_public_doc_terms(markdown: str) -> str:
     return (
@@ -81,6 +86,13 @@ def _build_practice_questions(
         choose_heading_focus([*claim_prompts, *confusion_items], fallback="本章核心内容") or "本章核心内容"
     )
     if mode_profile.is_sprint:
+        density_policy = dict(mode_profile.example_density_policy)
+        desired_count = (
+            int(density_policy.get("training_chapter_min_examples", 6) or 6)
+            if _TRAINING_TITLE_RE.search(str(title or raw_title or ""))
+            else int(density_policy.get("worked_examples_per_chapter", 4) or 4)
+        )
+        desired_count = max(2, desired_count)
         focus_terms = [*claim_prompts, title]
         first_claim = claim_prompts[0] if claim_prompts else title or "核心重点"
         second_claim = claim_prompts[1] if len(claim_prompts) > 1 else first_claim
@@ -144,7 +156,7 @@ def _build_practice_questions(
                     "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
                 }
             )
-        while len(examples) < 6:
+        while len(examples) < desired_count:
             focus = focus_terms[min(len(examples) - 1, len(focus_terms) - 1)] if focus_terms else title
             examples.append(
                 {

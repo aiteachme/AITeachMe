@@ -66,10 +66,10 @@ def test_heading_quality_detects_duplicate_generic_titles() -> None:
     assert quality["digest_mode"] == "systematic"
     assert quality["h2_count"] == 2
     assert quality["duplicate_titles"] == ["核心概念"]
-    assert quality["generic_titles"] == []
+    assert quality["generic_titles"] == ["核心概念"]
     assert quality["needs_agent_repair"] is True
     assert quality["needs_scaffold_fallback"] is False
-    assert {"guide", "objectives", "recap"} <= set(quality["missing_modules"])
+    assert quality["missing_modules"] == []
 
 
 def test_learning_scaffold_inserts_required_sections_without_duplication() -> None:
@@ -244,18 +244,20 @@ def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
 def test_sprint_rule_review_requires_model_generated_problem_organization() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
-        title="矩阵分解",
-        markdown="# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。\n",
+        title="定积分计算",
+        markdown="# 定积分计算\n\n## 核心内容\n\n换元积分要先判断是否能凑微分。\n",
     )
     task = ChapterGenerationTask(
         chapter_index=1,
-        confirmed_title="矩阵分解",
-        required_elements=["奇异值分解", "低秩近似"],
+        confirmed_title="定积分计算",
+        required_elements=["换元积分题型", "分部积分计算"],
         practice_seed_policy={
             "digest_mode": "sprint",
             "example_density_policy": {
                 "worked_examples_per_chapter": 4,
                 "practice_tasks_per_chapter": 4,
+                "training_chapter_min_examples": 6,
+                "concept_chapter_min_examples": 2,
             },
         },
     )
@@ -279,6 +281,47 @@ def test_sprint_rule_review_requires_model_generated_problem_organization() -> N
     assert "具体题型对象" in instruction
     assert "| 题型/任务 |" not in instruction
     assert report.passed is False
+
+
+def test_sprint_rule_review_does_not_force_problem_table_for_concept_chapter() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="矩阵分解",
+        markdown=(
+            "# 矩阵分解\n\n"
+            "## 分解直觉\n\n"
+            "矩阵分解把复杂矩阵拆成更容易解释的结构。\n\n"
+            "### 短例子\n\n"
+            "示例：把一个数据矩阵拆成方向和权重，可以帮助理解主要变化方向。\n\n"
+            "### 反例\n\n"
+            "反例：如果只看矩阵大小，不看任务目标，就无法判断该用哪种分解。\n"
+        ),
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="矩阵分解",
+        required_elements=["奇异值分解", "低秩近似"],
+        practice_seed_policy={
+            "digest_mode": "sprint",
+            "example_density_policy": {
+                "worked_examples_per_chapter": 4,
+                "practice_tasks_per_chapter": 4,
+                "training_chapter_min_examples": 6,
+                "concept_chapter_min_examples": 2,
+            },
+        },
+    )
+
+    _reviewed, _report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="sprint",
+    )
+
+    assert not any(action.action_id.endswith("_sprint_problem_organization") for action in actions)
 
 
 def test_sprint_rule_review_rejects_unanswered_self_check() -> None:
@@ -348,7 +391,8 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "> [!WARNING]" in prompt
     assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
-    assert "至少 6 个带题目、解析、答案/结论和易错点" in prompt
+    assert "训练型章节至少 6 个完整学习活动" in prompt
+    assert "概念章至少 2 个左右" in prompt
     assert "不能反复复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "考前速查与自测" in prompt

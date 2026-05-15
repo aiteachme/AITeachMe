@@ -90,6 +90,19 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
     assert breakdown == {"local": 1, "academic": 1, "community": 1, "general_web": 1}
 
 
+def test_dedupe_results_ranks_local_and_reliable_sources_before_truncation() -> None:
+    runtime = _runtime()
+    results = [
+        _result("https://random.example.com/a", "Random", "泛泛摘要" * 20, score=0.95),
+        _result("https://arxiv.org/abs/1234", "Paper", "矩阵分解 低秩近似 论文", score=0.6),
+        _result("local://section/1", "Local", "本地矩阵分解材料", score=0.2, source="local_rag"),
+    ]
+
+    deduped = runtime._dedupe_results(results, max_results=2)
+
+    assert [item.url for item in deduped] == ["local://section/1", "https://arxiv.org/abs/1234"]
+
+
 @pytest.mark.anyio
 async def test_collect_documents_uses_cache_and_snippet_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime = _runtime()
@@ -116,6 +129,7 @@ async def test_collect_documents_uses_cache_and_snippet_fallback(monkeypatch: py
         _result("https://example.edu/page", "External", "外部摘要"),
         _result("https://example.edu/page", "External duplicate", "重复摘要"),
         _result("https://example.org/empty", "Empty", "空页面摘要"),
+        _result("https://noise.example.com/empty", "Noise", "短摘要", score=0.2),
         _result("https://cached.org/page", "Cached", "缓存摘要"),
     ]
 
@@ -126,12 +140,13 @@ async def test_collect_documents_uses_cache_and_snippet_fallback(monkeypatch: py
         read_timeout_s=0.1,
     )
 
-    assert fetched_urls == ["https://example.edu/page", "https://example.org/empty"]
+    assert fetched_urls == ["https://example.edu/page", "https://example.org/empty", "https://noise.example.com/empty"]
     assert read_count == 2
     assert any("本地切片正文" in item for item in documents)
     assert any("百科摘要" in item for item in documents)
     assert any("# Example EDU" in item and "完整正文" in item for item in documents)
     assert any("空页面摘要" in item for item in documents)
+    assert not any("短摘要" in item for item in documents)
     assert any("缓存正文" in item for item in documents)
     assert cached_read_count == 1
     assert cached_documents == ["# Cached\n\n缓存正文"]

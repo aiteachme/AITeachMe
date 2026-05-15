@@ -422,6 +422,17 @@ def _heading_keyword_map(digest_mode: str) -> dict[str, tuple[str, ...]]:
     return _SPRINT_HEADING_KEYWORDS if _normalize_mode(digest_mode) == "sprint" else _SYSTEMATIC_HEADING_KEYWORDS
 
 
+def _generic_heading_titles(titles: list[str]) -> list[str]:
+    generic: list[str] = []
+    for title in titles:
+        cleaned = clean_generated_chapter_title(title)
+        if not cleaned:
+            continue
+        if cleaned in _GENERIC_FOCUS_TERMS or cleaned in _UNUSABLE_CHAPTER_TITLES:
+            generic.append(cleaned)
+    return list(dict.fromkeys(generic))
+
+
 def _build_scaffold_headings(
     *,
     title: str,
@@ -458,21 +469,17 @@ def _build_scaffold_headings(
 
 def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[str, object]:
     normalized_mode = _normalize_mode(digest_mode)
-    heading_keywords = _heading_keyword_map(normalized_mode)
     heading_titles = _extract_heading_titles(markdown, min_level=2, max_level=3)
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
     duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
-    missing_modules = [
-        key
-        for key, keywords in heading_keywords.items()
-        if not _has_heading_keywords(markdown, keywords)
-    ]
+    generic_titles = _generic_heading_titles(cleaned_titles)
+    missing_modules: list[str] = []
     min_h2_count = 3 if normalized_mode == "sprint" else 4
     h2_count = _count_headings(markdown, level=2)
     needs_agent_repair = bool(
         h2_count < min_h2_count
         or duplicates
-        or len(missing_modules) >= 5
+        or generic_titles
     )
     needs_scaffold_fallback = bool(
         h2_count < 2
@@ -482,7 +489,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         "h2_count": h2_count,
         "heading_titles": cleaned_titles,
         "duplicate_titles": duplicates,
-        "generic_titles": [],
+        "generic_titles": generic_titles,
         "missing_modules": missing_modules,
         "needs_agent_repair": needs_agent_repair,
         "needs_scaffold_fallback": needs_scaffold_fallback,
@@ -513,8 +520,7 @@ def ensure_chapter_learning_scaffold(
         digest_mode=normalized_mode,
     )
     heading_keywords = _heading_keyword_map(normalized_mode)
-    min_h2_count = 4 if normalized_mode == "sprint" else 5
-    needs_support_pack = _count_headings(cleaned, level=2) < min_h2_count
+    needs_support_pack = _count_headings(cleaned, level=2) < 2
 
     missing_blocks: list[str] = []
     if needs_support_pack:
@@ -543,18 +549,6 @@ def ensure_chapter_learning_scaffold(
         )
         if objectives_block and not _has_heading_keywords(cleaned, heading_keywords["objectives"]):
             missing_blocks.append(objectives_block.strip())
-
-        for key, _heading, block in _build_mode_sections(
-            title=title,
-            objective=objective,
-            required_elements=required_elements,
-            digest_mode=normalized_mode,
-            chapter_index=chapter_index,
-            chapter_count=chapter_count,
-            headings=heading_plan,
-        ):
-            if not _has_heading_keywords(cleaned, heading_keywords.get(key, ())):
-                missing_blocks.append(block.strip())
 
     if missing_blocks:
         cleaned = _insert_after_first_heading(cleaned, "\n\n".join(missing_blocks))

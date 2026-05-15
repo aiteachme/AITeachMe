@@ -42,8 +42,16 @@ from app.workflows.digest.docgen.prompts.generation import build_docgen_research
 
 _LOW_VALUE_SOURCE_MARKERS = (
     "baidu.com/zhidao",
+    "zhidao.baidu.com",
+    "baike.baidu.com",
+    "wenku.baidu.com",
     "360doc.com",
     "docin.com",
+    "zhihu.com",
+    "csdn.net",
+    "jianshu.com",
+    "sohu.com",
+    "toutiao.com",
 )
 _OI_WIKI_DOMAINS = (
     "oi-wiki.org",
@@ -242,6 +250,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 curated_results,
                 page_cache=page_cache,
                 read_timeout_s=float(DEFAULT_DOCGEN_READ_TIMEOUT_S),
+                focus_text=focus_text or base_queries[0],
             )
             if not documents:
                 documents = [item.to_text() for item in curated_results if item.to_text().strip()]
@@ -538,11 +547,12 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         *,
         page_cache: dict[str, ScrapedPage] | None = None,
         read_timeout_s: float | None = None,
+        focus_text: str = "",
     ) -> tuple[list[str], int]:
         """把检索结果转换成可压缩文档。
 
         local:// 结果直接使用切片文本；外部 URL 先通过 reader 打开正文。
-        如果 reader 失败但搜索 snippet 可用，则保留 snippet 作为降级材料。
+        如果 reader 失败但搜索 snippet 可用，只保留来源质量和相关性足够的降级材料。
         """
 
         documents: list[str] = []
@@ -586,7 +596,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 title = page.title.strip() or item.title.strip() or item.url.strip()
                 documents.append(f"# {title}\n\n{page.content.strip()}")
                 continue
-            if item.snippet.strip():
+            if item.snippet.strip() and self._should_keep_snippet_fallback(item, focus_text=focus_text):
                 documents.append(item.to_text())
         return documents, read_url_count
 
@@ -665,6 +675,22 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             filtered.append(item)
         return filtered
 
+    def _result_rank_key(self, item: SearchResult) -> tuple[int, float, int, str]:
+        source_class = self._classify_source(item)
+        class_rank = {
+            "local": 4,
+            "academic": 3,
+            "institutional": 2,
+            "general_web": 1,
+            "community": 0,
+        }.get(source_class, 0)
+        return (
+            class_rank,
+            max(0.0, float(item.score or 0.0)),
+            len(str(item.snippet or "")),
+            str(item.title or "").casefold(),
+        )
+
     def _dedupe_results(
         self,
         results: Iterable[SearchResult],
@@ -673,7 +699,8 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
     ) -> list[SearchResult]:
         deduped: list[SearchResult] = []
         seen: set[str] = set()
-        for item in results:
+        ranked = sorted(list(results), key=self._result_rank_key, reverse=True)
+        for item in ranked:
             key = item.url.strip() or f"{item.title.strip()}::{item.snippet.strip()[:120]}"
             if not key or key in seen:
                 continue
@@ -682,6 +709,28 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             if max_results is not None and len(deduped) >= max_results:
                 break
         return deduped
+
+    def _should_keep_snippet_fallback(self, item: SearchResult, *, focus_text: str = "") -> bool:
+        source_class = self._classify_source(item)
+        if source_class in {"local", "academic", "institutional"}:
+            return True
+        if source_class == "community":
+            return False
+        snippet = str(item.snippet or "").strip()
+        if len(snippet) < 60:
+            return False
+        if float(item.score or 0.0) >= 0.8:
+            return True
+        if not focus_text.strip():
+            return False
+        focus_terms = [
+            self._normalize_text_blob(term)
+            for term in _TERM_SPLIT_RE.split(focus_text)
+            if len(self._normalize_text_blob(term)) >= 2
+        ]
+        haystack = self._normalize_text_blob(f"{item.title}\n{item.snippet}")
+        hits = sum(1 for term in focus_terms if term and term in haystack)
+        return hits >= max(2, int(len(focus_terms) * 0.4 + 0.5))
 
     def _record_retriever_call(
         self,
