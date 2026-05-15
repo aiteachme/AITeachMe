@@ -19,6 +19,8 @@ def build_chapter_execution_brief_messages(
     glossary_terms: Sequence[str],
     claim_targets: Sequence[str],
     confusion_targets: Sequence[str],
+    plan_summary: str = "",
+    docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     profile = get_docgen_mode_profile(digest_mode)
     course_flow = "；".join(profile.course_flow_hints)
@@ -44,6 +46,10 @@ def build_chapter_execution_brief_messages(
 
 文档级写作意图：
 {dict(intent_core or {})}
+
+Planner handoff:
+- plan_summary: {plan_summary or "not provided"}
+- docgen_history_brief: {docgen_history_brief or "none"}
 
 骨架线索：
 - glossary_terms: {", ".join(str(item) for item in glossary_terms)}
@@ -107,6 +113,8 @@ def build_chapter_execution_brief_messages(
             "course_name": course_name,
             "digest_mode": digest_mode,
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
+            "has_plan_summary": bool(plan_summary),
+            "has_docgen_history": bool(docgen_history_brief),
             "glossary_count": len(list(glossary_terms or [])),
             "claim_target_count": len(list(claim_targets or [])),
         },

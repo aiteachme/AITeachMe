@@ -1,4 +1,4 @@
-"""Chapter task planning and fallback drafting."""
+"""Chapter task planning for DocGen."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from app.workflows.digest.docgen.lib.models import (
     clean_content_role_targets,
     clean_example_coverage_plan,
 )
-from app.workflows.digest.docgen.lib.textbook_style import build_textbook_heading, choose_heading_focus
 from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 
 _MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程")
@@ -115,64 +114,17 @@ def _suggest_visual_placeholder_requests(
     return requests
 
 
-def _fallback_role_targets(
-    *,
-    required: list[str],
-    concept_targets: list[str],
-    example_targets: list[str],
-    pitfall_targets: list[str],
-    is_sprint: bool,
-) -> dict[str, list[str]]:
-    roles: dict[str, list[str]] = {}
-    core = clean_string_list([*concept_targets, *required], limit=10)
-    if core:
-        roles["core_knowledge"] = core
-    method = clean_string_list([*example_targets, *required], limit=8)
-    if method:
-        roles["method_demo"] = method
-    practice = clean_string_list([*example_targets, *required], limit=8)
-    if practice:
-        roles["practice_assessment"] = practice
-    support = clean_string_list(pitfall_targets, limit=6)
-    if support:
-        roles["explanation_support"] = support
-    if not is_sprint and core:
-        roles["principle_reasoning"] = core[:6]
-        roles["application_extension"] = method[:6] or core[:4]
-    return roles
-
-
 def _example_coverage_plan(
     *,
     brief: ChapterExecutionBrief,
     required: list[str],
     mode_profile,
 ) -> list[dict[str, Any]]:
+    del required, mode_profile
     plan = clean_example_coverage_plan(brief.example_coverage_plan, limit=16)
     if plan:
         return plan
-    targets = clean_string_list(
-        [
-            *brief.example_targets,
-            *brief.concept_targets,
-            *required,
-        ],
-        limit=8,
-    )
-    min_examples = 2 if mode_profile.is_sprint else 1
-    return clean_example_coverage_plan(
-        [
-            {
-                "target": target,
-                "example_type": "worked_example_or_case",
-                "purpose": "快速复习节奏用例题/任务形成可练路径；系统学习用例题/案例覆盖知识点。",
-                "min_examples": min_examples,
-            }
-            for target in targets
-        ],
-        limit=12,
-    )
-
+    raise ValueError("chapter execution brief is missing example_coverage_plan")
 
 def compose_seed_plan_and_backbone_agenda(
     *,
@@ -201,12 +153,9 @@ def compose_seed_plan_and_backbone_agenda(
     for index, chapter in enumerate(confirmed_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index) or index)
         confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        locked = locked_by_index.get(chapter_index) or LockedChapterTitle(
-            chapter_index=chapter_index,
-            confirmed_title=confirmed_title,
-            enhanced_title=confirmed_title,
-            fallback_used=True,
-        )
+        locked = locked_by_index.get(chapter_index)
+        if locked is None:
+            raise ValueError(f"missing locked title for chapter {chapter_index}")
         priority_file_ids, priority_section_refs = _priority_files_for_chapter(
             chapter_index=chapter_index,
             file_summaries=file_summaries,
@@ -305,27 +254,15 @@ def assemble_chapter_generation_plan(
     for index, chapter in enumerate(confirmed_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index) or index)
         confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
-        locked = locked_by_index.get(chapter_index) or LockedChapterTitle(
-            chapter_index=chapter_index,
-            confirmed_title=confirmed_title,
-            enhanced_title=confirmed_title,
-            fallback_used=True,
-        )
-        seed = seed_by_index.get(chapter_index) or ChapterGenerationTaskSeed(
-            chapter_index=chapter_index,
-            confirmed_title=confirmed_title,
-            enhanced_title=locked.enhanced_title or confirmed_title,
-            chapter_goal=str(chapter.get("objective") or ""),
-            mode=docgen_context.digest_mode,
-            required_elements=clean_string_list(chapter.get("required_elements", [])),
-        )
-        brief = briefs_by_index.get(chapter_index) or ChapterExecutionBrief(
-            chapter_index=chapter_index,
-            concept_targets=seed.required_elements[:2],
-            definition_targets=seed.required_elements[:2],
-            retrieval_queries=seed.retrieval_queries[:2],
-            fallback_used=True,
-        )
+        locked = locked_by_index.get(chapter_index)
+        if locked is None:
+            raise ValueError(f"missing locked title for chapter {chapter_index}")
+        seed = seed_by_index.get(chapter_index)
+        if seed is None:
+            raise ValueError(f"missing generation task seed for chapter {chapter_index}")
+        brief = briefs_by_index.get(chapter_index)
+        if brief is None:
+            raise ValueError(f"missing execution brief for chapter {chapter_index}")
         build_constraints = dict(docgen_context.build_constraints or {})
         min_words, target_words = mode_profile.word_budget(
             chapter_count=chapter_count,
@@ -358,13 +295,7 @@ def assemble_chapter_generation_plan(
         )
         content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
         if not content_role_targets:
-            content_role_targets = _fallback_role_targets(
-                required=list(seed.required_elements),
-                concept_targets=clean_string_list([*brief.concept_targets, *seed.required_elements], limit=8),
-                example_targets=clean_string_list(brief.example_targets, limit=4),
-                pitfall_targets=clean_string_list(brief.pitfall_targets, limit=4),
-                is_sprint=mode_profile.is_sprint,
-            )
+            raise ValueError(f"chapter execution brief is missing role targets for chapter {chapter_index}")
         example_coverage_plan = _example_coverage_plan(
             brief=brief,
             required=list(seed.required_elements),
@@ -434,145 +365,6 @@ def assemble_chapter_generation_plan(
     )
 
 
-def _fallback_focus_items(task: ChapterGenerationTask, *, title: str, fields: Sequence[str]) -> list[str]:
-    items: list[str] = []
-    for field in fields:
-        value = getattr(task, field, None)
-        if isinstance(value, str):
-            items.append(value)
-        elif isinstance(value, Sequence):
-            items.extend(str(item) for item in value)
-    items.extend([*task.content_points, *task.required_elements, task.objective, title])
-    return clean_string_list(items, limit=8) or [title]
-
-
-def _fallback_heading(
-    kind: str,
-    *,
-    task: ChapterGenerationTask,
-    digest_mode: str,
-    title: str,
-    focus_fields: Sequence[str],
-) -> str:
-    focus = choose_heading_focus(
-        _fallback_focus_items(task, title=title, fields=focus_fields),
-        fallback=title,
-    )
-    return build_textbook_heading(
-        kind,
-        digest_mode=digest_mode,
-        focus=focus,
-        fallback_title=title,
-    )
-
-
-def build_fallback_chapter_markdown(
-    *,
-    task: ChapterGenerationTask,
-    digest_mode: str,
-    reason: str,
-) -> str:
-    title = resolve_effective_chapter_title(
-        {
-            "chapter_index": task.chapter_index,
-            "title": task.enhanced_title,
-            "resolved_title": task.enhanced_title,
-            "objective": task.objective,
-            "required_elements": [
-                *task.content_points,
-                *task.required_elements,
-                *task.concept_targets,
-                *task.formula_targets,
-                *task.example_targets,
-                *task.pitfall_targets,
-            ],
-        },
-        chapter_index=task.chapter_index,
-        fallback_title=task.confirmed_title,
-    )
-    points = task.content_points or task.concept_targets or [task.objective or title]
-    mode_profile = get_docgen_mode_profile(digest_mode)
-    structure_heading = _fallback_heading(
-        "structure",
-        task=task,
-        digest_mode=digest_mode,
-        title=title,
-        focus_fields=("concept_targets", "definition_targets"),
-    )
-    points_heading = _fallback_heading(
-        "points",
-        task=task,
-        digest_mode=digest_mode,
-        title=title,
-        focus_fields=("content_points", "required_elements", "formula_targets"),
-    )
-    example_heading = _fallback_heading(
-        "examples",
-        task=task,
-        digest_mode=digest_mode,
-        title=title,
-        focus_fields=("example_targets", "content_points"),
-    )
-    example_focus = choose_heading_focus(
-        _fallback_focus_items(task, title=title, fields=("example_targets", "concept_targets")),
-        fallback=title,
-    )
-    outline_items = clean_string_list(task.teaching_outline, limit=3)
-    if mode_profile.is_sprint:
-        lines = [
-            f"# {title}",
-            "",
-            structure_heading,
-            "",
-            task.objective or f"先把《{title}》里最需要掌握的对象、条件和处理路径讲清楚。",
-            "",
-            points_heading,
-            "",
-            *[f"- {item}" for item in (outline_items or points)],
-            "",
-            example_heading,
-            "",
-            f"### {example_focus}的基础练习",
-            "",
-            f"**任务**：围绕《{title}》中的“{example_focus}”设计一个基础任务，判断应该使用哪个定义、结论、方法或操作步骤。",
-            "",
-            "**解析**：",
-            "1. 先识别任务给出的对象、条件和要求。",
-            "2. 再匹配本章对应的定义、结论或判定方法。",
-            "3. 最后检查结果是否满足原始条件。",
-            "",
-            "**易错点**：只记结论、不看适用条件，容易把相似任务或场景混用。",
-        ]
-    else:
-        lines = [
-            f"# {title}",
-            "",
-            structure_heading,
-            "",
-            task.objective or f"本章围绕《{title}》建立一条完整的理解主线。",
-            "",
-            points_heading,
-            "",
-            *[f"- {item}" for item in points],
-            "",
-            _fallback_heading(
-                "links",
-                task=task,
-                digest_mode=digest_mode,
-                title=title,
-                focus_fields=("definition_targets", "formula_targets", "concept_targets"),
-            ),
-            "",
-            "先明确概念和条件，再说明结论为什么成立，最后用例子把抽象内容落到具体情境。",
-            "",
-            example_heading,
-            "",
-            f"- 选择《{title}》中的“{example_focus}”，补一个贴近本课程的应用场景并说明适用条件。",
-        ]
-    lines.extend(["", f"> [!NOTE]", f"> 本章使用降级草稿生成：{reason}"])
-    return "\n".join(lines).strip() + "\n"
-
-
 def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[str], min_word_count: int) -> float:
     if not markdown.strip():
         return 0.0
@@ -586,7 +378,6 @@ def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[s
 
 __all__ = [
     "assemble_chapter_generation_plan",
-    "build_fallback_chapter_markdown",
     "compose_seed_plan_and_backbone_agenda",
     "estimate_quality_from_markdown",
 ]

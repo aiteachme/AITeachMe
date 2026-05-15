@@ -21,7 +21,6 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
-from app.workflows.digest.docgen.lib.chapter_planning import build_fallback_chapter_markdown
 from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context
 from app.workflows.digest.docgen.lib.models import (
@@ -799,13 +798,9 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         except asyncio.CancelledError:
             await preview_persist_buffer.close()
             raise
-        except Exception as exc:
-            fallback_used = True
-            writer_markdown = build_fallback_chapter_markdown(
-                task=task,
-                digest_mode=state.get("digest_mode") or "systematic",
-                reason=f"writer_failed:{str(exc)[:120]}",
-            )
+        except Exception:
+            await preview_persist_buffer.close()
+            raise
         quality = critique_chapter(
             markdown=writer_markdown,
             required_points=targets,

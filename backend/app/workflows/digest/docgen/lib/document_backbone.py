@@ -1,4 +1,4 @@
-﻿"""Document-level knowledge backbone for DocGen."""
+"""Document-level knowledge backbone for DocGen."""
 
 from __future__ import annotations
 
@@ -214,35 +214,6 @@ def build_document_backbone(
     )
 
 
-def fallback_document_backbone(*, task_seeds: Sequence[ChapterGenerationTaskSeed], reason: str) -> tuple[DocumentBackbone, list[BackboneConflictWarning]]:
-    claims = [
-        CanonicalClaim(
-            claim_id=f"fallback_ch{task.chapter_index:02d}_claim",
-            claim_type="core",
-            claim_text=task.chapter_goal or task.enhanced_title,
-            target_chapter=task.chapter_index,
-            importance=0.45,
-            requires_evidence=False,
-            source_hint="fallback_seed",
-        )
-        for task in task_seeds
-    ]
-    return (
-        DocumentBackbone(
-            canonical_claim_pool=claims,
-            source_trust_summary={"fallback_reason": reason, "evidence_unit_count": 0},
-            fallback_used=True,
-        ),
-        [
-            BackboneConflictWarning(
-                warning_id="bb_fallback_used",
-                severity="warning",
-                detail=f"知识骨架构建降级：{reason}",
-            )
-        ],
-    )
-
-
 def apply_backbone_to_chapter_plan(
     *,
     plan: ChapterGenerationPlan,
@@ -317,5 +288,4 @@ def apply_backbone_to_chapter_plan(
 __all__ = [
     "apply_backbone_to_chapter_plan",
     "build_document_backbone",
-    "fallback_document_backbone",
 ]

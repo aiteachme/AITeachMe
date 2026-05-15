@@ -98,6 +98,54 @@ async def test_docgen_summarize_files_batches_single_long_file(monkeypatch) -> N
     assert len(summaries[0].chapter_slices) == len(calls)
 
 
+@pytest.mark.anyio
+async def test_docgen_summarize_files_blocks_unrouted_llm_summary(monkeypatch) -> None:
+    sections = [_section(0, repeat=20)]
+    packet = _source_packet(file_id="file_1", sections=sections)
+    context = DigestMaterialContext(source_documents=[packet], material_sections=sections)
+
+    async def fake_completion(messages, **kwargs):
+        return FileMaterialSummary(summary="LLM looked at the file but did not route any source section.")
+
+    monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
+    monkeypatch.setattr(llm_scheduler, "get_llm_concurrency_limit", lambda: 4)
+
+    with pytest.raises(file_summaries.FileSummaryRoutingError):
+        await file_summaries.summarize_files(
+            context,
+            chapters=[{"chapter_index": 1, "title": "chapter"}],
+            digest_mode="systematic",
+        )
+
+
+@pytest.mark.anyio
+async def test_docgen_summarize_files_allows_explicit_noise_sections(monkeypatch) -> None:
+    sections = [_section(0, repeat=20)]
+    packet = _source_packet(file_id="file_1", sections=sections)
+    context = DigestMaterialContext(source_documents=[packet], material_sections=sections)
+
+    async def fake_completion(messages, **kwargs):
+        return FileMaterialSummary(
+            summary="LLM classified this source section as not useful for the confirmed chapters.",
+            noise_sections=[sections[0].digest_chunk_uid],
+            source_quality=0.1,
+        )
+
+    monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
+    monkeypatch.setattr(llm_scheduler, "get_llm_concurrency_limit", lambda: 4)
+
+    summaries = await file_summaries.summarize_files(
+        context,
+        chapters=[{"chapter_index": 1, "title": "chapter"}],
+        digest_mode="systematic",
+    )
+
+    assert len(summaries) == 1
+    assert summaries[0].fallback_used is False
+    assert summaries[0].chapter_slices == []
+    assert summaries[0].noise_sections == [sections[0].digest_chunk_uid]
+
+
 def test_docgen_long_file_batch_count_is_not_capped_by_concurrency() -> None:
     sections = [_section(index, repeat=200) for index in range(240)]
     packet = _source_packet(file_id="file_1", sections=sections)

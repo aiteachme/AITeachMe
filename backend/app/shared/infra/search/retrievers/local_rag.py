@@ -143,7 +143,7 @@ class LocalRAGRetriever(BaseRetriever):
             )
             if not content.strip():
                 continue
-            text_tokens = Counter(_tokenize(f"{title} {content[:1200]}"))
+            text_tokens = Counter(_tokenize(f"{title} {content}"))
             overlap = sum((query_tokens & text_tokens).values())
             if overlap <= 0:
                 continue

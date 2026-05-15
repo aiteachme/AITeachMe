@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import ScrapedPage, SearchResult
 from app.workflows.digest.docgen.lib import chapter_context as chapter_context_module
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
@@ -101,6 +102,19 @@ def test_dedupe_results_ranks_local_and_reliable_sources_before_truncation() -> 
     deduped = runtime._dedupe_results(results, max_results=2)
 
     assert [item.url for item in deduped] == ["local://section/1", "https://arxiv.org/abs/1234"]
+
+
+def test_local_rag_section_fallback_searches_full_section_content() -> None:
+    section = {
+        "title": "tail coverage",
+        "normalized_content": ("prefix content " * 140) + " tail-only-signal",
+    }
+    retriever = LocalRAGRetriever(local_sections=[section])
+
+    results = retriever._section_fallback("tail-only-signal", max_results=3)
+
+    assert results
+    assert results[0].title == "tail coverage"
 
 
 @pytest.mark.anyio

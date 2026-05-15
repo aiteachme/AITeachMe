@@ -9,7 +9,6 @@ from app.shared.infra.knowledge.build_store import append_knowledge_build_recent
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.document_backbone import (
     build_document_backbone,
-    fallback_document_backbone,
 )
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -55,18 +54,12 @@ def build_document_backbone_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description="正在统一术语、主张、证据和易混点，构建整本文档知识骨架。",
         )
-        try:
-            document_backbone, warnings = build_document_backbone(
-                task_seeds=task_seeds,
-                agenda=agenda,
-                evidence_units=evidence_units,
-                file_summaries=file_summaries,
-            )
-        except Exception as exc:
-            document_backbone, warnings = fallback_document_backbone(
-                task_seeds=task_seeds,
-                reason=str(exc)[:160],
-            )
+        document_backbone, warnings = build_document_backbone(
+            task_seeds=task_seeds,
+            agenda=agenda,
+            evidence_units=evidence_units,
+            file_summaries=file_summaries,
+        )
 
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(

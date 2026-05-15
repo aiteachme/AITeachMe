@@ -63,6 +63,8 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 glossary_terms=glossary_terms,
                 claim_targets=claim_targets,
                 confusion_targets=confusion_targets,
+                plan_summary=docgen_context.plan_summary,
+                docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata={
                     "build_session_id": state.get("build_session_id") or "",
                     "planner_session_id": state.get("planner_session_id") or "",
