@@ -1,9 +1,11 @@
 from app.workflows.digest.common import pedagogy
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _append_practice_section,
+    _build_practice_questions,
+    _minimum_visible_examples,
 )
 from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
-from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.models import ChapterDraft, ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
@@ -220,6 +222,26 @@ def test_sprint_practice_supplement_only_fills_missing_example_gap() -> None:
     assert "误差判断" in supplemented
 
 
+def test_sprint_practice_seed_prefers_more_examples_for_quick_review() -> None:
+    questions = _build_practice_questions(
+        ChapterDraft(chapter_index=1, title="极限计算"),
+        digest_mode="sprint",
+    )
+
+    assert len(questions) >= 5
+    assert _minimum_visible_examples(digest_mode="sprint", question_count=len(questions)) == 4
+
+    supplemented = _append_practice_section(
+        "# 极限计算\n\n## 核心方法\n\n用条件判断选择方法。\n",
+        questions,
+        digest_mode="sprint",
+        title="极限计算",
+    )
+
+    assert supplemented.count("> **例题") >= 5
+    assert "易错点" in supplemented
+
+
 def test_sprint_rule_review_requires_model_generated_problem_organization() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
@@ -280,6 +302,9 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "条件与方法速查" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
+    assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
+    assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
+    assert "至少 5 个带解析和易错点" in prompt
     assert "不能反复复用章节标题" in prompt
     assert "带解析和易错点的例题/案例/变式/自测" in prompt
     assert "不要只写“请自行练习”" in prompt

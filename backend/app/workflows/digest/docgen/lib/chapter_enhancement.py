@@ -144,7 +144,7 @@ def _build_practice_questions(
                     "pitfall": "综合任务不是把结论堆在一起，而是要先确定使用顺序和适用条件。",
                 }
             )
-        while len(examples) < 4:
+        while len(examples) < 5:
             focus = focus_terms[min(len(examples) - 1, len(focus_terms) - 1)] if focus_terms else title
             examples.append(
                 {
@@ -266,7 +266,7 @@ def _minimum_visible_examples(*, digest_mode: str, question_count: int) -> int:
     desired = int(mode_profile.example_density_policy.get("worked_examples_per_chapter", 1) or 1)
     # The deterministic supplement should be enough to make the chapter usable,
     # while avoiding a large duplicated exercise appendix when the writer already did well.
-    cap = 3 if mode_profile.is_sprint else 2
+    cap = 4 if mode_profile.is_sprint else 2
     return max(1, min(question_count, desired, cap))
 
 

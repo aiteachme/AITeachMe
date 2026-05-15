@@ -155,23 +155,23 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   document: {
     note: {
-      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-xl border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(37,99,235,0.45)] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
       badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     tip: {
-      shell: "my-5 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-[#1F2329] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-xl border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(16,185,129,0.45)] dark:border-emerald-500/30 dark:border-l-emerald-400 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
     },
     important: {
-      shell: "my-5 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-[#1F2329] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-[#F3F7FF] px-5 py-4 text-[#1F2329] shadow-[0_14px_34px_-28px_rgba(37,99,235,0.5)] dark:border-blue-500/30 dark:border-l-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
       badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
     warning: {
-      shell: "my-5 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-[#1F2329] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/85 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(245,158,11,0.45)] dark:border-amber-500/30 dark:border-l-amber-400 dark:bg-amber-500/10 dark:text-slate-200",
       badge: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
     },
     caution: {
-      shell: "my-5 rounded-lg border border-rose-200 bg-rose-50/70 px-4 py-3 text-[#1F2329] dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-slate-200",
+      shell: "my-6 rounded-xl border border-rose-200 border-l-4 border-l-rose-500 bg-rose-50/80 px-5 py-4 text-[#1F2329] shadow-[0_12px_32px_-28px_rgba(244,63,94,0.45)] dark:border-rose-500/30 dark:border-l-rose-400 dark:bg-rose-500/10 dark:text-slate-200",
       badge: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
     },
   },
@@ -235,28 +235,28 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-8 mb-4 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
-      2: "mt-7 mb-3 text-[24px] font-semibold leading-[1.4] tracking-[-0.015em] text-[#111827] dark:text-slate-100",
-      3: "mt-6 mb-2.5 text-[20px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
-      4: "mt-5 mb-2 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
-      5: "mt-4 mb-1.5 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
+      1: "mt-8 mb-5 pb-3 border-b border-[#DEE0E3] text-[30px] font-semibold leading-[1.3] tracking-[-0.02em] text-[#111827] dark:border-slate-700 dark:text-slate-100",
+      2: "mt-10 mb-4 border-b border-[#E5E7EB] pb-2.5 text-[25px] font-semibold leading-[1.35] text-[#111827] dark:border-slate-700 dark:text-slate-100",
+      3: "mt-8 mb-3 rounded-r-lg border-l-4 border-[#2563EB] bg-[#F7FAFF] py-1.5 pl-3 text-[20px] font-semibold leading-[1.45] text-[#1F2329] dark:border-blue-400 dark:bg-blue-500/10 dark:text-slate-200",
+      4: "mt-6 mb-2.5 text-[16px] font-semibold leading-[1.5] text-[#1F2329] dark:text-slate-200",
+      5: "mt-5 mb-2 text-[14px] font-semibold text-[#646A73] dark:text-slate-400",
       6: "mt-3 mb-1 text-[13px] font-semibold text-[#646A73] dark:text-slate-400",
     },
-    paragraph: "mb-3.5 text-[15px] leading-[1.75] text-[#1F2329] dark:text-slate-300",
-    list: "mb-4 list-disc space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329] dark:text-slate-300",
-    orderedList: "mb-4 list-decimal space-y-1.5 pl-6 text-[15px] leading-[1.75] text-[#1F2329] dark:text-slate-300",
-    listItem: "leading-[1.75] [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-2.5 rounded-r-md border-l-[3px] border-[#DEE0E3] bg-[#FAFBFC]/88 pl-3 pr-2.5 py-1.25 text-[14px] leading-[1.68] text-[#646A73] dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400",
+    paragraph: "mb-4 text-[15px] leading-[1.82] text-[#1F2329] dark:text-slate-300",
+    list: "my-5 list-disc space-y-2.5 pl-7 text-[15px] leading-[1.82] text-[#1F2329] marker:text-[#2563EB] dark:text-slate-300 dark:marker:text-blue-300",
+    orderedList: "my-5 list-decimal space-y-2.5 pl-7 text-[15px] leading-[1.82] text-[#1F2329] marker:font-semibold marker:text-[#2563EB] dark:text-slate-300 dark:marker:text-blue-300",
+    listItem: "pl-1 leading-[1.82] [&>ol]:mt-2 [&>p]:mb-1.5 [&>p]:block [&>ul]:mt-2",
+    blockquote: "my-4 rounded-r-lg border-l-4 border-[#CBD5E1] bg-[#F8FAFC] pl-4 pr-3 py-3 text-[14px] leading-[1.72] text-[#475569] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
     codeInline: "rounded-md border border-[#E6EAF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[0.9em] text-[#0F172A] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
     codeShell: "my-6 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_18px_42px_-30px_rgba(0,0,0,0.8)]",
     codeLanguageBadge: "border-b border-[#ECECF1] bg-[#F7F7F8] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[#6B7280] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
     codePre: "overflow-x-auto bg-white px-4 py-4 text-[13px] leading-6 text-[#111827] font-mono dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-5 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
-    table: "min-w-full text-[14px]",
-    thead: "border-b border-[#DEE0E3] bg-[#F5F6F7] dark:border-slate-800 dark:bg-slate-900/80",
-    th: "px-3 py-2 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
-    td: "border-t border-[#F0F0F0] px-3 py-2.5 text-[#1F2329] dark:border-slate-800 dark:text-slate-300",
-    hr: "my-7 border-[#DEE0E3] dark:border-slate-800",
+    tableShell: "my-7 overflow-x-auto rounded-xl border border-[#D8E2F0] bg-white shadow-[0_18px_42px_-34px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950/60",
+    table: "min-w-full border-separate border-spacing-0 text-[14px] [&_tbody_tr:nth-child(even)]:bg-[#F8FAFC] dark:[&_tbody_tr:nth-child(even)]:bg-slate-900/50",
+    thead: "border-b border-[#D8E2F0] bg-[#F1F5F9] dark:border-slate-800 dark:bg-slate-900/80",
+    th: "px-4 py-3 text-left text-[13px] font-semibold text-[#1F2329] dark:text-slate-100",
+    td: "border-t border-[#E9EEF5] px-4 py-3 text-[#1F2329] first:font-semibold first:text-[#1D4ED8] dark:border-slate-800 dark:text-slate-300 dark:first:text-blue-200",
+    hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
     link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
     strong: "font-semibold text-[#1D4ED8] dark:text-blue-200",
     em: "italic text-[#646A73] dark:text-slate-400",
@@ -2678,7 +2678,14 @@ export function MarkdownViewer({
                   {calloutMeta.label}
                 </span>
               </div>
-              <div className="[&>*:last-child]:mb-0">{callout.body}</div>
+              <div
+                className={cn(
+                  "[&>*:last-child]:mb-0",
+                  variant === "document" && "[&_ol]:my-3 [&_ul]:my-3 [&_p]:mb-3 [&_strong]:text-current",
+                )}
+              >
+                {callout.body}
+              </div>
             </aside>
           );
         },
