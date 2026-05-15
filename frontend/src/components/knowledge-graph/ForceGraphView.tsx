@@ -22,7 +22,7 @@ import type { FullGraphResponse, GraphEdgeResponse, KnowledgeSubgraphResponse, K
 import { useBuildEventStream } from "../../hooks/useBuildEventStream";
 import { fetchKnowledgeBuildRuntime, type KnowledgeBuildLaneRuntime } from "../../lib/knowledgeBuildRuntime";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
-import { KnowledgeGraphNodeDetailPanel } from "./KnowledgeGraphNodeDetailPanel";
+import { KnowledgeGraphNodeDetailPanel, type KnowledgeGraphSourceRefNavigationTarget } from "./KnowledgeGraphNodeDetailPanel";
 import {
   DEFAULT_COLOR,
   EDGE_TYPE_PRIORITY,
@@ -876,12 +876,14 @@ export function ForceGraphView({
   course,
   toolbar,
   onEvidenceClick,
+  onSourceRefClick,
   totalNodeCount,
   totalEdgeCount,
 }: {
   course: string;
   toolbar?: React.ReactNode;
   onEvidenceClick?: (chunkId: number, quoteText: string) => void;
+  onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
   totalNodeCount?: number;
   totalEdgeCount?: number;
 }) {
@@ -2545,6 +2547,7 @@ export function ForceGraphView({
                 onClose={() => setSelectedNodeId(null)}
                 onNavigate={(id) => setSelectedNodeId(id)}
                 onEvidenceClick={onEvidenceClick}
+                onSourceRefClick={onSourceRefClick}
               />
             </div>
           </div>
@@ -2594,6 +2597,7 @@ export function ForceGraphView({
               onClose={() => setSelectedNodeId(null)}
               onNavigate={(id) => setSelectedNodeId(id)}
               onEvidenceClick={onEvidenceClick}
+              onSourceRefClick={onSourceRefClick}
             />
           </div>
         </div>

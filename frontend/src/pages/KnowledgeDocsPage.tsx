@@ -42,6 +42,7 @@ import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNo
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
+import type { KnowledgeGraphSourceRefNavigationTarget } from "../components/knowledge-graph/KnowledgeGraphNodeDetailPanel";
 
 const KnowledgeGraphSidePanel = lazy(() =>
   import("../components/knowledge-graph/KnowledgeGraphSidePanel").then((module) => ({
@@ -248,6 +249,29 @@ function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function normalizeGraphSourceTitle(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replace(/\s+/g, "")
+    .replace(/^折叠标题内容/, "")
+    .replace(/^\d+(?:\.\d+)*\.?/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function headingTextForSourceMatch(heading: HTMLElement): string {
+  const clone = heading.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("[data-heading-toggle], [data-heading-number]").forEach((node) => node.remove());
+  return normalizeGraphSourceTitle(clone.textContent ?? "");
+}
+
+function headingMajorNumber(heading: HTMLElement): number | null {
+  const rawNumber = heading.querySelector<HTMLElement>("[data-heading-number]")?.textContent?.trim() ?? "";
+  const match = rawNumber.match(/^(\d+)/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function isHistoryComment(comment: Pick<Comment, "id">): boolean {
@@ -4257,6 +4281,116 @@ export function KnowledgeDocsPage() {
     return false;
   }, [addSelectionHighlight, buildSelectionSegmentsFromText, expandCollapsedDocHeadingSections, flashHeading, hasRenderedMarkdown, scrollToHeading, courseId]);
 
+  const resolveGraphSourceHeadingId = useCallback((ref: KnowledgeGraphSourceRefNavigationTarget): string => {
+    const contentRoot = contentAreaRef.current;
+    if (!contentRoot) return "";
+
+    const directAnchor = ref.anchor?.trim() ?? "";
+    if (directAnchor && findHeadingById(contentRoot, directAnchor)) {
+      return directAnchor;
+    }
+
+    const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+    const chapterIndex = Number(ref.chapter_index ?? 0);
+    if (Number.isFinite(chapterIndex) && chapterIndex > 0) {
+      const numberedHeading = headings.find((heading) => headingMajorNumber(heading) === chapterIndex);
+      if (numberedHeading) {
+        return numberedHeading.getAttribute("data-heading-id") ?? "";
+      }
+
+      const headingLevels = headings
+        .map((heading) => getHeadingLevel(heading))
+        .filter((level) => Number.isFinite(level) && level > 0);
+      const shallowestLevel = headingLevels.length > 0 ? Math.min(...headingLevels) : 1;
+      const topLevelHeadings = headings.filter((heading) => getHeadingLevel(heading) === shallowestLevel);
+      const ordinalHeading = topLevelHeadings[chapterIndex - 1];
+      if (ordinalHeading) {
+        return ordinalHeading.getAttribute("data-heading-id") ?? "";
+      }
+    }
+
+    const sourceTitle = normalizeGraphSourceTitle(ref.chapter_title);
+    if (sourceTitle) {
+      const exactTitle = headings.find((heading) => headingTextForSourceMatch(heading) === sourceTitle);
+      if (exactTitle) {
+        return exactTitle.getAttribute("data-heading-id") ?? "";
+      }
+
+      const closeTitle = headings.find((heading) => {
+        const headingText = headingTextForSourceMatch(heading);
+        return Boolean(headingText) && (headingText.includes(sourceTitle) || sourceTitle.includes(headingText));
+      });
+      if (closeTitle) {
+        return closeTitle.getAttribute("data-heading-id") ?? "";
+      }
+    }
+
+    const quoteText = ref.quote_text?.trim() ?? "";
+    const quoteHeading = quoteText ? findSelectionHeadingInDocument(contentRoot, "", quoteText) : null;
+    if (quoteHeading) {
+      return quoteHeading.getAttribute("data-heading-id") ?? "";
+    }
+
+    const normalizedQuote = normalizeGraphSourceTitle(quoteText);
+    if (normalizedQuote) {
+      const headingByQuote = headings.find((heading) => {
+        const headingText = headingTextForSourceMatch(heading);
+        return Boolean(headingText) && (headingText.includes(normalizedQuote) || normalizedQuote.includes(headingText));
+      });
+      if (headingByQuote) {
+        return headingByQuote.getAttribute("data-heading-id") ?? "";
+      }
+
+      const sectionByQuote = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-section-id]")).find((section) =>
+        normalizeGraphSourceTitle(collectNodeText([section])).includes(normalizedQuote),
+      );
+      const sectionHeading = sectionByQuote ? findDirectSectionHeading(sectionByQuote) : null;
+      if (sectionHeading) {
+        return sectionHeading.getAttribute("data-heading-id") ?? "";
+      }
+    }
+
+    return "";
+  }, []);
+
+  const handleGraphSourceRefClick = useCallback((ref: KnowledgeGraphSourceRefNavigationTarget) => {
+    const anchorId = resolveGraphSourceHeadingId(ref);
+    const quoteText = ref.quote_text?.trim() ?? "";
+    let handled = false;
+
+    if (anchorId) {
+      handled = jumpToSelectionLocation({
+        courseId,
+        anchorId,
+        selectedText: quoteText || null,
+      });
+    }
+
+    if (!handled && quoteText) {
+      handled = jumpToSelectionLocation({
+        courseId,
+        anchorId: "",
+        selectedText: quoteText,
+      });
+    }
+
+    if (!handled && anchorId) {
+      scrollToHeading(anchorId);
+      handled = true;
+    }
+
+    if (handled) {
+      closeGraphPanel();
+      return;
+    }
+
+    toast({
+      title: "暂时无法定位到原文",
+      description: "这条图谱来源没有可匹配的章节或引用片段。",
+      variant: "warning",
+    });
+  }, [closeGraphPanel, courseId, jumpToSelectionLocation, resolveGraphSourceHeadingId, scrollToHeading, toast]);
+
   useEffect(() => {
     const handleSelectionJump = (event: Event) => {
       const detail = (event as CustomEvent<SelectionJumpEventDetail>).detail;
@@ -6086,7 +6220,11 @@ export function KnowledgeDocsPage() {
         <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden bg-slate-50 shadow-inner dark:bg-slate-950">
           {courseId && isGraphDrawerOpen && (
             <Suspense fallback={<GraphPanelFallback />}>
-              <KnowledgeGraphSidePanel courseId={courseId} onClose={closeGraphPanel} />
+              <KnowledgeGraphSidePanel
+                courseId={courseId}
+                onClose={closeGraphPanel}
+                onSourceRefClick={handleGraphSourceRefClick}
+              />
             </Suspense>
           )}
         </div>

@@ -16,12 +16,25 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 import { DEFAULT_COLOR, NODE_COLORS, relationLabel, relationTone } from "./knowledgeGraphVisual";
 
+export type KnowledgeGraphSourceRefNavigationTarget = {
+  id: number;
+  chapter_index?: number;
+  chapter_title?: string | null;
+  doc_version_no?: number;
+  source_kind?: string;
+  source_file_ids?: string[];
+  quote_text?: string;
+  anchor?: string;
+  knowledge_document_id?: number | null;
+};
+
 type KnowledgeGraphNodeDetailPanelProps = {
   course: string;
   nodeId: number;
   onClose: () => void;
   onNavigate: (id: number) => void;
   onEvidenceClick?: (chunkId: number, quoteText: string) => void;
+  onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
   showTeachingRole?: boolean;
 };
 
@@ -31,6 +44,7 @@ export function KnowledgeGraphNodeDetailPanel({
   onClose,
   onNavigate,
   onEvidenceClick,
+  onSourceRefClick,
   showTeachingRole = true,
 }: KnowledgeGraphNodeDetailPanelProps) {
   const { data, isLoading } = useQuery({
@@ -162,20 +176,30 @@ export function KnowledgeGraphNodeDetailPanel({
             <FileText className="h-3 w-3" />图谱来源 ({sourceRefs.length})
           </div>
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
-            {sourceRefs.map((ref: { id: number; chapter_index?: number; chapter_title?: string | null; doc_version_no?: number; source_kind?: string; source_file_ids?: string[]; quote_text?: string }) => (
-              <div key={ref.id} className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
+            {sourceRefs.map((ref: KnowledgeGraphSourceRefNavigationTarget) => (
+              <button
+                key={ref.id}
+                type="button"
+                disabled={!onSourceRefClick}
+                onClick={() => onSourceRefClick?.(ref)}
+                title="跳转到知识文档对应位置"
+                className="group w-full rounded border border-slate-100 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/70 disabled:cursor-default disabled:hover:border-slate-100 disabled:hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10 dark:disabled:hover:border-slate-800 dark:disabled:hover:bg-slate-900/70"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate font-medium text-slate-700 dark:text-slate-200">
                     {ref.chapter_title || (ref.chapter_index ? `第 ${ref.chapter_index} 章` : "知识文档")}
                   </span>
-                  {ref.doc_version_no ? <span className="shrink-0 text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
+                  <span className="flex shrink-0 items-center gap-1">
+                    {ref.doc_version_no ? <span className="text-[10px] text-slate-400">v{ref.doc_version_no}</span> : null}
+                    {onSourceRefClick ? <ExternalLink className="h-3 w-3 text-slate-300 transition-colors group-hover:text-blue-500" /> : null}
+                  </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
                   {ref.source_kind ? <span>{ref.source_kind}</span> : null}
                   {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
                 </div>
                 {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{ref.quote_text}</p> : null}
-              </div>
+              </button>
             ))}
           </div>
         </div>

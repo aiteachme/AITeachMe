@@ -27,6 +27,7 @@ import { DigestBuildProgress, useKnowledgeDocsBuildState } from "../build-plan/D
 import { CourseVectorNotice } from "./CourseVectorNotice";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
+import type { KnowledgeGraphSourceRefNavigationTarget } from "./KnowledgeGraphNodeDetailPanel";
 
 const KnowledgeGraphView = lazy(() =>
   import("./KnowledgeGraphView").then((module) => ({ default: module.KnowledgeGraphView })),
@@ -49,9 +50,11 @@ function TabFallback({ message }: { message: string }) {
 export function KnowledgeGraphSidePanel({
   courseId,
   onClose,
+  onSourceRefClick,
 }: {
   courseId: string;
   onClose?: () => void;
+  onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
   const queryClient = useQueryClient();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -277,6 +280,7 @@ export function KnowledgeGraphSidePanel({
               canBuildGraph={!graphIsActive && !graphBuildMutation.isPending}
               buildGraphPending={graphBuildMutation.isPending}
               onBuildGraph={() => graphBuildMutation.mutate()}
+              onSourceRefClick={onSourceRefClick}
             />
           </Suspense>
         ) : null}

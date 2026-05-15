@@ -18,7 +18,7 @@ import { Button } from "../ui/Button";
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
-import { KnowledgeGraphNodeDetailPanel } from "./KnowledgeGraphNodeDetailPanel";
+import { KnowledgeGraphNodeDetailPanel, type KnowledgeGraphSourceRefNavigationTarget } from "./KnowledgeGraphNodeDetailPanel";
 import { KnowledgeGraphInsightsView } from "./KnowledgeGraphInsightsView";
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
@@ -50,12 +50,14 @@ export function KnowledgeGraphView({
   onBuildGraph,
   buildGraphPending = false,
   canBuildGraph = false,
+  onSourceRefClick,
 }: {
   course: string;
   stats: KnowledgeOverviewStats | null;
   onBuildGraph?: () => void;
   buildGraphPending?: boolean;
   canBuildGraph?: boolean;
+  onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
@@ -178,6 +180,7 @@ export function KnowledgeGraphView({
           course={course}
           toolbar={viewToggle}
           onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
+          onSourceRefClick={onSourceRefClick}
           totalNodeCount={graphNodeCount}
           totalEdgeCount={graphEdgeCount}
         />
@@ -276,6 +279,7 @@ export function KnowledgeGraphView({
                     onClose={() => setSelectedNodeId(null)}
                     onNavigate={(id) => setSelectedNodeId(id)}
                     onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
+                    onSourceRefClick={onSourceRefClick}
                     showTeachingRole={false}
                   />
                 </CardContent>
