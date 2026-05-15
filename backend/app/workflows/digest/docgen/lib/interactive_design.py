@@ -176,6 +176,16 @@ def _has_meaningful_context_overlap(visible_text: str, *, title: str, context: s
     return hits >= 1
 
 
+def _brief_requires_graphic_carrier(design_brief: str) -> bool:
+    return bool(
+        re.search(
+            r"连续变化|图形观察|图形|曲线|比值|误差|坐标|轨迹|动态|局部变化|状态改变|随状态",
+            str(design_brief or ""),
+            re.IGNORECASE,
+        )
+    )
+
+
 def assess_interactive_html_quality(
     html: str,
     *,
@@ -221,6 +231,8 @@ def assess_interactive_html_quality(
         issues.append("缺少事件驱动逻辑，页面更像静态说明而不是微实验。")
     if not (has_svg_or_canvas or has_dom_visual):
         issues.append("缺少随状态变化的可视表达；不能只依赖静态说明或占位块。")
+    if _brief_requires_graphic_carrier(design_brief) and not (has_svg_or_canvas or has_dom_visual):
+        issues.append("设计 brief 指向连续变化或图形观察，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。")
     if not has_script_state_update:
         issues.append("交互没有明显更新文本、图形、样式或绘制状态。")
     if not has_reset:
