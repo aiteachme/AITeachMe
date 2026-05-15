@@ -85,68 +85,27 @@ _TITLE_OUTLINE_PREFIX_RE = re.compile(
     rf"{_TITLE_NUMBER_TOKEN_RE}(?:\s*[.)）．、:：]\s*|\s+))",
     re.IGNORECASE,
 )
-_GENERIC_TEMPLATE_SUFFIX_RE = re.compile(
-    r"[:：]\s*(核心概念|公式方法|题型突破|易错辨析|综合迁移|考前速查|主题导入|概念定义|结构公式|方法推理|例题应用|边界辨析|总结延伸)\s*$"
-)
-_GENERIC_TEMPLATE_TITLES = {
-    "全景导论",
-    "总结与延展",
-    "主题导入",
-    "概念定义",
-    "结构公式",
-    "方法推理",
-    "例题应用",
-    "边界辨析",
-    "综合迁移",
-    "总结延伸",
-    "核心概念",
-    "公式方法",
-    "题型突破",
-    "易错辨析",
-    "考前速查",
-}
-_STATIC_TITLES = {"练习与自检", "知识文档总览"}
 _UNUSABLE_CHAPTER_TITLES = {
     "未命名",
     "未命名章节",
     "本章",
     "本章内容",
+    "本章目标",
     "当前章节",
+    "章节目标",
+    "学习目标",
     "Untitled",
     "Untitled Chapter",
 }
-_TITLE_SPECIFICITY_KEYWORDS = (
-    "高频",
-    "题型",
-    "公式",
-    "速判",
-    "易错",
-    "边界",
-    "路径",
-    "定义",
-    "结构",
-    "方法",
-    "例题",
-    "应用",
-    "迁移",
-    "总结",
-    "速查",
-    "考点",
-    "真题",
-    "变式",
+_TITLE_ONLY_NUMBER_RE = re.compile(
+    r"^(?:(?:第\s*)?(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万]+|[ivxlcdm]+)\s*(?:[章节讲节篇部分])?|chapter\s*\d+)$",
+    re.IGNORECASE,
 )
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _KU_ANCHOR_RE = re.compile(r"(?:\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->)")
 _HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
 _COURSE_SLUG_RE = re.compile(r"^(?:course|subj)_[a-z0-9_-]+$", re.IGNORECASE)
-_TITLE_DERIVE_ACTION_PREFIX_RE = re.compile(
-    r"^(?:学习目标|本章目标|章节目标|学习要求|围绕|通过|基于|根据|掌握|理解|了解|熟悉|说明|分析|完成|学会|能够|能|会|请|把|如何)+"
-)
-_TITLE_DERIVE_TRAILING_RE = re.compile(
-    r"(?:这一章|本章|相关知识点|基础判断|典型例题解析|例题解析|完成一个基础判断)$"
-)
-_TITLE_DERIVE_GENERIC_RE = re.compile(r"(?:最核心的知识主线|核心概念|核心内容|学习路径|讲清楚)")
 _GENERIC_FOCUS_TERMS = {
     "核心概念",
     "高频考点",
@@ -215,99 +174,17 @@ def clean_generated_chapter_title(raw_title: str) -> str:
     return cleaned.strip("：:，,。；; ")
 
 
-def looks_like_generic_template_title(title: str) -> bool:
-    cleaned = clean_generated_chapter_title(title)
-    if not cleaned:
-        return False
-    if cleaned in _GENERIC_TEMPLATE_TITLES:
-        return True
-    return bool(_GENERIC_TEMPLATE_SUFFIX_RE.search(cleaned))
-
-
 def is_usable_resolved_chapter_title(title: str) -> bool:
     cleaned = clean_generated_chapter_title(title)
-    if cleaned in _STATIC_TITLES:
-        return True
     if cleaned in _UNUSABLE_CHAPTER_TITLES:
         return False
-    if len(cleaned) < 3 or len(cleaned) > 28:
+    if len(cleaned) < 3 or len(cleaned) > 36:
         return False
     if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
         return False
-    if looks_like_generic_template_title(cleaned):
-        return False
-    if re.fullmatch(r"第\s*\d+\s*章", cleaned):
-        return False
-    if re.fullmatch(r"(?i)chapter\s*\d+", cleaned):
+    if _TITLE_ONLY_NUMBER_RE.fullmatch(cleaned):
         return False
     return True
-
-
-def _shorten_title_candidate(value: str) -> str:
-    cleaned = clean_generated_chapter_title(value)
-    if len(cleaned) <= 28:
-        return cleaned
-    parts = [
-        part.strip()
-        for part in re.split(r"[：:；;，,。！？!?\n]|(?:中的)|(?:关于)", cleaned)
-        if part.strip()
-    ]
-    for part in parts:
-        candidate = clean_generated_chapter_title(part)
-        if 3 <= len(candidate) <= 28:
-            return candidate
-    return cleaned[:24].rstrip("：:，,。；; ")
-
-
-def _derive_title_from_text(value: object) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    text = _CODE_FENCE_RE.sub(" ", text)
-    text = _KU_ANCHOR_RE.sub(" ", text)
-    text = _HTML_COMMENT_RE.sub(" ", text)
-    text = re.sub(r"[*_`>#\[\]\|]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;|-")
-    quoted = re.search(r"《([^》]{3,60})》", text)
-    candidates: list[str] = []
-    if quoted is not None:
-        candidates.append(quoted.group(1))
-    candidates.extend(
-        part
-        for part in re.split(r"[。；;\n]", text)
-        if str(part).strip()
-    )
-    for raw_candidate in candidates:
-        candidate = clean_generated_chapter_title(raw_candidate)
-        candidate = _TITLE_DERIVE_ACTION_PREFIX_RE.sub("", candidate).strip(" ：:，,。；;|-")
-        candidate = _TITLE_DERIVE_TRAILING_RE.sub("", candidate).strip(" ：:，,。；;|-")
-        candidate = _shorten_title_candidate(candidate)
-        if _TITLE_DERIVE_GENERIC_RE.search(candidate):
-            continue
-        if is_usable_resolved_chapter_title(candidate):
-            return candidate
-    return ""
-
-
-def _title_specificity_score(title: str) -> int:
-    cleaned = clean_generated_chapter_title(title)
-    if not is_usable_resolved_chapter_title(cleaned):
-        return -100
-
-    score = 0
-    length = len(cleaned)
-    if 6 <= length <= 18:
-        score += 4
-    elif 4 <= length <= 24:
-        score += 2
-
-    if "：" in cleaned or ":" in cleaned:
-        score += 3
-    if any(keyword in cleaned for keyword in _TITLE_SPECIFICITY_KEYWORDS):
-        score += 3
-    if len(set(cleaned)) >= 6:
-        score += 1
-    return score
 
 
 def resolve_effective_chapter_title(
@@ -329,26 +206,9 @@ def resolve_effective_chapter_title(
     if is_usable_resolved_chapter_title(cleaned_fallback):
         return cleaned_fallback
 
-    derived_candidates: list[object] = []
-    required_elements = chapter_data.get("required_elements")
-    if isinstance(required_elements, list):
-        derived_candidates.extend(required_elements[:4])
-    derived_candidates.extend(
-        [
-            chapter_data.get("objective"),
-            chapter_data.get("chapter_goal"),
-            chapter_data.get("summary"),
-            chapter_data.get("description"),
-        ]
-    )
-    for candidate_source in derived_candidates:
-        candidate = _derive_title_from_text(candidate_source)
-        if candidate:
-            return candidate
-
     if chapter_index is None:
         chapter_index = int(chapter_data.get("chapter_index", 0) or 0) or None
-    return f"第 {chapter_index} 章" if chapter_index else "本章内容"
+    return f"第 {chapter_index} 章" if chapter_index else ""
 
 
 def coerce_resolved_chapter_title(
@@ -360,8 +220,6 @@ def coerce_resolved_chapter_title(
     cleaned = clean_generated_chapter_title(raw_title)
     current_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     if is_usable_resolved_chapter_title(cleaned):
-        if _title_specificity_score(current_title) > _title_specificity_score(cleaned):
-            return current_title
         return cleaned
     return current_title
 
@@ -382,13 +240,14 @@ def build_chapter_title_resolution_messages(
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
     mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
-    required_text = "、".join(item for item in required_elements if item.strip()) or "核心概念、推理路径、典型例子"
-    query_text = "；".join(item for item in search_queries if item.strip()) or "无明确检索词"
-    source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 当前没有明确来源标题"
+    required_text = "、".join(item for item in required_elements if item.strip()) or "未提供"
+    query_text = "；".join(item for item in search_queries if item.strip()) or "未提供"
+    source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 未提供"
     system_prompt = """
 你是 AITeachMe 的课程命名助手。
-你的任务是根据教学合同和研究结果生成自然、具体、非模板化的中文章节标题。
-你只输出一个语义清晰的标题，不输出解释、编号或 Markdown。
+你的任务是根据教学合同和研究结果，为单个章节生成自然、具体、可扫读的中文标题。
+标题必须由你基于上下文判断生成，不要从固定词表、关键词抽取或字符串拼接中凑出来。
+你只输出一个标题，不输出解释、编号或 Markdown。
 """.strip()
     user_prompt = f"""
 请为下面这一章生成一个新的中文章节标题。
@@ -407,10 +266,15 @@ def build_chapter_title_resolution_messages(
 研究笔记：
 {dense_context or "暂无研究笔记，请根据学习大纲稳健命名。"}
 
+风格参考：
+- 好标题示例：洛必达法则、等价无穷小替换、分部积分、闭区间最值、矩阵分解。
+- 这些只是长度和清晰度示例，不是候选词表；请按本章真实语义重新命名。
+- 避免“核心概念”“方法总结”“章节目标”这类离开上下文看不懂的标题。
+
 输出要求：
 1. 只输出一个中文标题。
-2. 不要出现“全景导论”“总结与延展”“主题导入”“概念定义”等模板化命名。
-3. 标题要像真实讲义章节名，体现知识主线或问题意识。
+2. 标题要短，通常 4-12 个中文字符；不要写冒号副标题或长串枚举。
+3. 标题要像真实讲义章节名，让学生一眼知道这一章讲什么。
 4. 不要输出编号、解释或 Markdown；如果来源标题带编号，只保留语义标题。
 """.strip()
     return [
@@ -598,7 +462,6 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
     heading_titles = _extract_heading_titles(markdown, min_level=2, max_level=3)
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
     duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
-    generic_titles = [title for title in cleaned_titles if looks_like_generic_template_title(title)]
     missing_modules = [
         key
         for key, keywords in heading_keywords.items()
@@ -609,7 +472,6 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
     needs_agent_repair = bool(
         h2_count < min_h2_count
         or duplicates
-        or generic_titles
         or len(missing_modules) >= 5
     )
     needs_scaffold_fallback = bool(
@@ -620,7 +482,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         "h2_count": h2_count,
         "heading_titles": cleaned_titles,
         "duplicate_titles": duplicates,
-        "generic_titles": generic_titles,
+        "generic_titles": [],
         "missing_modules": missing_modules,
         "needs_agent_repair": needs_agent_repair,
         "needs_scaffold_fallback": needs_scaffold_fallback,
@@ -1045,6 +907,5 @@ __all__ = [
     "build_document_overview",
     "ensure_chapter_learning_scaffold",
     "is_usable_resolved_chapter_title",
-    "looks_like_generic_template_title",
     "resolve_effective_chapter_title",
 ]

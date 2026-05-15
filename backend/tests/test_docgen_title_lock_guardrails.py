@@ -54,6 +54,6 @@ def test_title_lock_prompt_discourages_repeated_abstract_sprint_titles() -> None
     )
     prompt = "\n".join(message["content"] for message in messages)
 
-    assert "题型、未定式、方法选择、适用前提、错误边界或综合训练" in prompt
-    assert "不会反复使用同一个抽象标题" in prompt
-    assert "如果标题之间只差少量形容词" in prompt
+    assert "风格示例：洛必达法则、等价无穷小替换、分部积分、闭区间最值、矩阵分解" in prompt
+    assert "这些只是长度和清晰度示例，不是候选词表" in prompt
+    assert "不要从固定标签、关键词或示例里拼标题" in prompt

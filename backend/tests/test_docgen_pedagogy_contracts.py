@@ -10,9 +10,8 @@ from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_rev
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
 
-def test_chapter_title_resolution_rejects_templates_and_derives_specific_titles() -> None:
+def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() -> None:
     assert pedagogy.clean_generated_chapter_title("第 03 章：核心概念总览") == "核心概念总览"
-    assert pedagogy.looks_like_generic_template_title("核心概念") is True
     assert pedagogy.is_usable_resolved_chapter_title("Chapter 2") is False
 
     title = pedagogy.resolve_effective_chapter_title(
@@ -23,7 +22,7 @@ def test_chapter_title_resolution_rejects_templates_and_derives_specific_titles(
         },
         chapter_index=2,
     )
-    assert title == "矩阵分解：奇异值分解和低秩近似"
+    assert title == "第 2 章"
 
     assert (
         pedagogy.coerce_resolved_chapter_title(
@@ -40,7 +39,7 @@ def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
         {"chapter_index": 1, "title": "核心概念总览", "summary": "short"},
         {"chapter_index": 1, "title": "矩阵分解", "summary": "longer summary wins"},
         {"chapter_index": 2, "resolved_title": "特征值应用", "summary": "x"},
-        {"chapter_index": 3, "title": "第 3 章", "required_elements": ["正交投影：最小二乘几何解释"]},
+        {"chapter_index": 3, "resolved_title": "正交投影：最小二乘几何解释"},
     ]
 
     overview = pedagogy.build_document_overview(
@@ -67,7 +66,7 @@ def test_heading_quality_detects_duplicate_generic_titles() -> None:
     assert quality["digest_mode"] == "systematic"
     assert quality["h2_count"] == 2
     assert quality["duplicate_titles"] == ["核心概念"]
-    assert quality["generic_titles"] == ["核心概念", "核心概念"]
+    assert quality["generic_titles"] == []
     assert quality["needs_agent_repair"] is True
     assert quality["needs_scaffold_fallback"] is False
     assert {"guide", "objectives", "recap"} <= set(quality["missing_modules"])
