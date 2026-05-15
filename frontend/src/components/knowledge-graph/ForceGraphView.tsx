@@ -128,6 +128,13 @@ function applyGraphInteractiveStyles(
     .classed("is-selected-node", (d) => d.id === selectedNodeId)
     .classed("is-selected-neighbor", (d) => selectedNeighbors.has(d.id))
     .classed("is-muted-node", (d) => selectedNodeId !== null && d.id !== selectedNodeId && !selectedNeighbors.has(d.id));
+  nodeG.select<SVGPathElement>("path.node-blob")
+    .attr("opacity", (d) => {
+      if (d.id === selectedNodeId) return 0.44;
+      if (selectedNodeId !== null) return selectedNeighbors.has(d.id) ? 0.3 : 0.08;
+      return isAssessmentCoreNode(d) ? 0.3 : 0.22;
+    })
+    .attr("stroke-width", (d) => (d.id === selectedNodeId ? 2.2 : isAssessmentCoreNode(d) ? 1.45 : 1.1));
   nodeG.select<SVGCircleElement>("circle.node-halo")
     .attr("opacity", (d) => (d.id === selectedNodeId ? 0.18 : 0));
   nodeG.select<SVGCircleElement>("circle.node-priority-ring")
@@ -884,11 +891,11 @@ export function ForceGraphView({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [nodeSearchQuery, setNodeSearchQuery] = useState("");
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
-  const [showAllEdges, setShowAllEdges] = useState(false);
+  const [showAllEdges, setShowAllEdges] = useState(true);
   const [highlightCoreUnits, setHighlightCoreUnits] = useState(true);
   const [showAllNodeLabels, setShowAllNodeLabels] = useState(true);
   const [showDetailNodes, setShowDetailNodes] = useState(true);
-  const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(() => new Set(["similar", "contrast"]));
+  const [hiddenRelationTypes, setHiddenRelationTypes] = useState<Set<string>>(() => new Set());
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [graphData, setGraphData] = useState<LoadedGraphData | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<number>>(new Set());
@@ -904,7 +911,7 @@ export function ForceGraphView({
   const lastGraphCountsRef = useRef<{ nodes: number; edges: number } | null>(null);
   const selectedNodeIdRef = useRef<number | null>(null);
   const showEdgeLabelsRef = useRef(false);
-  const showAllEdgesRef = useRef(false);
+  const showAllEdgesRef = useRef(true);
   const highlightCoreUnitsRef = useRef(true);
   const showAllNodeLabelsRef = useRef(true);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
@@ -975,7 +982,8 @@ export function ForceGraphView({
     hasAutoFittedGraphRef.current = false;
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
-    setHiddenRelationTypes(new Set(["similar", "contrast"]));
+    setHiddenRelationTypes(new Set());
+    setShowAllEdges(true);
     setShowDetailNodes(true);
     setShowAllNodeLabels(true);
     setShowSettingsPanel(false);
@@ -1087,6 +1095,9 @@ export function ForceGraphView({
     setSelectedNodeId(null);
     setShowSettingsPanel(false);
     setNodeSearchQuery("");
+    setHiddenRelationTypes(new Set());
+    setShowAllEdges(true);
+    setShowAllNodeLabels(true);
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
     hasAutoFittedGraphRef.current = false;
@@ -1477,6 +1488,34 @@ export function ForceGraphView({
     const nodeLabelAnchor = (_node?: GraphNode) => "start";
     const nodeDotRadius = (node: GraphNode) => (isAssessmentCoreNode(node) ? 8.4 : 7.1);
     const nodeDotCx = (node: GraphNode) => -nodeLabelWidth(node) / 2 + 16;
+    const nodeBlobPath = (node: GraphNode, extra = 8) => {
+      const cx = nodeDotCx(node);
+      const baseRadius = nodeDotRadius(node) + extra;
+      const pointCount = 7 + (node.id % 2);
+      const seed = node.id * 17 + node.layout_rank * 13 + node.label_rank * 7;
+      const angleOffset = ((seed % 29) / 29) * Math.PI * 2;
+      const points = Array.from({ length: pointCount }, (_, index) => {
+        const angle = angleOffset + (Math.PI * 2 * index) / pointCount;
+        const variance = 1 + (((seed + index * 5) % 11) - 5) * 0.018 + (index % 2 === 0 ? 0.08 : -0.03);
+        const radius = baseRadius * variance;
+        return {
+          x: cx + Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+        };
+      });
+      const midpoint = (left: { x: number; y: number }, right: { x: number; y: number }) => ({
+        x: (left.x + right.x) / 2,
+        y: (left.y + right.y) / 2,
+      });
+      const start = midpoint(points[points.length - 1]!, points[0]!);
+      const parts = [`M ${start.x.toFixed(2)} ${start.y.toFixed(2)}`];
+      points.forEach((point, index) => {
+        const next = points[(index + 1) % points.length]!;
+        const mid = midpoint(point, next);
+        parts.push(`Q ${point.x.toFixed(2)} ${point.y.toFixed(2)} ${mid.x.toFixed(2)} ${mid.y.toFixed(2)}`);
+      });
+      return `${parts.join(" ")} Z`;
+    };
 
     // SVG structure
     const svgSel = d3.select(svg)
@@ -1504,6 +1543,16 @@ export function ForceGraphView({
           transform: scale(1.28);
         }
       }
+      @keyframes graphNodeBlobGlow {
+        0%, 100% {
+          transform: scale(0.98);
+          stroke-opacity: 0.14;
+        }
+        50% {
+          transform: scale(1.04);
+          stroke-opacity: 0.28;
+        }
+      }
       @keyframes graphPathFlow {
         to { stroke-dashoffset: -20; }
       }
@@ -1521,6 +1570,7 @@ export function ForceGraphView({
         animation: graphRegionBreathe 4.8s ease-in-out infinite;
       }
       .graph-link,
+      .graph-node .node-blob,
       .graph-node .node-circle,
       .graph-node .node-halo,
       .graph-node .node-priority-ring,
@@ -1534,11 +1584,20 @@ export function ForceGraphView({
       .graph-node .node-hit-area {
         pointer-events: all;
       }
+      .graph-node .node-blob {
+        animation: graphNodeBlobGlow 5.6s ease-in-out infinite;
+        pointer-events: none;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
       .graph-node .node-breath-ring {
         animation: graphNodeBreathe 3.4s ease-in-out infinite;
         pointer-events: none;
         transform-box: fill-box;
         transform-origin: center;
+      }
+      .graph-node.is-muted-node .node-blob {
+        animation: none;
       }
       .graph-node.is-muted-node .node-breath-ring {
         animation: none;
@@ -1566,6 +1625,7 @@ export function ForceGraphView({
       @media (prefers-reduced-motion: reduce) {
         .graph-node,
         .graph-link,
+        .graph-node .node-blob,
         .graph-node .node-halo,
         .graph-node .node-breath-ring,
         .graph-node .node-priority-ring,
@@ -1845,6 +1905,16 @@ export function ForceGraphView({
       .attr("fill", "rgba(255,255,255,0.001)")
       .attr("stroke", "none");
 
+    nodeG.append("path")
+      .attr("class", "node-blob")
+      .attr("d", (d) => nodeBlobPath(d))
+      .attr("fill", (d) => nodeStyle(d.knowledge_unit_type).fill)
+      .attr("stroke", (d) => nodeStyle(d.knowledge_unit_type).dark)
+      .attr("stroke-opacity", 0.18)
+      .attr("stroke-width", (d) => (isAssessmentCoreNode(d) ? 1.45 : 1.1))
+      .attr("opacity", (d) => (isAssessmentCoreNode(d) ? 0.3 : 0.22))
+      .style("animation-delay", (d) => `${(d.layout_rank % 13) * 110}ms`);
+
     nodeG.append("circle")
       .attr("class", "node-halo")
       .attr("cx", (d) => nodeDotCx(d))
@@ -1910,6 +1980,7 @@ export function ForceGraphView({
       .attr("opacity", 0)
       .style("pointer-events", "none");
 
+    nodeG.select<SVGPathElement>("path.node-blob").raise();
     nodeG.select<SVGCircleElement>("circle.node-halo").raise();
     nodeG.select<SVGCircleElement>("circle.node-breath-ring").raise();
     nodeG.select<SVGCircleElement>("circle.node-priority-ring").raise();
@@ -1955,6 +2026,8 @@ export function ForceGraphView({
         }
         nodeG.select<SVGCircleElement>("circle.node-circle")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0.28));
+        nodeG.select<SVGPathElement>("path.node-blob")
+          .attr("opacity", (node) => (connectedIds.has(node.id) ? 0.34 : 0.06));
         nodeG.select<SVGRectElement>("rect.node-label-bg")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 0.92 : 0));
         nodeG.select<SVGRectElement>("rect.node-card-shadow")
@@ -1990,6 +2063,7 @@ export function ForceGraphView({
           .attr("opacity", (link) => (
             showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 0.96 : 0
           ));
+        d3.select(this).select("path.node-blob").attr("opacity", 0.5).attr("stroke-width", 2.2);
         d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
         d3.select(this).select("circle.node-priority-ring").attr("opacity", 0.92);
         d3.select(this).select("rect.node-card-shadow").attr("opacity", 0.82);
