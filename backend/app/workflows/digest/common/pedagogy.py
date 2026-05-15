@@ -389,6 +389,34 @@ def _count_headings(markdown: str, *, level: int) -> int:
     return sum(1 for hashes, _title in _HEADING_RE.findall(markdown or "") if len(hashes) == level)
 
 
+def _singleton_subheading_paths(markdown: str) -> list[str]:
+    """Return H2 > H3 paths where the H2 has exactly one direct H3 child."""
+
+    stripped_markdown = _CODE_FENCE_RE.sub("", markdown or "")
+    paths: list[str] = []
+    current_h2 = ""
+    current_h3_children: list[str] = []
+
+    def flush_current_h2() -> None:
+        if current_h2 and len(current_h3_children) == 1:
+            paths.append(f"{current_h2} > {current_h3_children[0]}")
+
+    for hashes, raw_title in _HEADING_RE.findall(stripped_markdown):
+        level = len(hashes)
+        if level <= 2:
+            flush_current_h2()
+            current_h2 = clean_generated_chapter_title(raw_title) if level == 2 else ""
+            current_h3_children = []
+            continue
+        if level == 3 and current_h2:
+            cleaned_h3 = clean_generated_chapter_title(raw_title)
+            if cleaned_h3:
+                current_h3_children.append(cleaned_h3)
+
+    flush_current_h2()
+    return paths
+
+
 def _has_heading_keywords(markdown: str, keywords: tuple[str, ...], *, min_level: int = 2, max_level: int = 3) -> bool:
     if not keywords:
         return False
@@ -474,6 +502,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
     duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
     generic_titles = _generic_heading_titles(cleaned_titles)
+    singleton_subheading_paths = _singleton_subheading_paths(markdown)
     missing_modules: list[str] = []
     min_h2_count = 3 if normalized_mode == "sprint" else 4
     h2_count = _count_headings(markdown, level=2)
@@ -481,6 +510,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         h2_count < min_h2_count
         or duplicates
         or generic_titles
+        or singleton_subheading_paths
     )
     needs_scaffold_fallback = bool(
         h2_count < 2
@@ -491,6 +521,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         "heading_titles": cleaned_titles,
         "duplicate_titles": duplicates,
         "generic_titles": generic_titles,
+        "singleton_subheading_paths": singleton_subheading_paths,
         "missing_modules": missing_modules,
         "needs_agent_repair": needs_agent_repair,
         "needs_scaffold_fallback": needs_scaffold_fallback,

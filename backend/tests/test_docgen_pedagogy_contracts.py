@@ -95,6 +95,31 @@ def test_heading_quality_detects_duplicate_generic_titles() -> None:
     assert quality["missing_modules"] == []
 
 
+def test_heading_quality_detects_singleton_h3_sections() -> None:
+    quality = pedagogy.analyze_chapter_heading_quality(
+        (
+            "# 计算机基础\n\n"
+            "## 存储器层级结构与特性对比\n\n"
+            "### 典型场景辨析\n\n"
+            "缓存、内存和外存的差异需要结合访问速度和容量判断。\n\n"
+            "## 进制转换与数据编码规则\n\n"
+            "### 进制转换的核心技巧\n\n"
+            "先确定基数，再按位权展开。\n\n"
+            "### 字符编码与汉字内码规则\n\n"
+            "ASCII 与汉字编码分别处理。\n\n"
+            "## 常见任务与考点整理\n\n"
+            "把容量换算、编码判断和性能对比放到同一组检查。\n"
+        ),
+        digest_mode="sprint",
+    )
+
+    assert quality["h2_count"] == 3
+    assert quality["singleton_subheading_paths"] == [
+        "存储器层级结构与特性对比 > 典型场景辨析",
+    ]
+    assert quality["needs_agent_repair"] is True
+
+
 def test_learning_scaffold_inserts_required_sections_without_duplication() -> None:
     scaffold = pedagogy.ensure_chapter_learning_scaffold(
         "只有一段内容",
@@ -416,11 +441,12 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
     assert "训练型章节至少 6 个完整学习活动" in prompt
     assert "概念章至少 2 个左右" in prompt
-    assert "不能反复复用章节标题" in prompt
+    assert "不要复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "考前速查与自测" in prompt
     assert "接口权限的判断题" in prompt
     assert "不能照抄或当候选词表" in prompt
+    assert "孤立三级标题" in prompt
     assert "不要只写“请自行练习”" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt
@@ -439,10 +465,11 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     )
     prompt = messages[-1]["content"]
 
-    assert "题型或任务整理" in prompt
+    assert "题型/任务整理" in prompt
     assert "方法对照" in prompt
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
     assert "参考答案" in prompt
+    assert "孤立三级标题属于层级过度切分" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt
