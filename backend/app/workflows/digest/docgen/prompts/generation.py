@@ -11,6 +11,14 @@ def _bullet_lines(items: tuple[str, ...]) -> str:
     return "\n".join(f"- {item}" for item in items if item)
 
 
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def _chapter_shape_hint(*, digest_mode: str) -> str:
     profile = get_docgen_mode_profile(digest_mode)
     return f"""
@@ -109,19 +117,44 @@ def build_docgen_writer_messages(
         for item in list(execution_contract.get("forbidden_scope") or [])
         if str(item).strip()
     ]
-    min_worked_examples = int(mode_profile.example_density_policy.get("worked_examples_per_chapter", 4) or 4)
-    training_min_examples = int(mode_profile.example_density_policy.get("training_chapter_min_examples", 6) or 6)
-    concept_min_examples = int(mode_profile.example_density_policy.get("concept_chapter_min_examples", 2) or 2)
+    profile_density = dict(mode_profile.example_density_policy)
+    min_worked_examples = _positive_int(
+        practice_quota.get("worked_examples") or profile_density.get("worked_examples_per_chapter"),
+        default=4,
+    )
+    short_practice_quota = _positive_int(
+        practice_quota.get("practice_tasks") or profile_density.get("practice_tasks_per_chapter"),
+        default=4,
+    )
+    activity_quota = _positive_int(
+        practice_quota.get("learning_activities") or profile_density.get("total_learning_activities_per_chapter"),
+        default=min_worked_examples + short_practice_quota,
+    )
+    training_min_examples = _positive_int(profile_density.get("training_chapter_min_examples"), default=6)
+    concept_min_examples = _positive_int(profile_density.get("concept_chapter_min_examples"), default=2)
+    chapter_end_min_tasks = _positive_int(
+        practice_quota.get("chapter_end_min_tasks") or profile_density.get("chapter_end_practice_min_tasks"),
+        default=2,
+    )
+    chapter_end_max_tasks = max(
+        chapter_end_min_tasks,
+        _positive_int(
+            practice_quota.get("chapter_end_max_tasks") or profile_density.get("chapter_end_practice_max_tasks"),
+            default=max(4, chapter_end_min_tasks),
+        ),
+    )
     sprint_problem_contract = ""
     if mode_profile.is_sprint:
         sprint_problem_contract = f"""
 练习组织原则：
 - 先由模型根据本章材料判断本章角色，再决定组织形式。只有天然适合集中练习或任务训练的章节，才把题目或任务按本章真实差异分组，再分别讲“什么时候用、怎么做、怎么算完、哪里会错”。
-- 概念、定义、过渡或铺垫章节不要硬改成测验章；用 {concept_min_examples} 个左右的短例子、反例、条件辨析或小任务把条件和边界讲清即可。
-- 训练型章节至少写 {training_min_examples} 个完整学习活动，普通方法章至少写 {min_worked_examples} 个左右；每个完整活动必须包含 **题目/任务**、**解析步骤**、**答案或结论**、**易错点**。
+- 如果本章像考试、冲刺或速成课，开头给一个紧凑题型/任务导航表，列出“题型或任务、考什么、条件信号、做法、易错点”；分类必须由模型根据本章材料判断，非考试章节不要强塞题型表。
+- 概念、定义、过渡或铺垫章节不要硬改成测验章；用 {concept_min_examples} 个左右的完整例题/短例子，并用短练习、反例、条件辨析或小任务补足活动密度，把条件和边界讲清。
+- 训练型章节至少写 {training_min_examples} 个学习活动；普通方法章至少写 {min_worked_examples} 个完整例题/案例，并用短题、自测或变式让本章学习活动总量达到约 {activity_quota} 个。完整活动必须包含 **题目/任务**、**解析步骤**、**答案或结论**、**易错点**。
 - 真实题型或任务分类不能停留在口号或空表；每一类至少要能看到一个贴合本章的短题、条件变化或错因例子。
 - 如果使用“自测”“辨析”“思考”这类形式，必须给出参考答案、判定依据或解题要点；不要只抛问题让学生自己想。
-- 整份文档里的集中练习、测验或综合训练通常放在自然适合的 1-2 个章节或章末，不要让每一章都长成同一套固定收尾模块。
+- 章末 `> [!PRACTICE]` 目标是 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，每题必须有答案、判定依据或解析要点；不要求每题都写成长解析，但必须可判断。
+- 整份文档里的集中练习、测验或综合训练要放在自然适合的章节或章末，不要让每一章都长成同一套固定收尾模块。
 - 收束标题必须由模型根据本章具体题型、方法或知识对象自然命名；不要把学习动作、检查动作或配额标签复制成目录标题。
 - 如果要写题型分类，先判断每类题真正考的对象、条件变化或操作步骤，再用这个差异命名；不要用序号占位名，不要把关键词拼成标题。
 """.strip()
@@ -137,7 +170,7 @@ def build_docgen_writer_messages(
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
         f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}；不要请求文生图配图\n"
-        f"- 练习数量要求：例题解析 {practice_quota.get('worked_examples', 0)} 个；简答 {practice_quota.get('short_answer', 0)} 个；带答案的理解检查活动 {practice_quota.get('self_check', 0)} 个；推理 {practice_quota.get('reasoning', 0)} 个；应用 {practice_quota.get('application', 0)} 个\n"
+        f"- 练习数量要求：学习活动总量约 {activity_quota} 个；完整例题/案例 {min_worked_examples} 个；短练习/自测/变式约 {short_practice_quota} 个；章末练习 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个；带答案的理解检查活动 {practice_quota.get('self_check', 0)} 个；推理 {practice_quota.get('reasoning', 0)} 个；应用 {practice_quota.get('application', 0)} 个\n"
         f"- 例题密度策略：{example_density_policy.get('policy_text') or '例题、案例和任务必须服务当前知识点。'}\n"
         f"{('- 练习组织原则：' + sprint_problem_contract_summary) if sprint_problem_contract_summary else ''}\n"
         f"- 内容角色目标：{content_role_targets}\n"
@@ -185,10 +218,10 @@ def build_docgen_writer_messages(
 直观解释：遇到抽象概念、公式、定义、规则或流程时，先用一两句话讲清它解决什么问题，再给条件、例子或反例；不要只堆名词、定义和结论。
 练习口径：如果本章适合用题目、案例或任务讲清方法，可以自然融入贴合本章的短例题、案例或变式任务；它们必须服务概念、条件或方法，不要为了凑数写泛泛复习提示。
 例题优先级：例题、案例、操作示例、变式训练和自测是正文重点，不是附录。快速复习节奏要提高例题/任务密度，但密度要跟章节角色匹配：训练型章节多给完整题和变式，概念型章节用短例子、反例和条件辨析支撑理解；系统学习要保证每个核心知识点都有例题、案例或练习支撑。
-题目样式：完整例题优先使用 `> [!EXAMPLE]`，章末练习收束优先使用 `> [!PRACTICE]`。块内用 **题目/任务**、**解析/判定依据**、**答案/结论**、**易错点** 标注清楚；不同学科可改成案例、操作、证明、翻译、设计或诊断任务，但必须给可判断的答案或标准。
-当前模式质量线：如果是快速复习节奏，先由模型根据本章材料判断是否适合集中训练。训练型章节必须让学生一眼看到“这章会遇到哪些题或任务、条件怎么变、下一步怎么做、哪里最容易错”，并有由本章材料自然生成的真实分类或常见问法整理；普通概念/方法章节不强制分类表，但要有贴合本章的短例子、反例、边界提醒或小任务。不要把内部检查词直接写成学生可见表头。训练型章节至少 {training_min_examples} 个完整学习活动，普通方法章至少 {min_worked_examples} 个左右，概念章至少 {concept_min_examples} 个左右；执行合同要求更多时按更多写。
+题目样式：完整例题优先使用 `> [!EXAMPLE]`，章末练习收束优先使用 `> [!PRACTICE]`。块内用 **题目/任务**、**解析/判定依据**、**答案/结论**、**易错点** 标注清楚；这些字段必须各自独立成段或列表项，禁止写成 `例题：... 解析：... 答案：... 易错点：...` 同一段。不同学科可改成案例、操作、证明、翻译、设计或诊断任务，但必须给可判断的答案或标准。
+当前模式质量线：如果是快速复习节奏，先由模型根据本章材料判断是否适合集中训练。考试/冲刺/速成取向章节要在开头给紧凑题型/任务导航表，说明题型或任务、考什么、条件信号、做法和易错点；非考试章节不要强塞题型表。训练型章节必须让学生一眼看到“这章会遇到哪些题或任务、条件怎么变、下一步怎么做、哪里最容易错”，并有由本章材料自然生成的真实分类或常见问法整理；普通概念/方法章节不强制分类表，但要有贴合本章的短例子、反例、边界提醒或小任务。不要把内部检查词直接写成学生可见表头。训练型章节至少 {training_min_examples} 个学习活动，普通方法章至少 {min_worked_examples} 个完整例题/案例，概念章至少 {concept_min_examples} 个完整例题或短例子；快速复习每章学习活动总量目标约 {activity_quota} 个，执行合同要求更多时按更多写。
 {sprint_problem_contract}
-章末收束：每章末尾都应有一个短练习收束块，除非本章材料完全不适合出题或任务。这个块应由本章内容自然生成 2-4 个小题、案例检查、操作任务、判断题或迁移题，并给出答案/判定依据/解析要点；标题和题目类别必须来自本章真实内容，不要套固定模板。
+章末收束：每章末尾都应有一个短练习收束块，除非本章材料完全不适合出题或任务。快速复习目标是 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统学习可按章节内容保留 2-4 个更深的案例检查或迁移任务；每题都要给出答案/判定依据/解析要点。标题和题目类别必须来自本章真实内容，不要套固定模板。
 版式表达：快速复习章节不要写成大段平铺笔记，也不要把公式、说明、步骤、提醒和例题揉在同一段里。连续解释两段后，下一段优先改成对照表、步骤列表、例题块、易错提醒或短小结，除非内容本身不适合。高频结论、题目条件、解题步骤、易错提醒和例题可使用 GitHub 风格 callout，例如 `> [!IMPORTANT]`、`> [!TIP]`、`> [!WARNING]`、`> [!EXAMPLE]`、`> [!PRACTICE]`；关键条件、限制和结论要适度加粗，但不要整段加粗。
 学习内容角色：正文需要自然覆盖核心知识、方法示范、解释辅助、原理推理、练习评估、知识组织和应用拓展中的本章必要部分；这些是写作检查维度，不要求作为固定标题原样出现。
 
@@ -204,7 +237,7 @@ def build_docgen_writer_messages(
 6. 先讲清概念、条件和判断依据，再讲真实任务、例子或应用；训练型章节要多给可解析的例题、案例、变式或错误诊断，系统课核心知识点也要有例子支撑。
 7. 每个主要 `##` 至少讲清本小节对象、关键条件或边界、处理路径或解释依据、一个例子/任务/反例，以及一个检查点或易错提醒；如果某项不适合本学科，也要换成等价的案例、操作、证明、设计或诊断标准。
 8. 例题和自测必须有解析步骤、答案或结论、易错点；不要只写“请自行练习”“思考一下”。
-9. 章末保留一个短练习收束块，优先用 `> [!PRACTICE]`，包含 2-4 个贴合本章的小题/任务和答案或判定依据；传统题目不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。
+9. 章末保留一个短练习收束块，优先用 `> [!PRACTICE]`；快速复习包含 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统学习包含 2-4 个贴合本章的小题/任务，并给答案或判定依据；传统题目不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。
 10. 信息块要清楚分层：公式后解释适用条件，步骤后给检查点，例题后给错因；不要把公式、说明、步骤、提醒和例题揉成一段。
 11. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 

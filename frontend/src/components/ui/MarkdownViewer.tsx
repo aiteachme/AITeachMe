@@ -28,6 +28,16 @@ type MarkdownViewerVariant = "default" | "document" | "planner";
 type CalloutKind = "note" | "tip" | "important" | "warning" | "caution" | "example" | "practice";
 type CollapsibleHeadings = boolean | readonly number[];
 const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice";
+const CALLOUT_FIELD_LABEL_PATTERN =
+  "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|任务|案例|例题|解析|解法|步骤|答案|结论|易错点|错因|注意";
+const CALLOUT_FIELD_MARKER_RE = new RegExp(
+  `(?<!\\*)\\s*(?:\\*\\*(?:${CALLOUT_FIELD_LABEL_PATTERN})\\*\\*|(?:${CALLOUT_FIELD_LABEL_PATTERN}))\\s*[：:]`,
+  "g",
+);
+const CALLOUT_FIELD_SPLIT_RE = new RegExp(
+  `(?<!\\*)(?=\\s*(?:\\*\\*(?:${CALLOUT_FIELD_LABEL_PATTERN})\\*\\*|(?:${CALLOUT_FIELD_LABEL_PATTERN}))\\s*[：:])`,
+  "g",
+);
 const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
@@ -603,13 +613,38 @@ function stripLeadingCalloutIcon(line: string): string {
   return String(line || "").replace(CALLOUT_LEADING_ICON_RE, "").replace(/^\s+/, "");
 }
 
+function splitCalloutLearningFields(line: string): string[] {
+  const stripped = String(line || "").trim();
+  if (!stripped) return [line];
+  if (/^(?:[-*+]|\d+\.)\s+/.test(stripped)) return [line];
+  const markerCount = Array.from(stripped.matchAll(CALLOUT_FIELD_MARKER_RE)).length;
+  if (markerCount < 2) return [line];
+  const parts = stripped.split(CALLOUT_FIELD_SPLIT_RE).map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 ? parts : [line];
+}
+
 function normalizeCalloutBodyLines(lines: string[]): string[] {
   const body = trimBlankLines(lines);
   const firstContentIndex = body.findIndex((line) => line.trim().length > 0);
   if (firstContentIndex >= 0) {
     body[firstContentIndex] = stripLeadingCalloutIcon(body[firstContentIndex]);
   }
-  return body;
+  const normalized: string[] = [];
+  for (const line of body) {
+    const parts = splitCalloutLearningFields(line);
+    if (parts.length <= 1) {
+      normalized.push(line);
+      continue;
+    }
+    if (normalized.length > 0 && normalized[normalized.length - 1].trim()) {
+      normalized.push("");
+    }
+    parts.forEach((part, index) => {
+      if (index > 0) normalized.push("");
+      normalized.push(part);
+    });
+  }
+  return trimBlankLines(normalized);
 }
 
 function pushCanonicalCallout(target: string[], kind: string, bodyLines: string[]) {

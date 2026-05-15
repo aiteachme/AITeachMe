@@ -163,18 +163,20 @@ def _rule_review_chapter(
         warnings.append("章节长度低于最低字数要求。")
         actions.append(
             ReviewAction(
-                action_id=f"review_ch{draft.chapter_index:02d}_surface_length",
-                action_type="record_only",
+                action_id=f"review_ch{draft.chapter_index:02d}_section_length",
+                action_type="section_patch",
                 chapter_index=draft.chapter_index,
-                severity="info",
-                reason="章节偏短；当前阶段仅记录，后续可由有限回流决定是否扩写。",
+                severity="warning",
+                reason=f"章节偏短：当前约 {word_count} 字，低于最低要求 {task.min_word_count} 字。",
                 target_anchor=_chapter_anchor(draft),
-                instruction="记录章节长度偏短，不在 MVP repair 中自动扩写。",
+                instruction="在不新增无证据事实、不改变章节边界的前提下，扩写本章核心小节：补清定义/条件、解释路径、例子或任务、检查点和易错边界，使正文达到最低字数要求。",
                 constraints=[
-                    "不因长度原因自动新增事实内容。",
-                    "不改变当前发布正文。",
+                    "优先使用本章已有研究材料、claim/evidence 和已出现的正文线索。",
+                    "不得新增、删除或重排 confirmed plan 章节。",
+                    "不得引入没有证据支撑的新断言。",
+                    *scope_constraints,
                 ],
-                expected_effect="manifest 中保留长度风险，发布流程不中断。",
+                expected_effect="章节从短提纲扩展为完整学习单元，读者不用回看教材也能理解本章核心内容。",
             )
         )
     unresolved_conflicts = int((conflict_report or ConflictReport()).unresolved_count or 0)

@@ -55,6 +55,20 @@ def test_normalize_supports_practice_callout_blocks() -> None:
     assert summary["callout_count"] == 1
 
 
+def test_normalize_splits_callout_learning_fields_into_paragraphs() -> None:
+    raw = (
+        "> [!EXAMPLE]\n"
+        "> **例题**：设 $f(x)$ 连续。 **解析**：构造辅助函数并使用定理。 "
+        "**答案/结论**：命题成立。 **易错点**：不要漏掉适用条件。"
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "> **例题**：设 $f(x)$ 连续。\n>\n> **解析**：构造辅助函数并使用定理。" in fixed
+    assert "> **答案/结论**：命题成立。\n>\n> **易错点**：不要漏掉适用条件。" in fixed
+    assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
+
+
 def test_display_math_absolute_value_pipes_do_not_trigger_table_boundary() -> None:
     raw = "\n".join(
         [

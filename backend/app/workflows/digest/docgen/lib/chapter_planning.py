@@ -375,10 +375,16 @@ def assemble_chapter_generation_plan(
             required=list(seed.required_elements),
             mode_profile=mode_profile,
         )
+        density_policy = dict(mode_profile.example_density_policy)
+        try:
+            chapter_end_plan_limit = int(density_policy.get("chapter_end_practice_max_tasks", 4) or 4)
+        except (TypeError, ValueError):
+            chapter_end_plan_limit = 4
+        chapter_end_plan_limit = max(3, min(12, chapter_end_plan_limit))
         chapter_end_practice_plan = clean_example_coverage_plan(
             getattr(brief, "chapter_end_practice_plan", []),
-            limit=4,
-        ) or clean_example_coverage_plan(example_coverage_plan[:3], limit=3)
+            limit=chapter_end_plan_limit,
+        ) or clean_example_coverage_plan(example_coverage_plan[:chapter_end_plan_limit], limit=chapter_end_plan_limit)
         task = ChapterGenerationTask(
             chapter_index=chapter_index,
             confirmed_title=confirmed_title,

@@ -64,6 +64,16 @@ CALLOUT_LINE_PATTERN = re.compile(
     rf"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\](?P<rest>.*)$",
     re.IGNORECASE,
 )
+CALLOUT_FIELD_LABEL_PATTERN = (
+    r"题目/任务|解析/判定依据|答案/结论|判定依据|正确答案|参考答案|"
+    r"题目|任务|案例|例题|解析|解法|步骤|答案|结论|易错点|错因|注意"
+)
+CALLOUT_FIELD_MARKER_TOKEN_PATTERN = re.compile(
+    rf"(?<!\*)\s*(?:\*\*(?:{CALLOUT_FIELD_LABEL_PATTERN})\*\*|(?:{CALLOUT_FIELD_LABEL_PATTERN}))\s*[：:]"
+)
+CALLOUT_FIELD_SPLIT_PATTERN = re.compile(
+    rf"(?<!\*)(?=\s*(?:\*\*(?:{CALLOUT_FIELD_LABEL_PATTERN})\*\*|(?:{CALLOUT_FIELD_LABEL_PATTERN}))\s*[：:])"
+)
 BARE_CALLOUT_PATTERN = re.compile(
     rf"(?m)^(?!\s*>)\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]",
     re.IGNORECASE,
@@ -114,8 +124,36 @@ def _trim_blank_lines(lines: list[str]) -> list[str]:
     return trimmed
 
 
+def _split_callout_learning_fields(line: str) -> list[str]:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return [line]
+    if re.match(r"^(?:[-*+]|\d+\.)\s+", stripped):
+        return [line]
+    if len(CALLOUT_FIELD_MARKER_TOKEN_PATTERN.findall(stripped)) < 2:
+        return [line]
+    parts = [part.strip() for part in CALLOUT_FIELD_SPLIT_PATTERN.split(stripped) if part.strip()]
+    return parts if len(parts) > 1 else [line]
+
+
+def _normalize_callout_body_lines(body_lines: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for body_line in body_lines:
+        parts = _split_callout_learning_fields(body_line)
+        if len(parts) <= 1:
+            normalized.append(body_line)
+            continue
+        if normalized and normalized[-1].strip():
+            normalized.append("")
+        for index, part in enumerate(parts):
+            if index > 0:
+                normalized.append("")
+            normalized.append(part)
+    return _trim_blank_lines(normalized)
+
+
 def _append_callout_block(output: list[str], *, kind: str, body_lines: list[str]) -> None:
-    body = _trim_blank_lines(body_lines)
+    body = _normalize_callout_body_lines(_trim_blank_lines(body_lines))
     output.append(f"> [!{kind.upper()}]")
     if not body:
         output.append("")

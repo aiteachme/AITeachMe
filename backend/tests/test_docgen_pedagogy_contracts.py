@@ -6,11 +6,13 @@ from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_revi
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
+from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_heading_repair_messages,
     build_docgen_writer_messages,
 )
+from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 
 
 def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() -> None:
@@ -93,6 +95,20 @@ def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
     assert "共 3 章" in overview
     assert "矩阵分解、特征值应用、正交投影：最小二乘几何解释" in overview
     assert "核心概念总览" not in overview
+
+
+def test_systematic_mode_contract_and_word_budget_stay_deep() -> None:
+    contract = get_planner_mode_contract("systematic")
+    assert contract.min_chapters == 5
+    assert contract.max_chapters == 12
+    assert contract.target_length == "30000-100000字"
+
+    profile = get_docgen_mode_profile("systematic")
+    assert profile.word_budget(
+        chapter_count=10,
+        depth_level="deep",
+        target_length=contract.target_length,
+    ) == (3000, 10000)
 
 
 def test_heading_quality_detects_duplicate_titles_without_local_semantic_wordlist() -> None:
@@ -357,6 +373,36 @@ def test_sprint_rule_review_does_not_keyword_reject_unanswered_practice() -> Non
     assert report.passed is False
 
 
+def test_rule_review_short_chapter_requests_section_expansion() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="系统学习章节",
+        markdown="# 系统学习章节\n\n## 核心概念\n\n这里只给出一句定义。",
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="系统学习章节",
+        required_elements=[],
+        min_word_count=200,
+    )
+
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="systematic",
+    )
+
+    length_actions = [action for action in actions if action.action_id.endswith("_section_length")]
+    assert len(length_actions) == 1
+    assert length_actions[0].action_type == "section_patch"
+    assert length_actions[0].severity == "warning"
+    assert "扩写本章核心小节" in length_actions[0].instruction
+    assert report.passed is False
+
+
 def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples() -> None:
     messages = build_docgen_writer_messages(
         title="矩阵分解",
@@ -385,8 +431,13 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "可独立学习的小单元" in prompt
     assert "学生不看原教材也应能知道" in prompt
     assert "章末保留一个短练习收束块" in prompt
-    assert "训练型章节至少 6 个完整学习活动" in prompt
-    assert "概念章至少 2 个左右" in prompt
+    assert "学习活动总量约 10 个" in prompt
+    assert "章末练习 6-8 个" in prompt
+    assert "训练型章节至少 10 个学习活动" in prompt
+    assert "概念章至少 4 个完整例题或短例子" in prompt
+    assert "题型/任务导航表" in prompt
+    assert "考什么、条件信号、做法和易错点" in prompt
+    assert "各自独立成段或列表项" in prompt
     assert "不要复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "带答案的理解检查活动" in prompt
@@ -432,12 +483,14 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     )
     prompt = messages[-1]["content"]
 
-    assert "题型/任务整理" in prompt
+    assert "题型/任务导航" in prompt
     assert "方法对照" in prompt
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
     assert "完整学习单元" in prompt
     assert "每章末尾应有一个短练习收束块" in prompt
+    assert "快速复习通常 6-8 个短题/任务" in prompt
+    assert "不能挤在同一段" in prompt
     assert "不要在 action 里给可直接复制的标题" in prompt
     assert "按本章具体对象、方法、任务差异或场景命名" in prompt
     assert "序号占位题型" in prompt

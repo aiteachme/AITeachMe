@@ -212,6 +212,14 @@ def _unit_float(value: object, *, default: float = 0.0) -> float:
     return max(0.0, min(1.0, parsed))
 
 
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def _execution_contract_for_writer(
     task: ChapterGenerationTask,
     *,
@@ -226,11 +234,28 @@ def _execution_contract_for_writer(
     practice_ratio = _unit_float((task.practice_seed_policy or {}).get("practice_ratio"))
     density_policy = dict((task.practice_seed_policy or {}).get("example_density_policy") or {})
     chapter_end_practice_plan = list((task.practice_seed_policy or {}).get("chapter_end_practice_plan") or task.chapter_end_practice_plan or [])
-    worked_example_target = int(density_policy.get("worked_examples_per_chapter", 3) or 1)
+    worked_example_target = _positive_int(density_policy.get("worked_examples_per_chapter"), default=3)
     if example_ratio >= 0.42:
         worked_example_target = max(worked_example_target, 4)
-    practice_task_target = int(density_policy.get("practice_tasks_per_chapter", 1) or 1)
-    self_check_target = max(1 if practice_ratio >= 0.25 else 0, practice_task_target // 2)
+    practice_task_target = _positive_int(density_policy.get("practice_tasks_per_chapter"), default=1)
+    learning_activity_target = _positive_int(
+        density_policy.get("total_learning_activities_per_chapter"),
+        default=worked_example_target + practice_task_target,
+    )
+    if learning_activity_target > worked_example_target:
+        practice_task_target = max(practice_task_target, learning_activity_target - worked_example_target)
+    chapter_end_min_tasks = _positive_int(
+        density_policy.get("chapter_end_practice_min_tasks"),
+        default=max(2, min(4, practice_task_target)),
+    )
+    chapter_end_max_tasks = max(
+        chapter_end_min_tasks,
+        _positive_int(
+            density_policy.get("chapter_end_practice_max_tasks"),
+            default=max(chapter_end_min_tasks, min(8, practice_task_target)),
+        ),
+    )
+    self_check_target = max(1 if practice_ratio >= 0.25 else 0, practice_task_target // 2, chapter_end_min_tasks)
     return {
         "target_word_count": task.target_word_count,
         "min_word_count": task.min_word_count,
@@ -249,11 +274,15 @@ def _execution_contract_for_writer(
         "chapter_end_practice_plan": chapter_end_practice_plan,
         "repair_enabled": True,
         "practice_quota": {
+            "learning_activities": max(learning_activity_target, worked_example_target + practice_task_target),
             "worked_examples": worked_example_target,
+            "practice_tasks": practice_task_target,
             "short_answer": 0,
             "self_check": self_check_target,
             "reasoning": 1,
             "application": max(1, practice_task_target // 2),
+            "chapter_end_min_tasks": chapter_end_min_tasks,
+            "chapter_end_max_tasks": chapter_end_max_tasks,
             "policy": str((task.practice_seed_policy or {}).get("policy") or ""),
         },
         "media_quota": {
