@@ -437,6 +437,8 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
         [
             "> 💡 **观察提示**：看到平方差就先想共轭或因式分解。",
             "",
+            "> ✅ **高频考点**：先抓题目条件，再选公式。",
+            "",
             "> ⭐ **关键结论**：先抓题目条件，再选公式。",
             "",
             "> ⚠️ **边界提醒**：不要把定义域限制漏掉。",
@@ -452,6 +454,7 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
     fixed = normalize_educational_callouts(raw)
 
     assert "> [!TIP]\n>\n> **观察提示**：看到平方差就先想共轭或因式分解。" in fixed
+    assert "> [!IMPORTANT]\n>\n> **高频考点**：先抓题目条件，再选公式。" in fixed
     assert "> [!IMPORTANT]\n>\n> **关键结论**：先抓题目条件，再选公式。" in fixed
     assert "> [!WARNING]\n>\n> **边界提醒**：不要把定义域限制漏掉。" in fixed
     assert "> ✅ **答案**：5" in fixed
