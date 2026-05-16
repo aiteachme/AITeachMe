@@ -9,6 +9,7 @@ import {
   Edit3,
   FileText,
   FolderOpen,
+  Compass,
   LayoutGrid,
   Loader2,
   Menu,
@@ -21,6 +22,7 @@ import {
   Trash2,
   X,
   MessageCircle,
+  type LucideIcon,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -35,7 +37,8 @@ import { resolveCourseIcon, resolveCourseTone } from "../../lib/courseIcons";
 import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
-import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive } from "../../lib/courseNavigation";
+import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive, type CourseRouteId } from "../../lib/courseNavigation";
+import { useIsFrontendDevelopmentMode } from "../providers/FrontendModeProvider";
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
@@ -45,12 +48,18 @@ import { useAiInteraction, type AiConversationScope } from "../interaction";
 
 import { Button } from "../ui/Button";
 
-const MODULES = [
+const MODULES: ReadonlyArray<{
+  id: CourseRouteId;
+  name: string;
+  icon: LucideIcon;
+  devOnly?: boolean;
+}> = [
+  { id: "nav", name: "导航", icon: Compass, devOnly: true },
   { id: "build", name: "构建", icon: Sparkles },
   { id: "knowledge-docs", name: "知识库", icon: BookOpen },
   { id: "exams", name: "考试", icon: FileText },
   { id: "profile", name: "学习画像", icon: BarChart3 },
-] as const;
+];
 
 const LOGO_SRC = publicAssetPath("logo.svg");
 const COURSE_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.coursesExpanded";
@@ -217,6 +226,7 @@ export function Sidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isDevelopmentMode = useIsFrontendDevelopmentMode();
   const {
     activeScope,
     fullscreenScope,
@@ -379,6 +389,10 @@ export function Sidebar({
   });
 
   const groupedCourses = useMemo(() => courses as CourseItem[], [courses]);
+  const visibleModules = useMemo(
+    () => MODULES.filter((moduleItem) => !moduleItem.devOnly || isDevelopmentMode),
+    [isDevelopmentMode],
+  );
   const shouldAnimateCourseItems = groupedCourses.length <= 24;
   const shouldShowCourseList = effectiveCollapsed || isCourseSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
@@ -880,7 +894,7 @@ export function Sidebar({
                       <div className="min-h-0 overflow-hidden">
                         <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
                           <AnimatePresence initial={false}>
-                            {MODULES.map((moduleItem) => {
+                            {visibleModules.map((moduleItem) => {
                               const path = buildCoursePath(course.course_id, moduleItem.id);
                               const isActive = isCourseRouteActive(location.pathname, course.course_id, moduleItem.id);
                               const Icon = moduleItem.icon;

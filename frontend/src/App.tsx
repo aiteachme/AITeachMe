@@ -3,7 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, usePar
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
-import { FrontendModeProvider } from "./components/providers/FrontendModeProvider";
+import { FrontendModeProvider, useIsFrontendDevelopmentMode } from "./components/providers/FrontendModeProvider";
 import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
@@ -36,6 +36,9 @@ const LibraryFilePage = lazy(() =>
 );
 const BuildPlanPage = lazy(() =>
   import("./pages/BuildPlanPage").then((module) => ({ default: module.BuildPlanPage })),
+);
+const CourseDevNavigationPage = lazy(() =>
+  import("./pages/CourseDevNavigationPage").then((module) => ({ default: module.CourseDevNavigationPage })),
 );
 const ExamsPage = lazy(() => import("./pages/ExamsPage").then((module) => ({ default: module.ExamsPage })));
 const ExamPaperPage = lazy(() =>
@@ -71,11 +74,35 @@ function withRouteFallback(element: ReactElement) {
 }
 
 const COURSE_PAGE_ELEMENTS: Record<CourseRouteId, ReactElement> = {
+  nav: withRouteFallback(
+    <DevelopmentCourseRoute>
+      <CourseDevNavigationPage />
+    </DevelopmentCourseRoute>,
+  ),
   build: withRouteFallback(<BuildPlanPage />),
   "knowledge-docs": withRouteFallback(<KnowledgeDocsPage />),
   exams: withRouteFallback(<ExamsPage />),
   profile: withRouteFallback(<ProfilePage />),
 };
+
+function DevelopmentCourseRoute({ children }: { children: ReactElement }) {
+  const isDevelopmentMode = useIsFrontendDevelopmentMode();
+  const params = useParams();
+  const location = useLocation();
+  const courseId = params.courseId ?? "";
+
+  if (!isDevelopmentMode) {
+    return (
+      <Navigate
+        to={courseId ? buildCoursePath(courseId, "build") : "/"}
+        replace
+        state={location.state}
+      />
+    );
+  }
+
+  return children;
+}
 
 function LegacyCourseRouteRedirect({ buildPath }: { buildPath: (params: Record<string, string | undefined>) => string }) {
   const params = useParams();

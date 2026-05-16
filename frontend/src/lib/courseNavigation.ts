@@ -2,11 +2,13 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   BookOpen,
+  Compass,
   FileText,
   Sparkles,
 } from "lucide-react";
 
 export type CourseRouteId =
+  | "nav"
   | "build"
   | "knowledge-docs"
   | "exams"
@@ -17,9 +19,17 @@ export interface CourseNavItem {
   label: string;
   icon: LucideIcon;
   description: string;
+  devOnly?: boolean;
 }
 
 export const COURSE_NAV_ITEMS: CourseNavItem[] = [
+  {
+    id: "nav",
+    label: "导航",
+    icon: Compass,
+    description: "开发模式下汇总课程入口、近期试卷和学习画像",
+    devOnly: true,
+  },
   {
     id: "build",
     label: "构建",
@@ -54,6 +64,8 @@ export const COURSE_ROUTE_REDIRECTS = {
   chat: "knowledge-docs",
   exam: "exams",
   analysis: "profile",
+  navigation: "nav",
+  overview: "nav",
   doc: "knowledge-docs",
   docs: "knowledge-docs",
 } as const;
