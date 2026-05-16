@@ -71,6 +71,14 @@ _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
 EXAM_PREWARM_CONFIG_VERSION = 1
 EXAM_PREWARM_TTL_DAYS = 2
 DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 8
+PAPER_LAYOUT_CONFIG_VERSION = 1
+PAPER_LAYOUT_MODES = {
+    "auto",
+    "standard_two_page",
+    "gaokao_four_page",
+    "gaokao_six_page",
+    "gaokao_eight_page",
+}
 
 
 def _exam_stream_channel(course_id: str, paper_id: int) -> str:
@@ -189,6 +197,7 @@ def _build_exam_config_snapshot(
     sample_file_ids: list[str] | None,
     knowledge_unit_ids: list[int],
     mastery_fingerprint: str,
+    paper_layout_mode: str | None = None,
 ) -> dict[str, object]:
     return {
         "version": EXAM_PREWARM_CONFIG_VERSION,
@@ -200,6 +209,11 @@ def _build_exam_config_snapshot(
         "sample_file_ids": _normalized_sample_file_ids(sample_file_ids),
         "knowledge_unit_ids": sorted({int(unit_id) for unit_id in knowledge_unit_ids if int(unit_id or 0) > 0}),
         "mastery_fingerprint": mastery_fingerprint,
+        "paper_layout_mode": _normalize_paper_layout_mode(
+            paper_layout_mode,
+            exam_mode=exam_mode,
+            question_count=question_count,
+        ),
     }
 
 
@@ -869,7 +883,7 @@ def _exam_priority_unit_ids(
     exam_mode: str,
 ) -> list[int]:
     priority_ids: list[int] = []
-    if exam_mode == "web_practice":
+    if exam_mode in {"web_practice", "mastery_drill"}:
         due_states = profile_repo.list_due_knowledge_states(
             session,
             user_id=user_id,
@@ -929,12 +943,285 @@ def _question_type_for_order(*, exam_mode: str, difficulty: str, item_order: int
     return cycle[(item_order - 1) % len(cycle)]
 
 
+def _normalize_paper_layout_mode(
+    value: str | None,
+    *,
+    exam_mode: str,
+    question_count: int,
+) -> str:
+    """Resolve the persisted paper-layout mode used by the frontend canvas."""
+
+    if exam_mode != "paper_exam":
+        return "practice_scroll"
+    normalized = str(value or "auto").strip().lower().replace("-", "_")
+    aliases = {
+        "two_page": "standard_two_page",
+        "two_pages": "standard_two_page",
+        "normal_two_page": "standard_two_page",
+        "standard": "standard_two_page",
+        "gaokao_4": "gaokao_four_page",
+        "four_page": "gaokao_four_page",
+        "four_pages": "gaokao_four_page",
+        "gaokao_6": "gaokao_six_page",
+        "six_page": "gaokao_six_page",
+        "six_pages": "gaokao_six_page",
+        "gaokao_8": "gaokao_eight_page",
+        "eight_page": "gaokao_eight_page",
+        "eight_pages": "gaokao_eight_page",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in PAPER_LAYOUT_MODES:
+        normalized = "auto"
+    if normalized != "auto":
+        return normalized
+    if question_count >= 36:
+        return "gaokao_eight_page"
+    if question_count >= 28:
+        return "gaokao_six_page"
+    if question_count >= 12:
+        return "gaokao_four_page"
+    return "standard_two_page"
+
+
+def _paper_layout_base(mode: str, question_count: int) -> dict[str, object]:
+    if mode == "gaokao_six_page":
+        base_pages = 6
+        pages_per_side = 3
+        display_name = "高考六页仿真"
+        paper_style = "gaokao"
+        items_per_page = 7
+    elif mode == "gaokao_eight_page":
+        base_pages = 8
+        pages_per_side = 4
+        display_name = "高考八页仿真"
+        paper_style = "gaokao"
+        items_per_page = 7
+    elif mode == "gaokao_four_page":
+        base_pages = 4
+        pages_per_side = 2
+        display_name = "高考四页仿真"
+        paper_style = "gaokao"
+        items_per_page = 7
+    else:
+        base_pages = 2
+        pages_per_side = 2
+        display_name = "标准两页测试"
+        paper_style = "standard"
+        items_per_page = 5
+
+    estimated_pages = max(base_pages, (max(1, question_count) + items_per_page - 1) // items_per_page)
+    if estimated_pages % pages_per_side != 0:
+        estimated_pages += pages_per_side - (estimated_pages % pages_per_side)
+    return {
+        "base_pages": base_pages,
+        "total_pages": estimated_pages,
+        "pages_per_side": pages_per_side,
+        "display_name": display_name,
+        "paper_style": paper_style,
+    }
+
+
+def _question_layout_weight(question_type: str, difficulty: str | None = None) -> float:
+    normalized_type = str(question_type or "").lower()
+    normalized_difficulty = str(difficulty or "").lower()
+    if normalized_type in {"single_choice", "true_false"}:
+        weight = 0.8
+    elif normalized_type in {"multiple_choice", "multi_choice", "fill_blank"}:
+        weight = 1.0
+    elif normalized_type in {"short_answer", "essay"}:
+        weight = 1.75
+    else:
+        weight = 1.2
+    if normalized_difficulty == "hard":
+        weight += 0.35
+    elif normalized_difficulty == "easy":
+        weight -= 0.15
+    return max(0.5, weight)
+
+
+def _score_for_question(*, exam_mode: str, question_type: str, difficulty: str | None = None) -> float:
+    if exam_mode != "paper_exam":
+        return 1.0
+    normalized_type = str(question_type or "").lower()
+    if normalized_type in {"single_choice", "true_false"}:
+        score = 5.0
+    elif normalized_type in {"multiple_choice", "multi_choice"}:
+        score = 6.0
+    elif normalized_type == "fill_blank":
+        score = 5.0
+    elif normalized_type in {"short_answer", "essay"}:
+        score = 12.0
+    else:
+        score = 8.0
+    if str(difficulty or "").lower() == "hard" and normalized_type in {"short_answer", "essay"}:
+        score += 2.0
+    return score
+
+
+def _question_type_group(question_type: str) -> tuple[str, str]:
+    normalized = str(question_type or "").lower()
+    if normalized in {"single_choice", "multiple_choice", "multi_choice", "true_false"}:
+        return "choice", "选择题"
+    if normalized == "fill_blank":
+        return "blank", "填空题"
+    if normalized in {"short_answer", "essay"}:
+        return "answer", "解答题"
+    return "mixed", "综合题"
+
+
+def _section_number_label(index: int) -> str:
+    labels = ["一", "二", "三", "四", "五", "六", "七", "八"]
+    if 1 <= index <= len(labels):
+        return labels[index - 1]
+    return str(index)
+
+
+def _build_paper_layout(
+    *,
+    exam_mode: str,
+    question_count: int,
+    paper_layout_mode: str | None = None,
+    rows: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    mode = _normalize_paper_layout_mode(
+        paper_layout_mode,
+        exam_mode=exam_mode,
+        question_count=question_count,
+    )
+    count = max(1, int(question_count or len(rows or []) or 1))
+    if exam_mode != "paper_exam":
+        return {
+            "version": PAPER_LAYOUT_CONFIG_VERSION,
+            "mode": mode,
+            "paper_style": "practice",
+            "display_name": "专项练习",
+            "total_pages": 1,
+            "pages_per_side": 1,
+            "sides": [{"side_number": 1, "label": "练习页", "pages": [1]}],
+            "pages": [{"page_number": 1, "question_orders": list(range(1, count + 1)), "section_numbers": [1]}],
+            "sections": [
+                {
+                    "section_number": 1,
+                    "title": "练习题",
+                    "question_type_group": "practice",
+                    "question_orders": list(range(1, count + 1)),
+                    "page_start": 1,
+                    "page_end": 1,
+                    "total_score": float(count),
+                }
+            ],
+            "question_allocations": [
+                {"item_order": order, "page_number": 1, "section_number": 1, "score": 1.0}
+                for order in range(1, count + 1)
+            ],
+        }
+
+    base = _paper_layout_base(mode, count)
+    pages_per_side = int(base["pages_per_side"])
+    row_by_order: dict[int, dict[str, object]] = {}
+    for row in rows or []:
+        order = _positive_int(row.get("item_order") or row.get("order"))
+        if order > 0:
+            row_by_order[order] = dict(row)
+
+    normalized_rows: list[dict[str, object]] = []
+    for order in range(1, count + 1):
+        row = row_by_order.get(order, {})
+        question_type = str(row.get("question_type") or row.get("type") or "text")
+        difficulty = str(row.get("difficulty") or "medium")
+        score = row.get("score")
+        try:
+            score_value = float(score)
+        except (TypeError, ValueError):
+            score_value = _score_for_question(
+                exam_mode=exam_mode,
+                question_type=question_type,
+                difficulty=difficulty,
+            )
+        normalized_rows.append(
+            {
+                "item_order": order,
+                "question_type": question_type,
+                "difficulty": difficulty,
+                "score": score_value,
+                "weight": _question_layout_weight(question_type, difficulty),
+            }
+        )
+
+    sections: list[dict[str, object]] = []
+    question_allocations: list[dict[str, object]] = []
+    active_section: dict[str, object] | None = None
+    for row in normalized_rows:
+        group, label = _question_type_group(str(row["question_type"]))
+        if active_section is None or active_section["question_type_group"] != group:
+            section_number = len(sections) + 1
+            active_section = {
+                "section_number": section_number,
+                "title": f"{_section_number_label(section_number)}、{label}",
+                "question_type_group": group,
+                "question_orders": [],
+                "page_start": 1,
+                "page_end": 1,
+                "total_score": 0.0,
+            }
+            sections.append(active_section)
+        order = int(row["item_order"])
+        active_section["question_orders"].append(order)
+        active_section["page_start"] = 1
+        active_section["page_end"] = 1
+        active_section["total_score"] = round(float(active_section["total_score"]) + float(row["score"]), 1)
+        question_allocations.append(
+            {
+                "item_order": order,
+                "page_number": 1,
+                "section_number": int(active_section["section_number"]),
+                "score": float(row["score"]),
+            }
+        )
+
+    section_by_order = {
+        order: int(section["section_number"])
+        for section in sections
+        for order in list(section["question_orders"])
+    }
+    page_orders = [int(row["item_order"]) for row in normalized_rows]
+    pages: list[dict[str, object]] = [
+        {
+            "page_number": 1,
+            "question_orders": page_orders,
+            "section_numbers": sorted({
+                section_by_order[order]
+                for order in page_orders
+                if order in section_by_order
+            }),
+        }
+    ]
+
+    return {
+        "version": PAPER_LAYOUT_CONFIG_VERSION,
+        "mode": mode,
+        "paper_style": base["paper_style"],
+        "display_name": base["display_name"],
+        "pagination_strategy": "content_flow",
+        "total_pages": 1,
+        "pages_per_side": pages_per_side,
+        "sides": [{"side_number": 1, "label": "正面", "pages": [1]}],
+        "pages": pages,
+        "sections": sections,
+        "question_allocations": question_allocations,
+    }
+
+
 def _build_exam_selection_context(
     *,
     source: str,
     knowledge_unit_ids: list[int],
     user_prompt: str | None,
     sample_file_ids: list[str],
+    exam_mode: str = "web_practice",
+    question_count: int = 1,
+    paper_layout_mode: str | None = None,
+    paper_layout: dict[str, object] | None = None,
     config_hash: str | None = None,
     config_snapshot: dict[str, object] | None = None,
     generation_origin: str = "user",
@@ -948,6 +1235,17 @@ def _build_exam_selection_context(
         "sample_file_ids": sample_file_ids,
         "generation_origin": generation_origin,
         "generation_status": generation_status,
+        "paper_layout_mode": _normalize_paper_layout_mode(
+            paper_layout_mode,
+            exam_mode=exam_mode,
+            question_count=question_count,
+        ),
+        "paper_layout": paper_layout
+        or _build_paper_layout(
+            exam_mode=exam_mode,
+            question_count=question_count,
+            paper_layout_mode=paper_layout_mode,
+        ),
     }
     if config_hash:
         payload["config_hash"] = config_hash
@@ -1166,6 +1464,7 @@ def _create_exam_generation_paper(
     config_hash: str,
     visibility: str,
     generation_origin: str,
+    paper_layout_mode: str | None = None,
 ) -> ExamPaper:
     now = utcnow()
     initial_preview = _build_placeholder_paper_preview(question_count=question_count)
@@ -1189,6 +1488,9 @@ def _create_exam_generation_paper(
                 knowledge_unit_ids=unit_ids,
                 user_prompt=user_prompt,
                 sample_file_ids=_normalized_sample_file_ids(sample_file_ids),
+                exam_mode=exam_mode,
+                question_count=question_count,
+                paper_layout_mode=paper_layout_mode,
                 config_hash=config_hash,
                 config_snapshot=config_snapshot,
                 generation_origin=generation_origin,
@@ -1210,6 +1512,7 @@ def _reserve_exam_prewarm_paper(
     unit_ids: list[int],
     config_snapshot: dict[str, object],
     config_hash: str,
+    paper_layout_mode: str | None = None,
 ) -> tuple[ExamPaper, bool]:
     candidate = exams_repo.get_prepared_exam_candidate(
         session,
@@ -1231,6 +1534,7 @@ def _reserve_exam_prewarm_paper(
         unit_ids=unit_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
+        paper_layout_mode=paper_layout_mode,
         visibility="hidden",
         generation_origin="prewarm",
     )
@@ -1260,6 +1564,7 @@ def _schedule_exam_prewarm_task(
     sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
+    paper_layout_mode: str | None = None,
 ) -> None:
     if background_task_registry is None:
         return
@@ -1274,6 +1579,7 @@ def _schedule_exam_prewarm_task(
             sample_file_ids=sample_file_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=paper_layout_mode,
         ),
         kind="exam.prewarm",
         course_id=course_id,
@@ -1293,6 +1599,7 @@ async def _run_exam_prewarm_background(
     sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
+    paper_layout_mode: str | None = None,
 ) -> None:
     _delete_stale_hidden_exams(course_id=course_id, user_id=user_id)
     with managed_session() as session:
@@ -1307,6 +1614,7 @@ async def _run_exam_prewarm_background(
             unit_ids=unit_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=paper_layout_mode,
         )
         if not reserved:
             return
@@ -1323,6 +1631,7 @@ async def _run_exam_prewarm_background(
         sample_file_ids=sample_file_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
+        paper_layout_mode=paper_layout_mode,
         schedule_replacement=False,
         background_task_registry=None,
     )
@@ -1340,9 +1649,16 @@ async def _run_exam_generation_background(
     sample_file_ids: list[str] | None = None,
     config_snapshot: dict[str, object] | None = None,
     config_hash: str = "",
+    paper_layout_mode: str | None = None,
     schedule_replacement: bool = False,
     background_task_registry=None,
 ) -> None:
+    resolved_paper_layout_mode = _normalize_paper_layout_mode(
+        paper_layout_mode
+        or (str((config_snapshot or {}).get("paper_layout_mode") or "") if isinstance(config_snapshot, dict) else None),
+        exam_mode=exam_mode,
+        question_count=question_count,
+    )
     _publish_exam_event(
         course_id,
         paper_id,
@@ -1540,6 +1856,20 @@ async def _run_exam_generation_background(
                         return
                     context = _json_dict(paper.selection_context_json)
                     context["question_requirement_plans"] = requirement_payload
+                    context["paper_layout_mode"] = resolved_paper_layout_mode
+                    context["paper_layout"] = _build_paper_layout(
+                        exam_mode=exam_mode,
+                        question_count=question_count,
+                        paper_layout_mode=resolved_paper_layout_mode,
+                        rows=[
+                            {
+                                "item_order": item.get("item_order"),
+                                "question_type": item.get("question_type"),
+                                "difficulty": "medium",
+                            }
+                            for item in requirement_payload
+                        ],
+                    )
                     paper.total_items = question_count
                     paper.total_score = float(question_count)
                     paper.selection_context_json = json.dumps(context, ensure_ascii=False)
@@ -1572,7 +1902,23 @@ async def _run_exam_generation_background(
                     return
                 paper.total_items = question_count
                 paper.total_score = float(question_count)
+                context = _json_dict(paper.selection_context_json)
+                context["paper_layout_mode"] = resolved_paper_layout_mode
+                context["paper_layout"] = _build_paper_layout(
+                    exam_mode=exam_mode,
+                    question_count=question_count,
+                    paper_layout_mode=resolved_paper_layout_mode,
+                    rows=[
+                        {
+                            "item_order": item.get("item_order"),
+                            "question_type": item.get("question_type"),
+                            "difficulty": item.get("difficulty"),
+                        }
+                        for item in blueprint_payload
+                    ],
+                )
                 paper.paper_preview_json = preview.model_dump_json()
+                paper.selection_context_json = json.dumps(context, ensure_ascii=False)
                 paper.updated_at = utcnow()
                 session.add(paper)
                 session.commit()
@@ -1759,7 +2105,11 @@ async def _run_exam_generation_background(
                         selection_context_json=json.dumps(item_selection_context, ensure_ascii=False),
                         difficulty=template.difficulty,
                         question_type=template.question_type,
-                        score=1.0,
+                        score=_score_for_question(
+                            exam_mode=exam_mode,
+                            question_type=template.question_type,
+                            difficulty=template.difficulty,
+                        ),
                     )
                 )
             exams_repo.create_exam_paper_items(session, items)
@@ -1775,13 +2125,28 @@ async def _run_exam_generation_background(
                 links_by_item_id[int(item.id or 0)] = refs
             session.commit()
             paper.total_items = len(items)
-            paper.total_score = float(len(items))
+            paper.total_score = float(sum(float(item.score or 0.0) for item in items))
             paper.paper_preview_json = _build_final_paper_preview(
                 items,
                 existing_preview=final_preview,
                 knowledge_unit_by_id=unit_by_id,
                 links_by_item_id=links_by_item_id,
             ).model_dump_json()
+            paper_context["paper_layout_mode"] = resolved_paper_layout_mode
+            paper_context["paper_layout"] = _build_paper_layout(
+                exam_mode=exam_mode,
+                question_count=len(items) or question_count,
+                paper_layout_mode=resolved_paper_layout_mode,
+                rows=[
+                    {
+                        "item_order": item.item_order,
+                        "question_type": item.question_type,
+                        "difficulty": item.difficulty,
+                        "score": item.score,
+                    }
+                    for item in items
+                ],
+            )
             paper_context.pop("generated_questions", None)
             paper_context.pop("generated_question_count", None)
             paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
@@ -1819,6 +2184,7 @@ async def _run_exam_generation_background(
                 sample_file_ids=sample_file_ids,
                 config_snapshot=config_snapshot,
                 config_hash=config_hash,
+                paper_layout_mode=resolved_paper_layout_mode,
             )
     except asyncio.CancelledError:
         error_message = "Exam question generation was cancelled during the planning stage."
@@ -1900,6 +2266,7 @@ async def _spawn_exam_generation_after_response(
     config_snapshot: dict[str, object],
     config_hash: str,
     schedule_replacement: bool,
+    paper_layout_mode: str | None = None,
 ) -> None:
     request.app.state.background_task_registry.spawn(
         _run_exam_generation_background(
@@ -1913,6 +2280,7 @@ async def _spawn_exam_generation_after_response(
             sample_file_ids=sample_file_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=paper_layout_mode,
             schedule_replacement=schedule_replacement,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),
@@ -1935,6 +2303,7 @@ async def _spawn_exam_prewarm_after_response(
     sample_file_ids: list[str] | None,
     config_snapshot: dict[str, object],
     config_hash: str,
+    paper_layout_mode: str | None = None,
 ) -> None:
     _schedule_exam_prewarm_task(
         getattr(request.app.state, "background_task_registry", None),
@@ -1947,6 +2316,7 @@ async def _spawn_exam_prewarm_after_response(
         sample_file_ids=sample_file_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
+        paper_layout_mode=paper_layout_mode,
     )
 
 
@@ -1987,7 +2357,7 @@ def _paper_item_response(
         user_answer=item.answer_content or None,
         is_correct=item.is_correct,
         score_obtained=item.score_obtained,
-        score_max=item.score_max,
+        score_max=item.score_max if item.score_max is not None else item.score,
         error_cause_label=item.error_cause_label,
         is_marked=int(item.question_template_id or 0) in marked_template_ids,
     )
@@ -2487,7 +2857,14 @@ async def generate_exam(
 ) -> ApiResponse[ExamGenerateResponse]:
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
-    question_count = max(1, int(body.num_questions or 5))
+    mode = exam_mode_value(body.exam_mode)
+    default_question_count = 24 if mode == "paper_exam" else 8
+    question_count = max(1, int(body.num_questions or default_question_count))
+    paper_layout_mode = _normalize_paper_layout_mode(
+        body.paper_layout_mode,
+        exam_mode=mode,
+        question_count=question_count,
+    )
     units = _list_exam_eligible_units(
         session,
         course_id=normalized,
@@ -2506,7 +2883,6 @@ async def generate_exam(
             status_code=409,
         )
 
-    mode = exam_mode_value(body.exam_mode)
     unit_ids = [int(unit.id or 0) for unit in exam_units]
     config_snapshot = _build_exam_config_snapshot(
         course_id=normalized,
@@ -2517,6 +2893,7 @@ async def generate_exam(
         sample_file_ids=body.sample_file_ids,
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
+        paper_layout_mode=paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
     paper = exams_repo.claim_prepared_exam_paper(
@@ -2540,6 +2917,7 @@ async def generate_exam(
             sample_file_ids=body.sample_file_ids or [],
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=paper_layout_mode,
         )
         return ok_response(
             ExamGenerateResponse(
@@ -2568,6 +2946,7 @@ async def generate_exam(
         unit_ids=unit_ids,
         config_snapshot=config_snapshot,
         config_hash=config_hash,
+        paper_layout_mode=paper_layout_mode,
         visibility="visible",
         generation_origin="user",
     )
@@ -2585,6 +2964,7 @@ async def generate_exam(
         sample_file_ids=body.sample_file_ids or [],
         config_snapshot=config_snapshot,
         config_hash=config_hash,
+        paper_layout_mode=paper_layout_mode,
         schedule_replacement=not served_from_prepared,
     )
     return ok_response(
@@ -2634,6 +3014,7 @@ async def exam_prewarm_status(
     num_questions: int = Query(DEFAULT_AUTO_PREWARM_QUESTION_COUNT, ge=1, le=200),
     user_prompt: str | None = Query(default=None),
     sample_file_ids: list[str] | None = Query(default=None),
+    paper_layout_mode: str | None = Query(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPrewarmStatusResponse]:
@@ -2641,6 +3022,11 @@ async def exam_prewarm_status(
     _ensure_course(session, normalized, user.user_id)
     mode = exam_mode_value(exam_mode)
     question_count = max(1, int(num_questions or DEFAULT_AUTO_PREWARM_QUESTION_COUNT))
+    resolved_paper_layout_mode = _normalize_paper_layout_mode(
+        paper_layout_mode,
+        exam_mode=mode,
+        question_count=question_count,
+    )
     units = _list_exam_eligible_units(session, course_id=normalized)
     unit_ids = [int(unit.id or 0) for unit in units if unit.id is not None]
     if not unit_ids:
@@ -2662,6 +3048,7 @@ async def exam_prewarm_status(
         sample_file_ids=sample_file_ids or [],
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
+        paper_layout_mode=resolved_paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
     candidate = exams_repo.get_prepared_exam_candidate(
@@ -2684,6 +3071,7 @@ async def exam_prewarm_status(
             unit_ids=unit_ids,
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=resolved_paper_layout_mode,
         )
         status = _prewarm_status_from_candidate(candidate)
         background_requested = reserved
@@ -2701,6 +3089,7 @@ async def exam_prewarm_status(
             sample_file_ids=sample_file_ids or [],
             config_snapshot=config_snapshot,
             config_hash=config_hash,
+            paper_layout_mode=resolved_paper_layout_mode,
             schedule_replacement=False,
         )
 

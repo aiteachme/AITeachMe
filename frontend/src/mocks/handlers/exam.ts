@@ -1,7 +1,7 @@
 import { HttpResponse, http } from "msw";
 
-type ExamMode = "diagnostic" | "practice" | "web_practice" | "weakpoint_boost" | "review" | "mock_final";
-type QuestionType = "single_choice" | "fill_blank" | "short_answer";
+type ExamMode = "diagnostic" | "practice" | "web_practice" | "paper_exam" | "mastery_drill" | "weakpoint_boost" | "review" | "mock_final";
+type QuestionType = "single_choice" | "multiple_choice" | "true_false" | "fill_blank" | "short_answer";
 
 type QuestionTemplateSeed = {
   id: number;
@@ -81,7 +81,7 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       difficulty: "easy",
       stem: "f(x)=x^2 at x=2, derivative is?",
       options: ["2", "4", "6", "8"],
-      answer: "4",
+      answer: "B",
       explanation: "f'(x)=2x, so at x=2 it is 4.",
       knowledge_unit_id: 101,
     },
@@ -91,8 +91,52 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       difficulty: "medium",
       stem: "Which function is not differentiable at x=0?",
       options: ["x^2", "|x|", "sin x", "e^x"],
-      answer: "|x|",
+      answer: "B",
       explanation: "|x| has different one-sided derivatives at 0.",
+      knowledge_unit_id: 101,
+    },
+  ],
+  multiple_choice: [
+    {
+      id: 1501,
+      question_type: "multiple_choice",
+      difficulty: "medium",
+      stem: "Which statements about derivatives are true?",
+      options: ["Derivative describes local rate of change", "Every continuous function is differentiable", "d(x^2)/dx=2x", "A corner can fail differentiability"],
+      answer: "A,C,D",
+      explanation: "Derivatives measure local rate of change; x^2 differentiates to 2x; corners can make derivatives fail. Continuity alone is not enough.",
+      knowledge_unit_id: 102,
+    },
+    {
+      id: 1502,
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      stem: "For y=sin x, which statements are correct?",
+      options: ["The derivative is cos x", "The period is 2pi", "The derivative is always positive", "sin 0 = 0"],
+      answer: "A,B,D",
+      explanation: "sin x has derivative cos x, period 2pi, and sin 0 equals 0. Its derivative is not always positive.",
+      knowledge_unit_id: 107,
+    },
+  ],
+  true_false: [
+    {
+      id: 1801,
+      question_type: "true_false",
+      difficulty: "easy",
+      stem: "If f'(a)=0, then a is always a local maximum.",
+      options: null,
+      answer: "False",
+      explanation: "A zero derivative is only a critical-point signal; it can be a minimum, maximum, saddle-like point, or neither.",
+      knowledge_unit_id: 105,
+    },
+    {
+      id: 1802,
+      question_type: "true_false",
+      difficulty: "easy",
+      stem: "The derivative of a constant function is 0.",
+      options: null,
+      answer: "True",
+      explanation: "A constant function has no change as x changes, so its rate of change is 0.",
       knowledge_unit_id: 101,
     },
   ],
@@ -168,7 +212,9 @@ function extractRequestedCount(prompt: string | undefined): number | null {
 
 function defaultCountByMode(mode: ExamMode): number {
   if (mode === "diagnostic") return 12;
+  if (mode === "mastery_drill") return 10;
   if (mode === "practice" || mode === "web_practice") return 10;
+  if (mode === "paper_exam") return 24;
   if (mode === "weakpoint_boost") return 10;
   if (mode === "review") return 8;
   return 20;
@@ -189,8 +235,10 @@ function chooseQuestionTypes(mode: ExamMode, prompt: string | undefined): Questi
   }
   if (picked.length > 0) return [...new Set(picked)];
 
+  if (mode === "mastery_drill") return ["single_choice", "true_false", "multiple_choice"];
   if (mode === "review") return ["single_choice"];
   if (mode === "practice" || mode === "web_practice") return ["single_choice", "fill_blank"];
+  if (mode === "paper_exam") return ["single_choice", "multiple_choice", "fill_blank", "short_answer"];
   if (mode === "weakpoint_boost") return ["single_choice", "short_answer"];
   return ["single_choice", "fill_blank", "short_answer"];
 }
@@ -206,10 +254,10 @@ function selectTemplates(types: QuestionType[], count: number, seedShift: number
   return selected;
 }
 
-function createPaper(course: string, mode: ExamMode, prompt: string | undefined): InternalPaper {
+function createPaper(course: string, mode: ExamMode, prompt: string | undefined, explicitCount?: number): InternalPaper {
   const paperId = nextPaperId++;
   const requestedCount = extractRequestedCount(prompt);
-  const count = requestedCount ?? defaultCountByMode(mode);
+  const count = explicitCount ?? requestedCount ?? defaultCountByMode(mode);
   const types = chooseQuestionTypes(mode, prompt);
   const templates = selectTemplates(types, count, paperId % 5);
   const createdAt = nowIso();
@@ -231,6 +279,14 @@ function createPaper(course: string, mode: ExamMode, prompt: string | undefined)
     score_max: null,
     error_cause_label: null,
   }));
+  if (mode === "paper_exam") {
+    items.forEach((item) => {
+      item.score_max = getMockQuestionScore(item);
+    });
+  }
+  const totalScore = mode === "paper_exam"
+    ? items.reduce((total, item) => total + Number(item.score_max ?? getMockQuestionScore(item)), 0)
+    : null;
 
   return {
     id: paperId,
@@ -240,7 +296,7 @@ function createPaper(course: string, mode: ExamMode, prompt: string | undefined)
     status: "ready",
     total_items: items.length,
     score_obtained: null,
-    total_score: null,
+    total_score: totalScore,
     submitted_at: null,
     graded_at: null,
     created_at: createdAt,
@@ -300,6 +356,109 @@ function buildPaperPreview(paper: InternalPaper): Record<string, unknown> {
   };
 }
 
+function getMockQuestionScore(item: InternalItem): number {
+  if (item.question_type === "single_choice" || item.question_type === "true_false") return 5;
+  if (item.question_type === "multiple_choice") return 6;
+  if (item.question_type === "fill_blank") return 5;
+  if (item.question_type === "short_answer") return item.difficulty === "hard" ? 14 : 12;
+  return 8;
+}
+
+function buildMockPaperLayout(paper: InternalPaper): Record<string, unknown> {
+  if (paper.exam_mode !== "paper_exam") {
+    return {
+      version: 1,
+      mode: "practice_scroll",
+      paper_style: "practice",
+      display_name: "专项练习",
+      total_pages: 1,
+      pages_per_side: 1,
+      sides: [{ side_number: 1, label: "练习页", pages: [1] }],
+      pages: [{ page_number: 1, question_orders: paper.items.map((item) => item.item_order), section_numbers: [1] }],
+      sections: [{ section_number: 1, title: "练习题", question_orders: paper.items.map((item) => item.item_order), total_score: paper.items.length }],
+      question_allocations: paper.items.map((item) => ({ item_order: item.item_order, page_number: 1, section_number: 1, score: 1 })),
+    };
+  }
+
+  const totalPages = paper.items.length >= 36 ? 8 : paper.items.length >= 28 ? 6 : paper.items.length >= 12 ? 4 : 2;
+  const pagesPerSide = totalPages === 8 ? 4 : totalPages === 6 ? 3 : 2;
+  const pages = Array.from({ length: totalPages }, (_, index) => ({
+    page_number: index + 1,
+    question_orders: [] as number[],
+    section_numbers: [] as number[],
+  }));
+  paper.items.forEach((item, index) => {
+    const pageIndex = Math.min(totalPages - 1, Math.floor((index * totalPages) / Math.max(1, paper.items.length)));
+    pages[pageIndex].question_orders.push(item.item_order);
+  });
+
+  const sectionLabels: Record<string, string> = {
+    choice: "选择题",
+    blank: "填空题",
+    answer: "解答题",
+  };
+  const groupForItem = (item: InternalItem) => {
+    if (item.question_type === "fill_blank") return "blank";
+    if (item.question_type === "short_answer") return "answer";
+    return "choice";
+  };
+  const sections: Array<Record<string, unknown>> = [];
+  let activeGroup = "";
+  for (const item of paper.items) {
+    const group = groupForItem(item);
+    if (group !== activeGroup) {
+      activeGroup = group;
+      const sectionNumber = sections.length + 1;
+      sections.push({
+        section_number: sectionNumber,
+        title: `${["一", "二", "三", "四"][sectionNumber - 1] ?? sectionNumber}、${sectionLabels[group] ?? "综合题"}`,
+        question_type_group: group,
+        question_orders: [],
+        total_score: 0,
+      });
+    }
+    const section = sections[sections.length - 1];
+    (section.question_orders as number[]).push(item.item_order);
+    section.total_score = Number(section.total_score) + getMockQuestionScore(item);
+  }
+  const sectionByOrder = new Map<number, number>();
+  sections.forEach((section) => {
+    (section.question_orders as number[]).forEach((order) => {
+      sectionByOrder.set(order, Number(section.section_number));
+    });
+  });
+  pages.forEach((page) => {
+    page.section_numbers = [...new Set(page.question_orders.map((order) => sectionByOrder.get(order) ?? 1))];
+  });
+  return {
+    version: 1,
+    mode: totalPages === 8
+      ? "gaokao_eight_page"
+      : totalPages === 6
+        ? "gaokao_six_page"
+        : totalPages === 4
+          ? "gaokao_four_page"
+          : "standard_two_page",
+    paper_style: totalPages > 2 ? "gaokao" : "standard",
+    display_name: totalPages > 2 ? `高考${totalPages}页仿真` : "标准两页测试",
+    total_pages: totalPages,
+    pages_per_side: pagesPerSide,
+    sides: Array.from({ length: Math.ceil(totalPages / pagesPerSide) }, (_, index) => ({
+      side_number: index + 1,
+      label: index % 2 === 0 ? "正面" : "背面",
+      pages: pages.slice(index * pagesPerSide, (index + 1) * pagesPerSide).map((page) => page.page_number),
+    })),
+    pages,
+    sections,
+    question_allocations: paper.items.map((item) => ({
+      item_order: item.item_order,
+      page_number: pages.find((page) => page.question_orders.includes(item.item_order))?.page_number ?? 1,
+      section_number: sectionByOrder.get(item.item_order) ?? 1,
+      score: getMockQuestionScore(item),
+    })),
+  };
+}
+
 function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
   return {
     id: paper.id,
@@ -313,6 +472,10 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
     submitted_at: paper.submitted_at,
     graded_at: paper.graded_at,
     created_at: paper.created_at,
+    selection_context: {
+      paper_layout_mode: paper.exam_mode === "paper_exam" ? "auto" : "practice_scroll",
+      paper_layout: buildMockPaperLayout(paper),
+    },
     paper_preview: buildPaperPreview(paper),
     items: paper.items.map((item) => ({
       id: item.id,
@@ -322,6 +485,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       difficulty: item.difficulty,
       stem: item.stem,
       options: item.options,
+      correct_answer: item.correct_answer,
       explanation: item.explanation,
       knowledge_unit_links: [
         {
@@ -392,8 +556,8 @@ const seededPaper: InternalPaper = {
       options: QUESTION_BANK.single_choice[0].options,
       explanation: QUESTION_BANK.single_choice[0].explanation,
       knowledge_unit_id: 101,
-      correct_answer: "4",
-      user_answer: "4",
+      correct_answer: "B",
+      user_answer: "B",
       is_correct: true,
       score_obtained: 1,
       score_max: 1,
@@ -409,8 +573,8 @@ const seededPaper: InternalPaper = {
       options: QUESTION_BANK.single_choice[1].options,
       explanation: QUESTION_BANK.single_choice[1].explanation,
       knowledge_unit_id: 101,
-      correct_answer: "|x|",
-      user_answer: "|x|",
+      correct_answer: "B",
+      user_answer: "B",
       is_correct: true,
       score_obtained: 1,
       score_max: 1,
@@ -445,6 +609,20 @@ papers.set(2, {
     id: 201 + index,
   })),
 });
+const masteryMockPaper = createPaper("mock", "mastery_drill", undefined, 10);
+masteryMockPaper.id = 3;
+masteryMockPaper.items = masteryMockPaper.items.map((item, index) => ({
+  ...item,
+  id: 3000 + index + 1,
+}));
+papers.set(masteryMockPaper.id, masteryMockPaper);
+const paperExamMockPaper = createPaper("mock", "paper_exam", "整卷测试，高考六页仿真", 24);
+paperExamMockPaper.id = 4;
+paperExamMockPaper.items = paperExamMockPaper.items.map((item, index) => ({
+  ...item,
+  id: 4000 + index + 1,
+}));
+papers.set(paperExamMockPaper.id, paperExamMockPaper);
 
 function buildQuestionTemplates(course: string): Array<Record<string, unknown>> {
   return Object.values(QUESTION_BANK)
@@ -497,6 +675,42 @@ function buildQuestionTypes(course: string): Array<Record<string, unknown>> {
     },
     {
       id: 2,
+      type_key: "multiple_choice",
+      display_name: "多选题",
+      scope: "system",
+      course,
+      description: "从多个选项中选出所有正确答案。",
+      answer_format: "choice[]",
+      grading_method: "exact_match",
+      option_schema: {},
+      rubric: {},
+      source: "mock",
+      confidence: 1,
+      is_system: true,
+      is_active: true,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    },
+    {
+      id: 3,
+      type_key: "true_false",
+      display_name: "判断题",
+      scope: "system",
+      course,
+      description: "判断陈述是否正确。",
+      answer_format: "True/False",
+      grading_method: "exact_match",
+      option_schema: {},
+      rubric: {},
+      source: "mock",
+      confidence: 1,
+      is_system: true,
+      is_active: true,
+      created_at: "2026-03-18T10:00:00Z",
+      updated_at: nowIso(),
+    },
+    {
+      id: 4,
       type_key: "fill_blank",
       display_name: "填空题",
       scope: "system",
@@ -514,7 +728,7 @@ function buildQuestionTypes(course: string): Array<Record<string, unknown>> {
       updated_at: nowIso(),
     },
     {
-      id: 3,
+      id: 5,
       type_key: "short_answer",
       display_name: "简答题",
       scope: "system",
@@ -565,10 +779,13 @@ export const examHandlers = [
       );
     }
 
-    const body = (await request.json()) as { exam_mode?: ExamMode; user_prompt?: string };
+    const body = (await request.json()) as { exam_mode?: ExamMode; user_prompt?: string; num_questions?: number };
     const mode = body.exam_mode ?? "diagnostic";
     const prompt = body.user_prompt;
-    const count = extractRequestedCount(prompt) ?? defaultCountByMode(mode);
+    const requestedCount = Number(body.num_questions);
+    const count = Number.isFinite(requestedCount) && requestedCount > 0
+      ? Math.min(200, Math.floor(requestedCount))
+      : extractRequestedCount(prompt) ?? defaultCountByMode(mode);
 
     activeGenerateCourse.add(course);
     const now = nowIso();
@@ -589,7 +806,7 @@ export const examHandlers = [
     setTimeout(() => {
       const target = generateJobs.get(job.id);
       if (!target) return;
-      const paper = createPaper(course, mode, prompt);
+      const paper = createPaper(course, mode, prompt, count);
       papers.set(paper.id, paper);
       target.status = "completed";
       target.exam_paper_id = paper.id;
@@ -756,19 +973,39 @@ export const examHandlers = [
       }
     }
 
+    let total = 0;
     for (const item of paper.items) {
       item.user_answer = answerMap.get(item.id) ?? "";
-      item.is_correct = null;
-      item.score_obtained = null;
-      item.score_max = null;
-      item.error_cause_label = null;
+      const judged = scoreItem(item);
+      item.is_correct = judged.correct;
+      item.score_obtained = judged.correct ? 1 : 0;
+      item.score_max = 1;
+      item.error_cause_label = judged.reason;
+      total += item.score_obtained;
     }
 
-    paper.status = "submitted";
+    paper.status = "graded";
     paper.submitted_at = nowIso();
+    paper.graded_at = nowIso();
+    paper.score_obtained = total;
+    paper.total_score = paper.items.length;
     papers.set(paper.id, paper);
     await new Promise((resolve) => setTimeout(resolve, 120));
-    return HttpResponse.json({ code: 0, data: toPublicPaper(paper) });
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        id: nextGradeJobId++,
+        status: "completed",
+        error_message: null,
+        created_at: paper.created_at,
+        updated_at: paper.graded_at,
+        exam_paper_id: paper.id,
+        score: total,
+        states_updated: 3,
+        tasks_created: 2,
+        mastery_consumed: true,
+      },
+    });
   }),
 
   http.post("/api/v1/courses/:course/exams/:examPaperId/grade", async ({ params }) => {

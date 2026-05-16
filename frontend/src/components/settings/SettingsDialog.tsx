@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, RefreshCw, X } from "lucide-react";
 
 import { useTheme, type Theme } from "../providers/ThemeProvider";
+import { useFrontendMode, type FrontendRuntimeMode } from "../providers/FrontendModeProvider";
 
 import { useExamResultDisplayPreference } from "../../lib/examResultDisplayPreference";
 import { DesktopUpdateModal, formatDesktopAppVersion, useDesktopUpdateDialog } from "../desktop/DesktopUpdatePrompt";
@@ -33,8 +34,14 @@ const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
   { value: "system", label: "跟随系统" },
 ];
 
+const FRONTEND_MODE_OPTIONS: Array<{ value: FrontendRuntimeMode; label: string }> = [
+  { value: "release", label: "发布" },
+  { value: "development", label: "开发" },
+];
+
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
+  const { mode: frontendMode, setMode: setFrontendMode } = useFrontendMode();
   const { mode: examResultDisplayMode, setMode: setExamResultDisplayMode } = useExamResultDisplayPreference();
   const [activeSection, setActiveSection] = useState<SectionId>("");
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
@@ -194,6 +201,22 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                               value={theme}
                               onChange={(value) => setTheme(value as Theme)}
                               options={THEME_OPTIONS}
+                            />
+                          </div>
+                        </div>
+                        <div className={SETTINGS_STYLES.list.item}>
+                          <FieldLabelBlock
+                            label="前端模式"
+                            description="发布模式隐藏实验入口；开发模式显示仅供调试和试验的页面或特性。该设置只影响当前浏览器。"
+                            htmlFor="system-ui-frontend-mode"
+                          />
+
+                          <div className={SETTINGS_STYLES.list.controlWrap}>
+                            <SelectInput
+                              id="system-ui-frontend-mode"
+                              value={frontendMode}
+                              onChange={(value) => setFrontendMode(value as FrontendRuntimeMode)}
+                              options={FRONTEND_MODE_OPTIONS}
                             />
                           </div>
                         </div>

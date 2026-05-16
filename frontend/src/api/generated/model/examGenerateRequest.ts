@@ -17,4 +17,6 @@ export interface ExamGenerateRequest {
   sample_file_ids?: string[] | null;
   /** Optional target question count. */
   num_questions?: number | null;
+  /** Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page. */
+  paper_layout_mode?: string | null;
 }

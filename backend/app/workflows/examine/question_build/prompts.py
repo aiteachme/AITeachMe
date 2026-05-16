@@ -108,7 +108,7 @@ def build_exam_knowledge_unit_filter_messages(
 - 最多返回 candidate_limit 个 ID；如果严格范围内单元更少，可以少于该数量。
 - 覆盖范围要匹配 requested_question_count，并避免近似重复的知识单元。
 - 优先把强相关的图谱单元保留在同一候选池中，但不要只按边数量机械排序。
-- 对 paper_exam，优先考虑薄弱点和广覆盖；对 web_practice，优先考虑复习和练习价值。
+- 对 paper_exam，优先考虑薄弱点和广覆盖；对 web_practice，优先考虑复习和练习价值；对 mastery_drill，优先选择适合即时判断、反复巩固的核心单元和薄弱单元。
 - rationale 要简短，便于调试和审计。
 
 只能返回合法 JSON，结构如下：
@@ -202,6 +202,9 @@ def build_exam_question_requirement_messages(
 规则：
 - 必须为 1 到 requested_question_count 的每个 item_order 输出且只输出一条记录。
 - 每道题必须选择一个 question_type，可选值只能是：single_choice / multiple_choice / true_false / fill_blank / short_answer。
+- 如果 exam_mode 是 mastery_drill，只使用可即时客观判定的 single_choice / multiple_choice / true_false，不要使用 fill_blank 或 short_answer。
+- 如果 exam_mode 是 paper_exam，应按完整试卷组织题型：客观题在前，填空题居中，解答题或综合题在后；题型组合要比专项练习更丰富，除非 user_prompt 明确要求只考某一类题。
+- 如果 exam_mode 是 web_practice，应保持短练习节奏，题型可以更聚焦，不必强行覆盖完整试卷结构。
 - 必须输出一个顶层 rationale，用于整体解释为什么这样排列和分配题型；rationale 不要写到每个 prompts item 里。
 - 顶层 rationale 只解释题型组合、顺序和用户要求之间的关系，不要写知识点分配或难度判断。
 - user_prompt 中的全局风格、整体范围、表达形式等要求，必须写入每一道匹配题目的 generation_prompt。

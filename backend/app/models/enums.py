@@ -178,6 +178,7 @@ class DigestJobStatus(str, Enum):
 class ExamMode(str, Enum):
     WEB_PRACTICE = "web_practice"
     PAPER_EXAM = "paper_exam"
+    MASTERY_DRILL = "mastery_drill"
 
 
 def exam_mode_value(mode: "ExamMode | str") -> str:

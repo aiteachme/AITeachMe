@@ -28,7 +28,7 @@ export function ExamStageHeader({
           className="inline-flex min-h-11 items-center gap-2 justify-self-start text-sm font-medium text-slate-900 transition hover:text-slate-600 dark:text-slate-100 dark:hover:text-slate-300 sm:gap-3 sm:text-base"
         >
           <ArrowLeft className="h-5 w-5" />
-          返回考卷列表
+          返回记录列表
         </button>
 
         <div className="flex max-w-full items-center justify-center sm:col-start-2">

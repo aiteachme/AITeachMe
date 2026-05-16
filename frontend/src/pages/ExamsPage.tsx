@@ -42,6 +42,8 @@ import {
   ExamMarkdown,
   ExamPaperCard,
   ExamPaperWorkspace,
+  MASTERY_DRILL_EXAM_MODE,
+  MASTERY_DRILL_QUESTION_COUNT,
   buildExamTitle,
   formatDifficultyLabel,
   loadCreateExamConfig,
@@ -184,6 +186,9 @@ async function getExamPrewarmStatus(
   const params = new URLSearchParams();
   params.set("exam_mode", config.examMode);
   params.set("num_questions", String(config.numQuestions));
+  if (config.examMode === "paper_exam") {
+    params.set("paper_layout_mode", config.paperLayoutMode);
+  }
   const userPrompt = config.userPrompt.trim();
   if (userPrompt) {
     params.set("user_prompt", userPrompt);
@@ -211,14 +216,14 @@ function ExamPrewarmStatusIcon({
     : status?.status ?? (isFetching ? "preparing" : "missing");
   const title =
     effectiveStatus === "ready"
-      ? "后台已备好一份考卷"
+      ? "后台已备好一次练习或测试"
       : effectiveStatus === "preparing"
-        ? "后台正在准备考卷"
+        ? "后台正在准备练习或测试"
         : effectiveStatus === "stale"
           ? "后台预生成已过期，正在刷新"
           : effectiveStatus === "failed"
             ? "后台预生成暂不可用"
-            : "后台尚未备好考卷";
+            : "后台尚未备好练习或测试";
   const toneClass =
     effectiveStatus === "ready"
       ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
@@ -271,6 +276,7 @@ export function ExamsPage() {
       courseId,
       currentCreateConfig?.examMode,
       currentCreateConfig?.numQuestions,
+      currentCreateConfig?.paperLayoutMode,
       currentCreateConfig?.userPrompt.trim(),
     ],
     enabled: Boolean(courseId && currentCreateConfig),
@@ -368,7 +374,7 @@ export function ExamsPage() {
   const deleteExamMutation = useMutation({
     mutationFn: async (paperId: number) => {
       if (!courseId) {
-        throw new Error("缺少课程标识，无法删除考卷。");
+        throw new Error("缺少课程标识，无法删除记录。");
       }
       return deleteExamPaper(courseId, paperId);
     },
@@ -377,8 +383,8 @@ export function ExamsPage() {
         queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId ?? "", { page: 1, size: 24 }),
       });
       toast({
-        title: "考卷已删除",
-        description: `已删除考卷 #${paperId}。`,
+        title: "记录已删除",
+        description: `已删除记录 #${paperId}。`,
         variant: "success",
       });
     },
@@ -393,17 +399,20 @@ export function ExamsPage() {
 
   const generateExam = useGenerateExamApiV1CoursesCourseIdExamsGeneratePost({
     mutation: {
-      onSuccess: async (response) => {
+      onSuccess: async (response, variables) => {
         const created = unwrapOrvalResponse(response);
         if (!created?.exam_paper_id) return;
+        const isMasteryDrill = variables.data.exam_mode === MASTERY_DRILL_EXAM_MODE;
         await queryClient.invalidateQueries({
           queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId ?? "", { page: 1, size: 24 }),
         });
         await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", courseId ?? ""] });
         navigate(buildCourseSubPath(courseId ?? "", "exams", created.exam_paper_id));
         toast({
-          title: "试卷已创建",
-          description: `已生成 ${created.num_questions} 题，马上开始考试。`,
+          title: isMasteryDrill ? "闯关训练已开始" : "内容已创建",
+          description: isMasteryDrill
+            ? `已准备 ${created.num_questions} 题，答错会重新回到队列。`
+            : `已生成 ${created.num_questions} 题，马上开始。`,
           variant: "success",
         });
       },
@@ -426,11 +435,22 @@ export function ExamsPage() {
     });
   };
 
+  const handleStartMasteryDrill = () => {
+    if (!courseId || generateExam.isPending) return;
+    generateExam.mutate({
+      courseId,
+      data: {
+        exam_mode: MASTERY_DRILL_EXAM_MODE,
+        num_questions: MASTERY_DRILL_QUESTION_COUNT,
+      },
+    });
+  };
+
   if (!courseId) {
     return (
       <div className={EXAM_PAGE_SHELL_CLASS}>
         <div className={EXAM_ALERT_CLASS}>
-          缺少课程标识，暂时无法加载考试中心。
+          缺少课程标识，暂时无法加载训练中心。
         </div>
       </div>
     );
@@ -440,45 +460,64 @@ export function ExamsPage() {
     <>
       <div className={EXAM_PAGE_SHELL_CLASS}>
         <div className="flex flex-col gap-6">
-          <CoursePagePillTitle icon={ClipboardCheck} label="考试中心" />
+          <CoursePagePillTitle icon={ClipboardCheck} label="训练中心" />
 
           <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
               <div className="hidden items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/70 dark:text-slate-400">
                 <FileText className="h-3.5 w-3.5" />
-                考试中心
+                训练中心
               </div>
               <div>
                 <h1 className="break-words text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
                   {courseName ?? "当前课程"}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  创建练习卷、继续未完成考试，并回看历史得分与题目沉淀。
+                  开始专项练习、闯关训练或整卷测试，并回看历史得分与题目沉淀。
                 </p>
               </div>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
+              <Button
+                size="lg"
+                className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto"
+                onClick={handleStartMasteryDrill}
+                disabled={generateExam.isPending}
+              >
+                {generateExam.isPending && generateExam.variables?.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 shrink-0" />
+                )}
+                开始闯关训练
+              </Button>
               <div className="flex w-full items-center gap-2 sm:w-auto">
-                <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] bg-black text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto">
+                <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
                   <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
                     onClick={handleCreateExam}
                     disabled={generateExam.isPending}
                   >
-                    {generateExam.isPending ? (
+                    {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
                       <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                     ) : (
                       <Plus className="h-4 w-4 shrink-0" />
                     )}
-                    <span className="whitespace-nowrap">{generateExam.isPending ? "创建中..." : "创建新考卷"}</span>
+                    <span className="whitespace-nowrap">
+                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
+                        ? "创建中..."
+                        : currentCreateConfig?.examMode === "paper_exam"
+                          ? "创建整卷测试"
+                          : "开始专项练习"}
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className="grid h-full w-10 shrink-0 place-items-center border-l border-white/20 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                     onClick={() => setIsCreateConfigOpen(true)}
-                    aria-label="更多考卷设置"
+                    aria-label="更多训练与测试设置"
                     title="更多设置"
                   >
                     <MoreVertical className="h-4 w-4" />
@@ -515,20 +554,20 @@ export function ExamsPage() {
             <div className="space-y-6">
               {historyQuery.isLoading && (
                 <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
-                  正在加载试卷列表...
+                  正在加载记录列表...
                 </div>
               )}
 
               {historyQuery.error && (
                 <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                  {getApiErrorMessage(historyQuery.error, "加载试卷列表失败")}
+                  {getApiErrorMessage(historyQuery.error, "加载记录列表失败")}
                 </div>
               )}
 
 
               {[
-                { key: "active" as const, title: "待完成的考卷", items: activeHistoryItems },
-                { key: "completed" as const, title: "已完成的考卷", items: completedHistoryItems },
+                { key: "active" as const, title: "待完成的记录", items: activeHistoryItems },
+                { key: "completed" as const, title: "已完成的记录", items: completedHistoryItems },
               ].map((group) => (
                 <div key={group.key} className="space-y-4">
                   <button
@@ -557,7 +596,7 @@ export function ExamsPage() {
                   {expandedGroups[group.key] && (
                     <div className="mt-2 rounded-[24px] bg-white p-6 shadow-sm ring-1 ring-slate-900/5 dark:bg-slate-900/40 dark:ring-slate-800">
                       {group.items.length === 0 ? (
-                        <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有考卷。</div>
+                        <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有记录。</div>
                       ) : (
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-5">
                           {group.items.map((item: ExamHistoryItem) => {
@@ -567,7 +606,7 @@ export function ExamsPage() {
                               event.stopPropagation();
                               if (isDeleting) return;
                               const confirmed = window.confirm(
-                                `确认删除这份考卷吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
+                                `确认删除这份记录吗？\n\n${buildExamTitle(item)}\n\n删除后无法恢复。`,
                               );
                               if (!confirmed) return;
                               deleteExamMutation.mutate(item.id);
@@ -708,6 +747,7 @@ function getQuestionTemplateHistoryModeLabel(mode: string) {
   const labels: Record<string, string> = {
     web_practice: "专项练习",
     paper_exam: "整卷测试",
+    mastery_drill: "闯关训练",
     practice: "练习",
     diagnostic: "诊断测验",
     weakpoint_boost: "弱点强化",
@@ -899,7 +939,7 @@ function QuestionTemplateDetailCard({
                           {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
                         </span>
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-                          试卷 #{record.exam_paper_id} · 第 {record.item_order} 题
+                          记录 #{record.exam_paper_id} · 第 {record.item_order} 题
                         </span>
                         {scoreText ? (
                           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{scoreText}</span>
@@ -1122,7 +1162,7 @@ function ExamCatalogShell({
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
           >
             <ArrowLeft className="h-4 w-4" />
-            返回考试中心
+            返回训练中心
           </button>
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -1462,7 +1502,7 @@ export function ExamPaperPage() {
     return (
       <div className={EXAM_PAGE_SHELL_CLASS}>
         <div className={EXAM_ALERT_CLASS}>
-          缺少考卷信息，暂时无法进入考试页面。
+          缺少记录信息，暂时无法进入作答页面。
         </div>
       </div>
     );

@@ -331,6 +331,40 @@ class ExamQuestionRequirementBatch(BaseModel):
         return normalized
 
 
+def _build_mastery_drill_requirement_plans(
+    *,
+    question_count: int,
+    user_prompt: str,
+) -> tuple[list[ExamQuestionRequirementPlan], str]:
+    question_types: list[QuestionTypeLiteral] = [
+        "single_choice",
+        "true_false",
+        "single_choice",
+        "multiple_choice",
+        "single_choice",
+        "true_false",
+        "single_choice",
+        "multiple_choice",
+        "single_choice",
+        "true_false",
+    ]
+    cleaned_prompt = " ".join(str(user_prompt or "").split()).strip()
+    prompt_suffix = f"用户补充要求：{cleaned_prompt}" if cleaned_prompt else "无"
+    plans = [
+        ExamQuestionRequirementPlan(
+            item_order=order,
+            question_type=question_types[(order - 1) % len(question_types)],
+            generation_prompt=(
+                "本题用于逐题闯关练习，必须能在学生作答后立刻客观判定对错；"
+                "题干和选项应清晰，解析要直接说明正确理由和常见误区。"
+                f"{prompt_suffix}"
+            ),
+        )
+        for order in range(1, max(1, question_count) + 1)
+    ]
+    return plans, "mastery_drill uses an objective-only deterministic type plan for immediate feedback."
+
+
 class ExamQuestionDraft(BaseModel):
     """One validated exam question returned by the LLM workflow."""
 
@@ -1091,6 +1125,12 @@ async def plan_exam_question_requirements(
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
+    if str(exam_mode or "").strip().lower() == "mastery_drill":
+        return _build_mastery_drill_requirement_plans(
+            question_count=normalized_count,
+            user_prompt=user_prompt,
+        )
+
     messages = build_exam_question_requirement_messages(
         exam_mode=exam_mode,
         requested_question_count=normalized_count,

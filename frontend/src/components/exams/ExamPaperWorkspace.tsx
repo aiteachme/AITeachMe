@@ -31,6 +31,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { ExamPaperSheet } from "./ExamPaperSheet";
+import { ExamMasteryDrillSession } from "./ExamMasteryDrillSession";
 import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
@@ -45,6 +46,7 @@ import {
   buildQuestionSelectedText,
   buildQuestionSelectionContext,
   hasAnsweredQuestion,
+  MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
 
 async function getExamStudyGuide(courseId: string, paperId: number, signal?: AbortSignal) {
@@ -158,6 +160,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
   );
+  const isPaperExamMode = paper?.exam_mode === "paper_exam";
+  const isActiveMasteryDrill = paper?.exam_mode === MASTERY_DRILL_EXAM_MODE && paper.status !== "graded";
   const examDetailQueryKey = useMemo(
     () => getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId),
     [paperId, courseId],
@@ -173,7 +177,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       null,
     [paper?.items, selectedReviewItemId],
   );
-  const isReviewLayout = paper?.status === "graded" && activeStage === 2;
+  const isReviewLayout = paper?.status === "graded" && activeStage === 2 && !isPaperExamMode;
+  const isPaperCanvasLayout = isPaperExamMode && activeStage !== 3 && paper?.status !== "failed";
 
   useEffect(() => {
     if (!paper) return;
@@ -330,14 +335,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       stream.close();
       if (payload.status === "failed") {
         toast({
-          title: "试卷生成失败",
+          title: "内容生成失败",
           description: payload.error_message || "请稍后重试。",
           variant: "error",
         });
         return;
       }
       toast({
-        title: "试卷生成完成",
+        title: "内容生成完成",
         description: "题目已生成，可以开始作答。",
         variant: "success",
       });
@@ -577,50 +582,108 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     },
   });
 
-  return (
-    <div className="relative min-h-full text-slate-900 dark:text-slate-100">
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)] dark:bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.55)_0%,rgba(15,23,42,0.94)_44%,#020617_100%)]" />
-      <ExamStageHeader
-        currentStep={paper?.status === "graded" ? activeStage : 1}
-        onBack={() => navigate(backHref)}
-        onStepSelect={(step) => {
-          if (step === 1) {
-            setActiveStage(1);
-            return;
-          }
-          if (paper?.status === "graded") {
-            setActiveStage(step);
-          }
-        }}
-        isStepEnabled={(step) => {
-          if (step === 1) return true;
-          return paper?.status === "graded";
-        }}
-      />
+  const submitCurrentExam = useCallback(() => {
+    if (!paper) return;
+    submitExam.mutate({
+      courseId,
+      examPaperId: paperId,
+      data: {
+        answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
+          exam_paper_item_id: item.id,
+          item_order: item.item_order,
+          answer: answers[item.item_order] ?? "",
+        })),
+      },
+    });
+  }, [answers, courseId, paper, paperId, submitExam]);
 
-      <div className="px-4 py-6 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+  const examActionControls = paper ? (
+    <>
+      <Button
+        className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white ${paper.status === "graded" ? "hidden" : ""}`}
+        onClick={submitCurrentExam}
+        disabled={submitExam.isPending}
+      >
+        {paper.status === "graded"
+          ? "已完成批改"
+          : submitExam.isPending
+            ? "提交中..."
+            : "提交"}
+      </Button>
+      {paper.status === "graded" && (
+        <>
+          <Button
+            className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            onClick={() => {
+              setActiveStage(3);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            查看学习指南
+          </Button>
+          <p className="text-sm text-slate-500 dark:text-slate-400">进入第 3 步，根据本次结果继续查漏补缺。</p>
+        </>
+      )}
+    </>
+  ) : null;
+  const paperExamFooterContent = isPaperExamMode ? (
+    <div className="flex flex-col items-center justify-center gap-3 text-center">
+      {examActionControls}
+    </div>
+  ) : undefined;
+
+  return (
+    <div
+      className={
+        isPaperCanvasLayout
+          ? "relative flex h-dvh flex-col overflow-hidden text-slate-900 dark:text-slate-100"
+          : "relative min-h-full text-slate-900 dark:text-slate-100"
+      }
+    >
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f9fc_36%,#eef3f8_100%)] dark:bg-[radial-gradient(circle_at_top,rgba(30,41,59,0.55)_0%,rgba(15,23,42,0.94)_44%,#020617_100%)]" />
+      {!isActiveMasteryDrill ? (
+        <ExamStageHeader
+          currentStep={paper?.status === "graded" ? activeStage : 1}
+          onBack={() => navigate(backHref)}
+          onStepSelect={(step) => {
+            if (step === 1) {
+              setActiveStage(1);
+              return;
+            }
+            if (paper?.status === "graded") {
+              setActiveStage(step);
+            }
+          }}
+          isStepEnabled={(step) => {
+            if (step === 1) return true;
+            return paper?.status === "graded";
+          }}
+        />
+      ) : null}
+
+      <div className={isPaperCanvasLayout ? "min-h-0 flex-1 px-0 py-0" : "px-4 py-6 sm:px-6 md:px-8 lg:px-10 xl:px-12"}>
         <div
-          className={`mx-auto space-y-6 ${
-            isReviewLayout
-              ? "max-w-[1380px]"
-              : "max-w-[1180px]"
-          }`}
+          className={
+            isPaperCanvasLayout
+              ? "mx-0 h-full min-h-0 max-w-none space-y-0"
+              : `mx-auto space-y-6 ${isReviewLayout ? "max-w-[1380px]" : "max-w-[1180px]"}`
+          }
         >
           {examDetailQuery.isLoading && (
             <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
-              正在加载考卷内容...
+              正在加载内容...
             </div>
           )}
 
           {examDetailQuery.error && (
             <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-              {getApiErrorMessage(examDetailQuery.error, "加载考卷失败")}
+              {getApiErrorMessage(examDetailQuery.error, "加载内容失败")}
             </div>
           )}
 
           {!examDetailQuery.isLoading && !paper && !examDetailQuery.error && (
             <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
-              这份考卷不存在，或者已经无法访问。
+              这份记录不存在，或者已经无法访问。
             </div>
           )}
 
@@ -628,10 +691,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
             <>
               {paper.status === "generating" && (
                 <div
-                  className="transition-all duration-150"
-                  style={{
-                    zoom: pageScale,
-                  }}
+                  className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
+                  style={!isPaperExamMode ? { zoom: pageScale } : undefined}
                 >
                   <ExamPaperSheet
                     paper={paper}
@@ -646,7 +707,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
               {paper.status === "failed" && (
                 <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-                  <h2 className="text-lg font-semibold text-rose-950 dark:text-rose-100">试卷生成失败</h2>
+                  <h2 className="text-lg font-semibold text-rose-950 dark:text-rose-100">内容生成失败</h2>
                   <p className="mt-2">
                     {generationErrorMessage || "后台生成题目时出错，请返回列表后重新生成。"}
                   </p>
@@ -654,7 +715,32 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               )}
 
               {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
-                <>
+                paper.exam_mode === MASTERY_DRILL_EXAM_MODE && paper.status !== "graded" ? (
+                  <ExamMasteryDrillSession
+                    paper={paper}
+                    answers={answers}
+                    setAnswers={setAnswers}
+                    isCompleting={submitExam.isPending}
+                    onBack={() => navigate(backHref)}
+                    onComplete={(finalAnswers) =>
+                      submitExam.mutate({
+                        courseId,
+                        examPaperId: paperId,
+                        data: {
+                          answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
+                            exam_paper_item_id: item.id,
+                            item_order: item.item_order,
+                            answer: finalAnswers[item.item_order] ?? "",
+                          })),
+                        },
+                      })
+                    }
+                    onQuestionAi={openQuestionAi}
+                    onQuestionMarkToggle={toggleQuestionMark}
+                    markingQuestionTemplateId={markingQuestionTemplateId}
+                  />
+                ) : (
+                  <>
               <aside className="hidden lg:block">
                 <div className="fixed right-4 top-28 z-30 flex items-start gap-3 xl:right-6">
                   {isQuestionNavOpen && (
@@ -732,34 +818,36 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                       <ListChecks className="h-5.5 w-5.5" />
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setPageScale((current) => Math.min(1.4, Number((current + 0.05).toFixed(2))))}
-                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
-                      aria-label="放大页面"
-                      title="放大页面"
-                    >
-                      <ZoomIn className="h-5.5 w-5.5" />
-                    </button>
+                    {!isPaperExamMode ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setPageScale((current) => Math.min(1.4, Number((current + 0.05).toFixed(2))))}
+                          className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
+                          aria-label="放大页面"
+                          title="放大页面"
+                        >
+                          <ZoomIn className="h-5.5 w-5.5" />
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setPageScale((current) => Math.max(0.7, Number((current - 0.05).toFixed(2))))}
-                      className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
-                      aria-label="缩小页面"
-                      title="缩小页面"
-                    >
-                      <ZoomOut className="h-5.5 w-5.5" />
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => setPageScale((current) => Math.max(0.7, Number((current - 0.05).toFixed(2))))}
+                          className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white/92 text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] dark:hover:bg-slate-900 dark:hover:text-slate-100"
+                          aria-label="缩小页面"
+                          title="缩小页面"
+                        >
+                          <ZoomOut className="h-5.5 w-5.5" />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </aside>
 
               <div
-                className="transition-all duration-150"
-                style={{
-                  zoom: pageScale,
-                }}
+                className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
+                style={!isPaperExamMode ? { zoom: pageScale } : undefined}
               >
                 {isReviewLayout ? (
                   <div className="pb-4">
@@ -792,53 +880,21 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     pageScale={pageScale}
                     highlightedQuestionOrder={highlightedQuestionOrder}
                     setAnswers={setAnswers}
+                    footerContent={paperExamFooterContent}
                     onQuestionAi={openQuestionAi}
                     onQuestionMarkToggle={toggleQuestionMark}
                     markingQuestionTemplateId={markingQuestionTemplateId}
                   />
                 )}
 
-                <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pb-12 pt-4 text-center dark:border-slate-800 sm:pb-16">
-                  <Button
-                    className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white ${paper.status === "graded" ? "hidden" : ""}`}
-                    onClick={() =>
-                      submitExam.mutate({
-                        courseId,
-                        examPaperId: paperId,
-                        data: {
-                          answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
-                            exam_paper_item_id: item.id,
-                            item_order: item.item_order,
-                            answer: answers[item.item_order] ?? "",
-                          })),
-                        },
-                      })
-                    }
-                    disabled={submitExam.isPending}
-                  >
-                    {paper.status === "graded"
-                      ? "已完成批改"
-                      : submitExam.isPending
-                        ? "提交中..."
-                        : "提交这份考卷"}
-                  </Button>
-                  {paper.status === "graded" && (
-                    <>
-                      <Button
-                        className="h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                        onClick={() => {
-                          setActiveStage(3);
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                      >
-                        查看学习指南
-                      </Button>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">进入第 3 步，根据本次结果继续查漏补缺。</p>
-                    </>
-                  )}
+                {!isPaperExamMode ? (
+                  <section className="flex flex-col items-center justify-center gap-3 border-t border-slate-100 pb-12 pt-4 text-center dark:border-slate-800 sm:pb-16">
+                    {examActionControls}
                   </section>
+                ) : null}
                 </div>
                 </>
+                )
               )}
 
               {paper.status !== "generating" && paper.status !== "failed" && activeStage === 3 && (

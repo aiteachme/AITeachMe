@@ -2,8 +2,16 @@ import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 
 const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:19020";
 
+function shouldUseMockApi(): boolean {
+  return typeof window !== "undefined" && window.location.search.includes("mock=1");
+}
+
 function resolveDesktopApiBaseUrl(): string {
   if (typeof window === "undefined") {
+    return "";
+  }
+
+  if (shouldUseMockApi()) {
     return "";
   }
 
@@ -23,7 +31,9 @@ function resolveDesktopApiBaseUrl(): string {
   return "";
 }
 
-const API_BASE_URL = resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
+const API_BASE_URL = shouldUseMockApi()
+  ? ""
+  : resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
 const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 export const DEFAULT_API_TIMEOUT_MS = 60_000;

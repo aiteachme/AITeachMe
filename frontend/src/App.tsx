@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, usePar
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
+import { FrontendModeProvider } from "./components/providers/FrontendModeProvider";
 import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
@@ -143,122 +144,124 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="system" storageKey={THEME_STORAGE_KEY}>
-      <QueryClientProvider client={queryClient}>
-        <BackendConnectivityBridge />
-        <RuntimeSettingsBootstrap />
-        <ToastProvider>
-          <DesktopUpdatePromptMount />
-          <Router unstable_useTransitions={false}>
-            <RouteAnalyticsBridge />
-            <ElectronWindowFrame>
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={withRouteFallback(<HomePage />)} />
-                  <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
-                  <Route path="spaces" element={withRouteFallback(<LearningSpacesPage />)} />
-                  <Route path="library" element={withRouteFallback(<LibraryPage />)} />
-                  <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
-                  {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
-                    ([routeId, element]) => (
-                      <Route key={routeId} path={`courses/:courseId/${routeId}`} element={element} />
-                    ),
-                  )}
-                  <Route
-                    path="courses/:courseId/knowledge-docs/interactive"
-                    element={withRouteFallback(<KnowledgeInteractivePage />)}
-                  />
-                  <Route
-                    path="courses/:courseId/knowledge-docs/html-figure"
-                    element={withRouteFallback(<KnowledgeInteractivePage />)}
-                  />
-                  <Route
-                    path="courses/:courseId/exams/question-templates"
-                    element={withRouteFallback(<QuestionTemplatesPage />)}
-                  />
-                  <Route
-                    path="courses/:courseId/exams/question-types"
-                    element={withRouteFallback(<QuestionTypesPage />)}
-                  />
-                  <Route
-                    path="courses/:courseId/exams/:examPaperId"
-                    element={withRouteFallback(<ExamPaperPage />)}
-                  />
-                  {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
+      <FrontendModeProvider>
+        <QueryClientProvider client={queryClient}>
+          <BackendConnectivityBridge />
+          <RuntimeSettingsBootstrap />
+          <ToastProvider>
+            <DesktopUpdatePromptMount />
+            <Router unstable_useTransitions={false}>
+              <RouteAnalyticsBridge />
+              <ElectronWindowFrame>
+                <Routes>
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={withRouteFallback(<HomePage />)} />
+                    <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
+                    <Route path="spaces" element={withRouteFallback(<LearningSpacesPage />)} />
+                    <Route path="library" element={withRouteFallback(<LibraryPage />)} />
+                    <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
+                    {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
+                      ([routeId, element]) => (
+                        <Route key={routeId} path={`courses/:courseId/${routeId}`} element={element} />
+                      ),
+                    )}
                     <Route
-                      key={aliasPath}
-                      path={`courses/:courseId/${aliasPath}`}
-                      element={<Navigate to={`../${targetRoute}`} replace />}
+                      path="courses/:courseId/knowledge-docs/interactive"
+                      element={withRouteFallback(<KnowledgeInteractivePage />)}
                     />
-                  ))}
-                  {(Object.keys(COURSE_PAGE_ELEMENTS) as CourseRouteId[]).map((routeId) => (
                     <Route
-                      key={`legacy-${routeId}`}
-                      path={`course/:courseId/${routeId}`}
+                      path="courses/:courseId/knowledge-docs/html-figure"
+                      element={withRouteFallback(<KnowledgeInteractivePage />)}
+                    />
+                    <Route
+                      path="courses/:courseId/exams/question-templates"
+                      element={withRouteFallback(<QuestionTemplatesPage />)}
+                    />
+                    <Route
+                      path="courses/:courseId/exams/question-types"
+                      element={withRouteFallback(<QuestionTypesPage />)}
+                    />
+                    <Route
+                      path="courses/:courseId/exams/:examPaperId"
+                      element={withRouteFallback(<ExamPaperPage />)}
+                    />
+                    {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
+                      <Route
+                        key={aliasPath}
+                        path={`courses/:courseId/${aliasPath}`}
+                        element={<Navigate to={`../${targetRoute}`} replace />}
+                      />
+                    ))}
+                    {(Object.keys(COURSE_PAGE_ELEMENTS) as CourseRouteId[]).map((routeId) => (
+                      <Route
+                        key={`legacy-${routeId}`}
+                        path={`course/:courseId/${routeId}`}
+                        element={
+                          <LegacyCourseRouteRedirect
+                            buildPath={({ courseId }) => buildCoursePath(courseId ?? "", routeId)}
+                          />
+                        }
+                      />
+                    ))}
+                    <Route
+                      path="course/:courseId/knowledge-docs/interactive"
                       element={
                         <LegacyCourseRouteRedirect
-                          buildPath={({ courseId }) => buildCoursePath(courseId ?? "", routeId)}
+                          buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "interactive")}
                         />
                       }
                     />
-                  ))}
-                  <Route
-                    path="course/:courseId/knowledge-docs/interactive"
-                    element={
-                      <LegacyCourseRouteRedirect
-                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "interactive")}
-                      />
-                    }
-                  />
-                  <Route
-                    path="course/:courseId/knowledge-docs/html-figure"
-                    element={
-                      <LegacyCourseRouteRedirect
-                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "html-figure")}
-                      />
-                    }
-                  />
-                  <Route
-                    path="course/:courseId/exams/question-templates"
-                    element={
-                      <LegacyCourseRouteRedirect
-                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-templates")}
-                      />
-                    }
-                  />
-                  <Route
-                    path="course/:courseId/exams/question-types"
-                    element={
-                      <LegacyCourseRouteRedirect
-                        buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-types")}
-                      />
-                    }
-                  />
-                  <Route
-                    path="course/:courseId/exams/:examPaperId"
-                    element={
-                      <LegacyCourseRouteRedirect
-                        buildPath={({ courseId, examPaperId }) => buildCourseSubPath(courseId ?? "", "exams", examPaperId)}
-                      />
-                    }
-                  />
-                  {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
                     <Route
-                      key={`legacy-alias-${aliasPath}`}
-                      path={`course/:courseId/${aliasPath}`}
+                      path="course/:courseId/knowledge-docs/html-figure"
                       element={
                         <LegacyCourseRouteRedirect
-                          buildPath={({ courseId }) => buildCoursePath(courseId ?? "", targetRoute)}
+                          buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "knowledge-docs", "html-figure")}
                         />
                       }
                     />
-                  ))}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
-            </ElectronWindowFrame>
-          </Router>
-        </ToastProvider>
-      </QueryClientProvider>
+                    <Route
+                      path="course/:courseId/exams/question-templates"
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-templates")}
+                        />
+                      }
+                    />
+                    <Route
+                      path="course/:courseId/exams/question-types"
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-types")}
+                        />
+                      }
+                    />
+                    <Route
+                      path="course/:courseId/exams/:examPaperId"
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId, examPaperId }) => buildCourseSubPath(courseId ?? "", "exams", examPaperId)}
+                        />
+                      }
+                    />
+                    {Object.entries(COURSE_ROUTE_REDIRECTS).map(([aliasPath, targetRoute]) => (
+                      <Route
+                        key={`legacy-alias-${aliasPath}`}
+                        path={`course/:courseId/${aliasPath}`}
+                        element={
+                          <LegacyCourseRouteRedirect
+                            buildPath={({ courseId }) => buildCoursePath(courseId ?? "", targetRoute)}
+                          />
+                        }
+                      />
+                    ))}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </ElectronWindowFrame>
+            </Router>
+          </ToastProvider>
+        </QueryClientProvider>
+      </FrontendModeProvider>
     </ThemeProvider>
   );
 }

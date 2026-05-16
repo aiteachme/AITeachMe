@@ -10,24 +10,17 @@ title AITeachMe Dev
 
 set "START_FLAGS="
 set "START_ELECTRON=0"
-if /I "%~1"=="--headless" (
-	set "START_FLAGS=/B"
-)
-if /I "%~2"=="--headless" (
-	set "START_FLAGS=/B"
-)
-if /I "%~1"=="--electron" (
-	set "START_ELECTRON=1"
-)
-if /I "%~2"=="--electron" (
-	set "START_ELECTRON=1"
-)
-if /I "%~1"=="--no-electron" (
-	set "START_ELECTRON=0"
-)
-if /I "%~2"=="--no-electron" (
-	set "START_ELECTRON=0"
-)
+set "SYNC_DEPS=1"
+
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--headless" set "START_FLAGS=/B"
+if /I "%~1"=="--electron" set "START_ELECTRON=1"
+if /I "%~1"=="--no-electron" set "START_ELECTRON=0"
+if /I "%~1"=="--no-sync" set "SYNC_DEPS=0"
+shift
+goto parse_args
+:args_done
 
 rem Always run from repo root (where this script lives)
 pushd "%~dp0" >nul
@@ -138,6 +131,65 @@ netstat -ano -p tcp > "%PORT_SCAN_FILE%"
 for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_BACKEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
 for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_FRONTEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
 del "%PORT_SCAN_FILE%" >nul 2>nul
+
+if /I "%AITEACHME_SKIP_DEP_SYNC%"=="1" set "SYNC_DEPS=0"
+if /I "%AITEACHME_SKIP_DEP_SYNC%"=="true" set "SYNC_DEPS=0"
+
+if "%SYNC_DEPS%"=="1" (
+	if not "%BACKEND_PID%"=="" (
+		echo [Deps] Backend already running; skipping backend dependency sync.
+	) else (
+		echo [Deps] Syncing backend Python dependencies...
+		if /I "%BACKEND_MODE%"=="venv" (
+			"%BACKEND_PY%" -m pip install -e "%~dp0backend[dev]"
+		) else (
+			"%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m pip install -e "%~dp0backend[dev]"
+		)
+		if errorlevel 1 (
+			echo [Deps] Backend dependency sync failed.
+			popd >nul
+			exit /b 1
+		)
+	)
+
+	if not "%FRONTEND_PID%"=="" (
+		echo [Deps] Frontend already running; skipping frontend dependency sync.
+	) else (
+		echo [Deps] Syncing frontend npm dependencies...
+		pushd "%~dp0frontend" >nul
+		set "FRONTEND_NEEDS_SYNC=1"
+		if exist "node_modules\.package-lock.json" (
+			if /I not "%AITEACHME_FORCE_DEP_SYNC%"=="1" (
+				if /I not "%AITEACHME_FORCE_DEP_SYNC%"=="true" (
+					if /I "%FRONTEND_MODE%"=="system" (
+						call npm ls --depth=0 --silent >nul 2>nul
+					) else (
+						"%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm ls --depth=0 --silent >nul 2>nul
+					)
+					if not errorlevel 1 set "FRONTEND_NEEDS_SYNC=0"
+				)
+			)
+		)
+		if "!FRONTEND_NEEDS_SYNC!"=="0" (
+			echo [Deps] Frontend dependencies are already installed.
+		) else (
+			if /I "%FRONTEND_MODE%"=="system" (
+				call npm ci
+			) else (
+				"%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output npm ci
+			)
+			if errorlevel 1 (
+				echo [Deps] Frontend dependency sync failed.
+				popd >nul
+				popd >nul
+				exit /b 1
+			)
+		)
+		popd >nul
+	)
+) else (
+	echo [Deps] Dependency sync skipped.
+)
 
 if "%START_FLAGS%"=="" if not "%FRONTEND_PID%"=="" (
 	powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=%FRONTEND_PID%' -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -like '*AiTeachMe*frontend*vite*') { exit 0 } exit 1" >nul 2>nul

@@ -7,9 +7,30 @@ import type {
 } from "../../api/generated/model";
 import { buildExamQuestionAnchorId } from "../interaction/types";
 
-export const EXAM_MODES = [
+export const MASTERY_DRILL_EXAM_MODE = "mastery_drill";
+export const MASTERY_DRILL_QUESTION_COUNT = 10;
+
+export const PAPER_EXAM_MODES = [
   { value: "web_practice", label: "专项练习", description: "适合快速刷题，聚焦薄弱知识点。" },
   { value: "paper_exam", label: "整卷测试", description: "模拟完整考试节奏，适合阶段检验。" },
+] as const;
+
+export const TRAINING_MODES = [
+  {
+    value: MASTERY_DRILL_EXAM_MODE,
+    label: "闯关训练",
+    description: "一页一题，作答后立刻看答案解析；错题回到队列，直到 10 题全部答对。",
+  },
+] as const;
+
+export const EXAM_MODES = [...PAPER_EXAM_MODES, ...TRAINING_MODES] as const;
+
+export const PAPER_LAYOUT_MODES = [
+  { value: "auto", label: "自动匹配", description: "按题量自动选择两页、四页、六页或八页卷面。" },
+  { value: "standard_two_page", label: "一面两页", description: "适合常规测试，横向展示两页试卷。" },
+  { value: "gaokao_four_page", label: "高考四页", description: "贴近常见高考真题 PDF，一面两页、正反四页。" },
+  { value: "gaokao_six_page", label: "高考六页", description: "正面三页、背面三页，模拟折页试卷。" },
+  { value: "gaokao_eight_page", label: "高考八页", description: "正反多页排布，适合更长整卷。" },
 ] as const;
 
 export const DIFFICULTIES = [

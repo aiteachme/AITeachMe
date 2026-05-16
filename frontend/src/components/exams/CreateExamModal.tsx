@@ -4,18 +4,20 @@ import { RotateCcw, Save } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
-import { EXAM_MODES } from "./examDisplay";
+import { PAPER_EXAM_MODES, PAPER_LAYOUT_MODES } from "./examDisplay";
 
 export interface CreateExamConfig {
-  examMode: (typeof EXAM_MODES)[number]["value"];
+  examMode: (typeof PAPER_EXAM_MODES)[number]["value"];
   numQuestions: number;
   userPrompt: string;
+  paperLayoutMode: (typeof PAPER_LAYOUT_MODES)[number]["value"];
 }
 
 export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
   examMode: "web_practice",
   numQuestions: 8,
   userPrompt: "",
+  paperLayoutMode: "auto",
 };
 
 const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
@@ -27,16 +29,19 @@ function getCreateExamConfigStorageKey(courseId: string) {
 function normalizeCreateExamConfig(
   value: (Partial<CreateExamConfig> & { focusPrompt?: string }) | null | undefined,
 ): CreateExamConfig {
-  const examModeValues = new Set<string>(EXAM_MODES.map((item) => item.value));
+  const examModeValues = new Set<string>(PAPER_EXAM_MODES.map((item) => item.value));
+  const paperLayoutModeValues = new Set<string>(PAPER_LAYOUT_MODES.map((item) => item.value));
+  const examMode = examModeValues.has(value?.examMode ?? "")
+    ? (value?.examMode as CreateExamConfig["examMode"])
+    : DEFAULT_CREATE_EXAM_CONFIG.examMode;
   const numQuestions = Number(value?.numQuestions);
+  const defaultQuestionCount = examMode === "paper_exam" ? 24 : DEFAULT_CREATE_EXAM_CONFIG.numQuestions;
 
   return {
-    examMode: examModeValues.has(value?.examMode ?? "")
-      ? (value?.examMode as CreateExamConfig["examMode"])
-      : DEFAULT_CREATE_EXAM_CONFIG.examMode,
+    examMode,
     numQuestions: Math.min(
-      40,
-      Math.max(1, Number.isFinite(numQuestions) ? numQuestions : DEFAULT_CREATE_EXAM_CONFIG.numQuestions),
+      80,
+      Math.max(1, Number.isFinite(numQuestions) ? numQuestions : defaultQuestionCount),
     ),
     userPrompt:
       typeof value?.userPrompt === "string"
@@ -44,6 +49,9 @@ function normalizeCreateExamConfig(
         : typeof value?.focusPrompt === "string"
           ? value.focusPrompt
           : DEFAULT_CREATE_EXAM_CONFIG.userPrompt,
+    paperLayoutMode: paperLayoutModeValues.has(value?.paperLayoutMode ?? "")
+      ? (value?.paperLayoutMode as CreateExamConfig["paperLayoutMode"])
+      : DEFAULT_CREATE_EXAM_CONFIG.paperLayoutMode,
   };
 }
 
@@ -78,6 +86,7 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
     exam_mode: normalized.examMode,
     user_prompt: normalized.userPrompt.trim() || undefined,
     num_questions: normalized.numQuestions,
+    paper_layout_mode: normalized.examMode === "paper_exam" ? normalized.paperLayoutMode : undefined,
   };
 }
 
@@ -103,7 +112,7 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
     saveCreateExamConfig(courseId, DEFAULT_CREATE_EXAM_CONFIG);
     toast({
       title: "配置已重置",
-      description: "之后会使用默认配置创建新考卷。",
+      description: "之后会使用默认配置开始专项练习。",
       variant: "success",
     });
   };
@@ -112,44 +121,51 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
     saveCreateExamConfig(courseId, config);
     toast({
       title: "配置已保存",
-      description: "下次点击创建新考卷会直接使用这套配置。",
+      description: "下次开始专项练习或整卷测试会直接使用这套配置。",
       variant: "success",
     });
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="新考卷配置" className="max-w-2xl rounded-[28px]">
+    <Modal open={open} onClose={onClose} title="训练与测试配置" className="max-w-2xl rounded-[28px]">
       <div className="space-y-6">
         <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5 dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(30,41,59,0.76)_100%)]">
           <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">面向当前课程</p>
           <h3 className="mt-2 text-2xl font-semibold text-slate-950 dark:text-slate-100">{displayName}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
-            保存后，创建新考卷按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
+            保存后，专项练习和整卷测试会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-600 dark:text-slate-300">
-            出题模式
+            类型
             <select
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               value={config.examMode}
               onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  examMode: event.target.value as CreateExamConfig["examMode"],
-                }))
+                setConfig((current) => {
+                  const examMode = event.target.value as CreateExamConfig["examMode"];
+                  return {
+                    ...current,
+                    examMode,
+                    numQuestions:
+                      examMode === "paper_exam" && current.examMode !== "paper_exam" && current.numQuestions <= 10
+                          ? 24
+                        : current.numQuestions,
+                  };
+                })
               }
             >
-              {EXAM_MODES.map((mode) => (
+              {PAPER_EXAM_MODES.map((mode) => (
                 <option key={mode.value} value={mode.value}>
                   {mode.label}
                 </option>
               ))}
             </select>
             <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
-              {EXAM_MODES.find((item) => item.value === config.examMode)?.description}
+              {PAPER_EXAM_MODES.find((item) => item.value === config.examMode)?.description}
             </span>
           </label>
 
@@ -159,16 +175,41 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               type="number"
               min={1}
-              max={40}
+              max={80}
               value={config.numQuestions}
               onChange={(event) =>
                 setConfig((current) => ({
                   ...current,
-                  numQuestions: Math.min(40, Math.max(1, Number(event.target.value) || 1)),
+                  numQuestions: Math.min(80, Math.max(1, Number(event.target.value) || 1)),
                 }))
               }
             />
           </label>
+
+          {config.examMode === "paper_exam" && (
+            <label className="text-sm text-slate-600 dark:text-slate-300">
+              试卷版式
+              <select
+                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
+                value={config.paperLayoutMode}
+                onChange={(event) =>
+                  setConfig((current) => ({
+                    ...current,
+                    paperLayoutMode: event.target.value as CreateExamConfig["paperLayoutMode"],
+                  }))
+                }
+              >
+                {PAPER_LAYOUT_MODES.map((mode) => (
+                  <option key={mode.value} value={mode.value}>
+                    {mode.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
+                {PAPER_LAYOUT_MODES.find((item) => item.value === config.paperLayoutMode)?.description}
+              </span>
+            </label>
+          )}
 
           <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200">智能策略</p>

@@ -115,7 +115,62 @@ def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyP
     assert snapshot["user_prompt"] == "focus on weak units"
     assert snapshot["sample_file_ids"] == ["a", "b"]
     assert snapshot["knowledge_unit_ids"] == [1, 2]
+    assert snapshot["paper_layout_mode"] == "practice_scroll"
     assert exams_api._exam_config_hash(snapshot) == exams_api._exam_config_hash(dict(reversed(snapshot.items())))
+
+
+def test_paper_exam_layout_models_content_flow_and_sections() -> None:
+    layout = exams_api._build_paper_layout(
+        exam_mode="paper_exam",
+        question_count=8,
+        paper_layout_mode="gaokao_six_page",
+        rows=[
+            {"item_order": 1, "question_type": "single_choice", "difficulty": "easy"},
+            {"item_order": 2, "question_type": "single_choice", "difficulty": "medium"},
+            {"item_order": 3, "question_type": "multiple_choice", "difficulty": "medium"},
+            {"item_order": 4, "question_type": "fill_blank", "difficulty": "medium"},
+            {"item_order": 5, "question_type": "fill_blank", "difficulty": "hard"},
+            {"item_order": 6, "question_type": "short_answer", "difficulty": "medium"},
+            {"item_order": 7, "question_type": "short_answer", "difficulty": "hard"},
+            {"item_order": 8, "question_type": "short_answer", "difficulty": "hard"},
+        ],
+    )
+
+    assert layout["mode"] == "gaokao_six_page"
+    assert layout["paper_style"] == "gaokao"
+    assert layout["pagination_strategy"] == "content_flow"
+    assert layout["total_pages"] == 1
+    assert layout["pages_per_side"] == 3
+    assert layout["sides"] == [{"side_number": 1, "label": "正面", "pages": [1]}]
+    assert layout["pages"] == [
+        {
+            "page_number": 1,
+            "question_orders": [1, 2, 3, 4, 5, 6, 7, 8],
+            "section_numbers": [1, 2, 3],
+        }
+    ]
+    assert [section["title"] for section in layout["sections"]] == ["一、选择题", "二、填空题", "三、解答题"]
+    assert layout["question_allocations"][0]["score"] == 5.0
+    assert layout["question_allocations"][-1]["score"] == 14.0
+
+
+def test_paper_exam_auto_layout_keeps_questions_as_content_flow() -> None:
+    layout = exams_api._build_paper_layout(
+        exam_mode="paper_exam",
+        question_count=24,
+        paper_layout_mode="auto",
+        rows=[
+            {"item_order": order, "question_type": "single_choice", "difficulty": "medium"}
+            for order in range(1, 25)
+        ],
+    )
+
+    assert layout["mode"] == "gaokao_four_page"
+    assert layout["paper_style"] == "gaokao"
+    assert layout["pagination_strategy"] == "content_flow"
+    assert layout["total_pages"] == 1
+    assert layout["pages_per_side"] == 2
+    assert [len(page["question_orders"]) for page in layout["pages"]] == [24]
 
 
 def test_exam_preview_helpers_merge_generation_and_failure_states() -> None:
@@ -491,6 +546,8 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     assert links_by_item_id[int(items[0].id or 0)] == [{"knowledge_unit_id": unit_ids[0], "coverage_weight": 1.0}]
     assert context["failed_questions"][0]["item_order"] == 3
     assert "generated_questions" not in context
+    assert context["paper_layout"]["mode"] == "practice_scroll"
+    assert context["paper_layout"]["pages"][0]["question_orders"] == [1, 2]
     assert [row.generation_status for row in preview.rows] == ["generated", "generated", "failed"]
     assert any(event == "done" and data["status"] == "ready" for _course, _paper, event, data in events)
 

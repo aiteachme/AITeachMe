@@ -1,9 +1,10 @@
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText } from "lucide-react";
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
+import { PaperExamCanvasSheet } from "./PaperExamCanvasSheet";
 import {
   getAnsweredCount,
   getEstimatedExamMinutes,
@@ -22,6 +23,7 @@ interface ExamPaperSheetProps {
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
+  footerContent?: ReactNode;
   onSelectQuestion?: (item: ExamPaperItemResponse) => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
@@ -288,6 +290,7 @@ export function ExamPaperSheet({
   setAnswers,
   selectedItemId,
   showInlineReviewDetails = true,
+  footerContent,
   onSelectQuestion,
   onQuestionAi,
   onQuestionMarkToggle,
@@ -296,6 +299,26 @@ export function ExamPaperSheet({
   const items = paper.items ?? [];
   const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
   const questionEntries = buildQuestionEntries(paper, itemsByOrder);
+
+  if (paper.exam_mode === "paper_exam") {
+    return (
+      <PaperExamCanvasSheet
+        paper={paper}
+        answers={answers}
+        activeStage={activeStage}
+        questionEntries={questionEntries}
+        highlightedQuestionOrder={highlightedQuestionOrder}
+        setAnswers={setAnswers}
+        selectedItemId={selectedItemId}
+        showInlineReviewDetails={showInlineReviewDetails}
+        footerContent={footerContent}
+        onSelectQuestion={onSelectQuestion}
+        onQuestionAi={onQuestionAi}
+        onQuestionMarkToggle={onQuestionMarkToggle}
+        markingQuestionTemplateId={markingQuestionTemplateId}
+      />
+    );
+  }
 
   return (
                 <div

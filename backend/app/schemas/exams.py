@@ -11,10 +11,14 @@ from pydantic import BaseModel, Field
 class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
-    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam (legacy values are compatible).")
+    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam | mastery_drill.")
     user_prompt: str | None = Field(default=None, description="Optional user requirements for exam generation.")
     sample_file_ids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file IDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
+    paper_layout_mode: str | None = Field(
+        default=None,
+        description="Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page.",
+    )
 
 
 class ExamSubmitAnswerItem(BaseModel):

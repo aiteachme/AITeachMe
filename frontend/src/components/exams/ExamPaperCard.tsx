@@ -534,14 +534,14 @@ function FailedPaperPreview() {
   return (
     <div
       className="relative z-10 mt-3 flex flex-1 flex-col items-center justify-center overflow-hidden rounded-md border border-rose-100 bg-rose-50/60 px-4 text-center text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300"
-      aria-label="试卷生成失败"
+      aria-label="内容生成失败"
     >
       <div className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-sm ring-1 ring-rose-100 dark:bg-rose-950/40 dark:ring-rose-900/70">
         <AlertTriangle className="h-6 w-6" />
       </div>
       <div className="mt-3 text-sm font-semibold">生成失败</div>
       <div className="mt-1 max-w-[9rem] text-[11px] leading-5 text-rose-500/80 dark:text-rose-300/75">
-        这份试卷没有生成完成
+        这份内容没有生成完成
       </div>
       <div className="mt-4 h-px w-full bg-rose-100 dark:bg-rose-900/70" />
       <div className="mt-3 grid w-full gap-1.5 text-rose-300/80 dark:text-rose-700">
@@ -619,10 +619,10 @@ export function ExamPaperCard({
           {isFailed ? (
             <span className="inline-flex items-center justify-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
-              试卷生成失败
+              内容生成失败
             </span>
           ) : isGenerating ? (
-            <span className="inline-flex items-center justify-center gap-1.5" aria-label="试卷题目生成中">
+            <span className="inline-flex items-center justify-center gap-1.5" aria-label="题目生成中">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               生成中
             </span>
@@ -650,8 +650,8 @@ export function ExamPaperCard({
               size="icon"
               variant="outline"
               className="!h-8 !w-8 shrink-0 rounded-full border-slate-200 bg-white text-slate-900 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-red-500/40 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-              aria-label={`删除考卷 ${buildExamTitle(item)}`}
-              title="删除考卷"
+              aria-label={`删除记录 ${buildExamTitle(item)}`}
+              title="删除记录"
               disabled={isDeleting}
               onClick={onDelete}
             >
@@ -660,7 +660,7 @@ export function ExamPaperCard({
             <button
               type="button"
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-900 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
-              aria-label={`展开考卷操作 ${buildExamTitle(item)}`}
+              aria-label={`展开记录操作 ${buildExamTitle(item)}`}
               title="更多操作"
               onClick={(event) => {
                 event.stopPropagation();
