@@ -1042,7 +1042,8 @@ export function PaperExamCanvasSheet({
       >
         <div className="mx-auto flex min-h-full flex-col items-center gap-8 pb-16">
           {pageSpreads.map((spread) => {
-            const isJoinedSpread = pageViewMode === "double" && spread.pages.length === 2;
+            const isJoinedSpread = pageViewMode === "double";
+            const shouldRenderBlankRightPage = isJoinedSpread && spread.pages.length === 1;
             return (
             <article
               key={spread.key}
@@ -1051,7 +1052,7 @@ export function PaperExamCanvasSheet({
               className={cn(
                 "relative flex items-start justify-center",
                 isJoinedSpread
-                  && "overflow-hidden border border-slate-300 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-38px_rgba(0,0,0,0.92)]",
+                  && "paper-spread-joined overflow-hidden border border-slate-300 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_70px_-38px_rgba(0,0,0,0.92)]",
               )}
               style={{ gap: isJoinedSpread ? 0 : displayedPageGap }}
             >
@@ -1075,6 +1076,10 @@ export function PaperExamCanvasSheet({
                           isJoinedSpread
                             ? "border-0 shadow-none"
                             : "shadow-[0_28px_70px_rgba(15,23,42,0.16)] dark:shadow-[0_28px_70px_-38px_rgba(0,0,0,0.92)]",
+                          !isJoinedSpread && "paper-page-sheet",
+                          !isJoinedSpread && page.page_number % 2 === 0 && "paper-page-sheet-alt",
+                          isJoinedSpread && pageIndex === 0 && "paper-spread-page-left",
+                          isJoinedSpread && pageIndex === 1 && "paper-spread-page-right",
                           isJoinedSpread && pageIndex === 0 && "border-r-0",
                           isJoinedSpread && pageIndex === 1 && "border-l-0",
                         )}
@@ -1142,13 +1147,39 @@ export function PaperExamCanvasSheet({
                     </div>
                   );
                 })}
+              {shouldRenderBlankRightPage ? (
+                <div
+                  className="shrink-0"
+                  style={{
+                    width: displayedPageWidth,
+                    height: displayedPageHeight,
+                  }}
+                  aria-hidden="true"
+                >
+                  <section
+                    className={cn(
+                      "relative flex flex-col overflow-hidden bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-100",
+                      "border-0 shadow-none paper-spread-page-right border-l-0",
+                    )}
+                    style={{
+                      width: pageSpec.pageWidth,
+                      height: pageSpec.pageHeight,
+                      transform: `scale(${pageScale})`,
+                      transformOrigin: "top left",
+                      ...gaokaoTextStyle,
+                    }}
+                  />
+                </div>
+              ) : null}
               {isJoinedSpread ? (
                 <span
                   data-paper-spread-fold="true"
-                  className="pointer-events-none absolute top-0 z-20 w-8 -translate-x-1/2 bg-[linear-gradient(90deg,rgba(15,23,42,0.13)_0%,rgba(15,23,42,0.04)_34%,rgba(255,255,255,0.58)_50%,rgba(15,23,42,0.05)_66%,rgba(15,23,42,0.14)_100%)] opacity-70 mix-blend-multiply dark:bg-[linear-gradient(90deg,rgba(0,0,0,0.42)_0%,rgba(255,255,255,0.08)_48%,rgba(0,0,0,0.44)_100%)] dark:opacity-55 dark:mix-blend-screen"
+                  className="paper-spread-fold"
                   style={{ left: displayedPageWidth, height: displayedPageHeight }}
                   aria-hidden="true"
-                />
+                >
+                  <span className="paper-spread-fold__grain" />
+                </span>
               ) : null}
             </article>
             );
