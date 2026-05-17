@@ -14,4 +14,5 @@ exam_mode?: string;
 num_questions?: number;
 user_prompt?: string | null;
 sample_file_ids?: string[] | null;
+paper_layout_mode?: string | null;
 };

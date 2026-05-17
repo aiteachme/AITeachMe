@@ -5026,6 +5026,22 @@
               ],
               "title": "Sample File Ids"
             }
+          },
+          {
+            "name": "paper_layout_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paper Layout Mode"
+            }
           }
         ],
         "responses": {
@@ -11777,7 +11793,7 @@
           "exam_mode": {
             "type": "string",
             "title": "Exam Mode",
-            "description": "Exam mode: web_practice | paper_exam (legacy values are compatible)."
+            "description": "Exam mode: web_practice | paper_exam | mastery_drill."
           },
           "user_prompt": {
             "anyOf": [
@@ -11819,6 +11835,18 @@
             ],
             "title": "Num Questions",
             "description": "Optional target question count."
+          },
+          "paper_layout_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Layout Mode",
+            "description": "Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page."
           }
         },
         "type": "object",
