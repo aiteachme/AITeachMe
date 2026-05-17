@@ -445,6 +445,8 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
             "",
             "> ✅ **答案**：5",
             "",
+            "> ✅ **答案/结论**：命题成立。",
+            "",
             "> 这是一段普通引用，后面会提醒注意事项。",
             "",
             "> 普通引用不应变化。",
@@ -459,6 +461,8 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
     assert "> [!WARNING]\n>\n> **边界提醒**：不要把定义域限制漏掉。" in fixed
     assert "> ✅ **答案**：5" in fixed
     assert "> [!IMPORTANT]\n>\n> ✅ **答案**：5" not in fixed
+    assert "> ✅ **答案/结论**：命题成立。" in fixed
+    assert "> [!IMPORTANT]\n>\n> ✅ **答案/结论**：命题成立。" not in fixed
     assert "> 这是一段普通引用，后面会提醒注意事项。" in fixed
     assert "> [!WARNING]\n>\n> 这是一段普通引用" not in fixed
     assert "> 普通引用不应变化。" in fixed

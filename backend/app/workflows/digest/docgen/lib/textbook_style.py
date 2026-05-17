@@ -64,6 +64,9 @@ _CALLOUT_EMOJI_KIND = {
 _CALLOUT_LEADING_ICON_RE = re.compile(
     r"^\s*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️?|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+"
 )
+_ANSWER_FIELD_LABEL_RE = re.compile(
+    r"^(?:\*\*)?\s*(?:参考|标准|正确)?答案(?:\s*[/／]\s*结论)?\s*(?:\*\*)?\s*[:：]"
+)
 _GENERIC_VISIBLE_FOCUS_TITLES = {
     "未命名章节",
     "未命名",
@@ -242,7 +245,8 @@ def _infer_callout_kind(body_lines: Iterable[str]) -> str:
     first_line = next((str(item or "").strip() for item in body_lines if str(item or "").strip()), "")
     if not first_line:
         return ""
-    if "答案" in first_line and not any(marker in first_line for marker in ("题眼", "易错", "技巧", "结论", "前提")):
+    answer_candidate = _CALLOUT_LEADING_ICON_RE.sub("", first_line, count=1).lstrip()
+    if _ANSWER_FIELD_LABEL_RE.match(answer_candidate):
         return ""
     first_char = first_line[0]
     if first_char in _CALLOUT_EMOJI_KIND and re.search(r"(?:\*\*|[:：])", first_line):
