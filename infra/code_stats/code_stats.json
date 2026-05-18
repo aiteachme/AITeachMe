@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-11T02:54:58.431090",
-  "total_commits_analyzed": 1652,
+  "generated_at": "2026-05-18T03:01:05.364299",
+  "total_commits_analyzed": 1745,
   "stats": [
     {
       "date": "2026-03-11",
@@ -13217,6 +13217,750 @@
       "code_lines": 161736,
       "other_lines": 33314,
       "message": "feat: 添加客户端操作支持，优化助手响应处理"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "e77e10e",
+      "total_lines": 194801,
+      "code_lines": 161519,
+      "other_lines": 33282,
+      "message": "feat: 增加知识文档目录层级控制"
+    },
+    {
+      "date": "2026-05-10",
+      "commit": "3c3782d",
+      "total_lines": 194818,
+      "code_lines": 161535,
+      "other_lines": 33283,
+      "message": "fix: 避免划词交互窗口被误关闭"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "f1c5824",
+      "total_lines": 195388,
+      "code_lines": 162057,
+      "other_lines": 33331,
+      "message": "feat: 优化知识文档交互演示体验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "a80df8e",
+      "total_lines": 195984,
+      "code_lines": 162591,
+      "other_lines": 33393,
+      "message": "feat: 增强知识文档静态图示体验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "e0d9e96",
+      "total_lines": 195993,
+      "code_lines": 162599,
+      "other_lines": 33394,
+      "message": "fix: 优化知识文档 HTML 生成与加载体验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "dd05c21",
+      "total_lines": 197186,
+      "code_lines": 163420,
+      "other_lines": 33766,
+      "message": "feat: 完善学习画像链路与计划入口"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "b06ffe0",
+      "total_lines": 196214,
+      "code_lines": 162798,
+      "other_lines": 33416,
+      "message": "fix: 补全交互页重生成与 HTML 校验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "5be11d8",
+      "total_lines": 197182,
+      "code_lines": 163416,
+      "other_lines": 33766,
+      "message": "fix: 修复 AI 侧栏上下文关闭判断"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "06d8d38",
+      "total_lines": 196215,
+      "code_lines": 162799,
+      "other_lines": 33416,
+      "message": "style: 优化目录层级操作按钮"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "2c44ffc",
+      "total_lines": 196307,
+      "code_lines": 162869,
+      "other_lines": 33438,
+      "message": "fix: 修复交互 HTML 结构校验误判"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "79492ee",
+      "total_lines": 196401,
+      "code_lines": 162959,
+      "other_lines": 33442,
+      "message": "feat: 增强交互 HTML 生成追踪"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "2a10817",
+      "total_lines": 198765,
+      "code_lines": 164840,
+      "other_lines": 33925,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "b1b1cdd",
+      "total_lines": 198787,
+      "code_lines": 164857,
+      "other_lines": 33930,
+      "message": "fix: 避免 HTML header 被误判为重复 head"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "3b4b524",
+      "total_lines": 198895,
+      "code_lines": 164951,
+      "other_lines": 33944,
+      "message": "fix: 避免自动交互页重复生成和重复插入"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "416f653",
+      "total_lines": 199004,
+      "code_lines": 165056,
+      "other_lines": 33948,
+      "message": "fix: 修复交互页重新生成重复插入"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "b7b88bb",
+      "total_lines": 199024,
+      "code_lines": 165072,
+      "other_lines": 33952,
+      "message": "fix: 修复交互 HTML 禁用 API 校验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "a749e7c",
+      "total_lines": 197059,
+      "code_lines": 163319,
+      "other_lines": 33740,
+      "message": "refactor: 移除 Profile pipeline 兼容层"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "8180bf9",
+      "total_lines": 195050,
+      "code_lines": 161736,
+      "other_lines": 33314,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "5b98987",
+      "total_lines": 198901,
+      "code_lines": 164975,
+      "other_lines": 33926,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "e6f89c9",
+      "total_lines": 198960,
+      "code_lines": 165022,
+      "other_lines": 33938,
+      "message": "fix: 收紧 HTML sidecar 远程资源校验"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "42feb87",
+      "total_lines": 199259,
+      "code_lines": 165285,
+      "other_lines": 33974,
+      "message": "chore: 合并远端 main 最新提交"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "ee49201",
+      "total_lines": 199272,
+      "code_lines": 165288,
+      "other_lines": 33984,
+      "message": "chore: 同步 OpenAPI 客户端"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "39e98fb",
+      "total_lines": 199307,
+      "code_lines": 165318,
+      "other_lines": 33989,
+      "message": "fix: 恢复 README 代码量统计展示"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "7e75026",
+      "total_lines": 199307,
+      "code_lines": 165318,
+      "other_lines": 33989,
+      "message": "fix: 避免 Sealos 前端烟测抢跑后端部署"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "77ea94c",
+      "total_lines": 199521,
+      "code_lines": 165505,
+      "other_lines": 34016,
+      "message": "fix: 修复课程导入后的文档交互状态"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "db13502",
+      "total_lines": 200061,
+      "code_lines": 165981,
+      "other_lines": 34080,
+      "message": "feat: 提升交互 HTML 生成质量"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "271090c",
+      "total_lines": 200014,
+      "code_lines": 165944,
+      "other_lines": 34070,
+      "message": "refactor: 收敛 LLM 调度公开入口"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "75ad9ca",
+      "total_lines": 200013,
+      "code_lines": 165943,
+      "other_lines": 34070,
+      "message": "refactor: 明确 LLM 批次并发参数"
+    },
+    {
+      "date": "2026-05-11",
+      "commit": "6baa25e",
+      "total_lines": 200011,
+      "code_lines": 165941,
+      "other_lines": 34070,
+      "message": "refactor: 放宽小批量 LLM 并发"
+    },
+    {
+      "date": "2026-05-12",
+      "commit": "61af016",
+      "total_lines": 199863,
+      "code_lines": 165856,
+      "other_lines": 34007,
+      "message": "refactor: 清理旧课程路径兼容代码"
+    },
+    {
+      "date": "2026-05-12",
+      "commit": "a02f853",
+      "total_lines": 199917,
+      "code_lines": 165895,
+      "other_lines": 34022,
+      "message": "fix: 修复知识构建本地路径解析"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "2440013",
+      "total_lines": 199917,
+      "code_lines": 165895,
+      "other_lines": 34022,
+      "message": "fix: 修复前端依赖安全告警"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "8f2035c",
+      "total_lines": 199861,
+      "code_lines": 165839,
+      "other_lines": 34022,
+      "message": "chore: 同步 OpenAPI 生成客户端"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "cd2b2a5",
+      "total_lines": 199861,
+      "code_lines": 165839,
+      "other_lines": 34022,
+      "message": "fix: 修复后端依赖安全告警"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "a2d3c8f",
+      "total_lines": 200176,
+      "code_lines": 166059,
+      "other_lines": 34117,
+      "message": "docs: 优化项目首页与文档事实源"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "b2d2717",
+      "total_lines": 200208,
+      "code_lines": 166085,
+      "other_lines": 34123,
+      "message": "docs: 完善项目目录分级说明"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "9872303",
+      "total_lines": 200208,
+      "code_lines": 166085,
+      "other_lines": 34123,
+      "message": "fix: 修复 Tauri 依赖安全告警"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "eb37ebc",
+      "total_lines": 200414,
+      "code_lines": 166207,
+      "other_lines": 34207,
+      "message": "docs: 完善英文模式与结构边界说明"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "3bb3b70",
+      "total_lines": 200335,
+      "code_lines": 166132,
+      "other_lines": 34203,
+      "message": "perf: 优化首屏加载并收敛外部接入说明"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "1383212",
+      "total_lines": 200568,
+      "code_lines": 166328,
+      "other_lines": 34240,
+      "message": "perf: 优化缓存加载与首屏性能"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "4684888",
+      "total_lines": 206390,
+      "code_lines": 171393,
+      "other_lines": 34997,
+      "message": "fix: 修复知识构建链路并强化回归测试"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "936a83a",
+      "total_lines": 206628,
+      "code_lines": 171587,
+      "other_lines": 35041,
+      "message": "ci: 强化部署上传烟测"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "69e1f26",
+      "total_lines": 206628,
+      "code_lines": 171587,
+      "other_lines": 35041,
+      "message": "ci: 增加部署镜像仓库登录重试"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "bbe7410",
+      "total_lines": 206628,
+      "code_lines": 171587,
+      "other_lines": 35041,
+      "message": "chore: release v0.0.10"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "88f2f22",
+      "total_lines": 206771,
+      "code_lines": 171721,
+      "other_lines": 35050,
+      "message": "fix: 保留考试生成草稿快照"
+    },
+    {
+      "date": "2026-05-13",
+      "commit": "a4b005a",
+      "total_lines": 206771,
+      "code_lines": 171721,
+      "other_lines": 35050,
+      "message": "fix: 将考题规划链路切换为推理模型"
+    },
+    {
+      "date": "2026-05-14",
+      "commit": "c51775d",
+      "total_lines": 206800,
+      "code_lines": 171745,
+      "other_lines": 35055,
+      "message": "feat: 资料库支持 Ctrl+V 粘贴上传文件"
+    },
+    {
+      "date": "2026-05-14",
+      "commit": "2bc2e09",
+      "total_lines": 206844,
+      "code_lines": 171790,
+      "other_lines": 35054,
+      "message": "优化移动端布局"
+    },
+    {
+      "date": "2026-05-14",
+      "commit": "8a27450",
+      "total_lines": 206844,
+      "code_lines": 171790,
+      "other_lines": 35054,
+      "message": "Merge remote-tracking branch 'origin/dev_mzp'"
+    },
+    {
+      "date": "2026-05-14",
+      "commit": "d3469df",
+      "total_lines": 206873,
+      "code_lines": 171814,
+      "other_lines": 35059,
+      "message": "Merge remote-tracking branch 'origin/dev_cy'"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "a6770e6",
+      "total_lines": 206879,
+      "code_lines": 171819,
+      "other_lines": 35060,
+      "message": "docs: 添加 README Star 引导动画"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "db278d2",
+      "total_lines": 206974,
+      "code_lines": 171908,
+      "other_lines": 35066,
+      "message": "style: 统一手机端标题与布局显示"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "655435d",
+      "total_lines": 206883,
+      "code_lines": 171820,
+      "other_lines": 35063,
+      "message": "docs: 添加 README Star 引导动效"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "de1d23f",
+      "total_lines": 207413,
+      "code_lines": 172331,
+      "other_lines": 35082,
+      "message": "refactor: 优化知识图谱节点交互与分区展示"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "297f4ba",
+      "total_lines": 207949,
+      "code_lines": 172823,
+      "other_lines": 35126,
+      "message": "feat: 优化 Planner 大纲生成与流式预览"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "7d47f2e",
+      "total_lines": 208078,
+      "code_lines": 172932,
+      "other_lines": 35146,
+      "message": "fix: 强化 docgen 速成课讲义可读性"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "cf1bf1c",
+      "total_lines": 208218,
+      "code_lines": 173042,
+      "other_lines": 35176,
+      "message": "fix: 加强结构化调用修复提示"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "c343e35",
+      "total_lines": 208617,
+      "code_lines": 173378,
+      "other_lines": 35239,
+      "message": "fix: 优化速成课文档结构与知识页交互"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "6ef737d",
+      "total_lines": 208717,
+      "code_lines": 173471,
+      "other_lines": 35246,
+      "message": "chore: 合并远程 dev_mzp"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "bff8ae2",
+      "total_lines": 208674,
+      "code_lines": 173437,
+      "other_lines": 35237,
+      "message": "fix: 优化快速复习文档生成质量"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "49b041a",
+      "total_lines": 208713,
+      "code_lines": 173471,
+      "other_lines": 35242,
+      "message": "feat: 优化知识文档例题密度与可读性"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "e5be06b",
+      "total_lines": 208971,
+      "code_lines": 173705,
+      "other_lines": 35266,
+      "message": "fix: 让规划标题由模型重写为短目录名"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "00636ca",
+      "total_lines": 208977,
+      "code_lines": 173709,
+      "other_lines": 35268,
+      "message": "docs: 在 README 添加微信群二维码"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "e6427e8",
+      "total_lines": 208834,
+      "code_lines": 173576,
+      "other_lines": 35258,
+      "message": "refactor: 简化知识文档标题生成边界"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "e66d843",
+      "total_lines": 208935,
+      "code_lines": 173671,
+      "other_lines": 35264,
+      "message": "fix: 强化速成课题型化例题生成"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "d8d7fae",
+      "total_lines": 209121,
+      "code_lines": 173836,
+      "other_lines": 35285,
+      "message": "fix: 优化快速复习文档组织与检索降噪"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "a596e6c",
+      "total_lines": 208731,
+      "code_lines": 173455,
+      "other_lines": 35276,
+      "message": "fix: 移除 DocGen 本地语义兜底"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "1b82de7",
+      "total_lines": 208767,
+      "code_lines": 173488,
+      "other_lines": 35279,
+      "message": "fix: 泛化 DocGen 标题示例"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "69ee85d",
+      "total_lines": 208807,
+      "code_lines": 173519,
+      "other_lines": 35288,
+      "message": "fix: 优化 DocGen 标题层级约束"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "1ed033e",
+      "total_lines": 208812,
+      "code_lines": 173524,
+      "other_lines": 35288,
+      "message": "style: 优化知识文档阅读排版"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "9bc81ce",
+      "total_lines": 208801,
+      "code_lines": 173513,
+      "other_lines": 35288,
+      "message": "fix: 修复文档重复图示与图谱拥挤"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "310b14e",
+      "total_lines": 208725,
+      "code_lines": 173429,
+      "other_lines": 35296,
+      "message": "fix: 优化 DocGen 目录标题生成约束"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "4bcb1de",
+      "total_lines": 208324,
+      "code_lines": 173073,
+      "other_lines": 35251,
+      "message": "fix: 优化图谱布局与文档标题守卫"
+    },
+    {
+      "date": "2026-05-15",
+      "commit": "8b91d09",
+      "total_lines": 208398,
+      "code_lines": 173146,
+      "other_lines": 35252,
+      "message": "style: 优化知识图谱节点样式与默认展示"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "29a76b6",
+      "total_lines": 208572,
+      "code_lines": 173300,
+      "other_lines": 35272,
+      "message": "fix: 修复图谱来源无法跳转原文"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "5819097",
+      "total_lines": 208572,
+      "code_lines": 173300,
+      "other_lines": 35272,
+      "message": "chore: update defaults"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "638e9b9",
+      "total_lines": 208712,
+      "code_lines": 173418,
+      "other_lines": 35294,
+      "message": "fix: 避免标题锁定失败中断文档生成"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "d5ab355",
+      "total_lines": 208879,
+      "code_lines": 173572,
+      "other_lines": 35307,
+      "message": "feat: 优化资料详情查看和课程侧边栏"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "d2e3fd4",
+      "total_lines": 207676,
+      "code_lines": 172466,
+      "other_lines": 35210,
+      "message": "fix: 清理 DocGen 本地关键词语义兜底"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "f9fb518",
+      "total_lines": 207632,
+      "code_lines": 172424,
+      "other_lines": 35208,
+      "message": "fix: 让 DocGen 标题复核走模型语义"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "fa6a13e",
+      "total_lines": 207706,
+      "code_lines": 172494,
+      "other_lines": 35212,
+      "message": "fix: 优化知识文档阅读与练习生成质量"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "0039e75",
+      "total_lines": 207721,
+      "code_lines": 172509,
+      "other_lines": 35212,
+      "message": "fix: 优化知识文档阅读排版与完整性约束"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "ff0f087",
+      "total_lines": 207943,
+      "code_lines": 172710,
+      "other_lines": 35233,
+      "message": "fix: 强化知识文档题量深度与例题排版"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "85a9709",
+      "total_lines": 207955,
+      "code_lines": 172720,
+      "other_lines": 35235,
+      "message": "fix: 修复交互页图形载体质量检查"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "d1f1dc1",
+      "total_lines": 207949,
+      "code_lines": 172714,
+      "other_lines": 35235,
+      "message": "fix: 移除交互页质量检查关键词判断"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "2156b61",
+      "total_lines": 207897,
+      "code_lines": 172663,
+      "other_lines": 35234,
+      "message": "fix: 移除 DocGen 本地关键词语义路由"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "eaf90eb",
+      "total_lines": 207903,
+      "code_lines": 172669,
+      "other_lines": 35234,
+      "message": "fix: 恢复 DocGen 提示块对✅的识别"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "b83c0e3",
+      "total_lines": 210542,
+      "code_lines": 175135,
+      "other_lines": 35407,
+      "message": "feat: add mastery drill exam mode and related func"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "c69e84e",
+      "total_lines": 210573,
+      "code_lines": 175166,
+      "other_lines": 35407,
+      "message": "feat: 增加纸张布局样式和相关功能，优化双页视图效果"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "7bc5e69",
+      "total_lines": 210579,
+      "code_lines": 175172,
+      "other_lines": 35407,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-05-16",
+      "commit": "771f118",
+      "total_lines": 211267,
+      "code_lines": 175823,
+      "other_lines": 35444,
+      "message": "feat: 添加课程开发导航页面及相关功能，优化侧边栏模块显示逻辑"
+    },
+    {
+      "date": "2026-05-17",
+      "commit": "3aa9a94",
+      "total_lines": 211275,
+      "code_lines": 175831,
+      "other_lines": 35444,
+      "message": "fix: 保留 DocGen 答案结论引用格式"
+    },
+    {
+      "date": "2026-05-17",
+      "commit": "530a6a9",
+      "total_lines": 211276,
+      "code_lines": 175832,
+      "other_lines": 35444,
+      "message": "chore: 同步 OpenAPI 客户端"
     }
   ]
 }
