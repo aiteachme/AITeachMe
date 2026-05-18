@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import FastAPI
@@ -70,6 +71,43 @@ def test_project_settings_file_inspection_reports_missing_and_parse_errors(
     assert broken_info["exists"] is True
     assert broken_info["readable"] is True
     assert "error" in broken_info
+
+
+def test_openapi_export_on_startup_is_disabled_by_default(monkeypatch) -> None:
+    scheduled: list[dict[str, object]] = []
+
+    def fake_thread(**kwargs: object) -> SimpleNamespace:
+        scheduled.append(kwargs)
+        return SimpleNamespace(start=lambda: None)
+
+    monkeypatch.delenv("EXPORT_OPENAPI_ON_STARTUP", raising=False)
+    monkeypatch.setattr(app_main, "_OPENAPI_EXPORT_STARTED", False, raising=False)
+    monkeypatch.setattr(app_main.threading, "Thread", fake_thread)
+
+    app_main._maybe_export_openapi_schema(FastAPI())
+
+    assert scheduled == []
+
+
+def test_openapi_export_on_startup_schedules_once(monkeypatch) -> None:
+    scheduled: list[dict[str, object]] = []
+
+    def fake_thread(**kwargs: object) -> SimpleNamespace:
+        scheduled.append(kwargs)
+        return SimpleNamespace(start=lambda: None)
+
+    monkeypatch.setenv("EXPORT_OPENAPI_ON_STARTUP", "true")
+    monkeypatch.setattr(app_main, "_OPENAPI_EXPORT_STARTED", False, raising=False)
+    monkeypatch.setattr(app_main.threading, "Thread", fake_thread)
+
+    app_main._maybe_export_openapi_schema(FastAPI())
+    app_main._maybe_export_openapi_schema(FastAPI())
+
+    assert len(scheduled) == 1
+    thread_kwargs = scheduled[0]
+    assert thread_kwargs["name"] == "openapi-export"
+    assert thread_kwargs["daemon"] is True
+    assert callable(thread_kwargs["target"])
 
 
 def test_create_app_registers_core_routes_and_cors(monkeypatch) -> None:

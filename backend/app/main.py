@@ -7,8 +7,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import re
 import sys
+import threading
 from time import perf_counter
 from typing import Any, AsyncGenerator
 import uuid
@@ -57,6 +59,9 @@ from app.shared.infra.settings.support import (
 
 logger = structlog.get_logger()
 
+_OPENAPI_EXPORT_LOCK = threading.Lock()
+_OPENAPI_EXPORT_STARTED = False
+
 _SENSITIVE_SETTING_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|access[_-]?key|private[_-]?key|credential)",
     re.IGNORECASE,
@@ -77,6 +82,49 @@ def _redact_for_logs(value: Any) -> Any:
     if isinstance(value, list):
         return [_redact_for_logs(item) for item in value]
     return value
+
+
+def _run_openapi_export(app: FastAPI) -> None:
+    script_dir = Path(__file__).parent.parent / "scripts"
+    script_dir_text = str(script_dir)
+    sys.path.insert(0, script_dir_text)
+    try:
+        import export_api_docs
+
+        logger.info("openapi_export_started")
+        if not export_api_docs.export_openapi_schema(app):
+            raise RuntimeError("OpenAPI export returned false")
+        logger.info("openapi_export_finished")
+    finally:
+        try:
+            sys.path.remove(script_dir_text)
+        except ValueError:
+            pass
+
+
+def _maybe_export_openapi_schema(app: FastAPI) -> None:
+    global _OPENAPI_EXPORT_STARTED
+
+    if not get_env_bool("EXPORT_OPENAPI_ON_STARTUP", False):
+        return
+
+    with _OPENAPI_EXPORT_LOCK:
+        if _OPENAPI_EXPORT_STARTED:
+            logger.info("openapi_export_already_scheduled")
+            return
+        _OPENAPI_EXPORT_STARTED = True
+
+    def _run_export() -> None:
+        try:
+            _run_openapi_export(app)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("export_openapi_failed", error=str(exc))
+
+    threading.Thread(
+        target=_run_export,
+        name="openapi-export",
+        daemon=True,
+    ).start()
 
 
 def _format_utc_timestamp(timestamp: float) -> str:
@@ -342,6 +390,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── 启动诊断日志 ──
     settings = get_settings()
     _log_infra_diagnostics(settings)
+    _maybe_export_openapi_schema(app)
 
     from app.workflows.ingest import recover_stalled_enhancements
     from app.workflows.support.system import refresh_community_wechat_qr_cache
