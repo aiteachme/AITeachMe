@@ -38,7 +38,7 @@ AITeachMe 不是一次性的文件摘要器，也不是普通聊天机器人。�
 
 ### Ingest：透视引擎
 
-把当前开放上传的 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等资料转成标准 Markdown 和资产目录。目标是先快、可预览、可恢复，再逐步增强复杂资料质量；复杂 PDF/OCR 场景可接 PaddleOCR 或 MinerU 外部链路。
+把当前开放上传的 PDF、DOCX、PPTX、Markdown、TXT、JPG/PNG/BMP 等资料转成标准 Markdown 和资产目录。目标是先快、可预览、可恢复，再逐步增强复杂资料质量；复杂 PDF/OCR 场景可接 PaddleOCR 或 MinerU 外部链路。
 
 ### Digest：织网引擎
 

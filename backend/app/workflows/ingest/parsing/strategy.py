@@ -134,6 +134,9 @@ def _preferred_parser_order(
         # Mammoth is the default local DOCX parser; native archive parsing is the fallback.
         return ["mammoth", "docx_native"]
 
+    if extension == ".pptx":
+        return ["markitdown"]
+
     # 旧链路：.doc 已停用，不再支持上传和解析。
     # if extension == ".doc":
     #     # Convert DOC to DOCX first, then reuse the DOCX parser chain.
@@ -196,6 +199,13 @@ def _decide_mode_and_options(
         options.enable_asset_vision_ocr = document_ocr_enabled
         options.asset_vision_ocr_limit = 8
         return "balanced_docx", "DOCX uses balanced parser ordering."
+
+    if extension == ".pptx":
+        options.asset_image_limit = 0
+        options.skip_image_supplement = True
+        options.enable_asset_vision_ocr = False
+        options.enable_page_vision_ocr = False
+        return "local_markitdown", "PPTX local fallback is handled by MarkItDown."
 
     # 旧链路：.doc 已停用，不再支持上传和解析。
     # if extension == ".doc":

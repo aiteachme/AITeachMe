@@ -54,11 +54,11 @@ DEFAULT_MARKITDOWN_EXTENSIONS = frozenset(
     {
         ".pdf",
         ".docx",
-        # 当前上传入口只开放 PDF / DOCX / Markdown / 文本；
-        # PPT/PPTX 和通用 Office 表格类不再声明为本地 MarkItDown capability。
+        ".pptx",
+        # 当前上传入口只开放 PDF / DOCX / PPTX / Markdown / 文本；
+        # PPT 和通用 Office 表格类不再声明为本地 MarkItDown capability。
         # 如后续恢复上传入口，再同步恢复这里和 parsers.py 的 registry。
         # ".ppt",
-        # ".pptx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
         # ".doc",
         # *MARKITDOWN_GENERIC_EXTENSIONS,

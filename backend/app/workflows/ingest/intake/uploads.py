@@ -35,7 +35,7 @@ from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 # 当前产品入口真正开放的 ingest 文件类型白名单。
 # 图片只允许走 PaddleOCR / MinerU 外部解析链路，不提供本地兜底。
-SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pdf", ".md", ".jpeg", ".jpg", ".png", ".bmp"})
+SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pptx", ".pdf", ".md", ".jpeg", ".jpg", ".png", ".bmp"})
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
 
 

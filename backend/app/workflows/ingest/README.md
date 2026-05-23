@@ -6,7 +6,7 @@
 
 ## 一句话总览
 
-Ingest 做的事就是：把当前开放上传的 PDF、DOCX、Markdown、文本先转成可预览 Markdown；复杂 PDF/OCR 资料优先交给 PaddleOCR 或 MinerU，本地兜底收敛到 MarkItDown。
+Ingest 做的事就是：把当前开放上传的 PDF、DOCX、PPTX、Markdown、文本先转成可预览 Markdown；复杂 PDF/OCR 资料优先交给 PaddleOCR 或 MinerU，本地兜底收敛到 MarkItDown。
 
 ## 步骤总览
 

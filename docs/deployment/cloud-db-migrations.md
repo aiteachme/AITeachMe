@@ -129,7 +129,7 @@ GitHub Actions 的 `deploy.yml` 默认只在对应部署常量和 Secrets 齐全
 
 ### 4.1 Docker 部署
 
-当前云端 ingest 已收敛到 `.pdf` / `.docx` / Markdown / 文本上传：复杂 PDF/OCR 优先走 PaddleOCR 或 MinerU，本地兜底走 MarkItDown。仓库同时维护轻量后端镜像和 Office 后端镜像；Office 镜像预装 `soffice`/`libreoffice`，用于后续重新开放 `.doc`、PPT/PPTX 或本地 Office 转换链路。
+当前云端 ingest 已收敛到 `.pdf` / `.docx` / `.pptx` / Markdown / 文本上传：复杂 PDF/OCR 优先走 PaddleOCR 或 MinerU，本地兜底走 MarkItDown。仓库同时维护轻量后端镜像和 Office 后端镜像；Office 镜像预装 `soffice`/`libreoffice`，用于后续重新开放 `.doc`、`.ppt` 或本地 Office 转换链路。
 
 当前仓库的后端镜像定义：
 

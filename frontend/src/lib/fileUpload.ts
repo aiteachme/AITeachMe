@@ -27,6 +27,7 @@ const PICKER_EXTENSIONS = [
 const SUPPORTED_EXTENSIONS = [
   "pdf",
   "docx",
+  "pptx",
   "md",
   "txt",
   "jpeg",
@@ -35,7 +36,7 @@ const SUPPORTED_EXTENSIONS = [
   "bmp",
 ] as const;
 
-const PRESENTATION_EXTENSIONS = new Set<string>(["ppt", "pptx"]);
+const LEGACY_PRESENTATION_EXTENSIONS = new Set<string>(["ppt"]);
 const LEGACY_WORD_EXTENSIONS = new Set<string>(["doc"]);
 const IMAGE_EXTENSIONS = new Set<string>(["jpeg", "jpg", "png", "bmp"]);
 const IMAGE_PARSER_SETTING_KEYS = new Set<string>(["paddle_ocr.api_token", "mineru.api_token"]);
@@ -47,7 +48,7 @@ type UploadLimitConfig = {
   maxTotalSizeMb: number;
 };
 
-export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、docx、pdf、md、jpeg、jpg、png、bmp";
+export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、docx、pptx、pdf、md、jpeg、jpg、png、bmp";
 export const IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE = "当前无法处理图片上传";
 
 /** For <input accept="..."> attributes: dot-prefixed, comma-separated. */
@@ -170,15 +171,15 @@ export function buildUnsupportedFilesMessage(files: File[]): string {
   }
 
   const extensions = files.map(getFileExtension);
-  const hasPresentation = extensions.some((ext) => PRESENTATION_EXTENSIONS.has(ext));
+  const hasLegacyPresentation = extensions.some((ext) => LEGACY_PRESENTATION_EXTENSIONS.has(ext));
   const hasLegacyDoc = extensions.some((ext) => LEGACY_WORD_EXTENSIONS.has(ext));
   const hasOtherUnsupported = extensions.some(
-    (ext) => !PRESENTATION_EXTENSIONS.has(ext) && !LEGACY_WORD_EXTENSIONS.has(ext),
+    (ext) => !LEGACY_PRESENTATION_EXTENSIONS.has(ext) && !LEGACY_WORD_EXTENSIONS.has(ext),
   );
 
   const notices: string[] = [];
-  if (hasPresentation) {
-    notices.push("暂时不支持 ppt/pptx，请先转为 pdf 以获得更好的效果。");
+  if (hasLegacyPresentation) {
+    notices.push("暂时不支持 ppt，请先手动转为 pdf（推荐）或 pptx 后再上传。");
   }
   if (hasLegacyDoc) {
     notices.push("暂时不支持 doc，请先转为 docx 以获得更好的效果。");
