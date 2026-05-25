@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-18T03:01:05.364299",
-  "total_commits_analyzed": 1745,
+  "generated_at": "2026-05-25T03:29:34.915719",
+  "total_commits_analyzed": 1747,
   "stats": [
     {
       "date": "2026-03-11",
@@ -13961,6 +13961,22 @@
       "code_lines": 175832,
       "other_lines": 35444,
       "message": "chore: 同步 OpenAPI 客户端"
+    },
+    {
+      "date": "2026-05-18",
+      "commit": "facc527",
+      "total_lines": 211276,
+      "code_lines": 175832,
+      "other_lines": 35444,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-05-18",
+      "commit": "5c7a6c6",
+      "total_lines": 211363,
+      "code_lines": 175897,
+      "other_lines": 35466,
+      "message": "fix: 恢复启动期 OpenAPI 同步开关"
     }
   ]
 }
