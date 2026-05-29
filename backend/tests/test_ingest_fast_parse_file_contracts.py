@@ -8,7 +8,11 @@ from types import SimpleNamespace
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.ingest.fast_parse.lib import file as file_nodes
-from app.workflows.ingest.parsing.decision import build_markitdown_capability
+from app.workflows.ingest.parsing.decision import (
+    build_markitdown_capability,
+    build_mineru_capability,
+    build_parse_decision,
+)
 from app.workflows.ingest.parsing.parsers import DEFAULT_PARSER_CHAIN, PARSER_REGISTRY
 from app.workflows.ingest.parsing.strategy import ParsePlan
 from app.workflows.ingest.parsing.types import ParserRunOptions
@@ -74,11 +78,38 @@ def test_parse_request_resolution_sanitizes_tokens_and_normalizes_options() -> N
 
 def test_pptx_is_registered_for_local_markitdown_but_ppt_is_not() -> None:
     markitdown_capability = build_markitdown_capability(available=True)
+    mineru_capability = build_mineru_capability(available=True)
 
     assert ".pptx" in PARSER_REGISTRY
     assert DEFAULT_PARSER_CHAIN[".pptx"] == ["markitdown"]
     assert markitdown_capability.supports(".pptx") is True
+    assert mineru_capability.supports(".pptx") is True
     assert markitdown_capability.supports(".ppt") is False
+    assert mineru_capability.supports(".ppt") is False
+
+
+def test_pptx_auto_routes_to_mineru_when_available_otherwise_markitdown() -> None:
+    mineru_available = build_parse_decision(
+        extension=".pptx",
+        requested_provider=None,
+        mineru_available=True,
+        paddle_ocr_available=False,
+        markitdown_available=True,
+    )
+    mineru_missing = build_parse_decision(
+        extension=".pptx",
+        requested_provider=None,
+        mineru_available=False,
+        paddle_ocr_available=False,
+        markitdown_available=True,
+    )
+
+    assert mineru_available.primary_provider == "mineru"
+    assert mineru_available.fallback_chain == ["local"]
+    assert mineru_available.can_preview_before_primary is False
+    assert mineru_available.metadata["route_mode"] == "auto_external_then_local"
+    assert mineru_missing.primary_provider == "local"
+    assert mineru_missing.metadata["route_mode"] == "auto_local_only"
 
 
 def test_load_raw_file_state_materializes_file_and_persists_sanitized_metadata(monkeypatch, tmp_path) -> None:
@@ -253,6 +284,17 @@ def test_plan_parse_node_routes_external_and_local_fast_paths(monkeypatch) -> No
             }
         )
     )
+    pptx_mineru = asyncio.run(
+        node(
+            {
+                "file_id": "file-1",
+                "filetype": ".pptx",
+                "file_path": "slides.pptx",
+                "asset_name_prefix": "slides-mineru-",
+                "parse_decision": _decision(uses_mineru=True, primary_reason="mineru available"),
+            }
+        )
+    )
 
     assert mineru["parse_plan"].mode == "external_mineru"
     assert mineru["parse_plan"].parser_chain == ["mineru"]
@@ -270,3 +312,6 @@ def test_plan_parse_node_routes_external_and_local_fast_paths(monkeypatch) -> No
     assert pptx_markitdown["parse_plan"].mode == "local_markitdown"
     assert pptx_markitdown["parse_plan"].parser_chain == ["markitdown"]
     assert pptx_markitdown["parse_plan"].options.asset_name_prefix == "slides-"
+    assert pptx_mineru["parse_plan"].mode == "external_mineru"
+    assert pptx_mineru["parse_plan"].parser_chain == ["mineru"]
+    assert pptx_mineru["parse_plan"].options.asset_name_prefix == "slides-mineru-"

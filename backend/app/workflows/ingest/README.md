@@ -153,6 +153,7 @@ from app.workflows.ingest import run_parse_file_workflow
 分类器是轻量、无 LLM 的特征判断：
 
 - PDF：不再加载本地 PDF 引擎做页级采样，默认推荐 MarkItDown 本地兜底；复杂 OCR/Layout 场景交给 PaddleOCR 或 MinerU。
+- PPTX：如果配置了 MinerU Token，优先走 MinerU；MinerU 不可用、报错或 15 秒内未完成时回退到本地 MarkItDown。
 - DOCX：扫描段落、标题、结构。
 
 分类结果会写回：
@@ -172,7 +173,7 @@ from app.workflows.ingest import run_parse_file_workflow
 - `decision_reason`：人类可读的决策原因。
 - `options`：超时、图片提取上限、OCR 并发、语言模式等运行参数。
 
-如果前端显式选择 MinerU，则直接生成：
+如果前端显式选择 MinerU，或 PPTX 自动命中可用 MinerU，则直接生成：
 
 ```text
 mode = external_mineru
@@ -197,7 +198,7 @@ Markdown 规范化会做：
 - 追加未被正文引用但已提取的资产图片
 - 统计 `rewritten_image_refs / extracted_data_images / appended_asset_images`
 
-PaddleOCR / MinerU 分支会先把外部解析输出的 Markdown 和图片复制到当前规范资产目录，再走同一套 canonicalize 逻辑。外部解析默认不再触发 Phase 2。
+PaddleOCR / MinerU 分支会先把外部解析输出的 Markdown 和图片复制到当前规范资产目录，再走同一套 canonicalize 逻辑。外部解析默认不再触发 Phase 2。PPTX 的 MinerU 分支如果报错或超时，会回退到本地 MarkItDown。
 
 ### 7. Phase 1 持久化
 

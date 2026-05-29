@@ -17,6 +17,7 @@ DEFAULT_MINERU_EXTENSIONS = frozenset(
         ".pdf",
         # 当前链路调整：.docx 改为仅走本地解析，不再自动或显式走 MinerU。
         # ".docx",
+        ".pptx",
         # 旧链路：.doc 已停用，不再支持上传和解析。
         # ".doc",
         # demo / 未扩展链路：当前上传白名单不会走到这些扩展。
@@ -76,6 +77,7 @@ DEFAULT_OCR_EXTENSIONS = frozenset(
 AUTO_EXTERNAL_DOCUMENT_EXTENSIONS = frozenset(
     {
         ".pdf",
+        ".pptx",
         # 当前链路调整：.docx 改为本地解析优先，不再加入自动外部链路。
         # ".docx",
         # 旧链路：.doc 已停用。
@@ -153,6 +155,7 @@ def build_parse_decision(
     Current default behavior:
     - text / markdown stay local;
     - supported document types auto-route as PaddleOCR -> MinerU -> local;
+    - pptx auto-routes to MinerU when configured, otherwise local MarkItDown;
     - docx stays local-only even when external providers are available;
     - doc is treated as unsupported;
     - explicit provider requests are still honored for backward compatibility.
