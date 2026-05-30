@@ -674,6 +674,8 @@ def _import_table(
 
         if spec.name == "chat_session":
             _remap_planner_meta(record_data, new_course_id=new_course_id, user_id=user_id, id_map=id_map, warnings=warnings)
+        elif spec.name == "chat_message":
+            _remap_chat_message_contexts(record_data, id_map)
         elif spec.name == "knowledge_document":
             _remap_optional_json_id_list_text_field(
                 record_data,
@@ -875,6 +877,51 @@ def _remap_optional_json_id_list_text_field(
         if (new_id := _lookup_mapped_id(old_id, ref_map)) is not None
     ]
     record[field_name] = json.dumps(remapped, ensure_ascii=False)
+
+
+def _remap_chat_message_contexts(
+    record: dict[str, Any],
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    raw_contexts = record.get("contexts_json")
+    if raw_contexts is None:
+        return
+    if isinstance(raw_contexts, str):
+        try:
+            raw_contexts = json.loads(raw_contexts)
+        except Exception:
+            return
+    if not isinstance(raw_contexts, list):
+        return
+
+    chunk_map = id_map.get("retrieval_chunk") or {}
+    file_map = id_map.get("raw_file") or {}
+    unit_map = id_map.get("knowledge_unit") or {}
+    remapped_contexts: list[Any] = []
+    for raw_item in raw_contexts:
+        if not isinstance(raw_item, dict):
+            remapped_contexts.append(raw_item)
+            continue
+        item = dict(raw_item)
+        _remap_chat_context_id(item, "chunk_id", chunk_map, missing_value=0)
+        _remap_chat_context_id(item, "file_id", file_map, missing_value="")
+        _remap_chat_context_id(item, "knowledge_unit_id", unit_map, missing_value=None)
+        remapped_contexts.append(item)
+    record["contexts_json"] = remapped_contexts
+
+
+def _remap_chat_context_id(
+    item: dict[str, Any],
+    field_name: str,
+    ref_map: dict[Any, Any],
+    *,
+    missing_value: Any,
+) -> None:
+    old_id = item.get(field_name)
+    if old_id in (None, "", 0):
+        return
+    new_id = _lookup_mapped_id(old_id, ref_map)
+    item[field_name] = new_id if new_id is not None else missing_value
 
 
 def _remap_planner_meta(

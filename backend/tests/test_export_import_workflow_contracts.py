@@ -10,7 +10,16 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
-from app.models import ChatSession, Course, KnowledgeEdge, KnowledgeUnit
+from app.models import (
+    ChatMessage,
+    ChatSession,
+    Course,
+    CourseFileLink,
+    KnowledgeEdge,
+    KnowledgeUnit,
+    RawFile,
+    RetrievalChunk,
+)
 from app.schemas.export_import import ExportOptions, ImportOptions
 from app.shared.infra.exceptions import InvalidImportPackageError
 from app.workflows.support.export_import import exports as export_module
@@ -38,6 +47,11 @@ class _FakeStore:
     def delete_prefix(self, prefix: str) -> int:
         self.writes = {key: value for key, value in self.writes.items() if not key.startswith(prefix)}
         return 1
+
+    def user_file_scope(self, *, user_id: str):
+        from app.shared.infra.storage.course_scope import build_user_file_storage_scope
+
+        return build_user_file_storage_scope(user_id=user_id)
 
 
 def _run_store_sync(func, *args, default=None, **kwargs):
@@ -218,6 +232,143 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
         assert len(imported_units) == 2
         assert len(imported_edges) == 1
         assert any(key.endswith("/assets/docgen/cover.png") for key in export_import_store.writes)
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_import_course_remaps_chat_context_citation_ids(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del export_import_store
+    course = Course(id=COURSE_ID, user_id="user-1", name="Citation Course")
+    unit = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="Eigenvalues",
+        normalized_name="eigenvalues",
+        status="active",
+    )
+    raw_file = RawFile(
+        id="file-old",
+        user_id="user-1",
+        origin_course_id=COURSE_ID,
+        origin_course_name="Citation Course",
+        filename="lecture.pdf",
+        filetype="pdf",
+        file_path="users/user-1/files/file-old/raw.pdf",
+        markdown_content="# Eigenvalues",
+        content_hash="sha256-old-chat-context",
+        file_size_bytes=128,
+        status="completed",
+        ingest_status="completed",
+    )
+    link = CourseFileLink(user_id="user-1", course_id=COURSE_ID, file_id=raw_file.id)
+    chat_session = ChatSession(
+        id="chat-1",
+        course_id=COURSE_ID,
+        user_id="user-1",
+        title="Citation Chat",
+        source="quick_chat",
+    )
+    session.add(course)
+    session.add(unit)
+    session.add(raw_file)
+    session.add(link)
+    session.add(chat_session)
+    session.commit()
+    session.refresh(unit)
+
+    chunk = RetrievalChunk(
+        course_id=COURSE_ID,
+        file_id=raw_file.id,
+        title="Eigenvalues section",
+        level=1,
+        header_path="Eigenvalues",
+        chunk_index=1,
+        digest_chunk_uid="chunk-old",
+        content="Eigenvalues summarize linear transformations.",
+    )
+    session.add(chunk)
+    session.commit()
+    session.refresh(chunk)
+
+    old_chunk_id = int(chunk.id or 0)
+    old_unit_id = int(unit.id or 0)
+    session.add(
+        ChatMessage(
+            course_id=COURSE_ID,
+            user_id="user-1",
+            session_id=chat_session.id,
+            turn_id="turn-1",
+            role="assistant",
+            content="See the cited section.",
+            source_chunk_id=old_chunk_id,
+            contexts_json=[
+                {
+                    "chunk_id": old_chunk_id,
+                    "file_id": raw_file.id,
+                    "title": "Eigenvalues section",
+                    "header_path": "Eigenvalues",
+                    "score": 0.91,
+                    "knowledge_unit_id": old_unit_id,
+                    "knowledge_unit_name": "Eigenvalues",
+                    "knowledge_unit_type": "concept",
+                    "retrieval_source": "vector",
+                }
+            ],
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=True,
+            include_knowledge_docs=False,
+            include_chat_history=True,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda session: IMPORTED_COURSE_ID)
+
+    try:
+        import_module.import_course(
+            session,
+            file_path=package_path,
+            options=ImportOptions(new_course_name="Imported Citations", rebuild_embeddings=False),
+            user_id="user-2",
+        )
+
+        imported_message = session.exec(
+            select(ChatMessage).where(
+                ChatMessage.course_id == IMPORTED_COURSE_ID,
+                ChatMessage.role == "assistant",
+            )
+        ).first()
+        imported_unit = session.exec(
+            select(KnowledgeUnit).where(
+                KnowledgeUnit.course_id == IMPORTED_COURSE_ID,
+                KnowledgeUnit.canonical_name == "Eigenvalues",
+            )
+        ).first()
+
+        assert imported_message is not None
+        assert imported_unit is not None
+        assert imported_message.source_chunk_id is not None
+        assert imported_message.source_chunk_id != old_chunk_id
+
+        imported_chunk = session.get(RetrievalChunk, imported_message.source_chunk_id)
+        contexts = imported_message.contexts_json
+
+        assert imported_chunk is not None
+        assert isinstance(contexts, list)
+        assert contexts[0]["chunk_id"] == imported_message.source_chunk_id
+        assert contexts[0]["file_id"] == imported_chunk.file_id
+        assert contexts[0]["knowledge_unit_id"] == imported_unit.id
     finally:
         package_path.unlink(missing_ok=True)
 
