@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import structlog
@@ -125,18 +126,19 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
             course_id=state.get("course_id", ""),
             material_digest_chars=len(material_context.material_digest or ""),
         )
+        messages = build_plan_intent_messages(
+            course_name=_course_for_prompt(state),
+            user_prompt=state.get("user_prompt") or "",
+            digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
+            material_context=material_context,
+            message_history=list(state.get("message_history", [])),
+            latest_feedback=state.get("feedback_message") or "",
+            latest_plan=state.get("latest_plan"),
+            existing_doc_context=state.get("existing_doc_context"),
+            planner_context_mode=state.get("planner_context_mode") or "fresh_build",
+        )
         plan_intent = await acompletion_with_fallback(
-            build_plan_intent_messages(
-                course_name=_course_for_prompt(state),
-                user_prompt=state.get("user_prompt") or "",
-                digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-                material_context=material_context,
-                message_history=list(state.get("message_history", [])),
-                latest_feedback=state.get("feedback_message") or "",
-                latest_plan=state.get("latest_plan"),
-                existing_doc_context=state.get("existing_doc_context"),
-                planner_context_mode=state.get("planner_context_mode") or "fresh_build",
-            ),
+            messages,
             **planner_completion_kwargs_with_metadata(
                 PlannerModelStep.EXTRACT_INTENT,
                 model_override=state.get("model_override"),
@@ -145,11 +147,43 @@ async def _extract_plan_intent(state: BuildPlannerState) -> PlanIntent:
             ),
             response_model=PlanIntent,
         )
-        plan_intent.plan_queries = _normalize_plan_queries(plan_intent.plan_queries)
-        if not plan_intent.plan_intent.strip():
-            raise ValueError("planner PlanIntent returned empty plan_intent")
-        if not plan_intent.plan_queries:
-            raise ValueError("planner PlanIntent returned empty plan_queries")
+        plan_intent = _normalize_plan_intent(plan_intent)
+        validation_errors = _plan_intent_validation_errors(plan_intent)
+        if validation_errors:
+            logger.warning(
+                "planner_plan_intent_invalid_repairing_with_llm",
+                planner_session_id=state.get("planner_session_id") or "",
+                course_id=state.get("course_id", ""),
+                validation_errors=validation_errors,
+            )
+            await emit_planner_event(
+                state,
+                event="planner.intent.repairing",
+                detail="规划抓手结构不完整，正在让模型重新生成内部规划意图...",
+                payload={"validation_errors": validation_errors},
+            )
+            plan_intent = await acompletion_with_fallback(
+                _build_plan_intent_repair_messages(
+                    messages,
+                    invalid_intent=plan_intent,
+                    validation_errors=validation_errors,
+                ),
+                **planner_completion_kwargs_with_metadata(
+                    PlannerModelStep.EXTRACT_INTENT,
+                    model_override=state.get("model_override"),
+                    planner_session_id=state.get("planner_session_id") or "",
+                    substep="修复规划抓手",
+                    repair_reason="invalid_plan_intent_contract",
+                ),
+                response_model=PlanIntent,
+            )
+            plan_intent = _normalize_plan_intent(plan_intent)
+            validation_errors = _plan_intent_validation_errors(plan_intent)
+            if validation_errors:
+                raise ValueError(
+                    "planner PlanIntent invalid after LLM repair: "
+                    + ", ".join(validation_errors)
+                )
         await emit_planner_event(
             state,
             event="planner.intent.scope",
@@ -195,6 +229,49 @@ def _normalize_plan_queries(queries: list[str]) -> list[str]:
             seen.add(key)
             cleaned.append(text)
     return cleaned[:8]
+
+
+def _normalize_plan_intent(plan_intent: PlanIntent) -> PlanIntent:
+    """Normalize transport noise only; semantic repair must stay in the LLM."""
+
+    return plan_intent.model_copy(update={"plan_queries": _normalize_plan_queries(plan_intent.plan_queries)})
+
+
+def _plan_intent_validation_errors(plan_intent: PlanIntent) -> list[str]:
+    errors: list[str] = []
+    if not plan_intent.plan_intent.strip():
+        errors.append("empty_plan_intent")
+    if not plan_intent.plan_queries:
+        errors.append("empty_plan_queries")
+    return errors
+
+
+def _build_plan_intent_repair_messages(
+    messages: list[dict[str, str]],
+    *,
+    invalid_intent: PlanIntent,
+    validation_errors: list[str],
+) -> list[dict[str, str]]:
+    invalid_json = json.dumps(
+        invalid_intent.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    repair_prompt = f"""
+上一次结构化 PlanIntent 不完整，不能继续使用。
+校验错误：{", ".join(validation_errors)}
+上一次 JSON：{invalid_json}
+
+请重新阅读上面的用户提示、资料画像、资料上下文、本轮最新输入、上一版方案和最近对话，由模型重新判断并输出完整 PlanIntent。
+不要返回补丁，不要解释，不要复述错误原因，只输出完整合法 JSON。
+
+硬性要求：
+1. plan_intent 必须是非空中文短句，说明本轮学习规划或方案修订意图。
+2. plan_queries 必须至少 3 条，必须服务本轮意图识别和后续大纲合成。
+3. 如果用户给出章数、范围、专题或编辑模式，必须由你基于完整上下文判断对应字段，不要省略 target_scope、scope_decision、chapter_count_guidance、requested_chapter_count 或 plan_change_mode。
+4. adjustment_options 必须给出后续可继续调整的方向。
+""".strip()
+    return [*messages, {"role": "user", "content": repair_prompt}]
 
 
 def _plan_intent_progress_detail(plan_intent: PlanIntent) -> str:

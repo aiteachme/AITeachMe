@@ -4,6 +4,7 @@ import pytest
 
 from app.workflows.digest.common.models import DigestMaterialContext, DigestModeDecision, DigestMode
 from app.workflows.digest.planner.nodes import stream_and_parse_plan_draft as plan_draft_node
+from app.workflows.digest.planner.nodes import stream_brief_and_extract_intent as intent_node
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.models import PlanIntent, PlannerBrief
 from app.workflows.digest.planner.lib.plans import (
@@ -315,6 +316,76 @@ def test_revision_intent_prompt_distinguishes_replacement_outline() -> None:
     assert "requested_chapter_count" in prompt
     assert "定积分的 5 个章节" in prompt
     assert "不得保守保留旧方案" in prompt
+
+
+def test_plan_intent_repair_uses_second_llm_call_for_empty_structured_output(monkeypatch) -> None:
+    llm_calls: list[list[dict[str, str]]] = []
+
+    async def fake_acompletion_with_fallback(messages, *args, **kwargs) -> PlanIntent:
+        llm_calls.append(messages)
+        if len(llm_calls) == 1:
+            return PlanIntent(plan_intent="", plan_queries=[])
+        return PlanIntent(
+            plan_intent="模型重新判断用户要把当前高数方案调整为三个章节。",
+            plan_change_mode="replace_existing_outline",
+            target_scope="高数三章重组",
+            scope_decision="本轮需要根据最新反馈重新划分完整方案。",
+            requested_chapter_count=3,
+            chapter_count_guidance="严格输出三个章节。",
+            plan_queries=[
+                "重新判断三章之间的知识边界",
+                "检查上一版五章内容如何合并取舍",
+                "确保每章目标回应用户调整要求",
+            ],
+            adjustment_options=["如果你希望更偏考试，我会增加题型入口。"],
+        )
+
+    emitted_events: list[dict[str, object]] = []
+
+    async def fake_emit_planner_event(state, *, event: str, detail: str, payload=None) -> None:
+        emitted_events.append({"event": event, "detail": detail, "payload": payload or {}})
+
+    monkeypatch.setattr(intent_node, "acompletion_with_fallback", fake_acompletion_with_fallback)
+    monkeypatch.setattr(intent_node, "emit_planner_event", fake_emit_planner_event)
+
+    material_context = DigestMaterialContext(
+        course_mode_decision=DigestModeDecision(mode=DigestMode.SPRINT),
+        material_digest="高数速成资料摘要",
+    )
+
+    plan_intent = asyncio.run(
+        intent_node._extract_plan_intent(
+            {
+                "course_id": "course_math",
+                "planner_session_id": "planner_test",
+                "material_context": material_context,
+                "user_prompt": "高数",
+                "digest_mode": "sprint",
+                "message_history": ["用户：请帮我调整方案：帮我调整为三个章节"],
+                "feedback_message": "请帮我调整方案：帮我调整为三个章节",
+                "latest_plan": {
+                    "course": "高数",
+                    "plan_summary": "上一版是五章高数方案",
+                    "chapter_plan": [
+                        {"title": "极限与连续", "required_elements": ["极限基础"]},
+                        {"title": "导数与微分", "required_elements": ["导数应用"]},
+                    ],
+                },
+            }
+        )
+    )
+
+    assert plan_intent.plan_intent
+    assert plan_intent.plan_change_mode == "replace_existing_outline"
+    assert plan_intent.requested_chapter_count == 3
+    assert plan_intent.plan_queries == [
+        "重新判断三章之间的知识边界",
+        "检查上一版五章内容如何合并取舍",
+        "确保每章目标回应用户调整要求",
+    ]
+    assert len(llm_calls) == 2
+    assert "上一次结构化 PlanIntent 不完整" in llm_calls[1][-1]["content"]
+    assert emitted_events[-1]["event"] == "planner.intent.scope"
 
 
 def test_revision_brief_prompt_does_not_force_local_patch_for_explicit_replacement() -> None:

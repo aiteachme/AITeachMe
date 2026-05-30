@@ -45,6 +45,7 @@ class PlanIntent(BaseModel):
         return cleaned
 
     @field_validator(
+        "plan_intent",
         "plan_change_mode",
         "target_scope",
         "scope_decision",

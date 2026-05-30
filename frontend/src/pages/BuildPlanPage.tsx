@@ -1210,6 +1210,7 @@ export function BuildPlanPage() {
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const plannerPendingMessageIdRef = useRef<string | null>(null);
+  const plannerStreamInFlightRef = useRef(false);
   const autoStartFiredRef = useRef(false);
 
   const markPlannerLocalInteraction = useCallback(() => {
@@ -1529,6 +1530,7 @@ export function BuildPlanPage() {
     if (
       !navState?.autoStart ||
       autoStartFiredRef.current ||
+      plannerStreamInFlightRef.current ||
       !courseId ||
       plannerSessionId ||
       plannerStreaming
@@ -1550,6 +1552,7 @@ export function BuildPlanPage() {
       createStreamingAssistantMessage(pendingAssistantId),
     ]);
     setInputValue("");
+    plannerStreamInFlightRef.current = true;
     setPlannerStreaming(true);
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
@@ -1607,6 +1610,7 @@ export function BuildPlanPage() {
         });
         plannerPendingMessageIdRef.current = null;
       } finally {
+        plannerStreamInFlightRef.current = false;
         plannerAbortControllerRef.current = null;
         setPlannerStreaming(false);
         plannerStreamingRawRef.current = "";
@@ -1895,6 +1899,10 @@ export function BuildPlanPage() {
       handleStopPlannerStream();
       return;
     }
+    if (plannerStreamInFlightRef.current) {
+      logPlannerDebug("send_plan_message_blocked", { reason: "planner_in_flight" });
+      return;
+    }
     const text = inputValue.trim();
     logPlannerDebug("click_send_plan_message", {
       courseId,
@@ -1929,6 +1937,7 @@ export function BuildPlanPage() {
       createStreamingAssistantMessage(pendingAssistantId),
     ]);
     setInputValue("");
+    plannerStreamInFlightRef.current = true;
     setPlannerStreaming(true);
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
@@ -2032,6 +2041,7 @@ export function BuildPlanPage() {
       });
       plannerPendingMessageIdRef.current = null;
     } finally {
+      plannerStreamInFlightRef.current = false;
       plannerAbortControllerRef.current = null;
       setPlannerStreaming(false);
       plannerStreamingRawRef.current = "";
