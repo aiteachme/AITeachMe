@@ -261,13 +261,28 @@ class S3ArtifactStore(ArtifactStore):
     async def write_bytes(self, storage_key: str, data: bytes) -> None:
         await self._run_sync(
             self._call_with_refresh,
-            lambda client: client.put_object(Bucket=self._bucket, Key=storage_key, Body=data),
+            lambda client: client.put_object(
+                Bucket=self._bucket,
+                Key=storage_key,
+                Body=data,
+                ContentLength=len(data),
+            ),
         )
+
+    def _put_file_object(self, client: Any, storage_key: str, local_path: Path) -> None:
+        content_length = local_path.stat().st_size
+        with local_path.open("rb") as file_obj:
+            client.put_object(
+                Bucket=self._bucket,
+                Key=storage_key,
+                Body=file_obj,
+                ContentLength=content_length,
+            )
 
     async def write_file(self, storage_key: str, local_path: Path) -> None:
         await self._run_sync(
             self._call_with_refresh,
-            lambda client: client.upload_file(str(local_path), self._bucket, storage_key),
+            lambda client: self._put_file_object(client, storage_key, local_path),
         )
 
     async def delete(self, storage_key: str) -> None:
