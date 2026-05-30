@@ -27,12 +27,7 @@ Once JDK and Android SDK are installed:
 
 ```powershell
 cd android
-gradle :app:assembleDebug
-```
-
-If the repository later adds a Gradle wrapper, prefer:
-
-```powershell
-cd android
 .\gradlew.bat :app:assembleDebug
 ```
+
+The project targets Android SDK Platform 36.1 and uses Android Gradle Plugin 9.2.

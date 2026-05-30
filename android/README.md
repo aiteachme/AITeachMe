@@ -20,7 +20,7 @@ android/
 
 ## Development
 
-Install Android Studio with JDK 17+ and Android SDK Platform 35, then open this `android/` directory as an Android project.
+Install Android Studio with JDK 17+ and Android SDK Platform 36.1, then open this `android/` directory as an Android project.
 
 For the emulator, the default API base URL is:
 
@@ -39,7 +39,7 @@ Override the Android API URL for a LAN device or deployed backend:
 
 ```powershell
 $env:AITEACHME_ANDROID_API_URL = "https://api.example.com"
-gradle :app:assembleDebug
+.\gradlew.bat :app:assembleDebug
 ```
 
 If using Android Studio, add `AITEACHME_ANDROID_API_URL` to the Gradle run environment or set the backend URL in the Gradle build configuration before syncing.
