@@ -226,7 +226,7 @@ AITeachMe/
 ├── backend/        # FastAPI 后端、workflows、models、migrations
 ├── docs/           # 当前事实源、标准、部署和开发说明
 ├── infra/          # Docker、Compose、Nginx、部署脚本
-├── packaging/      # 桌面端打包脚本与说明
+├── packaging/      # 打包与发布入口；桌面实现位于 packaging/desktop/
 └── scripts/        # 仓库级辅助脚本
 ```
 

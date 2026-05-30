@@ -8,7 +8,7 @@ param(
     [switch]$HideElectronSuffix,
     [switch]$ImportBundledEnv,
     [switch]$RequireTauriUpdater,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled"
 )
 
@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Invoke-PackagingScript {

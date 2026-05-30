@@ -1,9 +1,9 @@
-$DefaultBundledEnvConfigPath = "packaging\private\bundled-env.json"
+$DefaultBundledEnvConfigPath = "packaging\desktop\private\bundled-env.json"
 $DefaultBundledEnvArtifactSuffix = "bundled"
 $BundledEnvFileName = "aiteachme_bundled_env.enc.json"
 
 function Resolve-BundledEnvRepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Resolve-BundledEnvRepoRelativePath {
@@ -71,7 +71,7 @@ function Read-BundledEnvJsonFile {
 function Get-BundledEnvOutputPath {
     param([string]$RepoRoot)
 
-    return Join-Path $RepoRoot "packaging\artifacts\generated-configs\$BundledEnvFileName"
+    return Join-Path $RepoRoot "packaging\desktop\artifacts\generated-configs\$BundledEnvFileName"
 }
 
 function Remove-BundledEnvOutput {

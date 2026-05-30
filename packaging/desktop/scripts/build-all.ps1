@@ -3,7 +3,7 @@ param(
     [switch]$SkipInstall,
     [string]$BackendPort = "",
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
     [switch]$IncludeTauri,
     [switch]$TauriOnly,
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Invoke-BuildStep {
@@ -90,4 +90,4 @@ if ($IncludeRemote) {
 
 Write-Host ""
 Write-Host "All desktop packages generated under:" -ForegroundColor Green
-Write-Host "  $(Join-Path $repoRoot "packaging\release")"
+Write-Host "  $(Join-Path $repoRoot "packaging\desktop\release")"

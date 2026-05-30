@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Resolve-CommandPath {
@@ -58,7 +58,7 @@ $prepareArgs = @(
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    (Join-Path $repoRoot "packaging\scripts\prepare-tauri-sidecar.ps1")
+    (Join-Path $repoRoot "packaging\desktop\scripts\prepare-tauri-sidecar.ps1")
 )
 if ($SkipInstall) {
     $prepareArgs += "-SkipInstall"

@@ -20,10 +20,10 @@ NSIS 安装包会保留 Windows 卸载器；安装脚本会把 `uninstall.exe` �
 
 产物写入：
 
-- `packaging\release\AiTeachMe-v<version>-installer-tauri.exe`
+- `packaging\desktop\release\AiTeachMe-v<version>-installer-tauri.exe`
 - updater 密钥齐全时：对应 updater 安装包的 `.sig`
-- 预绑定配置且 updater 密钥齐全时：`packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe` 及对应 `.sig`
-- updater 密钥齐全时：`packaging\release\latest-tauri-local.json`
+- 预绑定配置且 updater 密钥齐全时：`packaging\desktop\release\AiTeachMe-v<version>-installer-tauri-bundled.exe` 及对应 `.sig`
+- updater 密钥齐全时：`packaging\desktop\release\latest-tauri-local.json`
 
 ## 在线更新
 
@@ -54,7 +54,7 @@ GitHub Release 可通过 `require_windows_signing` 输入参数强制要求 Wind
 
 ```powershell
 cd frontend
-npm run tauri -- signer generate -w ..\packaging\private\tauri-updater.key
+npm run tauri -- signer generate -w ..\packaging\desktop\private\tauri-updater.key
 ```
 
 将 public key 配到 `TAURI_UPDATER_PUBKEY`，将私钥内容或私钥路径配到 `TAURI_SIGNING_PRIVATE_KEY`。GitHub Actions 发布时使用同名 Secrets/Variables。
@@ -85,7 +85,7 @@ npm run tauri:dev:local
 
 产物写入：
 
-- `packaging\release\AiTeachMe-v<version>-installer-tauri-remote.exe`
+- `packaging\desktop\release\AiTeachMe-v<version>-installer-tauri-remote.exe`
 
 Remote API 需要在 CORS 里允许 Tauri 应用的来源。Windows 构建在默认 Tauri asset protocol 下通常是 `http://tauri.localhost`。
 
@@ -99,7 +99,7 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 
 产物写入：
 
-- `packaging\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
+- `packaging\desktop\release\AiTeachMe-v<version>-installer-tauri-bundled.exe`
 
 预绑定配置会随安装包分发，不应作为公开发布的密钥保护边界；公开 Release 不要内置真实高权限 Provider Key。
 
@@ -110,6 +110,6 @@ Tauri local 也可以加入加密后的预绑定大模型配置：
 - Python 3.11，用于本地后端模式。
 - 如需生成 Tauri local 在线更新产物，需要 updater 公钥和签名私钥环境变量。
 - Windows 上需要 WebView2 Runtime。Tauri 配置使用 WebView2 download bootstrapper，不会内置固定版本的 WebView2 Runtime。
-- 面向真实用户发布的 Windows `.exe` 建议启用 Authenticode 代码签名；配置见 `packaging\windows-signing.md`。
+- 面向真实用户发布的 Windows `.exe` 建议启用 Authenticode 代码签名；配置见 `packaging\desktop\windows-signing.md`。
 
-底层实现脚本是 `packaging\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。
+底层实现脚本是 `packaging\desktop\scripts\build-tauri.ps1`，维护时可直接传入 `-Flavor local|remote` 调试；日常打包优先使用 `packaging\release.bat`。

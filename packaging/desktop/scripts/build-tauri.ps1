@@ -5,7 +5,7 @@ param(
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
     [switch]$RequireUpdater
 )
@@ -200,7 +200,7 @@ if ($Flavor -eq "local") {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        (Join-Path $repoRoot "packaging\scripts\prepare-tauri-sidecar.ps1")
+        (Join-Path $repoRoot "packaging\desktop\scripts\prepare-tauri-sidecar.ps1")
     )
     if ($SkipInstall) {
         $prepareArgs += "-SkipInstall"
@@ -233,7 +233,7 @@ finally {
 
 Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix -IncludeUpdater:$tauriLocalUpdaterEnabled
 
-$releaseDir = Join-Path $repoRoot "packaging\release"
+$releaseDir = Join-Path $repoRoot "packaging\desktop\release"
 $tauriInstallers = @(Get-ChildItem -LiteralPath $releaseDir -File -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like "AiTeachMe-v*-installer$releaseSuffix.*" -and

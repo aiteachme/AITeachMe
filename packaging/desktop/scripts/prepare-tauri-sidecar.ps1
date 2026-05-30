@@ -1,7 +1,7 @@
 param(
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json"
+    [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json"
 )
 
 . (Join-Path $PSScriptRoot "tauri-build-common.ps1")

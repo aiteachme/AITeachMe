@@ -13,7 +13,7 @@
 | `docs/` | 当前事实源、标准、开发和部署说明 |
 | `scripts/` | 仓库级辅助脚本 |
 | `infra/` | 部署、Compose、CI、工程运维 |
-| `packaging/` | 桌面端打包入口、Electron/Tauri 构建脚本和发布说明 |
+| `packaging/` | 打包与发布入口；桌面端实现位于 `packaging/desktop/` |
 
 注意：
 

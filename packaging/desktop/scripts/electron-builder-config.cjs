@@ -1,6 +1,6 @@
 const path = require("node:path");
 
-const repoRoot = path.resolve(__dirname, "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const frontendRoot = path.join(repoRoot, "frontend");
 const flavor = process.env.AITEACHME_ELECTRON_FLAVOR === "remote" ? "remote" : "local";
 const productName =
@@ -12,7 +12,7 @@ const appId =
     ? "com.aiteachme.desktop.electron.remote"
     : "com.aiteachme.desktop.electron.local");
 const iconPath = path.join(repoRoot, "docs", "brand", "app-icon.ico");
-const customSignHookPath = path.join(repoRoot, "packaging", "scripts", "electron-windows-sign.cjs");
+const customSignHookPath = path.join(repoRoot, "packaging", "desktop", "scripts", "electron-windows-sign.cjs");
 
 function env(name) {
   const value = process.env[name];

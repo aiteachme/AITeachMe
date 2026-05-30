@@ -176,7 +176,7 @@ shared.infra -> shared.kernel
 | 形态 | 入口 | 主要用途 |
 | --- | --- | --- |
 | 本地开发 | `uvicorn app.main:app` + `npm run dev` 或根目录 `dev.bat` | 调试前后端、workflow、解析器和模型接入 |
-| 桌面本地版 | `packaging/release.bat` 生成 Electron local，Tauri local 可选 | 面向个人本机使用，默认保留本地数据目录 |
+| 桌面本地版 | `packaging/release.bat` 生成 Electron local，Tauri local 可选；实现脚本位于 `packaging/desktop/scripts/` | 面向个人本机使用，默认保留本地数据目录 |
 | 云端部署 | `infra/`、`docs/deployment/*` | 面向团队或内部验证环境，使用云端数据库和对象存储 |
 | 课程包交换 | `.atmx` 导入导出 | 课程知识资产迁移、分发和复用 |
 

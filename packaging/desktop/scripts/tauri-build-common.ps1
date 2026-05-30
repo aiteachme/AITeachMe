@@ -12,7 +12,7 @@ if ((Test-Path $localNsisBin) -and (($env:Path -split ";") -notcontains $localNs
 }
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Resolve-CommandPath {
@@ -226,8 +226,8 @@ function Copy-TauriArtifacts {
     }
 
     $projectVersion = Get-ProjectVersion -RepoRoot $RepoRoot
-    $artifactDir = Join-Path $RepoRoot "packaging\artifacts"
-    $releaseDir = Join-Path $RepoRoot "packaging\release"
+    $artifactDir = Join-Path $RepoRoot "packaging\desktop\artifacts"
+    $releaseDir = Join-Path $RepoRoot "packaging\desktop\release"
     New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
     Get-ChildItem -LiteralPath $releaseDir -File -Filter "AiTeachMe-v*-installer$ReleaseSuffix.*" -ErrorAction SilentlyContinue |

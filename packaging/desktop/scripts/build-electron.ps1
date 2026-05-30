@@ -6,7 +6,7 @@ param(
     [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
     [switch]$ImportBundledEnv,
-    [string]$BundledEnvConfigPath = "packaging\private\bundled-env.json",
+    [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
     [switch]$HideElectronSuffix
 )
@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Resolve-RepoRoot {
-    return (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+    return (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
 function Resolve-CommandPath {
@@ -286,8 +286,8 @@ $repoRoot = Resolve-RepoRoot
 $backendDir = Join-Path $repoRoot "backend"
 $frontendDir = Join-Path $repoRoot "frontend"
 $frontendReleaseDir = Join-Path $frontendDir "release"
-$packagingArtifactsDir = Join-Path $repoRoot "packaging\artifacts"
-$finalReleaseDir = Join-Path $repoRoot "packaging\release"
+$packagingArtifactsDir = Join-Path $repoRoot "packaging\desktop\artifacts"
+$finalReleaseDir = Join-Path $repoRoot "packaging\desktop\release"
 $backendDistDir = Join-Path $backendDir "dist\aiteachme-backend"
 $projectVersion = Get-ProjectVersion -RepoRoot $repoRoot
 $productName = if ($Flavor -eq "local") { "AiTeachMe Electron Local" } else { "AiTeachMe Electron Remote" }
