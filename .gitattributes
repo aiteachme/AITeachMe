@@ -1,8 +1,11 @@
 *.py    eol=lf
 *.md    eol=lf
+*.kt    eol=lf
+*.kts   eol=lf
 *.mjs   eol=lf
 *.ts    eol=lf
 *.tsx   eol=lf
+*.xml   eol=lf
 *.yml   eol=lf
 *.yaml  eol=lf
 *.json  eol=lf
