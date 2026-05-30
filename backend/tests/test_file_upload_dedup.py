@@ -11,7 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import RawFile, Course, CourseFileLink, IngestStatus, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
-from app.shared.infra.exceptions import FileCountLimitError, FileTooLargeError
+from app.shared.infra.exceptions import FileCountLimitError, FileTooLargeError, UnsupportedFileTypeError
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
 from app.workflows.ingest.intake.parse_dispatch import ready_file_ids_for_course_indexing
@@ -128,6 +128,34 @@ def test_upload_batch_rejects_total_size_over_limit(monkeypatch) -> None:
     assert total == 0
     assert raw_files == []
     assert fake_store.writes == []
+
+
+def test_upload_accepts_pptx_but_rejects_ppt(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        data, parse_ids = asyncio.run(
+            uploads.save_uploaded_files_and_request_parse(
+                session,
+                owner_user_id="user_a",
+                files=[_upload("slides.pptx", b"fake pptx bytes")],
+            )
+        )
+        with pytest.raises(UnsupportedFileTypeError):
+            asyncio.run(
+                uploads.save_uploaded_files_and_request_parse(
+                    session,
+                    owner_user_id="user_a",
+                    files=[_upload("legacy.ppt", b"fake ppt bytes")],
+                )
+            )
+        raw_files, total = list_raw_files_by_user(session, user_id="user_a", limit=100, offset=0)
+
+    assert total == 1
+    assert len(raw_files) == 1
+    assert raw_files[0].filetype == "pptx"
+    assert data.started_parse_count == 1
+    assert parse_ids == [raw_files[0].id]
+    assert len(fake_store.writes) == 1
 
 
 def test_storage_only_markdown_marks_file_ready(monkeypatch) -> None:

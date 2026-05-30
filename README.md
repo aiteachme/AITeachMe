@@ -58,7 +58,7 @@ AITeachMe 当前处于 MVP 到早期产品化阶段，核心链路已经按真�
 | 桌面端 | Electron local 为默认打包路径，Tauri local/remote 可选 |
 | 后端架构 | FastAPI + SQLModel + LangGraph，`workflows/` 是唯一业务层 |
 | 数据与存储 | 本地 SQLite + ContentStore；云端支持 PostgreSQL + pgvector 与 S3-compatible OSS |
-| 文件接入 | 当前开放 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等资料上传 |
+| 文件接入 | 当前开放 PDF、DOCX、PPTX、Markdown、TXT、JPG/PNG/BMP 等资料上传 |
 | 观测与调试 | LangSmith trace、workflow progress events、LLM token/timing summary |
 | 代码规模 | 约 195.1k 总行数 / 161.7k 代码行；趋势图见下方「代码量概览」 |
 
@@ -148,7 +148,7 @@ flowchart LR
 | 后端 API | FastAPI, SQLModel, Pydantic, Uvicorn |
 | AI 编排 | LangGraph, LangSmith, LiteLLM, Instructor |
 | 检索与知识 | 本地 RAG, pgvector, llama-index-core, Knowledge Graph lanes |
-| 文件解析 | MarkItDown 风格本地解析、Mammoth/DOCX、PDF/OCR、MinerU/PaddleOCR 外部链路 |
+| 文件解析 | MarkItDown 风格本地解析、Mammoth/DOCX、PDF/PPTX/OCR、MinerU/PaddleOCR 外部链路 |
 | 数据与存储 | SQLite, PostgreSQL, ContentStore, S3-compatible object storage |
 
 ## 快速启动

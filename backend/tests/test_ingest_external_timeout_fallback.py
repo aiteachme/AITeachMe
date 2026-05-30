@@ -180,3 +180,88 @@ async def test_image_paddle_timeout_falls_back_to_mineru_without_local_parse(mon
     provider_metadata = metadata["provider_metadata"]
     assert provider_metadata["batch_id"] == "batch_test"
     assert "PaddleOCR 解析超时" in provider_metadata["provider_failures"]["paddle_ocr"]
+
+
+@pytest.mark.anyio
+async def test_pptx_mineru_timeout_falls_back_to_local_markitdown(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pptx"
+    source_path.write_bytes(b"fake-pptx")
+
+    local_markdown_path = tmp_path / "out" / "markdown.md"
+    local_asset_dir = tmp_path / "out" / "assets"
+
+    async def fake_mineru_external_parse(**kwargs):
+        del kwargs
+        raise ExternalProviderTimeoutError("MinerU", 15)
+
+    async def fake_local_parse(**kwargs):
+        assert kwargs["parse_plan"].mode == "local_markitdown"
+        assert kwargs["parse_plan"].parser_chain == ["markitdown"]
+        return FastParseResult(
+            markdown="# local pptx fallback",
+            parser_used="markitdown",
+            attempted_parsers=["markitdown"],
+            parser_elapsed_s={"markitdown": 0.08},
+            needs_enhance=False,
+            needs_quality_reparse=False,
+            needs_asset_ocr=False,
+        )
+
+    def fake_build_parse_plan(**kwargs):
+        assert kwargs["filetype"] == ".pptx"
+        return ParsePlan(
+            mode="local_markitdown",
+            parser_chain=["markitdown"],
+            decision_reason="test pptx local fallback",
+            options=ParserRunOptions(),
+        )
+
+    monkeypatch.setattr(parse_lib, "_run_mineru_external_parse", fake_mineru_external_parse)
+    monkeypatch.setattr(parse_lib, "build_parse_plan", fake_build_parse_plan)
+    monkeypatch.setattr(parse_lib, "fast_parse_file", fake_local_parse)
+
+    node = parse_lib.build_parse_file_node(
+        context=WorkflowContext(
+            workflow_name="ingest.fast_parse",
+            course_id="course_test",
+        )
+    )
+    state = {
+        "user_id": "user_test",
+        "course_id": "course_test",
+        "file_id": "file_test",
+        "filename": "source.pptx",
+        "filetype": ".pptx",
+        "file_path": str(source_path),
+        "local_markdown_path": str(local_markdown_path),
+        "local_asset_dir": str(local_asset_dir),
+        "asset_link_prefix": "assets/file_test",
+        "asset_name_prefix": "file_test_",
+        "is_text_fast_path": False,
+        "parse_plan": ParsePlan(
+            mode="external_mineru",
+            parser_chain=["mineru"],
+            decision_reason="test",
+            options=ParserRunOptions(),
+        ),
+        "parse_decision": ParseDecision(
+            primary_provider="mineru",
+            primary_reason="test",
+            fallback_chain=["local"],
+            can_preview_before_primary=False,
+        ),
+    }
+
+    result = await node(state)
+
+    assert result["error"] is None
+    assert result["parser_used"] == "markitdown"
+    assert result["attempted_parsers"] == ["mineru", "markitdown"]
+    assert local_markdown_path.read_text(encoding="utf-8") == "# local pptx fallback"
+
+    metadata = json.loads(result["parse_metadata"])
+    provider_metadata = metadata["provider_metadata"]
+    assert provider_metadata["fallback_to"] == "local"
+    assert provider_metadata["timeout_provider"] == "mineru"
+    assert provider_metadata["timeout_budget_s"] == 15
+    assert "MinerU 解析超时" in provider_metadata["provider_failures"]["mineru"]

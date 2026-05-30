@@ -43,6 +43,7 @@ def _lazy_parser(module_name: str, function_name: str) -> Parser:
 DOCX_NATIVE_AVAILABLE = True
 DOCX_MARKITDOWN_AVAILABLE = _packages_available(("markitdown", "mammoth"))
 DOCX_MAMMOTH_AVAILABLE = _module_available("mammoth")
+PPTX_MARKITDOWN_AVAILABLE = _packages_available(("markitdown", "pptx"))
 
 _PDF_PARSER_IMPORTS: dict[str, tuple[str, str]] = {
     "markitdown": (
@@ -137,12 +138,16 @@ PARSER_REGISTRY: dict[str, dict[str, Parser]] = {
         "mammoth": _lazy_parser("app.workflows.ingest.parsing.docx_mammoth", "parse_docx_with_mammoth"),
         "docx_native": _lazy_parser("app.workflows.ingest.parsing.docx", "parse_docx_with_native"),
     },
+    ".pptx": {
+        "markitdown": _lazy_parser("app.workflows.ingest.parsing.pptx_markitdown", "parse_pptx_with_markitdown"),
+    },
     **_build_text_parser_mapping(),
 }
 
 DEFAULT_PARSER_CHAIN: dict[str, list[str]] = {
     **_build_pdf_parser_chain(),
     ".docx": ["mammoth", "docx_native"],
+    ".pptx": ["markitdown"],
     **_build_text_parser_chain(),
 }
 
@@ -152,6 +157,9 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
         "markitdown": DOCX_MARKITDOWN_AVAILABLE,
         "mammoth": DOCX_MAMMOTH_AVAILABLE,
         "docx_native": DOCX_NATIVE_AVAILABLE,
+    },
+    ".pptx": {
+        "markitdown": PPTX_MARKITDOWN_AVAILABLE,
     },
     **_build_text_parser_availability(),
 }
@@ -208,6 +216,7 @@ def log_parser_availability() -> None:
     core_parsers = {
         "markitdown (pdf)": _pdf_parser_available("markitdown"),
         "markitdown (docx)": DOCX_MARKITDOWN_AVAILABLE,
+        "markitdown (pptx)": PPTX_MARKITDOWN_AVAILABLE,
         "mammoth (docx fallback)": DOCX_MAMMOTH_AVAILABLE,
         "docx_native": DOCX_NATIVE_AVAILABLE,
         "text_native": TEXT_NATIVE_AVAILABLE,

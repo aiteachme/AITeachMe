@@ -111,12 +111,13 @@ workflows/ingest/
 - 如果请求没有 token，则通过 `get_env()` 读取运行时配置：本地模式下设置页 DB 覆盖值优先，其次才是 `.env` / 部署环境变量中的 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN`，支持英文逗号分隔多个 token 并随机选择一个。
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
+- PPTX 默认按 MinerU 优先：配置了 MinerU Token 时先走 MinerU；MinerU 不可用、报错或 15 秒内未完成时回退到本地 MarkItDown。
 
 ## 5.1 默认解析模式
 
 `parser_provider` 现在不再属于项目级 settings。
 
-- 默认行为：不显式指定 `parser_provider`，进入后端代码默认的本地自动 parser chain。
+- 默认行为：不显式指定 `parser_provider` 时，大多数格式进入后端代码默认的本地自动 parser chain；PPTX 会在 MinerU 已配置时优先尝试 MinerU，再回退本地 MarkItDown。
 - 显式请求 `markitdown`：若当前扩展或依赖不支持，会 fallback 回本地解析。
 - 显式请求 `mineru`：若 token 缺失或扩展不支持，会 fallback 回本地解析。
 

@@ -110,7 +110,7 @@ shared.infra -> shared.kernel
 - 产出 raw markdown。
 - 提取/规范化 assets。
 - 后台增强 OCR / PDF 解析质量。
-- 当前开放上传类型以 `workflows/ingest/intake/uploads.py` 为准，包含 PDF、DOCX、Markdown、TXT、JPG/PNG/BMP 等。
+- 当前开放上传类型以 `workflows/ingest/intake/uploads.py` 为准，包含 PDF、DOCX、PPTX、Markdown、TXT、JPG/PNG/BMP 等。
 
 ### Digest：织网引擎
 
