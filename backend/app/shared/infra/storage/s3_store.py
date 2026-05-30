@@ -13,10 +13,7 @@ from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import boto3
 import structlog
-from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
 from pydantic import AliasChoices, BaseModel, Field
 
 from app.shared.infra.env_support import get_env
@@ -41,6 +38,19 @@ _AUTH_ERROR_CODES = {
     "RequestExpired",
     "SignatureDoesNotMatch",
 }
+
+
+def _load_boto3_dependencies() -> tuple[Any, type[Any], type[Exception]]:
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+        from botocore.exceptions import ClientError
+    except ModuleNotFoundError as exc:  # pragma: no cover - exercised in default CI env
+        raise RuntimeError(
+            "S3 storage requires the optional cloud dependencies. "
+            "Install the backend with the 'cloud' extra to use STORAGE_BACKEND=s3."
+        ) from exc
+    return boto3, BotoConfig, ClientError
 
 
 class _ResolvedS3Credentials(BaseModel):
@@ -98,7 +108,8 @@ class S3ArtifactStore(ArtifactStore):
         self._resolved_s3_credential_mode = resolve_s3_credential_mode()
         self._uses_dogecloud_tmp_token = s3_uses_dogecloud_tmp_token()
         self._credentials_expire_at: datetime | None = None
-        self._boto_config = BotoConfig(
+        self._boto3, boto_config_cls, self._client_error_cls = _load_boto3_dependencies()
+        self._boto_config = boto_config_cls(
             signature_version="s3v4",
             retries={"max_attempts": 3, "mode": "standard"},
             s3={"addressing_style": self._resolved_s3_addressing_style},
@@ -136,7 +147,7 @@ class S3ArtifactStore(ArtifactStore):
             self._bucket = credentials.bucket
             self._endpoint = credentials.endpoint or self._endpoint
             self._credentials_expire_at = credentials.expires_at
-            self._client = boto3.client(
+            self._client = self._boto3.client(
                 "s3",
                 endpoint_url=self._endpoint,
                 aws_access_key_id=credentials.access_key_id,
@@ -240,7 +251,7 @@ class S3ArtifactStore(ArtifactStore):
         client = self._refresh_client()
         try:
             return client_call(client)
-        except ClientError as exc:
+        except self._client_error_cls as exc:
             if not self._uses_dogecloud_tmp_token:
                 raise
             error_code = exc.response.get("Error", {}).get("Code")
@@ -300,7 +311,7 @@ class S3ArtifactStore(ArtifactStore):
             return True
         except self._client.exceptions.NoSuchKey:
             return False
-        except ClientError as exc:
+        except self._client_error_cls as exc:
             error_code = exc.response.get("Error", {}).get("Code")
             if error_code in {"404", "NoSuchKey", "NotFound"}:
                 return False

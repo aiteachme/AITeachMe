@@ -4,9 +4,6 @@ import asyncio
 from pathlib import Path
 from typing import Any, Callable
 
-import boto3
-from botocore.stub import ANY, Stubber
-
 from app.shared.infra.storage.s3_store import S3ArtifactStore
 
 
@@ -26,7 +23,7 @@ class _RecordingS3Client:
         raise AssertionError("write_file must not use multipart upload_file")
 
 
-def _make_store(client: _RecordingS3Client) -> S3ArtifactStore:
+def _make_store(client: Any) -> S3ArtifactStore:
     store = object.__new__(S3ArtifactStore)
     store._bucket = "test-bucket"
 
@@ -70,29 +67,3 @@ def test_write_bytes_sets_explicit_content_length() -> None:
     call = client.put_calls[0]
     assert call["ContentLength"] == len(payload)
     assert call["Body"] == payload
-
-
-def test_write_file_put_object_parameters_match_botocore_model(tmp_path: Path) -> None:
-    client = boto3.client(
-        "s3",
-        region_name="us-east-1",
-        aws_access_key_id="test",
-        aws_secret_access_key="test",
-    )
-    source = tmp_path / "large.pdf"
-    payload = b"x" * (8 * 1024 * 1024 + 1)
-    source.write_bytes(payload)
-
-    with Stubber(client) as stubber:
-        stubber.add_response(
-            "put_object",
-            {},
-            {
-                "Bucket": "test-bucket",
-                "Key": "users/u/files/file/raw.pdf",
-                "Body": ANY,
-                "ContentLength": len(payload),
-            },
-        )
-        store = _make_store(client)  # type: ignore[arg-type]
-        asyncio.run(store.write_file("users/u/files/file/raw.pdf", source))
