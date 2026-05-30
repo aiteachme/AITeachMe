@@ -126,6 +126,12 @@ set "BACKEND_PID="
 set "FRONTEND_PID="
 set "BACKEND_URL=http://%BACKEND_HOST%:%AITEACHME_BACKEND_PORT%"
 set "FRONTEND_URL=http://%FRONTEND_HOST%:%AITEACHME_FRONTEND_PORT%"
+
+rem Electron's postinstall downloads binaries from GitHub by default; match
+rem packaging scripts so local dependency sync is less likely to timeout.
+if "%ELECTRON_MIRROR%"=="" set "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/"
+if "%ELECTRON_BUILDER_BINARIES_MIRROR%"=="" set "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/"
+
 set "PORT_SCAN_FILE=%TEMP%\aiteachme-dev-ports-%RANDOM%.txt"
 netstat -ano -p tcp > "%PORT_SCAN_FILE%"
 for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_BACKEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"

@@ -11,9 +11,9 @@ import {
   ClipboardCheck,
   Layers3,
   Loader2,
-  MoreVertical,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Tags,
   X,
@@ -426,7 +426,7 @@ export function ExamsPage() {
     },
   });
 
-  const handleCreateExam = () => {
+  const handleStartTest = () => {
     if (!courseId || generateExam.isPending) return;
     const config = currentCreateConfig ?? loadCreateExamConfig(courseId);
     generateExam.mutate({
@@ -473,80 +473,84 @@ export function ExamsPage() {
                   {courseName ?? "当前课程"}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  开始专项练习、闯关训练或整卷测试，并回看历史得分与题目沉淀。
+                  开始闯关训练或整卷测试，并回看历史得分与题目沉淀。
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-              <Button
-                size="lg"
-                className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto"
-                onClick={handleStartMasteryDrill}
-                disabled={generateExam.isPending}
-              >
-                {generateExam.isPending && generateExam.variables?.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4 shrink-0" />
-                )}
-                开始闯关训练
-              </Button>
-              <div className="flex w-full items-center gap-2 sm:w-auto">
-                <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
-                    onClick={handleCreateExam}
-                    disabled={generateExam.isPending}
-                  >
-                    {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4 shrink-0" />
-                    )}
-                    <span className="whitespace-nowrap">
-                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
-                        ? "创建中..."
-                        : currentCreateConfig?.examMode === "paper_exam"
-                          ? "创建整卷测试"
-                          : "开始专项练习"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                    onClick={() => setIsCreateConfigOpen(true)}
-                    aria-label="更多训练与测试设置"
-                    title="更多设置"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  size="lg"
+                  className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto sm:min-w-[7rem]"
+                  onClick={handleStartMasteryDrill}
+                  disabled={generateExam.isPending}
+                >
+                  {generateExam.isPending && generateExam.variables?.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                  )}
+                  闯关
+                </Button>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:min-w-[7rem] sm:flex-none"
+                      onClick={handleStartTest}
+                      disabled={generateExam.isPending}
+                    >
+                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4 shrink-0" />
+                      )}
+                      <span className="whitespace-nowrap">
+                        {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
+                          ? "生成中..."
+                          : "测试"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      onClick={() => setIsCreateConfigOpen(true)}
+                      aria-label="测试设置"
+                      title="测试设置"
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <ExamPrewarmStatusIcon
+                    status={prewarmStatusQuery.data}
+                    isFetching={prewarmStatusQuery.isFetching}
+                    hasError={prewarmStatusQuery.isError}
+                  />
                 </div>
-                <ExamPrewarmStatusIcon
-                  status={prewarmStatusQuery.data}
-                  isFetching={prewarmStatusQuery.isFetching}
-                  hasError={prewarmStatusQuery.isError}
-                />
               </div>
-              <Button
-                size="lg"
-                variant="outline"
-                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
-              >
-                <BookOpen className="h-4 w-4" />
-                题库查看
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
-              >
-                <Tags className="h-4 w-4" />
-                题型查看
-              </Button>
+              <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
+                  aria-label="题库查看"
+                  title="题库查看"
+                >
+                  <BookOpen className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
+                  aria-label="题型查看"
+                  title="题型查看"
+                >
+                  <Tags className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </section>
 
