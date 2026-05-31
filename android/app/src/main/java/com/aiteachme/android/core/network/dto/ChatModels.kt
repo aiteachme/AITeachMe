@@ -100,6 +100,13 @@ data class ChatDoneData(
     val elapsedMs: Long? = null,
     @SerializedName("elapsed_s")
     val elapsedSeconds: Double? = null,
+    @SerializedName("client_actions")
+    val clientActions: List<ChatClientActionItem>? = null,
+)
+
+data class ChatClientActionItem(
+    val type: String? = null,
+    val payload: Map<String, Any?>? = null,
 )
 
 data class ChatStatusData(

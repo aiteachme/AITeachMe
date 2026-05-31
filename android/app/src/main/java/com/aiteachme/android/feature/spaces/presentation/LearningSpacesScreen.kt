@@ -128,7 +128,6 @@ fun LearningSpacesScreen(
                     items(uiState.courses, key = { it.courseId }) { course ->
                         LearningSpaceItem(
                             course = course,
-                            selected = course.courseId == uiState.selectedCourseId,
                             isDeleting = uiState.deletingCourseIds.contains(course.courseId),
                             onClick = {
                                 viewModel.openCourse(course.courseId, onOpenCourse)
@@ -219,23 +218,17 @@ private fun LearningSpacesHeader(
 @Composable
 private fun LearningSpaceItem(
     course: CourseItem,
-    selected: Boolean,
     isDeleting: Boolean,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
 ) {
     val itemShape = RoundedCornerShape(18.dp)
-    val itemColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(itemShape)
-            .background(itemColor)
+            .background(MaterialTheme.colorScheme.surface)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress,
@@ -250,23 +243,13 @@ private fun LearningSpaceItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        },
-                    ),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Outlined.School,
                     contentDescription = null,
-                    tint = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -284,14 +267,6 @@ private fun LearningSpaceItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (selected) {
-                        Text(
-                            text = "当前",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
                 }
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(

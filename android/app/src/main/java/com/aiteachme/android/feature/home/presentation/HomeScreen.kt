@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,7 +58,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -69,21 +69,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aiteachme.android.R
 import com.aiteachme.android.core.data.repository.ChatConversationScope
@@ -91,6 +94,7 @@ import com.aiteachme.android.core.network.dto.CourseItem
 import com.aiteachme.android.feature.chat.presentation.ChatScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +115,6 @@ fun HomeScreen(
     var showCoursePicker by remember { mutableStateOf(false) }
     var showChatPanel by remember { mutableStateOf(false) }
     var showMorePanel by remember { mutableStateOf(false) }
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
@@ -123,18 +126,6 @@ fun HomeScreen(
             uiState.courses.any { it.courseId == focusedCourseId }
         ) {
             viewModel.selectCourse(focusedCourseId)
-        }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.loadRandomWallpaper()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -273,26 +264,34 @@ private fun SubjectHomeSurface(
 ) {
     var horizontalDrag by remember { mutableFloatStateOf(0f) }
     val course = selectedCourse
+    val wallpaperBitmap = rememberDailyWallpaperBitmap(backgroundImagePath)
+    var wallpaperSize by remember { mutableStateOf(IntSize.Zero) }
+    var wallpaperOriginInRoot by remember { mutableStateOf(Offset.Zero) }
 
     Box(
-        modifier = modifier.pointerInput(course?.courseId) {
-            detectHorizontalDragGestures(
-                onDragStart = { horizontalDrag = 0f },
-                onHorizontalDrag = { _, dragAmount ->
-                    horizontalDrag += dragAmount
-                },
-                onDragEnd = {
-                    when {
-                        horizontalDrag < -90f -> onOpenChatPanel()
-                        horizontalDrag > 90f -> onOpenMorePanel()
-                    }
-                    horizontalDrag = 0f
-                },
-                onDragCancel = { horizontalDrag = 0f },
-            )
-        },
+        modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                wallpaperSize = coordinates.size
+                wallpaperOriginInRoot = coordinates.positionInRoot()
+            }
+            .pointerInput(course?.courseId) {
+                detectHorizontalDragGestures(
+                    onDragStart = { horizontalDrag = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        horizontalDrag += dragAmount
+                    },
+                    onDragEnd = {
+                        when {
+                            horizontalDrag < -90f -> onOpenChatPanel()
+                            horizontalDrag > 90f -> onOpenMorePanel()
+                        }
+                        horizontalDrag = 0f
+                    },
+                    onDragCancel = { horizontalDrag = 0f },
+                )
+            },
     ) {
-        DailyWallpaperBackground(backgroundImagePath = backgroundImagePath)
+        DailyWallpaperBackground(bitmap = wallpaperBitmap)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -314,9 +313,7 @@ private fun SubjectHomeSurface(
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(start = 12.dp, top = 12.dp)
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.24f)),
+                    .size(44.dp),
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -388,7 +385,9 @@ private fun SubjectHomeSurface(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SpaceAgentAction(
-                backgroundImagePath = backgroundImagePath,
+                wallpaperBitmap = wallpaperBitmap,
+                wallpaperContainerSize = wallpaperSize,
+                wallpaperOriginInRoot = wallpaperOriginInRoot,
                 onClick = onOpenChatPanel,
             )
             Row(
@@ -398,14 +397,18 @@ private fun SubjectHomeSurface(
                 PrimarySubjectAction(
                     title = "文档查看",
                     value = "Learn",
-                    backgroundImagePath = backgroundImagePath,
+                    wallpaperBitmap = wallpaperBitmap,
+                    wallpaperContainerSize = wallpaperSize,
+                    wallpaperOriginInRoot = wallpaperOriginInRoot,
                     modifier = Modifier.weight(1f),
                     onClick = onOpenDocs,
                 )
                 PrimarySubjectAction(
                     title = "闯关测试",
                     value = "Review",
-                    backgroundImagePath = backgroundImagePath,
+                    wallpaperBitmap = wallpaperBitmap,
+                    wallpaperContainerSize = wallpaperSize,
+                    wallpaperOriginInRoot = wallpaperOriginInRoot,
                     modifier = Modifier.weight(1f),
                     onClick = onOpenPractice,
                 )
@@ -415,10 +418,7 @@ private fun SubjectHomeSurface(
 }
 
 @Composable
-private fun DailyWallpaperBackground(
-    backgroundImagePath: String?,
-    modifier: Modifier = Modifier.fillMaxSize(),
-) {
+private fun rememberDailyWallpaperBitmap(backgroundImagePath: String?): ImageBitmap? {
     var remoteBitmap by remember(backgroundImagePath) { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(backgroundImagePath) {
@@ -429,7 +429,14 @@ private fun DailyWallpaperBackground(
         }
     }
 
-    val bitmap = remoteBitmap
+    return remoteBitmap
+}
+
+@Composable
+private fun DailyWallpaperBackground(
+    bitmap: ImageBitmap?,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap,
@@ -438,12 +445,56 @@ private fun DailyWallpaperBackground(
             contentScale = ContentScale.Crop,
         )
     } else {
-        Image(
-            painter = painterResource(id = R.drawable.learn_mountain_bg),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop,
+        Box(
+            modifier = modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFEFF5F3),
+                        Color(0xFFC9D8D4),
+                    ),
+                ),
+            ),
         )
+    }
+}
+
+@Composable
+private fun AlignedWallpaperBlur(
+    bitmap: ImageBitmap,
+    containerSize: IntSize,
+    containerOriginInRoot: Offset,
+    blurRadius: Dp,
+    modifier: Modifier = Modifier,
+) {
+    var itemOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+
+    Canvas(
+        modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                itemOriginInRoot = coordinates.positionInRoot()
+            }
+            .blur(blurRadius),
+    ) {
+        if (containerSize.width <= 0 || containerSize.height <= 0) return@Canvas
+
+        val containerWidth = containerSize.width.toFloat()
+        val containerHeight = containerSize.height.toFloat()
+        val scale = max(containerWidth / bitmap.width.toFloat(), containerHeight / bitmap.height.toFloat())
+        val scaledWidth = bitmap.width * scale
+        val scaledHeight = bitmap.height * scale
+        val itemOffset = itemOriginInRoot - containerOriginInRoot
+
+        withTransform(
+            {
+                translate(
+                    left = (containerWidth - scaledWidth) / 2f - itemOffset.x,
+                    top = (containerHeight - scaledHeight) / 2f - itemOffset.y,
+                )
+                scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero)
+            },
+        ) {
+            drawImage(bitmap)
+        }
     }
 }
 
@@ -489,7 +540,9 @@ private fun CourseChip(
 private fun PrimarySubjectAction(
     title: String,
     value: String,
-    backgroundImagePath: String?,
+    wallpaperBitmap: ImageBitmap,
+    wallpaperContainerSize: IntSize,
+    wallpaperOriginInRoot: Offset,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -499,7 +552,6 @@ private fun PrimarySubjectAction(
         modifier = modifier
             .height(92.dp)
             .clip(shape)
-            .border(1.dp, Color.White.copy(alpha = 0.48f), shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -507,11 +559,12 @@ private fun PrimarySubjectAction(
             ),
         contentAlignment = Alignment.CenterStart,
     ) {
-        DailyWallpaperBackground(
-            backgroundImagePath = backgroundImagePath,
-            modifier = Modifier
-                .matchParentSize()
-                .blur(10.dp),
+        AlignedWallpaperBlur(
+            bitmap = wallpaperBitmap,
+            containerSize = wallpaperContainerSize,
+            containerOriginInRoot = wallpaperOriginInRoot,
+            blurRadius = 10.dp,
+            modifier = Modifier.matchParentSize(),
         )
         Box(
             modifier = Modifier
@@ -551,7 +604,9 @@ private fun PrimarySubjectAction(
 
 @Composable
 private fun SpaceAgentAction(
-    backgroundImagePath: String?,
+    wallpaperBitmap: ImageBitmap,
+    wallpaperContainerSize: IntSize,
+    wallpaperOriginInRoot: Offset,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(999.dp)
@@ -561,7 +616,6 @@ private fun SpaceAgentAction(
             .fillMaxWidth()
             .height(50.dp)
             .clip(shape)
-            .border(1.dp, Color.White.copy(alpha = 0.44f), shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -569,11 +623,12 @@ private fun SpaceAgentAction(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        DailyWallpaperBackground(
-            backgroundImagePath = backgroundImagePath,
-            modifier = Modifier
-                .matchParentSize()
-                .blur(8.dp),
+        AlignedWallpaperBlur(
+            bitmap = wallpaperBitmap,
+            containerSize = wallpaperContainerSize,
+            containerOriginInRoot = wallpaperOriginInRoot,
+            blurRadius = 8.dp,
+            modifier = Modifier.matchParentSize(),
         )
         Box(
             modifier = Modifier

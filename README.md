@@ -166,7 +166,7 @@ flowchart LR
 cd backend
 $env:PYTHONUTF8 = "1"
 pip install -e .
-uvicorn app.main:app --reload --port 9020
+uvicorn app.main:app --reload --reload-dir app --port 9020
 ```
 
 健康检查：

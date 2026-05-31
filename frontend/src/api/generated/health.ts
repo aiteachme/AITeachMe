@@ -146,3 +146,9 @@ export function useHealthCheckApiHealthGet<TData = Awaited<ReturnType<typeof hea
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+
+
+
+
+

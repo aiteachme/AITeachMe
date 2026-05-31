@@ -22,10 +22,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +45,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.aiteachme.android.core.data.repository.ChatConversationScope
+import com.aiteachme.android.core.di.AppServices
 import com.aiteachme.android.feature.account.presentation.AccountScreen
 import com.aiteachme.android.feature.chat.presentation.ChatScreen
 import com.aiteachme.android.feature.chat.presentation.GlobalAssistantEntryScreen
@@ -55,6 +59,7 @@ import com.aiteachme.android.feature.files.presentation.FileLibraryScreen
 import com.aiteachme.android.feature.home.presentation.HomeScreen
 import com.aiteachme.android.feature.newcourse.presentation.NewCourseScreen
 import com.aiteachme.android.feature.spaces.presentation.LearningSpacesScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 private enum class AppDestination(
     val route: String,
@@ -67,10 +72,11 @@ private enum class AppDestination(
 }
 
 private object AppRoute {
+    const val Startup = "startup"
     const val NewCourse = "new-course"
     const val Learn = "learn"
     const val Chat = "chat"
-    const val GlobalChat = "chat/conversation?initialPrompt={initialPrompt}"
+    const val GlobalChat = "chat/conversation?initialPrompt={initialPrompt}&sessionId={sessionId}"
     const val CourseSpace = "spaces/{courseId}"
     const val CourseChat = "courses/{courseId}/chat"
     const val Files = "files"
@@ -83,12 +89,23 @@ private object AppRoute {
     const val CourseSettings = "courses/{courseId}/settings"
 
     fun courseChat(courseId: String) = "courses/$courseId/chat"
-    fun globalChat(initialPrompt: String? = null): String {
+    fun globalChat(initialPrompt: String? = null, sessionId: String? = null): String {
         val prompt = initialPrompt?.trim().orEmpty()
-        return if (prompt.isBlank()) {
+        val normalizedSessionId = sessionId?.trim().orEmpty()
+        val params = buildList {
+            if (prompt.isNotBlank()) {
+                add("initialPrompt=${Uri.encode(prompt)}")
+            } else if (normalizedSessionId.isNotBlank()) {
+                add("initialPrompt=")
+            }
+            if (normalizedSessionId.isNotBlank()) {
+                add("sessionId=${Uri.encode(normalizedSessionId)}")
+            }
+        }
+        return if (params.isEmpty()) {
             "chat/conversation"
         } else {
-            "chat/conversation?initialPrompt=${Uri.encode(prompt)}"
+            "chat/conversation?${params.joinToString("&")}"
         }
     }
     fun courseSpace(courseId: String) = "spaces/$courseId"
@@ -128,18 +145,51 @@ fun AiTeachMeApp() {
     )
     val showBottomNavigation = AppDestination.entries.any { it.route == currentDestination?.route }
 
+    fun navigateBackToLearn() {
+        if (!navController.popBackStack()) {
+            navController.navigate(AppRoute.Learn) {
+                launchSingleTop = true
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = AppRoute.Learn,
+            startDestination = AppRoute.Startup,
             modifier = Modifier.fillMaxSize(),
         ) {
+            composable(AppRoute.Startup) {
+                val startupViewModel: AppStartupViewModel = viewModel()
+                val startupUiState by startupViewModel.uiState.collectAsState()
+
+                LaunchedEffect(startupUiState.isReady, startupUiState.targetCourseId) {
+                    if (startupUiState.isReady) {
+                        navController.navigate(AppRoute.Learn) {
+                            popUpTo(AppRoute.Startup) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                        startupUiState.targetCourseId?.takeIf { it.isNotBlank() }?.let { courseId ->
+                            navController.navigate(AppRoute.courseSpace(courseId)) {
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                }
+
+                StartupScreen()
+            }
             composable(AppRoute.NewCourse) {
                 NewCourseScreen(
                     contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                     onCourseCreated = { courseId, prompt ->
-                        navController.navigate(AppRoute.courseBuild(courseId, prompt))
+                        navController.navigate(AppRoute.courseBuild(courseId, prompt)) {
+                            launchSingleTop = true
+                            popUpTo(AppRoute.Learn)
+                        }
                     },
                 )
             }
@@ -163,10 +213,11 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 HomeScreen(
                     contentPadding = PaddingValues(0.dp),
                     focusedCourseId = courseId,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navigateBackToLearn() },
                     onSwitchCourse = { nextCourseId ->
                         navController.navigate(AppRoute.courseSpace(nextCourseId)) {
                             popUpTo(AppRoute.Learn)
@@ -185,6 +236,7 @@ fun AiTeachMeApp() {
                 GlobalAssistantEntryScreen(
                     contentPadding = pageContentPadding,
                     onStartChat = { prompt -> navController.navigate(AppRoute.globalChat(prompt)) },
+                    onOpenSession = { sessionId -> navController.navigate(AppRoute.globalChat(sessionId = sessionId)) },
                     onOpenFiles = {
                         navController.navigate(AppRoute.Files) {
                             launchSingleTop = true
@@ -200,12 +252,18 @@ fun AiTeachMeApp() {
                         nullable = true
                         defaultValue = null
                     },
+                    navArgument("sessionId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
                 ),
             ) { entry ->
                 ChatScreen(
                     contentPadding = childContentPadding,
                     scope = ChatConversationScope.Global,
                     initialPrompt = entry.arguments?.getString("initialPrompt"),
+                    initialSessionId = entry.arguments?.getString("sessionId"),
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -213,11 +271,13 @@ fun AiTeachMeApp() {
                 route = AppRoute.CourseChat,
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 ChatScreen(
                     contentPadding = childContentPadding,
                     scope = ChatConversationScope.Course,
-                    courseId = entry.arguments?.getString("courseId").orEmpty(),
-                    onBack = { navController.popBackStack() },
+                    courseId = courseId,
+                    onBack = { navigateBackToLearn() },
                 )
             }
             composable(AppRoute.Files) {
@@ -254,13 +314,14 @@ fun AiTeachMeApp() {
                 ),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 CourseBuildScreen(
                     courseId = courseId,
                     initialPrompt = entry.arguments?.getString("initialPrompt"),
                     contentPadding = childContentPadding,
-                    onBack = { navController.popBackStack() },
+                    onBack = { navigateBackToLearn() },
                     onOpenFiles = { navController.navigate(AppRoute.Files) },
-                    onOpenDocs = { navController.navigate(AppRoute.courseDocs(it)) },
+                    onOpenDocs = { targetCourseId -> navController.navigate(AppRoute.courseDocs(targetCourseId)) },
                 )
             }
             composable(
@@ -268,11 +329,12 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 KnowledgeDocsScreen(
                     courseId = courseId,
                     contentPadding = childContentPadding,
-                    onBack = { navController.popBackStack() },
-                    onOpenBuild = { navController.navigate(AppRoute.courseBuild(it)) },
+                    onBack = { navigateBackToLearn() },
+                    onOpenBuild = { targetCourseId -> navController.navigate(AppRoute.courseBuild(targetCourseId)) },
                 )
             }
             composable(
@@ -280,11 +342,12 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 PracticeScreen(
                     courseId = courseId,
                     contentPadding = childContentPadding,
-                    onBack = { navController.popBackStack() },
-                    onOpenDocs = { navController.navigate(AppRoute.courseDocs(it)) },
+                    onBack = { navigateBackToLearn() },
+                    onOpenDocs = { targetCourseId -> navController.navigate(AppRoute.courseDocs(targetCourseId)) },
                 )
             }
             composable(
@@ -292,11 +355,12 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 ProfileScreen(
                     courseId = courseId,
                     contentPadding = childContentPadding,
-                    onBack = { navController.popBackStack() },
-                    onOpenPractice = { navController.navigate(AppRoute.coursePractice(it)) },
+                    onBack = { navigateBackToLearn() },
+                    onOpenPractice = { targetCourseId -> navController.navigate(AppRoute.coursePractice(targetCourseId)) },
                 )
             }
             composable(
@@ -304,11 +368,12 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
                 CourseSettingsScreen(
                     courseId = courseId,
                     contentPadding = childContentPadding,
-                    onBack = { navController.popBackStack() },
-                    onOpenBuild = { navController.navigate(AppRoute.courseBuild(it)) },
+                    onBack = { navigateBackToLearn() },
+                    onOpenBuild = { targetCourseId -> navController.navigate(AppRoute.courseBuild(targetCourseId)) },
                 )
             }
         }
@@ -317,7 +382,7 @@ fun AiTeachMeApp() {
                 currentDestination = currentDestination,
                 onNavigate = { destination ->
                     navController.navigate(destination.route) {
-                        popUpTo(navController.graph.startDestinationId) {
+                        popUpTo(AppRoute.Learn) {
                             saveState = true
                         }
                         launchSingleTop = true
@@ -330,6 +395,20 @@ fun AiTeachMeApp() {
                     .padding(bottom = 12.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun StartupScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun TrackCurrentCourse(courseId: String) {
+    LaunchedEffect(courseId) {
+        AppServices.courseContextStore.selectCourse(courseId)
     }
 }
 

@@ -2,6 +2,7 @@ package com.aiteachme.android.core.network
 
 import com.aiteachme.android.core.network.dto.ApiResponse
 import com.aiteachme.android.core.network.dto.AuthSessionData
+import com.aiteachme.android.core.network.dto.BuildPlannerConfirmResponse
 import com.aiteachme.android.core.network.dto.ChatListRequest
 import com.aiteachme.android.core.network.dto.ChatMessageItem
 import com.aiteachme.android.core.network.dto.ChatSessionCreateData
@@ -18,6 +19,12 @@ import com.aiteachme.android.core.network.dto.CourseItem
 import com.aiteachme.android.core.network.dto.DocGenBuildData
 import com.aiteachme.android.core.network.dto.DocGenBuildRequest
 import com.aiteachme.android.core.network.dto.DocGenGetResponse
+import com.aiteachme.android.core.network.dto.ExamGenerateRequest
+import com.aiteachme.android.core.network.dto.ExamGenerateResponse
+import com.aiteachme.android.core.network.dto.ExamGradeResponse
+import com.aiteachme.android.core.network.dto.ExamHistoryItem
+import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
+import com.aiteachme.android.core.network.dto.ExamSubmitRequest
 import com.aiteachme.android.core.network.dto.FileDeleteData
 import com.aiteachme.android.core.network.dto.FileDeleteRequest
 import com.aiteachme.android.core.network.dto.FilesData
@@ -164,4 +171,37 @@ interface AiTeachMeApi {
         @Path("course_id") courseId: String,
         @Body request: DocGenBuildRequest,
     ): ApiResponse<DocGenBuildData>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/confirm")
+    suspend fun confirmBuildPlannerSession(
+        @Path("course_id") courseId: String,
+        @Path("session_id") sessionId: String,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<BuildPlannerConfirmResponse>
+
+    @POST("/api/v1/courses/{course_id}/exams/generate")
+    suspend fun generateExam(
+        @Path("course_id") courseId: String,
+        @Body request: ExamGenerateRequest,
+    ): ApiResponse<ExamGenerateResponse>
+
+    @GET("/api/v1/courses/{course_id}/exams/history")
+    suspend fun listExamHistory(
+        @Path("course_id") courseId: String,
+        @Query("page") page: Int = 1,
+        @Query("size") size: Int = 20,
+    ): ApiResponse<PaginatedData<ExamHistoryItem>>
+
+    @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}")
+    suspend fun getExamDetail(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+    ): ApiResponse<ExamPaperDetailResponse>
+
+    @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/submit")
+    suspend fun submitExam(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+        @Body request: ExamSubmitRequest,
+    ): ApiResponse<ExamGradeResponse>
 }

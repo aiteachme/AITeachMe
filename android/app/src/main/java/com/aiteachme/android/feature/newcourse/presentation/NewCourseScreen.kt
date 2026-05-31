@@ -68,6 +68,11 @@ class NewCourseViewModel : ViewModel() {
 
     fun createCourse(onCreated: (courseId: String, prompt: String) -> Unit) {
         val current = _uiState.value
+        val prompt = _uiState.value.prompt.trim()
+        if (prompt.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "先输入你想创建的课程或学习目标。") }
+            return
+        }
         if (current.isCreating) {
             return
         }
@@ -78,7 +83,6 @@ class NewCourseViewModel : ViewModel() {
                 coursesRepository.createDraftCourse()
             }.onSuccess { course ->
                 courseContext.upsertCourse(course)
-                val prompt = _uiState.value.prompt.trim()
                 _uiState.update { it.copy(isCreating = false, prompt = "") }
                 onCreated(course.courseId, prompt)
             }.onFailure { throwable ->
@@ -226,7 +230,7 @@ private fun NewCoursePromptCard(
 
                 IconButton(
                     onClick = onCreate,
-                    enabled = !uiState.isCreating,
+                    enabled = !uiState.isCreating && uiState.prompt.isNotBlank(),
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)

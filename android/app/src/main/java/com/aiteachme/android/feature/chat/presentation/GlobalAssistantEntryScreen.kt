@@ -1,7 +1,14 @@
 package com.aiteachme.android.feature.chat.presentation
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,12 +29,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,20 +52,52 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.aiteachme.android.core.data.repository.ChatConversationScope
 
 @Composable
 fun GlobalAssistantEntryScreen(
     contentPadding: PaddingValues,
     onStartChat: (String) -> Unit,
+    onOpenSession: (String) -> Unit,
     onOpenFiles: () -> Unit,
+    viewModel: ChatViewModel = viewModel(),
 ) {
     var prompt by rememberSaveable { mutableStateOf("") }
+    var showSessions by rememberSaveable { mutableStateOf(false) }
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.activate(scope = ChatConversationScope.Global)
+    }
+
+    BackHandler(enabled = showSessions) {
+        showSessions = false
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White),
     ) {
+        IconButton(
+            onClick = {
+                viewModel.loadSessions()
+                showSessions = true
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(contentPadding)
+                .padding(top = 16.dp, end = 18.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.History,
+                contentDescription = "历史对话",
+                tint = Color.Black,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -83,6 +125,34 @@ fun GlobalAssistantEntryScreen(
                         onStartChat(question)
                     }
                 },
+            )
+        }
+
+        if (showSessions) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .clickable { showSessions = false },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showSessions,
+            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterStart),
+        ) {
+            SessionSidebar(
+                uiState = uiState,
+                onRefresh = viewModel::loadSessions,
+                onNewSession = viewModel::createSession,
+                onSelect = { session ->
+                    showSessions = false
+                    onOpenSession(session.id)
+                },
+                onDelete = viewModel::deleteSession,
+                onClose = { showSessions = false },
             )
         }
     }

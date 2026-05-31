@@ -185,7 +185,7 @@ class ChatRepository(
         scope: ChatConversationScope,
         courseId: String?,
     ): List<ChatSessionItem> {
-        val request = ChatSessionListRequest(size = 30)
+        val request = ChatSessionListRequest(size = 100)
         val response = when (scope) {
             ChatConversationScope.Global -> api.listGlobalChatSessions(request)
             ChatConversationScope.Course -> api.listCourseChatSessions(
@@ -200,10 +200,11 @@ class ChatRepository(
         scope: ChatConversationScope,
         courseId: String?,
         title: String? = null,
+        source: String? = null,
     ): ChatSessionItem {
         val request = ChatSessionCreateRequest(
             title = title,
-            source = when (scope) {
+            source = source?.trim()?.takeIf { it.isNotBlank() } ?: when (scope) {
                 ChatConversationScope.Global -> "android_global_chat"
                 ChatConversationScope.Course -> "android_course_chat"
             },

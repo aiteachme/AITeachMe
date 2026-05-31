@@ -3,7 +3,7 @@
 ## Start service
 
 ```bash
-uvicorn app.main:app --reload --port 9020
+uvicorn app.main:app --reload --reload-dir app --port 9020
 ```
 
 ## Basic checks

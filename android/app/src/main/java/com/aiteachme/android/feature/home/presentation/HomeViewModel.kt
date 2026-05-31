@@ -32,10 +32,16 @@ class HomeViewModel : ViewModel() {
     private val coursesRepository = AppServices.courseRepository
     private val courseContext = AppServices.courseContextStore
     private val dailyWallpaperRepository = AppServices.dailyWallpaperRepository
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(
+        HomeUiState(
+            backgroundImagePath = dailyWallpaperRepository.loadWallpaperForDisplay()?.filePath,
+        ),
+    )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    private var hasPreparedNextWallpaper = false
 
     init {
+        prepareNextWallpaper()
         viewModelScope.launch {
             courseContext.state.collect { context ->
                 _uiState.update {
@@ -53,14 +59,13 @@ class HomeViewModel : ViewModel() {
         loadCourses()
     }
 
-    fun loadRandomWallpaper() {
+    private fun prepareNextWallpaper() {
+        if (hasPreparedNextWallpaper) {
+            return
+        }
+        hasPreparedNextWallpaper = true
         viewModelScope.launch {
-            val wallpaper = dailyWallpaperRepository.loadRandom()
-            if (wallpaper != null) {
-                _uiState.update {
-                    it.copy(backgroundImagePath = wallpaper.filePath)
-                }
-            }
+            dailyWallpaperRepository.prepareNextWallpaper()
         }
     }
 

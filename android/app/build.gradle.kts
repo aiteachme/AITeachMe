@@ -83,6 +83,9 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit.core)
     implementation(libs.retrofit.gson)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.ext.tables)
+    implementation(libs.markwon.html)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

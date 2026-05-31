@@ -5,6 +5,7 @@ import com.aiteachme.android.core.data.repository.AuthRepository
 import com.aiteachme.android.core.data.repository.ChatRepository
 import com.aiteachme.android.core.data.repository.CourseRepository
 import com.aiteachme.android.core.data.repository.DailyWallpaperRepository
+import com.aiteachme.android.core.data.repository.ExamRepository
 import com.aiteachme.android.core.data.repository.FileRepository
 import com.aiteachme.android.core.data.repository.KnowledgeRepository
 import com.aiteachme.android.core.network.AiTeachMeApi
@@ -30,6 +31,8 @@ object AppServices {
         private set
     lateinit var knowledgeRepository: KnowledgeRepository
         private set
+    lateinit var examRepository: ExamRepository
+        private set
     lateinit var dailyWallpaperRepository: DailyWallpaperRepository
         private set
     lateinit var courseContextStore: CourseContextStore
@@ -42,14 +45,15 @@ object AppServices {
             return
         }
         sessionStore = SessionStore(context.applicationContext)
-        courseContextStore = CourseContextStore()
+        courseContextStore = CourseContextStore(context.applicationContext)
         api = NetworkModule.createApi(sessionStore = sessionStore)
         backendApiClient = BackendApiClient(sessionStore = sessionStore)
         authRepository = AuthRepository(api = api, sessionStore = sessionStore)
         courseRepository = CourseRepository(api = api)
         chatRepository = ChatRepository(api = api, sessionStore = sessionStore)
         fileRepository = FileRepository(api = api, context = context.applicationContext)
-        knowledgeRepository = KnowledgeRepository(api = api)
+        knowledgeRepository = KnowledgeRepository(api = api, sessionStore = sessionStore)
+        examRepository = ExamRepository(api = api)
         dailyWallpaperRepository = DailyWallpaperRepository(context = context.applicationContext)
         initialized = true
     }

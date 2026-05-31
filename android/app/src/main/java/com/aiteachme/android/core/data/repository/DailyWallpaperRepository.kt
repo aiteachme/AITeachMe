@@ -33,7 +33,33 @@ class DailyWallpaperRepository(
     private val cacheDir = File(appContext.cacheDir, CACHE_DIR_NAME)
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    suspend fun loadRandom(): DailyWallpaper? = withContext(Dispatchers.IO) {
+    fun loadWallpaperForDisplay(): DailyWallpaper? {
+        cacheDir.mkdirs()
+        val prepared = loadCachedWallpaper(
+            cacheKeyPref = KEY_NEXT_CACHE_KEY,
+            pathPref = KEY_NEXT_PATH,
+            urlPref = KEY_NEXT_URL,
+        )
+        if (prepared != null) {
+            rememberCurrent(prepared)
+            clearNext()
+            cleanupOldFiles(keepPaths = setOf(prepared.filePath))
+            return prepared
+        }
+
+        val current = loadCachedWallpaper(
+            cacheKeyPref = KEY_CURRENT_CACHE_KEY,
+            pathPref = KEY_CURRENT_PATH,
+            urlPref = KEY_CURRENT_URL,
+        ) ?: loadLatestCachedWallpaper()
+
+        if (current != null) {
+            rememberCurrent(current)
+        }
+        return current
+    }
+
+    suspend fun prepareNextWallpaper(): DailyWallpaper? = withContext(Dispatchers.IO) {
         cacheDir.mkdirs()
         val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
         val cacheKey = "$today-${System.currentTimeMillis()}-${UUID.randomUUID()}"
@@ -42,11 +68,16 @@ class DailyWallpaperRepository(
 
         runCatching {
             download(sourceUrl = sourceUrl, target = target)
-            cleanupOldFiles(keepPath = target.absolutePath)
-            remember(cacheKey, target.absolutePath, sourceUrl)
+            rememberNext(DailyWallpaper(cacheKey, target.absolutePath, sourceUrl))
+            val currentPath = loadCachedWallpaper(
+                cacheKeyPref = KEY_CURRENT_CACHE_KEY,
+                pathPref = KEY_CURRENT_PATH,
+                urlPref = KEY_CURRENT_URL,
+            )?.filePath
+            cleanupOldFiles(keepPaths = setOfNotNull(currentPath, target.absolutePath))
             DailyWallpaper(cacheKey, target.absolutePath, sourceUrl)
         }.getOrElse {
-            loadLatestCachedWallpaper()
+            null
         }
     }
 
@@ -100,9 +131,21 @@ class DailyWallpaperRepository(
     }
 
     private fun loadLatestCachedWallpaper(): DailyWallpaper? {
-        val lastPath = prefs.getString(KEY_LAST_PATH, null).orEmpty()
-        val lastCacheKey = prefs.getString(KEY_LAST_CACHE_KEY, null).orEmpty()
-        val lastUrl = prefs.getString(KEY_LAST_URL, null).orEmpty()
+        return loadCachedWallpaper(
+            cacheKeyPref = KEY_LAST_CACHE_KEY,
+            pathPref = KEY_LAST_PATH,
+            urlPref = KEY_LAST_URL,
+        )
+    }
+
+    private fun loadCachedWallpaper(
+        cacheKeyPref: String,
+        pathPref: String,
+        urlPref: String,
+    ): DailyWallpaper? {
+        val lastPath = prefs.getString(pathPref, null).orEmpty()
+        val lastCacheKey = prefs.getString(cacheKeyPref, null).orEmpty()
+        val lastUrl = prefs.getString(urlPref, null).orEmpty()
         val file = File(lastPath)
         return if (lastCacheKey.isNotBlank() && lastUrl.isNotBlank() && file.isUsableImage()) {
             DailyWallpaper(lastCacheKey, file.absolutePath, lastUrl)
@@ -111,22 +154,38 @@ class DailyWallpaperRepository(
         }
     }
 
-    private fun remember(cacheKey: String, path: String, sourceUrl: String) {
+    private fun rememberCurrent(wallpaper: DailyWallpaper) {
         prefs.edit()
-            .putString(KEY_LAST_CACHE_KEY, cacheKey)
-            .putString(KEY_LAST_PATH, path)
-            .putString(KEY_LAST_URL, sourceUrl)
+            .putString(KEY_CURRENT_CACHE_KEY, wallpaper.cacheKey)
+            .putString(KEY_CURRENT_PATH, wallpaper.filePath)
+            .putString(KEY_CURRENT_URL, wallpaper.sourceUrl)
             .apply()
     }
 
-    private fun cleanupOldFiles(keepPath: String) {
+    private fun rememberNext(wallpaper: DailyWallpaper) {
+        prefs.edit()
+            .putString(KEY_NEXT_CACHE_KEY, wallpaper.cacheKey)
+            .putString(KEY_NEXT_PATH, wallpaper.filePath)
+            .putString(KEY_NEXT_URL, wallpaper.sourceUrl)
+            .apply()
+    }
+
+    private fun clearNext() {
+        prefs.edit()
+            .remove(KEY_NEXT_CACHE_KEY)
+            .remove(KEY_NEXT_PATH)
+            .remove(KEY_NEXT_URL)
+            .apply()
+    }
+
+    private fun cleanupOldFiles(keepPaths: Set<String>) {
         cacheDir.listFiles()
             .orEmpty()
             .filter { file ->
                 file.isFile &&
                     file.name.startsWith("learn-background-") &&
                     file.name.endsWith(".jpg") &&
-                    file.absolutePath != keepPath
+                    file.absolutePath !in keepPaths
             }
             .forEach { it.delete() }
     }
@@ -145,6 +204,12 @@ class DailyWallpaperRepository(
     private companion object {
         const val CACHE_DIR_NAME = "daily_wallpaper"
         const val PREFS_NAME = "aiteachme_daily_wallpaper"
+        const val KEY_CURRENT_CACHE_KEY = "current_cache_key"
+        const val KEY_CURRENT_PATH = "current_path"
+        const val KEY_CURRENT_URL = "current_url"
+        const val KEY_NEXT_CACHE_KEY = "next_cache_key"
+        const val KEY_NEXT_PATH = "next_path"
+        const val KEY_NEXT_URL = "next_url"
         const val KEY_LAST_CACHE_KEY = "last_cache_key"
         const val KEY_LAST_PATH = "last_path"
         const val KEY_LAST_URL = "last_url"

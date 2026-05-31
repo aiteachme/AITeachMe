@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiteachme.android.core.data.repository.ChatConversationScope
 import com.aiteachme.android.core.di.AppServices
+import com.aiteachme.android.core.network.dto.ChatClientActionItem
 import com.aiteachme.android.core.network.dto.ChatDoneData
 import com.aiteachme.android.core.network.dto.ChatMessageItem
 import com.aiteachme.android.core.network.dto.ChatSendRequest
@@ -45,6 +46,8 @@ data class ChatUiState(
     val scope: ChatConversationScope = ChatConversationScope.Global,
     val courseId: String? = null,
     val course: CourseItem? = null,
+    val sceneOverride: String? = null,
+    val sourceOverride: String? = null,
     val sessions: List<ChatSessionItem> = emptyList(),
     val messages: List<ChatMessageUi> = emptyList(),
     val draft: String = "",
@@ -55,6 +58,8 @@ data class ChatUiState(
     val isStreaming: Boolean = false,
     val streamStatus: String? = null,
     val errorMessage: String? = null,
+    val clientActions: List<ChatClientActionItem> = emptyList(),
+    val clientActionVersion: Long = 0L,
 )
 
 class ChatViewModel : ViewModel() {
@@ -82,11 +87,15 @@ class ChatViewModel : ViewModel() {
     fun activate(
         scope: ChatConversationScope,
         courseId: String? = null,
+        sceneOverride: String? = null,
+        sourceOverride: String? = null,
     ) {
         if (_uiState.value.isStreaming) {
             return
         }
         val normalizedCourseId = courseId?.takeIf { it.isNotBlank() }
+        val normalizedScene = sceneOverride?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedSource = sourceOverride?.trim()?.takeIf { it.isNotBlank() }
         if (scope == ChatConversationScope.Course && normalizedCourseId == null) {
             _uiState.update { it.copy(errorMessage = "缺少学科 ID，无法进入学科对话。") }
             return
@@ -97,13 +106,18 @@ class ChatViewModel : ViewModel() {
             context.courses.firstOrNull { it.courseId == id }
         }
         val state = _uiState.value
-        val changed = state.scope != scope || state.courseId != normalizedCourseId
+        val changed = state.scope != scope ||
+            state.courseId != normalizedCourseId ||
+            state.sceneOverride != normalizedScene ||
+            state.sourceOverride != normalizedSource
 
         _uiState.update {
             it.copy(
                 scope = scope,
                 courseId = if (scope == ChatConversationScope.Course) normalizedCourseId else null,
                 course = if (scope == ChatConversationScope.Course) nextCourse else null,
+                sceneOverride = normalizedScene,
+                sourceOverride = normalizedSource,
                 errorMessage = null,
             )
         }
@@ -161,6 +175,7 @@ class ChatViewModel : ViewModel() {
                     } else {
                         "新的全局对话"
                     },
+                    source = state.requestSource(),
                 )
             }.onSuccess { session ->
                 _uiState.update {
@@ -184,18 +199,24 @@ class ChatViewModel : ViewModel() {
     }
 
     fun selectSession(session: ChatSessionItem) {
+        openSession(session.id, session.title)
+    }
+
+    fun openSession(sessionId: String, title: String? = null) {
         if (_uiState.value.isStreaming) {
             return
         }
+        val normalizedSessionId = sessionId.trim().takeIf { it.isNotBlank() } ?: return
+        val normalizedTitle = title?.trim()?.takeIf { it.isNotBlank() }
         _uiState.update {
             it.copy(
-                sessionId = session.id,
-                sessionTitle = session.title,
+                sessionId = normalizedSessionId,
+                sessionTitle = normalizedTitle,
                 messages = emptyList(),
                 errorMessage = null,
             )
         }
-        loadMessages(session.id)
+        loadMessages(normalizedSessionId)
     }
 
     fun deleteSession(sessionId: String) {
@@ -281,8 +302,8 @@ class ChatViewModel : ViewModel() {
                     request = ChatSendRequest(
                         question = question,
                         sessionId = requestSessionId,
-                        scene = if (state.scope == ChatConversationScope.Course) "course_chat" else "global_assistant",
-                        source = if (state.scope == ChatConversationScope.Course) "android_course_chat" else "android_global_chat",
+                        scene = state.requestScene(),
+                        source = state.requestSource(),
                     ),
                     onToken = { token ->
                         _uiState.update { current ->
@@ -346,6 +367,10 @@ class ChatViewModel : ViewModel() {
             return
         }
         resetCurrentSession()
+    }
+
+    fun consumeClientActions() {
+        _uiState.update { it.copy(clientActions = emptyList()) }
     }
 
     private fun loadMessages(sessionId: String) {
@@ -417,11 +442,18 @@ class ChatViewModel : ViewModel() {
         assistantId: String,
         done: ChatDoneData,
     ) {
+        val clientActions = done.clientActions.orEmpty()
         _uiState.update { current ->
             current.copy(
                 sessionId = done.sessionId ?: current.sessionId,
                 sessionTitle = done.sessionTitle ?: current.sessionTitle,
                 streamStatus = null,
+                clientActions = clientActions,
+                clientActionVersion = if (clientActions.isNotEmpty()) {
+                    current.clientActionVersion + 1
+                } else {
+                    current.clientActionVersion
+                },
                 messages = updateMessage(current.messages, assistantId) { message ->
                     message.copy(
                         status = ChatMessageStatus.Ready,
@@ -470,6 +502,22 @@ class ChatViewModel : ViewModel() {
     private fun ChatUiState.hasValidScope(): Boolean {
         return scope == ChatConversationScope.Global ||
             (scope == ChatConversationScope.Course && !courseId.isNullOrBlank())
+    }
+
+    private fun ChatUiState.requestScene(): String {
+        return sceneOverride ?: if (scope == ChatConversationScope.Course) {
+            "course_chat"
+        } else {
+            "global_assistant"
+        }
+    }
+
+    private fun ChatUiState.requestSource(): String {
+        return sourceOverride ?: if (scope == ChatConversationScope.Course) {
+            "android_course_chat"
+        } else {
+            "android_global_chat"
+        }
     }
 
     private fun updateMessage(
