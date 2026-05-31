@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -7,6 +8,7 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Download,
   FileCode,
   FileImage,
   FileText,
@@ -14,6 +16,7 @@ import {
   FolderOpen,
   HardDrive,
   Loader2,
+  MoreHorizontal,
   Search,
   RefreshCw,
   Trash2,
@@ -109,6 +112,22 @@ async function deleteLibraryFile(fileId: string): Promise<void> {
   });
 }
 
+async function downloadLibraryFile(fileId: string, filename: string): Promise<void> {
+  const response = await apiClient<Blob>({
+    method: "GET",
+    url: `/api/v1/files/${fileId}/download`,
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(response);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.replace(/\.[^.]+$/, ".md");
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function formatFileSize(bytes?: number | null): string {
   if (bytes == null || !Number.isFinite(bytes)) return "未知";
   const units = ["B", "KB", "MB", "GB"];
@@ -183,6 +202,9 @@ export function LibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FileStatusFilter>("all");
   const [sortKey, setSortKey] = useState<FileSortKey>("updated_desc");
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuButtonRect, setMenuButtonRect] = useState<DOMRect | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleUploadFiles = useCallback(
     async (candidateFiles: File[]) => {
@@ -245,6 +267,18 @@ export function LibraryPage() {
     document.addEventListener("paste", onDocumentPaste);
     return () => document.removeEventListener("paste", onDocumentPaste);
   }, [handleUploadFiles]);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuId]);
 
   const filesQuery = useQuery({
     queryKey: ["files-library"],
@@ -610,18 +644,26 @@ export function LibraryPage() {
                   </div>
 
                   <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        deleteMutation.mutate(file.id);
-                      }}
-                      disabled={deleteMutation.isPending}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-                      title="删除资料"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="relative" ref={openMenuId === file.id ? menuRef : undefined}>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (openMenuId === file.id) {
+                            setOpenMenuId(null);
+                            setMenuButtonRect(null);
+                          } else {
+                            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                            setMenuButtonRect(rect);
+                            setOpenMenuId(file.id);
+                          }
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                        title="更多操作"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -653,6 +695,45 @@ export function LibraryPage() {
           ) : null}
         </div>
       ) : null}
+
+      {/* Portal 渲染的下拉菜单，脱离父容器裁剪 */}
+      {openMenuId &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] w-32 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+            style={{
+              top: menuButtonRect ? menuButtonRect.bottom + 4 : 0,
+              right: menuButtonRect ? window.innerWidth - menuButtonRect.right : 0,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const file = visibleFiles.find((f) => f.id === openMenuId);
+                setOpenMenuId(null);
+                if (file) void downloadLibraryFile(file.id, file.filename);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Download className="h-4 w-4" />
+              下载
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpenMenuId(null);
+                deleteMutation.mutate(openMenuId);
+              }}
+              disabled={deleteMutation.isPending}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

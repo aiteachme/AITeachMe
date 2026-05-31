@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path as FilePath
+from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import Response
@@ -141,6 +142,40 @@ async def delete_user_files_api(
             owner_user_id=user.user_id,
             file_ids=unique_file_ids,
         )
+    )
+
+
+@router.get(
+    "/{file_id}/download",
+    summary="Download parsed markdown file",
+    responses=build_error_responses([404, 500]),
+)
+async def download_user_file(
+    file_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> Response:
+    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
+    if raw_file is None:
+        return Response(status_code=404, content=b"Not found")
+
+    markdown_content = raw_file.markdown_content
+    if not markdown_content:
+        return Response(status_code=404, content=b"Markdown content not available")
+
+    # 构建下载文件名：替换扩展名为 .md
+    filename = raw_file.filename
+    name_without_ext = filename.rsplit(".", 1)[0] if "." in filename else filename
+    download_filename = f"{name_without_ext}.md"
+
+    # RFC 5987: filename*=UTF-8''<url_encoded_name> 支持中文文件名
+    encoded_filename = quote(download_filename)
+    return Response(
+        content=markdown_content.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        },
     )
 
 
