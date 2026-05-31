@@ -24,6 +24,8 @@ interface ExamMasteryDrillSessionProps {
   isCompleting: boolean;
   onComplete: (finalAnswers: Record<number, string>) => void;
   onBack?: () => void;
+  onRestart?: () => void;
+  completionDescription?: string;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateId?: number | null;
@@ -99,6 +101,8 @@ export function ExamMasteryDrillSession({
   isCompleting,
   onComplete,
   onBack,
+  onRestart,
+  completionDescription = "本轮闯关已完成，训练记录会同步到历史记录。",
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
@@ -191,11 +195,20 @@ export function ExamMasteryDrillSession({
     return (
       <div className="mx-auto max-w-3xl rounded-[28px] border border-emerald-200 bg-emerald-50 px-6 py-12 text-center text-emerald-900 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
         <Trophy className="mx-auto h-12 w-12" />
-        <h2 className="mt-4 text-2xl font-semibold">10 题全部答对</h2>
+        <h2 className="mt-4 text-2xl font-semibold">{orderedItems.length} 题全部答对</h2>
         <p className="mt-3 text-sm leading-7 text-emerald-800 dark:text-emerald-200">
-          {isCompleting ? "正在保存本次训练记录..." : "本轮闯关已完成，训练记录会同步到历史记录。"}
+          {isCompleting ? "正在保存本次训练记录..." : completionDescription}
         </p>
         {isCompleting ? <Loader2 className="mx-auto mt-5 h-5 w-5 animate-spin" /> : null}
+        {!isCompleting && onRestart ? (
+          <Button
+            className="mt-6 h-11 rounded-full bg-emerald-950 px-5 text-sm font-semibold text-white hover:bg-emerald-900 dark:bg-emerald-100 dark:text-emerald-950 dark:hover:bg-white"
+            onClick={onRestart}
+          >
+            <RotateCcw className="h-4 w-4" />
+            再来一轮
+          </Button>
+        ) : null}
       </div>
     );
   }

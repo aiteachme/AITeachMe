@@ -16,6 +16,7 @@ interface AiConversationMessageViewProps {
   emptyAnimationKey: number;
   onOpenCitation: (context: ChatContextItem) => void;
   onSubmitClientActionOption?: (value: string) => void;
+  presentation?: "sidebar" | "fullscreen";
 }
 
 export function AiConversationMessageView({
@@ -28,6 +29,7 @@ export function AiConversationMessageView({
   emptyAnimationKey,
   onOpenCitation,
   onSubmitClientActionOption,
+  presentation = "fullscreen",
 }: AiConversationMessageViewProps) {
   return (
     <div
@@ -40,6 +42,7 @@ export function AiConversationMessageView({
           messages={messages}
           onOpenCitation={onOpenCitation}
           onSubmitClientActionOption={onSubmitClientActionOption}
+          presentation={presentation}
         />
       ) : !selectedSessionId ? (
         <AiConversationDraftHome

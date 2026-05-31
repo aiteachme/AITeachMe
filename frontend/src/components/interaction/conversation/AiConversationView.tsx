@@ -1802,6 +1802,7 @@ export const AiConversationView = memo(function AiConversationView({
             emptyAnimationKey={emptyAnimationKey}
             onOpenCitation={handleOpenCitation}
             onSubmitClientActionOption={(value) => void handleSend(value)}
+            presentation={presentation}
           />
 
           <AiConversationComposerDock

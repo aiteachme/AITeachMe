@@ -44,6 +44,9 @@ const ExamsPage = lazy(() => import("./pages/ExamsPage").then((module) => ({ def
 const ExamPaperPage = lazy(() =>
   import("./pages/ExamsPage").then((module) => ({ default: module.ExamPaperPage })),
 );
+const MasteryDrillPage = lazy(() =>
+  import("./pages/ExamsPage").then((module) => ({ default: module.MasteryDrillPage })),
+);
 const QuestionTemplatesPage = lazy(() =>
   import("./pages/ExamsPage").then((module) => ({ default: module.QuestionTemplatesPage })),
 );
@@ -209,6 +212,10 @@ function App() {
                       element={withRouteFallback(<QuestionTypesPage />)}
                     />
                     <Route
+                      path="courses/:courseId/exams/mastery-drill"
+                      element={withRouteFallback(<MasteryDrillPage />)}
+                    />
+                    <Route
                       path="courses/:courseId/exams/:examPaperId"
                       element={withRouteFallback(<ExamPaperPage />)}
                     />
@@ -259,6 +266,14 @@ function App() {
                       element={
                         <LegacyCourseRouteRedirect
                           buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "question-types")}
+                        />
+                      }
+                    />
+                    <Route
+                      path="course/:courseId/exams/mastery-drill"
+                      element={
+                        <LegacyCourseRouteRedirect
+                          buildPath={({ courseId }) => buildCourseSubPath(courseId ?? "", "exams", "mastery-drill")}
                         />
                       }
                     />
