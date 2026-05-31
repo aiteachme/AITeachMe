@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
+import { apiClient, BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
@@ -10,6 +10,7 @@ import { ToastProvider } from "./components/ui/Toast";
 import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
+import { syncAnalyticsUserIdentity } from "./lib/analytics";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +99,56 @@ function RuntimeSettingsBootstrap() {
   return null;
 }
 
+type RuntimeUser = {
+  user_id: string;
+  email?: string | null;
+  is_authenticated?: boolean;
+};
+
+type AuthSessionData = {
+  current_user?: RuntimeUser | null;
+};
+
+type ApiResponse<T> = {
+  data: T;
+};
+
+function AnalyticsIdentityBootstrap() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncCurrentUser = async () => {
+      try {
+        const response = await apiClient<ApiResponse<AuthSessionData>>({
+          url: "/api/v1/auth/user",
+          method: "POST",
+          data: {},
+        });
+        if (cancelled) {
+          return;
+        }
+        const currentUser = response.data.current_user ?? null;
+        syncAnalyticsUserIdentity({
+          userId: currentUser?.user_id,
+          email: currentUser?.email,
+          isAuthenticated: currentUser?.is_authenticated,
+        });
+      } catch {
+        if (!cancelled) {
+          syncAnalyticsUserIdentity(null);
+        }
+      }
+    };
+
+    void syncCurrentUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return null;
+}
+
 function BackendConnectivityBridge() {
   useEffect(() => {
     const markOffline = () => onlineManager.setOnline(false);
@@ -143,6 +194,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <BackendConnectivityBridge />
         <RuntimeSettingsBootstrap />
+        <AnalyticsIdentityBootstrap />
         <ToastProvider>
           <DesktopUpdatePromptMount />
           <Router unstable_useTransitions={false}>

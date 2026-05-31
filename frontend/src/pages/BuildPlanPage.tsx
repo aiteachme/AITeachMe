@@ -58,6 +58,7 @@ import {
 } from "../lib/knowledgeBuildRuntime";
 import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
+import { trackCourseAnalyticsEvent } from "../lib/analytics";
 import {
   buildUnsupportedFilesMessage,
   buildImageParserUnavailableMessage,
@@ -432,6 +433,62 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
   }
 
   return [];
+}
+
+function buildPlannerStepItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 5): string[] {
+  const rawSteps = (plan as { plan_steps?: unknown } | null | undefined)?.plan_steps;
+  if (!Array.isArray(rawSteps)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const steps: string[] = [];
+  rawSteps.forEach((item) => {
+    const text = String(item ?? "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    steps.push(text);
+  });
+  return steps.slice(0, limit);
+}
+
+function buildPlannerAdjustmentQuestions(plan: BuildPlannerPlanResponse | null | undefined, limit = 4): string[] {
+  const rawQuestions = (plan as { adjustment_questions?: unknown } | null | undefined)?.adjustment_questions;
+  if (!Array.isArray(rawQuestions)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const questions: string[] = [];
+  rawQuestions.forEach((item) => {
+    const text = String(item ?? "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    questions.push(text);
+  });
+  return questions.slice(0, limit);
+}
+
+function plannerPlanAnalyticsProperties(plan: BuildPlannerPlanResponse | null | undefined) {
+  return {
+    adjustment_question_count: buildPlannerAdjustmentQuestions(plan, 20).length,
+    chapter_count: plan?.chapter_plan?.length ?? 0,
+    digest_mode: plan?.digest_mode ?? undefined,
+    has_plan_summary: Boolean(plan?.plan_summary?.trim()),
+    plan_step_count: buildPlannerStepItems(plan, 20).length,
+  };
+}
+
+function plannerResponseAnalyticsProperties(response: BuildPlannerSessionResponse) {
+  return {
+    ...plannerPlanAnalyticsProperties(response.latest_plan),
+    has_planner_session: Boolean(response.session_id),
+    runtime_step_count: response.runtime_stats?.steps?.length ?? 0,
+  };
 }
 
 function PlannerOutlineCard({
@@ -1395,6 +1452,12 @@ export function BuildPlanPage() {
     void (async () => {
       try {
         const selectedModel = navState.model?.trim() || toChatRequestModel(chatModel);
+        trackCourseAnalyticsEvent("course_plan_requested", courseId, {
+          file_count: plannerEffectiveFileIds.length,
+          mode: "create",
+          ready_file_count: readyFileIds.length,
+          source: "autostart",
+        });
         const response = await createPlannerSessionStream(
           courseId,
           { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
@@ -1414,8 +1477,19 @@ export function BuildPlanPage() {
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
+        trackCourseAnalyticsEvent("course_plan_generated", courseId, {
+          ...plannerResponseAnalyticsProperties(response),
+          file_count: plannerEffectiveFileIds.length,
+          mode: "create",
+          ready_file_count: readyFileIds.length,
+          source: "autostart",
+        });
       } catch (error) {
         if (isAbortError(error)) {
+          trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
+            mode: "create",
+            source: "autostart",
+          });
           const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
           setMessages((prev) => settleAbortedPlannerMessages(
             prev,
@@ -1427,6 +1501,10 @@ export function BuildPlanPage() {
           plannerPendingMessageIdRef.current = null;
           return;
         }
+        trackCourseAnalyticsEvent("course_plan_failed", courseId, {
+          mode: "create",
+          source: "autostart",
+        });
         setMessages((prev) => {
           const next = plannerPendingMessageIdRef.current
             ? removeMessageById(prev, plannerPendingMessageIdRef.current)
@@ -1451,6 +1529,9 @@ export function BuildPlanPage() {
   const uploadMutation = useMutation({
     mutationFn: (selected: File[]) => uploadFiles(courseId, selected),
     onSuccess: (data) => {
+      trackCourseAnalyticsEvent("course_files_uploaded", courseId, {
+        file_count: data.filenames.length,
+      });
       void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       if (data.filenames.length > 0) {
         markPlannerLocalInteraction();
@@ -1477,6 +1558,9 @@ export function BuildPlanPage() {
   const linkLibraryMutation = useMutation({
     mutationFn: (fileIds: string[]) => linkUserLibraryFilesToCourse(courseId, fileIds),
     onSuccess: (data, fileIds) => {
+      trackCourseAnalyticsEvent("course_library_files_linked", courseId, {
+        file_count: fileIds.length,
+      });
       queryClient.setQueryData(["files", courseId], data);
       void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       void queryClient.invalidateQueries({ queryKey: ["files-library"] });
@@ -1646,6 +1730,10 @@ export function BuildPlanPage() {
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
     });
+    trackCourseAnalyticsEvent("course_plan_adjust_clicked", courseId, {
+      ...plannerPlanAnalyticsProperties(currentPlan),
+      has_planner_session: Boolean(plannerSessionId),
+    });
     if (courseId && plannerSessionId && currentPlan) {
       void recordPlannerAdjustClick(courseId, plannerSessionId).catch((error) => {
         logPlannerDebug("record_adjust_click_failed", {
@@ -1717,8 +1805,11 @@ export function BuildPlanPage() {
     if (!courseId || cancelBuildMutation.isPending) {
       return;
     }
+    trackCourseAnalyticsEvent("knowledge_build_cancel_requested", courseId, {
+      status: buildStatus ?? undefined,
+    });
     cancelBuildMutation.mutate();
-  }, [cancelBuildMutation, courseId]);
+  }, [buildStatus, cancelBuildMutation, courseId]);
 
   const handleSend = useCallback(async () => {
     if (plannerStreaming) {
@@ -1750,6 +1841,12 @@ export function BuildPlanPage() {
       mode: shouldCreateSession ? "create" : "revise",
       plannerSessionId,
       effectiveFileCount: plannerEffectiveFileIds.length,
+    });
+    trackCourseAnalyticsEvent("course_plan_requested", courseId, {
+      file_count: plannerEffectiveFileIds.length,
+      mode: shouldCreateSession ? "create" : "revise",
+      ready_file_count: readyFileIds.length,
+      source: "composer",
     });
     markPlannerLocalInteraction();
     const pendingAssistantId = nextMessageId();
@@ -1802,6 +1899,13 @@ export function BuildPlanPage() {
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
+        trackCourseAnalyticsEvent("course_plan_generated", courseId, {
+          ...plannerResponseAnalyticsProperties(response),
+          file_count: plannerEffectiveFileIds.length,
+          mode: "create",
+          ready_file_count: readyFileIds.length,
+          source: "composer",
+        });
         return;
       }
 
@@ -1832,9 +1936,20 @@ export function BuildPlanPage() {
         "我已经按你的新要求更新了计划大纲。",
         plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
       );
+      trackCourseAnalyticsEvent("course_plan_revised", courseId, {
+        ...plannerResponseAnalyticsProperties(response),
+        file_count: plannerEffectiveFileIds.length,
+        mode: "revise",
+        ready_file_count: readyFileIds.length,
+        source: "composer",
+      });
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { courseId });
+        trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
+          mode: shouldCreateSession ? "create" : "revise",
+          source: "composer",
+        });
         const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
         setMessages((prev) => settleAbortedPlannerMessages(
           prev,
@@ -1849,6 +1964,10 @@ export function BuildPlanPage() {
       logPlannerDebug("send_plan_message_failed", {
         courseId,
         error: getApiErrorMessage(error, "unknown"),
+      });
+      trackCourseAnalyticsEvent("course_plan_failed", courseId, {
+        mode: shouldCreateSession ? "create" : "revise",
+        source: "composer",
       });
       setMessages((prev) => {
         const next = plannerPendingMessageIdRef.current
@@ -1895,9 +2014,24 @@ export function BuildPlanPage() {
       plannerNeedsRefresh,
       readyFileCount: readyFileIds.length,
     });
+    trackCourseAnalyticsEvent("course_build_confirm_clicked", courseId, {
+      ...plannerPlanAnalyticsProperties(currentPlan),
+      has_planner_session: Boolean(plannerSessionId),
+      ready_file_count: readyFileIds.length,
+    });
     if (!plannerSessionId || !hasUsablePlannerPlan(currentPlan) || isPlannerPending || isBuilding) {
+      const reason = !plannerSessionId
+        ? "missing_session"
+        : !hasUsablePlannerPlan(currentPlan)
+          ? "missing_plan_outline"
+          : isPlannerPending
+            ? "planner_pending"
+            : "building";
       logPlannerDebug("confirm_build_blocked", {
-        reason: !plannerSessionId ? "missing_session" : !hasUsablePlannerPlan(currentPlan) ? "missing_plan_outline" : isPlannerPending ? "planner_pending" : "building",
+        reason,
+      });
+      trackCourseAnalyticsEvent("course_build_confirm_blocked", courseId, {
+        reason,
       });
       if (plannerSessionId && !hasUsablePlannerPlan(currentPlan)) {
         setCurrentPlan(null);
@@ -1911,6 +2045,9 @@ export function BuildPlanPage() {
 
     if (plannerNeedsRefresh) {
       logPlannerDebug("confirm_build_blocked", { reason: "planner_needs_refresh" });
+      trackCourseAnalyticsEvent("course_build_confirm_blocked", courseId, {
+        reason: "planner_needs_refresh",
+      });
       setMessages((prev) => [
         ...prev,
         createMessage("system", "资料列表已经变化，请先发一句新要求，让我基于最新资料重新规划。"),
@@ -1925,6 +2062,11 @@ export function BuildPlanPage() {
         plannerSessionId,
         confirmedPlanId: response.confirmed_plan_id,
         versionNo: (response as ConfirmResponseWithVersion).version_no,
+      });
+      trackCourseAnalyticsEvent("course_build_plan_confirmed", courseId, {
+        ...plannerPlanAnalyticsProperties(currentPlanRef.current),
+        ready_file_count: readyFileIds.length,
+        version_no: (response as ConfirmResponseWithVersion).version_no,
       });
       const confirmedCurrentPlan = currentPlanRef.current
         ? {
@@ -1945,6 +2087,9 @@ export function BuildPlanPage() {
         courseId,
         error: getApiErrorMessage(error, "unknown"),
       });
+      trackCourseAnalyticsEvent("course_build_plan_confirm_failed", courseId, {
+        has_planner_session: Boolean(plannerSessionId),
+      });
       setMessages((prev) => [
         ...prev,
         createMessage("system", getApiErrorMessage(error, "确认方案失败，请稍后重试。")),
@@ -1952,6 +2097,7 @@ export function BuildPlanPage() {
     }
   }, [
     confirmPlannerMutation,
+    courseId,
     currentPlan,
     isBuilding,
     isPlannerPending,

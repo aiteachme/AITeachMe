@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,12 +19,14 @@ from app.shared.infra.storage import (
     resolve_course_storage_scope,
     run_store_sync,
 )
+from app.shared.infra.analytics.posthog import capture_posthog_event
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import ensure_utc_datetime, utcnow
 
 STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
 _ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
 _TERMINAL_BUILD_STATUSES = {"completed", "failed", "cancelled", "skipped", "partial_failed"}
+_POSTHOG_DOCGEN_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed"}
 _GRAPH_RUNTIME_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
@@ -415,6 +418,101 @@ def _coerce_graph_metric_int(value: object) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _datetime_to_iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _duration_ms(started_at: datetime | None, finished_at: datetime | None) -> int | None:
+    if started_at is None or finished_at is None:
+        return None
+    return max(0, int((finished_at - started_at).total_seconds() * 1000))
+
+
+def _suffix(value: str | None, *, length: int = 8) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized[-length:] if normalized else None
+
+
+def _posthog_event_for_terminal_docgen_status(status: str) -> str | None:
+    if status == "completed":
+        return "knowledge_build_completed"
+    if status == "cancelled":
+        return "knowledge_build_cancelled"
+    if status in {"failed", "partial_failed"}:
+        return "knowledge_build_failed"
+    return None
+
+
+def _posthog_insert_id(
+    *,
+    event_name: str,
+    course_id: str,
+    status: KnowledgeBuildRuntimeStatus,
+) -> str:
+    stable_parts = [
+        event_name,
+        course_id.strip() or "unknown_course",
+        status.build_group_id or "",
+        status.confirmed_plan_id or "",
+        _datetime_to_iso(status.requested_at) or "",
+        status.status,
+    ]
+    digest = hashlib.sha256(":".join(stable_parts).encode("utf-8")).hexdigest()[:32]
+    return f"{event_name}:{digest}"
+
+
+def _capture_docgen_terminal_analytics_event(
+    *,
+    course_id: str,
+    user_id: str | None,
+    status: KnowledgeBuildRuntimeStatus,
+) -> None:
+    event_name = _posthog_event_for_terminal_docgen_status(status.status)
+    if event_name is None:
+        return
+
+    normalized_course_id = course_id.strip()
+    normalized_user_id = str(user_id or "").strip()
+    distinct_id = normalized_user_id or f"course:{normalized_course_id or 'unknown'}"
+    capture_posthog_event(
+        event_name,
+        distinct_id=distinct_id,
+        properties={
+            "$insert_id": _posthog_insert_id(
+                event_name=event_name,
+                course_id=normalized_course_id,
+                status=status,
+            ),
+            "analytics_source": "backend",
+            "user_id_present": bool(normalized_user_id),
+            "user_id_suffix": _suffix(normalized_user_id),
+            "course_id_present": bool(normalized_course_id),
+            "course_id_suffix": _suffix(normalized_course_id),
+            "build_kind": status.build_kind,
+            "build_group_id_present": bool(status.build_group_id),
+            "build_group_id_suffix": _suffix(status.build_group_id),
+            "build_session_id_present": bool(status.build_session_id),
+            "build_session_id_suffix": _suffix(status.build_session_id),
+            "planner_session_id_present": bool(status.planner_session_id),
+            "planner_session_id_suffix": _suffix(status.planner_session_id),
+            "confirmed_plan_id_present": bool(status.confirmed_plan_id),
+            "confirmed_plan_id_suffix": _suffix(status.confirmed_plan_id),
+            "requested_at": _datetime_to_iso(status.requested_at),
+            "started_at": _datetime_to_iso(status.started_at),
+            "finished_at": _datetime_to_iso(status.finished_at),
+            "duration_ms": _duration_ms(status.started_at, status.finished_at),
+            "status": status.status,
+            "stage": status.stage,
+            "digest_mode": status.digest_mode,
+            "source_file_count": len(status.source_file_ids),
+            "staged_chapter_count": status.staged_chapter_count,
+            "published_doc_count": status.published_doc_count,
+            "draft_available": status.draft_available,
+            "error_present": bool(str(status.error_message or "").strip()),
+        },
+    )
 
 
 def _normalize_graph_runtime_metrics(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
@@ -1035,6 +1133,7 @@ def update_knowledge_build_lane_status(
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into one runtime lane and refresh the persisted envelope."""
 
+    docgen_terminal_analytics: tuple[str, str | None, KnowledgeBuildRuntimeStatus] | None = None
     with _get_status_lock(course_id):
         runtime = (
             read_knowledge_build_runtime(course_id, course_scope=course_scope)
@@ -1072,6 +1171,7 @@ def update_knowledge_build_lane_status(
                 if key in _GRAPH_RUNTIME_METRIC_KEYS and key not in runtime_fields:
                     payload.pop(key, None)
 
+        previous_status = str(existing.status or "").strip()
         updated = existing.model_copy(update=payload)
         updated = _hydrate_runtime_status(updated)
         setattr(runtime, attr_name, updated)
@@ -1086,7 +1186,26 @@ def update_knowledge_build_lane_status(
         if lane == "docgen":
             write_knowledge_build_status(course_id, updated, course_scope=course_scope)
 
-        return updated
+        if (
+            lane == "docgen"
+            and previous_status not in _TERMINAL_BUILD_STATUSES
+            and updated.status in _POSTHOG_DOCGEN_TERMINAL_STATUSES
+        ):
+            docgen_terminal_analytics = (
+                course_id,
+                course_scope.user_id if course_scope is not None else None,
+                updated,
+            )
+
+    if docgen_terminal_analytics is not None:
+        analytics_course_id, analytics_user_id, analytics_status = docgen_terminal_analytics
+        _capture_docgen_terminal_analytics_event(
+            course_id=analytics_course_id,
+            user_id=analytics_user_id,
+            status=analytics_status,
+        )
+
+    return updated
 
 
 def update_knowledge_build_status(course_id: str, **kwargs: object) -> KnowledgeBuildRuntimeStatus:
