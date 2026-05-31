@@ -644,23 +644,13 @@
         }
       }
     },
-    "/api/v1/courses/add": {
+    "/api/v1/courses/draft": {
       "post": {
         "tags": [
           "courses"
         ],
-        "summary": "创建课程",
-        "operationId": "create_course_api_api_v1_courses_add_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "创建课程草稿",
+        "operationId": "create_course_draft_api_api_v1_courses_draft_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -698,16 +688,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -10765,35 +10745,6 @@
         ],
         "title": "ClearKnowledgeResponse",
         "description": "Knowledge clear response."
-      },
-      "CourseCreateRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Display name. Planner may fill it after the first conversation.",
-            "default": ""
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "Short course description.",
-            "default": ""
-          },
-          "user_intent": {
-            "type": "string",
-            "title": "User Intent",
-            "description": "User learning goal or intent.",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "title": "CourseCreateRequest",
-        "example": {
-          "description": "",
-          "name": "",
-          "user_intent": ""
-        }
       },
       "CourseDeleteData": {
         "properties": {

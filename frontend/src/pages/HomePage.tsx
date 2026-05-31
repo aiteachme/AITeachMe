@@ -23,9 +23,7 @@ import {
   Package,
 } from "lucide-react";
 
-import { createCourseApiApiV1CoursesAddPost } from "../api/generated/courses";
 import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import {
@@ -53,6 +51,16 @@ import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 /* ── API helpers (same as BuildPlanPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
+
+interface CourseItem {
+  course_id: string;
+  name: string;
+  description?: string;
+  user_intent?: string;
+  icon_key?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 async function uploadFiles(files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
@@ -129,6 +137,15 @@ async function importDemoCourse(filename: string, newName?: string): Promise<Imp
   return response.data;
 }
 /* ── Helpers ── */
+
+async function createDraftCourse(): Promise<CourseItem> {
+  const response = await apiClient<ApiResponse<CourseItem>>({
+    method: "POST",
+    url: `/api/v1/courses/draft`,
+    data: {},
+  });
+  return response.data;
+}
 
 const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", fileIds.join(",")] as const;
 
@@ -584,9 +601,7 @@ export function HomePage() {
     }
     setIsCreatingDraftCourse(true);
     try {
-      const created = unwrapOrvalResponse(
-        await createCourseApiApiV1CoursesAddPost({ name: "" }),
-      );
+      const created = await createDraftCourse();
       if (!created) {
         throw new Error("创建课程失败");
       }

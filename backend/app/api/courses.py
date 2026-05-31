@@ -7,7 +7,6 @@ from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
 from app.schemas.common import ApiResponse, PaginatedData, ok_response
 from app.schemas.course import (
-    CourseCreateRequest,
     CourseDeleteData,
     CourseDeletePreviewData,
     CourseDeletePreviewRequest,
@@ -32,31 +31,21 @@ router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
 
 @router.post(
-    "/add",
+    "/draft",
     response_model=ApiResponse[CourseItem],
-    summary="创建课程",
+    summary="创建课程草稿",
     responses=build_error_responses([400, 409, 500]),
 )
-async def create_course_api(
-    request: Request,
-    body: CourseCreateRequest = Body(...),
+async def create_course_draft_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseItem]:
-    icon_key = infer_course_icon_key(body.name)
     item = create_course_record(
         session,
         owner_user_id=user.user_id,
-        name=body.name,
-        description=body.description,
-        user_intent=body.user_intent,
-        icon_key=icon_key,
-    )
-    schedule_course_icon_refinement(
-        _get_background_task_registry(request),
-        course_id=item.course_id,
-        owner_user_id=user.user_id,
-        course_name=item.name,
+        name="",
+        description="",
+        user_intent="",
     )
     return ok_response(item)
 

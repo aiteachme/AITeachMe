@@ -49,14 +49,13 @@ export const courseHandlers = [
     });
   }),
 
-  http.post("/api/v1/courses/add", async ({ request }) => {
-    const body = (await request.json()) as { name: string; description?: string; user_intent?: string };
+  http.post("/api/v1/courses/draft", () => {
     const now = new Date().toISOString();
     const newCourse: CourseItem = {
       course_id: buildMockCourseId(),
-      name: body.name,
-      description: body.description ?? "",
-      user_intent: body.user_intent ?? "",
+      name: "",
+      description: "",
+      user_intent: "",
       icon_key: "book-open",
       created_at: now,
       updated_at: now,

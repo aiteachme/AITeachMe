@@ -20,7 +20,6 @@ import type {
   ApiResponseCourseItem,
   ApiResponseCourseNameSuggestionResponse,
   ApiResponsePaginatedDataCourseItem,
-  CourseCreateRequest,
   CourseDeletePreviewRequest,
   CourseDeleteRequest,
   CourseListRequest,
@@ -38,70 +37,65 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
-export type createCourseApiApiV1CoursesAddPostResponse200 = {
+export type createCourseDraftApiApiV1CoursesDraftPostResponse200 = {
   data: ApiResponseCourseItem
   status: 200
 }
 
-export type createCourseApiApiV1CoursesAddPostResponse400 = {
+export type createCourseDraftApiApiV1CoursesDraftPostResponse400 = {
   data: ErrorResponse
   status: 400
 }
 
-export type createCourseApiApiV1CoursesAddPostResponse409 = {
+export type createCourseDraftApiApiV1CoursesDraftPostResponse409 = {
   data: ErrorResponse
   status: 409
 }
 
-export type createCourseApiApiV1CoursesAddPostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type createCourseApiApiV1CoursesAddPostResponse500 = {
+export type createCourseDraftApiApiV1CoursesDraftPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type createCourseApiApiV1CoursesAddPostResponseSuccess = (createCourseApiApiV1CoursesAddPostResponse200) & {
+export type createCourseDraftApiApiV1CoursesDraftPostResponseSuccess = (createCourseDraftApiApiV1CoursesDraftPostResponse200) & {
   headers: Headers;
 };
-export type createCourseApiApiV1CoursesAddPostResponseError = (createCourseApiApiV1CoursesAddPostResponse400 | createCourseApiApiV1CoursesAddPostResponse409 | createCourseApiApiV1CoursesAddPostResponse422 | createCourseApiApiV1CoursesAddPostResponse500) & {
+export type createCourseDraftApiApiV1CoursesDraftPostResponseError = (createCourseDraftApiApiV1CoursesDraftPostResponse400 | createCourseDraftApiApiV1CoursesDraftPostResponse409 | createCourseDraftApiApiV1CoursesDraftPostResponse500) & {
   headers: Headers;
 };
 
-export type createCourseApiApiV1CoursesAddPostResponse = (createCourseApiApiV1CoursesAddPostResponseSuccess | createCourseApiApiV1CoursesAddPostResponseError)
+export type createCourseDraftApiApiV1CoursesDraftPostResponse = (createCourseDraftApiApiV1CoursesDraftPostResponseSuccess | createCourseDraftApiApiV1CoursesDraftPostResponseError)
 
-export const getCreateCourseApiApiV1CoursesAddPostUrl = () => {
-
-
+export const getCreateCourseDraftApiApiV1CoursesDraftPostUrl = () => {
 
 
-  return `/api/v1/courses/add`
+
+
+  return `/api/v1/courses/draft`
 }
 
 /**
- * @summary 创建课程
+ * @summary 创建课程草稿
  */
-export const createCourseApiApiV1CoursesAddPost = async (courseCreateRequest: CourseCreateRequest, options?: RequestInit): Promise<createCourseApiApiV1CoursesAddPostResponse> => {
+export const createCourseDraftApiApiV1CoursesDraftPost = async ( options?: RequestInit): Promise<createCourseDraftApiApiV1CoursesDraftPostResponse> => {
 
-  return orvalApiClient<createCourseApiApiV1CoursesAddPostResponse>(getCreateCourseApiApiV1CoursesAddPostUrl(),
+  return orvalApiClient<createCourseDraftApiApiV1CoursesDraftPostResponse>(getCreateCourseDraftApiApiV1CoursesDraftPostUrl(),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(courseCreateRequest)
+    method: 'POST'
+
+
   }
 );}
 
 
 
 
-export const getCreateCourseApiApiV1CoursesAddPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>, TError,{data: CourseCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>, TError,{data: CourseCreateRequest}, TContext> => {
+export const getCreateCourseDraftApiApiV1CoursesDraftPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>, TError,void, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>, TError,void, TContext> => {
 
-const mutationKey = ['createCourseApiApiV1CoursesAddPost'];
+const mutationKey = ['createCourseDraftApiApiV1CoursesDraftPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -111,10 +105,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>, {data: CourseCreateRequest}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>, void> = () => {
 
-          return  createCourseApiApiV1CoursesAddPost(data,requestOptions)
+
+          return  createCourseDraftApiApiV1CoursesDraftPost(requestOptions)
         }
 
 
@@ -124,22 +118,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type CreateCourseApiApiV1CoursesAddPostMutationResult = NonNullable<Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>>
-    export type CreateCourseApiApiV1CoursesAddPostMutationBody = CourseCreateRequest
-    export type CreateCourseApiApiV1CoursesAddPostMutationError = ErrorResponse | HTTPValidationError
+    export type CreateCourseDraftApiApiV1CoursesDraftPostMutationResult = NonNullable<Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>>
+
+    export type CreateCourseDraftApiApiV1CoursesDraftPostMutationError = ErrorResponse
 
     /**
- * @summary 创建课程
+ * @summary 创建课程草稿
  */
-export const useCreateCourseApiApiV1CoursesAddPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>, TError,{data: CourseCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useCreateCourseDraftApiApiV1CoursesDraftPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>, TError,void, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof createCourseApiApiV1CoursesAddPost>>,
+        Awaited<ReturnType<typeof createCourseDraftApiApiV1CoursesDraftPost>>,
         TError,
-        {data: CourseCreateRequest},
+        void,
         TContext
       > => {
-      return useMutation(getCreateCourseApiApiV1CoursesAddPostMutationOptions(options), queryClient);
+      return useMutation(getCreateCourseDraftApiApiV1CoursesDraftPostMutationOptions(options), queryClient);
     }
     export type listCoursesApiApiV1CoursesListPostResponse200 = {
   data: ApiResponsePaginatedDataCourseItem

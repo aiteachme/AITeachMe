@@ -23,7 +23,16 @@ android {
             .orElse("http://10.0.2.2:9020")
             .get()
             .trimEnd('/')
+        val dailyWallpaperUrlTemplate = providers
+            .environmentVariable("AITEACHME_ANDROID_WALLPAPER_URL_TEMPLATE")
+            .orElse("https://picsum.photos/seed/aiteachme-{seed}/1080/2408.jpg")
+            .get()
         buildConfigField("String", "DEFAULT_API_BASE_URL", "\"$defaultApiUrl\"")
+        buildConfigField(
+            "String",
+            "WALLPAPER_URL_TEMPLATE",
+            "\"${dailyWallpaperUrlTemplate.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+        )
     }
 
     buildTypes {

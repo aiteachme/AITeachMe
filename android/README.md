@@ -6,17 +6,22 @@ This directory contains the native Android client for AiTeachMe. It is a separat
 
 The Android client owns mobile interaction and local UI state only. Course workflows, document generation, chat context, exams, profile updates, storage, and AI orchestration remain in the backend.
 
-Initial module shape:
+Current package shape:
 
 ```text
 android/
   app/
     src/main/java/com/aiteachme/android/
-      core/network/       # FastAPI client and DTOs
-      feature/home/       # first native screen and health probe
-      feature/placeholder/# routes waiting for feature implementation
-      ui/                 # navigation and theme
+      app/                # app shell and top-level navigation
+      core/data/          # shared repositories
+      core/designsystem/  # theme and shared UI primitives
+      core/di/            # app-wide service wiring
+      core/network/       # FastAPI clients, DTOs, generated endpoints
+      core/session/       # token and local session persistence
+      feature/*/          # native mobile feature modules
 ```
+
+Architecture rules are documented in `docs/architecture.md`.
 
 ## Development
 
