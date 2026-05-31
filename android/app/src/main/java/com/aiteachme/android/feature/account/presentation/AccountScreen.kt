@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -48,6 +49,7 @@ import com.aiteachme.android.core.network.dto.RuntimeUser
 @Composable
 fun AccountScreen(
     contentPadding: PaddingValues,
+    onBack: () -> Unit,
     viewModel: AccountViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -64,11 +66,24 @@ fun AccountScreen(
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "我的",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(
+                text = "我的",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
 
         AccountStatusCard(
             uiState = uiState,
@@ -212,7 +227,7 @@ private fun AuthDisabledCard() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "本地模式会使用当前设备的临时身份访问课程数据。等后端开启鉴权后，这里会显示邮箱登录和注册表单。",
+                text = "本地模式会使用当前设备的临时身份访问学习空间数据。等后端开启鉴权后，这里会显示邮箱登录和注册表单。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -54,4 +54,17 @@ class CourseContextStore {
             )
         }
     }
+
+    fun removeCourse(courseId: String) {
+        _state.update { current ->
+            val nextCourses = current.courses.filterNot { it.courseId == courseId }
+            val nextSelectedId = current.selectedCourseId
+                ?.takeIf { selectedId -> selectedId != courseId && nextCourses.any { it.courseId == selectedId } }
+                ?: nextCourses.firstOrNull()?.courseId
+            current.copy(
+                courses = nextCourses,
+                selectedCourseId = nextSelectedId,
+            )
+        }
+    }
 }

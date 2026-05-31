@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -34,16 +35,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,7 +54,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,12 +96,15 @@ import kotlinx.coroutines.withContext
 @Composable
 fun HomeScreen(
     contentPadding: PaddingValues,
+    focusedCourseId: String? = null,
+    onBack: (() -> Unit)? = null,
+    onSwitchCourse: ((String) -> Unit)? = null,
     onOpenBuild: (String) -> Unit,
     onOpenDocs: (String) -> Unit,
     onOpenPractice: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
-    onOpenCourseChat: (String) -> Unit,
-    onOpenFiles: () -> Unit,
+    onOpenSettings: (String) -> Unit,
+    onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -112,6 +115,15 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refresh()
+    }
+
+    LaunchedEffect(focusedCourseId, uiState.courses) {
+        if (!focusedCourseId.isNullOrBlank() &&
+            uiState.selectedCourseId != focusedCourseId &&
+            uiState.courses.any { it.courseId == focusedCourseId }
+        ) {
+            viewModel.selectCourse(focusedCourseId)
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -126,7 +138,9 @@ fun HomeScreen(
         }
     }
 
-    val selectedCourse = uiState.selectedCourse
+    val selectedCourse = focusedCourseId
+        ?.let { courseId -> uiState.courses.firstOrNull { it.courseId == courseId } }
+        ?: uiState.selectedCourse
     val panelVisible = showChatPanel || showMorePanel
 
     BackHandler(enabled = panelVisible) {
@@ -147,11 +161,13 @@ fun HomeScreen(
         SubjectHomeSurface(
             uiState = uiState,
             backgroundImagePath = uiState.backgroundImagePath,
+            selectedCourse = selectedCourse,
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (panelVisible) Modifier.blur(18.dp) else Modifier),
+            onBack = onBack,
             onPickCourse = { showCoursePicker = true },
-            onCreateCourse = ::openNewCourseBuild,
+            onOpenAccount = onOpenAccount,
             onOpenDocs = {
                 selectedCourse?.courseId?.let(onOpenDocs) ?: run { showCoursePicker = true }
             },
@@ -210,13 +226,9 @@ fun HomeScreen(
                     showMorePanel = false
                     onOpenProfile(selectedCourse.courseId)
                 },
-                onOpenFiles = {
+                onOpenSettings = {
                     showMorePanel = false
-                    onOpenFiles()
-                },
-                onOpenCourseChat = {
-                    showMorePanel = false
-                    onOpenCourseChat(selectedCourse.courseId)
+                    onOpenSettings(selectedCourse.courseId)
                 },
             )
         }
@@ -226,7 +238,7 @@ fun HomeScreen(
         ModalBottomSheet(onDismissRequest = { showCoursePicker = false }) {
             CoursePickerSheet(
                 courses = uiState.courses,
-                selectedCourseId = uiState.selectedCourseId,
+                selectedCourseId = focusedCourseId ?: uiState.selectedCourseId,
                 isLoading = uiState.isLoadingCourses,
                 isCreatingCourse = uiState.isCreatingCourse,
                 onRefresh = viewModel::loadCourses,
@@ -237,6 +249,7 @@ fun HomeScreen(
                 onSelectCourse = { courseId ->
                     viewModel.selectCourse(courseId)
                     showCoursePicker = false
+                    onSwitchCourse?.invoke(courseId)
                 },
             )
         }
@@ -248,16 +261,18 @@ fun HomeScreen(
 private fun SubjectHomeSurface(
     uiState: HomeUiState,
     backgroundImagePath: String?,
+    selectedCourse: CourseItem?,
     modifier: Modifier,
+    onBack: (() -> Unit)?,
     onPickCourse: () -> Unit,
-    onCreateCourse: () -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenDocs: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenChatPanel: () -> Unit,
     onOpenMorePanel: () -> Unit,
 ) {
     var horizontalDrag by remember { mutableFloatStateOf(0f) }
-    val course = uiState.selectedCourse
+    val course = selectedCourse
 
     Box(
         modifier = modifier.pointerInput(course?.courseId) {
@@ -292,6 +307,25 @@ private fun SubjectHomeSurface(
                 ),
         )
 
+        onBack?.let { handleBack ->
+            IconButton(
+                onClick = handleBack,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 12.dp)
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.24f)),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = Color.Black,
+                )
+            }
+        }
+
         CourseChip(
             course = course,
             courseCount = uiState.courses.size,
@@ -300,29 +334,33 @@ private fun SubjectHomeSurface(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
-                .padding(start = 24.dp, top = 16.dp),
+                .padding(start = if (onBack == null) 24.dp else 68.dp, top = 22.dp),
         )
 
-        IconButton(
-            onClick = onCreateCourse,
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
                 .padding(top = 18.dp, end = 22.dp)
+                .size(38.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.42f)),
+                .border(1.5.dp, Color.White.copy(alpha = 0.82f), CircleShape)
+                .clickable(onClick = onOpenAccount),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Add,
-                contentDescription = "新建学科",
-                tint = Color.Black,
+            Image(
+                painter = painterResource(id = R.drawable.default_user_avatar),
+                contentDescription = "用户头像",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
             )
         }
 
         Text(
-            text = course?.name?.ifBlank { "未命名学科" } ?: "选择学科",
+            text = course?.name?.ifBlank { "未命名学习空间" } ?: "选择学习空间",
             modifier = Modifier
                 .align(Alignment.Center)
+                .offset(y = (-86).dp)
                 .padding(horizontal = 24.dp),
             style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.Black,
@@ -340,29 +378,38 @@ private fun SubjectHomeSurface(
                 .padding(start = 24.dp, top = 84.dp, end = 24.dp),
         )
 
-        Row(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(horizontal = 22.dp)
                 .padding(bottom = 96.dp)
                 .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PrimarySubjectAction(
-                title = "文档查看",
-                value = "Learn",
+            SpaceAgentAction(
                 backgroundImagePath = backgroundImagePath,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenDocs,
+                onClick = onOpenChatPanel,
             )
-            PrimarySubjectAction(
-                title = "闯关测试",
-                value = "Review",
-                backgroundImagePath = backgroundImagePath,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenPractice,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                PrimarySubjectAction(
+                    title = "文档查看",
+                    value = "Learn",
+                    backgroundImagePath = backgroundImagePath,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenDocs,
+                )
+                PrimarySubjectAction(
+                    title = "闯关测试",
+                    value = "Review",
+                    backgroundImagePath = backgroundImagePath,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenPractice,
+                )
+            }
         }
     }
 }
@@ -408,69 +455,33 @@ private fun CourseChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    Row(
         modifier = modifier.clickable(onClick = onClick),
-        color = Color.White.copy(alpha = 0.46f),
-        contentColor = Color.Black,
-        shape = RoundedCornerShape(28.dp),
-        shadowElevation = 2.dp,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(start = 8.dp, top = 7.dp, end = 12.dp, bottom = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFFEFFAFF),
-                                Color(0xFFFFE7F0),
-                            ),
-                        ),
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.Black,
-                    )
-                } else {
-                    Text(
-                        text = course?.name?.trim()?.take(1)?.ifBlank { "学" } ?: "学",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        color = Color.Black,
-                    )
-                }
-            }
-            Column(modifier = Modifier.widthIn(max = 170.dp)) {
-                Text(
-                    text = course?.name?.ifBlank { "未命名学科" } ?: "选择学科",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = if (courseCount == 0) "点击创建或切换" else "$courseCount 个学科 · 点击切换",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Black.copy(alpha = 0.68f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                imageVector = Icons.Outlined.SwapHoriz,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = Color.Black,
             )
         }
+        Text(
+            text = course?.name?.ifBlank { "未命名学习空间" } ?: "选择学习空间",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            color = Color.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 210.dp),
+        )
+        Icon(
+            imageVector = Icons.Outlined.SwapHoriz,
+            contentDescription = null,
+            tint = Color.Black.copy(alpha = 0.80f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -539,6 +550,57 @@ private fun PrimarySubjectAction(
 }
 
 @Composable
+private fun SpaceAgentAction(
+    backgroundImagePath: String?,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(999.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(shape)
+            .border(1.dp, Color.White.copy(alpha = 0.44f), shape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        DailyWallpaperBackground(
+            backgroundImagePath = backgroundImagePath,
+            modifier = Modifier
+                .matchParentSize()
+                .blur(8.dp),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(Color.White.copy(alpha = 0.30f)),
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ChatBubbleOutline,
+                contentDescription = null,
+                tint = Color.Black,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = "空间助手",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.Black,
+            )
+        }
+    }
+}
+
+@Composable
 private fun CourseChatPanel(
     visible: Boolean,
     course: CourseItem,
@@ -581,8 +643,7 @@ private fun MoreFunctionsPanel(
     onOpenBuild: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenProfile: () -> Unit,
-    onOpenFiles: () -> Unit,
-    onOpenCourseChat: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -613,7 +674,7 @@ private fun MoreFunctionsPanel(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = course.name.ifBlank { "未命名学科" },
+                                text = course.name.ifBlank { "未命名学习空间" },
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Black,
                                 maxLines = 2,
@@ -649,16 +710,10 @@ private fun MoreFunctionsPanel(
                         onClick = onOpenProfile,
                     )
                     MoreFunctionItem(
-                        title = "资料库",
-                        subtitle = "管理全局资料并供学科使用",
-                        icon = Icons.Outlined.FolderOpen,
-                        onClick = onOpenFiles,
-                    )
-                    MoreFunctionItem(
-                        title = "学科对话",
-                        subtitle = "打开完整学科对话页",
-                        icon = Icons.Outlined.AutoStories,
-                        onClick = onOpenCourseChat,
+                        title = "学科设置",
+                        subtitle = "管理当前学习空间的名称、目标和后续偏好",
+                        icon = Icons.Outlined.Settings,
+                        onClick = onOpenSettings,
                     )
                 }
             }
@@ -737,7 +792,7 @@ private fun StatusBanner(
                 )
             }
             Text(
-                text = text ?: "正在同步学科...",
+                text = text ?: "正在同步学习空间...",
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -767,7 +822,7 @@ private fun CoursePickerSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "切换学科", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(text = "切换学习空间", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onRefresh, enabled = !isLoading) {
                     Icon(imageVector = Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -781,13 +836,13 @@ private fun CoursePickerSheet(
                         Icon(imageVector = Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("新建")
+                    Text("新建空间")
                 }
             }
         }
         if (courses.isEmpty()) {
             Text(
-                text = if (isLoading) "正在加载学科..." else "暂无学科，先新建一个。",
+                text = if (isLoading) "正在加载学习空间..." else "暂无学习空间，先新建一个。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -799,7 +854,7 @@ private fun CoursePickerSheet(
                 items(courses, key = { it.courseId }) { course ->
                     ListItem(
                         headlineContent = {
-                            Text(course.name.ifBlank { "未命名学科" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(course.name.ifBlank { "未命名学习空间" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         },
                         supportingContent = {
                             val summary = course.description.ifBlank { course.userIntent }.ifBlank { course.courseId }
@@ -816,54 +871,4 @@ private fun CoursePickerSheet(
             }
         }
     }
-}
-
-@Composable
-private fun CreateCourseDialog(
-    uiState: HomeUiState,
-    onNameChange: (String) -> Unit,
-    onGoalChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("新建学科") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = onNameChange,
-                    label = { Text("学科名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = onGoalChange,
-                    label = { Text("学习目标，可选") },
-                    minLines = 2,
-                    maxLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = !uiState.isCreatingCourse,
-            ) {
-                if (uiState.isCreatingCourse) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text("创建")
-            }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss, enabled = !uiState.isCreatingCourse) {
-                Text("取消")
-            }
-        },
-    )
 }

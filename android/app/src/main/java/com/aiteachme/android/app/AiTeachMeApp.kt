@@ -1,6 +1,8 @@
 package com.aiteachme.android.app
 
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,12 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -44,42 +44,66 @@ import androidx.navigation.navArgument
 import com.aiteachme.android.core.data.repository.ChatConversationScope
 import com.aiteachme.android.feature.account.presentation.AccountScreen
 import com.aiteachme.android.feature.chat.presentation.ChatScreen
+import com.aiteachme.android.feature.chat.presentation.GlobalAssistantEntryScreen
 import com.aiteachme.android.feature.course.presentation.CourseBuildScreen
+import com.aiteachme.android.feature.course.presentation.CourseSettingsScreen
 import com.aiteachme.android.feature.course.presentation.KnowledgeDocsScreen
 import com.aiteachme.android.feature.course.presentation.PracticeScreen
 import com.aiteachme.android.feature.course.presentation.ProfileScreen
 import com.aiteachme.android.feature.files.presentation.FileDetailScreen
 import com.aiteachme.android.feature.files.presentation.FileLibraryScreen
 import com.aiteachme.android.feature.home.presentation.HomeScreen
+import com.aiteachme.android.feature.newcourse.presentation.NewCourseScreen
+import com.aiteachme.android.feature.spaces.presentation.LearningSpacesScreen
 
 private enum class AppDestination(
     val route: String,
     val label: String,
     val icon: ImageVector,
 ) {
-    Learn("learn", "学习", Icons.Outlined.School),
-    Chat("chat", "对话", Icons.Outlined.ChatBubbleOutline),
-    Files("files", "资料", Icons.Outlined.FolderOpen),
-    Mine("mine", "我的", Icons.Outlined.AccountCircle),
+    Learn("learn", "学习空间", Icons.Outlined.School),
+    Files("files", "资料库", Icons.Outlined.FolderOpen),
+    Chat("chat", "全局助手", Icons.Outlined.ChatBubbleOutline),
 }
 
 private object AppRoute {
+    const val NewCourse = "new-course"
     const val Learn = "learn"
     const val Chat = "chat"
+    const val GlobalChat = "chat/conversation?initialPrompt={initialPrompt}"
+    const val CourseSpace = "spaces/{courseId}"
     const val CourseChat = "courses/{courseId}/chat"
     const val Files = "files"
     const val FileDetail = "files/{fileId}"
     const val Mine = "mine"
-    const val CourseBuild = "courses/{courseId}/build"
+    const val CourseBuild = "courses/{courseId}/build?initialPrompt={initialPrompt}"
     const val CourseDocs = "courses/{courseId}/docs"
     const val CoursePractice = "courses/{courseId}/practice"
     const val CourseProfile = "courses/{courseId}/profile"
+    const val CourseSettings = "courses/{courseId}/settings"
 
     fun courseChat(courseId: String) = "courses/$courseId/chat"
-    fun courseBuild(courseId: String) = "courses/$courseId/build"
+    fun globalChat(initialPrompt: String? = null): String {
+        val prompt = initialPrompt?.trim().orEmpty()
+        return if (prompt.isBlank()) {
+            "chat/conversation"
+        } else {
+            "chat/conversation?initialPrompt=${Uri.encode(prompt)}"
+        }
+    }
+    fun courseSpace(courseId: String) = "spaces/$courseId"
+    fun courseBuild(courseId: String, initialPrompt: String? = null): String {
+        val prompt = initialPrompt?.trim().orEmpty()
+        return if (prompt.isBlank()) {
+            "courses/$courseId/build"
+        } else {
+            "courses/$courseId/build?initialPrompt=${Uri.encode(prompt)}"
+        }
+    }
     fun courseDocs(courseId: String) = "courses/$courseId/docs"
     fun coursePractice(courseId: String) = "courses/$courseId/practice"
     fun courseProfile(courseId: String) = "courses/$courseId/profile"
+    fun courseSettings(courseId: String) = "courses/$courseId/settings"
     fun fileDetail(fileId: String) = "files/$fileId"
 }
 
@@ -96,6 +120,13 @@ fun AiTeachMeApp() {
         end = safePadding.calculateEndPadding(layoutDirection),
         bottom = safePadding.calculateBottomPadding() + 94.dp,
     )
+    val childContentPadding = PaddingValues(
+        start = safePadding.calculateStartPadding(layoutDirection),
+        top = safePadding.calculateTopPadding(),
+        end = safePadding.calculateEndPadding(layoutDirection),
+        bottom = safePadding.calculateBottomPadding(),
+    )
+    val showBottomNavigation = AppDestination.entries.any { it.route == currentDestination?.route }
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
@@ -103,21 +134,79 @@ fun AiTeachMeApp() {
             startDestination = AppRoute.Learn,
             modifier = Modifier.fillMaxSize(),
         ) {
+            composable(AppRoute.NewCourse) {
+                NewCourseScreen(
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
+                    onCourseCreated = { courseId, prompt ->
+                        navController.navigate(AppRoute.courseBuild(courseId, prompt))
+                    },
+                )
+            }
             composable(AppRoute.Learn) {
+                LearningSpacesScreen(
+                    contentPadding = pageContentPadding,
+                    onOpenCourse = { courseId ->
+                        navController.navigate(AppRoute.courseSpace(courseId)) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenNewCourse = {
+                        navController.navigate(AppRoute.NewCourse) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable(
+                route = AppRoute.CourseSpace,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
                 HomeScreen(
                     contentPadding = PaddingValues(0.dp),
+                    focusedCourseId = courseId,
+                    onBack = { navController.popBackStack() },
+                    onSwitchCourse = { nextCourseId ->
+                        navController.navigate(AppRoute.courseSpace(nextCourseId)) {
+                            popUpTo(AppRoute.Learn)
+                            launchSingleTop = true
+                        }
+                    },
                     onOpenBuild = { courseId -> navController.navigate(AppRoute.courseBuild(courseId)) },
                     onOpenDocs = { courseId -> navController.navigate(AppRoute.courseDocs(courseId)) },
                     onOpenPractice = { courseId -> navController.navigate(AppRoute.coursePractice(courseId)) },
                     onOpenProfile = { courseId -> navController.navigate(AppRoute.courseProfile(courseId)) },
-                    onOpenCourseChat = { courseId -> navController.navigate(AppRoute.courseChat(courseId)) },
-                    onOpenFiles = { navController.navigate(AppRoute.Files) },
+                    onOpenSettings = { courseId -> navController.navigate(AppRoute.courseSettings(courseId)) },
+                    onOpenAccount = { navController.navigate(AppRoute.Mine) },
                 )
             }
             composable(AppRoute.Chat) {
-                ChatScreen(
+                GlobalAssistantEntryScreen(
                     contentPadding = pageContentPadding,
+                    onStartChat = { prompt -> navController.navigate(AppRoute.globalChat(prompt)) },
+                    onOpenFiles = {
+                        navController.navigate(AppRoute.Files) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable(
+                route = AppRoute.GlobalChat,
+                arguments = listOf(
+                    navArgument("initialPrompt") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                ChatScreen(
+                    contentPadding = childContentPadding,
                     scope = ChatConversationScope.Global,
+                    initialPrompt = entry.arguments?.getString("initialPrompt"),
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(
@@ -125,7 +214,7 @@ fun AiTeachMeApp() {
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
                 ChatScreen(
-                    contentPadding = pageContentPadding,
+                    contentPadding = childContentPadding,
                     scope = ChatConversationScope.Course,
                     courseId = entry.arguments?.getString("courseId").orEmpty(),
                     onBack = { navController.popBackStack() },
@@ -143,21 +232,32 @@ fun AiTeachMeApp() {
             ) { entry ->
                 FileDetailScreen(
                     fileId = entry.arguments?.getString("fileId").orEmpty(),
-                    contentPadding = pageContentPadding,
+                    contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                 )
             }
             composable(AppRoute.Mine) {
-                AccountScreen(contentPadding = pageContentPadding)
+                AccountScreen(
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(
                 route = AppRoute.CourseBuild,
-                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+                arguments = listOf(
+                    navArgument("courseId") { type = NavType.StringType },
+                    navArgument("initialPrompt") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
             ) { entry ->
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
                 CourseBuildScreen(
                     courseId = courseId,
-                    contentPadding = pageContentPadding,
+                    initialPrompt = entry.arguments?.getString("initialPrompt"),
+                    contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                     onOpenFiles = { navController.navigate(AppRoute.Files) },
                     onOpenDocs = { navController.navigate(AppRoute.courseDocs(it)) },
@@ -170,7 +270,7 @@ fun AiTeachMeApp() {
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
                 KnowledgeDocsScreen(
                     courseId = courseId,
-                    contentPadding = pageContentPadding,
+                    contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                     onOpenBuild = { navController.navigate(AppRoute.courseBuild(it)) },
                 )
@@ -182,7 +282,7 @@ fun AiTeachMeApp() {
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
                 PracticeScreen(
                     courseId = courseId,
-                    contentPadding = pageContentPadding,
+                    contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                     onOpenDocs = { navController.navigate(AppRoute.courseDocs(it)) },
                 )
@@ -194,28 +294,42 @@ fun AiTeachMeApp() {
                 val courseId = entry.arguments?.getString("courseId").orEmpty()
                 ProfileScreen(
                     courseId = courseId,
-                    contentPadding = pageContentPadding,
+                    contentPadding = childContentPadding,
                     onBack = { navController.popBackStack() },
                     onOpenPractice = { navController.navigate(AppRoute.coursePractice(it)) },
                 )
             }
+            composable(
+                route = AppRoute.CourseSettings,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                CourseSettingsScreen(
+                    courseId = courseId,
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
+                    onOpenBuild = { navController.navigate(AppRoute.courseBuild(it)) },
+                )
+            }
         }
-        FloatingBottomNavigation(
-            currentDestination = currentDestination,
-            onNavigate = { destination ->
-                navController.navigate(destination.route) {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+        if (showBottomNavigation) {
+            FloatingBottomNavigation(
+                currentDestination = currentDestination,
+                onNavigate = { destination ->
+                    navController.navigate(destination.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
                     }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp),
-        )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp),
+            )
+        }
     }
 }
 
@@ -239,8 +353,7 @@ private fun FloatingBottomNavigation(
         ) {
             AppDestination.entries.forEach { destination ->
                 val selected = isDestinationSelected(currentDestination, destination)
-                IconButton(
-                    onClick = { onNavigate(destination) },
+                Box(
                     modifier = Modifier
                         .size(50.dp)
                         .clip(CircleShape)
@@ -250,7 +363,9 @@ private fun FloatingBottomNavigation(
                             } else {
                                 Color.Transparent
                             },
-                        ),
+                        )
+                        .clickable { onNavigate(destination) },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = destination.icon,
@@ -273,9 +388,8 @@ private fun isDestinationSelected(
 ): Boolean {
     val route = currentDestination?.route ?: return false
     return when (destination) {
-        AppDestination.Learn -> route == AppRoute.Learn || route.startsWith("courses/")
-        AppDestination.Chat -> route == AppRoute.Chat
+        AppDestination.Learn -> route == AppRoute.Learn
         AppDestination.Files -> route.startsWith(AppRoute.Files)
-        AppDestination.Mine -> route == AppRoute.Mine
+        AppDestination.Chat -> route == AppRoute.Chat
     }
 }

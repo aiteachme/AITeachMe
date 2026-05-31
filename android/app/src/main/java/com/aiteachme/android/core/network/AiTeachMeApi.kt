@@ -10,6 +10,10 @@ import com.aiteachme.android.core.network.dto.ChatSessionDeleteData
 import com.aiteachme.android.core.network.dto.ChatSessionDeleteRequest
 import com.aiteachme.android.core.network.dto.ChatSessionItem
 import com.aiteachme.android.core.network.dto.ChatSessionListRequest
+import com.aiteachme.android.core.network.dto.CourseDeleteData
+import com.aiteachme.android.core.network.dto.CourseDeletePreviewData
+import com.aiteachme.android.core.network.dto.CourseDeletePreviewRequest
+import com.aiteachme.android.core.network.dto.CourseDeleteRequest
 import com.aiteachme.android.core.network.dto.CourseItem
 import com.aiteachme.android.core.network.dto.DocGenBuildData
 import com.aiteachme.android.core.network.dto.DocGenBuildRequest
@@ -48,6 +52,16 @@ interface AiTeachMeApi {
     suspend fun createDraftCourse(
         @Body request: Map<String, String> = emptyMap(),
     ): ApiResponse<CourseItem>
+
+    @POST("/api/v1/courses/delete/preview")
+    suspend fun previewDeleteCourse(
+        @Body request: CourseDeletePreviewRequest,
+    ): ApiResponse<CourseDeletePreviewData>
+
+    @POST("/api/v1/courses/delete")
+    suspend fun deleteCourse(
+        @Body request: CourseDeleteRequest,
+    ): ApiResponse<CourseDeleteData>
 
     @POST("/api/v1/auth/user")
     suspend fun currentUser(

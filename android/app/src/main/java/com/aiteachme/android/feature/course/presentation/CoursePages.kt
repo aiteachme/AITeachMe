@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -50,6 +51,7 @@ import com.aiteachme.android.feature.files.presentation.formatFileSize
 @Composable
 fun CourseBuildScreen(
     courseId: String,
+    initialPrompt: String?,
     contentPadding: PaddingValues,
     onBack: () -> Unit,
     onOpenFiles: () -> Unit,
@@ -60,6 +62,9 @@ fun CourseBuildScreen(
 
     LaunchedEffect(courseId) {
         viewModel.load(courseId)
+        if (!initialPrompt.isNullOrBlank()) {
+            viewModel.updateBuildPrompt(initialPrompt)
+        }
     }
 
     LazyColumn(
@@ -118,16 +123,16 @@ fun CourseBuildScreen(
         }
         item {
             SectionTitle(
-                title = "当前学科资料",
+                title = "当前学习空间资料",
                 subtitle = "${uiState.files.size} 份资料，解析完成后可参与构建",
-                actionLabel = "资料库",
+                actionLabel = "全局资料库",
                 onAction = onOpenFiles,
             )
         }
         if (uiState.isLoading && uiState.files.isEmpty()) {
-            item { LoadingBlock("正在加载课程资料...") }
+            item { LoadingBlock("正在加载学习空间资料...") }
         } else if (uiState.files.isEmpty()) {
-            item { EmptyBlock("这个学科还没有关联资料。先到资料库上传，再在 Web/后续移动端构建流程中关联。") }
+            item { EmptyBlock("这个学习空间还没有关联资料。先到全局资料库上传，再在后续构建流程中关联。") }
         } else {
             items(uiState.files, key = { it.id }) { file ->
                 FileMiniCard(file = file)
@@ -180,7 +185,7 @@ fun KnowledgeDocsScreen(
         } else if (markdown == null) {
             item {
                 EmptyBlock(
-                    text = "还没有知识文档。先完成资料解析和构建后，这里会显示适合手机阅读的课程文档。",
+                    text = "还没有知识文档。先完成资料解析和构建后，这里会显示适合手机阅读的学习文档。",
                     actionLabel = "去构建",
                     onAction = { onOpenBuild(courseId) },
                 )
@@ -247,7 +252,7 @@ fun PracticeScreen(
         item {
             CapabilityCard(
                 title = "移动端练习入口",
-                body = "这里先承接当前学科上下文。后续会接入试卷生成、答题、批改和错题复盘；现在可以先通过知识文档继续学习。",
+                body = "这里先承接当前学习空间上下文。后续会接入试卷生成、答题、批改和错题复盘；现在可以先通过知识文档继续学习。",
                 primaryLabel = "查看知识文档",
                 onPrimary = { onOpenDocs(courseId) },
             )
@@ -306,10 +311,67 @@ fun ProfileScreen(
         item {
             MetricRow(
                 items = listOf(
-                    "课程资料" to uiState.files.size.toString(),
+                    "空间资料" to uiState.files.size.toString(),
                     "可阅读文档" to if (uiState.docs?.exists == true) "1" else "0",
                     "构建状态" to (uiState.docs?.build?.status ?: "idle"),
                 ),
+            )
+        }
+    }
+}
+
+@Composable
+fun CourseSettingsScreen(
+    courseId: String,
+    contentPadding: PaddingValues,
+    onBack: () -> Unit,
+    onOpenBuild: (String) -> Unit,
+    viewModel: CourseWorkspaceViewModel = viewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(courseId) {
+        viewModel.load(courseId)
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            CoursePageHeader(
+                title = "学科设置",
+                subtitle = uiState.course?.name ?: courseId,
+                icon = Icons.Outlined.Settings,
+                onBack = onBack,
+                onRefresh = { viewModel.load(courseId) },
+                isLoading = uiState.isLoading,
+            )
+        }
+        item { FeedbackMessages(uiState) }
+        item {
+            CapabilityCard(
+                title = "当前学习空间",
+                body = "这里只管理当前学习空间的信息，不影响全局助手、全局资料库和账号设置。学科名称、目标和知识结构仍通过构建对话统一调整。",
+                primaryLabel = "打开构建对话",
+                onPrimary = { onOpenBuild(courseId) },
+            )
+        }
+        item {
+            MetricRow(
+                items = listOf(
+                    "资料" to uiState.files.size.toString(),
+                    "文档" to if (uiState.docs?.exists == true) "已生成" else "未生成",
+                    "状态" to (uiState.docs?.build?.status ?: "idle"),
+                ),
+            )
+        }
+        item {
+            EmptyBlock(
+                text = "后续这里会加入学科显示名称、学习目标、默认练习偏好和删除学科等设置。当前阶段先把入口固定为当前学习空间的从属页。",
             )
         }
     }

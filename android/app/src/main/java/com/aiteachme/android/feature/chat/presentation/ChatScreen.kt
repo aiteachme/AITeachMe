@@ -65,6 +65,7 @@ fun ChatScreen(
     contentPadding: PaddingValues,
     scope: ChatConversationScope = ChatConversationScope.Global,
     courseId: String? = null,
+    initialPrompt: String? = null,
     onBack: (() -> Unit)? = null,
     viewModel: ChatViewModel = viewModel(),
 ) {
@@ -72,9 +73,16 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val lastMessage = uiState.messages.lastOrNull()
     var showSessions by remember { mutableStateOf(false) }
+    var initialPromptConsumed by remember(scope, courseId, initialPrompt) { mutableStateOf(false) }
 
-    LaunchedEffect(scope, courseId) {
+    LaunchedEffect(scope, courseId, initialPrompt) {
         viewModel.activate(scope = scope, courseId = courseId)
+        val question = initialPrompt?.trim().orEmpty()
+        if (!initialPromptConsumed && question.isNotBlank()) {
+            initialPromptConsumed = true
+            viewModel.updateDraft(question)
+            viewModel.send()
+        }
     }
 
     LaunchedEffect(uiState.messages.size, lastMessage?.content?.length, lastMessage?.status) {
@@ -192,7 +200,7 @@ private fun ChatHeader(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (uiState.scope == ChatConversationScope.Course) "学科对话" else "全局助手",
+                        text = if (uiState.scope == ChatConversationScope.Course) "学科内对话" else "全局助手",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -261,9 +269,9 @@ private fun ScopeHint(uiState: ChatUiState) {
             )
             Text(
                 text = if (isCourse) {
-                    "绑定学科：${uiState.course?.name ?: uiState.courseId ?: "未知学科"}"
+                    "绑定当前学习空间：${uiState.course?.name ?: uiState.courseId ?: "未知学科"}"
                 } else {
-                    "不绑定学科。要问某个学科的问题，请从学习页进入该学科对话。"
+                    "不绑定学科。要问某个学科的问题，请从学习空间左滑进入学科内对话。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
@@ -289,13 +297,13 @@ private fun EmptyChat(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = if (uiState.scope == ChatConversationScope.Course) "问这个学科的问题" else "问一个通用学习问题",
+                text = if (uiState.scope == ChatConversationScope.Course) "问当前学科的问题" else "问一个通用学习问题",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = if (uiState.scope == ChatConversationScope.Course) {
-                    "这个入口只服务当前学科，不会切到全局会话。"
+                    "这个入口只服务当前学习空间，不会切到全局会话。"
                 } else {
                     "全局助手负责跨学科规划和通用问题，不会混入某个学科的会话。"
                 },
@@ -328,7 +336,7 @@ private fun SessionSheet(
             Column(modifier = Modifier.weight(1f)) {
                 Text("会话管理", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (uiState.scope == ChatConversationScope.Course) "只显示当前学科会话" else "只显示全局会话",
+                    if (uiState.scope == ChatConversationScope.Course) "只显示当前学习空间会话" else "只显示全局会话",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -531,7 +539,7 @@ private fun headerSubtitle(uiState: ChatUiState): String {
     uiState.sessionTitle?.let { title -> return title }
     uiState.sessionId?.let { sessionId -> return "会话 ${sessionId.takeLast(8)}" }
     return if (uiState.scope == ChatConversationScope.Course) {
-        uiState.course?.name ?: uiState.courseId ?: "学科对话"
+        uiState.course?.name ?: uiState.courseId ?: "学科内对话"
     } else {
         "不绑定学科"
     }

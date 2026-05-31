@@ -1,5 +1,6 @@
 package com.aiteachme.android.feature.files.presentation
 
+import androidx.compose.foundation.background
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Description
@@ -55,6 +57,7 @@ import com.aiteachme.android.core.network.dto.FileRecord
 @Composable
 fun FileLibraryScreen(
     contentPadding: PaddingValues,
+    onBack: (() -> Unit)? = null,
     onOpenFile: (String) -> Unit = {},
     viewModel: FileLibraryViewModel = viewModel(),
 ) {
@@ -76,6 +79,7 @@ fun FileLibraryScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color.White)
             .padding(contentPadding),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -83,6 +87,7 @@ fun FileLibraryScreen(
         item {
             FileLibraryHeader(
                 uiState = uiState,
+                onBack = onBack,
                 onUpload = { filePicker.launch(FILE_PICKER_MIME_TYPES) },
                 onRefresh = { viewModel.loadFiles(showFullLoading = false) },
             )
@@ -137,26 +142,36 @@ fun FileLibraryScreen(
 @Composable
 private fun FileLibraryHeader(
     uiState: FileLibraryUiState,
+    onBack: (() -> Unit)?,
     onUpload: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
         ) {
+            if (onBack != null) {
+                OutlinedButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = "资料库",
+                    text = "全局资料库",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "上传资料后会自动解析，解析完成后可用于后续课程和对话。",
+                    text = "上传资料后会自动解析，解析完成后可被不同学习空间引用。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -353,7 +368,7 @@ private fun LoadingFiles() {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-            Text("正在加载资料库")
+            Text("正在加载全局资料库")
         }
     }
 }
