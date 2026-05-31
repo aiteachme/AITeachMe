@@ -24,6 +24,7 @@ import com.aiteachme.android.core.network.dto.ExamGenerateResponse
 import com.aiteachme.android.core.network.dto.ExamGradeResponse
 import com.aiteachme.android.core.network.dto.ExamHistoryItem
 import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
+import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.network.dto.ExamSubmitRequest
 import com.aiteachme.android.core.network.dto.FileDeleteData
 import com.aiteachme.android.core.network.dto.FileDeleteRequest
@@ -34,6 +35,7 @@ import com.aiteachme.android.core.network.dto.LogoutRequest
 import com.aiteachme.android.core.network.dto.PageRequest
 import com.aiteachme.android.core.network.dto.PaginatedData
 import com.aiteachme.android.core.network.dto.HealthData
+import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
 import com.aiteachme.android.core.network.dto.RegisterRequest
 import com.aiteachme.android.core.network.dto.SendEmailCodeData
 import com.aiteachme.android.core.network.dto.SendEmailCodeRequest
@@ -192,6 +194,11 @@ interface AiTeachMeApi {
         @Query("size") size: Int = 20,
     ): ApiResponse<PaginatedData<ExamHistoryItem>>
 
+    @GET("/api/v1/courses/{course_id}/exams/question-templates")
+    suspend fun listQuestionTemplates(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<List<QuestionTemplateItemResponse>>
+
     @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}")
     suspend fun getExamDetail(
         @Path("course_id") courseId: String,
@@ -204,4 +211,10 @@ interface AiTeachMeApi {
         @Path("exam_paper_id") examPaperId: Int,
         @Body request: ExamSubmitRequest,
     ): ApiResponse<ExamGradeResponse>
+
+    @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}/study-guide")
+    suspend fun getExamStudyGuide(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+    ): ApiResponse<ExamStudyGuideResponse>
 }

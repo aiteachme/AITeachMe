@@ -31,3 +31,11 @@ cd android
 ```
 
 The project targets Android SDK Platform 36.1 and uses Android Gradle Plugin 9.2.
+
+Release packaging lives under `packaging/android`:
+
+```powershell
+.\packaging\android\release.bat -PackageType all
+```
+
+Release packages inject the public API origin with the Gradle property `aiteachmeAndroidApiUrl`; the script resolves it from the same `AITEACHME_REMOTE_API_URL` setting used by desktop remote packaging, then falls back to the Android default public backend `https://umlxyfrxsjyp.sealosbja.site`.

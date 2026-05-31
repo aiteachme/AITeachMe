@@ -13,6 +13,10 @@ import com.aiteachme.android.core.network.BackendApiClient
 import com.aiteachme.android.core.network.NetworkModule
 import com.aiteachme.android.core.session.SessionStore
 import com.aiteachme.android.core.state.CourseContextStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object AppServices {
     lateinit var sessionStore: SessionStore
@@ -39,6 +43,7 @@ object AppServices {
         private set
 
     private var initialized = false
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun init(context: Context) {
         if (initialized) {
@@ -55,6 +60,10 @@ object AppServices {
         knowledgeRepository = KnowledgeRepository(api = api, sessionStore = sessionStore)
         examRepository = ExamRepository(api = api)
         dailyWallpaperRepository = DailyWallpaperRepository(context = context.applicationContext)
+        dailyWallpaperRepository.loadWallpaperForDisplay()
+        appScope.launch {
+            dailyWallpaperRepository.prepareNextWallpaper()
+        }
         initialized = true
     }
 }

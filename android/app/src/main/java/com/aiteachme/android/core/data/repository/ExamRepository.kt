@@ -7,7 +7,9 @@ import com.aiteachme.android.core.network.dto.ExamGenerateResponse
 import com.aiteachme.android.core.network.dto.ExamGradeResponse
 import com.aiteachme.android.core.network.dto.ExamHistoryItem
 import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
+import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.network.dto.ExamSubmitRequest
+import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
 
 class ExamRepository(
     private val api: AiTeachMeApi,
@@ -30,6 +32,11 @@ class ExamRepository(
             .items
     }
 
+    suspend fun listQuestionTemplates(courseId: String): List<QuestionTemplateItemResponse> {
+        return api.listQuestionTemplates(courseId = courseId)
+            .requireData("题库模板加载失败")
+    }
+
     suspend fun getExamDetail(
         courseId: String,
         examPaperId: Int,
@@ -45,6 +52,14 @@ class ExamRepository(
     ): ExamGradeResponse {
         return api.submitExam(courseId = courseId, examPaperId = examPaperId, request = request)
             .requireData("提交批改失败")
+    }
+
+    suspend fun getStudyGuide(
+        courseId: String,
+        examPaperId: Int,
+    ): ExamStudyGuideResponse {
+        return api.getExamStudyGuide(courseId = courseId, examPaperId = examPaperId)
+            .requireData("学习指南加载失败")
     }
 
     private fun <T> ApiResponse<T>.requireData(fallbackMessage: String): T {

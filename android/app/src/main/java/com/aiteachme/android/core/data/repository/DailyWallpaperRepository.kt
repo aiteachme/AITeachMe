@@ -32,8 +32,16 @@ class DailyWallpaperRepository(
     private val appContext = context.applicationContext
     private val cacheDir = File(appContext.cacheDir, CACHE_DIR_NAME)
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private var hasResolvedDisplayWallpaper = false
+    private var displayWallpaper: DailyWallpaper? = null
+    private var hasStartedPreparingNextWallpaper = false
 
+    @Synchronized
     fun loadWallpaperForDisplay(): DailyWallpaper? {
+        if (hasResolvedDisplayWallpaper) {
+            return displayWallpaper
+        }
+
         cacheDir.mkdirs()
         val prepared = loadCachedWallpaper(
             cacheKeyPref = KEY_NEXT_CACHE_KEY,
@@ -44,6 +52,8 @@ class DailyWallpaperRepository(
             rememberCurrent(prepared)
             clearNext()
             cleanupOldFiles(keepPaths = setOf(prepared.filePath))
+            displayWallpaper = prepared
+            hasResolvedDisplayWallpaper = true
             return prepared
         }
 
@@ -56,10 +66,16 @@ class DailyWallpaperRepository(
         if (current != null) {
             rememberCurrent(current)
         }
+        displayWallpaper = current
+        hasResolvedDisplayWallpaper = true
         return current
     }
 
     suspend fun prepareNextWallpaper(): DailyWallpaper? = withContext(Dispatchers.IO) {
+        if (!markNextWallpaperPreparationStarted()) {
+            return@withContext null
+        }
+
         cacheDir.mkdirs()
         val today = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
         val cacheKey = "$today-${System.currentTimeMillis()}-${UUID.randomUUID()}"
@@ -79,6 +95,15 @@ class DailyWallpaperRepository(
         }.getOrElse {
             null
         }
+    }
+
+    @Synchronized
+    private fun markNextWallpaperPreparationStarted(): Boolean {
+        if (hasStartedPreparingNextWallpaper) {
+            return false
+        }
+        hasStartedPreparingNextWallpaper = true
+        return true
     }
 
     private fun download(sourceUrl: String, target: File) {

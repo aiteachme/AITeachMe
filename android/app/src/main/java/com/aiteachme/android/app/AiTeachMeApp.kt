@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,7 +51,9 @@ import com.aiteachme.android.feature.chat.presentation.ChatScreen
 import com.aiteachme.android.feature.chat.presentation.GlobalAssistantEntryScreen
 import com.aiteachme.android.feature.course.presentation.CourseBuildScreen
 import com.aiteachme.android.feature.course.presentation.CourseSettingsScreen
+import com.aiteachme.android.feature.course.presentation.ExamPaperScreen
 import com.aiteachme.android.feature.course.presentation.KnowledgeDocsScreen
+import com.aiteachme.android.feature.course.presentation.MasteryDrillScreen
 import com.aiteachme.android.feature.course.presentation.PracticeScreen
 import com.aiteachme.android.feature.course.presentation.ProfileScreen
 import com.aiteachme.android.feature.files.presentation.FileDetailScreen
@@ -68,7 +70,7 @@ private enum class AppDestination(
 ) {
     Learn("learn", "学习空间", Icons.Outlined.School),
     Files("files", "资料库", Icons.Outlined.FolderOpen),
-    Chat("chat", "全局助手", Icons.Outlined.ChatBubbleOutline),
+    Chat("chat", "全局助手", Icons.AutoMirrored.Outlined.Chat),
 }
 
 private object AppRoute {
@@ -85,6 +87,8 @@ private object AppRoute {
     const val CourseBuild = "courses/{courseId}/build?initialPrompt={initialPrompt}"
     const val CourseDocs = "courses/{courseId}/docs"
     const val CoursePractice = "courses/{courseId}/practice"
+    const val CourseMasteryDrill = "courses/{courseId}/mastery-drill"
+    const val CourseExamPaper = "courses/{courseId}/exams/{examPaperId}"
     const val CourseProfile = "courses/{courseId}/profile"
     const val CourseSettings = "courses/{courseId}/settings"
 
@@ -119,6 +123,8 @@ private object AppRoute {
     }
     fun courseDocs(courseId: String) = "courses/$courseId/docs"
     fun coursePractice(courseId: String) = "courses/$courseId/practice"
+    fun courseMasteryDrill(courseId: String) = "courses/$courseId/mastery-drill"
+    fun courseExamPaper(courseId: String, examPaperId: Int) = "courses/$courseId/exams/$examPaperId"
     fun courseProfile(courseId: String) = "courses/$courseId/profile"
     fun courseSettings(courseId: String) = "courses/$courseId/settings"
     fun fileDetail(fileId: String) = "files/$fileId"
@@ -133,13 +139,13 @@ fun AiTeachMeApp() {
     val safePadding = WindowInsets.safeDrawing.asPaddingValues()
     val pageContentPadding = PaddingValues(
         start = safePadding.calculateStartPadding(layoutDirection),
-        top = safePadding.calculateTopPadding(),
+        top = 0.dp,
         end = safePadding.calculateEndPadding(layoutDirection),
         bottom = safePadding.calculateBottomPadding() + 94.dp,
     )
     val childContentPadding = PaddingValues(
         start = safePadding.calculateStartPadding(layoutDirection),
-        top = safePadding.calculateTopPadding(),
+        top = 0.dp,
         end = safePadding.calculateEndPadding(layoutDirection),
         bottom = safePadding.calculateBottomPadding(),
     )
@@ -227,6 +233,7 @@ fun AiTeachMeApp() {
                     onOpenBuild = { courseId -> navController.navigate(AppRoute.courseBuild(courseId)) },
                     onOpenDocs = { courseId -> navController.navigate(AppRoute.courseDocs(courseId)) },
                     onOpenPractice = { courseId -> navController.navigate(AppRoute.coursePractice(courseId)) },
+                    onOpenMasteryDrill = { courseId -> navController.navigate(AppRoute.courseMasteryDrill(courseId)) },
                     onOpenProfile = { courseId -> navController.navigate(AppRoute.courseProfile(courseId)) },
                     onOpenSettings = { courseId -> navController.navigate(AppRoute.courseSettings(courseId)) },
                     onOpenAccount = { navController.navigate(AppRoute.Mine) },
@@ -348,6 +355,41 @@ fun AiTeachMeApp() {
                     contentPadding = childContentPadding,
                     onBack = { navigateBackToLearn() },
                     onOpenDocs = { targetCourseId -> navController.navigate(AppRoute.courseDocs(targetCourseId)) },
+                    onOpenPaper = { targetCourseId, paperId ->
+                        navController.navigate(AppRoute.courseExamPaper(targetCourseId, paperId))
+                    },
+                )
+            }
+            composable(
+                route = AppRoute.CourseMasteryDrill,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
+                MasteryDrillScreen(
+                    courseId = courseId,
+                    contentPadding = childContentPadding,
+                    onBack = { navigateBackToLearn() },
+                    onOpenPractice = { targetCourseId ->
+                        navController.navigate(AppRoute.coursePractice(targetCourseId))
+                    },
+                )
+            }
+            composable(
+                route = AppRoute.CourseExamPaper,
+                arguments = listOf(
+                    navArgument("courseId") { type = NavType.StringType },
+                    navArgument("examPaperId") { type = NavType.IntType },
+                ),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                val examPaperId = entry.arguments?.getInt("examPaperId") ?: 0
+                TrackCurrentCourse(courseId)
+                ExamPaperScreen(
+                    courseId = courseId,
+                    examPaperId = examPaperId,
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

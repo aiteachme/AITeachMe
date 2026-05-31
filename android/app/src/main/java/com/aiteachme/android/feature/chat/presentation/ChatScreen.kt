@@ -34,9 +34,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.History
@@ -448,7 +448,7 @@ private fun SessionRow(
                 )
             },
             leadingContent = {
-                Icon(imageVector = Icons.Outlined.ChatBubbleOutline, contentDescription = null)
+                Icon(imageVector = Icons.AutoMirrored.Outlined.Chat, contentDescription = null)
             },
             trailingContent = {
                 IconButton(onClick = onDelete) {

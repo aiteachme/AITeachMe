@@ -13,11 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Psychology
@@ -41,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -353,65 +355,60 @@ fun KnowledgeDocsScreen(
     val docs = uiState.docs
     val markdown = docs?.markdown?.takeIf { it.isNotBlank() }
         ?: docs?.draftMarkdown?.takeIf { it.isNotBlank() }
+    val layoutDirection = LocalLayoutDirection.current
+    val startPadding = contentPadding.calculateStartPadding(layoutDirection) + 20.dp
+    val endPadding = contentPadding.calculateEndPadding(layoutDirection) + 20.dp
+    val topPadding = contentPadding.calculateTopPadding() + 8.dp
+    val bottomPadding = contentPadding.calculateBottomPadding() + 28.dp
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            CoursePageHeader(
-                title = "知识文档",
-                subtitle = uiState.course?.name ?: courseId,
-                icon = Icons.Outlined.AutoStories,
-                onBack = onBack,
-                onRefresh = { viewModel.load(courseId) },
-                isLoading = uiState.isLoading,
-            )
-        }
-        item { FeedbackMessages(uiState) }
-        item {
-            BuildStatusCard(uiState = uiState, onOpenDocs = null)
-        }
-        if (uiState.isLoading && markdown == null) {
-            item { LoadingBlock("正在加载知识文档...") }
-        } else if (markdown == null) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = startPadding,
+                top = topPadding,
+                end = endPadding,
+                bottom = bottomPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             item {
-                EmptyBlock(
-                    text = "还没有知识文档。先完成资料解析和构建后，这里会显示适合手机阅读的学习文档。",
-                    actionLabel = "去构建",
-                    onAction = { onOpenBuild(courseId) },
+                CourseInlineActions(
+                    onBack = onBack,
+                    onRefresh = { viewModel.load(courseId) },
+                    isLoading = uiState.isLoading,
                 )
             }
-        } else {
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            text = if (docs?.exists == true) "已发布文档" else "构建草稿",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        MarkdownText(
-                            markdown = markdown,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            linkColor = MaterialTheme.colorScheme.primary,
-                            textSizeSp = MaterialTheme.typography.bodyMedium.fontSize.value,
-                            selectable = true,
-                        )
-                    }
+            item { FeedbackMessages(uiState) }
+            if (markdown == null || isKnowledgeBuildActive(buildStatus)) {
+                item {
+                    BuildStatusCard(uiState = uiState, onOpenDocs = null)
+                }
+            }
+            if (uiState.isLoading && markdown == null) {
+                item { LoadingBlock("正在加载知识文档...") }
+            } else if (markdown == null) {
+                item {
+                    EmptyBlock(
+                        text = "还没有知识文档。先完成资料解析和构建后，这里会显示适合手机阅读的学习文档。",
+                        actionLabel = "去构建",
+                        onAction = { onOpenBuild(courseId) },
+                    )
+                }
+            } else {
+                item {
+                    MarkdownText(
+                        markdown = markdown,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        linkColor = MaterialTheme.colorScheme.primary,
+                        textSizeSp = MaterialTheme.typography.bodyLarge.fontSize.value,
+                        selectable = true,
+                    )
                 }
             }
         }
+
     }
 }
 
@@ -425,6 +422,7 @@ fun PracticeScreen(
     contentPadding: PaddingValues,
     onBack: () -> Unit,
     onOpenDocs: (String) -> Unit,
+    onOpenPaper: (String, Int) -> Unit,
     workspaceViewModel: CourseWorkspaceViewModel = viewModel(),
     practiceViewModel: PracticeViewModel = viewModel(),
 ) {
@@ -436,108 +434,120 @@ fun PracticeScreen(
         practiceViewModel.load(courseId)
     }
 
-    val paper = practiceState.currentPaper
+    val paper: ExamPaperDetailResponse? = null
     val docsReady = workspaceState.docs?.exists == true ||
         workspaceState.docs?.markdown?.isNotBlank() == true ||
         workspaceState.docs?.draftMarkdown?.isNotBlank() == true
+    val layoutDirection = LocalLayoutDirection.current
+    val startPadding = contentPadding.calculateStartPadding(layoutDirection) + 20.dp
+    val endPadding = contentPadding.calculateEndPadding(layoutDirection) + 20.dp
+    val topPadding = contentPadding.calculateTopPadding() + 8.dp
+    val bottomPadding = contentPadding.calculateBottomPadding() + 28.dp
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            CoursePageHeader(
-                title = "练习考试",
-                subtitle = workspaceState.course?.name ?: courseId,
-                icon = Icons.Outlined.Quiz,
-                onBack = onBack,
-                onRefresh = {
-                    workspaceViewModel.load(courseId)
-                    practiceViewModel.load(courseId)
-                },
-                isLoading = workspaceState.isLoading ||
-                    practiceState.isLoadingHistory ||
-                    practiceState.isGenerating ||
-                    practiceState.isOpeningPaper,
-            )
-        }
-        item { FeedbackMessages(workspaceState) }
-        item { PracticeFeedbackMessages(practiceState) }
-        if (!docsReady && !workspaceState.isLoading) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = startPadding,
+                top = topPadding,
+                end = endPadding,
+                bottom = bottomPadding,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             item {
-                EmptyBlock(
-                    text = "当前学习空间还没有可阅读的知识文档。可以继续生成试题；如果题目范围不准，建议先完成知识文档构建。",
-                    actionLabel = "查看知识文档",
-                    onAction = { onOpenDocs(courseId) },
+                CourseInlineActions(
+                    onBack = onBack,
+                    onRefresh = {
+                        workspaceViewModel.load(courseId)
+                        practiceViewModel.load(courseId)
+                    },
+                    isLoading = workspaceState.isLoading ||
+                        practiceState.isLoadingHistory ||
+                        practiceState.isGenerating ||
+                        practiceState.isOpeningPaper,
                 )
             }
-        }
-        item {
-            PracticeControlCard(
-                state = practiceState,
-                onModeSelected = practiceViewModel::selectMode,
-                onQuestionCountSelected = practiceViewModel::selectQuestionCount,
-                onPromptChange = practiceViewModel::updatePrompt,
-                onGenerate = { practiceViewModel.generate(courseId) },
-            )
-        }
-        if (practiceState.isGenerating && paper == null) {
-            item { LoadingBlock("正在生成题目，请稍候...") }
-        }
-        paper?.let { detail ->
-            item {
-                ExamPaperSummaryCard(detail)
-            }
-            if (detail.items.isEmpty()) {
-                item { EmptyBlock("题目还在生成中，稍后会自动刷新。") }
-            } else {
-                items(detail.items, key = { it.id }) { question ->
-                    ExamQuestionCard(
-                        paper = detail,
-                        question = question,
-                        answer = practiceState.answers[question.id].orEmpty(),
-                        onAnswerChange = { value -> practiceViewModel.updateAnswer(question.id, value) },
+            item { FeedbackMessages(workspaceState) }
+            item { PracticeFeedbackMessages(practiceState) }
+            if (!docsReady && !workspaceState.isLoading) {
+                item {
+                    EmptyBlock(
+                        text = "当前学习空间还没有可阅读的知识文档。可以继续生成试题；如果题目范围不准，建议先完成知识文档构建。",
+                        actionLabel = "查看知识文档",
+                        onAction = { onOpenDocs(courseId) },
                     )
                 }
-                item {
-                    Button(
-                        onClick = { practiceViewModel.submit(courseId) },
-                        enabled = detail.canSubmit() && !practiceState.isSubmitting && !practiceState.isGenerating,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        if (practiceState.isSubmitting) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
+            }
+            item {
+                PracticeControlCard(
+                    state = practiceState,
+                    onModeSelected = practiceViewModel::selectMode,
+                    onQuestionCountSelected = practiceViewModel::selectQuestionCount,
+                    onPromptChange = practiceViewModel::updatePrompt,
+                    onGenerate = {
+                        practiceViewModel.generate(courseId) { paperId ->
+                            onOpenPaper(courseId, paperId)
                         }
-                        Text(if (practiceState.isSubmitting) "正在批改" else "提交并批改")
+                    },
+                )
+            }
+            if (practiceState.isGenerating) {
+                item { LoadingBlock("正在生成题目，请稍候...") }
+            }
+            paper?.let { detail ->
+                item {
+                    ExamPaperSummaryCard(detail)
+                }
+                if (detail.items.isEmpty()) {
+                    item { EmptyBlock("题目还在生成中，稍后会自动刷新。") }
+                } else {
+                    items(detail.items, key = { it.id }) { question ->
+                        ExamQuestionCard(
+                            paper = detail,
+                            question = question,
+                            answer = practiceState.answers[question.id].orEmpty(),
+                            onAnswerChange = { value -> practiceViewModel.updateAnswer(question.id, value) },
+                        )
+                    }
+                    item {
+                        Button(
+                            onClick = { practiceViewModel.submit(courseId) },
+                            enabled = detail.canSubmit() && !practiceState.isSubmitting && !practiceState.isGenerating,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (practiceState.isSubmitting) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(if (practiceState.isSubmitting) "正在批改" else "提交并批改")
+                        }
                     }
                 }
             }
-        }
-        item {
-            SectionTitle(
-                title = "历史试卷",
-                subtitle = if (practiceState.history.isEmpty()) "还没有生成记录" else "${practiceState.history.size} 份记录",
-                actionLabel = "刷新",
-                onAction = { practiceViewModel.load(courseId) },
-            )
-        }
-        if (practiceState.isLoadingHistory && practiceState.history.isEmpty()) {
-            item { LoadingBlock("正在加载历史试卷...") }
-        } else if (practiceState.history.isEmpty()) {
-            item { EmptyBlock("还没有考试、测试组卷或闯关记录。生成一次后会在这里保留入口。") }
-        } else {
-            items(practiceState.history, key = { it.id }) { history ->
-                ExamHistoryCard(
-                    item = history,
-                    selected = paper?.id == history.id,
-                    onClick = { practiceViewModel.openPaper(courseId = courseId, paperId = history.id) },
+            item {
+                SectionTitle(
+                    title = "历史试卷",
+                    subtitle = if (practiceState.history.isEmpty()) "还没有生成记录" else "${practiceState.history.size} 份记录",
+                    actionLabel = "刷新",
+                    onAction = { practiceViewModel.load(courseId) },
                 )
             }
+            if (practiceState.isLoadingHistory && practiceState.history.isEmpty()) {
+                item { LoadingBlock("正在加载历史试卷...") }
+            } else if (practiceState.history.isEmpty()) {
+                item { EmptyBlock("还没有考试、测试组卷或闯关记录。生成一次后会在这里保留入口。") }
+            } else {
+                items(practiceState.history, key = { it.id }) { history ->
+                    ExamHistoryCard(
+                        item = history,
+                        selected = false,
+                        onClick = { onOpenPaper(courseId, history.id) },
+                    )
+                }
+            }
         }
+
     }
 }
 
@@ -630,7 +640,7 @@ private fun PracticeControlCard(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PracticeMode.values().forEach { mode ->
+                PracticeMode.generatedPaperModes.forEach { mode ->
                     val selected = mode == state.mode
                     val modifier = Modifier.weight(1f)
                     if (selected) {
@@ -1032,6 +1042,34 @@ private fun CoursePageHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        FilledTonalButton(onClick = onRefresh, enabled = !isLoading) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(imageVector = Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CourseInlineActions(
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    isLoading: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
             )
         }
         FilledTonalButton(onClick = onRefresh, enabled = !isLoading) {

@@ -70,6 +70,64 @@ data class ExamGradeResponse(
     val masteryConsumed: Boolean = false,
 )
 
+data class ExamStudyGuideFocusUnit(
+    @SerializedName("knowledge_unit_id")
+    val knowledgeUnitId: Int? = null,
+    @SerializedName("knowledge_unit_name")
+    val knowledgeUnitName: String = "",
+    @SerializedName("mastery_score")
+    val masteryScore: Double? = null,
+    val reason: String = "",
+)
+
+data class ExamStudyGuideResponse(
+    @SerializedName("exam_paper_id")
+    val examPaperId: Int = 0,
+    @SerializedName("course_name")
+    val courseName: String = "",
+    @SerializedName("generated_at")
+    val generatedAt: String = "",
+    @SerializedName("overall_summary")
+    val overallSummary: String = "",
+    val strengths: List<String> = emptyList(),
+    @SerializedName("priority_gaps")
+    val priorityGaps: List<String> = emptyList(),
+    @SerializedName("action_steps")
+    val actionSteps: List<String> = emptyList(),
+    @SerializedName("review_tasks")
+    val reviewTasks: List<String> = emptyList(),
+    @SerializedName("focus_units")
+    val focusUnits: List<ExamStudyGuideFocusUnit> = emptyList(),
+)
+
+data class QuestionTemplateItemResponse(
+    val id: Int = 0,
+    @SerializedName("course_id")
+    val courseId: String = "",
+    @SerializedName("question_type")
+    val questionType: String = "",
+    val difficulty: String = "",
+    val stem: String = "",
+    val options: List<String>? = null,
+    val answer: String = "",
+    val explanation: String = "",
+    @SerializedName("knowledge_unit_refs")
+    val knowledgeUnitRefs: List<Map<String, Any?>> = emptyList(),
+    @SerializedName("selection_hints")
+    val selectionHints: Map<String, Any?> = emptyMap(),
+    @SerializedName("template_version")
+    val templateVersion: Int = 0,
+    val status: String = "",
+    @SerializedName("is_marked")
+    val isMarked: Boolean = false,
+    @SerializedName("has_wrong_attempt")
+    val hasWrongAttempt: Boolean = false,
+    @SerializedName("created_at")
+    val createdAt: String = "",
+    @SerializedName("updated_at")
+    val updatedAt: String = "",
+)
+
 data class PaperPreviewRow(
     val order: Int = 0,
     val type: String = "",

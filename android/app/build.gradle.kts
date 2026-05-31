@@ -3,6 +3,41 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+fun configValue(propertyName: String, envName: String): String? =
+    providers.gradleProperty(propertyName)
+        .orElse(providers.environmentVariable(envName))
+        .orNull
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val publicBackendApiUrl = "https://umlxyfrxsjyp.sealosbja.site"
+val configuredAndroidApiUrl = configValue("aiteachmeAndroidApiUrl", "AITEACHME_ANDROID_API_URL")
+val debugDefaultApiUrl = (configuredAndroidApiUrl ?: "http://10.0.2.2:9020").trimEnd('/')
+val releaseDefaultApiUrl = (configuredAndroidApiUrl ?: publicBackendApiUrl).trimEnd('/')
+val releaseKeystoreFile = configValue("aiteachmeAndroidKeystoreFile", "AITEACHME_ANDROID_KEYSTORE_FILE")
+val releaseKeystorePassword = configValue("aiteachmeAndroidKeystorePassword", "AITEACHME_ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = configValue("aiteachmeAndroidKeyAlias", "AITEACHME_ANDROID_KEY_ALIAS")
+val releaseKeyPassword = configValue("aiteachmeAndroidKeyPassword", "AITEACHME_ANDROID_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it != null }
+val releaseSigningPartiallyConfigured = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).any { it != null } && !releaseSigningConfigured
+
+check(!releaseSigningPartiallyConfigured) {
+    "Android release signing is partially configured. Set all AITEACHME_ANDROID_KEYSTORE_FILE, AITEACHME_ANDROID_KEYSTORE_PASSWORD, AITEACHME_ANDROID_KEY_ALIAS, and AITEACHME_ANDROID_KEY_PASSWORD, or leave all unset for an unsigned release."
+}
+
 android {
     namespace = "com.aiteachme.android"
     compileSdk {
@@ -18,21 +53,28 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        val defaultApiUrl = providers
-            .environmentVariable("AITEACHME_ANDROID_API_URL")
-            .orElse("http://10.0.2.2:9020")
-            .get()
-            .trimEnd('/')
-        val dailyWallpaperUrlTemplate = providers
-            .environmentVariable("AITEACHME_ANDROID_WALLPAPER_URL_TEMPLATE")
-            .orElse("https://picsum.photos/seed/aiteachme-{seed}/1080/2408.jpg")
-            .get()
-        buildConfigField("String", "DEFAULT_API_BASE_URL", "\"$defaultApiUrl\"")
+        val dailyWallpaperUrlTemplate = configValue(
+            "aiteachmeAndroidWallpaperUrlTemplate",
+            "AITEACHME_ANDROID_WALLPAPER_URL_TEMPLATE",
+        ) ?: "https://picsum.photos/seed/aiteachme-{seed}/1080/2408.jpg"
+
+        buildConfigField("String", "DEFAULT_API_BASE_URL", buildConfigString(debugDefaultApiUrl))
         buildConfigField(
             "String",
             "WALLPAPER_URL_TEMPLATE",
-            "\"${dailyWallpaperUrlTemplate.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+            buildConfigString(dailyWallpaperUrlTemplate),
         )
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(requireNotNull(releaseKeystoreFile))
+                storePassword = requireNotNull(releaseKeystorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
     }
 
     buildTypes {
@@ -42,6 +84,10 @@ android {
         release {
             isMinifyEnabled = false
             manifestPlaceholders["usesCleartextTraffic"] = "false"
+            buildConfigField("String", "DEFAULT_API_BASE_URL", buildConfigString(releaseDefaultApiUrl))
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -85,7 +131,9 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.markwon.core)
     implementation(libs.markwon.ext.tables)
+    implementation(libs.markwon.ext.latex)
     implementation(libs.markwon.html)
+    implementation(libs.markwon.inline.parser)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

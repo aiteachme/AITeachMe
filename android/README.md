@@ -49,6 +49,16 @@ $env:AITEACHME_ANDROID_API_URL = "https://api.example.com"
 
 If using Android Studio, add `AITEACHME_ANDROID_API_URL` to the Gradle run environment or set the backend URL in the Gradle build configuration before syncing.
 
+## Release packaging
+
+Release APK/AAB builds are orchestrated from the repository root:
+
+```powershell
+.\packaging\android\release.bat
+```
+
+The packaging script injects the public API origin through the Gradle property `aiteachmeAndroidApiUrl`. It uses the same remote API setting as desktop packaging: `-ApiUrl`, then `AITEACHME_REMOTE_API_URL`, then the Android default public backend `https://umlxyfrxsjyp.sealosbja.site`.
+
 ## First milestones
 
 1. Wire auth and token/session persistence.

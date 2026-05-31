@@ -174,15 +174,15 @@ private fun GlobalAssistantPromptCard(
         shadowElevation = 10.dp,
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             BasicTextField(
                 value = prompt,
                 onValueChange = onPromptChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(132.dp),
+                    .height(88.dp),
                 textStyle = TextStyle(
                     color = Color(0xFF111827),
                     fontSize = MaterialTheme.typography.bodyLarge.fontSize,
@@ -256,7 +256,7 @@ private fun GlobalAssistantPromptCard(
                         onClick = onSend,
                         enabled = prompt.trim().isNotBlank(),
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 if (prompt.trim().isBlank()) {

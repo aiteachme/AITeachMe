@@ -24,26 +24,32 @@ enum class PracticeMode(
 ) {
     WebPractice(
         apiValue = "web_practice",
-        label = "练习",
-        description = "按当前知识空间快速出题，用于即时巩固。",
+        label = "专项练习",
+        description = "围绕当前学习空间快速出题，用于针对性巩固。",
         defaultQuestionCount = 8,
     ),
     PaperExam(
         apiValue = "paper_exam",
-        label = "测试组卷",
-        description = "生成更接近正式测试的试卷。",
+        label = "整卷测试",
+        description = "生成更接近正式测试的完整试卷。",
         defaultQuestionCount = 24,
     ),
     MasteryDrill(
         apiValue = "mastery_drill",
-        label = "闯关",
-        description = "优先覆盖薄弱知识点，提交后回写掌握状态。",
+        label = "闯关测试",
+        description = "从题库模板抽题进行即时闯关，不生成单独试卷。",
         defaultQuestionCount = 8,
     );
 
     companion object {
+        val generatedPaperModes = listOf(WebPractice, PaperExam)
+
         fun fromApiValue(value: String): PracticeMode {
             return values().firstOrNull { it.apiValue == value } ?: WebPractice
+        }
+
+        fun isGeneratedPaperMode(value: String): Boolean {
+            return generatedPaperModes.any { it.apiValue == value }
         }
     }
 }
@@ -110,7 +116,10 @@ class PracticeViewModel : ViewModel() {
         }
     }
 
-    fun generate(courseId: String) {
+    fun generate(
+        courseId: String,
+        onPaperReady: ((Int) -> Unit)? = null,
+    ) {
         val state = _uiState.value
         if (state.isGenerating || state.isSubmitting) {
             return
@@ -125,6 +134,16 @@ class PracticeViewModel : ViewModel() {
                     errorMessage = null,
                     infoMessage = "正在生成${state.mode.label}...",
                 )
+            }
+            if (state.mode == PracticeMode.MasteryDrill) {
+                _uiState.update {
+                    it.copy(
+                        isGenerating = false,
+                        errorMessage = "闯关测试不生成单独试卷，请从闯关入口进入。",
+                        infoMessage = null,
+                    )
+                }
+                return@launch
             }
             runCatching {
                 val response = examRepository.generateExam(
@@ -151,6 +170,9 @@ class PracticeViewModel : ViewModel() {
                     )
                 }
                 refreshHistory(courseId)
+                if (!detail.isFailed() && detail.id > 0) {
+                    onPaperReady?.invoke(detail.id)
+                }
             }.onFailure { throwable ->
                 _uiState.update {
                     it.copy(
@@ -262,7 +284,7 @@ class PracticeViewModel : ViewModel() {
         }.onSuccess { history ->
             _uiState.update {
                 it.copy(
-                    history = history,
+                    history = history.filter { item -> PracticeMode.isGeneratedPaperMode(item.examMode) },
                     isLoadingHistory = false,
                 )
             }

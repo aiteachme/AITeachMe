@@ -37,8 +37,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Psychology
@@ -106,6 +106,7 @@ fun HomeScreen(
     onOpenBuild: (String) -> Unit,
     onOpenDocs: (String) -> Unit,
     onOpenPractice: (String) -> Unit,
+    onOpenMasteryDrill: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
     onOpenSettings: (String) -> Unit,
     onOpenAccount: () -> Unit,
@@ -165,6 +166,9 @@ fun HomeScreen(
             onOpenPractice = {
                 selectedCourse?.courseId?.let(onOpenPractice) ?: run { showCoursePicker = true }
             },
+            onOpenMasteryDrill = {
+                selectedCourse?.courseId?.let(onOpenMasteryDrill) ?: run { showCoursePicker = true }
+            },
             onOpenChatPanel = {
                 if (selectedCourse != null) {
                     showMorePanel = false
@@ -213,6 +217,10 @@ fun HomeScreen(
                     showMorePanel = false
                     onOpenPractice(selectedCourse.courseId)
                 },
+                onOpenMasteryDrill = {
+                    showMorePanel = false
+                    onOpenMasteryDrill(selectedCourse.courseId)
+                },
                 onOpenProfile = {
                     showMorePanel = false
                     onOpenProfile(selectedCourse.courseId)
@@ -259,6 +267,7 @@ private fun SubjectHomeSurface(
     onOpenAccount: () -> Unit,
     onOpenDocs: () -> Unit,
     onOpenPractice: () -> Unit,
+    onOpenMasteryDrill: () -> Unit,
     onOpenChatPanel: () -> Unit,
     onOpenMorePanel: () -> Unit,
 ) {
@@ -384,12 +393,6 @@ private fun SubjectHomeSurface(
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SpaceAgentAction(
-                wallpaperBitmap = wallpaperBitmap,
-                wallpaperContainerSize = wallpaperSize,
-                wallpaperOriginInRoot = wallpaperOriginInRoot,
-                onClick = onOpenChatPanel,
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -410,7 +413,7 @@ private fun SubjectHomeSurface(
                     wallpaperContainerSize = wallpaperSize,
                     wallpaperOriginInRoot = wallpaperOriginInRoot,
                     modifier = Modifier.weight(1f),
-                    onClick = onOpenPractice,
+                    onClick = onOpenMasteryDrill,
                 )
             }
         }
@@ -540,7 +543,7 @@ private fun CourseChip(
 private fun PrimarySubjectAction(
     title: String,
     value: String,
-    wallpaperBitmap: ImageBitmap,
+    wallpaperBitmap: ImageBitmap?,
     wallpaperContainerSize: IntSize,
     wallpaperOriginInRoot: Offset,
     modifier: Modifier = Modifier,
@@ -559,13 +562,15 @@ private fun PrimarySubjectAction(
             ),
         contentAlignment = Alignment.CenterStart,
     ) {
-        AlignedWallpaperBlur(
-            bitmap = wallpaperBitmap,
-            containerSize = wallpaperContainerSize,
-            containerOriginInRoot = wallpaperOriginInRoot,
-            blurRadius = 10.dp,
-            modifier = Modifier.matchParentSize(),
-        )
+        if (wallpaperBitmap != null) {
+            AlignedWallpaperBlur(
+                bitmap = wallpaperBitmap,
+                containerSize = wallpaperContainerSize,
+                containerOriginInRoot = wallpaperOriginInRoot,
+                blurRadius = 10.dp,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -604,7 +609,7 @@ private fun PrimarySubjectAction(
 
 @Composable
 private fun SpaceAgentAction(
-    wallpaperBitmap: ImageBitmap,
+    wallpaperBitmap: ImageBitmap?,
     wallpaperContainerSize: IntSize,
     wallpaperOriginInRoot: Offset,
     onClick: () -> Unit,
@@ -623,13 +628,15 @@ private fun SpaceAgentAction(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        AlignedWallpaperBlur(
-            bitmap = wallpaperBitmap,
-            containerSize = wallpaperContainerSize,
-            containerOriginInRoot = wallpaperOriginInRoot,
-            blurRadius = 8.dp,
-            modifier = Modifier.matchParentSize(),
-        )
+        if (wallpaperBitmap != null) {
+            AlignedWallpaperBlur(
+                bitmap = wallpaperBitmap,
+                containerSize = wallpaperContainerSize,
+                containerOriginInRoot = wallpaperOriginInRoot,
+                blurRadius = 8.dp,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -640,7 +647,7 @@ private fun SpaceAgentAction(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Outlined.ChatBubbleOutline,
+                imageVector = Icons.AutoMirrored.Outlined.Chat,
                 contentDescription = null,
                 tint = Color.Black,
                 modifier = Modifier.size(18.dp),
@@ -671,13 +678,10 @@ private fun CourseChatPanel(
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.88f)
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(top = 12.dp, bottom = 92.dp, end = 10.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                shape = RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp),
-                shadowElevation = 18.dp,
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(0.dp),
+                shadowElevation = 0.dp,
             ) {
                 ChatScreen(
                     contentPadding = PaddingValues(0.dp),
@@ -697,6 +701,7 @@ private fun MoreFunctionsPanel(
     onClose: () -> Unit,
     onOpenBuild: () -> Unit,
     onOpenPractice: () -> Unit,
+    onOpenMasteryDrill: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -710,16 +715,17 @@ private fun MoreFunctionsPanel(
             Surface(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.82f)
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(top = 12.dp, bottom = 92.dp, start = 10.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                shape = RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp),
-                shadowElevation = 18.dp,
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(0.dp),
+                shadowElevation = 0.dp,
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 22.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Row(
@@ -757,6 +763,12 @@ private fun MoreFunctionsPanel(
                         subtitle = "生成试卷、查看训练记录",
                         icon = Icons.Outlined.Quiz,
                         onClick = onOpenPractice,
+                    )
+                    MoreFunctionItem(
+                        title = "闯关测试",
+                        subtitle = "从题库模板抽题即时闯关，不生成试卷记录",
+                        icon = Icons.Outlined.SwapHoriz,
+                        onClick = onOpenMasteryDrill,
                     )
                     MoreFunctionItem(
                         title = "学习画像",

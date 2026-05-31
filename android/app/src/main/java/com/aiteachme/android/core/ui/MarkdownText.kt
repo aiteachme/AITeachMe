@@ -12,8 +12,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 
 @Composable
 fun MarkdownText(
@@ -25,10 +27,23 @@ fun MarkdownText(
     selectable: Boolean = false,
 ) {
     val context = LocalContext.current
-    val markwon = remember(context) {
+    val latexTextSizePx = remember(context, textSizeSp) {
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            textSizeSp,
+            context.resources.displayMetrics,
+        )
+    }
+    val markwon = remember(context, latexTextSizePx) {
         Markwon.builder(context)
             .usePlugin(HtmlPlugin.create())
             .usePlugin(TablePlugin.create(context))
+            .usePlugin(MarkwonInlineParserPlugin.create())
+            .usePlugin(
+                JLatexMathPlugin.create(latexTextSizePx) { builder ->
+                    builder.inlinesEnabled(true)
+                },
+            )
             .build()
     }
     val textColor = color.takeOrElse(Color.Black).toArgb()
