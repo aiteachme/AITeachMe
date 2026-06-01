@@ -51,6 +51,7 @@ import com.aiteachme.android.core.network.dto.ExamHistoryItem
 import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
 import com.aiteachme.android.core.network.dto.ExamPaperItemResponse
 import com.aiteachme.android.core.network.dto.FileRecord
+import com.aiteachme.android.core.ui.MarkdownDocument
 import com.aiteachme.android.core.ui.MarkdownText
 import com.aiteachme.android.feature.files.presentation.fileStatusLabel
 import com.aiteachme.android.feature.files.presentation.formatFileSize
@@ -149,6 +150,19 @@ fun CourseBuildScreen(
                 actionLabel = "全局资料库",
                 onAction = onOpenFiles,
             )
+        }
+        item {
+            OutlinedButton(
+                onClick = { viewModel.linkReadyLibraryFiles(courseId) },
+                enabled = !uiState.isLinkingFiles && !uiState.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.isLinkingFiles) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(if (uiState.isLinkingFiles) "正在加入资料" else "从资料库加入已解析资料")
+            }
         }
         if (uiState.isLoading && uiState.files.isEmpty()) {
             item { LoadingBlock("正在加载学习空间资料...") }
@@ -397,13 +411,10 @@ fun KnowledgeDocsScreen(
                 }
             } else {
                 item {
-                    MarkdownText(
+                    MarkdownDocument(
                         markdown = markdown,
                         modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        linkColor = MaterialTheme.colorScheme.primary,
                         textSizeSp = MaterialTheme.typography.bodyLarge.fontSize.value,
-                        selectable = true,
                     )
                 }
             }
@@ -422,6 +433,8 @@ fun PracticeScreen(
     contentPadding: PaddingValues,
     onBack: () -> Unit,
     onOpenDocs: (String) -> Unit,
+    onOpenQuestionTemplates: (String) -> Unit = {},
+    onOpenQuestionTypes: (String) -> Unit = {},
     onOpenPaper: (String, Int) -> Unit,
     workspaceViewModel: CourseWorkspaceViewModel = viewModel(),
     practiceViewModel: PracticeViewModel = viewModel(),
@@ -470,6 +483,12 @@ fun PracticeScreen(
             }
             item { FeedbackMessages(workspaceState) }
             item { PracticeFeedbackMessages(practiceState) }
+            item {
+                PracticeManagementLinks(
+                    onOpenQuestionTemplates = { onOpenQuestionTemplates(courseId) },
+                    onOpenQuestionTypes = { onOpenQuestionTypes(courseId) },
+                )
+            }
             if (!docsReady && !workspaceState.isLoading) {
                 item {
                     EmptyBlock(
@@ -774,12 +793,18 @@ private fun ExamQuestionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(question.stem, style = MaterialTheme.typography.bodyMedium)
+            MarkdownText(
+                markdown = question.stem,
+                textSizeSp = 15f,
+                color = MaterialTheme.colorScheme.onSurface,
+                linkColor = MaterialTheme.colorScheme.primary,
+            )
             question.options.orEmpty().forEachIndexed { index, option ->
-                Text(
-                    "${('A'.code + index).toChar()}. $option",
-                    style = MaterialTheme.typography.bodySmall,
+                MarkdownText(
+                    markdown = "${('A'.code + index).toChar()}. $option",
+                    textSizeSp = 13f,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    linkColor = MaterialTheme.colorScheme.primary,
                 )
             }
             OutlinedTextField(
@@ -804,13 +829,19 @@ private fun ExamQuestionCard(
                     fontWeight = FontWeight.SemiBold,
                 )
                 question.correctAnswer?.takeIf { it.isNotBlank() }?.let { correct ->
-                    Text("参考答案：$correct", style = MaterialTheme.typography.bodySmall)
+                    MarkdownText(
+                        markdown = "参考答案：$correct",
+                        textSizeSp = 13f,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        linkColor = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 question.explanation.takeIf { it.isNotBlank() }?.let { explanation ->
-                    Text(
-                        explanation,
-                        style = MaterialTheme.typography.bodySmall,
+                    MarkdownText(
+                        markdown = explanation,
+                        textSizeSp = 13f,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        linkColor = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -893,6 +924,38 @@ private fun examModeLabel(mode: String): String {
     return PracticeMode.fromApiValue(mode).label
 }
 
+@Composable
+private fun PracticeManagementLinks(
+    onOpenQuestionTemplates: () -> Unit,
+    onOpenQuestionTypes: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("题库管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "查看知识构建产出的题库模板、答题历史和题型注册表。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onOpenQuestionTemplates, modifier = Modifier.weight(1f)) {
+                    Text("题库模板")
+                }
+                OutlinedButton(onClick = onOpenQuestionTypes, modifier = Modifier.weight(1f)) {
+                    Text("题型注册表")
+                }
+            }
+        }
+    }
+}
+
 private fun examStatusLabel(status: String): String {
     return when (status.lowercase()) {
         "accepted", "pending", "queued", "running", "generating", "preparing" -> "生成中"
@@ -916,6 +979,14 @@ fun ProfileScreen(
     onOpenPractice: (String) -> Unit,
     viewModel: CourseWorkspaceViewModel = viewModel(),
 ) {
+    ProfileDashboardScreen(
+        courseId = courseId,
+        contentPadding = contentPadding,
+        onBack = onBack,
+        onOpenPractice = onOpenPractice,
+    )
+    return
+
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(courseId) {
@@ -967,6 +1038,14 @@ fun CourseSettingsScreen(
     onOpenBuild: (String) -> Unit,
     viewModel: CourseWorkspaceViewModel = viewModel(),
 ) {
+    SettingsDashboardScreen(
+        courseId = courseId,
+        contentPadding = contentPadding,
+        onBack = onBack,
+        onOpenBuild = onOpenBuild,
+    )
+    return
+
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(courseId) {

@@ -644,12 +644,12 @@
         }
       }
     },
-    "/api/v1/courses/draft": {
+    "/api/v1/courses/add": {
       "post": {
         "tags": [
           "courses"
         ],
-        "summary": "创建课程草稿",
+        "summary": "创建课程",
         "operationId": "create_course_draft_api_api_v1_courses_draft_post",
         "responses": {
           "200": {

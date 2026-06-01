@@ -187,7 +187,7 @@ enum class BackendApiEndpoint(
     CREATE_COURSE_DRAFT_API_API_V1_COURSES_DRAFT_POST(
         operationId = "create_course_draft_api_api_v1_courses_draft_post",
         method = BackendHttpMethod.POST,
-        path = "/api/v1/courses/draft",
+        path = "/api/v1/courses/add",
         tags = listOf("courses"),
         summary = "创建课程",
         pathParams = emptyList(),

@@ -52,10 +52,13 @@ import com.aiteachme.android.feature.chat.presentation.GlobalAssistantEntryScree
 import com.aiteachme.android.feature.course.presentation.CourseBuildScreen
 import com.aiteachme.android.feature.course.presentation.CourseSettingsScreen
 import com.aiteachme.android.feature.course.presentation.ExamPaperScreen
+import com.aiteachme.android.feature.course.presentation.KnowledgeGraphScreen
 import com.aiteachme.android.feature.course.presentation.KnowledgeDocsScreen
 import com.aiteachme.android.feature.course.presentation.MasteryDrillScreen
 import com.aiteachme.android.feature.course.presentation.PracticeScreen
 import com.aiteachme.android.feature.course.presentation.ProfileScreen
+import com.aiteachme.android.feature.course.presentation.QuestionTemplatesScreen
+import com.aiteachme.android.feature.course.presentation.QuestionTypesScreen
 import com.aiteachme.android.feature.files.presentation.FileDetailScreen
 import com.aiteachme.android.feature.files.presentation.FileLibraryScreen
 import com.aiteachme.android.feature.home.presentation.HomeScreen
@@ -86,7 +89,10 @@ private object AppRoute {
     const val Mine = "mine"
     const val CourseBuild = "courses/{courseId}/build?initialPrompt={initialPrompt}"
     const val CourseDocs = "courses/{courseId}/docs"
+    const val CourseKnowledgeGraph = "courses/{courseId}/knowledge-graph"
     const val CoursePractice = "courses/{courseId}/practice"
+    const val CourseQuestionTemplates = "courses/{courseId}/question-templates"
+    const val CourseQuestionTypes = "courses/{courseId}/question-types"
     const val CourseMasteryDrill = "courses/{courseId}/mastery-drill"
     const val CourseExamPaper = "courses/{courseId}/exams/{examPaperId}"
     const val CourseProfile = "courses/{courseId}/profile"
@@ -122,7 +128,10 @@ private object AppRoute {
         }
     }
     fun courseDocs(courseId: String) = "courses/$courseId/docs"
+    fun courseKnowledgeGraph(courseId: String) = "courses/$courseId/knowledge-graph"
     fun coursePractice(courseId: String) = "courses/$courseId/practice"
+    fun courseQuestionTemplates(courseId: String) = "courses/$courseId/question-templates"
+    fun courseQuestionTypes(courseId: String) = "courses/$courseId/question-types"
     fun courseMasteryDrill(courseId: String) = "courses/$courseId/mastery-drill"
     fun courseExamPaper(courseId: String, examPaperId: Int) = "courses/$courseId/exams/$examPaperId"
     fun courseProfile(courseId: String) = "courses/$courseId/profile"
@@ -139,13 +148,13 @@ fun AiTeachMeApp() {
     val safePadding = WindowInsets.safeDrawing.asPaddingValues()
     val pageContentPadding = PaddingValues(
         start = safePadding.calculateStartPadding(layoutDirection),
-        top = 0.dp,
+        top = safePadding.calculateTopPadding() + 10.dp,
         end = safePadding.calculateEndPadding(layoutDirection),
         bottom = safePadding.calculateBottomPadding() + 94.dp,
     )
     val childContentPadding = PaddingValues(
         start = safePadding.calculateStartPadding(layoutDirection),
-        top = 0.dp,
+        top = safePadding.calculateTopPadding() + 10.dp,
         end = safePadding.calculateEndPadding(layoutDirection),
         bottom = safePadding.calculateBottomPadding(),
     )
@@ -232,6 +241,7 @@ fun AiTeachMeApp() {
                     },
                     onOpenBuild = { courseId -> navController.navigate(AppRoute.courseBuild(courseId)) },
                     onOpenDocs = { courseId -> navController.navigate(AppRoute.courseDocs(courseId)) },
+                    onOpenKnowledgeGraph = { courseId -> navController.navigate(AppRoute.courseKnowledgeGraph(courseId)) },
                     onOpenPractice = { courseId -> navController.navigate(AppRoute.coursePractice(courseId)) },
                     onOpenMasteryDrill = { courseId -> navController.navigate(AppRoute.courseMasteryDrill(courseId)) },
                     onOpenProfile = { courseId -> navController.navigate(AppRoute.courseProfile(courseId)) },
@@ -345,6 +355,19 @@ fun AiTeachMeApp() {
                 )
             }
             composable(
+                route = AppRoute.CourseKnowledgeGraph,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
+                KnowledgeGraphScreen(
+                    courseId = courseId,
+                    contentPadding = childContentPadding,
+                    onBack = { navigateBackToLearn() },
+                    onOpenDocs = { targetCourseId -> navController.navigate(AppRoute.courseDocs(targetCourseId)) },
+                )
+            }
+            composable(
                 route = AppRoute.CoursePractice,
                 arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
             ) { entry ->
@@ -355,9 +378,42 @@ fun AiTeachMeApp() {
                     contentPadding = childContentPadding,
                     onBack = { navigateBackToLearn() },
                     onOpenDocs = { targetCourseId -> navController.navigate(AppRoute.courseDocs(targetCourseId)) },
+                    onOpenQuestionTemplates = { targetCourseId ->
+                        navController.navigate(AppRoute.courseQuestionTemplates(targetCourseId))
+                    },
+                    onOpenQuestionTypes = { targetCourseId ->
+                        navController.navigate(AppRoute.courseQuestionTypes(targetCourseId))
+                    },
                     onOpenPaper = { targetCourseId, paperId ->
                         navController.navigate(AppRoute.courseExamPaper(targetCourseId, paperId))
                     },
+                )
+            }
+            composable(
+                route = AppRoute.CourseQuestionTemplates,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
+                QuestionTemplatesScreen(
+                    courseId = courseId,
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
+                    onOpenPaper = { targetCourseId, paperId ->
+                        navController.navigate(AppRoute.courseExamPaper(targetCourseId, paperId))
+                    },
+                )
+            }
+            composable(
+                route = AppRoute.CourseQuestionTypes,
+                arguments = listOf(navArgument("courseId") { type = NavType.StringType }),
+            ) { entry ->
+                val courseId = entry.arguments?.getString("courseId").orEmpty()
+                TrackCurrentCourse(courseId)
+                QuestionTypesScreen(
+                    courseId = courseId,
+                    contentPadding = childContentPadding,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(

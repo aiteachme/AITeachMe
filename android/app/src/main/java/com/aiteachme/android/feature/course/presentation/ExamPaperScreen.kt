@@ -576,7 +576,12 @@ private fun StudyFocusUnits(units: List<ExamStudyGuideFocusUnit>) {
                     unit.masteryScore?.let {
                         Text("掌握度 ${formatPercent(it)}", style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(unit.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MarkdownText(
+                        markdown = unit.reason,
+                        textSizeSp = 13f,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        linkColor = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
         }
@@ -591,7 +596,13 @@ private fun StudyGuideSection(title: String, items: List<String>) {
         items.forEachIndexed { index, item ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${index + 1}.", color = MaterialTheme.colorScheme.primary)
-                Text(item, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                MarkdownText(
+                    markdown = item,
+                    modifier = Modifier.weight(1f),
+                    textSizeSp = 15f,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    linkColor = MaterialTheme.colorScheme.primary,
+                )
             }
         }
     }

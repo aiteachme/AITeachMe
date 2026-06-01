@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aiteachme.android.core.network.dto.FileRecord
+import com.aiteachme.android.core.ui.MarkdownText
 
 @Composable
 fun FileLibraryScreen(
@@ -536,12 +537,12 @@ private fun FileCard(
             }
 
             if (file.markdownReady && file.markdownContent.isNotBlank()) {
-                Text(
-                    text = file.markdownContent.trim(),
-                    style = MaterialTheme.typography.bodySmall,
+                MarkdownText(
+                    markdown = file.markdownContent.trim(),
+                    textSizeSp = 13f,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    linkColor = MaterialTheme.colorScheme.primary,
                     maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

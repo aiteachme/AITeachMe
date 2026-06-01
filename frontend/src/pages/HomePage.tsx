@@ -141,7 +141,7 @@ async function importDemoCourse(filename: string, newName?: string): Promise<Imp
 async function createDraftCourse(): Promise<CourseItem> {
   const response = await apiClient<ApiResponse<CourseItem>>({
     method: "POST",
-    url: `/api/v1/courses/draft`,
+    url: `/api/v1/courses/add`,
     data: {},
   });
   return response.data;

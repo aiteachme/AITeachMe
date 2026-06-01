@@ -3,15 +3,7 @@ package com.aiteachme.android.core.data.repository
 import com.aiteachme.android.core.network.ApiConfig
 import com.aiteachme.android.core.network.AiTeachMeApi
 import com.aiteachme.android.core.network.NetworkModule
-import com.aiteachme.android.core.network.dto.BuildPlannerCreateRequest
-import com.aiteachme.android.core.network.dto.BuildPlannerConfirmResponse
-import com.aiteachme.android.core.network.dto.BuildPlannerDoneData
-import com.aiteachme.android.core.network.dto.BuildPlannerSessionResponse
-import com.aiteachme.android.core.network.dto.BuildPlannerStatusData
-import com.aiteachme.android.core.network.dto.ChatErrorData
-import com.aiteachme.android.core.network.dto.DocGenBuildData
-import com.aiteachme.android.core.network.dto.DocGenBuildRequest
-import com.aiteachme.android.core.network.dto.DocGenGetResponse
+import com.aiteachme.android.core.network.dto.*
 import com.aiteachme.android.core.session.SessionStore
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -47,6 +39,96 @@ class KnowledgeRepository(
             throw IllegalStateException(response.message.ifBlank { "知识文档加载失败" })
         }
         return response.data ?: DocGenGetResponse()
+    }
+
+    suspend fun getKnowledgeGraph(courseId: String): FullGraphResponse {
+        val response = api.getKnowledgeGraph(courseId)
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识图谱加载失败" })
+        }
+        return response.data ?: FullGraphResponse()
+    }
+
+    suspend fun getKnowledgeOverview(courseId: String): KnowledgeOverviewResponse {
+        val response = api.getKnowledgeOverview(
+            courseId = courseId,
+            request = KnowledgeOverviewRequest(include = listOf("graph", "stats", "vector_status")),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识概览加载失败" })
+        }
+        return response.data ?: KnowledgeOverviewResponse(courseId = courseId)
+    }
+
+    suspend fun listKnowledgeUnits(
+        courseId: String,
+        keyword: String? = null,
+        type: String? = null,
+        page: Int = 1,
+        size: Int = 60,
+    ): PaginatedData<KnowledgeUnitResponse> {
+        val response = api.listKnowledgeUnits(
+            courseId = courseId,
+            request = KnowledgeUnitsQueryRequest(
+                page = page,
+                size = size,
+                keyword = keyword?.takeIf { it.isNotBlank() },
+                knowledgeUnitType = type?.takeIf { it.isNotBlank() },
+            ),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识点列表加载失败" })
+        }
+        return response.data ?: PaginatedData()
+    }
+
+    suspend fun getKnowledgeUnitDetail(courseId: String, unitId: Int): KnowledgeUnitDetailResponse {
+        val response = api.getKnowledgeUnitDetail(
+            courseId = courseId,
+            request = KnowledgeUnitDetailRequest(knowledgeUnitId = unitId),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识点详情加载失败" })
+        }
+        return response.data ?: KnowledgeUnitDetailResponse(id = unitId, courseId = courseId)
+    }
+
+    suspend fun getKnowledgeUnitRelations(courseId: String, unitId: Int): List<KnowledgeRelationResponse> {
+        val response = api.getKnowledgeUnitRelations(
+            courseId = courseId,
+            request = KnowledgeUnitRelationsRequest(knowledgeUnitId = unitId),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识点关系加载失败" })
+        }
+        return response.data.orEmpty()
+    }
+
+    suspend fun getKnowledgeSubgraph(courseId: String, unitId: Int? = null): KnowledgeSubgraphResponse {
+        val response = api.getKnowledgeSubgraph(
+            courseId = courseId,
+            request = KnowledgeSubgraphRequest(centerKnowledgeUnitId = unitId),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识子图加载失败" })
+        }
+        return response.data ?: KnowledgeSubgraphResponse(centerKnowledgeUnitId = unitId)
+    }
+
+    suspend fun startKnowledgeGraphBuild(courseId: String): KnowledgeGraphBuildData {
+        val response = api.startKnowledgeGraphBuild(courseId = courseId)
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识图谱构建启动失败" })
+        }
+        return response.data ?: KnowledgeGraphBuildData(courseId = courseId)
+    }
+
+    suspend fun clearKnowledge(courseId: String): ClearKnowledgeResponse {
+        val response = api.clearKnowledge(courseId = courseId)
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "知识内容清空失败" })
+        }
+        return response.data ?: ClearKnowledgeResponse()
     }
 
     suspend fun startDocsBuild(

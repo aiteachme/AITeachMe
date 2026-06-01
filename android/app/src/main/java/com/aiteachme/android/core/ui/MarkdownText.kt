@@ -1,6 +1,7 @@
 package com.aiteachme.android.core.ui
 
 import android.text.method.LinkMovementMethod
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.TextView
@@ -25,6 +26,7 @@ fun MarkdownText(
     linkColor: Color = Color.Unspecified,
     textSizeSp: Float = 16f,
     selectable: Boolean = false,
+    maxLines: Int? = null,
 ) {
     val context = LocalContext.current
     val latexTextSizePx = remember(context, textSizeSp) {
@@ -48,6 +50,9 @@ fun MarkdownText(
     }
     val textColor = color.takeOrElse(Color.Black).toArgb()
     val resolvedLinkColor = linkColor.takeOrElse(Color(0xFF0B72FF)).toArgb()
+    val normalizedMarkdown = remember(markdown) {
+        normalizeLatexDelimiters(markdown)
+    }
 
     AndroidView(
         modifier = modifier,
@@ -68,9 +73,55 @@ fun MarkdownText(
             textView.setLinkTextColor(resolvedLinkColor)
             textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
             textView.setTextIsSelectable(selectable)
-            markwon.setMarkdown(textView, markdown)
+            textView.maxLines = maxLines ?: Int.MAX_VALUE
+            textView.ellipsize = if (maxLines == null) null else TextUtils.TruncateAt.END
+            markwon.setMarkdown(textView, normalizedMarkdown)
         },
     )
+}
+
+private val fencedCodeRegex = Regex("""(?s)(```.*?```|~~~.*?~~~)""")
+private val displayBracketMathRegex = Regex("""\\\[([\s\S]*?)\\\]""")
+private val inlineParenMathRegex = Regex("""\\\(([\s\S]*?)\\\)""")
+private val latexEnvironmentRegex = Regex(
+    """\\begin\{(equation\*?|align\*?|gather\*?|multline\*?)\}([\s\S]*?)\\end\{\1\}""",
+)
+
+private fun normalizeLatexDelimiters(markdown: String): String {
+    if (markdown.isBlank()) {
+        return markdown
+    }
+
+    val builder = StringBuilder(markdown.length)
+    var cursor = 0
+    fencedCodeRegex.findAll(markdown).forEach { match ->
+        if (match.range.first > cursor) {
+            builder.append(normalizeLatexSegment(markdown.substring(cursor, match.range.first)))
+        }
+        builder.append(match.value)
+        cursor = match.range.last + 1
+    }
+    if (cursor < markdown.length) {
+        builder.append(normalizeLatexSegment(markdown.substring(cursor)))
+    }
+    return builder.toString()
+}
+
+private fun normalizeLatexSegment(segment: String): String {
+    return latexEnvironmentRegex
+        .replace(segment) { match ->
+            "\n\n${'$'}${'$'}\n${match.groupValues[2].trim()}\n${'$'}${'$'}\n\n"
+        }
+        .let { normalized ->
+            displayBracketMathRegex.replace(normalized) { match ->
+                "\n\n${'$'}${'$'}\n${match.groupValues[1].trim()}\n${'$'}${'$'}\n\n"
+            }
+        }
+        .let { normalized ->
+            inlineParenMathRegex.replace(normalized) { match ->
+                "${'$'}${match.groupValues[1].trim()}${'$'}"
+            }
+        }
 }
 
 private fun Color.takeOrElse(fallback: Color): Color {

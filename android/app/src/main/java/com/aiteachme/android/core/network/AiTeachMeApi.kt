@@ -1,48 +1,11 @@
 package com.aiteachme.android.core.network
 
-import com.aiteachme.android.core.network.dto.ApiResponse
-import com.aiteachme.android.core.network.dto.AuthSessionData
-import com.aiteachme.android.core.network.dto.BuildPlannerConfirmResponse
-import com.aiteachme.android.core.network.dto.ChatListRequest
-import com.aiteachme.android.core.network.dto.ChatMessageItem
-import com.aiteachme.android.core.network.dto.ChatSessionCreateData
-import com.aiteachme.android.core.network.dto.ChatSessionCreateRequest
-import com.aiteachme.android.core.network.dto.ChatSessionDeleteData
-import com.aiteachme.android.core.network.dto.ChatSessionDeleteRequest
-import com.aiteachme.android.core.network.dto.ChatSessionItem
-import com.aiteachme.android.core.network.dto.ChatSessionListRequest
-import com.aiteachme.android.core.network.dto.CourseDeleteData
-import com.aiteachme.android.core.network.dto.CourseDeletePreviewData
-import com.aiteachme.android.core.network.dto.CourseDeletePreviewRequest
-import com.aiteachme.android.core.network.dto.CourseDeleteRequest
-import com.aiteachme.android.core.network.dto.CourseItem
-import com.aiteachme.android.core.network.dto.DocGenBuildData
-import com.aiteachme.android.core.network.dto.DocGenBuildRequest
-import com.aiteachme.android.core.network.dto.DocGenGetResponse
-import com.aiteachme.android.core.network.dto.ExamGenerateRequest
-import com.aiteachme.android.core.network.dto.ExamGenerateResponse
-import com.aiteachme.android.core.network.dto.ExamGradeResponse
-import com.aiteachme.android.core.network.dto.ExamHistoryItem
-import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
-import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
-import com.aiteachme.android.core.network.dto.ExamSubmitRequest
-import com.aiteachme.android.core.network.dto.FileDeleteData
-import com.aiteachme.android.core.network.dto.FileDeleteRequest
-import com.aiteachme.android.core.network.dto.FilesData
-import com.aiteachme.android.core.network.dto.FilesUploadData
-import com.aiteachme.android.core.network.dto.LoginRequest
-import com.aiteachme.android.core.network.dto.LogoutRequest
-import com.aiteachme.android.core.network.dto.PageRequest
-import com.aiteachme.android.core.network.dto.PaginatedData
-import com.aiteachme.android.core.network.dto.HealthData
-import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
-import com.aiteachme.android.core.network.dto.RegisterRequest
-import com.aiteachme.android.core.network.dto.SendEmailCodeData
-import com.aiteachme.android.core.network.dto.SendEmailCodeRequest
+import com.aiteachme.android.core.network.dto.*
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -57,7 +20,7 @@ interface AiTeachMeApi {
         @Body request: PageRequest = PageRequest(),
     ): ApiResponse<PaginatedData<CourseItem>>
 
-    @POST("/api/v1/courses/draft")
+    @POST("/api/v1/courses/add")
     suspend fun createDraftCourse(
         @Body request: Map<String, String> = emptyMap(),
     ): ApiResponse<CourseItem>
@@ -113,8 +76,27 @@ interface AiTeachMeApi {
         @Part files: List<MultipartBody.Part>,
     ): ApiResponse<FilesUploadData>
 
+    @Multipart
+    @POST("/api/v1/courses/{course_id}/files/upload")
+    suspend fun uploadCourseFiles(
+        @Path("course_id") courseId: String,
+        @Part files: List<MultipartBody.Part>,
+    ): ApiResponse<FilesUploadData>
+
+    @POST("/api/v1/courses/{course_id}/files/link")
+    suspend fun linkCourseFiles(
+        @Path("course_id") courseId: String,
+        @Body request: CourseFilesLinkRequest,
+    ): ApiResponse<FilesData>
+
     @POST("/api/v1/files/delete")
     suspend fun deleteUserFiles(
+        @Body request: FileDeleteRequest,
+    ): ApiResponse<FileDeleteData>
+
+    @POST("/api/v1/courses/{course_id}/files/delete")
+    suspend fun deleteCourseFiles(
+        @Path("course_id") courseId: String,
         @Body request: FileDeleteRequest,
     ): ApiResponse<FileDeleteData>
 
@@ -174,12 +156,78 @@ interface AiTeachMeApi {
         @Body request: DocGenBuildRequest,
     ): ApiResponse<DocGenBuildData>
 
+    @POST("/api/v1/courses/{course_id}/knowledge/build/graph")
+    suspend fun startKnowledgeGraphBuild(
+        @Path("course_id") courseId: String,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<KnowledgeGraphBuildData>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/build/cancel")
+    suspend fun cancelKnowledgeBuild(
+        @Path("course_id") courseId: String,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<KnowledgeGraphBuildData>
+
     @POST("/api/v1/courses/{course_id}/knowledge/build/plans/{session_id}/confirm")
     suspend fun confirmBuildPlannerSession(
         @Path("course_id") courseId: String,
         @Path("session_id") sessionId: String,
         @Body request: Map<String, String> = emptyMap(),
     ): ApiResponse<BuildPlannerConfirmResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/full")
+    suspend fun getKnowledgeGraph(
+        @Path("course_id") courseId: String,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<FullGraphResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/overview")
+    suspend fun getKnowledgeOverview(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeOverviewRequest = KnowledgeOverviewRequest(),
+    ): ApiResponse<KnowledgeOverviewResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/clear")
+    suspend fun clearKnowledge(
+        @Path("course_id") courseId: String,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<ClearKnowledgeResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/knowledge-units")
+    suspend fun listKnowledgeUnits(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeUnitsQueryRequest = KnowledgeUnitsQueryRequest(),
+    ): ApiResponse<PaginatedData<KnowledgeUnitResponse>>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/detail")
+    suspend fun getKnowledgeUnitDetail(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeUnitDetailRequest,
+    ): ApiResponse<KnowledgeUnitDetailResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/relations")
+    suspend fun getKnowledgeUnitRelations(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeUnitRelationsRequest,
+    ): ApiResponse<List<KnowledgeRelationResponse>>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/knowledge-units/path")
+    suspend fun getKnowledgeUnitPath(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeUnitPathRequest,
+    ): ApiResponse<KnowledgePathResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/subgraph")
+    suspend fun getKnowledgeSubgraph(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeSubgraphRequest = KnowledgeSubgraphRequest(),
+    ): ApiResponse<KnowledgeSubgraphResponse>
+
+    @POST("/api/v1/courses/{course_id}/knowledge/graph/relations/explain")
+    suspend fun explainKnowledgeRelation(
+        @Path("course_id") courseId: String,
+        @Body request: KnowledgeRelationExplanationRequest,
+    ): ApiResponse<KnowledgeRelationExplanationResponse>
 
     @POST("/api/v1/courses/{course_id}/exams/generate")
     suspend fun generateExam(
@@ -199,6 +247,26 @@ interface AiTeachMeApi {
         @Path("course_id") courseId: String,
     ): ApiResponse<List<QuestionTemplateItemResponse>>
 
+    @GET("/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/answer-history")
+    suspend fun listQuestionTemplateAnswerHistory(
+        @Path("course_id") courseId: String,
+        @Path("question_template_id") questionTemplateId: Int,
+        @Query("page") page: Int = 1,
+        @Query("size") size: Int = 20,
+    ): ApiResponse<List<QuestionTemplateAnswerHistoryItem>>
+
+    @PATCH("/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/mark")
+    suspend fun markQuestionTemplate(
+        @Path("course_id") courseId: String,
+        @Path("question_template_id") questionTemplateId: Int,
+        @Body request: QuestionTemplateMarkRequest,
+    ): ApiResponse<QuestionTemplateMarkResponse>
+
+    @GET("/api/v1/courses/{course_id}/exams/question-types")
+    suspend fun listQuestionTypes(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<List<QuestionTypeRegistryItemResponse>>
+
     @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}")
     suspend fun getExamDetail(
         @Path("course_id") courseId: String,
@@ -217,4 +285,41 @@ interface AiTeachMeApi {
         @Path("course_id") courseId: String,
         @Path("exam_paper_id") examPaperId: Int,
     ): ApiResponse<ExamStudyGuideResponse>
+
+    @GET("/api/v1/courses/{course_id}/profile/mastery")
+    suspend fun getMasteryOverview(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<MasteryOverviewResponse>
+
+    @GET("/api/v1/courses/{course_id}/profile/study-plan")
+    suspend fun getStudyPlan(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<List<StudyPlanStepResponse>>
+
+    @GET("/api/v1/courses/{course_id}/profile/reviews")
+    suspend fun listReviewTasks(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<List<ReviewTaskResponse>>
+
+    @POST("/api/v1/courses/{course_id}/profile/reviews/{task_id}/complete")
+    suspend fun completeReviewTask(
+        @Path("course_id") courseId: String,
+        @Path("task_id") taskId: Int,
+        @Body request: Map<String, String> = emptyMap(),
+    ): ApiResponse<ReviewTaskResponse>
+
+    @POST("/api/v1/system/settings")
+    suspend fun getSystemSettings(
+        @Body request: InitRequest = InitRequest(),
+    ): ApiResponse<SettingsOverviewData>
+
+    @PATCH("/api/v1/system/settings")
+    suspend fun updateSystemSettings(
+        @Body request: UpdateUserSettingsRequest,
+    ): ApiResponse<SettingsOverviewData>
+
+    @POST("/api/v1/system/feedback")
+    suspend fun submitFeedback(
+        @Body request: FeedbackSubmitRequest,
+    ): ApiResponse<FeedbackSubmitResponse>
 }

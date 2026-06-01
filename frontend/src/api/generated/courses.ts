@@ -71,7 +71,7 @@ export const getCreateCourseDraftApiApiV1CoursesDraftPostUrl = () => {
 
 
 
-  return `/api/v1/courses/draft`
+  return `/api/v1/courses/add`
 }
 
 /**

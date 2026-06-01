@@ -105,6 +105,7 @@ fun HomeScreen(
     onSwitchCourse: ((String) -> Unit)? = null,
     onOpenBuild: (String) -> Unit,
     onOpenDocs: (String) -> Unit,
+    onOpenKnowledgeGraph: (String) -> Unit,
     onOpenPractice: (String) -> Unit,
     onOpenMasteryDrill: (String) -> Unit,
     onOpenProfile: (String) -> Unit,
@@ -163,6 +164,9 @@ fun HomeScreen(
             onOpenDocs = {
                 selectedCourse?.courseId?.let(onOpenDocs) ?: run { showCoursePicker = true }
             },
+            onOpenKnowledgeGraph = {
+                selectedCourse?.courseId?.let(onOpenKnowledgeGraph) ?: run { showCoursePicker = true }
+            },
             onOpenPractice = {
                 selectedCourse?.courseId?.let(onOpenPractice) ?: run { showCoursePicker = true }
             },
@@ -212,6 +216,10 @@ fun HomeScreen(
                 onOpenBuild = {
                     showMorePanel = false
                     onOpenBuild(selectedCourse.courseId)
+                },
+                onOpenKnowledgeGraph = {
+                    showMorePanel = false
+                    onOpenKnowledgeGraph(selectedCourse.courseId)
                 },
                 onOpenPractice = {
                     showMorePanel = false
@@ -266,6 +274,7 @@ private fun SubjectHomeSurface(
     onPickCourse: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenDocs: () -> Unit,
+    onOpenKnowledgeGraph: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenMasteryDrill: () -> Unit,
     onOpenChatPanel: () -> Unit,
@@ -407,12 +416,26 @@ private fun SubjectHomeSurface(
                     onClick = onOpenDocs,
                 )
                 PrimarySubjectAction(
+                    title = "知识图谱",
+                    value = "Graph",
+                    wallpaperBitmap = wallpaperBitmap,
+                    wallpaperContainerSize = wallpaperSize,
+                    wallpaperOriginInRoot = wallpaperOriginInRoot,
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenKnowledgeGraph,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                PrimarySubjectAction(
                     title = "闯关测试",
                     value = "Review",
                     wallpaperBitmap = wallpaperBitmap,
                     wallpaperContainerSize = wallpaperSize,
                     wallpaperOriginInRoot = wallpaperOriginInRoot,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = onOpenMasteryDrill,
                 )
             }
@@ -700,6 +723,7 @@ private fun MoreFunctionsPanel(
     course: CourseItem,
     onClose: () -> Unit,
     onOpenBuild: () -> Unit,
+    onOpenKnowledgeGraph: () -> Unit,
     onOpenPractice: () -> Unit,
     onOpenMasteryDrill: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -765,9 +789,15 @@ private fun MoreFunctionsPanel(
                         onClick = onOpenPractice,
                     )
                     MoreFunctionItem(
+                        title = "知识图谱",
+                        subtitle = "查看当前学科的知识点和关系网络",
+                        icon = Icons.Outlined.SwapHoriz,
+                        onClick = onOpenKnowledgeGraph,
+                    )
+                    MoreFunctionItem(
                         title = "闯关测试",
                         subtitle = "从题库模板抽题即时闯关，不生成试卷记录",
-                        icon = Icons.Outlined.SwapHoriz,
+                        icon = Icons.Outlined.Quiz,
                         onClick = onOpenMasteryDrill,
                     )
                     MoreFunctionItem(

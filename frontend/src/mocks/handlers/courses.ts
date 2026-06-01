@@ -49,7 +49,7 @@ export const courseHandlers = [
     });
   }),
 
-  http.post("/api/v1/courses/draft", () => {
+  http.post("/api/v1/courses/add", () => {
     const now = new Date().toISOString();
     const newCourse: CourseItem = {
       course_id: buildMockCourseId(),

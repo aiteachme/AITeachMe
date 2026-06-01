@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aiteachme.android.core.network.dto.FileRecord
+import com.aiteachme.android.core.ui.MarkdownDocument
 
 @Composable
 fun FileDetailScreen(
@@ -156,10 +157,9 @@ private fun FileMarkdownCard(file: FileRecord) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("解析正文", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                text = file.markdownContent.takeIf { it.isNotBlank() } ?: "解析完成后会在这里显示 Markdown 正文。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+            MarkdownDocument(
+                markdown = file.markdownContent.takeIf { it.isNotBlank() } ?: "解析完成后会在这里显示 Markdown 正文。",
+                textSizeSp = 15f,
             )
         }
     }
