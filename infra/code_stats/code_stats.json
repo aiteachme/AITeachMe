@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-25T03:29:34.915719",
-  "total_commits_analyzed": 1747,
+  "generated_at": "2026-06-01T03:41:07.578359",
+  "total_commits_analyzed": 1767,
   "stats": [
     {
       "date": "2026-03-11",
@@ -13977,6 +13977,166 @@
       "code_lines": 175897,
       "other_lines": 35466,
       "message": "fix: 恢复启动期 OpenAPI 同步开关"
+    },
+    {
+      "date": "2026-05-23",
+      "commit": "ed80035",
+      "total_lines": 211487,
+      "code_lines": 176000,
+      "other_lines": 35487,
+      "message": "feat(ingest): 支持 PPTX 本地解析"
+    },
+    {
+      "date": "2026-05-25",
+      "commit": "b95923e",
+      "total_lines": 211363,
+      "code_lines": 175897,
+      "other_lines": 35466,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "64adbdd",
+      "total_lines": 211622,
+      "code_lines": 176121,
+      "other_lines": 35501,
+      "message": "feat(ingest): PPTX 优先走 MinerU 解析"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "5c5d361",
+      "total_lines": 211622,
+      "code_lines": 176121,
+      "other_lines": 35501,
+      "message": "feat: 合并 dev_cy 的 PPTX 本地解析支持"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "c169e85",
+      "total_lines": 211622,
+      "code_lines": 176121,
+      "other_lines": 35501,
+      "message": "chore: release v0.1.0"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "6771cdb",
+      "total_lines": 211820,
+      "code_lines": 176301,
+      "other_lines": 35519,
+      "message": "fix: 修复 atmx 导入聊天引用重映射"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "5c44baa",
+      "total_lines": 211979,
+      "code_lines": 176440,
+      "other_lines": 35539,
+      "message": "fix: 修复规划调整空意图和重复生成"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "cf65843",
+      "total_lines": 212092,
+      "code_lines": 176529,
+      "other_lines": 35563,
+      "message": "fix: 修复 OSS 大文件上传缺少 Content-Length"
+    },
+    {
+      "date": "2026-05-30",
+      "commit": "da2e606",
+      "total_lines": 212074,
+      "code_lines": 176513,
+      "other_lines": 35561,
+      "message": "fix: 修复默认测试环境缺少云依赖"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "366a037",
+      "total_lines": 212116,
+      "code_lines": 176538,
+      "other_lines": 35578,
+      "message": "fix: 更新考试配置和按钮文本，调整测试功能逻辑"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "c0e4f5f",
+      "total_lines": 212636,
+      "code_lines": 176999,
+      "other_lines": 35637,
+      "message": "feat: 添加 Android 客户端基础结构和功能，包括网络模块、UI 主题和首页"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "27f8430",
+      "total_lines": 212678,
+      "code_lines": 177027,
+      "other_lines": 35651,
+      "message": "feat: Add Tauri desktop packaging support and rela"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "c4029cf",
+      "total_lines": 212673,
+      "code_lines": 177023,
+      "other_lines": 35650,
+      "message": "feat: 更新 Android 项目以支持 SDK Platform 36.1 和 Gradle "
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "92e5e30",
+      "total_lines": 220235,
+      "code_lines": 184147,
+      "other_lines": 36088,
+      "message": "feat: implement HomeViewModel for course managemen"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "b0ed288",
+      "total_lines": 221697,
+      "code_lines": 185542,
+      "other_lines": 36155,
+      "message": "feat: add New Course and Learning Spaces features"
+    },
+    {
+      "date": "2026-05-31",
+      "commit": "42db3fd",
+      "total_lines": 222232,
+      "code_lines": 186045,
+      "other_lines": 36187,
+      "message": "feat: 添加 Mastery Drill 页面及相关功能，优化 ChatCitationList"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "ff7efd7",
+      "total_lines": 224469,
+      "code_lines": 188137,
+      "other_lines": 36332,
+      "message": "feat: Add PracticeViewModel for exam generation an"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "f2b289d",
+      "total_lines": 226560,
+      "code_lines": 190056,
+      "other_lines": 36504,
+      "message": "feat: Add Mastery Drill feature with ViewModel and"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "6614d2d",
+      "total_lines": 228156,
+      "code_lines": 191539,
+      "other_lines": 36617,
+      "message": "feat: Implement Knowledge Graph feature with UI an"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "c815236",
+      "total_lines": 229801,
+      "code_lines": 193089,
+      "other_lines": 36712,
+      "message": "feat: Add Profile Dashboard and ViewModel for cour"
     }
   ]
 }
