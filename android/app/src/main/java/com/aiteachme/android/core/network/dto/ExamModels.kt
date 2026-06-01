@@ -128,6 +128,82 @@ data class QuestionTemplateItemResponse(
     val updatedAt: String = "",
 )
 
+data class QuestionTemplateAnswerHistoryItem(
+    @SerializedName("exam_paper_id")
+    val examPaperId: Int = 0,
+    @SerializedName("exam_paper_item_id")
+    val examPaperItemId: Int = 0,
+    @SerializedName("item_order")
+    val itemOrder: Int = 0,
+    @SerializedName("exam_mode")
+    val examMode: String = "",
+    @SerializedName("exam_status")
+    val examStatus: String = "",
+    @SerializedName("submitted_at")
+    val submittedAt: String? = null,
+    @SerializedName("graded_at")
+    val gradedAt: String? = null,
+    @SerializedName("answered_at")
+    val answeredAt: String? = null,
+    @SerializedName("user_answer")
+    val userAnswer: String = "",
+    @SerializedName("correct_answer")
+    val correctAnswer: String = "",
+    @SerializedName("is_correct")
+    val isCorrect: Boolean? = null,
+    @SerializedName("score_obtained")
+    val scoreObtained: Double? = null,
+    @SerializedName("score_max")
+    val scoreMax: Double? = null,
+    @SerializedName("error_cause_label")
+    val errorCauseLabel: String? = null,
+    @SerializedName("feedback_text")
+    val feedbackText: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String = "",
+)
+
+data class QuestionTemplateMarkRequest(
+    @SerializedName("is_marked")
+    val isMarked: Boolean,
+)
+
+data class QuestionTemplateMarkResponse(
+    @SerializedName("question_template_id")
+    val questionTemplateId: Int = 0,
+    @SerializedName("is_marked")
+    val isMarked: Boolean = false,
+)
+
+data class QuestionTypeRegistryItemResponse(
+    val id: Int = 0,
+    @SerializedName("type_key")
+    val typeKey: String = "",
+    @SerializedName("display_name")
+    val displayName: String = "",
+    val scope: String = "",
+    @SerializedName("course_id")
+    val courseId: String = "",
+    val description: String = "",
+    @SerializedName("answer_format")
+    val answerFormat: String = "",
+    @SerializedName("grading_method")
+    val gradingMethod: String = "",
+    @SerializedName("option_schema")
+    val optionSchema: Map<String, Any?> = emptyMap(),
+    val rubric: Map<String, Any?> = emptyMap(),
+    val source: String = "",
+    val confidence: Double = 0.0,
+    @SerializedName("is_system")
+    val isSystem: Boolean = false,
+    @SerializedName("is_active")
+    val isActive: Boolean = false,
+    @SerializedName("created_at")
+    val createdAt: String = "",
+    @SerializedName("updated_at")
+    val updatedAt: String = "",
+)
+
 data class PaperPreviewRow(
     val order: Int = 0,
     val type: String = "",

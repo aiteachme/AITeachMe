@@ -9,7 +9,11 @@ import com.aiteachme.android.core.network.dto.ExamHistoryItem
 import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
 import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.network.dto.ExamSubmitRequest
+import com.aiteachme.android.core.network.dto.QuestionTemplateAnswerHistoryItem
 import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
+import com.aiteachme.android.core.network.dto.QuestionTemplateMarkRequest
+import com.aiteachme.android.core.network.dto.QuestionTemplateMarkResponse
+import com.aiteachme.android.core.network.dto.QuestionTypeRegistryItemResponse
 
 class ExamRepository(
     private val api: AiTeachMeApi,
@@ -35,6 +39,37 @@ class ExamRepository(
     suspend fun listQuestionTemplates(courseId: String): List<QuestionTemplateItemResponse> {
         return api.listQuestionTemplates(courseId = courseId)
             .requireData("题库模板加载失败")
+    }
+
+    suspend fun listQuestionTemplateAnswerHistory(
+        courseId: String,
+        questionTemplateId: Int,
+        page: Int = 1,
+        size: Int = 20,
+    ): List<QuestionTemplateAnswerHistoryItem> {
+        return api.listQuestionTemplateAnswerHistory(
+            courseId = courseId,
+            questionTemplateId = questionTemplateId,
+            page = page,
+            size = size,
+        ).requireData("题目答题历史加载失败")
+    }
+
+    suspend fun markQuestionTemplate(
+        courseId: String,
+        questionTemplateId: Int,
+        isMarked: Boolean,
+    ): QuestionTemplateMarkResponse {
+        return api.markQuestionTemplate(
+            courseId = courseId,
+            questionTemplateId = questionTemplateId,
+            request = QuestionTemplateMarkRequest(isMarked = isMarked),
+        ).requireData("题目标记失败")
+    }
+
+    suspend fun listQuestionTypes(courseId: String): List<QuestionTypeRegistryItemResponse> {
+        return api.listQuestionTypes(courseId = courseId)
+            .requireData("题型注册表加载失败")
     }
 
     suspend fun getExamDetail(

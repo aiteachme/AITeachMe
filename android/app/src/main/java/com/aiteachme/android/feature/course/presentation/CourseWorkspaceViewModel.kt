@@ -26,6 +26,7 @@ data class CourseWorkspaceUiState(
     val isLoading: Boolean = false,
     val isPlanning: Boolean = false,
     val isBuilding: Boolean = false,
+    val isLinkingFiles: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
 )
@@ -135,6 +136,40 @@ class CourseWorkspaceViewModel : ViewModel() {
         }
         viewModelScope.launch {
             startPlannerInternal(courseId = courseId, prompt = prompt)
+        }
+    }
+
+    fun linkReadyLibraryFiles(courseId: String) {
+        if (courseId.isBlank() || _uiState.value.isLinkingFiles) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLinkingFiles = true, errorMessage = null, infoMessage = null) }
+            runCatching {
+                val currentIds = _uiState.value.files.map { it.id }.toSet()
+                val candidates = fileRepository.listFiles().items
+                    .filter { it.markdownReady && it.id !in currentIds }
+                    .map { it.id }
+                if (candidates.isEmpty()) {
+                    0
+                } else {
+                    fileRepository.linkFilesToCourse(courseId, candidates)
+                    candidates.size
+                }
+            }.onSuccess { count ->
+                _uiState.update {
+                    it.copy(
+                        isLinkingFiles = false,
+                        infoMessage = if (count > 0) "已加入 $count 份资料" else "没有可加入的新资料",
+                    )
+                }
+                load(courseId)
+            }.onFailure { throwable ->
+                _uiState.update {
+                    it.copy(
+                        isLinkingFiles = false,
+                        errorMessage = throwable.message ?: throwable::class.java.simpleName,
+                    )
+                }
+            }
         }
     }
 

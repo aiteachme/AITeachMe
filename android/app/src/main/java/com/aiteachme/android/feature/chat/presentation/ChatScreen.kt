@@ -260,7 +260,7 @@ private fun ChatHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 12.dp),
+                .padding(start = 18.dp, top = 30.dp, end = 18.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(

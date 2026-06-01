@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import com.aiteachme.android.core.network.AiTeachMeApi
+import com.aiteachme.android.core.network.dto.CourseFilesLinkRequest
 import com.aiteachme.android.core.network.dto.FileDeleteRequest
 import com.aiteachme.android.core.network.dto.FileRecord
 import com.aiteachme.android.core.network.dto.FilesData
@@ -99,10 +100,51 @@ class FileRepository(
         return response.data ?: FilesUploadData()
     }
 
+    suspend fun uploadCourseFiles(courseId: String, files: List<UploadFileRef>): FilesUploadData {
+        if (files.isEmpty()) {
+            return FilesUploadData(courseId = courseId)
+        }
+        val parts = files.map { file ->
+            MultipartBody.Part.createFormData(
+                name = "files",
+                filename = file.filename,
+                body = ContentUriRequestBody(
+                    contentResolver = contentResolver,
+                    uri = file.uri,
+                    mimeType = file.mimeType,
+                    sizeBytes = file.sizeBytes,
+                ),
+            )
+        }
+        val response = api.uploadCourseFiles(courseId = courseId, files = parts)
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "课程资料上传失败" })
+        }
+        return response.data ?: FilesUploadData(courseId = courseId)
+    }
+
+    suspend fun linkFilesToCourse(courseId: String, fileIds: List<String>): FilesData {
+        val response = api.linkCourseFiles(
+            courseId = courseId,
+            request = CourseFilesLinkRequest(fileIds = fileIds),
+        )
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "资料关联失败" })
+        }
+        return response.data ?: FilesData(courseId = courseId)
+    }
+
     suspend fun deleteFile(fileId: String) {
         val response = api.deleteUserFiles(FileDeleteRequest(fileId = fileId))
         if (response.code != 0) {
             throw IllegalStateException(response.message.ifBlank { "资料删除失败" })
+        }
+    }
+
+    suspend fun deleteCourseFile(courseId: String, fileId: String) {
+        val response = api.deleteCourseFiles(courseId = courseId, request = FileDeleteRequest(fileId = fileId))
+        if (response.code != 0) {
+            throw IllegalStateException(response.message.ifBlank { "课程资料移除失败" })
         }
     }
 

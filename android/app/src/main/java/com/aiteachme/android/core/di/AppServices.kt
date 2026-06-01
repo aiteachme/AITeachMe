@@ -8,6 +8,8 @@ import com.aiteachme.android.core.data.repository.DailyWallpaperRepository
 import com.aiteachme.android.core.data.repository.ExamRepository
 import com.aiteachme.android.core.data.repository.FileRepository
 import com.aiteachme.android.core.data.repository.KnowledgeRepository
+import com.aiteachme.android.core.data.repository.ProfileRepository
+import com.aiteachme.android.core.data.repository.SystemRepository
 import com.aiteachme.android.core.network.AiTeachMeApi
 import com.aiteachme.android.core.network.BackendApiClient
 import com.aiteachme.android.core.network.NetworkModule
@@ -37,6 +39,10 @@ object AppServices {
         private set
     lateinit var examRepository: ExamRepository
         private set
+    lateinit var profileRepository: ProfileRepository
+        private set
+    lateinit var systemRepository: SystemRepository
+        private set
     lateinit var dailyWallpaperRepository: DailyWallpaperRepository
         private set
     lateinit var courseContextStore: CourseContextStore
@@ -59,6 +65,8 @@ object AppServices {
         fileRepository = FileRepository(api = api, context = context.applicationContext)
         knowledgeRepository = KnowledgeRepository(api = api, sessionStore = sessionStore)
         examRepository = ExamRepository(api = api)
+        profileRepository = ProfileRepository(api = api)
+        systemRepository = SystemRepository(api = api)
         dailyWallpaperRepository = DailyWallpaperRepository(context = context.applicationContext)
         dailyWallpaperRepository.loadWallpaperForDisplay()
         appScope.launch {

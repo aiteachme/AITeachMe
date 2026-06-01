@@ -89,6 +89,11 @@ data class FileDeleteRequest(
     val fileIds: List<String>? = null,
 )
 
+data class CourseFilesLinkRequest(
+    @SerializedName("file_ids")
+    val fileIds: List<String> = emptyList(),
+)
+
 data class FileDeleteData(
     @SerializedName("deleted_file_ids")
     val deletedFileIds: List<String> = emptyList(),
