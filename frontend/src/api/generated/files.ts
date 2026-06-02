@@ -414,7 +414,136 @@ export const useDeleteUserFilesApiApiV1FilesDeletePost = <TError = ErrorResponse
       > => {
       return useMutation(getDeleteUserFilesApiApiV1FilesDeletePostMutationOptions(options), queryClient);
     }
-    export type serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGetResponse200 = {
+    export type downloadUserFileApiV1FilesFileIdDownloadGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponseSuccess = (downloadUserFileApiV1FilesFileIdDownloadGetResponse200) & {
+  headers: Headers;
+};
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponseError = (downloadUserFileApiV1FilesFileIdDownloadGetResponse404 | downloadUserFileApiV1FilesFileIdDownloadGetResponse422 | downloadUserFileApiV1FilesFileIdDownloadGetResponse500) & {
+  headers: Headers;
+};
+
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponse = (downloadUserFileApiV1FilesFileIdDownloadGetResponseSuccess | downloadUserFileApiV1FilesFileIdDownloadGetResponseError)
+
+export const getDownloadUserFileApiV1FilesFileIdDownloadGetUrl = (fileId: string,) => {
+
+
+
+
+  return `/api/v1/files/${fileId}/download`
+}
+
+/**
+ * @summary Download parsed markdown file
+ */
+export const downloadUserFileApiV1FilesFileIdDownloadGet = async (fileId: string, options?: RequestInit): Promise<downloadUserFileApiV1FilesFileIdDownloadGetResponse> => {
+
+  return orvalApiClient<downloadUserFileApiV1FilesFileIdDownloadGetResponse>(getDownloadUserFileApiV1FilesFileIdDownloadGetUrl(fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadUserFileApiV1FilesFileIdDownloadGetQueryKey = (fileId: string,) => {
+    return [
+    `/api/v1/files/${fileId}/download`
+    ] as const;
+    }
+
+
+export const getDownloadUserFileApiV1FilesFileIdDownloadGetQueryOptions = <TData = Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError = ErrorResponse | HTTPValidationError>(fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadUserFileApiV1FilesFileIdDownloadGetQueryKey(fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>> = ({ signal }) => downloadUserFileApiV1FilesFileIdDownloadGet(fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadUserFileApiV1FilesFileIdDownloadGetQueryResult = NonNullable<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>>
+export type DownloadUserFileApiV1FilesFileIdDownloadGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>,
+          TError,
+          Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>,
+          TError,
+          Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Download parsed markdown file
+ */
+
+export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadUserFileApiV1FilesFileIdDownloadGetQueryOptions(fileId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+export type serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGetResponse200 = {
   data: unknown
   status: 200
 }
@@ -1164,9 +1293,3 @@ export function useServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet<TDa
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-
-
-
-
-
