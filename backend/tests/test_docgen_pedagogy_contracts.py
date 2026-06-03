@@ -11,7 +11,7 @@ from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_revi
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_heading_repair_messages,

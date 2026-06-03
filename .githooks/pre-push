@@ -4,8 +4,14 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-run_python() {
-  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+run_backend_python() {
+  if command -v uv >/dev/null 2>&1; then
+    uv run python "$@"
+  elif [ -x ".venv/Scripts/python.exe" ]; then
+    .venv/Scripts/python.exe "$@"
+  elif [ -x ".venv/bin/python" ]; then
+    .venv/bin/python "$@"
+  elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
     python "$@"
   elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
     python3 "$@"
@@ -20,7 +26,7 @@ run_python() {
 echo "[pre-push] Verifying OpenAPI and generated API client..."
 (
   cd backend
-  run_python scripts/export_api_docs.py
+  run_backend_python scripts/export_api_docs.py
 )
 
 if ! git diff --quiet -- frontend/openapi.json frontend/src/api/generated ||
