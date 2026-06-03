@@ -41,6 +41,21 @@ function buildMockCourseId() {
   return `course_${Math.random().toString(36).slice(2, 14).padEnd(12, "0").slice(0, 12)}`;
 }
 
+function createMockDraftCourse() {
+  const now = new Date().toISOString();
+  const newCourse: CourseItem = {
+    course_id: buildMockCourseId(),
+    name: "",
+    description: "",
+    user_intent: "",
+    icon_key: "book-open",
+    created_at: now,
+    updated_at: now,
+  };
+  mockCourses.push(newCourse);
+  return HttpResponse.json({ code: 0, data: newCourse }, { status: 201 });
+}
+
 export const courseHandlers = [
   http.post("/api/v1/courses/list", () => {
     return HttpResponse.json({
@@ -49,20 +64,9 @@ export const courseHandlers = [
     });
   }),
 
-  http.post("/api/v1/courses/add", () => {
-    const now = new Date().toISOString();
-    const newCourse: CourseItem = {
-      course_id: buildMockCourseId(),
-      name: "",
-      description: "",
-      user_intent: "",
-      icon_key: "book-open",
-      created_at: now,
-      updated_at: now,
-    };
-    mockCourses.push(newCourse);
-    return HttpResponse.json({ code: 0, data: newCourse }, { status: 201 });
-  }),
+  http.post("/api/v1/courses/draft", createMockDraftCourse),
+
+  http.post("/api/v1/courses/add", createMockDraftCourse),
 
   http.post("/api/v1/courses/update", async ({ request }) => {
     const body = (await request.json()) as {

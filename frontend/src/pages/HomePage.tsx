@@ -145,7 +145,7 @@ async function importDemoCourse(filename: string, newName?: string): Promise<Imp
 async function createDraftCourse(): Promise<CourseItem> {
   const response = await apiClient<ApiResponse<CourseItem>>({
     method: "POST",
-    url: `/api/v1/courses/add`,
+    url: `/api/v1/courses/draft`,
     data: {},
   });
   return response.data;
@@ -155,65 +155,69 @@ const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", f
 
 const HOME_PROMPT_STARTERS = [
   {
-    id: "exam-sprint",
-    label: "考前冲刺",
-    description: "生成冲刺路线",
-    prompt: "我两周后要考试，请把学习内容整理成考前冲刺路线：先生成知识大纲，再标出高频考点，最后给我一组诊断题。",
-    icon: Target,
-  },
-  {
-    id: "concept-guide",
-    label: "看懂概念",
-    description: "一步步启发讲解",
-    prompt: "我总是分不清这个概念和相近概念，请用苏格拉底式提问带我理解，不要直接给最终答案。",
+    id: "middle-school-math",
+    label: "初中数学",
+    description: "基础到压轴题",
+    prompt: "我想系统复习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
     icon: BookOpen,
   },
   {
-    id: "practice-set",
-    label: "生成练习",
-    description: "出题并诊断薄弱点",
-    prompt: "请生成 10 道期末风格练习题，覆盖选择、填空和简答，并在做完后告诉我薄弱点。",
+    id: "high-school-physics",
+    label: "高中物理",
+    description: "力学主线入门",
+    prompt: "我想学习高中物理力学，请构建一门 10 天入门课程：按运动学、受力分析、牛顿定律、功和能、动量守恒划分章节；每章包含概念解释、公式适用条件、典型题型和实验情境。",
+    icon: Target,
+  },
+  {
+    id: "college-calculus",
+    label: "大学高数",
+    description: "微积分体系课",
+    prompt: "我要学习大学高等数学上册，请构建一门 4 周系统课程：按函数与极限、连续、导数与微分、中值定理、不定积分、定积分拆成 8-10 章；每章给出知识框架、重点难点、例题练习和阶段测验。",
     icon: ClipboardList,
   },
   {
-    id: "study-plan",
-    label: "今日计划",
-    description: "安排今晚学习顺序",
-    prompt: "我今晚只有 45 分钟，请帮我安排阅读、练习和复盘顺序，优先处理最容易丢分的知识点。",
+    id: "college-english",
+    label: "大学英语",
+    description: "听说读写规划",
+    prompt: "我想提升大学英语，请构建一门 6 周课程：按词汇、长难句、阅读理解、听力训练、写作表达和口语输出划分章节；每章包含学习目标、练习材料、训练方法、常见错误和每周验收任务。",
     icon: CalendarCheck,
   },
 ] as const;
 
 const HOME_FILE_PROMPT_STARTERS = [
   {
-    id: "files-course",
-    label: "整理资料",
-    description: "变成一门课程",
-    prompt: "请把我上传的资料整理成一门 7 天速成课：先提炼知识大纲，再生成阅读顺序，最后给我配套练习。",
+    id: "files-high-school-chemistry",
+    label: "高中化学",
+    description: "教材重点成课",
+    prompt: "请基于我上传的高中化学资料构建一门系统课程：先识别章节范围和知识主线，再按物质分类、离子反应、氧化还原、物质的量和实验题拆分章节；每章包含核心概念、典型例题、易错点和练习任务。",
     icon: BookOpen,
   },
   {
-    id: "files-keypoints",
-    label: "提炼考点",
-    description: "找重点和易错点",
-    prompt: "请先通读这些资料，提炼最可能影响考试或实操的重点、易错点和前置知识，并按优先级排序。",
+    id: "files-linear-algebra",
+    label: "大学线代",
+    description: "课件整理大纲",
+    prompt: "请基于我上传的大学线性代数课件构建一门 3 周课程：按行列式、矩阵运算、线性方程组、向量空间、特征值与特征向量划分章节；每章包含定义、定理、计算方法、典型题和复盘问题。",
     icon: Target,
   },
   {
-    id: "files-diagnosis",
-    label: "出诊断题",
-    description: "用题目找盲区",
-    prompt: "请基于这些资料生成一组诊断题，题型包含选择、填空和简答；做完后告诉我每个错题对应的知识点。",
+    id: "files-high-school-english",
+    label: "高中英语",
+    description: "阅读语法专题",
+    prompt: "请基于我上传的高中英语资料构建一门专题课程：按词汇积累、语法结构、阅读理解、完形填空、作文表达拆分章节；每章包含学习目标、例句讲解、题型方法、练习安排和错题整理方式。",
     icon: ClipboardList,
   },
   {
-    id: "files-tonight",
-    label: "今晚计划",
-    description: "45 分钟学完一轮",
-    prompt: "我今晚只有 45 分钟，请基于这些资料安排阅读、练习和复盘顺序，优先处理最容易丢分的知识点。",
+    id: "files-computer-basics",
+    label: "计算机基础",
+    description: "大学公共课",
+    prompt: "请基于我上传的大学计算机基础资料构建一门课程：按计算机系统、操作系统、网络基础、数据库基础、程序设计入门和信息安全划分章节；每章包含核心概念、课堂练习、实践任务和阶段测验。",
     icon: CalendarCheck,
   },
 ] as const;
+
+const HOME_PROMPT_TEMPLATE_TEXTS = new Set<string>(
+  [...HOME_PROMPT_STARTERS, ...HOME_FILE_PROMPT_STARTERS].map((starter) => starter.prompt),
+);
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -848,9 +852,11 @@ export function HomePage() {
   const handlePromptStarterClick = useCallback((starterPrompt: string) => {
     const currentPrompt = prompt.trim();
     const nextPrompt = currentPrompt
-      ? currentPrompt.includes(starterPrompt)
-        ? currentPrompt
-        : `${prompt.trimEnd()}\n\n${starterPrompt}`
+      ? HOME_PROMPT_TEMPLATE_TEXTS.has(currentPrompt)
+        ? starterPrompt
+        : currentPrompt.includes(starterPrompt)
+          ? currentPrompt
+          : `${prompt.trimEnd()}\n\n${starterPrompt}`
       : starterPrompt;
 
     setPrompt(nextPrompt);
@@ -898,9 +904,6 @@ export function HomePage() {
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
   const activePromptStarters = hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS;
-  const promptStarterHint = hasEntryFiles
-    ? "这些示例会结合已选择资料生成课程规划。"
-    : "没有资料也可以先输入目标；想看完整闭环可以导入下方演示课程。";
   const generateButtonLabel = isWorking
     ? "正在处理学习规划"
     : canGenerate
@@ -981,7 +984,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="告诉我你要学什么，也可以先上传资料再一起规划"
+              placeholder="描述你想构建的课程：学什么、给谁学、多久学完、希望每章包含什么"
               className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -992,37 +995,6 @@ export function HomePage() {
             />
 
             <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
-              <div className="space-y-2 px-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="mr-0.5 text-[12px] font-medium text-zinc-400 dark:text-slate-500">
-                    学习任务示例
-                  </span>
-                  {activePromptStarters.map((starter) => {
-                    const StarterIcon = starter.icon;
-                    return (
-                      <button
-                        key={starter.id}
-                        type="button"
-                        onClick={() => handlePromptStarterClick(starter.prompt)}
-                        disabled={isWorking}
-                        aria-label={`使用示例：${starter.label}，${starter.description}`}
-                        title={starter.prompt}
-                        className="group inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-zinc-200/80 bg-zinc-50/80 px-3 py-2 text-left text-xs font-medium text-zinc-600 transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
-                      >
-                        <StarterIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-indigo-500 dark:text-slate-500 dark:group-hover:text-indigo-300" />
-                        <span className="shrink-0 font-semibold">{starter.label}</span>
-                        <span className="hidden min-w-0 truncate text-zinc-400 group-hover:text-indigo-500 sm:inline dark:text-slate-500 dark:group-hover:text-indigo-300">
-                          {starter.description}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[12px] leading-5 text-zinc-400 dark:text-slate-500">
-                  {promptStarterHint}
-                </p>
-              </div>
-
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -1137,6 +1109,28 @@ export function HomePage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="mt-3 w-full px-1">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {activePromptStarters.map((starter) => {
+                const StarterIcon = starter.icon;
+                return (
+                  <button
+                    key={starter.id}
+                    type="button"
+                    onClick={() => handlePromptStarterClick(starter.prompt)}
+                    disabled={isWorking}
+                    aria-label={`套用建课模板：${starter.label}，${starter.description}`}
+                    title={starter.prompt}
+                    className="group inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/75 px-3.5 text-xs font-medium text-zinc-500 shadow-sm shadow-zinc-900/[0.03] transition-all hover:border-indigo-200 hover:bg-white hover:text-indigo-700 hover:shadow-md hover:shadow-indigo-900/[0.06] focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900/75 dark:text-slate-400 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900 dark:hover:text-indigo-200"
+                  >
+                    <StarterIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-indigo-500 dark:text-slate-500 dark:group-hover:text-indigo-300" />
+                    <span className="shrink-0">{starter.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </motion.div>
