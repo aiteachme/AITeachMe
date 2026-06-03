@@ -27,7 +27,7 @@ env:
   FRONTEND_ACR_NAMESPACE: aiteachme
   FRONTEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   FRONTEND_IMAGE_NAME: aiteachme-frontend
-  FRONTEND_PUBLIC_URL: https://ghxbqhziktyi.sealosbja.site
+  FRONTEND_PUBLIC_URL: https://aiteachme.cn
   FRONTEND_ROLLOUT_TIMEOUT_SECONDS: "600"
   SEALOS_BACKEND_DEPLOYMENT: atm-d
   SEALOS_FRONTEND_DEPLOYMENT: atm-frontend
