@@ -5,40 +5,41 @@
 import type { SettingsOverviewData } from "../api/generated/model/settingsOverviewData";
 import { ensureSystemSettingsOverviewLoaded } from "./systemSettings";
 
-/**
- * File picker includes a few legacy extensions on purpose so we can show a
- * targeted toast instead of silently hiding them from the user.
- */
-const PICKER_EXTENSIONS = [
-  "pdf",
-  "docx",
-  "doc",
-  "ppt",
-  "pptx",
-  "md",
-  "txt",
-  "jpeg",
-  "jpg",
-  "png",
-  "bmp",
+// Frontend-only UX hints. The backend ingest whitelist remains authoritative.
+const UPLOAD_FILE_TYPES = [
+  { extension: "txt" },
+  { extension: "docx" },
+  { extension: "pptx" },
+  { extension: "pdf" },
+  { extension: "md" },
+  { extension: "jpeg", image: true },
+  { extension: "jpg", image: true },
+  { extension: "png", image: true },
+  { extension: "bmp", image: true },
 ] as const;
 
-/** Real upload support matrix used by the frontend before calling the backend. */
-const SUPPORTED_EXTENSIONS = [
-  "pdf",
-  "docx",
-  "pptx",
-  "md",
-  "txt",
-  "jpeg",
-  "jpg",
-  "png",
-  "bmp",
+/** Upload types used by the frontend for picker filtering and preflight messages. */
+export const SUPPORTED_UPLOAD_EXTENSIONS = UPLOAD_FILE_TYPES.map((item) => item.extension);
+
+/**
+ * Legacy picker entries are intentionally visible so we can show a targeted
+ * conversion toast instead of silently hiding them from the user.
+ */
+const LEGACY_PICKER_EXTENSIONS = [
+  "doc",
+  "ppt",
+] as const;
+
+const PICKER_EXTENSIONS = [
+  ...SUPPORTED_UPLOAD_EXTENSIONS,
+  ...LEGACY_PICKER_EXTENSIONS,
 ] as const;
 
 const LEGACY_PRESENTATION_EXTENSIONS = new Set<string>(["ppt"]);
 const LEGACY_WORD_EXTENSIONS = new Set<string>(["doc"]);
-const IMAGE_EXTENSIONS = new Set<string>(["jpeg", "jpg", "png", "bmp"]);
+const IMAGE_EXTENSIONS = new Set<string>(
+  UPLOAD_FILE_TYPES.filter((item) => "image" in item && item.image).map((item) => item.extension),
+);
 const IMAGE_PARSER_SETTING_KEYS = new Set<string>(["paddle_ocr.api_token", "mineru.api_token"]);
 const DEFAULT_MAX_UPLOAD_TOTAL_SIZE_MB = 10;
 const DEFAULT_MAX_FILES_PER_UPLOAD = 10;
@@ -48,14 +49,14 @@ type UploadLimitConfig = {
   maxTotalSizeMb: number;
 };
 
-export const SUPPORTED_UPLOAD_FORMAT_LABEL = "txt、docx、pptx、pdf、md、jpeg、jpg、png、bmp";
+export const SUPPORTED_UPLOAD_FORMAT_LABEL = SUPPORTED_UPLOAD_EXTENSIONS.join("、");
 export const IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE = "当前无法处理图片上传";
 
 /** For <input accept="..."> attributes: dot-prefixed, comma-separated. */
 export const FILE_ACCEPT = PICKER_EXTENSIONS.map((ext) => `.${ext}`).join(",");
 
 /** Set for fast look-up during clipboard paste and drag/drop filtering. */
-const SUPPORTED_EXT_SET = new Set<string>(SUPPORTED_EXTENSIONS);
+const SUPPORTED_EXT_SET = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
 
 function getFileExtension(file: File): string {
   return file.name.split(".").pop()?.toLowerCase() ?? "";

@@ -29,13 +29,11 @@ from app.schemas.files import FilesUploadData
 from app.utils.path_helpers import build_temp_dir, build_user_file_temp_dir
 from app.utils.presenters import require_id
 from app.utils.course import validate_course_id
+from app.workflows.ingest.intake.capabilities import SUPPORTED_UPLOAD_EXTENSION_SET
 from app.workflows.ingest.intake.catalog import build_file_record
 from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
-# 当前产品入口真正开放的 ingest 文件类型白名单。
-# 图片只允许走 PaddleOCR / MinerU 外部解析链路，不提供本地兜底。
-SUPPORTED_UPLOAD_EXTENSIONS = frozenset({".txt", ".docx", ".pptx", ".pdf", ".md", ".jpeg", ".jpg", ".png", ".bmp"})
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
 
 
@@ -52,7 +50,7 @@ def _generate_file_id() -> str:
 
 def _validate_upload_extension(filename: str) -> str:
     extension = Path(filename).suffix.lower()
-    if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+    if extension not in SUPPORTED_UPLOAD_EXTENSION_SET:
         raise UnsupportedFileTypeError(extension or filename or "unknown")
     return extension
 
