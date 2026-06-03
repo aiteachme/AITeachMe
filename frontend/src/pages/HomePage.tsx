@@ -5,9 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowUp,
+  BookOpen,
+  CalendarCheck,
   Check,
   CheckCircle2,
   ChevronDown,
+  ClipboardList,
   FileCode,
   FileImage,
   FolderOpen,
@@ -21,6 +24,7 @@ import {
   X,
   FileUp,
   Package,
+  Target,
 } from "lucide-react";
 
 import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
@@ -148,6 +152,68 @@ async function createDraftCourse(): Promise<CourseItem> {
 }
 
 const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", fileIds.join(",")] as const;
+
+const HOME_PROMPT_STARTERS = [
+  {
+    id: "exam-sprint",
+    label: "考前冲刺",
+    description: "生成冲刺路线",
+    prompt: "我两周后要考试，请把学习内容整理成考前冲刺路线：先生成知识大纲，再标出高频考点，最后给我一组诊断题。",
+    icon: Target,
+  },
+  {
+    id: "concept-guide",
+    label: "看懂概念",
+    description: "一步步启发讲解",
+    prompt: "我总是分不清这个概念和相近概念，请用苏格拉底式提问带我理解，不要直接给最终答案。",
+    icon: BookOpen,
+  },
+  {
+    id: "practice-set",
+    label: "生成练习",
+    description: "出题并诊断薄弱点",
+    prompt: "请生成 10 道期末风格练习题，覆盖选择、填空和简答，并在做完后告诉我薄弱点。",
+    icon: ClipboardList,
+  },
+  {
+    id: "study-plan",
+    label: "今日计划",
+    description: "安排今晚学习顺序",
+    prompt: "我今晚只有 45 分钟，请帮我安排阅读、练习和复盘顺序，优先处理最容易丢分的知识点。",
+    icon: CalendarCheck,
+  },
+] as const;
+
+const HOME_FILE_PROMPT_STARTERS = [
+  {
+    id: "files-course",
+    label: "整理资料",
+    description: "变成一门课程",
+    prompt: "请把我上传的资料整理成一门 7 天速成课：先提炼知识大纲，再生成阅读顺序，最后给我配套练习。",
+    icon: BookOpen,
+  },
+  {
+    id: "files-keypoints",
+    label: "提炼考点",
+    description: "找重点和易错点",
+    prompt: "请先通读这些资料，提炼最可能影响考试或实操的重点、易错点和前置知识，并按优先级排序。",
+    icon: Target,
+  },
+  {
+    id: "files-diagnosis",
+    label: "出诊断题",
+    description: "用题目找盲区",
+    prompt: "请基于这些资料生成一组诊断题，题型包含选择、填空和简答；做完后告诉我每个错题对应的知识点。",
+    icon: ClipboardList,
+  },
+  {
+    id: "files-tonight",
+    label: "今晚计划",
+    description: "45 分钟学完一轮",
+    prompt: "我今晚只有 45 分钟，请基于这些资料安排阅读、练习和复盘顺序，优先处理最容易丢分的知识点。",
+    icon: CalendarCheck,
+  },
+] as const;
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -779,6 +845,26 @@ export function HomePage() {
     }
   };
 
+  const handlePromptStarterClick = useCallback((starterPrompt: string) => {
+    const currentPrompt = prompt.trim();
+    const nextPrompt = currentPrompt
+      ? currentPrompt.includes(starterPrompt)
+        ? currentPrompt
+        : `${prompt.trimEnd()}\n\n${starterPrompt}`
+      : starterPrompt;
+
+    setPrompt(nextPrompt);
+    setError(null);
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(nextPrompt.length, nextPrompt.length);
+    });
+  }, [prompt]);
+
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = extractPasteFiles(e);
     if (files.length > 0) {
@@ -811,6 +897,15 @@ export function HomePage() {
 
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
+  const activePromptStarters = hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS;
+  const promptStarterHint = hasEntryFiles
+    ? "这些示例会结合已选择资料生成课程规划。"
+    : "没有资料也可以先输入目标；想看完整闭环可以导入下方演示课程。";
+  const generateButtonLabel = isWorking
+    ? "正在处理学习规划"
+    : canGenerate
+      ? "开始规划学习课程"
+      : "输入学习目标或选择资料后开始规划";
 
   return (
     <>
@@ -886,7 +981,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="直接输入学习目标，也可以先上传资料再一起规划"
+              placeholder="告诉我你要学什么，也可以先上传资料再一起规划"
               className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -897,6 +992,37 @@ export function HomePage() {
             />
 
             <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
+              <div className="space-y-2 px-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="mr-0.5 text-[12px] font-medium text-zinc-400 dark:text-slate-500">
+                    学习任务示例
+                  </span>
+                  {activePromptStarters.map((starter) => {
+                    const StarterIcon = starter.icon;
+                    return (
+                      <button
+                        key={starter.id}
+                        type="button"
+                        onClick={() => handlePromptStarterClick(starter.prompt)}
+                        disabled={isWorking}
+                        aria-label={`使用示例：${starter.label}，${starter.description}`}
+                        title={starter.prompt}
+                        className="group inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-zinc-200/80 bg-zinc-50/80 px-3 py-2 text-left text-xs font-medium text-zinc-600 transition-all hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
+                      >
+                        <StarterIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-indigo-500 dark:text-slate-500 dark:group-hover:text-indigo-300" />
+                        <span className="shrink-0 font-semibold">{starter.label}</span>
+                        <span className="hidden min-w-0 truncate text-zinc-400 group-hover:text-indigo-500 sm:inline dark:text-slate-500 dark:group-hover:text-indigo-300">
+                          {starter.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[12px] leading-5 text-zinc-400 dark:text-slate-500">
+                  {promptStarterHint}
+                </p>
+              </div>
+
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -915,6 +1041,7 @@ export function HomePage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveEntryFile(file.id)}
+                          aria-label={`从本次新建中移除 ${file.filename}`}
                           title="从本次新建中移除"
                           className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -994,8 +1121,11 @@ export function HomePage() {
                     className="flex-1 sm:flex-none sm:w-[128px]"
                   />
                   <button
+                    type="button"
                     onClick={() => void handleGenerate()}
                     disabled={!canGenerate || isWorking}
+                    aria-label={generateButtonLabel}
+                    title={generateButtonLabel}
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                       canGenerate && !isWorking
@@ -1038,7 +1168,10 @@ export function HomePage() {
         >
           {/* Section Toggle */}
           <button
+            type="button"
             onClick={() => setRecentOpen(!recentOpen)}
+            aria-expanded={recentOpen}
+            aria-controls="home-demo-courses"
             className="group flex w-full cursor-pointer items-center gap-4 py-3"
           >
             <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
@@ -1064,6 +1197,7 @@ export function HomePage() {
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                id="home-demo-courses"
                 className="w-full overflow-hidden"
               >
                 <div className="pt-6 pb-12">
