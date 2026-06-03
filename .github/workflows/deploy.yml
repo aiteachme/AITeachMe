@@ -17,9 +17,7 @@ env:
   # Non-secret deployment constants are intentionally kept here for maintainer
   # convenience. Do not put deploy hooks, kubeconfig, registry passwords, or
   # other credentials here; those must stay in GitHub Secrets.
-  # Nginx resolves runtime proxy_pass variables by itself, so use the full
-  # Kubernetes service FQDN instead of the Sealos UI short service.namespace form.
-  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
+  AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw:9020
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   BACKEND_IMAGE_NAME: aiteachme-backend
