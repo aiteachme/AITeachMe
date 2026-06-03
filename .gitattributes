@@ -24,3 +24,4 @@ NOTICE eol=lf
 .gitattributes eol=lf
 .gitignore eol=lf
 *.gitignore eol=lf
+.githooks/* eol=lf
