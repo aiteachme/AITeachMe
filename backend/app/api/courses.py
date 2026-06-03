@@ -30,6 +30,16 @@ from app.workflows.support.courses import (
 router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
 
+def _create_course_draft(session: Session, user: CurrentUserContext) -> CourseItem:
+    return create_course_record(
+        session,
+        owner_user_id=user.user_id,
+        name="",
+        description="",
+        user_intent="",
+    )
+
+
 @router.post(
     "/draft",
     response_model=ApiResponse[CourseItem],
@@ -40,14 +50,20 @@ async def create_course_draft_api(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseItem]:
-    item = create_course_record(
-        session,
-        owner_user_id=user.user_id,
-        name="",
-        description="",
-        user_intent="",
-    )
-    return ok_response(item)
+    return ok_response(_create_course_draft(session, user))
+
+
+@router.post(
+    "/add",
+    response_model=ApiResponse[CourseItem],
+    include_in_schema=False,
+    responses=build_error_responses([400, 409, 500]),
+)
+async def create_course_draft_legacy_api(
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[CourseItem]:
+    return ok_response(_create_course_draft(session, user))
 
 
 @router.post(
