@@ -8,6 +8,40 @@ interface CourseVectorNoticeProps {
   className?: string;
 }
 
+function buildVectorNoticeCopy(status: CourseVectorStatusResponse) {
+  const notice = status.notice ?? "";
+
+  if (status.mode === "disabled") {
+    return {
+      title: "语义检索未启用",
+      description: "当前课程会跳过语义检索，知识文档和知识图谱仍可正常使用。",
+    };
+  }
+
+  if (notice.includes("缺少可用") || notice.includes("索引缺失")) {
+    return {
+      title: "语义检索索引暂不可用",
+      description: "当前课程还没有可用的语义检索索引，知识文档仍可正常查看。重新构建课程后会自动补齐。",
+    };
+  }
+
+  if (
+    notice.includes("模型不一致") ||
+    notice.includes("维度") ||
+    notice.includes("绑定")
+  ) {
+    return {
+      title: "语义检索配置需更新",
+      description: "当前语义检索配置和课程记录不一致，知识文档仍可正常查看。重新构建课程后会刷新索引。",
+    };
+  }
+
+  return {
+    title: "语义检索暂不可用",
+    description: "当前未启用语义检索，知识文档和知识图谱仍可正常使用。",
+  };
+}
+
 export function CourseVectorNotice({
   status,
   className,
@@ -17,6 +51,7 @@ export function CourseVectorNotice({
   }
 
   const isDisabled = status.mode === "disabled";
+  const copy = buildVectorNoticeCopy(status);
 
   return (
     <div
@@ -36,19 +71,9 @@ export function CourseVectorNotice({
         )}
         <div className="min-w-0">
           <p className="text-sm font-semibold">
-            {isDisabled ? "语义检索索引暂不可用" : "语义检索索引提示"}
+            {copy.title}
           </p>
-          <p className="mt-1 text-sm leading-6">
-            这里的“向量”是 embedding 生成的语义检索索引：AI 会把资料片段转成一串数字坐标，用来找语义相近的内容；它不是课程正文里的数学向量。
-            {isDisabled ? " 当前会跳过语义检索，知识文档和知识图谱仍会继续构建。" : " 当前提示如下："}
-          </p>
-          <p className="mt-1 text-sm leading-6">{status.notice}</p>
-          {status.embedding_model || status.vector_table ? (
-            <div className="mt-2 space-y-1 text-xs opacity-80">
-              <p>{status.embedding_model ? `语义模型：${status.embedding_model}` : "语义模型：未记录"}</p>
-              {status.vector_table ? <p className="break-all">技术索引：{status.vector_table}</p> : null}
-            </div>
-          ) : null}
+          <p className="mt-1 text-sm leading-6">{copy.description}</p>
         </div>
       </div>
     </div>
