@@ -31,7 +31,7 @@ from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.build_lifecycle import (
     ACTIVE_KNOWLEDGE_BUILD_STATUSES,
 )
-from app.workflows.digest.kg_doc_sync.inputs import (
+from app.workflows.digest.kg_doc_sync.lib.inputs import (
     build_knowledge_doc_sync_input_from_docgen_state,
     extract_doc_chapter_metadatas,
     load_knowledge_doc_sync_input,

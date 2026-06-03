@@ -31,7 +31,7 @@ from app.workflows.digest.docgen.lib.defaults import (
     DEFAULT_DOCGEN_RETRIEVAL_TIMEOUT_S,
 )
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,

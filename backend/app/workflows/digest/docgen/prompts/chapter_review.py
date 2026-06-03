@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _MAX_REVIEW_MARKDOWN_CHARS = 12000
 _MAX_REVIEW_LIST_ITEMS = 12

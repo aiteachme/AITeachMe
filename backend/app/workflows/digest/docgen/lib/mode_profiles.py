@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from app.workflows.digest.common.contracts import normalize_digest_mode
+
 DocGenMode = Literal["sprint", "systematic"]
 
 BASE_WRITING_RULES: tuple[str, ...] = (
@@ -302,7 +304,7 @@ _PROFILES: dict[DocGenMode, DocGenModeProfile] = {
 
 
 def normalize_docgen_mode(digest_mode: str | None) -> DocGenMode:
-    return "sprint" if str(digest_mode or "").strip().lower() == "sprint" else "systematic"
+    return "sprint" if normalize_digest_mode(digest_mode) == "sprint" else "systematic"
 
 
 def get_docgen_mode_profile(digest_mode: str | None) -> DocGenModeProfile:

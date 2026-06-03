@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 
 def _bullet_lines(items: tuple[str, ...]) -> str:

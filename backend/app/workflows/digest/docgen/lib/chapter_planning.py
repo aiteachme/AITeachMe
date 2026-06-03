@@ -26,7 +26,7 @@ from app.workflows.digest.docgen.lib.models import (
     clean_content_role_targets,
     clean_example_coverage_plan,
 )
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _SCOPE_PUNCT_RE = re.compile(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+")
 

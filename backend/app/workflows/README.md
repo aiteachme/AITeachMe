@@ -99,12 +99,12 @@ lane_name/
   nodes/               # 顶层 LangGraph 节点
   lib/                 # 节点内部复用逻辑、运行时、模型转换、持久化辅助
   prompts/             # prompt builder / template
-  README.md          # 本 lane 的主文档
+  README.md            # 本 lane 的主文档
 ```
 
 可选文件：
 
-- `inputs.py`：只有当 lane 需要独立的输入解析/文件定位时才添加。
+- `lib/inputs.py`：只有当 lane 需要独立的输入解析/文件定位时才添加。
 - `workflow.py`：默认不添加。只有非 LangGraph 的专用封装、且放进 `graph.py` 会明显破坏可读性时才允许。
 - `runtime.py`：默认不添加。优先放 `lib/<明确职责>.py`。
 - `reporting.py`：只放该 lane 的摘要和指标收口。
@@ -472,8 +472,8 @@ planner -> docgen -> kg_doc_sync
   DocGen 构建触发、状态装配与后台编排入口
 - `digest/docgen/lib/quality.py`
   DocGen evidence / claim / conflict / review report 质量收口
-- `digest/common/events.py`、`digest/common/exports.py`
-  Digest 跨链路事件与 workflow export 落点
+- `digest/common/events.py`、`digest/exports.py`
+  Digest 跨链路事件与 workflow export 注册表
 - `digest/common/runtime_config.py`
   Digest 教学运行时配置 facade
 - `digest/common/pedagogy.py`

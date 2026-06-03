@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Literal
 
 from app.workflows.common.model_policy import compact_metadata
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
 

@@ -1,7 +1,7 @@
 """KG docs-sync graph definition and runtime entrypoint.
 
 这里定义 LangGraph 节点、路由、初始 state 和单次运行入口。
-API 触发后的后台任务、构建锁和 graph lane runtime 由 builds.py 处理。
+API 触发后的后台任务、构建锁和 graph lane runtime 由 lib/builds.py 处理。
 """
 
 from __future__ import annotations
