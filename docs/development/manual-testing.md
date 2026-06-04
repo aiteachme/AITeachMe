@@ -3,7 +3,7 @@
 ## Start service
 
 ```bash
-uvicorn app.main:app --reload --port 9020
+uvicorn app.main:app --reload --reload-dir app --port 9020
 ```
 
 ## Basic checks
@@ -24,12 +24,12 @@ curl -X POST http://localhost:9020/api/v1/system/init ^
 
 ## Course
 
-### Create course
+### Create course draft
 
 ```bash
-curl -X POST http://localhost:9020/api/v1/courses/add ^
+curl -X POST http://localhost:9020/api/v1/courses/draft ^
   -H "Content-Type: application/json" ^
-  -d "{\"course\":\"math\",\"name\":\"Mathematics\",\"description\":\"Manual testing course\"}"
+  -d "{}"
 ```
 
 ### List courses

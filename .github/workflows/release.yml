@@ -207,7 +207,7 @@ jobs:
       - name: Verify Windows signing configuration
         shell: pwsh
         run: |
-          . .\packaging\scripts\windows-signing-common.ps1
+          . .\packaging\desktop\scripts\windows-signing-common.ps1
           $signing = Get-AITeachMeWindowsSigningState
           Assert-AITeachMeWindowsSigningReady -Signing $signing
           Write-AITeachMeWindowsSigningSummary -Signing $signing
@@ -236,7 +236,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Apply release version for build
-        run: node packaging/scripts/apply-release-version.mjs "${{ needs.release.outputs.version }}"
+        run: node packaging/desktop/scripts/apply-release-version.mjs "${{ needs.release.outputs.version }}"
 
       - name: Set up Rust
         if: ${{ contains(inputs.desktop_package_mode, 'tauri') || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
@@ -292,9 +292,9 @@ jobs:
             throw "Missing GitHub secret AITEACHME_BUNDLED_ENV_JSON."
           }
           $env:AITEACHME_BUNDLED_ENV_JSON | ConvertFrom-Json | Out-Null
-          New-Item -ItemType Directory -Path packaging\private -Force | Out-Null
+          New-Item -ItemType Directory -Path packaging\desktop\private -Force | Out-Null
           [System.IO.File]::WriteAllText(
-            (Join-Path (Get-Location) "packaging\private\bundled-env.json"),
+            (Join-Path (Get-Location) "packaging\desktop\private\bundled-env.json"),
             $env:AITEACHME_BUNDLED_ENV_JSON,
             [System.Text.UTF8Encoding]::new($false)
           )
@@ -323,25 +323,25 @@ jobs:
             $arguments.RequireTauriUpdater = $true
           }
 
-          .\packaging\scripts\build-desktop-mode.ps1 @arguments
+          .\packaging\desktop\scripts\build-desktop-mode.ps1 @arguments
 
       - name: Show release artifacts
         shell: pwsh
         run: |
-          Get-ChildItem -Path packaging\release -File |
+          Get-ChildItem -Path packaging\desktop\release -File |
             Select-Object Name,@{Name='SizeMB';Expression={[math]::Round($_.Length / 1MB, 2)}} |
             Format-Table -AutoSize
 
       - name: Verify Windows installer signatures
         shell: pwsh
         run: |
-          . .\packaging\scripts\windows-signing-common.ps1
+          . .\packaging\desktop\scripts\windows-signing-common.ps1
           $signing = Get-AITeachMeWindowsSigningState
 
-          $installers = @(Get-ChildItem -Path packaging\release -File |
+          $installers = @(Get-ChildItem -Path packaging\desktop\release -File |
             Where-Object { $_.Extension -eq ".exe" })
           if ($installers.Count -eq 0) {
-            throw "No Windows installer was produced under packaging\release."
+            throw "No Windows installer was produced under packaging\desktop\release."
           }
 
           $failed = @()
@@ -379,7 +379,7 @@ jobs:
         if: ${{ inputs.desktop_package_mode == 'tauri-local' || inputs.desktop_package_mode == 'all-local' || inputs.desktop_package_mode == 'all' }}
         shell: pwsh
         run: |
-          $manifestPath = "packaging\release\latest-tauri-local.json"
+          $manifestPath = "packaging\desktop\release\latest-tauri-local.json"
           if (-not (Test-Path $manifestPath)) {
             throw "Tauri local updater manifest was not produced: $manifestPath"
           }
@@ -407,7 +407,7 @@ jobs:
             throw "Tauri local updater manifest should reference the NSIS setup executable, but got: $packageFileName"
           }
 
-          $packagePath = Join-Path "packaging\release" $packageFileName
+          $packagePath = Join-Path "packaging\desktop\release" $packageFileName
           $signaturePath = "$packagePath.sig"
           if (-not (Test-Path $packagePath)) {
             throw "Tauri updater package referenced by manifest was not found: $packagePath"
@@ -422,7 +422,7 @@ jobs:
           }
 
           if ("${{ inputs.bundle_private_env }}" -eq "true") {
-            . .\packaging\scripts\bundled-env-common.ps1
+            . .\packaging\desktop\scripts\bundled-env-common.ps1
             $bundledSuffix = ConvertTo-BundledEnvArtifactSuffix -Value "${{ inputs.bundled_env_artifact_suffix }}"
             $expectedPattern = "*-installer-tauri-$bundledSuffix.exe"
             if ($packageFileName -notlike $expectedPattern) {
@@ -436,7 +436,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aiteachme-release-windows-assets
-          path: packaging/release/*
+          path: packaging/desktop/release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -467,7 +467,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          node packaging/scripts/apply-release-version.mjs "$RELEASE_VERSION"
+          node packaging/desktop/scripts/apply-release-version.mjs "$RELEASE_VERSION"
 
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"

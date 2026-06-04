@@ -58,12 +58,12 @@ export function useDocBuildProgress(opts: {
   const visiblePersistedProgress = Math.min(persistedProgress, progressCeiling);
   const visibleFallbackProgress = Math.min(fallbackProgress, progressCeiling);
 
-  if (isRequestedBuildReady || (isBuildReadyStatus && hasLiveDocMarkdown)) {
-    return { buildProgress: 100, buildStatusText };
-  }
-
   if (isBuildFailure || (!isBuildActive && !isWaitingForRequestedBuild)) {
     return { buildProgress: visiblePersistedProgress, buildStatusText };
+  }
+
+  if (isRequestedBuildReady || (isBuildReadyStatus && hasLiveDocMarkdown)) {
+    return { buildProgress: 100, buildStatusText };
   }
 
   return {

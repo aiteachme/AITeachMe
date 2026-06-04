@@ -14,8 +14,8 @@ export interface CreateExamConfig {
 }
 
 export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
-  examMode: "web_practice",
-  numQuestions: 8,
+  examMode: "paper_exam",
+  numQuestions: 24,
   userPrompt: "",
   paperLayoutMode: "auto",
 };
@@ -112,7 +112,7 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
     saveCreateExamConfig(courseId, DEFAULT_CREATE_EXAM_CONFIG);
     toast({
       title: "配置已重置",
-      description: "之后会使用默认配置开始专项练习。",
+      description: "之后会使用默认配置开始训练或测试。",
       variant: "success",
     });
   };
@@ -121,7 +121,7 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
     saveCreateExamConfig(courseId, config);
     toast({
       title: "配置已保存",
-      description: "下次开始专项练习或整卷测试会直接使用这套配置。",
+      description: "下次点击测试会直接使用这套配置。",
       variant: "success",
     });
     onClose();
@@ -134,7 +134,7 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
           <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">面向当前课程</p>
           <h3 className="mt-2 text-2xl font-semibold text-slate-950 dark:text-slate-100">{displayName}</h3>
           <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
-            保存后，专项练习和整卷测试会直接使用这套配置开始出题；需要调整时可再次进入这里。
+            保存后，测试按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
           </p>
         </div>
 
@@ -152,7 +152,7 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
                     examMode,
                     numQuestions:
                       examMode === "paper_exam" && current.examMode !== "paper_exam" && current.numQuestions <= 10
-                          ? 24
+                        ? 24
                         : current.numQuestions,
                   };
                 })

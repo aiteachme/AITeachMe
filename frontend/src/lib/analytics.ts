@@ -27,6 +27,7 @@ let enabled = false;
 let identifiedUserId: string | null = null;
 let lastPageviewKey: string | null = null;
 let lastPageviewAt = 0;
+const capturedOnceKeys = new Set<string>();
 
 function envFlag(value: string | boolean | undefined, fallback = false): boolean {
   if (typeof value === "boolean") {
@@ -251,6 +252,50 @@ export function trackAnalyticsEvent(eventName: string, properties: Properties = 
   client.capture(eventName, sanitizeProperties(properties));
 }
 
+export function trackAnalyticsEventOnce(
+  eventName: string,
+  uniqueKey: string,
+  properties: Properties = {},
+): void {
+  const dedupeKey = `${eventName}:${uniqueKey}`;
+  if (capturedOnceKeys.has(dedupeKey)) {
+    return;
+  }
+  capturedOnceKeys.add(dedupeKey);
+  trackAnalyticsEvent(eventName, properties);
+}
+
+function buildCourseAnalyticsProperties(courseId: string): Properties {
+  const normalized = courseId.trim();
+  return {
+    course_id_present: Boolean(normalized),
+    course_id_suffix: normalized ? normalized.slice(-8) : undefined,
+  };
+}
+
+export function trackCourseAnalyticsEvent(
+  eventName: string,
+  courseId: string,
+  properties: Properties = {},
+): void {
+  trackAnalyticsEvent(eventName, {
+    ...buildCourseAnalyticsProperties(courseId),
+    ...properties,
+  });
+}
+
+export function trackCourseAnalyticsEventOnce(
+  eventName: string,
+  courseId: string,
+  uniqueKey: string,
+  properties: Properties = {},
+): void {
+  trackAnalyticsEventOnce(eventName, `${courseId.trim()}:${uniqueKey}`, {
+    ...buildCourseAnalyticsProperties(courseId),
+    ...properties,
+  });
+}
+
 export function captureAnalyticsPageview(route: RouteSnapshot): void {
   const client = getAnalyticsClient();
   if (!client) {
@@ -295,11 +340,11 @@ export function syncAnalyticsUserIdentity(user: RuntimeUserIdentity | null): voi
   };
   client.register(superProperties);
 
-  if (user.isAuthenticated && identifiedUserId !== user.userId) {
+  if (identifiedUserId !== user.userId) {
     identifiedUserId = user.userId;
     client.identify(user.userId, {
       account_domain: getEmailDomain(user.email),
-      is_authenticated: true,
+      is_authenticated: Boolean(user.isAuthenticated),
     });
   }
 }

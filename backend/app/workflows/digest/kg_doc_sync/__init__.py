@@ -30,7 +30,7 @@ __all__ = [
 _ATTR_TO_MODULE = {
     "clear_course_graph_entities": "app.workflows.digest.kg_doc_sync.lib.cleanup",
     "explain_relation_path": "app.workflows.digest.kg_doc_sync.lib.query",
-    "extract_doc_chapter_metadatas": "app.workflows.digest.kg_doc_sync.inputs",
+    "extract_doc_chapter_metadatas": "app.workflows.digest.kg_doc_sync.lib.inputs",
     "find_knowledge_path": "app.workflows.digest.kg_doc_sync.lib.query",
     "get_chunk_context": "app.workflows.digest.kg_doc_sync.lib.query",
     "get_focus_subgraph": "app.workflows.digest.kg_doc_sync.lib.query",
@@ -39,15 +39,15 @@ _ATTR_TO_MODULE = {
     "get_knowledge_unit_detail": "app.workflows.digest.kg_doc_sync.lib.query",
     "get_knowledge_unit_relations": "app.workflows.digest.kg_doc_sync.lib.query",
     "get_knowledge_units": "app.workflows.digest.kg_doc_sync.lib.query",
-    "KnowledgeDocSyncInput": "app.workflows.digest.kg_doc_sync.inputs",
-    "load_knowledge_doc_sync_input": "app.workflows.digest.kg_doc_sync.inputs",
-    "load_knowledge_doc_markdown": "app.workflows.digest.kg_doc_sync.inputs",
-    "resolve_graph_input_paths": "app.workflows.digest.kg_doc_sync.inputs",
-    "run_graph_docs_sync_auto_build": "app.workflows.digest.kg_doc_sync.builds",
-    "run_graph_docs_sync_after_doc_build": "app.workflows.digest.kg_doc_sync.builds",
-    "run_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
+    "KnowledgeDocSyncInput": "app.workflows.digest.kg_doc_sync.lib.inputs",
+    "load_knowledge_doc_sync_input": "app.workflows.digest.kg_doc_sync.lib.inputs",
+    "load_knowledge_doc_markdown": "app.workflows.digest.kg_doc_sync.lib.inputs",
+    "resolve_graph_input_paths": "app.workflows.digest.kg_doc_sync.lib.inputs",
+    "run_graph_docs_sync_auto_build": "app.workflows.digest.kg_doc_sync.lib.builds",
+    "run_graph_docs_sync_after_doc_build": "app.workflows.digest.kg_doc_sync.lib.builds",
+    "run_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.lib.builds",
     "run_graph_docs_sync_workflow": "app.workflows.digest.kg_doc_sync.graph",
-    "trigger_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.builds",
+    "trigger_graph_docs_sync_manual_build": "app.workflows.digest.kg_doc_sync.lib.builds",
 }
 
 

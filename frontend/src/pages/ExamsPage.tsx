@@ -11,9 +11,9 @@ import {
   ClipboardCheck,
   Layers3,
   Loader2,
-  MoreVertical,
   Plus,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Tags,
   X,
@@ -27,6 +27,11 @@ import {
   useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
+import type {
+  ExamNodeLinkResponse,
+  ExamPaperDetailResponse,
+  ExamPaperItemResponse,
+} from "../api/generated/model";
 import {
   buildApiUrl,
   getApiErrorMessage,
@@ -40,6 +45,7 @@ import { useToast } from "../components/ui/Toast";
 import {
   CreateExamModal,
   ExamMarkdown,
+  ExamMasteryDrillSession,
   ExamPaperCard,
   ExamPaperWorkspace,
   MASTERY_DRILL_EXAM_MODE,
@@ -49,6 +55,17 @@ import {
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "../components/exams";
+import {
+  AI_SCENE_EXAM_QUESTION,
+  AI_SOURCE_EXAM_QUESTION,
+  buildExamQuestionAnchorId,
+  useAiInteraction,
+} from "../components/interaction";
+import {
+  buildQuestionAiDraft,
+  buildQuestionSelectedText,
+  buildQuestionSelectionContext,
+} from "../components/exams/examDisplay";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
@@ -122,6 +139,16 @@ interface QuestionTypeRegistryItem {
   updated_at: string;
 }
 
+interface QuestionTemplateMarkResponse {
+  question_template_id: number;
+  is_marked: boolean;
+}
+
+interface QuestionTemplateMarkVariables {
+  questionTemplateId: number;
+  isMarked: boolean;
+}
+
 type ExamPrewarmStatusValue = "ready" | "preparing" | "missing" | "failed" | "stale";
 
 interface ExamPrewarmStatusResponse {
@@ -174,6 +201,21 @@ async function getQuestionTypes(courseId: string, signal?: AbortSignal) {
     {
       method: "GET",
       signal,
+    },
+  );
+}
+
+async function updateQuestionTemplateMark(
+  courseId: string,
+  questionTemplateId: number,
+  isMarked: boolean,
+) {
+  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateMarkResponse } }>(
+    `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/mark`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_marked: isMarked }),
     },
   );
 }
@@ -426,7 +468,7 @@ export function ExamsPage() {
     },
   });
 
-  const handleCreateExam = () => {
+  const handleStartTest = () => {
     if (!courseId || generateExam.isPending) return;
     const config = currentCreateConfig ?? loadCreateExamConfig(courseId);
     generateExam.mutate({
@@ -436,14 +478,8 @@ export function ExamsPage() {
   };
 
   const handleStartMasteryDrill = () => {
-    if (!courseId || generateExam.isPending) return;
-    generateExam.mutate({
-      courseId,
-      data: {
-        exam_mode: MASTERY_DRILL_EXAM_MODE,
-        num_questions: MASTERY_DRILL_QUESTION_COUNT,
-      },
-    });
+    if (!courseId) return;
+    navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
   };
 
   if (!courseId) {
@@ -473,80 +509,79 @@ export function ExamsPage() {
                   {courseName ?? "当前课程"}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  开始专项练习、闯关训练或整卷测试，并回看历史得分与题目沉淀。
+                  开始闯关训练或整卷测试，并回看历史得分与题目沉淀。
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-              <Button
-                size="lg"
-                className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto"
-                onClick={handleStartMasteryDrill}
-                disabled={generateExam.isPending}
-              >
-                {generateExam.isPending && generateExam.variables?.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Button
+                  size="lg"
+                  className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto sm:min-w-[7rem]"
+                  onClick={handleStartMasteryDrill}
+                >
                   <Sparkles className="h-4 w-4 shrink-0" />
-                )}
-                开始闯关训练
-              </Button>
-              <div className="flex w-full items-center gap-2 sm:w-auto">
-                <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:flex-none"
-                    onClick={handleCreateExam}
-                    disabled={generateExam.isPending}
-                  >
-                    {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4 shrink-0" />
-                    )}
-                    <span className="whitespace-nowrap">
-                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
-                        ? "创建中..."
-                        : currentCreateConfig?.examMode === "paper_exam"
-                          ? "创建整卷测试"
-                          : "开始专项练习"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                    onClick={() => setIsCreateConfigOpen(true)}
-                    aria-label="更多训练与测试设置"
-                    title="更多设置"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
+                  闯关
+                </Button>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:min-w-[7rem] sm:flex-none"
+                      onClick={handleStartTest}
+                      disabled={generateExam.isPending}
+                    >
+                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4 shrink-0" />
+                      )}
+                      <span className="whitespace-nowrap">
+                        {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
+                          ? "生成中..."
+                          : "测试"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      onClick={() => setIsCreateConfigOpen(true)}
+                      aria-label="测试设置"
+                      title="测试设置"
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <ExamPrewarmStatusIcon
+                    status={prewarmStatusQuery.data}
+                    isFetching={prewarmStatusQuery.isFetching}
+                    hasError={prewarmStatusQuery.isError}
+                  />
                 </div>
-                <ExamPrewarmStatusIcon
-                  status={prewarmStatusQuery.data}
-                  isFetching={prewarmStatusQuery.isFetching}
-                  hasError={prewarmStatusQuery.isError}
-                />
               </div>
-              <Button
-                size="lg"
-                variant="outline"
-                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
-              >
-                <BookOpen className="h-4 w-4" />
-                题库查看
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="!h-12 w-full rounded-[10px] px-6 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:text-slate-200 sm:w-auto"
-                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
-              >
-                <Tags className="h-4 w-4" />
-                题型查看
-              </Button>
+              <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
+                  aria-label="题库查看"
+                  title="题库查看"
+                >
+                  <BookOpen className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
+                  aria-label="题型查看"
+                  title="题型查看"
+                >
+                  <Tags className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </section>
 
@@ -644,6 +679,358 @@ export function ExamsPage() {
         }}
       />
     </>
+  );
+}
+
+function getTemplateKnowledgeUnitId(ref: Record<string, unknown>): number {
+  const value = Number(ref.knowledge_unit_id ?? ref.unit_id ?? 0);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+function buildTemplateKnowledgeLinks(refs: Array<Record<string, unknown>>): ExamNodeLinkResponse[] {
+  return refs
+    .map((ref): ExamNodeLinkResponse | null => {
+      const knowledgeUnitId = getTemplateKnowledgeUnitId(ref);
+      if (!knowledgeUnitId) {
+        return null;
+      }
+      const coverageWeight = Number(ref.coverage_weight ?? 1);
+      const masteryScore = Number(ref.mastery_score);
+      const rawName =
+        typeof ref.knowledge_unit_name === "string"
+          ? ref.knowledge_unit_name
+          : typeof ref.canonical_name === "string"
+            ? ref.canonical_name
+            : "";
+      return {
+        knowledge_unit_id: knowledgeUnitId,
+        knowledge_unit_name: rawName.trim() || `知识点 #${knowledgeUnitId}`,
+        coverage_weight: Number.isFinite(coverageWeight) ? coverageWeight : 1,
+        mastery_score: Number.isFinite(masteryScore) ? masteryScore : null,
+      };
+    })
+    .filter((item): item is ExamNodeLinkResponse => item !== null);
+}
+
+function hashTemplateForSession(templateId: number, seed: number): number {
+  const text = `${seed}:${templateId}`;
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function getTemplateDrillPriority(template: QuestionTemplateItem): number {
+  let priority = 0;
+  if (template.has_wrong_attempt) {
+    priority += 4;
+  }
+  if (template.is_marked) {
+    priority += 2;
+  }
+  if (template.status === "active") {
+    priority += 1;
+  }
+  return priority;
+}
+
+function selectMasteryDrillTemplates(templates: QuestionTemplateItem[], seed: number): QuestionTemplateItem[] {
+  return templates
+    .filter((template) => template.stem.trim() && template.answer.trim() && template.status !== "archived")
+    .sort((left, right) =>
+      getTemplateDrillPriority(right) - getTemplateDrillPriority(left) ||
+      hashTemplateForSession(left.id, seed) - hashTemplateForSession(right.id, seed) ||
+      right.updated_at.localeCompare(left.updated_at) ||
+      right.id - left.id,
+    )
+    .slice(0, MASTERY_DRILL_QUESTION_COUNT);
+}
+
+function buildStandaloneMasteryDrillPaper(
+  courseId: string,
+  templates: QuestionTemplateItem[],
+  seed: number,
+): ExamPaperDetailResponse {
+  const selectedTemplates = selectMasteryDrillTemplates(templates, seed);
+  const items: ExamPaperItemResponse[] = selectedTemplates.map((template, index) => ({
+    id: template.id,
+    item_order: index + 1,
+    question_template_id: template.id,
+    question_type: template.question_type,
+    difficulty: template.difficulty,
+    stem: template.stem,
+    options: template.options ?? null,
+    correct_answer: template.answer,
+    explanation: template.explanation,
+    knowledge_unit_links: buildTemplateKnowledgeLinks(template.knowledge_unit_refs ?? []),
+    selection_context: {
+      standalone_mastery_drill: true,
+      question_template_id: template.id,
+    },
+    user_answer: null,
+    is_correct: null,
+    score_obtained: null,
+    score_max: 1,
+    error_cause_label: null,
+    is_marked: template.is_marked === true,
+  }));
+
+  return {
+    id: 900_000_000 + (Math.abs(Math.round(seed)) % 90_000_000),
+    course_id: courseId,
+    user_id: "local",
+    exam_mode: MASTERY_DRILL_EXAM_MODE,
+    status: "ready",
+    total_items: items.length,
+    score_obtained: null,
+    total_score: items.length,
+    submitted_at: null,
+    graded_at: null,
+    created_at: new Date(seed).toISOString(),
+    selection_context: {
+      standalone_mastery_drill: true,
+      title: "独立闯关训练",
+    },
+    items,
+  };
+}
+
+export function MasteryDrillPage() {
+  const { courseId } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { openAiInteraction } = useAiInteraction();
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [sessionSeed, setSessionSeed] = useState(() => Date.now());
+  const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const { courseName } = useCourseDisplayName(courseId);
+
+  const templatesQueryKey = useMemo(() => ["exam-question-templates", courseId] as const, [courseId]);
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    enabled: Boolean(courseId),
+    queryFn: async ({ signal }) => {
+      const response = await getQuestionTemplates(courseId ?? "", signal);
+      return unwrapOrvalResponse<QuestionTemplateItem[]>(response) ?? [];
+    },
+  });
+  const templates = templatesQuery.data ?? [];
+  const drillPaper = useMemo(
+    () => (courseId ? buildStandaloneMasteryDrillPaper(courseId, templates, sessionSeed) : null),
+    [courseId, sessionSeed, templates],
+  );
+
+  const restartDrill = () => {
+    setAnswers({});
+    setCompletedAt(null);
+    setSessionSeed(Date.now());
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const questionTemplateMarkMutation = useMutation({
+    mutationFn: ({ questionTemplateId, isMarked }: QuestionTemplateMarkVariables) => {
+      if (!courseId) {
+        throw new Error("缺少课程标识，无法标记题目。");
+      }
+      return updateQuestionTemplateMark(courseId, questionTemplateId, isMarked);
+    },
+    onMutate: async ({ questionTemplateId, isMarked }) => {
+      await queryClient.cancelQueries({ queryKey: templatesQueryKey });
+      const previousTemplates = queryClient.getQueryData<QuestionTemplateItem[]>(templatesQueryKey);
+      queryClient.setQueryData<QuestionTemplateItem[]>(templatesQueryKey, (current) =>
+        Array.isArray(current)
+          ? current.map((item) => (
+              item.id === questionTemplateId ? { ...item, is_marked: isMarked } : item
+            ))
+          : current,
+      );
+      return { previousTemplates };
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: templatesQueryKey });
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousTemplates) {
+        queryClient.setQueryData(templatesQueryKey, context.previousTemplates);
+      }
+      toast({
+        title: "标记失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
+
+  const openQuestionAi = (
+    item: ExamPaperItemResponse,
+    isReviewStage: boolean,
+    answerValue: string,
+  ) => {
+    if (!courseId || !drillPaper) {
+      return;
+    }
+    const anchorId = buildExamQuestionAnchorId(drillPaper.id, item.item_order);
+    openAiInteraction({
+      mode: "sidebar",
+      scope: { type: "course", courseId },
+      sessionId: null,
+      draft: buildQuestionAiDraft(item, isReviewStage),
+      scene: AI_SCENE_EXAM_QUESTION,
+      source: AI_SOURCE_EXAM_QUESTION,
+      anchorId,
+      selectedText: buildQuestionSelectedText(item),
+      selectionContext: buildQuestionSelectionContext(drillPaper, item, answerValue, isReviewStage),
+      clientThreadId: `${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      newSession: true,
+      showSelectionContext: true,
+    });
+  };
+
+  const toggleQuestionMark = (item: ExamPaperItemResponse, isMarked: boolean) => {
+    if (!item.question_template_id) {
+      return;
+    }
+    questionTemplateMarkMutation.mutate({
+      questionTemplateId: item.question_template_id,
+      isMarked,
+    });
+  };
+
+  if (!courseId) {
+    return (
+      <div className={EXAM_PAGE_SHELL_CLASS}>
+        <div className={EXAM_ALERT_CLASS}>
+          缺少课程标识，暂时无法进入闯关训练。
+        </div>
+      </div>
+    );
+  }
+
+  const selectedCount = drillPaper?.items?.length ?? 0;
+  const markingQuestionTemplateId = questionTemplateMarkMutation.isPending
+    ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
+    : null;
+
+  return (
+    <div className={EXAM_PAGE_SHELL_CLASS}>
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-4">
+          <button
+            type="button"
+            onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+            className="inline-flex w-fit items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回训练中心
+          </button>
+          <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 sm:px-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Mastery Drill</p>
+                <h1 className="mt-2 text-3xl font-semibold text-slate-950 dark:text-slate-100">
+                  {courseName ? `${courseName} · 闯关训练` : "闯关训练"}
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  从题库模板直接抽题，一页一题即时反馈；本模式不会创建试卷记录，也不会出现在历史记录里。
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="h-11 rounded-full px-5 text-sm font-semibold"
+                onClick={restartDrill}
+                disabled={templatesQuery.isLoading || selectedCount === 0}
+              >
+                <Sparkles className="h-4 w-4" />
+                重新抽题
+              </Button>
+            </div>
+            <div className="grid gap-3 text-sm text-slate-500 dark:text-slate-400 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
+                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">{selectedCount}</div>
+                本轮题目
+              </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
+                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">{templates.length}</div>
+                可用模板
+              </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
+                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+                  {completedAt ? "已完成" : "进行中"}
+                </div>
+                本地会话
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {templatesQuery.isLoading ? (
+          <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
+            <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin" />
+            正在加载题库模板...
+          </div>
+        ) : null}
+
+        {templatesQuery.error ? (
+          <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {getApiErrorMessage(templatesQuery.error, "加载题库模板失败")}
+          </div>
+        ) : null}
+
+        {!templatesQuery.isLoading && !templatesQuery.error && selectedCount === 0 ? (
+          <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-12 text-center dark:border-slate-800 dark:bg-slate-950/80">
+            <BookOpen className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
+            <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-100">还没有可用于闯关的题目</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+              闯关页只使用已经沉淀到题库的模板，不会现场生成试卷记录。先创建一次专项练习或整卷测试，题目会进入题库后再来闯关。
+            </p>
+            <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+              <Button
+                className="rounded-full bg-black px-5 text-sm font-semibold text-white"
+                onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+              >
+                返回训练中心
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-full px-5 text-sm font-semibold"
+                onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
+              >
+                查看题库
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {drillPaper && selectedCount > 0 ? (
+          <ExamMasteryDrillSession
+            paper={drillPaper}
+            answers={answers}
+            setAnswers={setAnswers}
+            isCompleting={false}
+            onBack={() => navigate(buildCoursePath(courseId, "exams"))}
+            onRestart={restartDrill}
+            completionDescription="本轮结果只保留在当前页面，不会生成试卷记录，也不会出现在历史记录里。"
+            onComplete={(finalAnswers) => {
+              setAnswers(finalAnswers);
+              if (!completedAt) {
+                toast({
+                  title: "闯关完成",
+                  description: "本轮没有生成试卷记录，可直接再来一轮。",
+                  variant: "success",
+                });
+              }
+              setCompletedAt((current) => current ?? new Date().toISOString());
+            }}
+            onQuestionAi={openQuestionAi}
+            onQuestionMarkToggle={toggleQuestionMark}
+            markingQuestionTemplateId={markingQuestionTemplateId}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 }
 

@@ -2,25 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.schemas.common import PageParams
-
-
-class CourseCreateRequest(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "name": "",
-                "description": "",
-                "user_intent": "",
-            }
-        }
-    )
-
-    name: str = Field(default="", description="Display name. Planner may fill it after the first conversation.")
-    description: str = Field(default="", description="Short course description.")
-    user_intent: str = Field(default="", description="User learning goal or intent.")
 
 
 class CourseDetailRequest(BaseModel):

@@ -37,8 +37,6 @@ import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import {
-  MASTERY_DRILL_EXAM_MODE,
-  MASTERY_DRILL_QUESTION_COUNT,
   buildExamTitle,
   loadCreateExamConfig,
   toExamGenerateRequest,
@@ -309,7 +307,7 @@ export function CourseDevNavigationPage() {
 
   const generateExam = useGenerateExamApiV1CoursesCourseIdExamsGeneratePost({
     mutation: {
-      onSuccess: async (response, variables) => {
+      onSuccess: async (response) => {
         const created = unwrapOrvalResponse<ExamGenerateResponse>(response);
         if (!courseId || !created?.exam_paper_id) return;
         await queryClient.invalidateQueries({
@@ -317,7 +315,7 @@ export function CourseDevNavigationPage() {
         });
         navigate(buildCourseSubPath(courseId, "exams", created.exam_paper_id));
         toast({
-          title: variables.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? "闯关训练已开始" : "考试已创建",
+          title: "考试已创建",
           description: `已准备 ${created.num_questions} 题，正在进入作答页。`,
           variant: "success",
         });
@@ -354,14 +352,8 @@ export function CourseDevNavigationPage() {
   };
 
   const startMasteryDrill = () => {
-    if (!courseId || generateExam.isPending) return;
-    generateExam.mutate({
-      courseId,
-      data: {
-        exam_mode: MASTERY_DRILL_EXAM_MODE,
-        num_questions: MASTERY_DRILL_QUESTION_COUNT,
-      },
-    });
+    if (!courseId) return;
+    navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
   };
 
   if (!courseId) {
@@ -397,14 +389,9 @@ export function CourseDevNavigationPage() {
               type="button"
               size="lg"
               onClick={startMasteryDrill}
-              disabled={generateExam.isPending}
               className="w-full rounded-[10px] px-6 text-sm font-semibold sm:w-auto"
             >
-              {generateExam.isPending && generateExam.variables?.data.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
+              <Sparkles className="h-4 w-4" />
               直接闯关
             </Button>
             <Button
@@ -415,7 +402,7 @@ export function CourseDevNavigationPage() {
               disabled={generateExam.isPending}
               className="w-full rounded-[10px] px-6 text-sm font-semibold sm:w-auto"
             >
-              {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
+              {generateExam.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <ClipboardCheck className="h-4 w-4" />

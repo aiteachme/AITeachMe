@@ -111,7 +111,6 @@ export * from './chunkContextRequest';
 export * from './chunkContextResponse';
 export * from './clearKnowledgeResponse';
 export * from './clearKnowledgeResponseDeletedCounts';
-export * from './courseCreateRequest';
 export * from './courseDeleteData';
 export * from './courseDeleteDataDeletedCounts';
 export * from './courseDeleteImpactItem';

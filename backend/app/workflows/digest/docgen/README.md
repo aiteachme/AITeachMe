@@ -1,961 +1,670 @@
-# DocGen 流程设计
+# DocGen 链路说明
 
-最后更新：2026-05-15
+最后更新：2026-06-03
 
-这份文档是 `backend/app/workflows/digest/docgen/` 当前唯一的文档文件，同时兼任入口说明和流程权威文档。
-
-如果 `docgen/` 下的文档、上游设计文档和当前实现之间出现冲突，按下面顺序判断：
-
-1. 当前代码：`graph.py`、`state.py`、`nodes/`、`lib/models.py`
-2. 当前文档：`README.md`
-
-使用约定：
-
-- `README.md` 负责维护 DocGen 的目录入口、公开运行面、真实流程、节点合同、当前实现映射和演进约束。
-- `docgen/` 目录下不再保留第二份平行流程文档，也不再保留独立的架构评估文档。
-- 其他上游文档如果需要引用 DocGen 文档，应显式指向本文件，不应复制一份新的节点级流程合同。
-
-## 0. 文档维护硬约束
-
-本 `README.md` 必须长期同时保留两类流程说明：
-
-- **短流程总览**：快速看懂所有节点、并行关系、fan-out/fan-in、流水线顺序和每个节点作用。
-- **长流程执行合同**：逐节点写清输入、输出、作用、内部步骤和约束，作为后续实现和重构的详细合同。
-
-后续任何人改 DocGen 流程时，必须同时更新短流程和长流程。不能只改代码映射表，也不能只改长流程。
-
-如果目标阶段名和当前代码节点名不一致，必须显式写出映射，例如：
+`docgen/` 是 Digest 的第二条链路。它消费 Planner 已确认的 `confirmed_plan`，生成正式知识文档。
 
 ```text
-prepare_global_seed / 当前 prepare_global_seed
-seed_backbone / 当前 confirm_and_seed_backbone
-prepare_chapter_execution / 当前 build_chapter_execution_briefs + assemble_chapter_tasks
-generate_draft / 当前 generate_chapters
-enhance / 当前 enhance_chapters
+Planner 冻结“学什么”。
+DocGen 执行“怎么写成可发布、可追踪、可复用的知识文档”。
+KG Doc Sync 再把发布后的文档同步成知识图谱。
 ```
 
-核心判断：
+DocGen 不重新推翻用户确认过的章节语义，不直接写 `knowledge_unit / knowledge_edge`。
 
-```text
-Planner 定方向，DocGen 构建知识文档。
-```
-
-DocGen 与知识图谱的协作口径：
-
-```text
-DocGen 主路径只负责知识文档质量和发布；KG 预抽取是 sidecar，不是 DocGen 节点。
-```
-
-当 `knowledge_graph.prefetch_during_docgen` 开启时，DocGen 在章节进入稳定增强态后会启动
-非阻塞 `kg_prefetch sidecar`。这个 sidecar 只做 section 级候选抽取缓存，不写
-`knowledge_unit / knowledge_edge`，也不参与 DocGen 的路由、复核和发布判定。发布成功后，
-`kg_doc_sync` 会用最终发布 Markdown 的 section hash 校验缓存，命中则复用，未命中则补抽。
-
-DocGen 不是“重新想一个大纲再写全文”，而是消费用户确认过的 `confirmed_plan`，在不推翻用户确认语义的前提下完成：
-
-- 章节执行合同细化。
-- 整本文档知识骨架构建。
-- 单章研究、证据、主张、冲突记录。
-- 表现层增强。
-- 内容复核、有限回流和发布级 manifest。
-
-### 0.2 速成课文档质量线
-
-当前产品默认更接近“速成课”使用场景。公开可见的蜂考/高斯课堂类期末速成课通常不是百科式教材，而是把厚材料压成短时长、高密度、应试或任务导向的学习包：先说明高价值章节和常见任务，再给高频公式/规则清单、典型例题解析、变式训练、易错点和最后串讲。
-
-DocGen 在 `digest_mode="sprint"` 下应按这个口径约束最终 Markdown：
-
-- **定位要快**：章节开头必须让学生知道本章最值得抓住的具体对象、方法、任务或使用场景是什么。
-- **结构要可扫**：优先用模型基于本章材料命名的对照表、判断表、步骤表或错因表表达公式、条件和处理路径。
-- **例题要完整**：例题/案例不能只有题干或提示，必须包含“题目/案例、解析步骤、结论或答案、易错点”。
-- **理论要落地**：重要概念、公式、规则或方法后面要尽快接例题、案例、变式、自测或错误诊断。
-- **题目要可判**：完整例题用 `> [!EXAMPLE]`，章末练习收束用 `> [!PRACTICE]`；不同学科可以是案例、操作、证明、翻译、设计或诊断任务，但必须有答案、判定依据或解析要点。
-- **收束要可复习**：快速复习每章目标约 10 个学习活动，其中至少 4 个完整例题/案例，另有 6 个左右短练习、自测、变式或边界辨析；章节末尾应由模型基于本章内容生成 6-8 个短练习/任务，回收到关键结论、适用条件和不能硬套的边界。
-- **系统课要有深度**：`systematic` 模式继续遵守 Planner 合同：5-12 章、整本 30000-100000 字。DocGen 会把整本文档目标长度折算到每章预算；复核发现章节明显低于最低字数时，应触发 `section_patch` 扩写，而不是只记录提示。
-
-这不是要求固定标题模板。标题、题型分类、练习章、例题区和章末练习收束都必须来自模型对本章材料的语义判断，不能由本地关键词、词表命中或字符串拼接生成。`mode_profiles.py`、`generation.py` 和 `chapter_execution_brief.py` 只给模型写作质量约束；`chapter_enhancement.py` 只做表现层增强，不再追加本地生成的练习或标题。确定性展示层只允许做结构性收口：发现重复标题、截断标题、孤立三级标题等结构问题时触发 LLM heading repair，最终 Markdown 只删除同章重复标题；它不负责本地起新标题，也不维护可见标题禁词表。
-
-### 0.1 本文件同时承担的入口信息
-
-当前 `docgen/` 目录：
+## 先看这几个文件
 
 ```text
 docgen/
-  __init__.py          # lane 稳定导出面
-  graph.py             # LangGraph 定义、Send 分发、单次运行入口
-  state.py             # DocGenState TypedDict
-  nodes/               # 顶层图节点
-  lib/                 # 节点内部复用逻辑和 Pydantic 合同
-  prompts/             # prompt builder / template
-  README.md            # 当前唯一文档文件
+  graph.py                         # LangGraph 主线、Send fan-out、run_docgen_workflow
+  state.py                         # DocGenState，包括 fan-out reducer 字段
+  lib/build_lifecycle.py           # API 接受、构建锁、后台任务、自动 KG 派发
+  nodes/load_context.py            # 读取 confirmed plan 和资料上下文
+  nodes/generate_chapters.py       # 按章生成草稿
+  nodes/review_content.py          # 按章复核 + 整本一致性复核
+  nodes/publish_document.py        # 发布 Markdown / manifest / KnowledgeDoc
+  lib/mode_profiles.py             # sprint/systematic 写作模式、预算和质量阈值
+  lib/model_policy.py              # DocGen LLM 策略
+  lib/publish.py                   # staging、live、version archive、数据库写入
 ```
 
-公开入口与阅读顺序：
+公开入口：
 
-1. `backend/app/workflows/digest/docgen/README.md`
-2. `backend/app/workflows/digest/docgen/graph.py`
-3. `backend/app/workflows/digest/docgen/state.py`
-4. `backend/app/workflows/digest/docgen/lib/models.py`
-5. `backend/app/workflows/digest/docgen/nodes/*.py`
+```python
+from app.workflows.digest import run_docgen_workflow
+from app.workflows.digest.docgen import (
+    trigger_docgen_build,
+    run_docgen_background,
+    get_docgen_result,
+    get_knowledge_build_runtime_result,
+)
+```
 
-运行入口说明：
-
-- `__init__.py` 只保留稳定导出。
-- `graph.py` 承接图定义、Send fan-out/fan-in 和单次 `run_docgen_workflow`。
-- LangGraph 节点的 `node_description`、输入输出字段和 metadata 统一通过 `digest.common.node_tracing` 生成，避免文档化信息在多个 graph 里漂移。
-- `lib/build_lifecycle.py` 承接 API 触发后的构建锁、后台任务、状态装配和结果组装。
-- `graph.get_langgraph_dev_docgen_graph()` 只服务 `langgraph dev` / 图可视化调试，不是业务运行入口。
-
-## 1. 流程总览与执行合同
-
-### 1.1 短流程总览
-
-这一节面向快速阅读，必须写清所有节点、并行关系、fan-out/fan-in、流水线关系和节点作用。字段级输入输出放在 `1.2 长流程执行合同`。
-
-### 1.1.1 当前模型槽位总览
-
-本节只描述 **当前代码真实使用的逻辑模型槽位**。最终 provider 模型名来自：
-
-- `backend/app/shared/infra/settings/defaults.py`
-- `backend/app/shared/infra/settings/settings.py`
-
-当前默认映射是：
+## 短流程
 
 ```text
-reason  -> qwen-max
-primary -> qwen-flash
-light   -> qwen-flash
-image_generation -> settings.models.image_generation（默认未配置）
+0. trigger_docgen_build
+   API 同步接受请求：校验 confirmed_plan，锁构建，写 docgen lane accepted runtime。
+
+1. run_docgen_background
+   后台加载 ConfirmedBuildPlan，标记 building，运行 DocGen LangGraph。
+
+2. load_context
+   冻结 confirmed plan，读取 shared_inputs，生成 chapter_assignments。
+
+3. prepare_global_seed
+   并行准备文档级 intent 和文件摘要，产出章节亲和度和高置信证据候选。
+
+4. generate_cover
+   可选封面 sidecar，失败不阻断正文。
+
+5. lock_titles_for_chapters
+   节点内部按章并行锁定最终章节标题。
+
+6. confirm_backbone_seed -> build_document_backbone
+   用 confirmed plan、标题、文件摘要和证据候选构建整本文档知识骨架。
+
+7. build_chapter_execution_briefs -> assemble_chapter_tasks
+   按章生成最小执行 brief，再组装最终章节任务。
+
+8. generate_chapters
+   LangGraph Send 按章 fan-out：每章独立检索、压缩上下文、写草稿、产出证据/主张/冲突账本。
+
+9. enhance_chapters
+   并行做表现层增强：Mermaid、交互 HTML、公式和 Markdown 结构。
+   如果 KG 预抽取开启，此处启动非阻塞 kg_prefetch sidecar。
+
+10. review_chapters -> document_consistency_review
+    LangGraph Send 按章复核，再做整本文档一致性检查。
+
+11. repair_or_route
+    对安全问题做局部 patch；重动作记录为 unresolved warning。
+
+12. merge_review -> sync_locked_titles -> publish_document
+    合并整本 Markdown，同步锁定标题，发布文档、manifest 和 KnowledgeDoc rows。
+
+13. run_docgen_background
+    DocGen 完成后，如果 sync_after_docgen=true，独立派发 kg_doc_sync 自动同步。
 ```
 
-注意：
-
-- 这里说的 `reason / primary / light` 是逻辑模型槽位，不是固定 provider 名。
-- 如果运行时 settings 覆盖了 `settings.models.*`，实际模型名会随之变化。
-- `docgen` 当前没有使用 `extract` 槽位。
-- DocGen 的模型槽位、输出预算、步骤级 `timeout_s` 和 `max_retries` 统一由 `lib/model_policy.py` 维护；节点和 lib 不应各自硬编码模型策略。
-- DocGen 不再依赖通用 `DOCGEN / DOCGEN_LIGHT` profile 来决定工作流请求超时，避免单个卡住的模型请求长时间拖住整条后台构建。
-
-按当前代码，DocGen 各阶段的大模型使用如下：
-
-| 阶段 / 子步骤 | 当前代码位置 | 调用类型 | 逻辑模型槽位 | 当前默认模型 | 这一步做什么 | 为什么这样配 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `prepare_global_seed.infer_intent_core` | `lib/intent.py` | 结构化 | `reason` | `qwen-max` | 只做文档级短意图判断，不再生成按章长提示 | 保留策略判断能力，但缩短输出，避免全局重调用过长 |
-| `prepare_global_seed.summarize_files` | `lib/file_summaries.py` | 结构化 | `light` | `qwen-flash` | 为每个文件生成摘要、概念、公式、例题和章节亲和度 | 文件任务数量多，适合轻量并发 |
-| `lock_titles_for_chapters.lock_title_for_chapter` | `lib/title_lock.py` | 结构化 | `reason` | `qwen-max` | 节点内部按章并行锁定最终标题 | 标题仍需高质量推理，但输出极短，适合收在单节点内部并行 |
-| `confirm_and_seed_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 基于 confirmed plan、locked titles、source signals 组装骨架 seed | 这是规则收口，不需要额外模型推理 |
-| `build_document_backbone` | 当前纯规则 | 无 LLM | 无 | 无 | 构建整本文档的术语表、主张池、依赖关系和易混点骨架 | 全局一致性优先用规则保持稳定 |
-| `build_chapter_execution_briefs.build_chapter_execution_brief` | `lib/chapter_execution_brief.py` | 结构化 | `reason` | `qwen-max` | 节点内部按章并行生成最小执行 brief | 章级小任务，保留推理能力但严格限制输出字段和长度 |
-| `assemble_chapter_tasks` | 当前纯规则 | 无 LLM | 无 | 无 | 合并 locked title、intent core、backbone、chapter brief，组装最终章节任务 | 任务装配是规则问题，不需要再调用模型 |
-| `generate_chapters.query_planning` | `lib/query_planning.py` | 结构化 | `reason` | `qwen-max` | 把章节目标拆成 research sub-queries / gap queries | 研究问题拆解仍然适合推理式规划 |
-| `generate_chapters.research_purify` | `lib/chapter_context.py` | 文本 | `light` | `qwen-flash` | 对 dense context 做轻量清洗，去掉噪声与重复 | 只是净化材料，不做深度推理 |
-| `generate_chapters.writer` | `lib/writer.py` | 文本 | `systematic -> reason` / `sprint -> primary` | `qwen-max` / `qwen-flash` | 把研究材料和执行合同写成章节正文 | 系统课更偏结构推理，速成课更偏快速成文 |
-| `generate_chapters.heading_repair` | `lib/writer.py` | 文本 | `light` | `qwen-flash` | 按正文语义修正章节标题层级和结构格式；速成课章节默认走一次模型标题复核 | 轻量结构修正，不值得用更贵模型 |
-| `generate_chapters.rewrite` | `lib/chapter_revision.py` | 文本 | `primary` | `qwen-flash` | 当章节质量不够时做一次 bounded rewrite | 正文改写质量要求高于 light，但不需要最重推理 |
-| `enhance_chapters.mermaid_placeholder` | `lib/asset_rendering.py` | 文本 | `light` | `qwen-flash` | 把 Mermaid 占位符变成真正可渲染的结构图内容 | 资产生成是辅助增强，轻量模型足够 |
-| `enhance_chapters.interactive_html_sidecar` | `lib/interactive_html.py` | 文本 | `primary` | `qwen-flash` | 为少量高价值章节生成独立 HTML 交互页 sidecar | 交互页比文生图更适合参数变化、步骤展开和几何/函数/方程可视化 |
-| `review_content.review_chapter` | `lib/chapter_review.py` | 结构化 | `light` | `qwen-flash` | 逐章复核覆盖率、证据支撑和写作质量，产出 review action | 并行、轻量、结构化审稿场景，优先控制成本和速度 |
-| `document_consistency_review` | 当前纯规则 | 无 LLM | 无 | 无 | 对整本文档做术语、章节数、重复和风格一致性检查 | 全局复核先用规则收口，减少漂移 |
-| `repair_or_route.surface/section patch` | `lib/repair.py` | 文本 | `primary` | `qwen-flash` | 按 review action 对章节做局部 patch 或记录 unresolved warning | 已经直接改正文，不能太轻；但又不需要最重 reason |
-| `merge_review` | 当前纯规则 | 无 LLM | 无 | 无 | 合并章节、整理 metadata、做发布前完整性检查 | 发布前规则收口，不负责重新思考内容 |
-| `sync_locked_titles` | 当前纯规则 | 无 LLM | 无 | 无 | 只把已锁定标题同步到最终 Markdown，不重新起标题 | 当前明确禁止 LLM 改标题，防止推翻 confirmed plan 语义 |
-| `publish_document` | 当前纯规则 | 无 LLM | 无 | 无 | 写出 Markdown、manifest、版本归档和数据库记录 | 发布阶段只做持久化，不承担内容生成 |
-| `cover sidecar` | `lib/cover.py` | 文生图 | `image_generation` | 取决于 `settings.models.image_generation` | 为整本文档生成横向抽象封面图 | 封面是独立 sidecar，不干扰正文链路 |
-
-当前主线：
-
-```text
-load_context
-  读取 confirmed plan、资料理解包、Planner 上下文和构建入口参数。
-  校验用户已经确认章节合同，生成 DocGen 全局上下文、章节 assignment 和发布上下文。
-  |
-  v
-prepare_global_seed
-  全局轻准备，只做两件事：
-    ├─ infer_intent_core
-    │    只推断文档级短意图，不再产按章长提示。
-    └─ summarize_files
-         摘要文件、判断章节亲和度、抽取高置信证据候选。
-  这一步不再做整本 outline enhance。
-  |
-  v
-lock_titles_for_chapters
-  单节点内部按章节并行执行：
-    - lock_title_for_chapter x N
-  锁定最终标题，只输出标题相关字段。
-  |
-  v
-confirm_and_seed_backbone
-  合并 confirmed plan、locked titles、文件摘要、章节亲和度和证据候选。
-  生成 ChapterGenerationPlanSeed、ChapterGenerationTaskSeed 和 backbone_research_agenda。
-  |
-  v
-build_document_backbone
-  基于章节 seed、资料摘要和证据候选，构建整本文档知识骨架。
-  统一术语、概念依赖、符号、核心主张和易混点。
-  |
-  v
-build_chapter_execution_briefs
-  单节点内部按章节并行执行：
-    - build_chapter_execution_brief x N
-  每章生成最小执行 brief，不再产完整执行大纲。
-  |
-  v
-assemble_chapter_tasks
-  合并 locked title、intent core、document backbone、chapter brief。
-  组装最终 ChapterGenerationPlan / ChapterGenerationTask。
-  |
-  v
-generate_chapters
-  按章节 fan-out：
-    ├─ generate_chapter 1
-    ├─ generate_chapter 2
-    └─ generate_chapter N
-  每章独立执行检索、网页/本地资料读取、上下文压缩、claim/evidence/conflict 和正文草稿写作。
-  所有章节草稿 fan-in 为 chapter_drafts、research_traces、claim/evidence/conflict ledgers。
-  |
-  v
-enhance_chapters
-  按章并行增强：
-    ├─ enhance_chapter 1
-    ├─ enhance_chapter 2
-    └─ enhance_chapter N
-  处理 Mermaid、交互 HTML sidecar、公式清洗和 Markdown 结构。
-  不根据关键词追加例题/练习，不生成小节标题；练习、题型分类和二级标题必须由 writer / review / repair 的模型链路产出。
-  如果图谱预抽取开启，则在本阶段完成后启动非阻塞 kg_prefetch sidecar：
-    - 使用增强后的章节 Markdown 预抽取 section payload。
-    - 默认最多 2 路 LLM 并发，并先让后续 DocGen review 调度。
-    - 不等待、不落库、不影响后续 review_content。
-  |
-  v
-review_content / 当前 review_chapter Send x N + document_consistency_review
-  按章并行复核，然后执行整本一致性检查。
-  |
-  v
-repair_or_route
-  当前实现：对 surface_patch / section_patch / evidence_patch 执行安全局部 Markdown patch；regenerate_chapter 降级为单章局部修补；re_dispatch / rebuild_backbone 等重动作结构化记录。
-  当前流水线：review_content -> repair_or_route -> merge_review。
-  |
-  v
-merge_review
-  reviewed drafts fan-in 后按 chapter_index 去重、排序、收口 chapter metadata。
-  |
-  v
-sync_locked_titles
-  不再生成新标题；只同步 lock_titles_for_chapters 阶段已经锁定的标题。
-  |
-  v
-publish_document
-  发布章节 Markdown、整本 Markdown、docgen_manifest.json、版本归档和 KnowledgeDoc rows。
-```
-
-并行与 fan-in/fan-out 关系摘要：
+并行关系只看这张图：
 
 ```text
 prepare_global_seed
-  infer_intent_core ┐
-  summarize_files   ┘
+  ├─ infer_intent_core
+  └─ summarize_files
 
 lock_titles_for_chapters
-  单节点内部并行执行 lock_title_for_chapter x N
-  完成后进入 confirm_and_seed_backbone
+  └─ run_llm_tasks(chapter x N)
 
 build_chapter_execution_briefs
-  单节点内部并行执行 build_chapter_execution_brief x N
-  完成后进入 assemble_chapter_tasks
-
-generate_draft
-  generate_chapter 1 ┐
-  generate_chapter 2 ├─ fan-in -> enhance
-  generate_chapter N ┘
-
-enhance
-  enhance_chapter 1 ┐
-  enhance_chapter 2 ├─ fan-in -> review_content
-  enhance_chapter N ┘
-
-review_content
-  review_chapter 1 ┐
-  review_chapter 2 ├─ fan-in -> document_consistency_review -> repair_or_route
-  review_chapter N ┘
-
-kg_prefetch sidecar
-  enhanced_chapter 1 ┐
-  enhanced_chapter 2 ├─ 后台预抽取候选，仅缓存 section payload
-  enhanced_chapter N ┘
-  发布成功后由 kg_doc_sync 消费；发布失败或构建取消时丢弃。
-```
-
-### 1.2 长流程执行合同
-
-这一节是 DocGen 的详细执行合同。字段以当前 state/model 为准，已经删掉长期为空或不生效的 Planner 伪字段。
-
-```text
-load_context
-  输入：confirmed_plan / shared_inputs / planner_context
-    - confirmed_plan：用户确认后的构建合同，包含章节、模式、目标、约束。
-    - shared_inputs：资料理解包，包含文件、切片、画像、统计、资产索引。
-    - planner_context：confirmed_plan 中固化的 Planner 会话摘要和修改意见。
-  输出：confirmed_plan payload / shared_inputs / DocGenContext / chapter_assignments / document_context
-    - confirmed_plan payload：用户确认语义的冻结快照，不允许静默漂移。
-    - shared_inputs：DocGen 的资料包，负责说明“从哪里找材料”。
-    - DocGenContext：DocGen 全局运行上下文。
-    - chapter_assignments：confirmed plan 章节转成的执行章节列表。
-    - document_context：发布和写作共用的文档级上下文。
-  作用：确认用户已确认的章节合同，补齐资料上下文、模式和构建状态。
-  当前模型方案：
-    - 当前无 LLM 调用；纯合同校验与上下文组装。
-
-prepare_global_seed
-  输入：user_prompt / plan_summary / digest_mode / chapter_assignments / docgen_history_brief / source_packets / section_packets
-    - chapter_assignments：用户确认的章节列表。
-    - source_packets / section_packets：文件级正文包和切片级正文包。
-    - docgen_history_brief：和文档生成有关的历史修改摘要。
-  输出：intent_core / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
-    - intent_core：文档级泛化学习意图，包含 learning_goal_text、audience_profile_text、content_strategy_text、example_practice_policy、source_usage_policy、例题/练习比例和证据/复核严格度；旧的 style/depth 字段只做兼容派生。
-    - FileMaterialSummary：文件摘要、核心概念、公式、例题、高价值 section、章节亲和度和 `chapter_slices`。
-    - chapter_slices：文件摘要 LLM 根据切片目录做“章节 -> 原文片段”路由，记录 section_ref、行号、用途、原因和片段摘要。
-    - source_affinity_by_chapter：每章优先使用哪些文件、切片和 LLM 预选 source_slices。
-    - high_confidence_evidence_units：高置信证据单元。
-  作用：把前置阶段收口成“全局轻准备”，不再在这里生成整本执行大纲。
-  当前模型方案：
-    - `infer_intent_core`
-      - `model="reason"`
-      - `timeout_s=90`，`max_retries=3`
-      - 默认映射到 `qwen-max`
-    - `summarize_files`
-      - `model="light"`
-      - `timeout_s=240`，`max_retries=3`
-      - 默认映射到 `qwen-flash`
-      - 同时接收 section catalog，让 LLM 为后续章节写作选择原文切片，而不是只做文件级摘要。
-
-lock_titles_for_chapters
-  输入：course / digest_mode / user_prompt / plan_summary / docgen_history_brief / chapter_assignment
-    - chapter_assignment：单章 confirmed contract。
-  输出：LockedChapterTitle[]
-    - LockedChapterTitle：单章锁定标题记录，只包含 confirmed_title / enhanced_title / warnings / fallback_used。
-  作用：把标题锁定从原来的整本 outline enhance 中拆出来，改成收在单节点里的章节级并行极短结构化任务。
-  约束：
-    - 只锁标题。
-    - 标题语义由结构化 LLM 根据用户目标、confirmed plan、章节目标和 required_elements 判断；本地代码只做空标题、编号标题、过长标题等发布形态校验，不用关键词抽取或词项交集判断标题是否贴合。
-    - 不生成 teaching outline。
-    - 不生成 retrieval queries。
-    - 不生成 media requests。
-  当前模型方案：
-    - `model="reason"`
-    - `timeout_s=60`，`max_retries=3`
-    - 默认映射到 `qwen-max`
-
-confirm_and_seed_backbone
-  输入：confirmed_plan payload / LockedChapterTitle[] / FileMaterialSummary[] / source_affinity_by_chapter / high_confidence_evidence_units
-  输出：ChapterGenerationPlanSeed / ChapterGenerationTaskSeed[] / backbone_research_agenda / locked_titles
-    - ChapterGenerationPlanSeed：整轮写作规则、格式和预算初稿。
-    - ChapterGenerationTaskSeed：单章 seed，只保留标题、章节目标、required_elements、最小 retrieval seed 和 source seed。
-    - backbone_research_agenda：构建全局知识骨架需要优先检索和打开的主题、切片、证据方向。
-    - locked_titles：按 chapter_index 排序后的稳定标题记录。
-  作用：在标题锁定之后，用规则把 confirmed plan 和 source signals 收口成 backbone seed。
-  当前模型方案：
-    - 当前无 LLM 调用；纯规则收口和 seed/agenda 派生。
-
-build_document_backbone
-  输入：ChapterGenerationTaskSeed[] / shared_inputs / high_confidence_evidence_units / backbone_research_agenda
-  输出：DocumentBackbone / backbone_conflict_warnings
-    - DocumentBackbone：DocGen 写作骨架和候选知识线索，不是正式 Knowledge Graph。
-    - backbone_conflict_warnings：全局术语、定义、符号或来源冲突 warning。
-  作用：在 seed 基础上做全局证据采样和统一建模，但不在这里直接组装最终 ChapterGenerationTask。
-  DocumentBackbone 包含：
-    - CanonicalGlossary：全局术语表，统一术语、别名、定义。
-    - ConceptDependencyGraph：概念依赖图，约束前置关系。
-    - NotationRegistry：符号和记号规范。
-    - CanonicalClaimPool：整本文档必须讲清的核心主张池。
-    - ConfusionMap：易混点、误区和边界。
-  当前模型方案：
-    - 当前无 LLM 调用；只把上游模型产出的 confirmed plan、执行简报和证据摘要整理成结构化骨架，不生成学生可见标题或正文。
-
-build_chapter_execution_briefs
-  输入：ChapterGenerationTaskSeed / DocumentBackbone / intent_core
-  输出：ChapterExecutionBrief[]
-    - ChapterExecutionBrief：单章最小执行脚手架。
-  作用：把原来整本 outline enhance 中“每章怎么讲”的部分拆出来，改成收在单节点里的章节级并行小任务。
-  学习分类合同：
-    - 统一使用 7 类内容角色：core_knowledge / method_demo / explanation_support / principle_reasoning / practice_assessment / knowledge_organization / application_extension。
-    - 输出 content_role_targets，明确本章各角色要覆盖什么。
-    - 输出 example_coverage_plan，明确哪些核心知识、方法或任务必须由例题、案例、操作示例或练习覆盖。
-    - 输出 chapter_end_practice_plan，明确章末练习收束应覆盖哪些本章任务、边界、迁移或操作检查。
-    - sprint 侧重 method_demo / practice_assessment / application_extension，每章目标约 10 个学习活动，包含完整例题/案例、短练习、自测、变式和章末 6-8 个短题/任务。
-    - systematic 侧重 core_knowledge / principle_reasoning / explanation_support，但每个核心知识点必须有例题、案例、操作示例或练习支撑。
-  约束：
-    - teaching_outline 最多 3 条。
-    - content_role_targets、example_coverage_plan 和 chapter_end_practice_plan 是主要输出；concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets 只做兼容字段，各最多 2 条。
-    - retrieval_queries 最多 2 条。
-    - 不允许顺带改标题。
-    - 不输出 media_requests。
-    - 不输出 practice_seed_policy。
-  当前模型方案：
-    - `model="reason"`
-    - `timeout_s=120`，`max_retries=3`
-    - 默认映射到 `qwen-max`
+  └─ run_llm_tasks(chapter x N)
 
 assemble_chapter_tasks
-  输入：confirmed_plan payload / locked_titles / intent_core / ChapterGenerationTaskSeed[] / ChapterExecutionBrief[] / DocumentBackbone / FileMaterialSummary[] / source_affinity_by_chapter
-  输出：ChapterGenerationPlan / ChapterGenerationTask[] / chapter_execution_briefs
-    - ChapterGenerationPlan：最终整轮执行计划。
-    - ChapterGenerationTask：最终单章执行合同。
-    - chapter_execution_briefs：排序后的章节 brief 快照。
-  作用：用规则把 locked title、intent core、document backbone 和 chapter brief 合并成最终章节任务。
-  ChapterGenerationTask 至少包含：
-    - chapter_index / confirmed_title / enhanced_title / objective
-    - required_elements / forbidden_scope
-    - retrieval_queries / priority_section_refs / source_slices / preferred_sources / fallback_policy
-    - content_role_targets / example_coverage_plan / chapter_end_practice_plan
-    - concept_targets / definition_targets / formula_targets / example_targets / pitfall_targets（兼容旧字段，不再作为主合同）
-    - allowed_assets / practice_seed_policy（由规则装配阶段派生，不再由 chapter brief 直接产出）
-    - practice_seed_policy 中包含 content_mix_policy / example_density_policy / coverage_policy / chapter_end_practice_plan，作为 writer 和 review 的质量约束；其中章末练习计划只做结构化透传和裁剪，不由规则生成题目。
-    - dependency_refs / forward_refs / claim_targets / confusion_targets
-  当前模型方案：
-    - 当前无 LLM 调用；纯规则装配和 backbone 回填。
-
-generate_chapters
-  输入：单章 ChapterGenerationTask / shared_inputs / DocumentBackbone / DocGenContext / retrieval_policy/internal retrieval_profile
-  输出：ChapterDraft[] / ChapterResearchTrace[] / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[]
-    - ChapterDraft：章节初稿、摘要草稿、占位符、质量信号。
-    - ChapterResearchTrace：检索轮次、执行 query、打开上下文、覆盖率。
-    - ClaimLedger：本章主张账本，列出本章必须讲清的话。
-    - ClaimEvidenceMap：主张和证据的映射。
-    - EvidenceLedger：可追溯证据单元。
-    - ConflictReport：定义、符号、来源或例子冲突记录。
-  作用：每章执行研究、主张抽取、证据对齐、冲突消解和正文草稿生成。
-  generate_chapter 内部步骤：
-    1. hydrate_source_slices：先按 `source_slices` 精确读取原文行并合并切片摘要，作为本章确定性本地上下文。
-    2. retrieve_for_chapter：取 retrieval_queries / priority_section_refs，先本地，资料不足时外部补洞。
-       当前模型方案：
-         - 子查询规划 `generate_sub_queries` / `generate_gap_queries`
-         - `model="reason"`
-         - `timeout_s=120`，`max_retries=3`
-         - 默认映射到 `qwen-max`
-    3. compress_context：读取命中内容并压缩为 dense_context，同时抽取 evidence_units。
-       当前模型方案：
-         - 当前主要依赖检索、reader、compressor 规则链。
-         - 若触发 `research_purify`，使用：
-           - `model="light"`
-           - `timeout_s=180`，`max_retries=3`
-           - 默认映射到 `qwen-flash`
-    4. extract_claims：基于 ChapterGenerationTask、dense_context 和 CanonicalClaimPool 生成 ClaimLedger。
-    5. align_evidence：把 ClaimLedger 映射到 evidence_units，生成 ClaimEvidenceMap 和 EvidenceLedger。
-    6. resolve_conflicts：处理定义冲突、记号冲突、来源口径差异和例子冲突。
-    7. draft_chapter：基于 resolved claims 和 claim-evidence map 写章节草稿，留下增强占位符。
-       当前模型方案：
-         - writer 主调用：
-           - `digest_mode=systematic -> model="reason"`
-           - `digest_mode=sprint -> model="primary"`
-           - `timeout_s=360`，`max_retries=3`
-         - 默认映射到 `qwen-max / qwen-flash`
-         - heading repair：
-           - `model="light"`
-           - `timeout_s=180`，`max_retries=3`
-           - 默认映射到 `qwen-flash`
-           - `sprint` 模式默认执行一次；其它模式在标题过少、重复、截断或层级异常时执行。
-           - 触发条件不维护可见标题禁词表，修复标题必须由模型根据本章正文语义命名。
-    8. critic/rewrite：当前代码仍在单章内做轻量 critic 和最多一次 rewrite；目标上应逐步前移到 review_content。
-       当前模型方案：
-         - critic 本身是规则判断，不调模型
-         - 若触发 rewrite：
-           - `model="primary"`
-           - `timeout_s=300`，`max_retries=3`
-           - 默认映射到 `qwen-flash`
-  模式差异：sprint/systematic 的核心差异主要在 draft_chapter 体现。
-    - sprint：短、密、题型或任务导向，参考突击课常见的“考点/任务导航 -> 条件信号 -> 最短方法 -> 变式练习 -> 易错辨析 -> 章末成组练习收束”节奏。
-    - systematic：长、稳、结构导向，参考系统课常见的“知识地图 -> 定义/性质 -> 推理路径 -> 例题落地 -> 迁移练习 -> 边界回收 -> 章末短练习收束”节奏。
-    - 这些节奏只作为写作建议，不是固定目录；章节标题应由本章内容自然决定。
-
-enhance_chapters
-  ├─ enhance_chapter 1
-  ├─ enhance_chapter 2
-  └─ enhance_chapter N
-  输入：ChapterDraft / ClaimLedger / placeholder_requests / asset settings / digest_mode
-  输出：EnhancedChapterDraft[] / AssetManifest[] / PracticeManifest[]
-    - EnhancedChapterDraft：增强后的章节正文。
-    - AssetManifest：Mermaid、交互块等资产清单。
-    - PracticeManifest：兼容保留的产物，当前不由本地代码生成练习种子。
-  作用：处理 Mermaid、交互 HTML sidecar、公式清洗和 Markdown 展示结构；image 占位会被剥离，不进入发布正文。
-  enhance_chapter 内部步骤：
-    1. 解析章节中的 Mermaid / interactive 占位符，并清理残留 image 占位。
-       当前模型方案：
-         - Mermaid 占位生成：
-           - `model="light"`
-           - `timeout_s=120`，`max_retries=3`
-           - 默认映射到 `qwen-flash`
-         - interactive HTML sidecar：
-           - `model="primary"`
-           - `timeout_s=300`，`max_retries=3`
-           - 默认映射到 `qwen-flash`
-         - image 当前不走大模型生成正文资产
-    2. 对少量高价值章节生成独立、自包含的 HTML 交互页 sidecar，并在 Markdown 中插入新标签页打开链接。
-    3. 统一公式、Mermaid、Markdown 结构。
-    4. 不做语义补写：不根据 ClaimLedger、ConfusionMap、标题词或构建约束追加例题、练习或小节标题。
-    5. 产出 asset manifest 和空的兼容 PracticeManifest。
-  约束：
-    - 不大幅改写知识内容。
-    - 不修核心定义。
-    - 不自行引入新结论。
-    - 不用本地关键词判断章节是否“训练型”，不拼接泛化模块标题、学习动作标题或序号占位题型。
-    - 不改变 claim / evidence 关系。
-    - 不把原始 HTML 直接嵌进正文 Markdown。
-    - 交互页默认走独立 sidecar 资产，由前端预览页以 sandboxed iframe 打开。
-
-review_content / 当前 review_chapter Send x N + document_consistency_review
-  ├─ review_chapter 1
-  ├─ review_chapter 2
-  ├─ review_chapter N
-  └─ document_consistency_review
-  输入：EnhancedChapterDraft[] / 单章 ChapterGenerationTask / 单章 ClaimLedger / 单章 ClaimEvidenceMap / 单章 ConflictReport / DocumentBackbone
-  输出：ReviewedChapterDraft[] / ChapterReviewReport[] / DocumentConsistencyReport / ReviewAction[] / review_decision
-    - ReviewedChapterDraft：最终可合并章节稿。
-    - ChapterReviewReport：单章覆盖率、质量分、缺失点、修补记录、warning。
-    - DocumentConsistencyReport：跨章术语、符号、定义、前置关系和风格一致性报告。
-    - ReviewAction：复核后的回流动作。
-    - review_decision：good / needs_repair / publish_with_warnings / fail。
-  作用：复核增强后的最终章节，并检查整本文档一致性。
-  review_chapter 检查：
-    1. 合同覆盖：required_elements 是否覆盖，是否越界。
-    2. 主张支撑：claim 是否有足够 evidence 支撑。
-    3. 结构风格：长度、节奏、模式、用词是否符合。
-    4. 风险信号：定义模糊、低支撑断言、unresolved conflict。
-    5. 学习分类覆盖和例题驱动质量由 LLM 结构化复核判断：是否训练型、是否需要题型/任务分类、例题数量和自测答案完整度，都不能用本地关键词判断。
-  document_consistency_review 检查：
-    1. 跨章术语和符号是否一致。
-    2. 定义是否冲突。
-    3. 前置关系是否倒挂。
-    4. 是否重复讲或某章吃掉下一章内容。
-    5. 整本风格是否断裂。
-  当前实现补充：
-    - review_chapter 使用 LLM 结构化复核 + 机械 guardrail；规则只保留精确合同覆盖、证据分、长度和 Markdown 渲染检查。
-    - review_chapter 当前通过 LangGraph Send 按章 fan-out，在 LangSmith 中可见为并行章节复核分支。
-    - review_chapter 子分支只携带本章 task / claim / evidence / conflict，不再把整本列表复制到每个 review run。
-    - review_chapter 子分支只输出 review overlay、report 和 action；完整 ReviewedChapterDraft 在 fan-in 后由 document_consistency_review materialize，避免每个复核分支重复输出整章 Markdown。
-    - LLM review prompt 只传单章 Markdown、精简章节合同、主张摘要、低支撑 evidence binding 和冲突摘要，不再传完整任务/账本 JSON。
-    - document_consistency_review 在章节 fan-in 后执行，不调工具、不检索、不改正文。
-  当前模型方案：
-    - `review_chapter`
-      - `model="light"`
-      - `timeout_s=180`，`max_retries=3`
-      - 默认映射到 `qwen-flash`
-    - `document_consistency_review`
-      - 当前无 LLM 调用；纯规则一致性检查。
-
-repair_or_route
-  输入：ReviewAction[] / ReviewedChapterDraft[] / EnhancedChapterDraft[] / ChapterGenerationTask[] / DocumentBackbone
-  输出：ReviewedChapterDraft[] / rerun_tasks / unresolved_warnings / repair_trace
-  作用：按问题严重度决定是否 patch、重写章节、重派发任务或重建 backbone。
-  回流级别：
-    - surface_patch：标题微调、语句不通顺、小过渡、小引用补齐。
-    - section_patch：小节逻辑弱、例题不好、易混点没讲清、定义需要局部改写。
-    - evidence_patch：证据不足、来源支撑弱；当前先做安全局部补证据说明、收窄断言或补不确定性提示，不编造外部来源。
-    - regenerate_chapter：claim coverage 不够、关键证据缺失、核心定义冲突、章节边界偏移。
-    - re_dispatch：单章任务合同本身不清楚，需要重新生成 ChapterGenerationTask。
-    - rebuild_backbone：跨章术语漂移、概念顺序错、整本结构断裂。
-  当前实现：
-    - 已支持 surface_patch / section_patch / evidence_patch 的局部 Markdown patch。
-    - LLM repair 只生成局部补丁片段，由代码插入目标锚点或小结前；不再要求模型返回完整章节 Markdown。
-    - regenerate_chapter 会降级为单章局部修补；re_dispatch / rebuild_backbone 先结构化记录为 unresolved warning。
-    - 当前仍是一次性路径：review_content -> repair_or_route -> merge_review。
-    - repair 执行策略已经收口为“按章节并行、单章少量局部 patch”：
-      - 不同章节的 patch 会并行执行。
-      - 确定性的 Markdown 展示修复不占用 LLM 修补额度。
-      - LLM 会在一轮局部 patch 中尽量合并处理同章多个复核动作，并返回 covered/unresolved action ids。
-      - 如果模型没有一次覆盖完，单章最多继续 3 轮；这是 repair 文件内的工程约束，不作为部署配置项暴露。
-      - 三轮后仍未覆盖的同章 patch 动作记录为 unresolved warning，等待下一次用户触发或后续更明确的有限回流。
-  当前模型方案：
-    - `surface_patch / section_patch / evidence_patch`
-      - `model="primary"`
-      - `timeout_s=120`，`max_retries=3`
-      - 默认映射到 `qwen-flash`
-    - `regenerate_chapter`
-      - 当前降级使用 `section_patch` 的单章局部修补路径
-    - `re_dispatch / rebuild_backbone`
-      - 当前只记录，不自动发起新的大模型调用
-  目标实现：
-    - 支持最多两轮有限回流：review_content <-> repair_or_route。
-    - 第二轮仍未解决的问题写入 unresolved_warnings 和 manifest。
-
-merge_review
-  输入：ReviewedChapterDraft[] / ChapterGenerationPlan / DocumentBackbone / ClaimLedger[] / ClaimEvidenceMap[] / EvidenceLedger[] / ConflictReport[] / DocumentConsistencyReport / ReviewAction[]
-  输出：merged_markdown / chapter_metadatas / MergeReviewReport
-    - merged_markdown：整本文档 Markdown。
-    - chapter_metadatas：发布和 manifest 使用的章节元数据。
-    - MergeReviewReport：章节完整性、manifest 完整性和最终来源覆盖报告。
-  作用：合并章节，只做发布前收口，不承担最重的知识复核。
-  当前模型方案：
-    - 当前无 LLM 调用；纯规则合并和检查。
-
-未来可选 final_merge_patch
-  当前状态：不在主图中，当前发布收口由 merge_review + sync_locked_titles 承担。
-  设计边界：如果未来新增，只允许修合并后才暴露的小问题，例如目录重复、跨章过渡缺失、重复摘要或 manifest 缺字段。
-  明确禁止：重新检索、重写章节、改变 claim / evidence。
-
-sync_locked_titles
-  输入：chapter_metadatas / confirmed_plan.chapter_plan / enhanced titles / merge_review_report
-  输出：final_chapter_titles / updated chapter_metadatas / title_review_report
-  作用：标题收口，保持 chapter_index 和 confirmed plan 映射。
-  当前实现：
-    - 不调用 LLM，不生成新标题。
-    - 只使用 lock_titles_for_chapters 阶段已经锁定的章节标题。
-    - 同步改每章 Markdown 一级标题。
-    - 重建整本 Markdown。
-  约束：只统一标题表达，不推翻用户确认过的章节语义。
-  当前模型方案：
-    - 当前无 LLM 调用。
-
-publish_document
-  输入：merged_markdown / chapter_metadatas / docgen_artifacts / document_context
-  输出：markdown files / docgen_manifest.json / KnowledgeDoc rows / version archive
-    - docgen_artifacts：DocGenContext、DocumentBackbone、计划、章节、主张、证据、冲突、资产、练习、review 报告。
-  作用：发布章节 Markdown、整本 Markdown、manifest、数据库记录和版本归档。
-  当前模型方案：
-    - 当前无文本 LLM 调用。
-    - 若启用了封面 sidecar，会额外走：
-      - `agenerate_image(...)`
-      - `model="image_generation"`
-      - 实际 provider 模型取决于 `settings.models.image_generation`
+  -> Send(generate_chapters, chapter x N)
+       -> reducer fan-in: chapter_drafts / traces / ledgers
+  -> enhance_chapters
+       -> run_llm_tasks(chapter x N)
+       -> start_docgen_kg_prefetch(...)  # 可选 sidecar
+  -> Send(review_chapters, chapter x N)
+       -> reducer fan-in: review overlays / actions / reports
+  -> document_consistency_review
 ```
 
-### 1.3 持久化与数据库读写合同
+## 长流程
 
-这一节只描述当前代码真实发生的数据库和存储读写。DocGen 的核心业务生成在 LangGraph 内完成，但 API 接受、构建锁、运行态、发布入库和自动 KG 派发都在 `lib/build_lifecycle.py` 与 `lib/publish.py` 中收口。
+### 0. 构建生命周期：`lib/build_lifecycle.py`
 
-#### 1.3.1 API 接受阶段：`trigger_docgen_build`
+DocGen 不是 API 一进来就直接跑图。外面先有一层构建生命周期。
 
-输入：
+`trigger_docgen_build(...)`
 
-- `course`：API 层鉴权后的 `Course`。
-- `user_id`。
-- `confirmed_plan_id`：必填；当前不允许绕过 Planner confirmed plan 直接生成。
-- `file_ids / prompt`：兼容参数。确认方案存在时，以 confirmed plan 中冻结的文件和 prompt 为准。
-- `embedding_resolution`：用于向量状态 precheck。
-
-输出：
-
-- `DocGenBuildData`
-  - `accepted_file_ids`
-  - `ready_file_count`
-  - `prompt`
-  - `requested_at`
-  - `vector_status`
-  - `planner_session_id`
-  - `confirmed_plan_id`
-  - `digest_mode`
-  - `model_override`
-- `accepted_file_ids`
-- `build_group_id`
-
-数据库/存储读写：
-
-- 读 `ConfirmedBuildPlan`：
-  - `planner_session_id`
-  - `digest_mode`
-  - `plan_summary`
-  - `selected_file_ids_json`
-  - `chapter_plan_json`
-  - `plan_json.model_override`
-- 读 `RawFile`：只接受已完成 Markdown 解析的文件；没有 ready file 时进入 search-only 模式。
-- 读课程构建 precheck / vector 状态；如果必须全量重建，清理 chunk vector metadata。
-- 写 knowledge build lock：
-  - `course_id`
-  - `requested_at`
-  - `build_group_id`
-  - `source_file_ids`
-  - `prompt`
-- 清理 DocGen staging 存储目录。
-- 写 docgen lane runtime：
-  - `status="accepted"`
-  - `stage="build_accepted"`
-  - `planner_session_id`
-  - `confirmed_plan_id`
-  - `digest_mode`
-  - `model_override`
-  - `chapter_progress`
-  - `recent_events`
-- 此阶段不启动 LangGraph，不写 `KnowledgeDoc`。
-
-#### 1.3.2 后台生命周期：`run_docgen_background`
-
-输入：
-
-- API 接受阶段返回的 `file_ids / prompt / requested_at / build_group_id`。
-- `planner_session_id / confirmed_plan_id / model_override / user_id`。
-
-输出：
-
-- 无直接 API 返回；通过 build runtime、已发布文档和 graph lane runtime 供前端轮询。
-
-数据库/存储读写：
-
-- 读 `ConfirmedBuildPlan` 并构建标准 confirmed plan payload。
-- 从 `confirmed_plan.plan_json.model_override` 二次解析模型覆盖，优先级高于 API 参数。
-- 标记 `ConfirmedBuildPlan.status="building"`。
+- 必须传 `confirmed_plan_id`。
+- 读取 `ConfirmedBuildPlan`，以其中的 `selected_file_ids / user_prompt / digest_mode / model_override` 为准。
+- 只接受已解析完成的文件；没有 ready file 时进入 search-only mode。
+- 检查课程向量状态和构建冲突。
+- 写 `KnowledgeBuildLock`。
 - 清理 DocGen staging。
-- 写 docgen lane runtime 为 `running / prepare_shared`。
-- 如果 `knowledge_graph.sync_after_docgen=true`：
-  - 写 graph lane runtime 为 `accepted / queued_after_docgen`。
-  - 捕获 graph LLM runtime snapshot。若有模型覆盖，则用 `build_runtime_model_override_snapshot(model_override)` 固化自动 KG 的模型。
-- 调用 `run_docgen_workflow(...)`。
+- 写 docgen lane runtime：`accepted / build_accepted`。
+- 不运行 LangGraph，不写 `KnowledgeDoc`。
+
+`run_docgen_background(...)`
+
+- 生成本次 `build_session_id`。
+- 加载 confirmed plan payload。
+- 标记 `ConfirmedBuildPlan.status="building"`。
+- 写 docgen lane runtime：`running / prepare_shared`。
+- 如果 `settings.knowledge_graph.sync_after_docgen=true`：
+  - graph lane 先写 `accepted / queued_after_docgen`。
+  - 捕获 LLM runtime snapshot，保证自动 KG 同步模型配置不漂移。
+- 调 `run_docgen_workflow(...)`。
 - 成功：
-  - 写 docgen lane runtime 为 `completed`。
-  - 标记 `ConfirmedBuildPlan.status="completed"`。
-  - 根据设置注册独立 `kg_doc_sync` 后台任务。
-- 失败：
-  - 取消同 build 的 KG prefetch sidecar。
+  - docgen lane 写 `completed`。
+  - confirmed plan 写 `completed`。
+  - 可选派发 `run_graph_docs_sync_auto_build(...)`。
+- 失败或取消：
+  - 取消 KG prefetch sidecar。
   - 清理 staging。
-  - 写 docgen lane runtime 为 `failed / cancelled`。
-  - 标记 `ConfirmedBuildPlan.status="failed / cancelled"`。
-  - graph lane 写为 `skipped / blocked_by_docgen_failure` 或 `cancelled`。
-- finally：
-  - 释放 knowledge build lock。
+  - docgen lane 写 `failed / cancelled`。
+  - graph lane 写 `blocked_by_docgen_failure / cancelled`。
+  - 释放构建锁。
 
-#### 1.3.3 LangGraph 入口：`run_docgen_workflow`
+### 1. 图运行入口：`run_docgen_workflow`
 
-输入：
-
-- `course_id / course_name / user_id`
-- `file_ids`
-- `user_prompt`
-- `requested_at`
-- `build_session_id`
-- `confirmed_plan`
-- `planner_session_id / confirmed_plan_id`
-- `digest_mode`
-- `model_override`
-
-输出：
-
-- `WorkflowResult[DocGenState]`
-- 成功 state 至少包含：
-  - `chapter_metadatas`
-  - `merged_markdown`
-  - `doc_ids`
-  - `timing_summary`
-  - `token_summary`
-
-数据库/存储读写：
-
-- 本函数不直接写业务表。
-- 它创建 `WorkflowContext(workflow_name="digest.docgen")`，metadata 中记录：
+- 创建 `WorkflowContext(workflow_name="digest.docgen")`。
+- metadata 带：
   - `build_session_id`
   - `planner_session_id`
   - `confirmed_plan_id`
   - `digest_mode`
   - `model_override`
   - `max_concurrency`
-- 用 `use_runtime_model_override(model_override)` 包住整条图，确保 Planner 选择的模型对 DocGen LLM 调用生效。
-- 发布完成/失败通过事件总线发送 `DocGenCompletedEvent / DocGenFailedEvent`。
+- 使用 `use_runtime_model_override(model_override)` 包住整条图。
+- 发布 `DocGenRequestedEvent / DocGenCompletedEvent / DocGenFailedEvent`。
+- 图本身成功后会补 `token_summary / timing_summary`。
 
-#### 1.3.4 `load_context` 的读写
+### 2. 逐节点长流程
 
-读：
+读这一节时按 `DocGenState` 的产物推进：前面节点把 state 补成什么，后面节点就拿这些字段继续跑。DocGen 的主线是：
 
-- `confirmed_plan`：来自后台生命周期读取并标准化的 confirmed plan payload。
-- `shared_inputs`：如果初始 state 没有传入，则调用 `prepare_shared_inputs` 读取资料理解包。
-- `RawFile / parsed markdown / material sections`：由 shared input 准备逻辑读取。
-- 检索材料索引：调用 `materialize_course_inputs_for_retrieval`，确保后续章节生成可本地检索。
+```text
+confirmed_plan
+  -> DocGenContext / chapter_assignments
+  -> intent_core / file_summaries / evidence candidates
+  -> locked_titles
+  -> document_backbone
+  -> chapter_tasks
+  -> chapter_drafts
+  -> enhanced_chapter_drafts
+  -> reviewed_chapter_drafts
+  -> merged_markdown
+  -> KnowledgeDoc / docgen_manifest
+```
 
-写：
+#### 2.1 `load_context`：把确认方案装成可运行 state
 
-- 写 build runtime：
-  - `status="running"`
-  - `stage="planner_confirmed"`
-  - `planner_session_id`
-  - `confirmed_plan_id`
-  - `digest_mode`
-  - `mode_reason`
-  - `total_chunks`
-  - `chapter_progress`
-- 写 recent event：记录方案确认和章节数。
-- state 写入：
-  - `shared_inputs`
-  - `raw_chunks`
-  - `course_profile`
-  - `chapter_assignments`
-  - `confirmed_plan`
-  - `docgen_context`
-  - `document_context`
+进来时，graph state 只有构建入口参数：`course_id`、`user_id`、`confirmed_plan_id`、`selected_file_ids`、`requested_at`、`build_session_id`、`digest_mode`、`model_override`。
 
-不写：
+本节点做四件事：
 
-- 不写 `KnowledgeDoc`。
-- 不写 graph 表。
+- 读取并校验 `ConfirmedBuildPlan`，把用户确认过的章节合同作为冻结快照写入 state。
+- 读取 `shared_inputs`、资料画像、Planner 上下文和构建历史摘要。
+- 把 confirmed plan 的章节转成 `chapter_assignments`，后续每章都从这里派生。
+- 生成 `docgen_context`、`document_context`、`retrieval_profile`、`retrieval_policy`，并初始化章节进度。
+
+本节点结束后，DocGen 从“收到一个构建请求”变成“知道要为哪些章节写文档、资料从哪里来、发布上下文是什么”。
+
+边界：
+
+- 不调用 LLM。
+- 不改 confirmed plan 的章节语义。
+- 不生成正文、标题、骨架或 KG 数据。
+
+#### 2.2 `prepare_global_seed`：做全局轻准备
+
+本节点接收 `chapter_assignments`、用户 prompt、plan summary、历史摘要、文件包和 section 包。
+
+它并行跑两类准备任务：
+
+```text
+infer_intent_core
+  生成文档级写作意图：学习目标、受众、内容策略、例题/练习策略、证据严格度。
+
+summarize_files
+  按文件生成摘要、核心概念、公式、例题、高价值 section 和章节亲和度。
+```
+
+写入 state 的关键字段：
+
+- `intent_core` / `intent_profile`：整本文档怎么写，而不是每章详细大纲。
+- `file_summaries`：每个文件的结构化材料摘要。
+- `source_affinity_by_chapter`：每章优先使用哪些文件和切片。
+- `high_confidence_evidence_units`：后续构建主张和证据绑定时优先使用的证据候选。
+
+边界：
+
+- 不在这里生成整本 outline。
+- 不锁标题。
+- 不组装最终 `ChapterGenerationTask`。
+
+#### 2.3 `generate_cover`：生成可选封面 sidecar
+
+本节点接收 course、confirmed plan、`file_summaries` 和 `intent_profile`，尝试生成封面素材和封面 Markdown sidecar。
+
+这一步是可选增强：
+
+- 成功时写入封面相关 artifact。
+- 失败时记录 warning，正文链路继续。
+- 封面不参与章节写作、review、repair 和 KG 同步判断。
+
+#### 2.4 `lock_titles_for_chapters`：锁定最终章节标题
+
+本节点接收 `chapter_assignments`、confirmed plan、课程信息、用户 prompt 和历史摘要。
+
+它在单个节点内部按章并行调用 `lock_title_for_chapter`：
+
+```text
+chapter_assignment 1 -> LockedChapterTitle
+chapter_assignment 2 -> LockedChapterTitle
+chapter_assignment N -> LockedChapterTitle
+```
+
+写入 state：
+
+- `locked_titles`：按 `chapter_index` 排序的稳定标题记录。
+
+这一步的意义是把标题从后续正文生成里提前冻结。后面的 `build_backbone`、`assemble_chapter_tasks`、`sync_locked_titles` 都只使用这里锁定的标题。
+
+边界：
+
+- 只锁标题，不改章节目标、范围和 required elements。
+- 不生成 teaching outline。
+- 不生成 retrieval queries。
+- 本地代码只做空标题、编号标题、过长标题等发布形态校验，不用关键词拼标题。
+
+#### 2.5 `confirm_backbone_seed`：把确认方案收成骨架种子
+
+代码文件是 `nodes/confirm_and_seed_backbone.py`，graph 里的节点名是 `confirm_backbone_seed`。
+
+本节点接收：
+
+- confirmed plan payload
+- `locked_titles`
+- `file_summaries`
+- `source_affinity_by_chapter`
+- `high_confidence_evidence_units`
+
+它不调用 LLM，只做规则收口，产出：
+
+- `chapter_generation_plan_seed`：整本文档的执行种子。
+- `chapter_task_seeds`：每章的最小 seed，包含标题、目标、required elements、source seed 和 retrieval seed。
+- `backbone_research_agenda`：构建全局知识骨架时优先看的主题、切片和证据方向。
+
+本节点结束后，state 里已经有“按确认方案写文档”的骨架输入，但还没有正式 `document_backbone`，也还没有最终章节任务。
+
+#### 2.6 `build_document_backbone`：构建整本文档知识骨架
+
+本节点接收 `chapter_task_seeds`、`shared_inputs`、高置信证据候选和 `backbone_research_agenda`。
+
+它产出 `document_backbone`，包括：
+
+- `CanonicalGlossary`：全局术语、别名和定义口径。
+- `ConceptDependencyGraph`：概念前置关系。
+- `NotationRegistry`：符号和记号规范。
+- `CanonicalClaimPool`：整本文档必须讲清的核心主张池。
+- `ConfusionMap`：易混点、误区和边界。
+- `backbone_conflict_warnings`：资料之间的术语、定义、符号或来源冲突。
+
+这不是正式知识图谱。它只是 DocGen 写作期使用的内部骨架，用来约束后续每章不要乱用术语、倒置前置关系或重复讲同一件事。
+
+边界：
+
+- 不调用 LLM。
+- 不写 `knowledge_unit / knowledge_edge`。
+- 不直接生成学生可见 Markdown。
+
+#### 2.7 `build_chapter_execution_briefs`：为每章生成最小执行 brief
+
+本节点接收每章 `ChapterGenerationTaskSeed`、`document_backbone` 和 `intent_core`。
+
+它在单节点内部按章并行调用模型，产出 `chapter_execution_briefs`。每个 brief 只回答“这一章具体应该怎么讲”，重点字段是：
+
+- `content_role_targets`：本章覆盖哪些内容角色，例如核心知识、方法示范、原理解释、练习评估。
+- `example_coverage_plan`：哪些知识点、方法或任务必须用例题、案例、操作示例或练习覆盖。
+- `chapter_end_practice_plan`：章末练习要回收哪些关键任务、边界或迁移点。
+- 少量 `retrieval_queries`：最多用于补充本章资料缺口。
+
+边界：
+
+- 不改标题。
+- 不生成完整执行大纲。
+- 不生成正文。
+- 不生成媒体请求。
+
+#### 2.8 `assemble_chapter_tasks`：冻结最终章节执行合同
+
+本节点把前面所有准备产物合并成正式任务：
+
+```text
+locked_titles
+  + intent_core
+  + chapter_task_seeds
+  + chapter_execution_briefs
+  + document_backbone
+  + file_summaries / source affinity
+  -> ChapterGenerationPlan
+  -> ChapterGenerationTask[]
+```
+
+写入 state：
+
+- `chapter_generation_plan`
+- `chapter_tasks`
+- 排序后的 `chapter_execution_briefs`
+
+`ChapterGenerationTask` 是后续单章生成的执行合同，至少包含：
+
+- `chapter_index`
+- `confirmed_title` / `enhanced_title`
+- `objective`
+- `required_elements`
+- `forbidden_scope`
+- `retrieval_queries`
+- `priority_section_refs`
+- `source_slices`
+- `preferred_sources`
+- `content_role_targets`
+- `example_coverage_plan`
+- `chapter_end_practice_plan`
+- `dependency_refs`
+- `claim_targets`
+- `confusion_targets`
+
+这一步之后，DocGen 不应该再临时发明章节目标。后面的 writer、review、repair 都应围绕这里冻结的任务工作。
+
+#### 2.9 `generate_chapters`：按章 fan-out 生成草稿
+
+`assemble_chapter_tasks` 之后，graph 通过 `Send` 把每个 `ChapterGenerationTask` 派到一个 `generate_chapters` 分支。每个分支只处理一章。
+
+单章分支拿到：
+
+- 单章 `chapter_task`
+- `shared_inputs`
+- `docgen_context`
+- `document_context`
+- `document_backbone`
+- retrieval profile / policy
+
+单章内部顺序：
+
+```text
+chapter_task
+  -> hydrate_source_slices
+  -> query_planning
+  -> local retrieval + optional external reader
+  -> context compression / research_purify
+  -> build ClaimLedger
+  -> align ClaimEvidenceMap / EvidenceLedger
+  -> resolve ConflictReport
+  -> writer 写章节 Markdown
+  -> heading repair / bounded rewrite（必要时）
+  -> ChapterDraft
+```
+
+几个关键点：
+
+- `hydrate_source_slices` 会优先按 `source_slices` 精确读取原文行，先用 Planner/prepare 阶段已经选出的材料。
+- `query_planning` 只为本章生成 research queries / gap queries。
+- writer 使用 `chapter_task`、dense context、主张账本和证据绑定写正文。
+- sprint/systematic 的差异主要在 writer 的节奏和模型槽位，不在本地硬编码标题模板。
+
+fan-in 后 reducer 汇总：
+
+- `chapter_drafts`
+- `research_traces`
+- `claim_ledgers`
+- `claim_evidence_maps`
+- `evidence_ledgers`
+- `conflict_reports`
+- `research_sources`
+
+边界：
+
+- 不发布文件。
+- 不写数据库。
+- 不写 KG。
+- 不绕过 `chapter_task` 另起章节范围。
+
+#### 2.10 `enhance_chapters`：增强展示层，并可启动 KG 预抽取 sidecar
+
+所有 `chapter_drafts` fan-in 后进入本节点。本节点内部再用 `run_llm_tasks(...)` 按章并行增强。
+
+每章增强做：
+
+- Mermaid 占位生成或修复。
+- 交互 HTML sidecar 生成。
+- 公式、Markdown 结构和残留占位清理。
+- 章节预览和章节进度更新。
+
+写入 state：
+
+- `enhanced_chapter_drafts`
+- `asset_manifests`
+- `practice_manifests`
+- `enhance_ms`
+
+边界非常重要：
+
+- 不生成新核心结论。
+- 不改 claim / evidence 绑定。
+- 不根据本地关键词追加标题、例题或练习。
+- 不把原始 HTML 直接塞进正文 Markdown。
+
+如果开启：
+
+```text
+knowledge_graph.sync_after_docgen=true
+knowledge_graph.prefetch_during_docgen=true
+```
+
+本节点会调用 `start_docgen_kg_prefetch(...)`。这是 sidecar，不是 DocGen 主图节点：
+
+- 输入是增强后的章节 Markdown 和 `document_backbone`。
+- 只预抽取 section payload 并写进程内缓存。
+- 不写 `knowledge_unit / knowledge_edge / source_ref`。
+- 不阻塞后面的 review、repair、publish。
+- 发布失败或构建取消时由生命周期清理。
+
+#### 2.11 `review_chapters`：按章 fan-out 复核增强稿
+
+`enhance_chapters` 完成后，graph 再次通过 `Send` 按章 fan-out。每个 review 分支只拿一章的精简输入：
+
+- 单章 `enhanced_chapter_draft`
+- 单章 `review_chapter_task`
+- 单章 `review_claim_ledger`
+- 单章 `review_claim_evidence_map`
+- 单章 `review_conflict_report`
+
+单章 review 检查：
+
+- 合同覆盖：`required_elements` 是否覆盖，是否越界。
+- 主张支撑：claim 是否有 evidence 支撑。
+- 结构风格：长度、节奏、模式、Markdown 结构是否合理。
+- 学习质量：例题、案例、练习、自测答案是否完整。
+- 风险信号：定义模糊、低支撑断言、unresolved conflict。
+
+每个 review 分支返回的是复核 overlay，而不是把整章完整 Markdown 再复制一遍：
+
+- `reviewed_chapter_overlay_items`
+- `chapter_review_report_items`
+- `review_action_items`
+
+这些字段通过 reducer fan-in，交给整本一致性复核。
+
+#### 2.12 `document_consistency_review`：整本一致性复核
+
+本节点在所有章节 review fan-in 后运行。
+
+它先把 `enhanced_chapter_drafts` 和 `reviewed_chapter_overlay_items` materialize 成 `reviewed_chapter_drafts`，再做整本规则复核：
+
+- 术语和符号是否跨章一致。
+- 定义是否冲突。
+- 前置关系是否倒挂。
+- 某章是否重复讲太多，或吃掉下一章范围。
+- 整本风格是否断裂。
+
+写入 state：
+
+- `reviewed_chapter_drafts`
+- `document_consistency_report`
+- `review_actions`
+- `review_decision`
+
+当前实现中，整本一致性复核不调用 LLM、不检索、不改正文。它只是判断是否 `good`、`needs_repair`、`publish_with_warnings` 或 `fail`。
+
+#### 2.13 `repair_or_route`：执行有限局部修补
+
+本节点接收 `review_actions`、`reviewed_chapter_drafts`、`enhanced_chapter_drafts`、`chapter_tasks` 和 `document_backbone`。
+
+当前实现不是 graph 级多轮循环，而是一次节点内的有限修补：
+
+| action | 当前处理 |
+| --- | --- |
+| `surface_patch` | 可做确定性展示修复，或走 LLM 局部 patch |
+| `section_patch` | LLM 生成局部补丁，代码插入目标位置 |
+| `evidence_patch` | 局部补证据说明、收窄断言或补不确定性提示；不做新检索 |
+| `regenerate_chapter` | 降级为单章局部 section patch |
+| `re_dispatch` | 记录 unresolved warning |
+| `rebuild_backbone` | 记录 unresolved warning |
+
+修补策略：
+
+- 不同章节可以并行修。
+- 同一章的多个 LLM patch 会尽量合并处理。
+- 单章最多有限轮局部 patch；仍未覆盖的 action 写入 unresolved warning。
+- LLM 只返回局部补丁片段，代码负责插入目标锚点或小结前。
+
+写入 state：
+
+- 修补后的 `reviewed_chapter_drafts`
+- 更新后的 `review_actions`
+- `unresolved_warnings`
+- `repair_trace`
+- `repair_ms`
+
+未来如果要做真正 `review <-> repair` 图级闭环，必须先定义 reducer 语义：哪些字段按 `chapter_index` 替换最新版本，哪些 trace 只能追加历史。
+
+#### 2.14 `merge_review`：合并整本文档
+
+本节点接收修补后的章节稿、`chapter_generation_plan`、`document_backbone`、主张/证据/冲突账本、整本复核报告和 review actions。
+
+它只做发布前规则收口：
+
+- 按 `chapter_index` 去重、排序和合并章节。
+- 生成 `merged_markdown`。
+- 生成 `chapter_metadatas`。
+- 生成 `merge_review_report`。
+- 检查章节完整性、manifest 必要字段和来源覆盖。
+
+边界：
+
+- 不调用 LLM。
+- 不重新检索。
+- 不重写章节内容。
+
+#### 2.15 `sync_locked_titles`：把锁定标题同步到最终 Markdown
+
+本节点接收 `chapter_metadatas`、`locked_titles` 和 `merged_markdown`。
+
+它只做标题收口：
+
+- 读取 `lock_titles_for_chapters` 阶段已经锁定的标题。
+- 同步每章 metadata 的最终标题。
+- 修正每章 Markdown 一级标题。
+- 重新构建整本 Markdown。
+
+边界：
+
+- 不调用 LLM。
+- 不重新起标题。
 - 不改变 confirmed plan 的章节语义。
 
-#### 1.3.5 中间生成节点的读写边界
+#### 2.16 `publish_document`：发布 Markdown、manifest 和 KnowledgeDoc
 
-`prepare_global_seed / generate_cover / lock_titles_for_chapters / confirm_and_seed_backbone / build_document_backbone / build_chapter_execution_briefs / assemble_chapter_tasks / generate_chapters / enhance_chapters / review_content / repair_or_route / merge_review / sync_locked_titles` 的共同边界：
+本节点接收最终 `merged_markdown`、`chapter_metadatas`、`docgen_artifacts` 和 `document_context`。
 
-- 主要读写 LangGraph state。
-- 通过 `update_knowledge_build_status / upsert_knowledge_build_chapter_progress / append_knowledge_build_recent_event / update_knowledge_build_merge_preview` 更新 build runtime、预览、章节进度和 recent events。
-- `generate_chapters` 会读取本地材料切片、可选外部搜索/网页读取结果，并产出 research trace、claim/evidence/conflict 账本。
-- `enhance_chapters` 可能写交互 HTML sidecar 等资产到课程存储，并在开启预抽取时启动 `kg_prefetch sidecar`。
-- `kg_prefetch sidecar` 只写进程内缓存，不写 `knowledge_unit / knowledge_edge / source_ref`。
-- 这些节点不创建 `KnowledgeDoc` 行，不结束 build，不修改 confirmed plan。
+写入文件位置：
 
-#### 1.3.6 发布阶段：`publish_document`
+```text
+knowledge_markdowns/_build/                 # staging
+knowledge_markdowns/                        # live current
+knowledge_markdowns/versions/vXXXX/         # version archive
+```
 
-输入：
+核心文件：
 
-- `chapter_metadatas`
-- `chapter_assignments`
-- `document_context`
-- `cover_artifact / cover_markdown`
-- `merged_markdown`
-- `docgen_artifacts`
-- `build_session_id / planner_session_id / confirmed_plan_id`
-
-输出：
-
-- `doc_ids`
-- `built_paths`
-- `merged_markdown`
-- `finalize_ms`
-
-存储写入：
-
-- staging：
-  - `knowledge_markdowns/_build/chapter_XX_*.md`
-  - `knowledge_markdowns/_build/merged_knowledge_base.md`
-  - `knowledge_markdowns/_build/source_references.md`
-  - `knowledge_markdowns/_build/docgen_manifest.json`
-- live current：
-  - `knowledge_markdowns/chapter_XX_*.md`
-  - `knowledge_markdowns/merged_knowledge_base.md`
-  - `knowledge_markdowns/docgen_manifest.json`
-- version archive：
-  - `knowledge_markdowns/versions/vXXXX/chapter_XX_*.md`
-  - `knowledge_markdowns/versions/vXXXX/merged_knowledge_base.md`
-  - `knowledge_markdowns/versions/vXXXX/docgen_manifest.json`
-- published manifest：
-  - `KnowledgeDocsManifest`
-  - `version_no`
-  - `source_file_ids`
-  - `chapter_titles`
-  - `docgen_manifest_key`
-  - `merge_review_report`
-- 发布成功后删除 staging prefix。
+- `chapter_XX_*.md`
+- `merged_knowledge_base.md`
+- `docgen_manifest.json`
+- `source_references.md`
 
 数据库写入：
 
-- 读 `KnowledgeDoc` 最新版本号，生成 `resolved_version_no`。
-- 将旧 `KnowledgeDoc(is_current=True)` 标记为：
-  - `is_current=False`
-  - `status="superseded"`
-  - `superseded_at`
-- 为每章创建新的 `KnowledgeDoc`：
-  - `course_id`
-  - `chapter_index`
-  - `title`
-  - `summary`
-  - `markdown_content`
-  - `markdown_path`
-  - `source_file_ids`
-  - `word_count`
-  - `version / version_no`
-  - `package_key`
-  - `build_session_id`
-  - `is_current=True`
-  - `status="published"`
-  - `digest_mode`
-  - `manifest_json`
-  - `source_scope_json`
-- 更新课程 learning context：
-  - `Course.document_summary_json` 是结构化真源，当前 schema_version=2，包含 intent_profile_v2、retrieval_policy、course/material signals、文件摘要、章节-资料分配、docgen_learning_backbone、kg_candidate_hints 和 quality_summary。
-  - `llm_context_text` 只是从结构化摘要渲染出来的 prompt 缓存，供 Planner / KG / Interact / Examine 直接塞上下文时使用，不承载独立事实。
-- 写 build runtime：
-  - `stage="doc_lane_staged"`
-  - `stage="completed"`
-  - `draft_available`
-  - `published_doc_count`
-  - `merge_preview`
-  - 每章 `chapter_progress`
+- 旧 `KnowledgeDoc(is_current=True)` 标记为 `superseded`。
+- 每章新建 `KnowledgeDoc(status="published", is_current=True)`。
+- 写章节 metadata、source scope、manifest、word count、version、build session。
+- 更新 `Course.document_summary_json`。
+- `llm_context_text` 只是从结构化摘要渲染出的 prompt 缓存，不是独立事实源。
 
-不写：
+写入 state：
 
-- 不直接写 `knowledge_unit / knowledge_edge / knowledge_graph_source_ref`。
-- 自动图谱同步由 `run_docgen_background` 在 DocGen 成功后独立派发。
+- `doc_ids`
+- `built_paths`
+- 最终 `merged_markdown`
+- `docgen_manifest`
+- `finalize_ms`
 
-#### 1.3.7 查询阶段：`get_docgen_result / get_knowledge_build_runtime_result`
+DocGen 到这里结束。它发布的是知识文档，不发布知识图谱。
 
-读：
+#### 2.17 发布后交给 `kg_doc_sync`
 
-- 当前发布 Markdown：
-  - 优先读 live storage 的 `merged_knowledge_base.md`。
-  - 兜底读 `KnowledgeDoc(is_current=True, status="published")` 并合并。
-- draft Markdown：
-  - `knowledge_markdowns/_build/merged_knowledge_base.md`
-- `KnowledgeDocsManifest`
-- build runtime：
-  - docgen lane
-  - graph lane
-  - aggregate
-- token summary。
-- vector status。
+这一步不在 `graph.py` 主图里，而在 `run_docgen_background(...)` 的生命周期里。
 
-写：
-
-- 正常查询不触发构建，不写业务数据。
-- 如果 runtime 缺失但 build lock 存在，可能补写一个 `running / build_accepted` 的 docgen lane runtime 兼容状态。
-
-## 2. 当前实现映射
-
-| 目标阶段 | 当前代码对应 | 重构状态 |
-| --- | --- | --- |
-| `load_context` | `load_context` | 已落地 |
-| `prepare_global_seed.infer_intent_core` | `prepare_global_seed` 内部 | 已落地 |
-| `prepare_global_seed.summarize_files` | `prepare_global_seed` 内部 | 已落地，已输出 evidence candidates |
-| `lock_titles_for_chapters` | `lock_titles_for_chapters` | 已落地 |
-| `confirm_and_seed_backbone` | `confirm_and_seed_backbone` | 已落地 |
-| `build_document_backbone` | `build_document_backbone` | 已落地，含结构化 backbone |
-| `build_chapter_execution_briefs` | `build_chapter_execution_briefs` | 已落地 |
-| `assemble_chapter_tasks` | `assemble_chapter_tasks` | 已落地 |
-| `generate_draft` | `generate_chapters` | 已落地，已输出 trace / evidence / claim / conflict |
-| `enhance` | `enhance_chapters` | 已落地，含 Mermaid/交互占位清理、公式/Markdown 规范化；不做本地练习补强 |
-| `review_content.review_chapter` | `review_chapter` / `复核章节内容` | 已落地，LangGraph Send x N，LLM review + 规则 guardrail |
-| `review_content.document_consistency_review` | `document_consistency_review` / `复核整本一致性` | 已落地，章节 review fan-in 后执行 |
-| `repair_or_route` | `repair_or_route` | 已落地局部 patch：可执行 surface/section patch；待补 evidence/regenerate 和真实 repair loop |
-| `merge_review` | `merge_review` | 已落地 |
-| `final_merge_patch` | 无 | 未来可选，不属于当前主图；当前由 `merge_review + sync_locked_titles` 收口 |
-| `sync_locked_titles` | `sync_locked_titles` | 已落地，锁定标题同步 + Markdown 一级标题同步；不再 LLM 改标题 |
-| `publish_document` | `publish_document` | 已落地，已写 docgen artifacts manifest |
-
-说明：
-
-- 当前主图已切换到“全局轻准备 + 两个单节点内部并行阶段 + 规则装配”的结构，不再让一次 outline enhance 调用承担完整执行大纲生成。
-- 过渡期旧节点及配套整本 outline enhancement 代码已移除，避免旧流程和当前主图并存造成误读。
-
-## 3. 演进边界与关注点
-
-当前没有发现需要推倒重写 DocGen 主图的问题。现有主线已经收束为：
+如果：
 
 ```text
-入口合同冻结 -> 全局轻准备 -> 标题锁定 -> 骨架 seed -> 文档骨架
--> 章节 brief -> 章节任务装配 -> 章节生成 Send fan-out
--> 内容增强 -> 章节复核 Send fan-out -> 整本一致性复核
--> 有限局部修补 -> 合并收口 -> 同步锁定标题 -> 发布
+settings.knowledge_graph.sync_after_docgen=true
 ```
 
-后续演进只建议围绕 `review_content <-> repair_or_route` 做最多两轮有限回流。循环前必须先解决 reducer 语义：哪些产物按 `chapter_index` 替换最新版本，哪些 trace 只追加历史，否则会重复发布过期章节或重复 manifest。
+DocGen 成功发布后会独立派发 `kg_doc_sync`：
 
-| 关注点 | 判断 |
-| --- | --- |
-| evidence patch | 当前只能记录 warning；真正接入时要定向补检索、补阅读、补 evidence binding，不应直接重写整章 |
-| regenerate chapter | 只允许问题章节重写，重写后必须重新 enhance 和 review |
-| final merge patch | 可选，只修目录重复、跨章过渡、manifest 缺字段等合并后小问题 |
-| generate_chapters 边界 | 可以研究和写草稿；不能修改 confirmed plan、不能把未打开搜索结果当证据 |
-| enhance_chapters 边界 | 只处理 Mermaid、交互、公式和 Markdown 展示；不能引入新核心结论、标题、例题、练习或改变 claim/evidence |
-| review_content 边界 | 只做裁判和产出 ReviewAction；不检索、不 patch 正文 |
-| repair_or_route 边界 | 可以 patch 或记录重动作；不能无限循环、不能静默推翻 confirmed plan |
-| 不要做 | 不改成完整多 Agent 动态队列，不恢复旧 prompt 扩展层，不新建第二套 search/tool registry |
+- `kg_doc_sync` 读取最终发布的 Markdown / manifest / KnowledgeDoc。
+- 如果 prefetch sidecar 缓存命中，会复用 section payload。
+- 如果缓存未命中或 section hash 不一致，会按正式链路重新抽取。
+- `knowledge_unit / knowledge_edge / knowledge_graph_source_ref` 都由 `kg_doc_sync` 写入。
 
-一句话收束：
+DocGen 失败、取消或发布未完成时，KG 自动同步不会继续落库。
+
+## 关键数据流
 
 ```text
-DocGen 的核心不是把章节写出来，
-而是在确认方案上补齐知识骨架、主张证据、冲突消解和有限复核，
-让最终文档可读、可追踪、可修补、可被其他引擎复用。
+ConfirmedBuildPlan
+  -> DocGenContext + chapter_assignments
+  -> intent_core + file_summaries
+  -> locked_titles
+  -> document_backbone
+  -> chapter_execution_briefs
+  -> chapter_tasks
+  -> chapter_drafts
+  -> enhanced_chapter_drafts
+  -> reviewed_chapter_drafts
+  -> merged_markdown + chapter_metadatas
+  -> KnowledgeDoc + docgen_manifest
+  -> kg_doc_sync（可选自动触发）
 ```
+
+## 模型调用
+
+策略集中在 `lib/model_policy.py`。
+
+常用槽位：
+
+- `reason`：意图判断、标题锁定、章节 brief、query planning、系统课 writer。
+- `primary`：速成课 writer、章节 rewrite、交互 HTML、repair patch。
+- `light`：文件摘要、材料清洗、标题结构修正、章节 review、Mermaid。
+- `image_generation`：封面图。
+
+所有批量 LLM 调用应通过 `run_llm_tasks(...)`，最终还会受全局 `settings.llm.concurrency_limit` 限制。
+
+## 修改这条链路时检查
+
+- `graph.py` 节点顺序是否和本文短流程一致。
+- 新 LLM 调用是否进了 `lib/model_policy.py`。
+- 新批量模型任务是否走 `run_llm_tasks(...)`。
+- 新发布产物是否进入 `docgen_manifest.json` 或 `Course.document_summary_json`。
+- 是否误改了 confirmed plan 的章节语义。
+- 是否把 KG 落库逻辑误塞进 DocGen。
+- 改 `enhance_chapters` 时，确认没有引入新核心结论或本地关键词造内容。
+- 改 `repair_or_route` 时，确认不会无限循环，也不会静默重写整章。
+
+建议提交类型：改本文档用 `docs`，改链路行为用 `refactor` 或 `fix`。

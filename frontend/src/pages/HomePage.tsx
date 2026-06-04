@@ -5,9 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowUp,
+  BookOpen,
+  CalendarCheck,
   Check,
   CheckCircle2,
   ChevronDown,
+  ClipboardList,
   FileCode,
   FileImage,
   FolderOpen,
@@ -21,11 +24,10 @@ import {
   X,
   FileUp,
   Package,
+  Target,
 } from "lucide-react";
 
-import { createCourseApiApiV1CoursesAddPost } from "../api/generated/courses";
 import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../api/client";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import {
@@ -53,6 +55,16 @@ import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 /* ── API helpers (same as BuildPlanPage) ── */
 
 interface ApiResponse<T> { code: number; data: T; }
+
+interface CourseItem {
+  course_id: string;
+  name: string;
+  description?: string;
+  user_intent?: string;
+  icon_key?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 async function uploadFiles(files: File[]): Promise<FilesUploadData> {
   const formData = new FormData();
@@ -130,7 +142,82 @@ async function importDemoCourse(filename: string, newName?: string): Promise<Imp
 }
 /* ── Helpers ── */
 
+async function createDraftCourse(): Promise<CourseItem> {
+  const response = await apiClient<ApiResponse<CourseItem>>({
+    method: "POST",
+    url: `/api/v1/courses/draft`,
+    data: {},
+  });
+  return response.data;
+}
+
 const HOME_ENTRY_FILES_QUERY_KEY = (fileIds: string[]) => ["home-entry-files", fileIds.join(",")] as const;
+
+const HOME_PROMPT_STARTERS = [
+  {
+    id: "middle-school-math",
+    label: "初中数学",
+    description: "基础到压轴题",
+    prompt: "我想系统复习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
+    icon: BookOpen,
+  },
+  {
+    id: "high-school-physics",
+    label: "高中物理",
+    description: "力学主线入门",
+    prompt: "我想学习高中物理力学，请构建一门 10 天入门课程：按运动学、受力分析、牛顿定律、功和能、动量守恒划分章节；每章包含概念解释、公式适用条件、典型题型和实验情境。",
+    icon: Target,
+  },
+  {
+    id: "college-calculus",
+    label: "大学高数",
+    description: "微积分体系课",
+    prompt: "我要学习大学高等数学上册，请构建一门 4 周系统课程：按函数与极限、连续、导数与微分、中值定理、不定积分、定积分拆成 8-10 章；每章给出知识框架、重点难点、例题练习和阶段测验。",
+    icon: ClipboardList,
+  },
+  {
+    id: "college-english",
+    label: "大学英语",
+    description: "听说读写规划",
+    prompt: "我想提升大学英语，请构建一门 6 周课程：按词汇、长难句、阅读理解、听力训练、写作表达和口语输出划分章节；每章包含学习目标、练习材料、训练方法、常见错误和每周验收任务。",
+    icon: CalendarCheck,
+  },
+] as const;
+
+const HOME_FILE_PROMPT_STARTERS = [
+  {
+    id: "files-high-school-chemistry",
+    label: "高中化学",
+    description: "教材重点成课",
+    prompt: "请基于我上传的高中化学资料构建一门系统课程：先识别章节范围和知识主线，再按物质分类、离子反应、氧化还原、物质的量和实验题拆分章节；每章包含核心概念、典型例题、易错点和练习任务。",
+    icon: BookOpen,
+  },
+  {
+    id: "files-linear-algebra",
+    label: "大学线代",
+    description: "课件整理大纲",
+    prompt: "请基于我上传的大学线性代数课件构建一门 3 周课程：按行列式、矩阵运算、线性方程组、向量空间、特征值与特征向量划分章节；每章包含定义、定理、计算方法、典型题和复盘问题。",
+    icon: Target,
+  },
+  {
+    id: "files-high-school-english",
+    label: "高中英语",
+    description: "阅读语法专题",
+    prompt: "请基于我上传的高中英语资料构建一门专题课程：按词汇积累、语法结构、阅读理解、完形填空、作文表达拆分章节；每章包含学习目标、例句讲解、题型方法、练习安排和错题整理方式。",
+    icon: ClipboardList,
+  },
+  {
+    id: "files-computer-basics",
+    label: "计算机基础",
+    description: "大学公共课",
+    prompt: "请基于我上传的大学计算机基础资料构建一门课程：按计算机系统、操作系统、网络基础、数据库基础、程序设计入门和信息安全划分章节；每章包含核心概念、课堂练习、实践任务和阶段测验。",
+    icon: CalendarCheck,
+  },
+] as const;
+
+const HOME_PROMPT_TEMPLATE_TEXTS = new Set<string>(
+  [...HOME_PROMPT_STARTERS, ...HOME_FILE_PROMPT_STARTERS].map((starter) => starter.prompt),
+);
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -584,9 +671,7 @@ export function HomePage() {
     }
     setIsCreatingDraftCourse(true);
     try {
-      const created = unwrapOrvalResponse(
-        await createCourseApiApiV1CoursesAddPost({ name: "" }),
-      );
+      const created = await createDraftCourse();
       if (!created) {
         throw new Error("创建课程失败");
       }
@@ -764,6 +849,28 @@ export function HomePage() {
     }
   };
 
+  const handlePromptStarterClick = useCallback((starterPrompt: string) => {
+    const currentPrompt = prompt.trim();
+    const nextPrompt = currentPrompt
+      ? HOME_PROMPT_TEMPLATE_TEXTS.has(currentPrompt)
+        ? starterPrompt
+        : currentPrompt.includes(starterPrompt)
+          ? currentPrompt
+          : `${prompt.trimEnd()}\n\n${starterPrompt}`
+      : starterPrompt;
+
+    setPrompt(nextPrompt);
+    setError(null);
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(nextPrompt.length, nextPrompt.length);
+    });
+  }, [prompt]);
+
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = extractPasteFiles(e);
     if (files.length > 0) {
@@ -796,6 +903,12 @@ export function HomePage() {
 
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
+  const activePromptStarters = hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS;
+  const generateButtonLabel = isWorking
+    ? "正在处理学习规划"
+    : canGenerate
+      ? "开始规划学习课程"
+      : "输入学习目标或选择资料后开始规划";
 
   return (
     <>
@@ -871,7 +984,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="直接输入学习目标，也可以先上传资料再一起规划"
+              placeholder="描述你想构建的课程：学什么、给谁学、多久学完、希望每章包含什么"
               className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -900,6 +1013,7 @@ export function HomePage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveEntryFile(file.id)}
+                          aria-label={`从本次新建中移除 ${file.filename}`}
                           title="从本次新建中移除"
                           className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
@@ -979,8 +1093,11 @@ export function HomePage() {
                     className="flex-1 sm:flex-none sm:w-[128px]"
                   />
                   <button
+                    type="button"
                     onClick={() => void handleGenerate()}
                     disabled={!canGenerate || isWorking}
+                    aria-label={generateButtonLabel}
+                    title={generateButtonLabel}
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
                       canGenerate && !isWorking
@@ -992,6 +1109,28 @@ export function HomePage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="mt-3 w-full px-1">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {activePromptStarters.map((starter) => {
+                const StarterIcon = starter.icon;
+                return (
+                  <button
+                    key={starter.id}
+                    type="button"
+                    onClick={() => handlePromptStarterClick(starter.prompt)}
+                    disabled={isWorking}
+                    aria-label={`套用建课模板：${starter.label}，${starter.description}`}
+                    title={starter.prompt}
+                    className="group inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/75 px-3.5 text-xs font-medium text-zinc-500 shadow-sm shadow-zinc-900/[0.03] transition-all hover:border-indigo-200 hover:bg-white hover:text-indigo-700 hover:shadow-md hover:shadow-indigo-900/[0.06] focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900/75 dark:text-slate-400 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900 dark:hover:text-indigo-200"
+                  >
+                    <StarterIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-indigo-500 dark:text-slate-500 dark:group-hover:text-indigo-300" />
+                    <span className="shrink-0">{starter.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </motion.div>
@@ -1023,7 +1162,10 @@ export function HomePage() {
         >
           {/* Section Toggle */}
           <button
+            type="button"
             onClick={() => setRecentOpen(!recentOpen)}
+            aria-expanded={recentOpen}
+            aria-controls="home-demo-courses"
             className="group flex w-full cursor-pointer items-center gap-4 py-3"
           >
             <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
@@ -1049,6 +1191,7 @@ export function HomePage() {
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                id="home-demo-courses"
                 className="w-full overflow-hidden"
               >
                 <div className="pt-6 pb-12">

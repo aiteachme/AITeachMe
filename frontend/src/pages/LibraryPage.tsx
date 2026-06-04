@@ -121,7 +121,7 @@ async function downloadLibraryFile(fileId: string, filename: string): Promise<vo
   const url = URL.createObjectURL(response);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename.replace(/\.[^.]+$/, ".md");
+  a.download = filename.includes(".") ? filename.replace(/\.[^.]+$/, ".md") : `${filename}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -1,0 +1,18 @@
+/.gradle/
+/.idea/
+/.kotlin/
+/build/
+/captures/
+/local.properties
+
+/app/build/
+
+# Gradle-generated local JVM preference. Keep wrapper files tracked.
+/gradle/gradle-daemon-jvm.properties
+
+*.apk
+*.aab
+*.ap_
+*.iml
+*.jks
+*.keystore

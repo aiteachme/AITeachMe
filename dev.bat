@@ -126,11 +126,26 @@ set "BACKEND_PID="
 set "FRONTEND_PID="
 set "BACKEND_URL=http://%BACKEND_HOST%:%AITEACHME_BACKEND_PORT%"
 set "FRONTEND_URL=http://%FRONTEND_HOST%:%AITEACHME_FRONTEND_PORT%"
+
+rem Electron's postinstall downloads binaries from GitHub by default; match
+rem packaging scripts so local dependency sync is less likely to timeout.
+if "%ELECTRON_MIRROR%"=="" set "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/"
+if "%ELECTRON_BUILDER_BINARIES_MIRROR%"=="" set "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/"
+
 set "PORT_SCAN_FILE=%TEMP%\aiteachme-dev-ports-%RANDOM%.txt"
 netstat -ano -p tcp > "%PORT_SCAN_FILE%"
 for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_BACKEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined BACKEND_PID set "BACKEND_PID=%%P"
 for /f "tokens=5" %%P in ('findstr /R /C:":%AITEACHME_FRONTEND_PORT% .*LISTENING" "%PORT_SCAN_FILE%" 2^>nul') do if not defined FRONTEND_PID set "FRONTEND_PID=%%P"
 del "%PORT_SCAN_FILE%" >nul 2>nul
+
+if not "%BACKEND_PID%"=="" (
+	powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter 'ProcessId=%BACKEND_PID%' -ErrorAction SilentlyContinue; if ($p -and $p.CommandLine -match 'uvicorn' -and $p.CommandLine -match 'app\.main:app' -and $p.CommandLine -notmatch '--reload-dir\s+app') { exit 0 } exit 1" >nul 2>nul
+	if not errorlevel 1 (
+		echo [Backend] Existing FastAPI process uses broad reload, restarting PID %BACKEND_PID%...
+		taskkill /PID %BACKEND_PID% /T /F >nul 2>nul
+		set "BACKEND_PID="
+	)
+)
 
 if /I "%AITEACHME_SKIP_DEP_SYNC%"=="1" set "SYNC_DEPS=0"
 if /I "%AITEACHME_SKIP_DEP_SYNC%"=="true" set "SYNC_DEPS=0"
@@ -205,9 +220,9 @@ if not "%BACKEND_PID%"=="" (
 ) else (
 	echo [Backend] Starting FastAPI on %BACKEND_URL%...
 	if /I "%BACKEND_MODE%"=="venv" (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --host %BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%BACKEND_PY%" -m uvicorn app.main:app --reload --reload-dir app --host %BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
 	) else (
-		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --host %BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
+		start "Backend" %START_FLAGS% /D "%~dp0backend" "%CONDA_CMD%" run -n %CONDA_ENV_NAME% --no-capture-output python -m uvicorn app.main:app --reload --reload-dir app --host %BACKEND_HOST% --port %AITEACHME_BACKEND_PORT%
 	)
 )
 

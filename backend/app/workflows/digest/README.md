@@ -1,6 +1,6 @@
 # Digest 模块说明
 
-最后更新：2026-05-02
+最后更新：2026-06-03
 
 `digest/` 负责把原始学习材料组织成可教学、可生成、可追踪的知识产物。
 
@@ -9,6 +9,7 @@
 ```text
 digest/
   __init__.py
+  exports.py
   README.md
   common/
   planner/
@@ -25,9 +26,11 @@ digest/
 - `kg_doc_sync/`
   负责知识文档和知识图谱的正式同步链路，权威文档见 `kg_doc_sync/README.md`
 - `common/`
-  放跨 lane 共用能力，例如 events、exports、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
+  放跨 lane 共用能力，例如 events、contracts、prepare、material profile、metrics、runtime config、file status、pedagogy
   以及 course 级知识产物清理 `cleanup.py`
   注意：Planner 的章节预算和目标成稿长度属于 planner 提示词合同，放在 `planner/lib/constants.py`，不放 `common/runtime_config.py` 或项目 settings。
+- `exports.py`
+  放 digest 级 workflow export 注册表；它会聚合各 lane 的 graph，不属于 `common/` 底层共享能力。
 
 ## 当前公开入口
 
@@ -45,6 +48,7 @@ from app.workflows.digest.planner import (
 ## 目录约束
 
 - 模块根只做聚合，不承载业务实现
+- `exports.py` 只做 workflow export 注册，不写业务运行逻辑
 - 新的 API-facing 用例必须进入具体 lane 或 `common/`
 - 新 prompt 放各自链路 `prompts/`
 - 新 helper 放各自链路 `lib/`
@@ -140,4 +144,4 @@ prefetch_extract（可选，DocGen sidecar，发布前不落库）
 KG 同步编排按 `prepare -> init_run -> persist_seed_units -> extract -> persist_units -> stitch_relations -> persist -> finalize` 拆在 `kg_doc_sync/nodes/`，
 抽取、候选合并、增量写库等可复用实现位于 `kg_doc_sync/lib/`。
 
-如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py`
+如果要看具体编排，优先进入各链路下的 `graph.py`、`state.py`；API-facing 构建入口优先看对应 lane 的 `lib/*lifecycle*.py` 或 `lib/builds.py`。

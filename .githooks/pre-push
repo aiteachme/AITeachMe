@@ -5,7 +5,9 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 run_python() {
-  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+  if [ -n "${PYTHON:-}" ]; then
+    "${PYTHON}" "$@"
+  elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
     python "$@"
   elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
     python3 "$@"
@@ -13,6 +15,7 @@ run_python() {
     py -3 "$@"
   else
     echo "python was not found; cannot verify generated API client." >&2
+    echo "Activate the backend Python environment first, for example: conda activate atm" >&2
     exit 1
   fi
 }

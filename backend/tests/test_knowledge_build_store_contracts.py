@@ -238,6 +238,81 @@ def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytes
     assert ("course_runtime00001", "build_event", event_status.recent_events[0]) in published_events
 
 
+def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _JsonStore()
+    scope = _scope()
+    captured: list[tuple[str, str, dict[str, object]]] = []
+    requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    started_at = requested_at + timedelta(seconds=1)
+    finished_at = requested_at + timedelta(seconds=16)
+    monkeypatch.setattr(build_store, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_store, "publish_workflow_stream_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        build_store,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None: captured.append((event, distinct_id, properties or {})) or True,
+    )
+
+    build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
+        status="running",
+        stage="generating_chapters",
+        started_at=started_at,
+        source_file_ids=["file-1", "file-2"],
+        digest_mode="systematic",
+    )
+    build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
+        status="completed",
+        stage="completed",
+        finished_at=finished_at,
+        published_doc_count=3,
+    )
+    build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
+        status="completed",
+        stage="completed",
+    )
+    build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="graph",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
+        status="failed",
+        stage="failed",
+    )
+
+    assert len(captured) == 1
+    event, distinct_id, properties = captured[0]
+    assert event == "knowledge_build_completed"
+    assert distinct_id == "user_a"
+    insert_id = str(properties["$insert_id"])
+    assert insert_id.startswith("knowledge_build_completed:")
+    assert len(insert_id.removeprefix("knowledge_build_completed:")) == 32
+    assert "course_runtime00001" not in insert_id
+    assert "group-1" not in insert_id
+    assert properties["analytics_source"] == "backend"
+    assert properties["user_id_present"] is True
+    assert properties["course_id_suffix"] == "ime00001"
+    assert properties["build_kind"] == "docgen"
+    assert properties["source_file_count"] == 2
+    assert properties["published_doc_count"] == 3
+    assert properties["duration_ms"] == 15000
+
+
 def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     scope = _scope()
     monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)

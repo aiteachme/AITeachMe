@@ -14,7 +14,7 @@ from app.workflows.digest.docgen.lib.textbook_style import (
     normalize_educational_callouts,
     normalize_textbook_headings,
 )
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 LEARNING_ROLE_LABELS = {
     "core_knowledge": "核心知识",

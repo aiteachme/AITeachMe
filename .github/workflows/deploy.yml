@@ -17,8 +17,9 @@ env:
   # Non-secret deployment constants are intentionally kept here for maintainer
   # convenience. Do not put deploy hooks, kubeconfig, registry passwords, or
   # other credentials here; those must stay in GitHub Secrets.
-  # Nginx resolves runtime proxy_pass variables by itself, so use the full
-  # Kubernetes service FQDN instead of the Sealos UI short service.namespace form.
+  # Nginx resolves runtime proxy_pass variables with its own resolver, which
+  # does not apply Kubernetes search domains. Keep the backend service as a
+  # fully qualified cluster DNS name rather than the Sealos short internal URL.
   AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
@@ -27,7 +28,7 @@ env:
   FRONTEND_ACR_NAMESPACE: aiteachme
   FRONTEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   FRONTEND_IMAGE_NAME: aiteachme-frontend
-  FRONTEND_PUBLIC_URL: https://ghxbqhziktyi.sealosbja.site
+  FRONTEND_PUBLIC_URL: https://aiteachme.cn
   FRONTEND_ROLLOUT_TIMEOUT_SECONDS: "600"
   SEALOS_BACKEND_DEPLOYMENT: atm-d
   SEALOS_FRONTEND_DEPLOYMENT: atm-frontend
@@ -378,10 +379,20 @@ jobs:
             echo "### ${pod} nginx runtime probe"
             kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -lc '
               echo "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM:-}";
+              upstream_host="${AITEACHME_API_UPSTREAM#http://}";
+              upstream_host="${upstream_host#https://}";
+              upstream_host="${upstream_host%%/*}";
+              upstream_host="${upstream_host%%:*}";
+              echo "--- resolver config";
+              cat /etc/resolv.conf || true;
+              echo "--- upstream dns probe";
+              nslookup "${upstream_host}" 2>&1 || true;
               echo "--- /etc/nginx/conf.d/default.conf";
               sed -n "1,140p" /etc/nginx/conf.d/default.conf;
               echo "--- local static probe";
               wget -S -O /dev/null -T 5 http://127.0.0.1/ 2>&1 || true;
+              echo "--- direct upstream api probe";
+              wget -S -O - -T 5 "${AITEACHME_API_UPSTREAM%/}/api/health" 2>&1 || true;
               echo "--- local api probe";
               wget -S -O - -T 5 http://127.0.0.1/api/health 2>&1 || true;
             ' || true

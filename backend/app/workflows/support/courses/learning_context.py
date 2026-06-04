@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.course import Course
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _MAX_INTENT_TEXT_CHARS = 4000
 _MAX_INTRO_TEXT_CHARS = 1200

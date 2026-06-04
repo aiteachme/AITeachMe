@@ -175,7 +175,7 @@ def collect_runtime_datas() -> list[tuple[str, str]]:
     ]
     datas += copy_metadata("aiteachme-backend")
 
-    bundled_env_path = Path("../packaging/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
+    bundled_env_path = Path("../packaging/desktop/artifacts/generated-configs/aiteachme_bundled_env.enc.json")
     if bundled_env_path.exists():
         datas.append((str(bundled_env_path), "configs"))
 

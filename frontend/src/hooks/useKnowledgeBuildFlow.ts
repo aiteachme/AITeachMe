@@ -14,6 +14,7 @@ import type {
 } from "../api/generated/model";
 import type { ApiResponse } from "../api/types";
 import { useToast, type ToastVariant } from "../components/ui/Toast";
+import { trackCourseAnalyticsEvent } from "../lib/analytics";
 import { buildKnowledgeBuildRuntimeQueryKey } from "../lib/knowledgeBuildRuntime";
 
 export type KnowledgeBuildResolution = "rebuild" | "disable";
@@ -156,6 +157,16 @@ export function useKnowledgeBuildFlow({
     mutationFn: (payload: KnowledgeBuildRequestPayload) =>
       triggerKnowledgeBuild(courseId, payload),
     onSuccess: (data) => {
+      trackCourseAnalyticsEvent("knowledge_build_started", courseId, {
+        accepted_file_count: data.accepted_file_ids?.length ?? 0,
+        build_type: buildType,
+        digest_mode: data.digest_mode ?? undefined,
+        has_confirmed_plan: Boolean(data.confirmed_plan_id),
+        has_planner_session: Boolean(data.planner_session_id),
+        model_override_present: Boolean(data.model_override),
+        ready_file_count: data.ready_file_count ?? 0,
+        vector_mode: data.vector_status?.mode,
+      });
       pendingRequestRef.current = null;
       setPrecheckConflict(null);
       setErrorMessage("");
@@ -179,6 +190,11 @@ export function useKnowledgeBuildFlow({
         errorCode === "KNOWLEDGE_BUILD_PRECHECK_CONFLICT" &&
         isKnowledgeBuildPrecheckConflictData(errorData)
       ) {
+        trackCourseAnalyticsEvent("knowledge_build_precheck_conflict", courseId, {
+          auto_resolution: AUTO_DISABLE_PRECHECK_REASONS.has(errorData.reason) ? "disable" : "manual",
+          build_type: buildType,
+          reason: errorData.reason,
+        });
         if (AUTO_DISABLE_PRECHECK_REASONS.has(errorData.reason)) {
           const basePayload =
             pendingRequestRef.current ?? { ...buildRequest(), build_type: buildType };
@@ -205,6 +221,10 @@ export function useKnowledgeBuildFlow({
         return;
       }
 
+      trackCourseAnalyticsEvent("knowledge_build_start_failed", courseId, {
+        build_type: buildType,
+        error_code: errorCode || "unknown",
+      });
       setPrecheckConflict(null);
       setErrorMessage(getApiErrorMessage(error, fallbackErrorMessage));
     },
@@ -212,6 +232,10 @@ export function useKnowledgeBuildFlow({
 
   const submitBuild = useCallback((overrides?: Partial<KnowledgeBuildRequestInput>) => {
     if (!courseId) {
+      trackCourseAnalyticsEvent("knowledge_build_submit_blocked", courseId, {
+        build_type: buildType,
+        reason: "missing_course_id",
+      });
       setErrorMessage("缺少课程 ID，暂时无法发起知识构建。");
       return;
     }
@@ -223,11 +247,21 @@ export function useKnowledgeBuildFlow({
     } satisfies KnowledgeBuildRequestPayload;
 
     if (!requestPayload.confirmed_plan_id) {
+      trackCourseAnalyticsEvent("knowledge_build_submit_blocked", courseId, {
+        build_type: buildType,
+        reason: "missing_confirmed_plan",
+      });
       setErrorMessage("知识文档构建必须先在构建方案页确认计划。请先生成并确认方案，再开始构建。");
       setPrecheckConflict(null);
       return;
     }
 
+    trackCourseAnalyticsEvent("knowledge_build_submitted", courseId, {
+      build_type: buildType,
+      file_count: requestPayload.file_ids?.length ?? 0,
+      has_confirmed_plan: Boolean(requestPayload.confirmed_plan_id),
+      has_prompt: Boolean(requestPayload.prompt?.trim()),
+    });
     pendingRequestRef.current = requestPayload;
     setErrorMessage("");
     setPrecheckConflict(null);
@@ -248,6 +282,10 @@ export function useKnowledgeBuildFlow({
         embedding_resolution: resolution,
       } satisfies KnowledgeBuildRequestPayload;
 
+      trackCourseAnalyticsEvent("knowledge_build_precheck_resolved", courseId, {
+        build_type: buildType,
+        resolution,
+      });
       pendingRequestRef.current = basePayload;
       setErrorMessage("");
       buildMutation.mutate(nextPayload);

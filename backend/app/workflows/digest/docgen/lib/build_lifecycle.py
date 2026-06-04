@@ -765,7 +765,7 @@ async def run_docgen_background(
 
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
-    from app.workflows.digest.kg_doc_sync.builds import run_graph_docs_sync_auto_build
+    from app.workflows.digest.kg_doc_sync.lib.builds import run_graph_docs_sync_auto_build
     from app.workflows.digest.kg_doc_sync.lib.prefetch import cancel_docgen_kg_prefetch
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
