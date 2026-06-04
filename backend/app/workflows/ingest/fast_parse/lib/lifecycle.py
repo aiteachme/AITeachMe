@@ -65,7 +65,7 @@ def dispatch_enhancement_if_needed(
     if not user_id or not file_id:
         return False
 
-    from app.workflows.ingest.fast_parse.lib.enhance import _run_deep_enhance_background
+    from app.workflows.ingest.fast_parse.nodes.enhance import _run_deep_enhance_background
 
     enhance_coro = _run_deep_enhance_background(
         user_id=user_id,
