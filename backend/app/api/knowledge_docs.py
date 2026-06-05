@@ -63,6 +63,7 @@ from app.workflows.support.courses import get_course_record
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.analytics.posthog import capture_course_build_event_later
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.observability.trace import (
     langsmith_trace,
@@ -131,11 +132,67 @@ def _storage_scope_for_course_record(course: Course) -> CourseStorageScope:
     return build_course_storage_scope(user_id=course.user_id, course_id=course.id)
 
 
+def _suffix(value: str | None, *, length: int = 8) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized[-length:] if normalized else None
+
+
+def _request_id(request: Request | object) -> str:
+    state = getattr(request, "state", None)
+    value = getattr(state, "request_id", None)
+    return str(value or "").strip() or uuid.uuid4().hex
+
+
+def _planner_plan_analytics_properties(plan: object | None) -> dict[str, object]:
+    if plan is None:
+        return {
+            "adjustment_question_count": 0,
+            "chapter_count": 0,
+            "has_plan_summary": False,
+            "plan_step_count": 0,
+        }
+    return {
+        "adjustment_question_count": len(getattr(plan, "adjustment_questions", []) or []),
+        "chapter_count": len(getattr(plan, "chapter_plan", []) or []),
+        "digest_mode": getattr(plan, "digest_mode", None),
+        "has_plan_summary": bool(str(getattr(plan, "plan_summary", "") or "").strip()),
+        "plan_step_count": len(getattr(plan, "plan_steps", []) or []),
+    }
+
+
+def _planner_response_analytics_properties(response: BuildPlannerSessionResponse) -> dict[str, object]:
+    runtime_stats = response.runtime_stats
+    return {
+        **_planner_plan_analytics_properties(response.latest_plan),
+        "has_planner_session": bool(response.session_id),
+        "planner_session_id_suffix": _suffix(response.session_id),
+        "runtime_step_count": len(runtime_stats.steps) if runtime_stats is not None else 0,
+    }
+
+
+def _capture_course_build_event(
+    event: str,
+    *,
+    course_id: str,
+    user_id: str,
+    insert_id_parts: list[str],
+    properties: dict[str, object] | None = None,
+) -> None:
+    capture_course_build_event_later(
+        event,
+        course_id=course_id,
+        user_id=user_id,
+        insert_id_parts=insert_id_parts,
+        properties=properties,
+    )
+
+
 def _planner_stream_response(
     *,
     request: Request,
     user_id: str,
     runner,
+    on_success=None,
 ) -> StreamingResponse:
     emitter = SSEEventEmitter()
 
@@ -160,6 +217,8 @@ def _planner_stream_response(
                 await emitter.emit_token(token)
 
             response = await runner(progress_callback, token_callback)
+            if on_success is not None:
+                on_success(response)
             logger.info(
                 "planner_stream_runner_completed",
                 user_id=user_id,
@@ -219,6 +278,7 @@ def _planner_stream_response(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def knowledge_build_plan_create(
+    request: Request,
     course_id: str = Path(...),
     body: BuildPlannerCreateRequest = Body(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -226,10 +286,36 @@ async def knowledge_build_plan_create(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    _capture_course_build_event(
+        "course_plan_requested",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[_request_id(request), "create", "api"],
+        properties={
+            "file_count": len(body.file_ids or []),
+            "has_prompt": bool((body.user_prompt or "").strip()),
+            "mode": "create",
+            "model_override_present": bool((body.model or "").strip()),
+            "source": "api",
+        },
+    )
     data = await create_build_planner_session(
         course=course_record,
         user_id=user.user_id,
         payload=body,
+    )
+    _capture_course_build_event(
+        "course_plan_generated",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[data.session_id, str(data.revision), data.updated_at.isoformat()],
+        properties={
+            **_planner_response_analytics_properties(data),
+            "file_count": len(body.file_ids or []),
+            "mode": "create",
+            "model_override_present": bool(data.model_override),
+            "source": "api",
+        },
     )
     return ok_response(data)
 
@@ -285,6 +371,35 @@ async def knowledge_build_plan_create_stream(
         file_id_count=len(body.file_ids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
     )
+    _capture_course_build_event(
+        "course_plan_requested",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[_request_id(request), "create", "stream"],
+        properties={
+            "file_count": len(body.file_ids or []),
+            "has_prompt": bool((body.user_prompt or "").strip()),
+            "mode": "create",
+            "model_override_present": bool((body.model or "").strip()),
+            "source": "stream",
+        },
+    )
+
+    def on_success(data: BuildPlannerSessionResponse) -> None:
+        _capture_course_build_event(
+            "course_plan_generated",
+            course_id=normalized,
+            user_id=user.user_id,
+            insert_id_parts=[data.session_id, str(data.revision), data.updated_at.isoformat()],
+            properties={
+                **_planner_response_analytics_properties(data),
+                "file_count": len(body.file_ids or []),
+                "mode": "create",
+                "model_override_present": bool(data.model_override),
+                "source": "stream",
+            },
+        )
+
     return _planner_stream_response(
         request=request,
         user_id=user.user_id,
@@ -295,6 +410,7 @@ async def knowledge_build_plan_create_stream(
             progress_callback=progress_callback,
             token_callback=token_callback,
         ),
+        on_success=on_success,
     )
 
 
@@ -305,6 +421,7 @@ async def knowledge_build_plan_create_stream(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 async def knowledge_build_plan_message(
+    request: Request,
     course_id: str = Path(...),
     session_id: str = Path(...),
     body: BuildPlannerMessageRequest = Body(...),
@@ -313,6 +430,19 @@ async def knowledge_build_plan_message(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    _capture_course_build_event(
+        "course_plan_requested",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[_request_id(request), session_id, "revise", "api"],
+        properties={
+            "has_prompt": bool((body.message or "").strip()),
+            "mode": "revise",
+            "model_override_present": bool((body.model or "").strip()),
+            "planner_session_id_suffix": _suffix(session_id),
+            "source": "api",
+        },
+    )
     data = await append_build_planner_message(
         course=course_record,
         user_id=user.user_id,
@@ -344,6 +474,19 @@ async def knowledge_build_plan_message_stream(
         session_id=session_id,
         user_id=user.user_id,
         message_preview=(body.message or "")[:80],
+    )
+    _capture_course_build_event(
+        "course_plan_requested",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[_request_id(request), session_id, "revise", "stream"],
+        properties={
+            "has_prompt": bool((body.message or "").strip()),
+            "mode": "revise",
+            "model_override_present": bool((body.model or "").strip()),
+            "planner_session_id_suffix": _suffix(session_id),
+            "source": "stream",
+        },
     )
     return _planner_stream_response(
         request=request,
@@ -395,6 +538,7 @@ def knowledge_build_plan_adjust_click(
     responses=build_error_responses([400, 404, 422, 500]),
 )
 def knowledge_build_plan_confirm(
+    request: Request,
     course_id: str = Path(...),
     session_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -420,6 +564,22 @@ def knowledge_build_plan_confirm(
         session_id=session_id,
         confirmed_plan_id=data.confirmed_plan_id,
         user_id=user.user_id,
+    )
+    _capture_course_build_event(
+        "course_build_plan_confirmed",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[data.confirmed_plan_id, data.updated_at.isoformat()],
+        properties={
+            "chapter_count": len(data.chapter_plan or []),
+            "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
+            "digest_mode": data.digest_mode,
+            "has_plan_summary": bool((data.plan_summary or "").strip()),
+            "model_override_present": bool(data.model_override),
+            "planner_session_id_suffix": _suffix(data.planner_session_id or session_id),
+            "selected_file_count": len(data.selected_file_ids or []),
+            "version_no": data.version_no,
+        },
     )
     return ok_response(data)
 
@@ -461,6 +621,25 @@ async def knowledge_build(
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
     )
+    _capture_course_build_event(
+        "knowledge_build_submitted",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[
+            _request_id(request),
+            data.confirmed_plan_id or "",
+            data.requested_at.isoformat(),
+            "submitted",
+        ],
+        properties={
+            "build_type": body.build_type,
+            "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
+            "file_count": len(body.file_ids or []),
+            "has_confirmed_plan": bool(data.confirmed_plan_id),
+            "has_prompt": bool((body.prompt or "").strip()),
+            "embedding_resolution": body.embedding_resolution,
+        },
+    )
 
     logger.info(
         "knowledge_build_docs_background_spawning",
@@ -487,6 +666,25 @@ async def knowledge_build(
         kind="knowledge.build.docs",
         course_id=normalized,
         name=f"knowledge.build.docs:{normalized}",
+    )
+    _capture_course_build_event(
+        "knowledge_build_started",
+        course_id=normalized,
+        user_id=user.user_id,
+        insert_id_parts=[build_group_id, data.requested_at.isoformat(), "started"],
+        properties={
+            "accepted_file_count": len(accepted_file_ids),
+            "build_group_id_suffix": _suffix(build_group_id),
+            "build_type": body.build_type,
+            "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
+            "digest_mode": data.digest_mode,
+            "has_confirmed_plan": bool(data.confirmed_plan_id),
+            "has_planner_session": bool(data.planner_session_id),
+            "model_override_present": bool(data.model_override),
+            "planner_session_id_suffix": _suffix(data.planner_session_id),
+            "ready_file_count": data.ready_file_count,
+            "vector_mode": data.vector_status.mode,
+        },
     )
     logger.info(
         "knowledge_build_request_accepted",

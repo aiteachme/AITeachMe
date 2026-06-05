@@ -238,22 +238,40 @@ def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytes
     assert ("course_runtime00001", "build_event", event_status.recent_events[0]) in published_events
 
 
-def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("terminal_status", "expected_event"),
+    [
+        ("completed", "knowledge_build_completed"),
+        ("failed", "knowledge_build_failed"),
+        ("partial_failed", "knowledge_build_failed"),
+        ("cancelled", "knowledge_build_cancelled"),
+    ],
+)
+def test_docgen_terminal_analytics_fires_once_on_terminal_transition(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_status: str,
+    expected_event: str,
+) -> None:
     store = _JsonStore()
     scope = _scope()
-    captured: list[tuple[str, str, dict[str, object]]] = []
+    captured: list[tuple[str, str, dict[str, object], object]] = []
     requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
     started_at = requested_at + timedelta(seconds=1)
     finished_at = requested_at + timedelta(seconds=16)
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
     monkeypatch.setattr(build_store, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_store, "is_local_mode", lambda: False)
     monkeypatch.setattr(build_store, "publish_workflow_stream_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         build_store,
         "capture_posthog_event",
-        lambda event, *, distinct_id, properties=None: captured.append((event, distinct_id, properties or {})) or True,
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {}, timestamp)
+        )
+        or True,
     )
 
-    build_store.update_knowledge_build_lane_status(
+    terminal_runtime = build_store.update_knowledge_build_lane_status(
         "course_runtime00001",
         lane="docgen",
         course_scope=scope,
@@ -271,8 +289,8 @@ def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch
         course_scope=scope,
         requested_at=requested_at,
         build_group_id="group-1",
-        status="completed",
-        stage="completed",
+        status=terminal_status,
+        stage=terminal_status,
         finished_at=finished_at,
         published_doc_count=3,
     )
@@ -282,8 +300,8 @@ def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch
         course_scope=scope,
         requested_at=requested_at,
         build_group_id="group-1",
-        status="completed",
-        stage="completed",
+        status=terminal_status,
+        stage=terminal_status,
     )
     build_store.update_knowledge_build_lane_status(
         "course_runtime00001",
@@ -294,14 +312,21 @@ def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch
         status="failed",
         stage="failed",
     )
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=scope,
+        user_id=None,
+        status=terminal_runtime,
+    )
 
     assert len(captured) == 1
-    event, distinct_id, properties = captured[0]
-    assert event == "knowledge_build_completed"
+    event, distinct_id, properties, timestamp = captured[0]
+    assert event == expected_event
     assert distinct_id == "user_a"
+    assert timestamp == finished_at
     insert_id = str(properties["$insert_id"])
-    assert insert_id.startswith("knowledge_build_completed:")
-    assert len(insert_id.removeprefix("knowledge_build_completed:")) == 32
+    assert insert_id.startswith(f"{expected_event}:")
+    assert len(insert_id.removeprefix(f"{expected_event}:")) == 32
     assert "course_runtime00001" not in insert_id
     assert "group-1" not in insert_id
     assert properties["analytics_source"] == "backend"
@@ -311,6 +336,123 @@ def test_docgen_terminal_analytics_fires_once_on_terminal_transition(monkeypatch
     assert properties["source_file_count"] == 2
     assert properties["published_doc_count"] == 3
     assert properties["duration_ms"] == 15000
+    assert properties["status"] == terminal_status
+
+
+def test_docgen_terminal_analytics_reserves_insert_id_during_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[str] = []
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
+    requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=requested_at,
+        started_at=requested_at + timedelta(seconds=1),
+        finished_at=requested_at + timedelta(seconds=16),
+        build_group_id="group-1",
+        status="completed",
+        stage="completed",
+    )
+    monkeypatch.setattr(build_store, "is_local_mode", lambda: False)
+
+    def capture_once(event, *, distinct_id, properties=None, timestamp=None):
+        captured.append(event)
+        build_store._capture_docgen_terminal_analytics_event(
+            course_id="course_runtime00001",
+            course_scope=None,
+            user_id="user_a",
+            status=status,
+        )
+        return True
+
+    monkeypatch.setattr(build_store, "capture_posthog_event", capture_once)
+
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=None,
+        user_id="user_a",
+        status=status,
+    )
+
+    assert captured == ["knowledge_build_completed"]
+
+
+def test_docgen_terminal_analytics_local_marker_blocks_duplicate_across_processes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    captured: list[str] = []
+    scope = _scope()
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
+    requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=requested_at,
+        started_at=requested_at + timedelta(seconds=1),
+        finished_at=requested_at + timedelta(seconds=16),
+        build_group_id="group-1",
+        status="completed",
+        stage="completed",
+    )
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(build_store, "is_local_mode", lambda: True)
+    monkeypatch.setattr(
+        build_store,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(event) or True,
+    )
+
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=scope,
+        user_id="user_a",
+        status=status,
+    )
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=scope,
+        user_id="user_a",
+        status=status,
+    )
+
+    assert captured == ["knowledge_build_completed"]
+    assert len(list(tmp_path.rglob("*.posthog"))) == 1
+
+
+def test_docgen_terminal_analytics_releases_insert_id_after_capture_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[str] = []
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
+    requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=requested_at,
+        build_group_id="group-1",
+        status="completed",
+        stage="completed",
+    )
+    monkeypatch.setattr(build_store, "is_local_mode", lambda: False)
+
+    def fail_then_succeed(event, *, distinct_id, properties=None, timestamp=None):
+        attempts.append(event)
+        return len(attempts) > 1
+
+    monkeypatch.setattr(build_store, "capture_posthog_event", fail_then_succeed)
+
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=None,
+        user_id="user_a",
+        status=status,
+    )
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=None,
+        user_id="user_a",
+        status=status,
+    )
+
+    assert attempts == ["knowledge_build_completed", "knowledge_build_completed"]
 
 
 def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

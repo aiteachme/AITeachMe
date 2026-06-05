@@ -157,16 +157,6 @@ export function useKnowledgeBuildFlow({
     mutationFn: (payload: KnowledgeBuildRequestPayload) =>
       triggerKnowledgeBuild(courseId, payload),
     onSuccess: (data) => {
-      trackCourseAnalyticsEvent("knowledge_build_started", courseId, {
-        accepted_file_count: data.accepted_file_ids?.length ?? 0,
-        build_type: buildType,
-        digest_mode: data.digest_mode ?? undefined,
-        has_confirmed_plan: Boolean(data.confirmed_plan_id),
-        has_planner_session: Boolean(data.planner_session_id),
-        model_override_present: Boolean(data.model_override),
-        ready_file_count: data.ready_file_count ?? 0,
-        vector_mode: data.vector_status?.mode,
-      });
       pendingRequestRef.current = null;
       setPrecheckConflict(null);
       setErrorMessage("");
@@ -256,12 +246,6 @@ export function useKnowledgeBuildFlow({
       return;
     }
 
-    trackCourseAnalyticsEvent("knowledge_build_submitted", courseId, {
-      build_type: buildType,
-      file_count: requestPayload.file_ids?.length ?? 0,
-      has_confirmed_plan: Boolean(requestPayload.confirmed_plan_id),
-      has_prompt: Boolean(requestPayload.prompt?.trim()),
-    });
     pendingRequestRef.current = requestPayload;
     setErrorMessage("");
     setPrecheckConflict(null);

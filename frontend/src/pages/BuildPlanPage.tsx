@@ -1452,12 +1452,6 @@ export function BuildPlanPage() {
     void (async () => {
       try {
         const selectedModel = navState.model?.trim() || toChatRequestModel(chatModel);
-        trackCourseAnalyticsEvent("course_plan_requested", courseId, {
-          file_count: plannerEffectiveFileIds.length,
-          mode: "create",
-          ready_file_count: readyFileIds.length,
-          source: "autostart",
-        });
         const response = await createPlannerSessionStream(
           courseId,
           { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
@@ -1477,13 +1471,6 @@ export function BuildPlanPage() {
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
-        trackCourseAnalyticsEvent("course_plan_generated", courseId, {
-          ...plannerResponseAnalyticsProperties(response),
-          file_count: plannerEffectiveFileIds.length,
-          mode: "create",
-          ready_file_count: readyFileIds.length,
-          source: "autostart",
-        });
       } catch (error) {
         if (isAbortError(error)) {
           trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
@@ -1842,12 +1829,6 @@ export function BuildPlanPage() {
       plannerSessionId,
       effectiveFileCount: plannerEffectiveFileIds.length,
     });
-    trackCourseAnalyticsEvent("course_plan_requested", courseId, {
-      file_count: plannerEffectiveFileIds.length,
-      mode: shouldCreateSession ? "create" : "revise",
-      ready_file_count: readyFileIds.length,
-      source: "composer",
-    });
     markPlannerLocalInteraction();
     const pendingAssistantId = nextMessageId();
     plannerPendingMessageIdRef.current = pendingAssistantId;
@@ -1899,13 +1880,6 @@ export function BuildPlanPage() {
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingPreview || plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
         );
-        trackCourseAnalyticsEvent("course_plan_generated", courseId, {
-          ...plannerResponseAnalyticsProperties(response),
-          file_count: plannerEffectiveFileIds.length,
-          mode: "create",
-          ready_file_count: readyFileIds.length,
-          source: "composer",
-        });
         return;
       }
 
@@ -2062,11 +2036,6 @@ export function BuildPlanPage() {
         plannerSessionId,
         confirmedPlanId: response.confirmed_plan_id,
         versionNo: (response as ConfirmResponseWithVersion).version_no,
-      });
-      trackCourseAnalyticsEvent("course_build_plan_confirmed", courseId, {
-        ...plannerPlanAnalyticsProperties(currentPlanRef.current),
-        ready_file_count: readyFileIds.length,
-        version_no: (response as ConfirmResponseWithVersion).version_no,
       });
       const confirmedCurrentPlan = currentPlanRef.current
         ? {

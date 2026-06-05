@@ -384,6 +384,7 @@ def _register_middlewares(app: FastAPI) -> None:
         clear_logging_context()
 
         request_id = (request.headers.get("x-request-id") or "").strip() or uuid.uuid4().hex
+        request.state.request_id = request_id
         client_ip = request.client.host if request.client is not None else None
         bind_logging_context(
             request_id=request_id,
