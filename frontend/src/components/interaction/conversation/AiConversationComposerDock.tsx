@@ -28,6 +28,7 @@ interface AiConversationComposerDockProps {
   homeHighlighted?: boolean;
   onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
   onFilesDrop?: (files: File[]) => void;
+  onAttachmentButtonClick?: () => void;
 }
 
 export function AiConversationComposerDock({
@@ -50,6 +51,7 @@ export function AiConversationComposerDock({
   homeHighlighted,
   onPaste,
   onFilesDrop,
+  onAttachmentButtonClick,
 }: AiConversationComposerDockProps) {
   const isExamQuestionContext = pendingSelectionContext?.source === AI_SOURCE_EXAM_QUESTION;
   const isHomeLayout = layout === "home";
@@ -139,6 +141,7 @@ export function AiConversationComposerDock({
         homeHighlighted={homeHighlighted}
         onPaste={onPaste}
         onFilesDrop={onFilesDrop}
+        onAttachmentButtonClick={onAttachmentButtonClick}
         placeholder={pendingSelectionContext ? (
           isExamQuestionContext ? "围绕这道题提问..." : "结合原文上下文提问..."
         ) : isHomeLayout ? "直接输入问题，也可以先添加资料再一起讨论" : undefined}

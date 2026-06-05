@@ -22,6 +22,7 @@ import {
   useGlobalChatModelChoice,
 } from "../../chat/ChatModelSelect";
 import { AiConversationComposerDock } from "./AiConversationComposerDock";
+import { AiConversationDraftFileAttachments } from "./AiConversationDraftFileAttachments";
 import { AiConversationDraftPage } from "./AiConversationDraftPage";
 import {
   AiConversationCollapseButton,
@@ -1805,20 +1806,64 @@ export const AiConversationView = memo(function AiConversationView({
             presentation={presentation}
           />
 
-          <AiConversationComposerDock
-            draft={draft}
-            onDraftChange={setDraft}
-            onSend={() => void handleSend()}
-            onAbort={abortStream}
-            isStreaming={isStreaming}
-            disabled={!courseId || isPlannerConversation}
-            autoFocusKey={composerFocusKey}
-            modelValue={chatModel}
-            onModelChange={setChatModel}
-            isPlannerConversation={isPlannerConversation}
-            pendingSelectionContext={pendingSelectionContext}
-            onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
-          />
+          {scope?.type === "global" ? (
+            <AiConversationDraftFileAttachments
+              fileIds={draftAttachedFileIds}
+              files={draftAttachedFiles}
+              onChange={handleDraftAttachedFilesChange}
+              onUploadingChange={setIsDraftUploadingFiles}
+              disabled={!courseId || isPlannerConversation || isStreaming}
+            >
+              {({
+                attachmentContent,
+                modalContent,
+                hasFiles,
+                isUploading,
+                onPaste,
+                onFilesDrop,
+                onOpenLibraryPicker,
+              }) => (
+                <>
+                  <AiConversationComposerDock
+                    draft={draft}
+                    onDraftChange={setDraft}
+                    onSend={() => void handleSend()}
+                    onAbort={abortStream}
+                    isStreaming={isStreaming}
+                    disabled={!courseId || isPlannerConversation || isUploading}
+                    autoFocusKey={composerFocusKey}
+                    modelValue={chatModel}
+                    onModelChange={setChatModel}
+                    isPlannerConversation={isPlannerConversation}
+                    pendingSelectionContext={pendingSelectionContext}
+                    onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+                    canSend={draft.trim().length > 0 || hasFiles}
+                    homeAttachmentContent={attachmentContent}
+                    homeHighlighted={hasFiles}
+                    onPaste={onPaste}
+                    onFilesDrop={onFilesDrop}
+                    onAttachmentButtonClick={onOpenLibraryPicker}
+                  />
+                  {modalContent}
+                </>
+              )}
+            </AiConversationDraftFileAttachments>
+          ) : (
+            <AiConversationComposerDock
+              draft={draft}
+              onDraftChange={setDraft}
+              onSend={() => void handleSend()}
+              onAbort={abortStream}
+              isStreaming={isStreaming}
+              disabled={!courseId || isPlannerConversation}
+              autoFocusKey={composerFocusKey}
+              modelValue={chatModel}
+              onModelChange={setChatModel}
+              isPlannerConversation={isPlannerConversation}
+              pendingSelectionContext={pendingSelectionContext}
+              onClearPendingSelectionContext={() => setPendingSelectionContext(null)}
+            />
+          )}
         </div>
       )}
 

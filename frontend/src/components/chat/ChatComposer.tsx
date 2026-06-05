@@ -32,6 +32,7 @@ interface ChatComposerProps {
   homeHighlighted?: boolean;
   onPaste?: ClipboardEventHandler<HTMLTextAreaElement>;
   onFilesDrop?: (files: File[]) => void;
+  onAttachmentButtonClick?: () => void;
 }
 
 const TEXTAREA_MIN_HEIGHT = 32;
@@ -63,6 +64,7 @@ export function ChatComposer({
   homeHighlighted = false,
   onPaste,
   onFilesDrop,
+  onAttachmentButtonClick,
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,9 +73,9 @@ export function ChatComposer({
   const textareaMinHeight = layout === "home" ? HOME_TEXTAREA_MIN_HEIGHT : TEXTAREA_MIN_HEIGHT;
   const textareaMaxHeight = layout === "home" ? HOME_TEXTAREA_MAX_HEIGHT : TEXTAREA_MAX_HEIGHT;
   const canSubmit = canSend ?? Boolean(value.trim());
-  const canAttachFiles = Boolean(onFilesDrop) && !disabled && !isStreaming;
+  const canAttachFiles = Boolean(onFilesDrop || onAttachmentButtonClick) && !disabled && !isStreaming;
   const { isDragActive: isFileDragActive, dropZoneHandlers: fileDropHandlers } = useFileDropZone<HTMLDivElement>({
-    disabled: disabled || isStreaming,
+    disabled: disabled || isStreaming || !onFilesDrop,
     onDropFiles: onFilesDrop,
   });
 
@@ -120,6 +122,10 @@ export function ChatComposer({
 
   function handlePickFiles() {
     if (!canAttachFiles) {
+      return;
+    }
+    if (onAttachmentButtonClick) {
+      onAttachmentButtonClick();
       return;
     }
     fileInputRef.current?.click();
@@ -263,6 +269,7 @@ export function ChatComposer({
           style={{ borderRadius: 26 }}
           className={cn(
             "relative overflow-hidden border border-zinc-200/80 bg-white/95 backdrop-blur-xl shadow-[0_6px_18px_-12px_rgba(0,0,0,0.24),0_10px_28px_-22px_rgba(0,0,0,0.22)] transition-[border-color,box-shadow,background-color] duration-200 ease-out focus-within:border-zinc-300 focus-within:bg-white focus-within:shadow-[0_8px_22px_-14px_rgba(0,0,0,0.22),0_14px_34px_-26px_rgba(0,0,0,0.20)] dark:border-slate-800/80 dark:bg-slate-950/92 dark:shadow-[0_12px_28px_-22px_rgba(0,0,0,0.70)] dark:focus-within:border-slate-700 dark:focus-within:bg-slate-950",
+            homeHighlighted && "border-indigo-300/80 bg-indigo-50/30 ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10",
             isFileDragActive && "border-zinc-900 bg-white ring-4 ring-zinc-900/10 dark:border-slate-100 dark:bg-slate-950 dark:ring-slate-100/10",
           )}
         >
@@ -276,6 +283,11 @@ export function ChatComposer({
               onChange={handleFileInputChange}
               tabIndex={-1}
             />
+          ) : null}
+          {homeAttachmentContent ? (
+            <div className="border-b border-zinc-100 px-3 pb-2.5 pt-3 dark:border-slate-800/80">
+              {homeAttachmentContent}
+            </div>
           ) : null}
 
           <motion.div
@@ -300,6 +312,7 @@ export function ChatComposer({
               value={value}
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={onPaste}
               disabled={disabled}
               placeholder={placeholder}
               className={cn(

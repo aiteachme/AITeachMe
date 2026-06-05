@@ -60,6 +60,7 @@ interface AiConversationDraftFileAttachmentsProps {
     isUploading: boolean;
     onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
     onFilesDrop: (files: File[]) => void;
+    onOpenLibraryPicker: () => void;
   }) => ReactNode;
 }
 
@@ -558,6 +559,12 @@ export function AiConversationDraftFileAttachments({
     }
   }, [onChange, queryClient, syncFilesCache]);
 
+  const openLibraryPicker = useCallback(() => {
+    if (!disabled) {
+      setLibraryPickerOpen(true);
+    }
+  }, [disabled]);
+
   const removeFile = useCallback((fileId: string) => {
     const nextFileIds = fileIds.filter((item) => item !== fileId);
     const nextFiles = selectedFiles.filter((file) => file.id !== fileId);
@@ -647,7 +654,7 @@ export function AiConversationDraftFileAttachments({
       />
       <button
         type="button"
-        onClick={() => setLibraryPickerOpen(true)}
+        onClick={openLibraryPicker}
         disabled={disabled}
         className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
         title="从资料库选择或上传本地文件"
@@ -680,6 +687,7 @@ export function AiConversationDraftFileAttachments({
         isUploading,
         onPaste: handlePaste,
         onFilesDrop: (droppedFiles) => void uploadPendingFiles(droppedFiles),
+        onOpenLibraryPicker: openLibraryPicker,
       })}
     </>
   );
