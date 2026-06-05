@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,8 @@ STALE_BUILD_LOCK_TTL = timedelta(minutes=30)
 _ACTIVE_BUILD_STATUSES = {"accepted", "running", "publishing"}
 _TERMINAL_BUILD_STATUSES = {"completed", "failed", "cancelled", "skipped", "partial_failed"}
 _POSTHOG_DOCGEN_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "partial_failed"}
+_POSTHOG_DOCGEN_TERMINAL_RESERVED_LOCK = Lock()
+_POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS: set[str] = set()
 _GRAPH_RUNTIME_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
@@ -463,9 +466,50 @@ def _posthog_insert_id(
     return f"{event_name}:{digest}"
 
 
+def _reserve_docgen_terminal_analytics_insert_id(
+    *,
+    course_scope: CourseStorageScope | None,
+    insert_id: str,
+) -> bool:
+    with _POSTHOG_DOCGEN_TERMINAL_RESERVED_LOCK:
+        if insert_id in _POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS:
+            return False
+
+        if course_scope is not None and is_local_mode():
+            marker_path = _local_docgen_terminal_analytics_marker_path(course_scope, insert_id)
+            os.makedirs(marker_path.parent, exist_ok=True)
+            try:
+                marker_fd = os.open(marker_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                _POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.add(insert_id)
+                return False
+            with os.fdopen(marker_fd, "w", encoding="utf-8") as marker_file:
+                marker_file.write("{}")
+
+        _POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.add(insert_id)
+        return True
+
+
+def _release_docgen_terminal_analytics_insert_id(
+    *,
+    course_scope: CourseStorageScope | None,
+    insert_id: str,
+) -> None:
+    with _POSTHOG_DOCGEN_TERMINAL_RESERVED_LOCK:
+        _POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.discard(insert_id)
+
+    if course_scope is not None and is_local_mode():
+        marker_path = _local_docgen_terminal_analytics_marker_path(course_scope, insert_id)
+        try:
+            marker_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _capture_docgen_terminal_analytics_event(
     *,
     course_id: str,
+    course_scope: CourseStorageScope | None,
     user_id: str | None,
     status: KnowledgeBuildRuntimeStatus,
 ) -> None:
@@ -476,15 +520,23 @@ def _capture_docgen_terminal_analytics_event(
     normalized_course_id = course_id.strip()
     normalized_user_id = str(user_id or "").strip()
     distinct_id = normalized_user_id or f"course:{normalized_course_id or 'unknown'}"
-    capture_posthog_event(
+    insert_id = _posthog_insert_id(
+        event_name=event_name,
+        course_id=normalized_course_id,
+        status=status,
+    )
+    if not _reserve_docgen_terminal_analytics_insert_id(
+        course_scope=course_scope,
+        insert_id=insert_id,
+    ):
+        return
+
+    captured = capture_posthog_event(
         event_name,
         distinct_id=distinct_id,
+        timestamp=status.finished_at or utcnow(),
         properties={
-            "$insert_id": _posthog_insert_id(
-                event_name=event_name,
-                course_id=normalized_course_id,
-                status=status,
-            ),
+            "$insert_id": insert_id,
             "analytics_source": "backend",
             "user_id_present": bool(normalized_user_id),
             "user_id_suffix": _suffix(normalized_user_id),
@@ -513,6 +565,11 @@ def _capture_docgen_terminal_analytics_event(
             "error_present": bool(str(status.error_message or "").strip()),
         },
     )
+    if not captured:
+        _release_docgen_terminal_analytics_insert_id(
+            course_scope=course_scope,
+            insert_id=insert_id,
+        )
 
 
 def _normalize_graph_runtime_metrics(status: KnowledgeBuildRuntimeStatus) -> KnowledgeBuildRuntimeStatus:
@@ -849,6 +906,14 @@ def _local_build_lock_path(course_scope: CourseStorageScope) -> Path:
 
 def _local_docgen_intermediate_dir(course_scope: CourseStorageScope) -> Path:
     return _local_storage_path(course_scope.knowledge_build_prefix())
+
+
+def _local_docgen_terminal_analytics_marker_path(
+    course_scope: CourseStorageScope,
+    insert_id: str,
+) -> Path:
+    marker_id = hashlib.sha256(insert_id.encode("utf-8")).hexdigest()[:32]
+    return _local_storage_path(f"{course_scope.knowledge_build_prefix()}analytics/{marker_id}.posthog")
 
 
 def _staged_build_manifest_key(course_scope: CourseStorageScope) -> str:
@@ -1201,6 +1266,7 @@ def update_knowledge_build_lane_status(
         analytics_course_id, analytics_user_id, analytics_status = docgen_terminal_analytics
         _capture_docgen_terminal_analytics_event(
             course_id=analytics_course_id,
+            course_scope=course_scope,
             user_id=analytics_user_id,
             status=analytics_status,
         )

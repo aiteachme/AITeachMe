@@ -5,10 +5,19 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from app.api import knowledge_docs as api
 from app.api.deps import CurrentUserContext
 from app.models import Course
+from app.shared.infra.analytics import posthog as posthog_analytics
 from app.schemas.knowledge import (
+    BuildPlannerConfirmResponse,
+    BuildPlannerCreateRequest,
+    BuildPlannerPlanResponse,
+    BuildPlannerRuntimeStatsResponse,
+    BuildPlannerSessionResponse,
+    BuildPlannerStepStatsResponse,
     DocGenBuildData,
     DocGenBuildRequest,
     KnowledgeDocInteractiveSelectionRequest,
@@ -32,6 +41,98 @@ def _user() -> CurrentUserContext:
 
 def _course(course_id: str = COURSE_ID) -> Course:
     return Course(id=course_id, user_id=USER_ID, name="API Course")
+
+
+def _request(*, request_id: str = "request-1", registry=None):
+    return SimpleNamespace(
+        state=SimpleNamespace(request_id=request_id),
+        app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry)),
+    )
+
+
+def _capture_course_build_event_inline(
+    event,
+    *,
+    course_id,
+    user_id,
+    insert_id_parts,
+    properties=None,
+    timestamp=None,
+):
+    return posthog_analytics.capture_course_build_event(
+        event,
+        course_id=course_id,
+        user_id=user_id,
+        insert_id_parts=insert_id_parts,
+        properties=properties,
+        timestamp=timestamp,
+    )
+
+
+def _planner_session_response() -> BuildPlannerSessionResponse:
+    now = datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc)
+    return BuildPlannerSessionResponse(
+        session_id="planner-session-12345678",
+        course_id=COURSE_ID,
+        title="Plan",
+        status="draft",
+        revision=1,
+        latest_plan=BuildPlannerPlanResponse(
+            course_id=COURSE_ID,
+            selected_file_ids=["file-a"],
+            user_prompt="learn",
+            digest_mode="sprint",
+            chapter_plan=[
+                {
+                    "chapter_index": 1,
+                    "title": "Intro",
+                    "objective": "Understand basics",
+                }
+            ],
+            build_constraints={},
+            plan_summary="summary",
+            plan_steps=["step"],
+            adjustment_questions=["question"],
+            status="draft",
+            planner_session_id="planner-session-12345678",
+        ),
+        model_override="model-a",
+        turns=[],
+        runtime_stats=BuildPlannerRuntimeStatsResponse(
+            elapsed_ms=1200,
+            steps=[BuildPlannerStepStatsResponse(name="draft", elapsed_ms=1200)],
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _confirm_response() -> BuildPlannerConfirmResponse:
+    now = datetime(2026, 5, 13, 10, 5, tzinfo=timezone.utc)
+    return BuildPlannerConfirmResponse(
+        planner_session_id="planner-session-12345678",
+        confirmed_plan_id="confirmed-plan-12345678",
+        version_no=2,
+        course_id=COURSE_ID,
+        status="confirmed",
+        digest_mode="sprint",
+        model_override="model-a",
+        selected_file_ids=["file-a"],
+        user_prompt="learn",
+        plan_summary="summary",
+        chapter_plan=[
+            {
+                "chapter_index": 1,
+                "title": "Intro",
+                "objective": "Understand basics",
+            }
+        ],
+        build_constraints={},
+        plan_json={},
+        status_history=["draft", "confirmed"],
+        created_at=now,
+        updated_at=now,
+    )
 
 
 def test_interactive_overlay_helpers_normalize_cached_response() -> None:
@@ -66,12 +167,13 @@ def test_interactive_overlay_helpers_normalize_cached_response() -> None:
 def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatch) -> None:
     spawned: list[dict[str, object]] = []
     run_kwargs: dict[str, object] = {}
+    captured: list[tuple[str, str, dict[str, object]]] = []
 
     class Registry:
         def spawn(self, task, **kwargs):
             spawned.append({"task": task, **kwargs})
 
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=Registry())))
+    request = _request(request_id="req-build", registry=Registry())
     build_data = DocGenBuildData(
         accepted_file_ids=["file-a"],
         prompt="learn matrices",
@@ -95,6 +197,15 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
     monkeypatch.setattr(api, "trigger_docgen_build", fake_trigger_docgen_build)
     monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
+    monkeypatch.setattr(
+        posthog_analytics,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {})
+        )
+        or True,
+    )
 
     response = asyncio.run(
         api.knowledge_build(
@@ -120,6 +231,111 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert run_kwargs["file_ids"] == ["file-a"]
     assert run_kwargs["build_group_id"] == "group-1"
     assert run_kwargs["background_task_registry"] is request.app.state.background_task_registry
+    assert [event for event, _distinct_id, _properties in captured] == [
+        "knowledge_build_submitted",
+        "knowledge_build_started",
+    ]
+    assert {distinct_id for _event, distinct_id, _properties in captured} == {USER_ID}
+    assert all(properties["analytics_source"] == "backend" for _event, _distinct_id, properties in captured)
+    assert captured[0][2]["has_confirmed_plan"] is True
+    assert captured[1][2]["build_group_id_suffix"] == "group-1"
+
+
+def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch) -> None:
+    captured: list[tuple[str, str, dict[str, object]]] = []
+    planner_response = _planner_session_response()
+    confirm_response = _confirm_response()
+
+    async def fake_create_build_planner_session(**kwargs):
+        assert kwargs["course"].id == COURSE_ID
+        assert kwargs["user_id"] == USER_ID
+        return planner_response
+
+    def fake_confirm_build_planner_session(_session, **kwargs):
+        assert kwargs["course"].id == COURSE_ID
+        assert kwargs["user_id"] == USER_ID
+        assert kwargs["session_id"] == "planner-session-12345678"
+        return confirm_response
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "create_build_planner_session", fake_create_build_planner_session)
+    monkeypatch.setattr(api, "confirm_build_planner_session", fake_confirm_build_planner_session)
+    monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
+    monkeypatch.setattr(
+        posthog_analytics,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {})
+        )
+        or True,
+    )
+
+    create_response = asyncio.run(
+        api.knowledge_build_plan_create(
+            request=_request(request_id="req-plan"),
+            course_id=COURSE_ID,
+            body=BuildPlannerCreateRequest(file_ids=["file-a"], user_prompt="learn", model="model-a"),
+            user=_user(),
+            session=object(),
+        )
+    )
+    confirm_api_response = api.knowledge_build_plan_confirm(
+        request=_request(request_id="req-confirm"),
+        course_id=COURSE_ID,
+        session_id="planner-session-12345678",
+        user=_user(),
+        session=object(),
+    )
+
+    assert create_response.data is planner_response
+    assert confirm_api_response.data is confirm_response
+    assert [event for event, _distinct_id, _properties in captured] == [
+        "course_plan_requested",
+        "course_plan_generated",
+        "course_build_plan_confirmed",
+    ]
+    assert {distinct_id for _event, distinct_id, _properties in captured} == {USER_ID}
+    for event, _distinct_id, properties in captured:
+        assert properties["analytics_source"] == "backend"
+        assert properties["user_id_suffix"] == USER_ID[-8:]
+        assert properties["course_id_suffix"] == COURSE_ID[-8:]
+        assert str(properties["$insert_id"]).startswith(f"{event}:")
+        assert COURSE_ID not in str(properties["$insert_id"])
+    assert captured[1][2]["chapter_count"] == 1
+    assert captured[1][2]["runtime_step_count"] == 1
+    assert captured[2][2]["confirmed_plan_id_suffix"] == "12345678"
+
+
+def test_build_planner_create_failure_does_not_capture_generated(monkeypatch) -> None:
+    captured: list[tuple[str, str, dict[str, object]]] = []
+
+    async def fake_create_build_planner_session(**_kwargs):
+        raise RuntimeError("planner failed")
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "create_build_planner_session", fake_create_build_planner_session)
+    monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
+    monkeypatch.setattr(
+        posthog_analytics,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {})
+        )
+        or True,
+    )
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(
+            api.knowledge_build_plan_create(
+                request=_request(request_id="req-plan-fail"),
+                course_id=COURSE_ID,
+                body=BuildPlannerCreateRequest(file_ids=["file-a"], user_prompt="learn"),
+                user=_user(),
+                session=object(),
+            )
+        )
+
+    assert [event for event, _distinct_id, _properties in captured] == ["course_plan_requested"]
 
 
 def test_knowledge_graph_build_passes_registry_and_course_authorization(monkeypatch) -> None:
