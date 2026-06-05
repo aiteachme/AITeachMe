@@ -419,6 +419,55 @@ def test_docgen_terminal_analytics_local_marker_blocks_duplicate_across_processe
     assert len(list(tmp_path.rglob("*.posthog"))) == 1
 
 
+def test_docgen_terminal_analytics_dedupes_enriched_terminal_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, object]] = []
+    build_store._POSTHOG_DOCGEN_TERMINAL_RESERVED_INSERT_IDS.clear()
+    requested_at = datetime(2026, 5, 31, 12, 0, tzinfo=timezone.utc)
+    base_status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=requested_at,
+        finished_at=requested_at + timedelta(seconds=16),
+        status="completed",
+        stage="completed",
+        published_doc_count=3,
+    )
+    enriched_status = base_status.model_copy(
+        update={
+            "build_group_id": "group-1",
+            "build_session_id": "session-1",
+            "planner_session_id": "planner-1",
+            "confirmed_plan_id": "plan-1",
+            "digest_mode": "sprint",
+        }
+    )
+    monkeypatch.setattr(build_store, "is_local_mode", lambda: False)
+    monkeypatch.setattr(
+        build_store,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            {"event": event, "properties": properties or {}}
+        )
+        or True,
+    )
+
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=None,
+        user_id="user_a",
+        status=base_status,
+    )
+    build_store._capture_docgen_terminal_analytics_event(
+        course_id="course_runtime00001",
+        course_scope=None,
+        user_id="user_a",
+        status=enriched_status,
+    )
+
+    assert [item["event"] for item in captured] == ["knowledge_build_completed"]
+    assert str(captured[0]["properties"]["$insert_id"]).startswith("knowledge_build_completed:")
+
+
 def test_docgen_terminal_analytics_releases_insert_id_after_capture_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

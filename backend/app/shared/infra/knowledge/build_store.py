@@ -454,12 +454,12 @@ def _posthog_insert_id(
     course_id: str,
     status: KnowledgeBuildRuntimeStatus,
 ) -> str:
+    build_identity = _datetime_to_iso(status.requested_at) or status.build_group_id or "unknown_build"
     stable_parts = [
         event_name,
         course_id.strip() or "unknown_course",
-        status.build_group_id or "",
-        status.confirmed_plan_id or "",
-        _datetime_to_iso(status.requested_at) or "",
+        status.build_kind or "docgen",
+        build_identity,
         status.status,
     ]
     digest = hashlib.sha256(":".join(stable_parts).encode("utf-8")).hexdigest()[:32]

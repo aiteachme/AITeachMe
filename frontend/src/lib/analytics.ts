@@ -21,6 +21,16 @@ const SENSITIVE_PROPERTY_RE =
 const URL_PROPERTY_RE = /(^|[_\-$])(current[_-]?url|href|pathname|referrer|url)([_\-$]|$)/i;
 const MAX_PROPERTY_DEPTH = 4;
 const POSTHOG_TRANSPORT_PROPERTY_KEYS = ["api_key", "token"] as const;
+const BACKEND_OWNED_EVENTS = new Set([
+  "course_plan_requested",
+  "course_plan_generated",
+  "course_build_plan_confirmed",
+  "knowledge_build_submitted",
+  "knowledge_build_started",
+  "knowledge_build_completed",
+  "knowledge_build_failed",
+  "knowledge_build_cancelled",
+]);
 
 let initialized = false;
 let enabled = false;
@@ -159,6 +169,9 @@ function beforeSend(capture: CaptureResult | null): CaptureResult | null {
   if (!capture) {
     return capture;
   }
+  if (BACKEND_OWNED_EVENTS.has(capture.event)) {
+    return null;
+  }
   return {
     ...capture,
     properties: sanitizeCaptureProperties(capture.properties ?? {}),
@@ -245,6 +258,9 @@ export function getAnalyticsClient(): PostHog | null {
 }
 
 export function trackAnalyticsEvent(eventName: string, properties: Properties = {}): void {
+  if (BACKEND_OWNED_EVENTS.has(eventName)) {
+    return;
+  }
   const client = getAnalyticsClient();
   if (!client) {
     return;
