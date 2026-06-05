@@ -96,7 +96,7 @@ def parse_file_to_dir(
     options: PaddleOCRRequestOptions,
     output_dir: Path,
     job_url: str = DEFAULT_PADDLE_OCR_JOB_URL,
-    poll_interval_s: float = 5.0,
+    poll_interval_s: float = 1.0,
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
 ) -> PaddleOCRExtractedResult:

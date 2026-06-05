@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { LibraryMarkdownViewer } from "../components/knowledge-docs/LibraryMarkdownViewer";
 import {
   AlertCircle,
   ArrowLeft,
@@ -756,6 +757,8 @@ export function LibraryFilePage() {
   const file = fileQuery.data ?? null;
   const meta = file ? statusMeta(file) : null;
   const markdownContent = file?.markdown_content?.trim() ?? "";
+  const [viewMode, setViewMode] = useState<"rendered" | "source">("rendered");
+  const assetBaseUrl = file?.asset_base_url ?? null;
   const fileExt = file ? normalizeFileExt(file.filetype).toUpperCase() || "FILE" : "FILE";
 
   return (
@@ -829,9 +832,45 @@ export function LibraryFilePage() {
 
           <section className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             {markdownContent ? (
-              <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
-                {markdownContent}
-              </pre>
+              <>
+                <div className="mb-4 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("rendered")}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                      viewMode === "rendered"
+                        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    渲染
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("source")}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                      viewMode === "source"
+                        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    源码
+                  </button>
+                </div>
+
+                {viewMode === "rendered" ? (
+                  <LibraryMarkdownViewer
+                    content={markdownContent}
+                    assetBaseUrl={assetBaseUrl ?? undefined}
+                  />
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
+                    {markdownContent}
+                  </pre>
+                )}
+              </>
             ) : (
               <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-6 text-center dark:border-slate-800 dark:bg-slate-950/30">
                 <FileText className="h-8 w-8 text-slate-400" />
