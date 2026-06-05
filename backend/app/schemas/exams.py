@@ -46,6 +46,24 @@ class QuestionTemplateMarkResponse(BaseModel):
     is_marked: bool
 
 
+class QuestionTemplateGradeRequest(BaseModel):
+    """Grade one answer against a question template."""
+
+    answer: str = Field(description="Submitted answer.")
+
+
+class QuestionTemplateGradeResponse(BaseModel):
+    question_template_id: int
+    question_type: str
+    is_correct: bool
+    score_obtained: float
+    score_max: float
+    feedback_text: str
+    error_cause_label: str | None = None
+    grading_mode: Literal["objective_rule", "subjective_llm", "subjective_fallback"]
+    correct_answer: str
+
+
 class RuntimeStatusResponse(BaseModel):
     """Generic runtime status response."""
 

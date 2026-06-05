@@ -175,6 +175,31 @@ data class QuestionTemplateMarkResponse(
     val isMarked: Boolean = false,
 )
 
+data class QuestionTemplateGradeRequest(
+    val answer: String,
+)
+
+data class QuestionTemplateGradeResponse(
+    @SerializedName("question_template_id")
+    val questionTemplateId: Int = 0,
+    @SerializedName("question_type")
+    val questionType: String = "",
+    @SerializedName("is_correct")
+    val isCorrect: Boolean = false,
+    @SerializedName("score_obtained")
+    val scoreObtained: Double = 0.0,
+    @SerializedName("score_max")
+    val scoreMax: Double = 1.0,
+    @SerializedName("feedback_text")
+    val feedbackText: String = "",
+    @SerializedName("error_cause_label")
+    val errorCauseLabel: String? = null,
+    @SerializedName("grading_mode")
+    val gradingMode: String = "",
+    @SerializedName("correct_answer")
+    val correctAnswer: String = "",
+)
+
 data class QuestionTypeRegistryItemResponse(
     val id: Int = 0,
     @SerializedName("type_key")

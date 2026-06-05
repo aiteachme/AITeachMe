@@ -48,6 +48,7 @@ import {
   hasAnsweredQuestion,
   MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
+import { gradeQuestionTemplateAnswer } from "./questionTemplateGrading";
 
 async function getExamStudyGuide(courseId: string, paperId: number, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
@@ -541,6 +542,22 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
     : null;
 
+  const gradeSubjectiveAnswer = useCallback(async (item: ExamPaperItemResponse, answer: string) => {
+    if (!item.question_template_id) {
+      throw new Error("缺少题目标识，无法判题");
+    }
+    try {
+      return await gradeQuestionTemplateAnswer(courseId, item.question_template_id, answer);
+    } catch (error) {
+      toast({
+        title: "AI 判题失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+      throw error;
+    }
+  }, [courseId, toast]);
+
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     request: {
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
@@ -722,6 +739,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     setAnswers={setAnswers}
                     isCompleting={submitExam.isPending}
                     onBack={() => navigate(backHref)}
+                    onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
                     onComplete={(finalAnswers) =>
                       submitExam.mutate({
                         courseId,

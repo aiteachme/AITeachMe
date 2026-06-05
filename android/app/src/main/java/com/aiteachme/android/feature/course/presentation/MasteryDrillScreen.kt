@@ -106,7 +106,7 @@ fun MasteryDrillScreen(
                         template = state.currentTemplate!!,
                         answer = state.answers[state.currentTemplate!!.id].orEmpty(),
                         onAnswerChange = { value -> viewModel.updateAnswer(state.currentTemplate!!.id, value) },
-                        onCheck = viewModel::checkCurrentAnswer,
+                        onCheck = { viewModel.checkCurrentAnswer(courseId) },
                         onContinue = viewModel::continueAfterFeedback,
                     )
                 }
@@ -271,6 +271,7 @@ private fun DrillQuestionCard(
                             answer = answer,
                             isMultipleChoice = isMultipleChoice,
                             feedback = feedback,
+                            isCheckingAnswer = state.isCheckingAnswer,
                             onAnswerChange = onAnswerChange,
                         )
                     }
@@ -279,7 +280,7 @@ private fun DrillQuestionCard(
                 OutlinedTextField(
                     value = answer,
                     onValueChange = onAnswerChange,
-                    enabled = feedback == null,
+                    enabled = feedback == null && !state.isCheckingAnswer,
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     maxLines = 6,
@@ -298,11 +299,15 @@ private fun DrillQuestionCard(
                 if (feedback == null) {
                     Button(
                         onClick = onCheck,
-                        enabled = answer.trim().isNotEmpty(),
+                        enabled = answer.trim().isNotEmpty() && !state.isCheckingAnswer,
                     ) {
-                        Icon(Icons.Outlined.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
+                        if (state.isCheckingAnswer) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Outlined.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("检查答案")
+                        Text(if (state.isCheckingAnswer) "AI 判题中" else "检查答案")
                     }
                 } else {
                     FilledTonalButton(onClick = onContinue) {
@@ -327,6 +332,7 @@ private fun DrillChoiceRow(
     answer: String,
     isMultipleChoice: Boolean,
     feedback: MasteryDrillFeedback?,
+    isCheckingAnswer: Boolean,
     onAnswerChange: (String) -> Unit,
 ) {
     val selectedAnswers = drillSplitMultiChoiceAnswer(answer)
@@ -354,7 +360,7 @@ private fun DrillChoiceRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = feedback == null) {
+            .clickable(enabled = feedback == null && !isCheckingAnswer) {
                 if (isMultipleChoice) {
                     val next = selectedAnswers.toMutableSet()
                     if (!next.add(choice.value)) {
@@ -424,6 +430,9 @@ private fun DrillFeedbackBlock(
             }
             DrillAnswerLine(title = "你的答案", content = feedback.answer)
             DrillAnswerLine(title = "正确答案", content = template.answer)
+            feedback.feedbackText?.takeIf { it.isNotBlank() }?.let { content ->
+                DrillAnswerLine(title = "判题反馈", content = content)
+            }
             DrillAnswerLine(title = "解析", content = template.explanation.ifBlank { "暂无解析" })
         }
     }

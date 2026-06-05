@@ -5396,6 +5396,97 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/grade": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Grade one answer against a question template",
+        "operationId": "grade_question_template_answer_api_v1_courses__course_id__exams_question_templates__question_template_id__grade_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "question_template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Question Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTemplateGradeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTemplateGradeResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/mark": {
       "patch": {
         "tags": [
@@ -8228,6 +8319,40 @@
         },
         "type": "object",
         "title": "ApiResponse[PaginatedData[KnowledgeUnitResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_QuestionTemplateGradeResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTemplateGradeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTemplateGradeResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -16006,6 +16131,85 @@
           "created_at"
         ],
         "title": "QuestionTemplateAnswerHistoryItem"
+      },
+      "QuestionTemplateGradeRequest": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "Submitted answer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "QuestionTemplateGradeRequest",
+        "description": "Grade one answer against a question template."
+      },
+      "QuestionTemplateGradeResponse": {
+        "properties": {
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type"
+          },
+          "is_correct": {
+            "type": "boolean",
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "type": "number",
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "type": "number",
+            "title": "Score Max"
+          },
+          "feedback_text": {
+            "type": "string",
+            "title": "Feedback Text"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          },
+          "grading_mode": {
+            "type": "string",
+            "enum": [
+              "objective_rule",
+              "subjective_llm",
+              "subjective_fallback"
+            ],
+            "title": "Grading Mode"
+          },
+          "correct_answer": {
+            "type": "string",
+            "title": "Correct Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_template_id",
+          "question_type",
+          "is_correct",
+          "score_obtained",
+          "score_max",
+          "feedback_text",
+          "grading_mode",
+          "correct_answer"
+        ],
+        "title": "QuestionTemplateGradeResponse"
       },
       "QuestionTemplateItemResponse": {
         "properties": {

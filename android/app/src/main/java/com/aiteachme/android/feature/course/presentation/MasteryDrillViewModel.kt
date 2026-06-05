@@ -3,6 +3,7 @@ package com.aiteachme.android.feature.course.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiteachme.android.core.di.AppServices
+import com.aiteachme.android.core.network.dto.QuestionTemplateGradeResponse
 import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,8 @@ data class MasteryDrillFeedback(
     val templateId: Int,
     val answer: String,
     val isCorrect: Boolean,
+    val feedbackText: String? = null,
+    val gradingMode: String? = null,
 )
 
 data class MasteryDrillUiState(
@@ -29,6 +32,7 @@ data class MasteryDrillUiState(
     val wrongAttemptCount: Int = 0,
     val completedAt: String? = null,
     val isLoading: Boolean = false,
+    val isCheckingAnswer: Boolean = false,
     val errorMessage: String? = null,
 ) {
     val currentTemplate: QuestionTemplateItemResponse?
@@ -77,12 +81,40 @@ class MasteryDrillViewModel : ViewModel() {
         }
     }
 
-    fun checkCurrentAnswer() {
+    fun checkCurrentAnswer(courseId: String) {
         val state = _uiState.value
         val current = state.currentTemplate ?: return
-        if (state.feedback != null) return
+        if (state.feedback != null || state.isCheckingAnswer) return
         val answer = state.answers[current.id].orEmpty().trim()
         if (answer.isBlank()) return
+
+        if (current.requiresAiGrade()) {
+            viewModelScope.launch {
+                _uiState.update { it.copy(isCheckingAnswer = true, errorMessage = null) }
+                runCatching {
+                    examRepository.gradeQuestionTemplateAnswer(
+                        courseId = courseId,
+                        questionTemplateId = current.id,
+                        answer = answer,
+                    )
+                }.onSuccess { grade ->
+                    _uiState.update {
+                        it.copy(
+                            isCheckingAnswer = false,
+                            feedback = current.toFeedback(answer = answer, grade = grade),
+                        )
+                    }
+                }.onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            isCheckingAnswer = false,
+                            errorMessage = throwable.message ?: throwable::class.java.simpleName,
+                        )
+                    }
+                }
+            }
+            return
+        }
 
         _uiState.update {
             it.copy(
@@ -140,10 +172,28 @@ class MasteryDrillViewModel : ViewModel() {
                 wrongAttemptCount = 0,
                 completedAt = null,
                 isLoading = false,
+                isCheckingAnswer = false,
                 errorMessage = null,
             )
         }
     }
+}
+
+private fun QuestionTemplateItemResponse.requiresAiGrade(): Boolean {
+    return questionType.lowercase() in setOf("fill_blank", "short_answer")
+}
+
+private fun QuestionTemplateItemResponse.toFeedback(
+    answer: String,
+    grade: QuestionTemplateGradeResponse,
+): MasteryDrillFeedback {
+    return MasteryDrillFeedback(
+        templateId = id,
+        answer = answer,
+        isCorrect = grade.isCorrect,
+        feedbackText = grade.feedbackText.takeIf { it.isNotBlank() },
+        gradingMode = grade.gradingMode.takeIf { it.isNotBlank() },
+    )
 }
 
 private fun selectMasteryDrillTemplates(

@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate
+from app.api import deps
+from app.api import exams as exams_api
+from app.api.deps import CurrentUserContext
+from app.models import Course, ExamPaper, ExamPaperItem, QuestionTemplate
 from app.repositories import exams_repo
 from app.utils.time import utcnow
+from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 
 
 def _engine():
@@ -17,6 +25,22 @@ def _engine():
             QuestionTemplate.__table__,
             ExamPaper.__table__,
             ExamPaperItem.__table__,
+        ],
+    )
+    return engine
+
+
+def _api_engine():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[
+            Course.__table__,
+            QuestionTemplate.__table__,
         ],
     )
     return engine
@@ -63,6 +87,82 @@ def test_question_template_marking_is_persisted_on_template() -> None:
         persisted = session.get(QuestionTemplate, template.id)
         assert persisted is not None
         assert persisted.is_marked is True
+
+
+def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = _api_engine()
+    session = Session(engine, expire_on_commit=False)
+    try:
+        course = Course(id="course_math00000000", user_id="api-user", name="Calculus")
+        template = QuestionTemplate(
+            course_id=course.id,
+            question_type="fill_blank",
+            difficulty="medium",
+            stem="The derivative of x^2 is {{blank}}.",
+            stem_hash="stem-hash-grade-api",
+            answer="2x",
+            explanation="Apply the power rule.",
+        )
+        session.add(course)
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+
+        captured: dict[str, object] = {}
+
+        async def fake_run_exam_grade_workflow(*, course_id: str, course_name: str = "", items: list[ExamPaperItem], progress_callback=None):
+            captured["course_id"] = course_id
+            captured["course_name"] = course_name
+            captured["item"] = items[0]
+            return [
+                ExamItemGradeDecision(
+                    is_correct=True,
+                    score_obtained=1.0,
+                    score_max=1.0,
+                    feedback_text="Power rule is applied correctly.",
+                    error_cause_label=None,
+                    grading_mode="subjective_llm",
+                )
+            ]
+
+        monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
+
+        app = FastAPI()
+        app.include_router(exams_api.router)
+
+        def override_get_db():
+            yield session
+
+        def override_current_user_context() -> CurrentUserContext:
+            return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+        app.dependency_overrides[deps.get_db] = override_get_db
+        app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/v1/courses/{course.id}/exams/question-templates/{template.id}/grade",
+                json={"answer": "2x"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["question_template_id"] == template.id
+        assert data["question_type"] == "fill_blank"
+        assert data["is_correct"] is True
+        assert data["grading_mode"] == "subjective_llm"
+        assert data["feedback_text"] == "Power rule is applied correctly."
+
+        graded_item = captured["item"]
+        assert isinstance(graded_item, ExamPaperItem)
+        assert captured["course_id"] == course.id
+        assert captured["course_name"] == "Calculus"
+        assert graded_item.question_template_id == template.id
+        assert graded_item.question_type == "fill_blank"
+        assert graded_item.answer_content == "2x"
+        assert graded_item.answer_snapshot == "2x"
+    finally:
+        session.close()
 
 
 def test_wrong_question_template_ids_filter_visible_user_attempts() -> None:

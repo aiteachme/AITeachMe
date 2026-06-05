@@ -66,6 +66,7 @@ import {
   buildQuestionSelectedText,
   buildQuestionSelectionContext,
 } from "../components/exams/examDisplay";
+import { gradeQuestionTemplateAnswer } from "../components/exams/questionTemplateGrading";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
@@ -899,6 +900,22 @@ export function MasteryDrillPage() {
     });
   };
 
+  const gradeSubjectiveAnswer = async (item: ExamPaperItemResponse, answer: string) => {
+    if (!courseId || !item.question_template_id) {
+      throw new Error("缺少题目标识，无法判题");
+    }
+    try {
+      return await gradeQuestionTemplateAnswer(courseId, item.question_template_id, answer);
+    } catch (error) {
+      toast({
+        title: "AI 判题失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+      throw error;
+    }
+  };
+
   if (!courseId) {
     return (
       <div className={EXAM_PAGE_SHELL_CLASS}>
@@ -917,29 +934,28 @@ export function MasteryDrillPage() {
   return (
     <div className={EXAM_PAGE_SHELL_CLASS}>
       <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-4">
-          <button
-            type="button"
-            onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-            className="inline-flex w-fit items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            返回训练中心
-          </button>
-          <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 sm:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Mastery Drill</p>
-                <h1 className="mt-2 text-3xl font-semibold text-slate-950 dark:text-slate-100">
-                  {courseName ? `${courseName} · 闯关训练` : "闯关训练"}
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  从题库模板直接抽题，一页一题即时反馈；本模式不会创建试卷记录，也不会出现在历史记录里。
-                </p>
+        <header className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 sm:px-5">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-100"
+                  aria-label="返回训练中心"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
+                  {courseName ? (
+                    <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{courseName}</p>
+                  ) : null}
+                  <h1 className="text-xl font-semibold text-slate-950 dark:text-slate-100">闯关训练</h1>
+                </div>
               </div>
               <Button
                 variant="outline"
-                className="h-11 rounded-full px-5 text-sm font-semibold"
+                className="h-9 w-fit rounded-full px-4 text-sm font-semibold"
                 onClick={restartDrill}
                 disabled={templatesQuery.isLoading || selectedCount === 0}
               >
@@ -947,20 +963,20 @@ export function MasteryDrillPage() {
                 重新抽题
               </Button>
             </div>
-            <div className="grid gap-3 text-sm text-slate-500 dark:text-slate-400 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
-                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">{selectedCount}</div>
-                本轮题目
+            <div className="grid gap-2 text-xs text-slate-500 dark:text-slate-400 sm:grid-cols-3">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                <span>本轮题目</span>
+                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">{selectedCount}</span>
               </div>
-              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
-                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">{templates.length}</div>
-                可用模板
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                <span>可用模板</span>
+                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">{templates.length}</span>
               </div>
-              <div className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-900">
-                <div className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                <span>本地会话</span>
+                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">
                   {completedAt ? "已完成" : "进行中"}
-                </div>
-                本地会话
+                </span>
               </div>
             </div>
           </div>
@@ -1013,6 +1029,7 @@ export function MasteryDrillPage() {
             onBack={() => navigate(buildCoursePath(courseId, "exams"))}
             onRestart={restartDrill}
             completionDescription="本轮结果只保留在当前页面，不会生成试卷记录，也不会出现在历史记录里。"
+            onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
             onComplete={(finalAnswers) => {
               setAnswers(finalAnswers);
               if (!completedAt) {

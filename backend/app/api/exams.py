@@ -34,6 +34,8 @@ from app.schemas.exams import (
     ExamPaperItemResponse,
     ExamPrewarmStatusResponse,
     QuestionTemplateAnswerHistoryItem,
+    QuestionTemplateGradeRequest,
+    QuestionTemplateGradeResponse,
     QuestionTemplateMarkRequest,
     QuestionTemplateMarkResponse,
     QuestionTemplateItemResponse,
@@ -2488,6 +2490,51 @@ def _question_template_answer_history_response(
     )
 
 
+async def _grade_question_template_answer(
+    *,
+    course_id: str,
+    course_name: str,
+    template: QuestionTemplate,
+    answer: str,
+) -> QuestionTemplateGradeResponse:
+    item = ExamPaperItem(
+        exam_paper_id=0,
+        question_template_id=int(template.id or 0),
+        item_order=1,
+        stem_snapshot=template.stem,
+        options_snapshot_json=template.options_json,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+        score=1.0,
+        answer_content=str(answer or ""),
+    )
+    decisions = await run_exam_grade_workflow(
+        course_id=course_id,
+        course_name=course_name,
+        items=[item],
+    )
+    decision = decisions[0] if decisions else None
+    if decision is None:
+        raise AITeachMeError(
+            detail="Question template grading produced no decision.",
+            error_code="QUESTION_TEMPLATE_GRADE_FAILED",
+            status_code=500,
+        )
+    return QuestionTemplateGradeResponse(
+        question_template_id=int(template.id or 0),
+        question_type=template.question_type,
+        is_correct=decision.is_correct,
+        score_obtained=decision.score_obtained,
+        score_max=decision.score_max,
+        feedback_text=decision.feedback_text,
+        error_cause_label=decision.error_cause_label,
+        grading_mode=decision.grading_mode,
+        correct_answer=template.answer,
+    )
+
+
 def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryItemResponse:
     return QuestionTypeRegistryItemResponse(
         id=item.id or 0,
@@ -3272,6 +3319,38 @@ async def question_template_answer_history(
         _question_template_answer_history_response(item, paper)
         for item, paper in rows
     ])
+
+
+@router.post(
+    "/question-templates/{question_template_id}/grade",
+    response_model=ApiResponse[QuestionTemplateGradeResponse],
+    summary="Grade one answer against a question template",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def grade_question_template_answer(
+    course_id: str = Path(...),
+    question_template_id: int = Path(...),
+    body: QuestionTemplateGradeRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[QuestionTemplateGradeResponse]:
+    normalized = normalize_course_id(course_id)
+    course = _ensure_course(session, normalized, user.user_id)
+    template = session.get(QuestionTemplate, question_template_id)
+    if template is None or template.course_id != normalized:
+        _raise_not_found(
+            f"Question template `{question_template_id}` not found.",
+            error_code="QUESTION_TEMPLATE_NOT_FOUND",
+        )
+    assert template is not None
+    return ok_response(
+        await _grade_question_template_answer(
+            course_id=normalized,
+            course_name=course.name,
+            template=template,
+            answer=body.answer,
+        )
+    )
 
 
 @router.patch(

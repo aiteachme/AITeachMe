@@ -16,6 +16,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { ExamMarkdown } from "./ExamMarkdown";
 import { getOptionLabel, splitMultiChoiceAnswer } from "./examDisplay";
+import { isAiGradedQuestionType, type QuestionTemplateGradeResult } from "./questionTemplateGrading";
 
 interface ExamMasteryDrillSessionProps {
   paper: ExamPaperDetailResponse;
@@ -26,6 +27,7 @@ interface ExamMasteryDrillSessionProps {
   onBack?: () => void;
   onRestart?: () => void;
   completionDescription?: string;
+  onGradeSubjectiveAnswer?: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateId?: number | null;
@@ -35,6 +37,11 @@ interface DrillFeedback {
   itemId: number;
   answer: string;
   isCorrect: boolean;
+  feedbackText?: string | null;
+  scoreObtained?: number | null;
+  scoreMax?: number | null;
+  errorCauseLabel?: string | null;
+  gradingMode?: string | null;
 }
 
 interface AttemptStats {
@@ -103,6 +110,7 @@ export function ExamMasteryDrillSession({
   onBack,
   onRestart,
   completionDescription = "本轮闯关已完成，训练记录会同步到历史记录。",
+  onGradeSubjectiveAnswer,
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
@@ -121,12 +129,14 @@ export function ExamMasteryDrillSession({
   const [completedIds, setCompletedIds] = useState<Set<number>>(() => new Set());
   const [attemptStats, setAttemptStats] = useState<Record<number, AttemptStats>>({});
   const [feedback, setFeedback] = useState<DrillFeedback | null>(null);
+  const [checkingItemId, setCheckingItemId] = useState<number | null>(null);
 
   useEffect(() => {
     setQueue(orderedItemIds);
     setCompletedIds(new Set());
     setAttemptStats({});
     setFeedback(null);
+    setCheckingItemId(null);
   }, [paper.id, itemIdsKey]);
 
   const currentItem = queue.length ? itemById.get(queue[0]) ?? null : null;
@@ -134,15 +144,27 @@ export function ExamMasteryDrillSession({
   const completedCount = completedIds.size;
   const wrongAttemptCount = Object.values(attemptStats).reduce((total, item) => total + item.wrong, 0);
   const isCurrentAnswered = answerValue.trim().length > 0;
+  const isCheckingAnswer = currentItem ? checkingItemId === currentItem.id : false;
 
   const setCurrentAnswer = (item: ExamPaperItemResponse, value: string) => {
     setAnswers((current) => ({ ...current, [item.item_order]: value }));
   };
 
-  const handleCheckAnswer = () => {
-    if (!currentItem || feedback || !isCurrentAnswered) return;
+  const handleCheckAnswer = async () => {
+    if (!currentItem || feedback || !isCurrentAnswered || isCheckingAnswer) return;
     const submittedAnswer = answerValue.trim();
-    const isCorrect = isAnswerCorrect(currentItem, submittedAnswer);
+    setCheckingItemId(currentItem.id);
+    let gradeResult: Partial<QuestionTemplateGradeResult> | null = null;
+    try {
+      gradeResult = isAiGradedQuestionType(currentItem.question_type) && onGradeSubjectiveAnswer
+        ? await onGradeSubjectiveAnswer(currentItem, submittedAnswer)
+        : { is_correct: isAnswerCorrect(currentItem, submittedAnswer) };
+    } catch {
+      return;
+    } finally {
+      setCheckingItemId((current) => (current === currentItem.id ? null : current));
+    }
+    const isCorrect = gradeResult.is_correct === true;
     setAttemptStats((current) => {
       const previous = current[currentItem.id] ?? { attempts: 0, wrong: 0, correct: false };
       return {
@@ -158,6 +180,11 @@ export function ExamMasteryDrillSession({
       itemId: currentItem.id,
       answer: submittedAnswer,
       isCorrect,
+      feedbackText: gradeResult.feedback_text,
+      scoreObtained: gradeResult.score_obtained,
+      scoreMax: gradeResult.score_max,
+      errorCauseLabel: gradeResult.error_cause_label,
+      gradingMode: gradeResult.grading_mode,
     });
   };
 
@@ -338,7 +365,7 @@ export function ExamMasteryDrillSession({
                     type="button"
                     role={isMultipleChoice ? "checkbox" : "radio"}
                     aria-checked={isSelected}
-                    disabled={Boolean(hasFeedback) || isCompleting}
+                    disabled={Boolean(hasFeedback) || isCompleting || isCheckingAnswer}
                     onClick={() => {
                       if (!isMultipleChoice) {
                         setCurrentAnswer(currentItem, isSelected ? "" : optionValue);
@@ -408,7 +435,7 @@ export function ExamMasteryDrillSession({
               className="min-h-32 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-base leading-8 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70"
               placeholder="输入你的作答"
               value={answerValue}
-              disabled={Boolean(hasFeedback) || isCompleting}
+              disabled={Boolean(hasFeedback) || isCompleting || isCheckingAnswer}
               onChange={(event) => setCurrentAnswer(currentItem, event.target.value)}
             />
           )}
@@ -438,6 +465,9 @@ export function ExamMasteryDrillSession({
               <div className="mt-4 grid gap-3">
                 <DrillAnswerBlock title="你的答案" content={formatAnswerForDisplay(activeFeedback.answer)} />
                 <DrillAnswerBlock title="正确答案" content={formatAnswerForDisplay(currentItem.correct_answer)} />
+                {activeFeedback.feedbackText ? (
+                  <DrillAnswerBlock title="判题反馈" content={activeFeedback.feedbackText} />
+                ) : null}
                 <DrillAnswerBlock title="解析" content={currentItem.explanation || "暂无解析"} />
               </div>
             </section>
@@ -461,9 +491,10 @@ export function ExamMasteryDrillSession({
             <Button
               className="h-12 rounded-full bg-black px-6 text-sm font-semibold dark:bg-slate-100 dark:text-slate-900"
               onClick={handleCheckAnswer}
-              disabled={!isCurrentAnswered || isCompleting}
+              disabled={!isCurrentAnswered || isCompleting || isCheckingAnswer}
             >
-              检查答案
+              {isCheckingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {isCheckingAnswer ? "AI 判题中" : "检查答案"}
             </Button>
           )}
         </footer>

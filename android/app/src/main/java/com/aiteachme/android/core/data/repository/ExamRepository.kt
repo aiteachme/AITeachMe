@@ -10,6 +10,8 @@ import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
 import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.network.dto.ExamSubmitRequest
 import com.aiteachme.android.core.network.dto.QuestionTemplateAnswerHistoryItem
+import com.aiteachme.android.core.network.dto.QuestionTemplateGradeRequest
+import com.aiteachme.android.core.network.dto.QuestionTemplateGradeResponse
 import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
 import com.aiteachme.android.core.network.dto.QuestionTemplateMarkRequest
 import com.aiteachme.android.core.network.dto.QuestionTemplateMarkResponse
@@ -65,6 +67,18 @@ class ExamRepository(
             questionTemplateId = questionTemplateId,
             request = QuestionTemplateMarkRequest(isMarked = isMarked),
         ).requireData("题目标记失败")
+    }
+
+    suspend fun gradeQuestionTemplateAnswer(
+        courseId: String,
+        questionTemplateId: Int,
+        answer: String,
+    ): QuestionTemplateGradeResponse {
+        return api.gradeQuestionTemplateAnswer(
+            courseId = courseId,
+            questionTemplateId = questionTemplateId,
+            request = QuestionTemplateGradeRequest(answer = answer),
+        ).requireData("AI 判题失败")
     }
 
     suspend fun listQuestionTypes(courseId: String): List<QuestionTypeRegistryItemResponse> {

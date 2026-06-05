@@ -34,6 +34,7 @@ import type {
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
   ApiResponsePaginatedDataExamHistoryItem,
+  ApiResponseQuestionTemplateGradeResponse,
   ApiResponseQuestionTemplateMarkResponse,
   ErrorResponse,
   ExamGenerateRequest,
@@ -42,6 +43,7 @@ import type {
   ExamSubmitRequest,
   HTTPValidationError,
   QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,
+  QuestionTemplateGradeRequest,
   QuestionTemplateMarkRequest
 } from './model';
 
@@ -751,7 +753,113 @@ export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestio
 
 
 
-export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse200 = {
+  data: ApiResponseQuestionTemplateGradeResponse
+  status: 200
+}
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseSuccess = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse200) & {
+  headers: Headers;
+};
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseError = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse400 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse404 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse422 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse500) & {
+  headers: Headers;
+};
+
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseSuccess | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseError)
+
+export const getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostUrl = (courseId: string,
+    questionTemplateId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/grade`
+}
+
+/**
+ * @summary Grade one answer against a question template
+ */
+export const gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost = async (courseId: string,
+    questionTemplateId: number,
+    questionTemplateGradeRequest: QuestionTemplateGradeRequest, options?: RequestInit): Promise<gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse> => {
+
+  return orvalApiClient<gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse>(getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostUrl(courseId,questionTemplateId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(questionTemplateGradeRequest)
+  }
+);}
+
+
+
+
+export const getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateGradeRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateGradeRequest}, TContext> => {
+
+const mutationKey = ['gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>, {courseId: string;questionTemplateId: number;data: QuestionTemplateGradeRequest}> = (props) => {
+          const {courseId,questionTemplateId,data} = props ?? {};
+
+          return  gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost(courseId,questionTemplateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationResult = NonNullable<Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>>
+    export type GradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationBody = QuestionTemplateGradeRequest
+    export type GradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Grade one answer against a question template
+ */
+export const useGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>, TError,{courseId: string;questionTemplateId: number;data: QuestionTemplateGradeRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost>>,
+        TError,
+        {courseId: string;questionTemplateId: number;data: QuestionTemplateGradeRequest},
+        TContext
+      > => {
+      return useMutation(getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationOptions(options), queryClient);
+    }
+    export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
   data: ApiResponseQuestionTemplateMarkResponse
   status: 200
 }

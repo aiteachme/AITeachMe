@@ -262,6 +262,13 @@ interface AiTeachMeApi {
         @Body request: QuestionTemplateMarkRequest,
     ): ApiResponse<QuestionTemplateMarkResponse>
 
+    @POST("/api/v1/courses/{course_id}/exams/question-templates/{question_template_id}/grade")
+    suspend fun gradeQuestionTemplateAnswer(
+        @Path("course_id") courseId: String,
+        @Path("question_template_id") questionTemplateId: Int,
+        @Body request: QuestionTemplateGradeRequest,
+    ): ApiResponse<QuestionTemplateGradeResponse>
+
     @GET("/api/v1/courses/{course_id}/exams/question-types")
     suspend fun listQuestionTypes(
         @Path("course_id") courseId: String,
