@@ -807,7 +807,6 @@ export function MasteryDrillPage() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [sessionSeed, setSessionSeed] = useState(() => Date.now());
   const [completedAt, setCompletedAt] = useState<string | null>(null);
-  const { courseName } = useCourseDisplayName(courseId);
 
   const templatesQueryKey = useMemo(() => ["exam-question-templates", courseId] as const, [courseId]);
   const templatesQuery = useQuery({
@@ -934,54 +933,6 @@ export function MasteryDrillPage() {
   return (
     <div className={EXAM_PAGE_SHELL_CLASS}>
       <div className="flex flex-col gap-6">
-        <header className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 sm:px-5">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-100"
-                  aria-label="返回训练中心"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="min-w-0">
-                  {courseName ? (
-                    <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{courseName}</p>
-                  ) : null}
-                  <h1 className="text-xl font-semibold text-slate-950 dark:text-slate-100">闯关训练</h1>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                className="h-9 w-fit rounded-full px-4 text-sm font-semibold"
-                onClick={restartDrill}
-                disabled={templatesQuery.isLoading || selectedCount === 0}
-              >
-                <Sparkles className="h-4 w-4" />
-                重新抽题
-              </Button>
-            </div>
-            <div className="grid gap-2 text-xs text-slate-500 dark:text-slate-400 sm:grid-cols-3">
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
-                <span>本轮题目</span>
-                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">{selectedCount}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
-                <span>可用模板</span>
-                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">{templates.length}</span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
-                <span>本地会话</span>
-                <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">
-                  {completedAt ? "已完成" : "进行中"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </header>
-
         {templatesQuery.isLoading ? (
           <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
             <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin" />
