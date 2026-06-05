@@ -301,8 +301,6 @@ LLM_PROVIDER_MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
 RETRIEVER_ALIASES: dict[str, str] = {
     "ddg": "duckduckgo",
     "rag": "local_rag",
-    "oiwiki": "oi_wiki",
-    "oi-wiki": "oi_wiki",
     "jina": "jina_search",
     "baidu_ai": "baidu_ai_search",
     "baidu_search": "baidu_ai_search",
@@ -356,8 +354,8 @@ DEFAULT_RETRIEVERS: list[str] = [
 ]
 DOCGEN_RETRIEVERS: list[str] = [
     "local_rag",
-    *ZH_EDU_RETRIEVERS,
-    *[name for name in DEFAULT_RETRIEVERS if name not in {"local_rag", *ZH_EDU_RETRIEVERS}],
+    *[name for name in DEFAULT_RETRIEVERS if name != "local_rag"],
+    *[name for name in ZH_EDU_RETRIEVERS if name not in DEFAULT_RETRIEVERS],
 ]
 ZH_MATH_RETRIEVERS: list[str] = [
     "local_rag",
@@ -367,13 +365,6 @@ ZH_MATH_RETRIEVERS: list[str] = [
     "zh_wiktionary",
     "arxiv",
     "semantic_scholar",
-    "duckduckgo",
-]
-OI_RETRIEVERS: list[str] = [
-    "local_rag",
-    "oi_wiki",
-    "zh_wikipedia",
-    "zh_wikibooks",
     "duckduckgo",
 ]
 DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
@@ -389,7 +380,6 @@ DEFAULT_RETRIEVER_PROFILES: dict[str, list[str]] = {
         "duckduckgo",
     ],
     "docgen_zh_math": list(ZH_MATH_RETRIEVERS),
-    "docgen_oi": list(OI_RETRIEVERS),
 }
 RETRIEVER_PROFILES = DEFAULT_RETRIEVER_PROFILES
 

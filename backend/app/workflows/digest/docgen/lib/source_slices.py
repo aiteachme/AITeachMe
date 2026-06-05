@@ -31,6 +31,29 @@ def _line_span_for_section(packet: SourcePacket, section: SectionPacket) -> tupl
     return span.start_line, span.end_line
 
 
+def _line_spans_by_section_ref(
+    packet: SourcePacket,
+    *,
+    sections: list[SectionPacket],
+) -> dict[str, tuple[int | None, int | None]]:
+    spans: dict[str, tuple[int | None, int | None]] = {}
+    cursor = 0
+    for section in sorted(sections, key=lambda item: int(item.chunk_index or 0)):
+        span = line_span_for_excerpt(
+            packet.normalized_content,
+            section.normalized_content,
+            start_offset=cursor,
+        )
+        if span is None:
+            span = line_span_for_excerpt(packet.normalized_content, section.normalized_content)
+        if span is None:
+            spans[section.digest_chunk_uid] = (None, None)
+            continue
+        spans[section.digest_chunk_uid] = (span.start_line, span.end_line)
+        cursor = max(cursor, span.end_offset)
+    return spans
+
+
 def build_section_catalog_for_file(
     packet: SourcePacket,
     *,
@@ -40,8 +63,9 @@ def build_section_catalog_for_file(
     """Build a compact section catalog for LLM chapter routing."""
 
     catalog: list[dict[str, Any]] = []
+    line_spans = _line_spans_by_section_ref(packet, sections=sections)
     for section in sections[: max(1, int(max_sections))]:
-        start_line, end_line = _line_span_for_section(packet, section)
+        start_line, end_line = line_spans.get(section.digest_chunk_uid, (None, None))
         catalog.append(
             {
                 "section_ref": section.digest_chunk_uid,
@@ -61,6 +85,21 @@ def build_section_catalog_for_file(
             }
         )
     return catalog
+
+
+def index_line_spans_by_section_ref(material_context: DigestMaterialContext) -> dict[str, tuple[int | None, int | None]]:
+    sources_by_file = index_sources_by_file_id(material_context)
+    sections_by_file: dict[str, list[SectionPacket]] = {}
+    for section in list(material_context.section_packets or []):
+        sections_by_file.setdefault(section.source_file_id, []).append(section)
+
+    spans: dict[str, tuple[int | None, int | None]] = {}
+    for file_id, sections in sections_by_file.items():
+        packet = sources_by_file.get(file_id)
+        if packet is None:
+            continue
+        spans.update(_line_spans_by_section_ref(packet, sections=sections))
+    return spans
 
 
 def index_sections_by_ref(material_context: DigestMaterialContext) -> dict[str, SectionPacket]:
@@ -104,6 +143,7 @@ def build_priority_source_context(
 
     sources_by_file = index_sources_by_file_id(material_context)
     sections_by_ref = index_sections_by_ref(material_context)
+    line_spans_by_ref = index_line_spans_by_section_ref(material_context)
     blocks: list[str] = []
     details: list[dict[str, Any]] = []
     sources: list[str] = []
@@ -130,6 +170,8 @@ def build_priority_source_context(
 
         start_line = int(_slice_value(raw_slice, "line_start", 0) or 0) or None
         end_line = int(_slice_value(raw_slice, "line_end", 0) or 0) or None
+        if not start_line or not end_line:
+            start_line, end_line = line_spans_by_ref.get(section_ref, (None, None))
         if not start_line or not end_line:
             start_line, end_line = _line_span_for_section(packet, section)
         if start_line and end_line:
@@ -191,6 +233,7 @@ __all__ = [
     "HydratedSourceContext",
     "build_priority_source_context",
     "build_section_catalog_for_file",
+    "index_line_spans_by_section_ref",
     "index_sections_by_ref",
     "index_sources_by_file_id",
 ]

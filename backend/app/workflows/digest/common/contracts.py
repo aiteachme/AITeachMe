@@ -15,7 +15,6 @@ DOCGEN_BALANCED_RETRIEVAL_PROFILE = "docgen_balanced"
 DOCGEN_ALLOWED_RETRIEVAL_PROFILES = frozenset(
     {
         DOCGEN_BALANCED_RETRIEVAL_PROFILE,
-        "docgen_oi",
         "docgen_zh_math",
     }
 )
@@ -272,10 +271,7 @@ def build_digest_retrieval_policy(
         digest_mode,
     )
     del user_prompt, course_name
-    if profile == "docgen_oi":
-        focus = "algorithm_contest_sources"
-        reason = "上游结构化合同显式选择信息学/算法竞赛检索 profile，允许使用对应垂直来源补充。"
-    elif profile == "docgen_zh_math":
+    if profile == "docgen_zh_math":
         focus = "math_learning_sources"
         reason = "上游结构化合同显式选择数学学习检索 profile，优先使用数学学习资料补充。"
     else:

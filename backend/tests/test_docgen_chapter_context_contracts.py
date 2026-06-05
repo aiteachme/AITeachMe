@@ -8,9 +8,13 @@ import pytest
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
+from app.shared.infra.search.source_curation import SourceCurator
 from app.shared.infra.search.types import ScrapedPage, SearchResult
+from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
 from app.workflows.digest.docgen.lib import chapter_context as chapter_context_module
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
+from app.workflows.digest.docgen.lib.query_planning import enrich_queries_for_education, enrich_queries_for_retriever
+from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context, build_section_catalog_for_file
 
 
 @pytest.fixture
@@ -41,15 +45,14 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
     runtime = _runtime()
     results = [
         _result("local://section/1", "Local matrix", "矩阵乘法和秩", source="local_rag"),
-        _result("https://oi-wiki.org/math/matrix", "OI Wiki", "矩阵基础"),
+        _result("https://example.org/math/matrix", "External org", "矩阵基础"),
         _result("https://baidu.com/zhidao/question", "Low value", "低质量问答"),
         _result("https://ocw.mit.edu/matrix", "MIT OCW", "linear algebra matrix rank"),
         _result("https://math.stackexchange.com/q/1", "Community", "rank intuition"),
         _result("", "No URL", "fallback snippet"),
     ]
 
-    filtered = runtime._filter_search_results(results, allow_oi_wiki_sources=False)
-    allowed = runtime._filter_search_results(results, allow_oi_wiki_sources=True)
+    candidates = list(results)
     deduped = runtime._dedupe_results([results[0], results[0], results[-1]], max_results=3)
     stats: dict[str, dict[str, object]] = {}
     runtime._record_retriever_call(stats, retriever_name="local_rag", query="矩阵", results=[results[0]])
@@ -62,7 +65,7 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
         objective="掌握矩阵 线性映射",
         required_elements=["矩阵乘法", "特征值应用"],
         digest_mode="systematic",
-        curated_results=filtered,
+        curated_results=candidates,
     )
     gap_queries = runtime._build_gap_queries(
         chapter_title="矩阵基础",
@@ -71,15 +74,16 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
         digest_mode="systematic",
         max_queries=2,
     )
-    breakdown = runtime._classify_source_breakdown(filtered)
+    breakdown = runtime._classify_source_breakdown(candidates)
 
-    assert [item.url for item in filtered] == [
+    assert [item.url for item in candidates] == [
         "local://section/1",
+        "https://example.org/math/matrix",
+        "https://baidu.com/zhidao/question",
         "https://ocw.mit.edu/matrix",
         "https://math.stackexchange.com/q/1",
         "",
     ]
-    assert any(item.url == "https://oi-wiki.org/math/matrix" for item in allowed)
     assert [item.title for item in deduped] == ["Local matrix", "No URL"]
     assert stats["local_rag"]["query_count"] == 2
     assert stats["local_rag"]["result_count"] == 1
@@ -88,7 +92,7 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
     assert assessment["coverage_score"] < 1
     assert "特征值应用" in assessment["gaps_remaining"]
     assert gap_queries and all(query.startswith("矩阵基础") for query in gap_queries)
-    assert breakdown == {"local": 1, "academic": 1, "community": 1, "general_web": 1}
+    assert breakdown == {"local": 1, "institutional": 1, "academic": 1, "general_web": 3}
 
 
 def test_dedupe_results_ranks_local_and_reliable_sources_before_truncation() -> None:
@@ -102,6 +106,162 @@ def test_dedupe_results_ranks_local_and_reliable_sources_before_truncation() -> 
     deduped = runtime._dedupe_results(results, max_results=2)
 
     assert [item.url for item in deduped] == ["local://section/1", "https://arxiv.org/abs/1234"]
+
+
+@pytest.mark.anyio
+async def test_source_curator_demotes_noisy_sources_instead_of_hard_filtering() -> None:
+    curator = SourceCurator(_runtime().context)
+
+    curated, metadata = await curator.curate_sources(
+        query="矩阵分解",
+        sources=[
+            _result("https://zhihu.com/question/1", "矩阵分解经验", "矩阵分解的直觉解释和例题", score=0.95),
+            _result("https://baidu.com/zhidao/question", "矩阵分解问答", "矩阵分解的基础问答", score=0.9),
+            _result("https://ocw.mit.edu/matrix", "MIT Matrix", "矩阵分解 matrix factorization lecture notes", score=0.6),
+        ],
+        max_results=3,
+    )
+
+    urls = [item.url for item in curated]
+    assert "https://zhihu.com/question/1" in urls
+    assert "https://baidu.com/zhidao/question" in urls
+    assert urls.index("https://ocw.mit.edu/matrix") < urls.index("https://baidu.com/zhidao/question")
+    assert metadata["filtered_count"] == 3
+
+
+def test_education_query_enrichment_avoids_filtered_low_value_sites() -> None:
+    broad_queries = enrich_queries_for_education(["矩阵分解"], domain="zh", max_site_filters_per_query=3)
+    wiki_queries = enrich_queries_for_retriever(
+        ["矩阵分解"],
+        domain="zh",
+        retriever_name="zh_wikipedia",
+    )
+    web_queries = enrich_queries_for_retriever(
+        ["矩阵分解"],
+        domain="zh",
+        retriever_name="tavily",
+        max_site_filters_per_query=2,
+    )
+    explicit_university_queries = enrich_queries_for_retriever(
+        ["矩阵分解"],
+        domain="university",
+        retriever_name="tavily",
+        max_site_filters_per_query=1,
+    )
+
+    assert all("zhihu.com" not in query and "csdn.net" not in query for query in broad_queries)
+    assert broad_queries == ["矩阵分解"]
+    assert wiki_queries == ["矩阵分解"]
+    assert web_queries == ["矩阵分解"]
+    assert explicit_university_queries == ["矩阵分解", "矩阵分解 site:icourse163.org"]
+
+
+def test_external_retrievers_are_balanced_across_source_types() -> None:
+    runtime = _runtime()
+    retrievers = [
+        SimpleNamespace(name="zh_wikibooks"),
+        SimpleNamespace(name="zh_wikiversity"),
+        SimpleNamespace(name="zh_wikipedia"),
+        SimpleNamespace(name="searxng"),
+        SimpleNamespace(name="tavily"),
+        SimpleNamespace(name="arxiv"),
+        SimpleNamespace(name="semantic_scholar"),
+    ]
+
+    balanced = runtime._balance_external_retrievers(retrievers)
+
+    assert [item.name for item in balanced[:6]] == [
+        "searxng",
+        "arxiv",
+        "zh_wikibooks",
+        "tavily",
+        "semantic_scholar",
+        "zh_wikiversity",
+    ]
+
+
+def test_external_search_jobs_try_provider_original_queries_before_variants() -> None:
+    runtime = _runtime()
+    retrievers = [
+        SimpleNamespace(name="zh_wikibooks"),
+        SimpleNamespace(name="tavily"),
+        SimpleNamespace(name="arxiv"),
+    ]
+
+    jobs = runtime._build_external_search_jobs(
+        base_query="矩阵分解",
+        retrievers=retrievers,
+        search_domain="zh",
+        job_limit=3,
+    )
+    expanded_jobs = runtime._build_external_search_jobs(
+        base_query="矩阵分解",
+        retrievers=retrievers[:2],
+        search_domain="zh",
+        job_limit=4,
+    )
+
+    assert [(retriever.name, query) for _base, retriever, query in jobs] == [
+        ("zh_wikibooks", "矩阵分解"),
+        ("tavily", "矩阵分解"),
+        ("arxiv", "矩阵分解"),
+    ]
+    assert not any("site:" in query for _base, _retriever, query in expanded_jobs)
+    assert all("site:" not in query for _base, retriever, query in expanded_jobs if retriever.name == "zh_wikibooks")
+
+
+def test_source_slice_line_spans_advance_for_repeated_sections() -> None:
+    repeated = "重复定义\n共享说明"
+    source_text = f"{repeated}\n\n{repeated}"
+    packet = SourcePacket(
+        file_id="file_1",
+        filename="notes.md",
+        filetype="markdown",
+        markdown_path="",
+        asset_dir="",
+        normalized_content=source_text,
+        char_count=len(source_text),
+        has_formulas=False,
+        has_tables=False,
+        has_images=False,
+    )
+    sections = [
+        SectionPacket(
+            digest_chunk_uid="sec_1",
+            source_file_id="file_1",
+            source_filename="notes.md",
+            chunk_index=0,
+            title="重复片段一",
+            header_path="重复片段一",
+            level=1,
+            normalized_content=repeated,
+            preview=repeated,
+            char_count=len(repeated),
+        ),
+        SectionPacket(
+            digest_chunk_uid="sec_2",
+            source_file_id="file_1",
+            source_filename="notes.md",
+            chunk_index=1,
+            title="重复片段二",
+            header_path="重复片段二",
+            level=1,
+            normalized_content=repeated,
+            preview=repeated,
+            char_count=len(repeated),
+        ),
+    ]
+
+    catalog = build_section_catalog_for_file(packet, sections=sections)
+    hydrated = build_priority_source_context(
+        DigestMaterialContext(source_packets=[packet], section_packets=sections),
+        [{"file_id": "file_1", "section_ref": "sec_2", "section_title": "重复片段二"}],
+    )
+
+    assert [(item["line_start"], item["line_end"]) for item in catalog] == [(1, 2), (4, 5)]
+    assert hydrated.source_details[0]["line_start"] == 4
+    assert hydrated.source_details[0]["line_end"] == 5
+    assert "L4: 重复定义" in hydrated.text
 
 
 def test_local_rag_section_fallback_searches_full_section_content() -> None:
@@ -169,7 +329,7 @@ async def test_collect_documents_uses_cache_and_snippet_fallback(monkeypatch: py
 @pytest.mark.anyio
 async def test_research_round_tracks_local_fallback_and_external_hits(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime = _runtime()
-    monkeypatch.setattr(chapter_context_module, "enrich_queries_for_education", lambda queries, domain: queries)
+    monkeypatch.setattr(chapter_context_module, "enrich_queries_for_retriever", lambda queries, **_kwargs: queries)
 
     class FakeRetriever:
         def __init__(self, name: str, results: list[SearchResult]) -> None:
@@ -217,7 +377,6 @@ async def test_research_round_tracks_local_fallback_and_external_hits(monkeypatc
         retrieval_started_at=time.monotonic(),
         retrieval_budget_s=3600.0,
         provider_budget_s=1.0,
-        allow_oi_wiki_sources=False,
     )
 
     assert round_result["local_hits_total"] == 1

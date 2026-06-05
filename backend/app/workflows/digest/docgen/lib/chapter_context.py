@@ -35,31 +35,42 @@ from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profil
 from app.workflows.digest.docgen.lib.query_planning import (
     build_research_focus_text,
     dedupe_queries,
-    enrich_queries_for_education,
+    enrich_queries_for_retriever,
     generate_sub_queries,
 )
 from app.workflows.digest.docgen.prompts.generation import build_docgen_research_purify_messages
 
-_LOW_VALUE_SOURCE_MARKERS = (
-    "baidu.com/zhidao",
-    "zhidao.baidu.com",
-    "baike.baidu.com",
-    "wenku.baidu.com",
-    "360doc.com",
-    "docin.com",
-    "zhihu.com",
-    "csdn.net",
-    "jianshu.com",
-    "sohu.com",
-    "toutiao.com",
-)
-_OI_WIKI_DOMAINS = (
-    "oi-wiki.org",
-    "oi-wiki.com",
-    "oiwiki.com",
-    "oi.wiki",
-)
 _TERM_SPLIT_RE = re.compile(r"[，。；：、,.!?\n\r/（）()\-]+")
+_SPECIALIZED_RETRIEVERS = {
+    "zh_wikibooks",
+    "zh_wikiversity",
+    "zh_wikipedia",
+    "zh_wiktionary",
+    "wikipedia",
+}
+_ACADEMIC_RETRIEVERS = {
+    "arxiv",
+    "semantic_scholar",
+    "pubmed_central",
+}
+_BROAD_WEB_RETRIEVERS = {
+    "baidu_ai_search",
+    "bing",
+    "bocha",
+    "brave",
+    "duckduckgo",
+    "exa",
+    "google_cse",
+    "jina_search",
+    "mcp_search",
+    "openrouter_search",
+    "perplexity",
+    "searchapi",
+    "searxng",
+    "serpapi",
+    "serper",
+    "tavily",
+}
 
 
 class DocGenChapterContextRuntime(BaseTracedExecution):
@@ -148,20 +159,21 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         )
         pending_queries = dedupe_queries([*base_queries, *planned_queries], limit=resolved_query_cap)
         resolved_retrieval_profile = str(retrieval_profile or self.context.retrieval_profile or "").strip()
-        allow_oi_wiki_sources = self._allows_oi_wiki_sources(resolved_retrieval_profile)
         external_search_enabled = bool(settings.docgen.allow_external_search)
         local_retriever = LocalRAGRetriever(course_id=local_rag_course_id, local_sections=local_sections)
-        other_retrievers = [
-            retriever
-            for retriever in get_retrievers_for_course(
-                course_id=local_rag_course_id,
-                local_sections=local_sections,
-                profile=resolved_retrieval_profile or None,
-                include_external=external_search_enabled,
-            )
-            if retriever.name != local_retriever.name
-            and retriever.name in self._docgen_external_retriever_allowlist()
-        ]
+        other_retrievers = self._balance_external_retrievers(
+            [
+                retriever
+                for retriever in get_retrievers_for_course(
+                    course_id=local_rag_course_id,
+                    local_sections=local_sections,
+                    profile=resolved_retrieval_profile or None,
+                    include_external=external_search_enabled,
+                )
+                if retriever.name != local_retriever.name
+                and retriever.name in self._docgen_external_retriever_allowlist()
+            ]
+        )
         configured_retrievers = get_configured_retriever_names(
             profile=resolved_retrieval_profile or None,
             include_local_rag=bool(local_rag_course_id or local_sections),
@@ -225,7 +237,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 retrieval_started_at=retrieval_started_at,
                 retrieval_budget_s=retrieval_budget_s,
                 provider_budget_s=provider_budget_s,
-                allow_oi_wiki_sources=allow_oi_wiki_sources,
             )
             local_hits = int(round_result["local_hits_total"])
             web_hits = int(round_result["web_hits_total"])
@@ -235,10 +246,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             round_external_queries = list(round_result.get("round_external_queries", []) or [])
 
             merged_results = self._dedupe_results(
-                self._filter_search_results(
-                    all_results,
-                    allow_oi_wiki_sources=allow_oi_wiki_sources,
-                ),
+                all_results,
                 max_results=max(query_limit * max(1, len(executed_queries)), query_limit),
             )
             curated_results, curator_metadata = await curator.curate_sources(
@@ -394,7 +402,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         retrieval_started_at: float,
         retrieval_budget_s: float,
         provider_budget_s: float,
-        allow_oi_wiki_sources: bool,
     ) -> dict[str, Any]:
         """执行一轮章节检索并累计检索状态。
 
@@ -408,16 +415,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         round_external_queries: list[str] = []
 
         async def _search_and_filter(retriever, *, query: str) -> list[SearchResult]:
-            return self._filter_search_results(
-                await self._search_with_budget(
-                    retriever,
-                    query=query,
-                    max_results=query_limit,
-                    provider_budget_s=provider_budget_s,
-                    retrieval_started_at=retrieval_started_at,
-                    retrieval_budget_s=retrieval_budget_s,
-                ),
-                allow_oi_wiki_sources=allow_oi_wiki_sources,
+            return await self._search_with_budget(
+                retriever,
+                query=query,
+                max_results=query_limit,
+                provider_budget_s=provider_budget_s,
+                retrieval_started_at=retrieval_started_at,
+                retrieval_budget_s=retrieval_budget_s,
             )
 
         local_searches = await asyncio.gather(
@@ -455,13 +459,13 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 round_fallback_queries.append(query)
             if should_query_external:
                 round_external_queries.append(query)
-                expanded_queries = enrich_queries_for_education([query], domain=search_domain)
-                query_external_jobs: list[tuple[str, Any, str]] = []
-                for retriever in other_retrievers:
-                    for expanded_query in expanded_queries:
-                        query_external_jobs.append((query, retriever, expanded_query))
                 external_jobs.extend(
-                    query_external_jobs[: max(1, min(query_limit, int(DEFAULT_DOCGEN_IO_PARALLELISM)))]
+                    self._build_external_search_jobs(
+                        base_query=query,
+                        retrievers=other_retrievers,
+                        search_domain=search_domain,
+                        job_limit=max(1, min(query_limit, int(DEFAULT_DOCGEN_IO_PARALLELISM))),
+                    )
                 )
 
         if external_jobs:
@@ -649,32 +653,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 return cleaned, True
         return dense_context, False
 
-    def _allows_oi_wiki_sources(self, retrieval_profile: str | None) -> bool:
-        return str(retrieval_profile or "").strip().lower() == "docgen_oi"
-
-    def _is_oi_wiki_url(self, url: str) -> bool:
-        domain = urlparse(str(url or "")).netloc.lower()
-        return any(domain == item or domain.endswith(f".{item}") for item in _OI_WIKI_DOMAINS)
-
-    def _filter_search_results(
-        self,
-        results: Iterable[SearchResult],
-        *,
-        allow_oi_wiki_sources: bool = False,
-    ) -> list[SearchResult]:
-        filtered: list[SearchResult] = []
-        for item in results:
-            url = item.url.strip().lower()
-            if url.startswith("local://"):
-                filtered.append(item)
-                continue
-            if url and not allow_oi_wiki_sources and self._is_oi_wiki_url(url):
-                continue
-            if url and any(marker in url for marker in _LOW_VALUE_SOURCE_MARKERS):
-                continue
-            filtered.append(item)
-        return filtered
-
     def _result_rank_key(self, item: SearchResult) -> tuple[int, float, int, str]:
         source_class = self._classify_source(item)
         class_rank = {
@@ -682,7 +660,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             "academic": 3,
             "institutional": 2,
             "general_web": 1,
-            "community": 0,
         }.get(source_class, 0)
         return (
             class_rank,
@@ -714,8 +691,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         source_class = self._classify_source(item)
         if source_class in {"local", "academic", "institutional"}:
             return True
-        if source_class == "community":
-            return False
         snippet = str(item.snippet or "").strip()
         if len(snippet) < 60:
             return False
@@ -766,7 +741,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             "zh_wikiversity",
             "zh_wikipedia",
             "zh_wiktionary",
-            "oi_wiki",
             "bocha",
             "tavily",
             "brave",
@@ -788,6 +762,70 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             "mcp_search",
             "duckduckgo",
         }
+
+    def _balance_external_retrievers(self, retrievers: list[Any]) -> list[Any]:
+        """Interleave retrievers with broad web sources first."""
+
+        buckets: list[list[Any]] = [[], [], [], []]
+        for retriever in retrievers:
+            name = str(getattr(retriever, "name", "") or "").strip().lower()
+            if name in _BROAD_WEB_RETRIEVERS:
+                buckets[0].append(retriever)
+            elif name in _ACADEMIC_RETRIEVERS:
+                buckets[1].append(retriever)
+            elif name in _SPECIALIZED_RETRIEVERS:
+                buckets[2].append(retriever)
+            else:
+                buckets[3].append(retriever)
+
+        balanced: list[Any] = []
+        max_bucket_size = max((len(bucket) for bucket in buckets), default=0)
+        for index in range(max_bucket_size):
+            for bucket in buckets:
+                if index < len(bucket):
+                    balanced.append(bucket[index])
+        return balanced
+
+    def _build_external_search_jobs(
+        self,
+        *,
+        base_query: str,
+        retrievers: list[Any],
+        search_domain: str,
+        job_limit: int,
+    ) -> list[tuple[str, Any, str]]:
+        """Build fair external search jobs without letting query variants crowd out providers."""
+
+        if not retrievers:
+            return []
+        per_retriever_queries = [
+            (
+                retriever,
+                enrich_queries_for_retriever(
+                    [base_query],
+                    domain=search_domain,
+                    retriever_name=str(getattr(retriever, "name", "") or ""),
+                ),
+            )
+            for retriever in retrievers
+        ]
+        jobs: list[tuple[str, Any, str]] = []
+        seen: set[tuple[str, str]] = set()
+        max_query_depth = max((len(queries) for _retriever, queries in per_retriever_queries), default=0)
+        limit = max(1, int(job_limit or 1))
+        for query_index in range(max_query_depth):
+            for retriever, queries in per_retriever_queries:
+                if query_index >= len(queries):
+                    continue
+                expanded_query = queries[query_index]
+                key = (str(getattr(retriever, "name", "") or ""), expanded_query.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                jobs.append((base_query, retriever, expanded_query))
+                if len(jobs) >= limit:
+                    return jobs
+        return jobs
 
     def _resolve_strategy(self, digest_mode: str) -> dict[str, Any]:
         return dict(get_docgen_mode_profile(digest_mode).research_strategy())
@@ -938,7 +976,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
             "local": 0,
             "academic": 0,
             "institutional": 0,
-            "community": 0,
             "general_web": 0,
         }
         for item in results:
@@ -952,12 +989,16 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if url.startswith("local://") or source == "local_rag":
             return "local"
         domain = urlparse(url).netloc.strip().lower()
-        if any(marker in domain for marker in (".edu", ".ac.", "arxiv.org", "semanticscholar", "semantic_scholar")):
+        if source in _ACADEMIC_RETRIEVERS or domain.endswith(".edu") or ".edu." in domain or ".ac." in domain:
             return "academic"
-        if any(marker in domain for marker in (".gov", ".org", "ocw.", "xuetangx.com", "icourse163.org")):
+        if (
+            source in _SPECIALIZED_RETRIEVERS
+            or domain.endswith(".gov")
+            or ".gov." in domain
+            or domain.endswith(".org")
+            or ".org." in domain
+        ):
             return "institutional"
-        if any(marker in domain for marker in ("zhihu.com", "csdn.net", "reddit.com", "stackexchange.com")):
-            return "community"
         return "general_web"
 
     def _normalize_text_blob(self, value: str) -> str:

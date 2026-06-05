@@ -240,6 +240,8 @@ def test_planner_outline_model_rejects_empty_chapter_contract() -> None:
 
 
 def test_planner_node_uses_structured_outline_without_hidden_json(monkeypatch) -> None:
+    scheduler_calls: list[int] = []
+
     async def fake_visible_stream(*args, **kwargs) -> str:
         return "我会先判断学习目标，再给出可调整的大纲。"
 
@@ -260,9 +262,15 @@ def test_planner_node_uses_structured_outline_without_hidden_json(monkeypatch) -
     async def fake_emit(*args, **kwargs) -> None:
         return None
 
+    async def fake_run_llm_tasks(items, worker, **kwargs):
+        tasks = list(items)
+        scheduler_calls.append(len(tasks))
+        return [await worker(task) for task in tasks]
+
     monkeypatch.setattr(plan_draft_node, "_stream_visible_plan_response", fake_visible_stream)
     monkeypatch.setattr(plan_draft_node, "_compose_outline_sketch_with_llm", fake_structured_outline)
     monkeypatch.setattr(plan_draft_node, "emit_planner_event", fake_emit)
+    monkeypatch.setattr(plan_draft_node, "run_llm_tasks", fake_run_llm_tasks)
 
     node = plan_draft_node.build_stream_and_parse_plan_draft_node(context=object())
     result = asyncio.run(
@@ -288,6 +296,7 @@ def test_planner_node_uses_structured_outline_without_hidden_json(monkeypatch) -
         "如果更偏考试冲刺，我会增加题型和易错边界。"
     ]
     assert result["build_plan_draft"]["chapter_plan"][0]["title"] == "万以内加减法进退位"
+    assert scheduler_calls == [2]
 
 
 def test_revision_intent_prompt_distinguishes_replacement_outline() -> None:

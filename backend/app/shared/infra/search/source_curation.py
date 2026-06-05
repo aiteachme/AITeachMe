@@ -9,35 +9,16 @@ from urllib.parse import urlparse
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.search.types import SearchResult
 
-_TRUSTED_DOMAIN_KEYWORDS = (
-    ".edu",
-    ".gov",
-    "wikipedia.org",
-    "wikibooks.org",
-    "wikiversity.org",
-    "wiktionary.org",
-    "mathworld.wolfram.com",
-    "ocw.mit.edu",
-    "openstax.org",
-    "open.umn.edu",
-    "oercommons.org",
-    "xuetangx.com",
-    "icourse163.org",
-)
-
-_LOW_CONFIDENCE_DOMAIN_KEYWORDS = (
-    "zhihu.com",
-    "csdn.net",
-)
-
-_BLACKLISTED_DOMAIN_MARKERS = (
-    "baidu.com/zhidao",
-    "360doc.com",
-    "docin.com",
-)
-
 _MIN_RELEVANCE_FOR_TRUSTED_WEB = 0.03
 _MIN_RELEVANCE_FOR_WEB = 0.08
+_ACADEMIC_SOURCES = {"arxiv", "semantic_scholar", "pubmed_central"}
+_ENCYCLOPEDIC_SOURCES = {
+    "wikipedia",
+    "zh_wikipedia",
+    "zh_wikibooks",
+    "zh_wikiversity",
+    "zh_wiktionary",
+}
 
 _CJK_RUN_RE = re.compile(r"[\u3400-\u9fff]+")
 _LATIN_TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -158,7 +139,7 @@ class SourceCurator(BaseTracedExecution):
         return curated, metadata
 
     def _filter_sources(self, sources: list[SearchResult], *, query: str = "") -> list[SearchResult]:
-        """Deduplicate sources and remove known low-value domains."""
+        """Deduplicate sources and remove clearly irrelevant web results."""
 
         deduped: list[SearchResult] = []
         seen: set[str] = set()
@@ -167,9 +148,6 @@ class SourceCurator(BaseTracedExecution):
             url = item.url.strip()
             key = url or f"{item.title.strip()}::{item.snippet.strip()[:120]}"
             if not key or key in seen:
-                continue
-            lowered = url.lower()
-            if lowered and any(marker in lowered for marker in _BLACKLISTED_DOMAIN_MARKERS):
                 continue
             if query_tokens and not item.url.startswith("local://"):
                 domain = _domain_from_url(item.url)
@@ -193,7 +171,7 @@ class SourceCurator(BaseTracedExecution):
             lexical = self._lexical_score(query_tokens, item)
             phrase = self._phrase_match_score(query, item)
             base_score = float(item.score or 0.0)
-            total = (base_score * 0.2) + (lexical * 0.35) + (phrase * 0.3) + (credibility * 0.15)
+            total = (base_score * 0.08) + (lexical * 0.28) + (phrase * 0.24) + (credibility * 0.4)
             if item.url.startswith("local://"):
                 total += 0.8
             return (total, phrase, lexical, credibility, len(item.snippet or ""), item.title.lower().strip())
@@ -207,11 +185,18 @@ class SourceCurator(BaseTracedExecution):
             return 1.0
         if not domain:
             return 0.0
-        if any(keyword in domain for keyword in _TRUSTED_DOMAIN_KEYWORDS):
+        source = str(item.source or "").strip().lower()
+        if source in _ACADEMIC_SOURCES:
             return 0.85
-        if any(keyword in domain for keyword in _LOW_CONFIDENCE_DOMAIN_KEYWORDS):
-            return 0.45
-        if domain.endswith(".com"):
+        if source in _ENCYCLOPEDIC_SOURCES:
+            return 0.75
+        if domain.endswith(".edu") or ".edu." in domain or ".ac." in domain:
+            return 0.8
+        if domain.endswith(".gov") or ".gov." in domain:
+            return 0.8
+        if domain.endswith(".org") or ".org." in domain:
+            return 0.65
+        if domain.endswith(".com") or domain.endswith(".cn"):
             return 0.35
         return 0.5
 

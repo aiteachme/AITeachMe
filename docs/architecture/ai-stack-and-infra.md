@@ -127,7 +127,7 @@ results = await dispatch_web_search(
 ```python
 from app.shared.infra.search.factory import get_retriever
 
-retriever = get_retriever("oi_wiki")
+retriever = get_retriever("zh_wikipedia")
 results = await retriever.traced_search("线性代数", max_results=5)
 ```
 
@@ -160,7 +160,7 @@ results = await retriever.traced_search("线性代数", max_results=5)
 ```text
 local_rag
 duckduckgo
-zh_wikibooks / zh_wikiversity / zh_wikipedia / zh_wiktionary / oi_wiki
+zh_wikibooks / zh_wikiversity / zh_wikipedia / zh_wiktionary
 wikipedia
 tavily / bocha / brave / exa / bing
 google_cse / serper / serpapi / searchapi
@@ -213,8 +213,8 @@ SearchResult(
 | `planner_grounding` | Planner 稳定 grounding | 中文教育站点 + `wikipedia`、学术源、`duckduckgo` |
 | `docgen_sprint` | 冲刺讲义章节研究 | 中文教育站点 + `wikipedia`、学术源、`duckduckgo` |
 | `docgen_systematic` | 系统讲义章节研究 | 中文教育站点 + `wikipedia`、学术源、`duckduckgo` |
-| `docgen_zh_edu` | 中文课程式解释优先 | `zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary`、`oi_wiki`、`duckduckgo` |
-| `docgen_zh_math` | 中文数学 / 高数 / 线代补充 | `zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`oi_wiki`、`zh_wiktionary`、`arxiv`、`semantic_scholar`、`duckduckgo` |
+| `docgen_zh_edu` | 中文课程式解释优先 | `zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary`、`duckduckgo` |
+| `docgen_zh_math` | 中文数学 / 高数 / 线代补充 | `zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary`、`arxiv`、`semantic_scholar`、`duckduckgo` |
 
 需要 key 或 base URL 的 provider 未配置时自动跳过；workflow 不需要手动判断。
 
@@ -242,14 +242,14 @@ load_context
 
 - `local_rag` 总是章节研究第一优先级。
 - 只有 `local_hits < settings.local_rag.min_results` 才触发外部 retriever。
-- DocGen 还有一层稳定性 allowlist。`zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary`、`oi_wiki` 已允许参与；`baidu_baike`、`zhihu` 不作为章节正文深读主来源。
+- DocGen 还有一层稳定性 allowlist。广域 Web、学术源、`zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary` 已允许参与；`baidu_baike`、`zhihu` 不作为章节正文深读主来源。
 - 外部网页不会直接变成正文，仍会经过读取、过滤、压缩和章节写作。
 
 ### 5.7 命名规则
 
 - retriever 使用小写 snake_case，并且名字表达来源，不表达调用细节。
 - profile 使用 `场景_语言_用途` 或 `场景_模式`，例如 `docgen_zh_edu`、`docgen_zh_math`、`docgen_sprint`。
-- 具体网站统一放到 `shared.infra.search.retrievers.sites`，例如 `oi_wiki`、`zh_wikibooks`。
+- 具体网站统一放到 `shared.infra.search.retrievers.sites`，例如 `zh_wikipedia`、`zh_wikibooks`。
 - 不保留泛化抓站入口；具体网站需要显式站点适配器。
 
 ## 6. Ingest 解析栈

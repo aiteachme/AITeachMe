@@ -89,7 +89,7 @@ def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
     assert "未提供结构化专门检索 profile" in policy["reason"]
 
 
-def test_docgen_retrieval_profile_accepts_explicit_structured_contract() -> None:
+def test_docgen_retrieval_profile_rejects_removed_site_specific_contract() -> None:
     plan = DigestConfirmedPlanContract.model_validate(
         {
             "course_name": "算法专题",
@@ -97,13 +97,13 @@ def test_docgen_retrieval_profile_accepts_explicit_structured_contract() -> None
         }
     )
 
-    assert plan.resolve_retrieval_profile() == "docgen_oi"
+    assert plan.resolve_retrieval_profile() == "docgen_balanced"
     assert (
         build_digest_retrieval_policy(
             plan.resolve_retrieval_profile(),
             has_local_materials=True,
         )["external_focus"]
-        == "algorithm_contest_sources"
+        == "general_learning_sources"
     )
 
 

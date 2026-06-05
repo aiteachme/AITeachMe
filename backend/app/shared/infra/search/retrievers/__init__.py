@@ -20,7 +20,6 @@ from .serpapi import SerpApiRetriever
 from .semantic_scholar import SemanticScholarRetriever
 from .sites import (
     BaiduBaikeRetriever,
-    OIWikiRetriever,
     ZhihuRetriever,
     ZhWikibooksRetriever,
     ZhWikipediaRetriever,
@@ -46,7 +45,6 @@ __all__ = [
     "LocalRAGRetriever",
     "MCPSearchRetriever",
     "OpenRouterSearchRetriever",
-    "OIWikiRetriever",
     "PerplexityRetriever",
     "PubMedCentralRetriever",
     "SearchApiRetriever",

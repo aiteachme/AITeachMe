@@ -8,7 +8,6 @@ providers. They are explicit integrations for known sites, not a generic
 from .baidu_baike import BaiduBaikeRetriever
 from .duckduckgo_site import DuckDuckGoSiteRetriever
 from .mediawiki import MediaWikiSiteRetriever
-from .oi_wiki import OIWikiRetriever
 from .zh_wikis import (
     ZhWikibooksRetriever,
     ZhWikipediaRetriever,
@@ -21,7 +20,6 @@ __all__ = [
     "BaiduBaikeRetriever",
     "DuckDuckGoSiteRetriever",
     "MediaWikiSiteRetriever",
-    "OIWikiRetriever",
     "ZhihuRetriever",
     "ZhWikibooksRetriever",
     "ZhWikipediaRetriever",

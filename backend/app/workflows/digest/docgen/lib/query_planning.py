@@ -15,11 +15,7 @@ from app.workflows.digest.docgen.prompts.generation import (
 )
 
 EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
-    "zh": [
-        "site:zhihu.com",
-        "site:csdn.net",
-        "site:mathworld.wolfram.com",
-    ],
+    "zh": [],
     "university": [
         "site:icourse163.org",
         "site:xuetangx.com",
@@ -30,13 +26,28 @@ EDUCATION_SITE_FILTERS: dict[str, list[str]] = {
         "site:233.com",
         "真题 解析",
     ],
-    "knowledge": [
-        "site:baike.baidu.com",
-        "site:mathworld.wolfram.com",
-    ],
+    "knowledge": [],
 }
 QUERY_CONTEXT_ITEM_COUNT_BUDGET = 6
 QUERY_CONTEXT_ITEM_CHAR_BUDGET = 180
+SITE_FILTER_COMPATIBLE_RETRIEVERS = {
+    "baidu_ai_search",
+    "bing",
+    "bocha",
+    "brave",
+    "duckduckgo",
+    "exa",
+    "google_cse",
+    "jina_search",
+    "mcp_search",
+    "openrouter_search",
+    "perplexity",
+    "searchapi",
+    "searxng",
+    "serpapi",
+    "serper",
+    "tavily",
+}
 
 class ResearchSubQueryPlan(BaseModel):
     queries: list[str] = Field(default_factory=list, description="围绕当前章节主题拆解出的研究子查询")
@@ -73,6 +84,25 @@ def enrich_queries_for_education(
             seen.add(candidate)
             enriched.append(candidate)
     return enriched
+
+
+def enrich_queries_for_retriever(
+    queries: Sequence[str],
+    *,
+    domain: str = "zh",
+    retriever_name: str = "",
+    max_site_filters_per_query: int = 1,
+) -> list[str]:
+    """Expand search queries only for retrievers that understand web operators."""
+
+    normalized_name = str(retriever_name or "").strip().lower()
+    if normalized_name not in SITE_FILTER_COMPATIBLE_RETRIEVERS:
+        return dedupe_queries(list(queries))
+    return enrich_queries_for_education(
+        queries,
+        domain=domain,
+        max_site_filters_per_query=max_site_filters_per_query,
+    )
 
 
 def build_research_focus_text(
@@ -226,6 +256,8 @@ __all__ = [
     "build_research_focus_text",
     "dedupe_queries",
     "enrich_queries_for_education",
+    "enrich_queries_for_retriever",
     "generate_sub_queries",
     "generate_gap_queries",
+    "SITE_FILTER_COMPATIBLE_RETRIEVERS",
 ]

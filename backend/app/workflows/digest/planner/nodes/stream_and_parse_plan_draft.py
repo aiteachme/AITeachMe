@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.model_policy import (
     PlannerModelStep,
@@ -532,26 +531,24 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
             event="planner.plan.composing",
             detail="正在生成计划说明和可调整的初步大纲...",
         )
-        visible_task: asyncio.Task[str] | None = None
-        sketch_task: asyncio.Task[PlannerOutlineSketch] | None = None
         try:
-            visible_task = asyncio.create_task(
-                _stream_visible_plan_response(
-                    state,
-                    material_context=material_context,
-                    planner_brief=planner_brief,
-                    plan_intent=plan_intent,
-                )
+            visible_outline, sketch = await run_llm_tasks(
+                [
+                    lambda: _stream_visible_plan_response(
+                        state,
+                        material_context=material_context,
+                        planner_brief=planner_brief,
+                        plan_intent=plan_intent,
+                    ),
+                    lambda: _compose_outline_sketch_with_llm(
+                        state,
+                        material_context=material_context,
+                        planner_brief=planner_brief,
+                        plan_intent=plan_intent,
+                    ),
+                ],
+                lambda task: task(),
             )
-            sketch_task = asyncio.create_task(
-                _compose_outline_sketch_with_llm(
-                    state,
-                    material_context=material_context,
-                    planner_brief=planner_brief,
-                    plan_intent=plan_intent,
-                )
-            )
-            visible_outline, sketch = await asyncio.gather(visible_task, sketch_task)
             draft_payload = _validate_plan_payload(_sketch_to_plan_payload(sketch, plan_intent=plan_intent))
             logger.info(
                 "planner_compose_parse_completed",
@@ -568,12 +565,6 @@ def build_stream_and_parse_plan_draft_node(*, context: WorkflowContext):
                 course_id=state.get("course_id") or "",
                 error=str(exc),
             )
-            for task in (visible_task, sketch_task):
-                if task is not None and not task.done():
-                    task.cancel()
-            pending_tasks = [task for task in (visible_task, sketch_task) if task is not None]
-            if pending_tasks:
-                await asyncio.gather(*pending_tasks, return_exceptions=True)
             await emit_planner_event(
                 state,
                 event="planner.plan.failed",

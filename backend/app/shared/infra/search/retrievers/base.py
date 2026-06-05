@@ -24,7 +24,6 @@ _RETRIEVER_TRACE_LABELS = {
     "zh_wikibooks": "检索：中文维基教科书",
     "zh_wikiversity": "检索：中文维基学院",
     "zh_wiktionary": "检索：中文维基词典",
-    "oi_wiki": "检索：OI Wiki",
     "baidu_baike": "检索：百度百科",
     "zhihu": "检索：知乎",
     "bocha": "检索：博查网页",
