@@ -27,8 +27,8 @@ function WeChatIcon({ className }: { className?: string }) {
 /* ------------------------------------------------------------------ */
 
 const QR_CACHE_BUSTER_TTL_MS = 60_000;
-let communityQrPreloadStarted = false;
 let communityQrCacheToken = 0;
+let communityQrPreloadImage: HTMLImageElement | null = null;
 
 type QrStatus = "loading" | "ready" | "error";
 
@@ -46,14 +46,15 @@ function getWechatQrSrc(): string {
 }
 
 export function ensureCommunityQrPreloaded() {
-  if (typeof window === "undefined" || communityQrPreloadStarted) {
+  if (typeof window === "undefined" || communityQrPreloadImage) {
     return;
   }
 
-  communityQrPreloadStarted = true;
   const image = new Image();
   image.decoding = "async";
+  image.loading = "eager";
   image.src = getWechatQrSrc();
+  communityQrPreloadImage = image;
 }
 
 export const CommunityModal = memo(function CommunityModal({

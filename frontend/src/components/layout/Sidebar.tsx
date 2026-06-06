@@ -254,8 +254,7 @@ export function Sidebar({
       return;
     }
 
-    const timer = window.setTimeout(ensureCommunityQrPreloaded, 1200);
-    return () => window.clearTimeout(timer);
+    ensureCommunityQrPreloaded();
   }, []);
 
   useEffect(() => {
@@ -646,11 +645,11 @@ export function Sidebar({
           )}
         >
           {!effectiveCollapsed ? (
-            <div className="flex h-8 items-center gap-1">
+            <div className={cn("flex items-center gap-1", isMobileOpen ? "h-10" : "h-8")}>
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
-                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[12px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
+                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[13px] font-medium text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
                 aria-expanded={isCourseSectionExpanded}
               >
                 <span className="truncate">课程</span>
@@ -670,13 +669,14 @@ export function Sidebar({
                   setIsImportModalOpen(true);
                 }}
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
-                  isMobileOpen ? "h-10 w-10" : "h-8 w-8",
+                  "flex shrink-0 items-center justify-center gap-1 rounded-md font-medium text-slate-500 transition hover:bg-[#eef3f8] hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
+                  isMobileOpen ? "h-8 px-2 text-sm" : "h-7 px-1.5 text-[13px]",
                 )}
                 title="导入课程包"
                 aria-label="导入课程包"
               >
-                <PackagePlus className={cn(isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+                <PackagePlus className={cn("shrink-0", isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.1} />
+                <span>导入课程</span>
               </button>
             </div>
           ) : (
