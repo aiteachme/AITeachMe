@@ -10,7 +10,6 @@ import {
   FileText,
   FolderOpen,
   Compass,
-  LayoutGrid,
   Loader2,
   Menu,
   MoreVertical,
@@ -234,7 +233,6 @@ export function Sidebar({
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
-  const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
@@ -546,26 +544,6 @@ export function Sidebar({
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   setIsCollapsed(false);
-                  navigate("/spaces");
-                }}
-                title="学习空间"
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-                  isMyLearningSpaceActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <LayoutGrid className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  setIsCollapsed(false);
                   navigate("/library");
                 }}
                 title="我的资料库"
@@ -612,45 +590,6 @@ export function Sidebar({
                   )}
                 >
                   新建课程
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
-                  isMobileOpen ? "h-10" : "h-8",
-                  isMyLearningSpaceActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
-                )}
-                onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  navigate("/spaces");
-                }}
-              >
-                <LayoutGrid
-                  className={cn(
-                    "shrink-0 transition-colors",
-                    isMobileOpen ? "h-5 w-5" : "h-4 w-4",
-                    isMyLearningSpaceActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
-                  )}
-                  strokeWidth={2.2}
-                />
-                <span
-                  className={cn(
-                    "whitespace-nowrap tracking-[0.01em]",
-                    isMobileOpen ? "text-sm" : "text-xs",
-                    isMyLearningSpaceActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
-                  )}
-                >
-                  学习空间
                 </span>
               </button>
 
