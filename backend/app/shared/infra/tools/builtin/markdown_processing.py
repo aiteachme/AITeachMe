@@ -74,6 +74,9 @@ CALLOUT_FIELD_MARKER_TOKEN_PATTERN = re.compile(
 CALLOUT_FIELD_SPLIT_PATTERN = re.compile(
     rf"(?<!\*)(?=\s*(?:\*\*(?:{CALLOUT_FIELD_LABEL_PATTERN})\*\*|(?:{CALLOUT_FIELD_LABEL_PATTERN}))\s*[：:])"
 )
+LEARNING_CALLOUT_TASK_FIELD_PATTERN = re.compile(r"(题目/任务|题目|任务|案例|例题)", re.IGNORECASE)
+LEARNING_CALLOUT_REASON_FIELD_PATTERN = re.compile(r"(解析/判定依据|解析|解法|步骤|判定依据|错因)", re.IGNORECASE)
+LEARNING_CALLOUT_ANSWER_FIELD_PATTERN = re.compile(r"(答案/结论|答案|结论|正确答案|参考答案)", re.IGNORECASE)
 BARE_CALLOUT_PATTERN = re.compile(
     rf"(?m)^(?!\s*>)\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]",
     re.IGNORECASE,
@@ -1400,6 +1403,8 @@ def find_markdown_presentation_issues(markdown: str) -> list[str]:
     issues.extend(_find_table_shape_issues(text))
     issues.extend(_find_code_fence_style_issues(text))
     issues.extend(_find_mermaid_knowledge_graph_issues(text))
+    issues.extend(_find_learning_callout_field_issues(text))
+    issues.extend(_find_readability_rhythm_issues(text))
     return list(dict.fromkeys(issue for issue in issues if issue))
 
 
@@ -1408,15 +1413,26 @@ def summarize_markdown_presentation(markdown: str) -> dict[str, object]:
 
     text = str(markdown or "")
     issues = find_markdown_presentation_issues(text)
+    callout_counts = _count_callouts_by_kind(text)
+    table_count = _count_gfm_tables(text)
+    mermaid_block_count = _parsed_mermaid_fence_count(text)
+    math_block_count = _count_display_math_blocks(text)
+    code_block_count = text.count("```") // 2
     return {
         "issue_count": len(issues),
         "issues": issues[:20],
         "heading_count": len(HEADER_PATTERN.findall(text)),
-        "callout_count": len(re.findall(rf"(?m)^>\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]", text, re.IGNORECASE)),
-        "table_count": _count_gfm_tables(text),
-        "code_block_count": text.count("```") // 2,
-        "mermaid_block_count": _parsed_mermaid_fence_count(text),
+        "callout_count": sum(callout_counts.values()),
+        "example_callout_count": callout_counts.get("example", 0),
+        "practice_callout_count": callout_counts.get("practice", 0),
+        "table_count": table_count,
+        "code_block_count": code_block_count,
+        "mermaid_block_count": mermaid_block_count,
+        "math_block_count": math_block_count,
         "highlight_count": len(DOUBLE_EQUALS_HIGHLIGHT_PATTERN.findall(text)) + len(RAW_MARK_HIGHLIGHT_PATTERN.findall(text)),
+        "long_paragraph_count": _count_long_plain_paragraphs(text),
+        "max_consecutive_list_items": _max_consecutive_list_items(text),
+        "reading_block_count": sum(callout_counts.values()) + table_count + mermaid_block_count + math_block_count + code_block_count,
     }
 
 
@@ -1538,6 +1554,96 @@ def _plain_text_outside_fences(markdown: str) -> str:
     return "\n".join(lines)
 
 
+def _visible_markdown_text(text: str) -> str:
+    cleaned = re.sub(r"`([^`]+)`", r"\1", str(text or ""))
+    cleaned = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"[*_~`>#|]", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def _iter_plain_paragraphs(markdown: str) -> list[str]:
+    paragraphs: list[str] = []
+    current: list[str] = []
+    in_fence = False
+    in_math = False
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            paragraphs.append(" ".join(item.strip() for item in current if item.strip()))
+            current = []
+
+    for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        stripped = raw_line.strip()
+        if stripped.startswith("```"):
+            flush()
+            in_fence = not in_fence
+            continue
+        if MATH_FENCE_PATTERN.match(raw_line):
+            flush()
+            in_math = not in_math
+            continue
+        if in_fence or in_math:
+            continue
+        if not stripped:
+            flush()
+            continue
+        if (
+            stripped.startswith(("#", ">", "|"))
+            or re.match(r"^(?:[-*+]|\d+[.)])\s+\S", stripped)
+            or _is_table_separator_line(stripped)
+        ):
+            flush()
+            continue
+        current.append(stripped)
+
+    flush()
+    return paragraphs
+
+
+def _count_long_plain_paragraphs(markdown: str, *, soft_limit: int = 320) -> int:
+    return sum(1 for paragraph in _iter_plain_paragraphs(markdown) if len(_visible_markdown_text(paragraph)) > soft_limit)
+
+
+def _max_consecutive_list_items(markdown: str) -> int:
+    max_run = 0
+    current = 0
+    in_fence = False
+    in_math = False
+    for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        stripped = raw_line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            current = 0
+            continue
+        if MATH_FENCE_PATTERN.match(raw_line):
+            in_math = not in_math
+            current = 0
+            continue
+        if in_fence or in_math:
+            continue
+        if re.match(r"^(?:[-*+]|\d+[.)])\s+\S", stripped):
+            current += 1
+            max_run = max(max_run, current)
+        elif stripped:
+            current = 0
+    return max_run
+
+
+def _count_display_math_blocks(markdown: str) -> int:
+    return _display_math_fence_line_count(str(markdown or "")) // 2
+
+
+def _count_callouts_by_kind(markdown: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for match in re.finditer(rf"(?m)^>\s*\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\]", str(markdown or ""), re.IGNORECASE):
+        kind = match.group("kind").lower()
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
 def _find_emphasis_highlight_issues(markdown: str) -> list[str]:
     text = _plain_text_outside_fences(markdown)
     issues: list[str] = []
@@ -1634,6 +1740,84 @@ def _find_mermaid_knowledge_graph_issues(markdown: str) -> list[str]:
             if label and label not in KNOWLEDGE_GRAPH_RELATION_LABELS:
                 issues.append("Mermaid 知识图谱关系标签不在允许的 8 类关系中。")
                 break
+    return issues
+
+
+def _iter_callout_blocks(markdown: str) -> list[tuple[str, str]]:
+    blocks: list[tuple[str, str]] = []
+    lines = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    in_fence = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            index += 1
+            continue
+        if in_fence:
+            index += 1
+            continue
+
+        marker = re.match(rf"^\s*>\s*\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\](?P<rest>.*)$", line, re.IGNORECASE)
+        if marker is None:
+            index += 1
+            continue
+
+        kind = marker.group("kind").upper()
+        body_lines = [str(marker.group("rest") or "").strip()]
+        index += 1
+        while index < len(lines):
+            body_match = re.match(r"^\s*>\s?(?P<body>.*)$", lines[index])
+            if body_match is None:
+                break
+            body_lines.append(str(body_match.group("body") or "").strip())
+            index += 1
+        blocks.append((kind, "\n".join(line for line in body_lines if line.strip())))
+    return blocks
+
+
+def _find_learning_callout_field_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    for kind, body in _iter_callout_blocks(markdown):
+        if kind not in {"EXAMPLE", "PRACTICE"}:
+            continue
+        visible = _visible_markdown_text(body)
+        if len(visible) < 20:
+            continue
+        has_task = bool(LEARNING_CALLOUT_TASK_FIELD_PATTERN.search(body))
+        has_reason = bool(LEARNING_CALLOUT_REASON_FIELD_PATTERN.search(body))
+        has_answer = bool(LEARNING_CALLOUT_ANSWER_FIELD_PATTERN.search(body))
+        if not (has_task and has_reason and has_answer):
+            issues.append("例题/练习 callout 缺少题目、解析或答案字段。")
+            break
+    return issues
+
+
+def _find_readability_rhythm_issues(markdown: str) -> list[str]:
+    issues: list[str] = []
+    text = str(markdown or "")
+    plain_visible_length = len(_visible_markdown_text(_plain_text_outside_fences(text)))
+    long_paragraph_count = _count_long_plain_paragraphs(text)
+    if long_paragraph_count >= 2:
+        issues.append("Markdown 存在多个过长正文段落，建议拆成步骤、表格或 callout。")
+    elif any(len(_visible_markdown_text(paragraph)) > 520 for paragraph in _iter_plain_paragraphs(text)):
+        issues.append("Markdown 存在超长正文段落，影响学生扫读。")
+
+    if _max_consecutive_list_items(text) >= 9:
+        issues.append("Markdown 连续列表过长，建议拆分为小节、表格或练习块。")
+
+    callout_count = sum(_count_callouts_by_kind(text).values())
+    reading_block_count = (
+        callout_count
+        + _count_gfm_tables(text)
+        + _parsed_mermaid_fence_count(text)
+        + _count_display_math_blocks(text)
+        + text.count("```") // 2
+    )
+    if plain_visible_length > 1200 and reading_block_count == 0:
+        issues.append("Markdown 长章节缺少 callout、表格、公式或图示等阅读分组。")
+
     return issues
 
 

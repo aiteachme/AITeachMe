@@ -52,7 +52,10 @@ def _strip_markdown_fence(text: str) -> str:
 
 
 def _is_deterministic_rendering_patch(action: ReviewAction) -> bool:
-    return action.action_type == "surface_patch" and "Markdown 渲染结构异常" in action.reason
+    return action.action_type == "surface_patch" and (
+        "Markdown 渲染结构异常" in action.reason
+        or "Markdown 展示与学习结构异常" in action.reason
+    )
 
 
 def _repair_action_key(action_index: int, action: ReviewAction) -> str:

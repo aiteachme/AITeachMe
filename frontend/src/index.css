@@ -123,6 +123,27 @@
     display: inline-block;
     max-width: 100%;
   }
+
+  .katex svg {
+    position: absolute;
+    display: block;
+    width: 100%;
+    height: inherit;
+    fill: currentColor;
+    stroke: currentColor;
+  }
+
+  .katex svg path {
+    stroke: none;
+  }
+
+  .katex .stretchy,
+  .katex .hide-tail {
+    position: relative;
+    display: block;
+    width: 100%;
+    overflow: hidden;
+  }
 }
 
 /* Keep KaTeX's accessibility-only MathML out of the visual flow even when
@@ -650,6 +671,18 @@
     color: inherit;
   }
 
+  .feishu-doc-content .katex-display {
+    margin: 1rem 0 1.15rem;
+    padding: 0.65rem 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .dark .feishu-doc-content .katex-display {
+    background: transparent;
+  }
+
   /* ----------- TOC tree collapse animation ----------- */
   .toc-children-enter {
     overflow: hidden;
@@ -673,7 +706,11 @@
   }
 
   .feishu-doc-content table tbody tr:hover {
-    background-color: #F5F6F7;
+    background-color: #F7F8FA;
+  }
+
+  .dark .feishu-doc-content table tbody tr:hover {
+    background-color: rgba(30, 41, 59, 0.86);
   }
 
   .feishu-doc-content pre code.hljs {

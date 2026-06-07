@@ -104,16 +104,17 @@ def _rule_review_chapter(
                 action_type="surface_patch",
                 chapter_index=draft.chapter_index,
                 severity="warning",
-                reason="Markdown 渲染结构异常：" + "；".join(rendering_issues),
+                reason="Markdown 展示与学习结构异常：" + "；".join(rendering_issues),
                 target_anchor=_chapter_anchor(draft),
-                instruction="只修复 Markdown 展示结构，包括标题层级、加粗/高亮闭合、表格、callout、代码块、公式和 Mermaid，不改正文知识内容。",
+                instruction="修复 Markdown 展示结构与学习块完整性，包括标题层级、加粗/高亮闭合、表格、callout、代码块、公式、Mermaid、长段落、过长列表，以及例题/练习的题目、解析和答案字段。",
                 constraints=[
-                    "不得新增或删除知识点。",
+                    "不得新增无依据知识点。",
                     "不得改变章节标题和章节顺序。",
-                    "只允许调整 Markdown 标记、空行、fenced block 边界和安全高亮表达。",
+                    "例题或练习缺少字段时，只能基于章节已有内容、执行合同或材料证据补齐。",
+                    "优先调整 Markdown 标记、空行、fenced block 边界、阅读分组和安全高亮表达。",
                     *scope_constraints,
                 ],
-                expected_effect="章节 Markdown 可以稳定渲染，重点、提示块、表格、代码块、公式和 Mermaid 都能正常显示。",
+                expected_effect="章节 Markdown 可以稳定渲染，并且重点、提示块、表格、代码块、公式、Mermaid、例题和练习都能清晰显示。",
             )
         )
     if missing:

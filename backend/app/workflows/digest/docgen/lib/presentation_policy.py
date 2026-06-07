@@ -58,6 +58,12 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
             "mermaid": "Mermaid 必须放在 ```mermaid 代码块；知识图谱关系标签只使用 8 类关系。",
             "html_sidecar": "交互内容只允许独立单文件 HTML sidecar，正文 Markdown 不内嵌任意 HTML。",
         },
+        "reader_experience_checks": {
+            "long_paragraphs": "避免连续长段正文；长解释要拆成步骤、表格、公式块、例题或 callout。",
+            "learning_callout_fields": "例题和练习必须能自查，至少有题目/任务、解析/判定依据、答案/结论。",
+            "reading_blocks": "长章节需要有 callout、表格、公式、图示或代码块等阅读分组，避免整章只有正文和列表。",
+            "list_rhythm": "长列表要拆分成小节、表格或练习块，避免学生扫读疲劳。",
+        },
         "learning_roles": LEARNING_ROLE_LABELS,
         "relation_labels": RELATION_LABELS,
         "mode_focus": {
@@ -84,6 +90,8 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
 - {profile.prompt_label}模式下仍要遵守当前学习大纲：快速复习强调例题/任务/错误诊断密度，但密度和形式要跟章节角色匹配；系统学习强调知识细讲和例题覆盖。
 - 快速复习章节要像可直接复习的讲义：考试/冲刺/速成取向章节可有由本章内容自然生成的题型或任务导航、方法对照、完整例题、变式题和易错诊断；概念型章节用短例子、反例、条件辨析和边界提醒增强直观性，不要硬塞题型表。自测或思考题必须给答案、解析要点或判定依据。
 - 同一小节不要连续铺开两三段长正文；定义或公式之后，要用短说明、步骤、表格、callout 或例题块分清“是什么、何时用、怎么做、哪里容易错”。
+- 长章节不能只有正文和普通列表；需要自然穿插 callout、表格、公式块、图示、代码块或例题/练习块形成阅读分组。
+- 列表连续过长时必须拆分为小标题、表格或任务块；不要把整节写成十几条并列 bullet。
 
 重点表达：
 - 核心概念、关键结论、适用条件、易错边界可加粗；不要整段加粗。

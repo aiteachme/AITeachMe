@@ -651,6 +651,30 @@ def test_presentation_validator_catches_style_contract_issues() -> None:
     assert "Markdown 正文包含不受控 HTML 标签。" in issues
 
 
+def test_presentation_validator_catches_readability_and_learning_block_issues() -> None:
+    long_paragraph = "这是一段连续铺开的解释文字，用来模拟没有分组、没有停顿、学生很难扫读的长段落。" * 24
+    raw = "\n".join(
+        [
+            "# 标题",
+            "",
+            long_paragraph,
+            "",
+            "> [!EXAMPLE]",
+            ">",
+            "> **题目**：计算 1 + 1，并说明为什么这样计算。",
+        ]
+    )
+
+    issues = find_markdown_presentation_issues(raw)
+    summary = summarize_markdown_presentation(raw)
+
+    assert "Markdown 存在超长正文段落，影响学生扫读。" in issues
+    assert "例题/练习 callout 缺少题目、解析或答案字段。" in issues
+    assert summary["long_paragraph_count"] == 1
+    assert summary["example_callout_count"] == 1
+    assert summary["reading_block_count"] >= 1
+
+
 def test_presentation_normalizes_safe_highlight_spacing_and_summarizes() -> None:
     raw = "# 标题\n\n这是 == 关键结论 ==，也可以 <mark> 条件 </mark>。"
 
