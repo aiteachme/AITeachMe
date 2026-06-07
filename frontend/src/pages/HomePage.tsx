@@ -980,7 +980,7 @@ export function HomePage() {
             hasEntryFiles
               ? "border-slate-300 shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-700"
               : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.07)] hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700",
-            "focus-within:border-slate-400 focus-within:shadow-[0_20px_48px_rgba(15,23,42,0.10)] dark:focus-within:border-slate-600"
+            "focus-within:border-indigo-300 focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.16)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50 dark:focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.22)]"
           )}>
             <textarea
               ref={textareaRef}
@@ -1112,26 +1112,35 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-4 w-full">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {activePromptStarters.map((starter) => {
-                const StarterIcon = starter.icon;
+          <div className="mt-3 w-full px-2">
+            <div className="mb-1 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
+              <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
+              <span>{hasEntryFiles ? "基于资料的示例提示词" : "示例提示词"}</span>
+              <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
+            </div>
+            <div className="divide-y divide-zinc-200/60 dark:divide-slate-800/70">
+              {activePromptStarters.map((starter, index) => {
                 return (
                   <button
                     key={starter.id}
                     type="button"
                     onClick={() => handlePromptStarterClick(starter.prompt)}
                     disabled={isWorking}
-                    aria-label={`套用建课模板：${starter.label}，${starter.description}`}
-                    title="点击套用到输入框"
-                    className="group flex min-h-[112px] w-full flex-col rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-white hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/75 dark:hover:border-slate-700 dark:hover:bg-slate-950"
+                    aria-label={`套用示例提示词：${starter.prompt}`}
+                    title={starter.prompt}
+                    className="group relative flex w-full items-baseline gap-2 py-2 pl-1 pr-3 text-left transition-colors hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                      <StarterIcon className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
-                      <span>{starter.label}</span>
-                      <span className="text-xs font-normal text-slate-400 dark:text-slate-500">{starter.description}</span>
+                    <span className="absolute left-0 top-2 h-[calc(100%-16px)] w-px bg-indigo-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-indigo-300" />
+                    <span className="w-5 shrink-0 pl-2 font-mono text-[10px] font-semibold text-zinc-300 tabular-nums transition-colors group-hover:text-indigo-400 dark:text-slate-600 dark:group-hover:text-indigo-300">
+                      {String(index + 1).padStart(2, "0")}
                     </span>
-                    <span className="mt-2 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    <span className="shrink-0 text-sm font-semibold text-zinc-800 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">
+                      {starter.label}
+                    </span>
+                    <span className="hidden shrink-0 text-xs text-zinc-400 dark:text-slate-500 sm:inline">
+                      {starter.description}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] leading-6 text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-200">
                       {starter.prompt}
                     </span>
                   </button>
