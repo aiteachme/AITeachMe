@@ -43,16 +43,13 @@ export function CourseDeleteConfirmModal({
       tone="danger"
       onClose={onClose}
       sidebar={
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-red-100 bg-white/75 p-4 dark:border-red-500/20 dark:bg-slate-950/35">
-            <div className="text-xs font-medium text-red-700 dark:text-red-300">风险级别</div>
-            <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-slate-50">不可撤销</div>
-            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              删除后课程文件关联、知识数据、试卷记录和学习画像会一并移除。
+        <div className="flex items-start gap-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-300" />
+          <div className="min-w-0">
+            <div className="font-medium text-red-700 dark:text-red-300">不可撤销操作</div>
+            <p className="mt-1 leading-6 text-slate-600 dark:text-slate-400">
+              会移除课程文件关联、知识数据、试卷记录和学习画像。需要保留时请先导出课程包。
             </p>
-          </div>
-          <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            如果只是暂时不想看到课程，后续应优先做归档能力；当前删除会真实清理数据。
           </div>
         </div>
       }
@@ -66,13 +63,13 @@ export function CourseDeleteConfirmModal({
                 : "等待删除预览"}
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={onClose} disabled={isDeleting} className="rounded-xl text-slate-500 hover:text-slate-900">
+            <Button variant="ghost" onClick={onClose} disabled={isDeleting} className="rounded-lg text-slate-500 hover:text-slate-900">
               取消
             </Button>
             <Button
               onClick={onConfirm}
               disabled={isPreviewLoading || !preview || isDeleting}
-              className="rounded-xl border border-red-200 bg-white px-4 text-red-700 shadow-none hover:border-red-300 hover:bg-red-50 hover:shadow-none dark:border-red-500/30 dark:bg-slate-950 dark:text-red-300 dark:hover:bg-red-500/10"
+              className="rounded-lg bg-red-600 px-4 text-white shadow-none hover:bg-red-700 hover:shadow-none dark:bg-red-500 dark:text-white dark:hover:bg-red-400"
             >
               {isDeleting ? (
                 <>
@@ -82,7 +79,7 @@ export function CourseDeleteConfirmModal({
               ) : (
                 <>
                   <Trash2 className="h-4 w-4" />
-                  确认删除
+                  永久删除
                 </>
               )}
             </Button>
@@ -93,11 +90,11 @@ export function CourseDeleteConfirmModal({
       <div className="space-y-5">
         <section className="border-b border-slate-100 pb-5 dark:border-slate-800">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
               <AlertTriangle className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-base font-semibold tracking-tight text-slate-950 dark:text-slate-50">删除影响</h3>
+              <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">删除影响</h3>
               <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 请核对下方项目。确认后，课程和这些关联内容会从当前空间中移除。
               </p>
@@ -108,7 +105,7 @@ export function CourseDeleteConfirmModal({
         {isPreviewLoading ? (
           <div className="space-y-3">
             {[0, 1, 2].map((item) => (
-              <div key={item} className="rounded-2xl border border-slate-100 px-4 py-4 dark:border-slate-800">
+              <div key={item} className="rounded-lg border border-slate-100 px-4 py-4 dark:border-slate-800">
                 <div className="flex items-center justify-between gap-4">
                   <div className="h-4 w-32 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
                   <div className="h-4 w-8 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
@@ -121,17 +118,17 @@ export function CourseDeleteConfirmModal({
 
         {!isPreviewLoading && preview ? (
           <div className="space-y-4">
-            <div className="flex items-end justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/35">
+            <div className="flex items-end justify-between gap-4 rounded-lg border border-red-100 bg-red-50/60 px-4 py-3 dark:border-red-900/35 dark:bg-red-950/10">
               <div>
                 <div className="text-xs font-medium text-slate-500 dark:text-slate-400">关联记录</div>
                 <div className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">即将被删除</div>
               </div>
-              <div className="font-mono text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+              <div className="font-mono text-2xl font-semibold text-red-700 dark:text-red-300">
                 {preview.total_related_records}
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
               {impactItems.length > 0 ? (
                 impactItems.map((item) => (
                   <div key={item.key} className="px-4 py-3.5">
@@ -140,7 +137,7 @@ export function CourseDeleteConfirmModal({
                         <div className="text-sm font-semibold text-slate-950 dark:text-slate-50">{item.label}</div>
                         <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{item.description}</p>
                       </div>
-                      <div className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      <div className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                         {item.count}
                       </div>
                     </div>
@@ -156,7 +153,7 @@ export function CourseDeleteConfirmModal({
         ) : null}
 
         {previewError || deleteError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {deleteError || previewError}
           </div>
         ) : null}

@@ -84,11 +84,18 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
       tone="emerald"
       onClose={onClose}
       sidebar={
-        <div className="space-y-3 text-sm">
-          {["支持 .atmx 与 .zip 课程包", "导入时会创建新课程，不覆盖现有课程", "完成后会自动刷新侧边栏课程列表"].map((item) => (
-            <div key={item} className="flex gap-2.5 text-slate-600 dark:text-slate-400">
+        <div className="grid gap-3 text-sm sm:grid-cols-3">
+          {[
+            { label: "文件格式", value: ".atmx / .zip" },
+            { label: "导入方式", value: "创建新课程" },
+            { label: "完成后", value: "刷新课程列表" },
+          ].map((item) => (
+            <div key={item.label} className="flex items-start gap-2.5 text-slate-600 dark:text-slate-400">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
-              <span className="leading-6">{item}</span>
+              <span className="min-w-0">
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{item.label}</span>
+                <span className="block font-medium leading-5 text-slate-900 dark:text-slate-100">{item.value}</span>
+              </span>
             </div>
           ))}
         </div>
@@ -99,14 +106,14 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
             {selectedFile ? `已选择 ${formatFileSize(selectedFile.size)} 的课程包` : "选择课程包后即可开始导入"}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} className="rounded-xl text-slate-500 hover:text-slate-900">
+            <Button type="button" variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
               取消
             </Button>
             <Button
               type="button"
               onClick={() => importMutation.mutate()}
               disabled={!selectedFile || importMutation.isPending}
-              className="rounded-xl bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              className="rounded-lg bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             >
               {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}
               导入课程
@@ -132,12 +139,12 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
         <section>
           <div className="flex flex-col gap-2 border-b border-slate-100 pb-4 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h3 className="text-base font-semibold tracking-tight text-slate-950 dark:text-slate-50">课程包文件</h3>
+              <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">课程包文件</h3>
               <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 拖入或选择由 AITeachMe 导出的课程包，系统会在导入前校验格式。
               </p>
             </div>
-            <span className="w-fit rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <span className="w-fit rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
               .atmx / .zip
             </span>
           </div>
@@ -156,7 +163,7 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
             }}
             onClick={() => inputRef.current?.click()}
             className={cn(
-              "mt-5 flex w-full items-center gap-4 rounded-2xl border border-dashed px-4 py-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:focus-visible:ring-slate-700 sm:px-5",
+              "mt-5 flex w-full items-center gap-4 rounded-lg border border-dashed px-4 py-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:focus-visible:ring-slate-700 sm:px-5",
               dragOver
                 ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/20"
                 : selectedFile
@@ -164,7 +171,7 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/45",
             )}
           >
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {selectedFile ? <FileArchive className="h-5 w-5" /> : <UploadCloud className="h-5 w-5" />}
             </span>
             <span className="min-w-0 flex-1">
@@ -198,13 +205,13 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
               value={customName}
               onChange={(event) => setCustomName(event.target.value)}
               placeholder="例如：初中数学复习全图谱"
-              className="mt-3 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+              className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
             />
           </label>
         </section>
 
         {localError || importMutation.isError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {localError ?? getApiErrorMessage(importMutation.error, "导入失败，请重试")}
           </div>
         ) : null}

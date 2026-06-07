@@ -139,7 +139,7 @@ function RenameCourseModal({
       icon={Edit3}
       tone="slate"
       onClose={onClose}
-      className="max-w-3xl md:grid-cols-[260px_minmax(0,1fr)]"
+      className="max-w-2xl"
       sidebar={
         <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
           一个清晰的课程名会让后续导出、分享和复习定位都更稳定。
@@ -147,13 +147,13 @@ function RenameCourseModal({
       }
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose} className="rounded-xl text-slate-500 hover:text-slate-900">
+          <Button variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
             取消
           </Button>
           <Button
             onClick={() => renameMutation.mutate()}
             disabled={!name.trim() || renameMutation.isPending}
-            className="rounded-xl bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            className="rounded-lg bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
           >
             {renameMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             保存名称
@@ -176,13 +176,13 @@ function RenameCourseModal({
                 renameMutation.mutate();
               }
             }}
-            className="mt-3 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+            className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
             placeholder="输入课程名称"
             autoFocus
           />
         </label>
         {renameMutation.isError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}
           </p>
         ) : null}
@@ -508,7 +508,7 @@ export function Sidebar({
               <Link to="/" className="flex h-11 items-center gap-2 pl-2 text-slate-900 dark:text-slate-100">
                 <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto dark:invert dark:opacity-90" />
                 {isMobileOpen ? (
-                  <span className="text-sm font-semibold tracking-normal text-slate-900 dark:text-slate-100">
+                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     AITeachMe
                   </span>
                 ) : null}
@@ -598,7 +598,7 @@ export function Sidebar({
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap tracking-[0.01em]",
+                    "whitespace-nowrap",
                     isMobileOpen ? "text-sm" : "text-xs",
                     isCreateCourseActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
@@ -637,7 +637,7 @@ export function Sidebar({
                 />
                 <span
                   className={cn(
-                    "whitespace-nowrap tracking-[0.01em]",
+                    "whitespace-nowrap",
                     isMobileOpen ? "text-sm" : "text-xs",
                     isLibraryActive
                       ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
@@ -732,6 +732,7 @@ export function Sidebar({
                 return (
                   <motion.div
                     key={course.course_id}
+                    ref={openMenuId === course.course_id ? menuRef : undefined}
                     variants={shouldAnimateCourseItems ? sidebarItemMotion : undefined}
                     initial={shouldAnimateCourseItems ? "hidden" : false}
                     animate={shouldAnimateCourseItems ? "visible" : undefined}
@@ -781,7 +782,7 @@ export function Sidebar({
 
                   {!effectiveCollapsed ? (
                     <>
-                      <div className="relative" ref={openMenuId === course.course_id ? menuRef : undefined}>
+                      <div className="relative">
                         <button
                           type="button"
                           onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
@@ -793,58 +794,58 @@ export function Sidebar({
                         >
                           <MoreVertical className={cn(isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
                         </button>
-
-                      {openMenuId === course.course_id ? (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_46px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              setCourseActionError(undefined);
-                              setExportCourseId(course.course_id);
-                            }}
-                            className="group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            <Download className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
-                            <span className="min-w-0">
-                              <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100">导出课程</span>
-                              <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">生成可迁移的 .atmx 包</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              setRenameTarget({ id: course.course_id, name: displayName === "未命名课程" ? "" : course.name });
-                            }}
-                            className="group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            <Edit3 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
-                            <span className="min-w-0">
-                              <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100">重命名</span>
-                              <span className="mt-0.5 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">调整侧边栏显示名称</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenuId(null);
-                              openDeleteModal(course);
-                            }}
-                            className="mt-1 flex w-full items-start gap-3 rounded-xl border-t border-slate-100 px-3 py-2.5 text-left text-red-600 transition hover:bg-red-50 dark:border-slate-800 dark:text-red-400 dark:hover:bg-red-500/10"
-                          >
-                            <Trash2 className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span className="min-w-0">
-                              <span className="block text-xs font-semibold">删除课程</span>
-                              <span className="mt-0.5 block text-[11px] leading-4 text-red-500/80 dark:text-red-300/80">清理课程及关联数据</span>
-                            </span>
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
                     </>
                   ) : null}
                 </div>
+
+                {openMenuId === course.course_id ? (
+                  <div className="ml-8 mr-1 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-sm ring-1 ring-slate-950/5 dark:border-slate-700 dark:bg-slate-900 dark:ring-white/5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setCourseActionError(undefined);
+                        setExportCourseId(course.course_id);
+                      }}
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <Download className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-slate-900 dark:text-slate-100">导出 .atmx</span>
+                        <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">课程迁移包</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setRenameTarget({ id: course.course_id, name: displayName === "未命名课程" ? "" : course.name });
+                      }}
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <Edit3 className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-slate-900 dark:text-slate-100">重命名</span>
+                        <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">显示名称</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        openDeleteModal(course);
+                      }}
+                      className="mt-1 flex w-full items-center gap-2.5 rounded-md border-t border-slate-100 px-2.5 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 dark:border-slate-800 dark:text-red-400 dark:hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block font-medium">删除课程</span>
+                        <span className="block text-[11px] leading-4 text-red-500/80 dark:text-red-300/80">不可撤销</span>
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
 
                 <AnimatePresence initial={false}>
                   {!effectiveCollapsed && expanded ? (
@@ -933,7 +934,7 @@ export function Sidebar({
             title="社区"
           >
             <MessageCircle className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
-            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap tracking-[0.01em]", isMobileOpen ? "text-sm" : "text-xs")}>社区</span> : null}
+            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>社区</span> : null}
           </button>
           <button
             type="button"
@@ -945,7 +946,7 @@ export function Sidebar({
             title="设置"
           >
             <Settings className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
-            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap tracking-[0.01em]", isMobileOpen ? "text-sm" : "text-xs")}>设置</span> : null}
+            {!effectiveCollapsed ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>设置</span> : null}
           </button>
         </div>
       </aside>

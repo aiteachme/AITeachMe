@@ -23,33 +23,33 @@ const toneStyles: Record<
   {
     icon: string;
     eyebrow: string;
-    rail: string;
-    railLine: string;
+    accent: string;
+    summary: string;
   }
 > = {
   slate: {
-    icon: "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950",
+    icon: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
     eyebrow: "text-slate-500 dark:text-slate-400",
-    rail: "border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/35",
-    railLine: "bg-slate-900 dark:bg-slate-200",
+    accent: "bg-slate-900 dark:bg-slate-200",
+    summary: "border-slate-100 bg-slate-50/75 dark:border-slate-800 dark:bg-slate-900/35",
   },
   blue: {
-    icon: "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950",
+    icon: "border-sky-100 bg-sky-50 text-sky-700 dark:border-sky-900/45 dark:bg-sky-950/25 dark:text-sky-300",
     eyebrow: "text-sky-700 dark:text-sky-300",
-    rail: "border-sky-100 bg-sky-50/55 dark:border-sky-900/35 dark:bg-sky-950/10",
-    railLine: "bg-sky-600 dark:bg-sky-300",
+    accent: "bg-sky-600 dark:bg-sky-300",
+    summary: "border-sky-100 bg-sky-50/55 dark:border-sky-900/35 dark:bg-sky-950/10",
   },
   emerald: {
-    icon: "bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-950",
+    icon: "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-900/45 dark:bg-emerald-950/25 dark:text-emerald-300",
     eyebrow: "text-emerald-700 dark:text-emerald-300",
-    rail: "border-emerald-100 bg-emerald-50/50 dark:border-emerald-900/35 dark:bg-emerald-950/10",
-    railLine: "bg-emerald-600 dark:bg-emerald-300",
+    accent: "bg-emerald-600 dark:bg-emerald-300",
+    summary: "border-emerald-100 bg-emerald-50/50 dark:border-emerald-900/35 dark:bg-emerald-950/10",
   },
   danger: {
-    icon: "bg-red-600 text-white dark:bg-red-500 dark:text-white",
+    icon: "border-red-100 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/25 dark:text-red-300",
     eyebrow: "text-red-700 dark:text-red-300",
-    rail: "border-red-100 bg-red-50/55 dark:border-red-900/40 dark:bg-red-950/12",
-    railLine: "bg-red-600 dark:bg-red-400",
+    accent: "bg-red-600 dark:bg-red-400",
+    summary: "border-red-100 bg-red-50/55 dark:border-red-900/40 dark:bg-red-950/10",
   },
 };
 
@@ -87,37 +87,42 @@ export function CourseOperationModal({
           aria-modal="true"
           aria-labelledby={titleId}
           className={cn(
-            "pointer-events-auto relative grid max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl overflow-hidden rounded-[22px] border border-slate-200 bg-white text-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-[0_30px_90px_rgba(0,0,0,0.58)] md:grid-cols-[290px_minmax(0,1fr)]",
+            "pointer-events-auto relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-950 shadow-2xl shadow-slate-950/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/45",
             className,
           )}
         >
+          <div className={cn("h-1 shrink-0", styles.accent)} />
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-slate-700"
+            className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-slate-700"
             aria-label="关闭面板"
           >
             <X className="h-4 w-4" />
           </button>
 
-          <aside className={cn("border-b px-5 py-5 md:border-b-0 md:border-r md:px-6 md:py-6", styles.rail)}>
-            <div className={cn("mb-5 h-1 w-10 rounded-full", styles.railLine)} />
-            <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm", styles.icon)}>
+          <header className="flex shrink-0 items-start gap-4 border-b border-slate-100 px-5 py-4 pr-14 dark:border-slate-800 sm:px-6 sm:py-5">
+            <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border", styles.icon)}>
               <Icon className="h-5 w-5" />
             </div>
-            <div className={cn("mt-6 text-xs font-semibold uppercase tracking-[0.16em]", styles.eyebrow)}>
-              {eyebrow}
+            <div className="min-w-0 flex-1">
+              <div className={cn("text-xs font-medium", styles.eyebrow)}>{eyebrow}</div>
+              <h2 id={titleId} className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50">
+                {title}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{description}</p>
             </div>
-            <h2 id={titleId} className="mt-2 text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
-              {title}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">{description}</p>
-            {sidebar ? <div className="mt-7">{sidebar}</div> : null}
-          </aside>
+          </header>
+
+          {sidebar ? (
+            <div className={cn("shrink-0 border-b px-5 py-3 dark:border-slate-800 sm:px-6", styles.summary)}>
+              {sidebar}
+            </div>
+          ) : null}
 
           <div className="flex min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">{children}</div>
-            <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-6">
+            <div className="shrink-0 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/35 sm:px-6">
               {footer}
             </div>
           </div>
@@ -126,4 +131,3 @@ export function CourseOperationModal({
     </div>
   );
 }
-
