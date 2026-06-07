@@ -171,12 +171,12 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
     ),
     DocGenModelStep.STATIC_HTML_FIGURE: DocGenModelPolicy(
         step=DocGenModelStep.STATIC_HTML_FIGURE,
-        call_type="text",
+        call_type="structured",
         model="light",
-        max_tokens=7000,
+        max_tokens=2600,
         timeout_s=180,
         temperature=0.1,
-        note="静态 HTML 图示用于补足题目/函数/几何等教材插图。",
+        note="结构化规划静态讲义图示，由代码渲染为考试讲义式 HTML/SVG。",
     ),
     DocGenModelStep.INTERACTIVE_HTML: DocGenModelPolicy(
         step=DocGenModelStep.INTERACTIVE_HTML,

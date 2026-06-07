@@ -10,55 +10,65 @@ def build_static_html_figure_messages(
     *,
     figure_title: str,
     figure_goal: str,
+    figure_type: str,
     digest_mode: str,
     section_context: str,
 ) -> list[dict[str, str]]:
     mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
-你是 AITeachMe 的静态教学图示设计器。
-你要生成一个用于嵌入知识文档的单文件 HTML 图示，它的作用类似教材插图或题目附图，不是交互网页。
-你必须只输出一个完整、自包含、可直接运行的 HTML5 文档，不输出 Markdown、解释或额外文本。
+你是 AITeachMe 的讲义图示规划器。
+你只输出结构化 JSON FigureSpec，由后端渲染器统一画成考试讲义式辅助图。
+严禁输出 HTML、SVG、Markdown、解释文字或代码块。
 
 硬性边界：
-- 只生成单文件 HTML；CSS 全部内联。
-- 图形优先使用内联 SVG；必要时可用纯 HTML/CSS 布局。
-- 禁止 JavaScript、表单控件、按钮、滑块、动画、计时器和任何用户交互。
-- 禁止外部资源和联网能力：CDN、远程脚本、远程字体、远程图片、fetch、XHR、WebSocket 都不能使用。
-- 禁止 import、module script、localStorage、sessionStorage、cookie。
-- 必须能在 sandboxed iframe 中静态展示，也能在新标签页单独打开。
-- 只允许一个 `<!DOCTYPE html>`、一个 `<html>`、一个 `<head>` 和一个 `<body>`。
+- 只描述图示意图和元素，不设计网页样式。
+- 图和文必须严格对应；不要新增章节片段没有支持的事实、变量、点名、结论。
+- `source_refs` 必须摘录章节片段中的原句或短语，用于证明图中内容来自正文。
+- 标题、标签、公式、表格项必须短，像讲义题图，不像海报或网页组件。
+- 若不能确定复杂图形，选择更保守的流程、对比或公式关系图。
 
 教学质量标准：
-- 只画一个关键图，不做资料页，不堆多个无关图。
-- 图中必须有清晰中文标签、关键点/边/轴/量的标注，学生不看正文也能知道图在表达什么。
-- 如果是函数图，要有坐标轴、刻度或关键点；如果是几何图，要有边角关系或辅助线；如果是波形/统计/单位图，要突出比较对象。
-- 使用克制、清晰的视觉层级：线条、填充、标签、注释各司其职。
-- 移动端 320px 宽度下不能横向滚动，文字不能溢出或重叠。
+- 只规划一个关键图，不做资料页，不堆多个无关图。
+- 数学、物理、工程、地理、经济等题图优先用 `problem_diagram`，使用点、线、向量、坐标、区域、标签等元素。
+- 归纳类内容用 `comparison_table`，步骤类用 `process_steps`，公式关系用 `formula_derivation`。
+- 易错点用 `mistake_card`，概念关系用 `concept_map`。
+- 图形元素只使用受控 primitive：point、line、vector、shape、label、step、formula、table_row、relation、callout。
 
-图形自由度：
-- 不要套固定模板，不要总是生成居中白卡、蓝色标题、灰色背景的图。
-- 根据内容自主选择图形语言：坐标纸、几何作图纸、测量尺、波形面板、题目草图、单位换算条、统计小图或概念剖面都可以。
-- HTML 外壳只负责承载图，不要让装饰喧宾夺主；图形本身应该是第一视觉焦点。
-- 可以使用不同构图、标注方式、配色和留白，只要图示清楚、稳定、像教材里的附图。
+FigureSpec 字段：
+- type: concept_map | process_steps | comparison_table | formula_derivation | problem_diagram | mistake_card
+- title: 图示标题
+- summary: 图前一句简短说明
+- elements: 受控元素数组
+- annotations: 图注或必要说明
+- emphasis: 需要放入灰底提示框的记忆点，最多 2 条
+- source_refs: 章节片段原文摘录，最多 3 条
+
+problem_diagram 元素说明：
+- point: 需要 id/label/x/y，坐标为 0-100 的相对位置。
+- line/vector: 使用 from_id/to_id 连接已有 point；vector 表示带箭头的力、方向或位移。
+- label/callout: 使用 text/x/y 标注。
+- style 可用 solid/dashed/highlight/muted。
 """.strip()
 
     prompt = f"""
-请为下面章节片段生成一张静态 HTML 教学图示。
+请为下面章节片段规划一张讲义辅助图，只输出 JSON FigureSpec。
 
 图示标题：{figure_title}
 图示目标：{figure_goal or "把需要借助图形才能看清的关系画出来。"}
+建议图类型：{figure_type}
 文档模式：{mode_label}
 
 章节片段：
 {section_context}
 
 生成策略：
-1. 先判断这段内容最需要哪一种图：函数/坐标、几何结构、数轴/单位换算、波形、流程中的静态状态图、统计分布或题目示意。
-2. 只选择一种最贴合片段的图，不要把整段内容做成海报。
-3. 使用内联 SVG 画出主体图形；标签用中文短语，避免大段说明，构图和风格要随题目变化。
-4. 图下可放一行简短图注，说明图形如何服务本段知识点或题目条件。
-5. 不要生成交互控件，不要写脚本，不要加动画。
-6. 请确保 HTML 输出是完整文档，以 `<!DOCTYPE html>` 开始，并以一个 `</html>` 结束。
+1. 先从章节片段里抽取 2-3 条能直接支撑图示的 source_refs。
+2. 再确定 type；若建议图类型不合适，可以改成更保守的类型。
+3. 只规划一个关键图，图中文字必须短，避免长段解释。
+4. 若生成 problem_diagram，请给点、线、向量的相对坐标和标签。
+5. 若生成 comparison_table，请用 table_row 的 cells 表达每一行。
+6. 若生成 formula_derivation，请用 formula/step 元素表达推导顺序。
+7. 输出必须是一个 JSON 对象，不能包含代码块。
 """.strip()
 
     messages = [

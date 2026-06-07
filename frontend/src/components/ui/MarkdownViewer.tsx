@@ -2274,29 +2274,28 @@ function InteractiveHtmlEmbed({
       <figure
         data-doc-html-figure="true"
         data-doc-interactive-asset={preview.assetPath}
-        className="my-5 overflow-hidden rounded-xl border border-sky-100 bg-white dark:border-sky-500/20 dark:bg-slate-950"
+        className="my-5 overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
       >
-        <figcaption className="flex items-center justify-between gap-3 border-b border-sky-100 bg-sky-50/55 px-4 py-2.5 text-left dark:border-sky-500/20 dark:bg-sky-500/10">
+        <figcaption className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-3 py-2 text-left dark:border-slate-800 dark:bg-slate-950">
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <span className="block truncate text-xs font-medium text-slate-500 dark:text-slate-400">
               {preview.title || label || "静态图示"}
             </span>
-            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">静态图示，辅助理解题目条件与图形关系。</span>
           </span>
           {activePreview.mode === "asset" && (
             <button
               type="button"
               onClick={() => window.open(activePreview.previewUrl, "_blank", "noopener,noreferrer")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-500/50 dark:hover:text-sky-200"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2 text-xs font-medium text-slate-500 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-100"
             >
               <Maximize2 className="h-3.5 w-3.5" />
               打开
             </button>
           )}
         </figcaption>
-        <div className="bg-slate-50/55 p-3 dark:bg-slate-900/35">
+        <div className="bg-white p-2 dark:bg-slate-950">
           {loading ? (
-            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <div className="flex min-h-[320px] flex-col items-center justify-center border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
               <div className="flex items-center">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {loadingLabel}
@@ -2304,7 +2303,7 @@ function InteractiveHtmlEmbed({
               <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">{loadingStepLabel}</div>
             </div>
           ) : error ? (
-            <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
+            <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
               <p className="text-sm font-medium text-amber-900 dark:text-amber-100">图示暂时不可预览</p>
               <p className="max-w-md text-xs leading-6 text-amber-800/80 dark:text-amber-200/80">{error}</p>
               <button
@@ -2325,10 +2324,10 @@ function InteractiveHtmlEmbed({
               title={preview.title || "静态图示"}
               srcDoc={patchedHtml}
               sandbox=""
-              className="h-[min(520px,64vh)] min-h-[300px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+              className="h-[min(620px,72vh)] min-h-[360px] w-full border border-slate-200 bg-white dark:border-slate-800"
             />
           ) : (
-            <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <div className="flex min-h-[260px] items-center justify-center border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
               正在准备图示
             </div>
           )}
