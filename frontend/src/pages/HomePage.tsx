@@ -976,16 +976,16 @@ export function HomePage() {
           className="w-full relative z-10"
         >
           <div className={cn(
-            "w-full overflow-hidden rounded-[30px] border-[1.5px] backdrop-blur-xl transition-all",
+            "w-full overflow-hidden rounded-3xl border bg-white transition-all dark:bg-slate-950",
             hasEntryFiles
-              ? "border-indigo-300/80 bg-indigo-50/40 shadow-[0_8px_30px_rgba(99,102,241,0.10)] ring-2 ring-indigo-500/8 dark:border-indigo-500/30 dark:bg-indigo-900/10 dark:shadow-[0_8px_30px_rgba(99,102,241,0.2)]"
-              : "border-zinc-200/80 bg-white/70 shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-zinc-300 hover:bg-white/80 hover:shadow-[0_8px_30px_rgb(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-slate-600 dark:hover:bg-slate-900/90",
-            "focus-within:border-indigo-300 focus-within:shadow-[0_8px_30px_rgba(99,102,241,0.15)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50"
+              ? "border-slate-300 shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-700"
+              : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.07)] hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700",
+            "focus-within:border-slate-400 focus-within:shadow-[0_20px_48px_rgba(15,23,42,0.10)] dark:focus-within:border-slate-600"
           )}>
             <textarea
               ref={textareaRef}
               placeholder="描述你想构建的课程：学什么、给谁学、多久学完、希望每章包含什么"
-              className="w-full min-h-[104px] max-h-[240px] resize-none border-0 bg-transparent px-4 pb-2 pt-4 text-base leading-7 text-zinc-800 focus:outline-none placeholder:text-zinc-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+              className="w-full min-h-[148px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[156px] sm:px-6 sm:pt-6"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -994,7 +994,7 @@ export function HomePage() {
               disabled={isCreatingDraftCourse}
             />
 
-            <div className="px-4 pb-3 pt-1 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 border-t border-slate-100 px-4 pb-3 pt-2 dark:border-slate-800 sm:px-5">
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
@@ -1057,7 +1057,7 @@ export function HomePage() {
                     disabled={isWorking}
                     aria-label={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
                     title={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
                   >
                     {isUploadingFiles ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1070,7 +1070,7 @@ export function HomePage() {
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
                     aria-label="从资料库选择"
                     title="从我的资料库选择已有文件"
                   >
@@ -1099,7 +1099,7 @@ export function HomePage() {
                     aria-label={generateButtonLabel}
                     title={generateButtonLabel}
                     className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]",
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-zinc-900/10 active:scale-[0.98]",
                       canGenerate && !isWorking
                         ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
@@ -1112,8 +1112,8 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-3 w-full px-1">
-            <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="mt-4 w-full">
+            <div className="grid gap-2 sm:grid-cols-2">
               {activePromptStarters.map((starter) => {
                 const StarterIcon = starter.icon;
                 return (
@@ -1123,11 +1123,17 @@ export function HomePage() {
                     onClick={() => handlePromptStarterClick(starter.prompt)}
                     disabled={isWorking}
                     aria-label={`套用建课模板：${starter.label}，${starter.description}`}
-                    title={starter.prompt}
-                    className="group inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/75 px-3.5 text-xs font-medium text-zinc-500 shadow-sm shadow-zinc-900/[0.03] transition-all hover:border-indigo-200 hover:bg-white hover:text-indigo-700 hover:shadow-md hover:shadow-indigo-900/[0.06] focus:outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900/75 dark:text-slate-400 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900 dark:hover:text-indigo-200"
+                    title="点击套用到输入框"
+                    className="group flex min-h-[112px] w-full flex-col rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:border-slate-300 hover:bg-white hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)] focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/75 dark:hover:border-slate-700 dark:hover:bg-slate-950"
                   >
-                    <StarterIcon className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-indigo-500 dark:text-slate-500 dark:group-hover:text-indigo-300" />
-                    <span className="shrink-0">{starter.label}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      <StarterIcon className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                      <span>{starter.label}</span>
+                      <span className="text-xs font-normal text-slate-400 dark:text-slate-500">{starter.description}</span>
+                    </span>
+                    <span className="mt-2 block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {starter.prompt}
+                    </span>
                   </button>
                 );
               })}

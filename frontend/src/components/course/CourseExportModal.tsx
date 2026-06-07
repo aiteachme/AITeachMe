@@ -113,16 +113,17 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6">
       <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_54px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
+      <div className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_22px_70px_rgba(15,23,42,0.14)] dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:px-6">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">{previewQuery.data?.course_name ?? "导出课程"}</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">选择要写入 .atmx 包的内容</p>
+            <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Course Package</div>
+            <h2 className="mt-1 truncate text-lg font-semibold tracking-tight">{previewQuery.data?.course_name ?? "导出课程"}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">选择要写入 .atmx 包的内容。</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             aria-label="关闭导出面板"
           >
             <X className="h-4 w-4" />
@@ -131,23 +132,23 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {previewQuery.isLoading ? (
-            <div className="flex min-h-[240px] items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex min-h-[300px] items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" />
               正在统计导出内容...
             </div>
           ) : stats ? (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">始终包含</div>
-                <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <div className="space-y-5">
+              <div className="border-b border-slate-100 pb-4 dark:border-slate-800">
+                <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">始终包含</div>
+                <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
                   课程信息、知识图谱节点与关系
                 </div>
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <div className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">
                   {(stats?.knowledge_unit_count ?? 0)} 个知识点 / {(stats?.knowledge_edge_count ?? 0)} 条关系；原始上传文件、向量索引、临时构建状态和运行时锁不会导出。
                 </div>
               </div>
 
-              <div className="grid gap-2">
+              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
                 {optionRows.map((row) => {
                   const Icon = row.icon;
                   const checked = options[row.key];
@@ -155,10 +156,10 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
                     <label
                       key={row.key}
                       className={cn(
-                        "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition",
+                        "flex cursor-pointer items-start gap-3 px-4 py-3.5 transition",
                         checked
-                          ? "border-slate-300 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
-                          : "border-slate-200 bg-slate-50/70 opacity-75 dark:border-slate-800 dark:bg-slate-900/40",
+                          ? "bg-white dark:bg-slate-950"
+                          : "bg-slate-50/60 opacity-75 dark:bg-slate-900/45",
                       )}
                     >
                       <input
@@ -167,13 +168,13 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
                         onChange={() => toggleOption(row.key)}
                         className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400 dark:border-slate-600 dark:bg-slate-900"
                       />
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center text-slate-400 dark:text-slate-500">
                         <Icon className="h-4 w-4" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-3">
                           <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{row.title}</span>
-                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          <span className="shrink-0 font-mono text-xs text-slate-400 dark:text-slate-500">
                             {row.count}
                           </span>
                         </span>
@@ -197,15 +198,20 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
           ) : null}
         </div>
 
-        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="text-xs text-slate-500 dark:text-slate-400">
             已选择 {selectedRows.length} 类可选内容，约 {selectedDynamicCount + coreCount} 条记录
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
               取消
             </Button>
-            <Button type="button" onClick={() => exportMutation.mutate()} disabled={!canExport}>
+            <Button
+              type="button"
+              onClick={() => exportMutation.mutate()}
+              disabled={!canExport}
+              className="rounded-lg bg-slate-900 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            >
               {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               导出
             </Button>

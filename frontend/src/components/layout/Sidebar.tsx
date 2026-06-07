@@ -778,7 +778,7 @@ export function Sidebar({
                         </button>
 
                       {openMenuId === course.course_id ? (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                        <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-[0_12px_32px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900">
                           <button
                             type="button"
                             onClick={() => {
@@ -786,10 +786,10 @@ export function Sidebar({
                               setCourseActionError(undefined);
                               setExportCourseId(course.course_id);
                             }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-700/50"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
                             <Download className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                            导出 .atmx
+                            导出课程
                           </button>
                           <button
                             type="button"
@@ -797,7 +797,7 @@ export function Sidebar({
                               setOpenMenuId(null);
                               setRenameTarget({ id: course.course_id, name: displayName === "未命名课程" ? "" : course.name });
                             }}
-                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700/50"
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
                             <Edit3 className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                             重命名
@@ -808,7 +808,7 @@ export function Sidebar({
                               setOpenMenuId(null);
                               openDeleteModal(course);
                             }}
-                            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:border-slate-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                            className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             删除
