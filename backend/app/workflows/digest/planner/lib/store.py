@@ -205,7 +205,7 @@ def _build_course_description_from_plan(
         if profile is not None
         else []
     )
-    summary = _clean_course_metadata_text(str(plan_payload.get("plan_summary") or ""), max_chars=420)
+    plan_text = _clean_course_metadata_text(str(plan_payload.get("plan") or ""), max_chars=420)
 
     parts: list[str] = []
     if profile_description:
@@ -219,17 +219,15 @@ def _build_course_description_from_plan(
             parts.append(f"{label}学习空间。")
         elif topic_text:
             parts.append(f"围绕{topic_text}展开的学习空间。")
-    if summary and summary not in parts:
-        parts.append(summary)
+    if plan_text and plan_text not in parts:
+        parts.append(plan_text)
     return _clean_course_metadata_text(" ".join(parts), max_chars=800)
 
 
 def _build_course_user_intent_from_state(state: Mapping[str, Any]) -> str:
-    raw_intent = state.get("plan_intent") or {}
-    if isinstance(raw_intent, Mapping):
-        intent = _clean_course_metadata_text(str(raw_intent.get("plan_intent") or ""), max_chars=420)
-        if intent:
-            return intent
+    intent = _clean_course_metadata_text(str(state.get("intent") or ""), max_chars=420)
+    if intent:
+        return intent
     return _clean_course_metadata_text(str(state.get("user_prompt") or ""), max_chars=420)
 
 
@@ -281,12 +279,19 @@ def _maybe_update_course_from_planner(
     )
 
 
-def _apply_generated_course_name(plan_payload: dict[str, Any], generated_name: str) -> str:
+def _apply_generated_course_identity(
+    plan_payload: dict[str, Any],
+    *,
+    generated_name: str,
+    generated_icon_key: str,
+) -> str:
     title = " ".join(str(generated_name or "").strip().split())
-    if not title or title.casefold() in _AUTO_TITLE_PLACEHOLDERS:
-        return ""
-    plan_payload["course"] = title
-    return title
+    if title and title.casefold() not in _AUTO_TITLE_PLACEHOLDERS:
+        plan_payload["course_name"] = title
+    icon_key = normalize_course_icon_key(generated_icon_key)
+    if icon_key:
+        plan_payload["course_icon"] = icon_key
+    return title if title and title.casefold() not in _AUTO_TITLE_PLACEHOLDERS else ""
 
 
 def _update_planner_session_meta(
@@ -375,17 +380,16 @@ def _plan_response(
     return BuildPlannerPlanResponse(
         course_id=course_id,
         selected_file_ids=selected_file_ids,
+        course_name=str(plan.get("course_name") or ""),
+        course_icon=str(plan.get("course_icon") or ""),
         user_prompt=str(plan.get("user_prompt") or ""),
         digest_mode=str(plan.get("digest_mode") or "systematic"),
-        chapter_plan=list(plan.get("chapter_plan") or []),
+        intent=str(plan.get("intent") or ""),
+        summary=str(plan.get("summary") or ""),
+        suggestion=str(plan.get("suggestion") or ""),
+        plan=str(plan.get("plan") or ""),
+        chapters=list(plan.get("chapters") or []),
         build_constraints=dict(plan.get("build_constraints") or {}),
-        plan_summary=str(plan.get("plan_summary") or ""),
-        plan_steps=[str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
-        adjustment_questions=[
-            str(item).strip()
-            for item in list(plan.get("adjustment_questions") or [])
-            if str(item).strip()
-        ],
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
@@ -429,7 +433,7 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
         has_state_plan=bool(final_state.get("plan")),
         has_record_latest_plan=bool(record.get("latest_plan_json")),
         state_error=final_state.get("error"),
-        plan_chapter_count=len(list(plan.get("chapter_plan") or [])),
+        plan_chapter_count=len(list(plan.get("chapters") or [])),
     )
     return BuildPlannerSessionResponse(
         session_id=session_id,
@@ -531,7 +535,7 @@ def _create_planner_message(
             "message_kind": "planner_plan" if role == "assistant" else "planner_user_request",
             "planner_session_id": record.id,
             "plan_json": plan if role == "assistant" else None,
-            "plan_summary": str((plan or {}).get("plan_summary") or ""),
+            "plan": str((plan or {}).get("plan") or ""),
         },
     )
     touch_chat_session(
@@ -555,7 +559,7 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
         "status": _planner_status(record),
         "user_prompt": str(meta.get("user_prompt") or ""),
         "digest_mode": str(meta.get("digest_mode") or ""),
-        "selected_file_ids_json": _planner_selected_file_ids(record),
+        "selected_file_ids": _planner_selected_file_ids(record),
         "latest_plan_json": _planner_plan(record),
         "latest_summary": str(meta.get("latest_summary") or ""),
         "confirmed_plan_id": meta.get("confirmed_plan_id"),
@@ -566,30 +570,21 @@ def _record_snapshot(record: ChatSession) -> dict[str, Any]:
 
 
 def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
-    summary = str(plan_payload.get("plan_summary") or "").strip()
-    plan_steps = [str(item).strip() for item in list(plan_payload.get("plan_steps") or []) if str(item).strip()]
+    plan_text = str(plan_payload.get("plan") or "").strip()
+    suggestion = str(plan_payload.get("suggestion") or "").strip()
     chapters = [
         item
-        for item in list(plan_payload.get("chapter_plan") or [])
+        for item in list(plan_payload.get("chapters") or [])
         if isinstance(item, dict) and str(item.get("title") or "").strip()
     ]
     lines = [
-        "# 计划大纲",
+        "# Planner",
         "",
         f"> 模式：{planner_mode_label(plan_payload.get('digest_mode'))}",
-        f"> 一句话摘要：{summary or '已生成一份可确认的构建方案。'}",
+        f"> plan：{plan_text or '已生成一份可确认的构建方案。'}",
     ]
-    if plan_steps:
-        lines.extend(["", "## 计划步骤"])
-        lines.extend(f"{index}. {item}" for index, item in enumerate(plan_steps, start=1))
-    adjustment_questions = [
-        str(item).strip()
-        for item in list(plan_payload.get("adjustment_questions") or [])
-        if str(item).strip()
-    ]
-    if adjustment_questions:
-        lines.extend(["", "## 可以继续确认的问题"])
-        lines.extend(f"- {item}" for item in adjustment_questions)
+    if suggestion:
+        lines.extend(["", "## suggestion", suggestion])
     chapter_lines = []
     for index, chapter in enumerate(chapters, start=1):
         title = str(chapter.get("title") or "").strip()
@@ -655,7 +650,7 @@ def _build_planner_message_history(turns: list[ChatMessage]) -> list[str]:
 def _planner_plan_chapter_count(plan: Mapping[str, Any] | None) -> int:
     if not plan:
         return 0
-    chapters = plan.get("chapter_plan") or plan.get("chapters") or []
+    chapters = plan.get("chapters") or []
     if isinstance(chapters, list):
         return len(chapters)
     return 0
@@ -694,7 +689,7 @@ def _build_planner_context_payload(
         "planner_turn_count": len(turns),
         "user_revision_count": max(0, len(user_turns) - 1),
         "assistant_revision_count": len(assistant_turns),
-        "latest_plan_summary": str(plan.get("plan_summary") or meta.get("latest_summary") or ""),
+        "latest_plan": str(plan.get("plan") or meta.get("latest_summary") or ""),
         "planner_outline_markdown": str(latest_outline or "").strip(),
         "docgen_history_brief": _build_docgen_history_brief(turns),
     }
@@ -726,7 +721,7 @@ def _operation(state: Mapping[str, Any]) -> str:
 def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
     """Prepare persisted planner run data before material loading.
 
-    Called by the normal `load_planner_materials` node. This keeps session DB
+    Called by the normal `collect_planner_context` node. This keeps session DB
     IO inside the real workflow path without adding a separate "session node".
     """
 
@@ -880,7 +875,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 stored_turn_count=len(turns),
                 prompt_message_count=len(message_history),
                 history_turn_limit=_planner_history_turns(),
-                latest_plan_chapter_count=len(list(latest_plan.get("chapter_plan") or [])),
+                latest_plan_chapter_count=len(list(latest_plan.get("chapters") or [])),
             )
             return {
                 "file_ids": workflow_file_ids,
@@ -933,7 +928,7 @@ def save_planner_result(
             "planner_save_started",
             course_id=course_id,
             planner_session_id=record.id,
-            input_chapter_count=len(list((plan or {}).get("chapter_plan") or [])),
+            input_chapter_count=len(list((plan or {}).get("chapters") or [])),
             has_previous_plan=bool(meta.get("latest_plan")),
         )
         persisted_plan = _normalize_persisted_plan(
@@ -944,9 +939,10 @@ def save_planner_result(
             material_context=material_context,
             latest_plan=_planner_plan(record),
         )
-        generated_title = _apply_generated_course_name(
+        generated_title = _apply_generated_course_identity(
             persisted_plan,
-            str(state.get("generated_course_name") or ""),
+            generated_name=str(state.get("generated_course_name") or ""),
+            generated_icon_key=str(state.get("generated_course_icon_key") or ""),
         )
         course_description = _build_course_description_from_plan(
             persisted_plan,
@@ -966,7 +962,7 @@ def save_planner_result(
             session,
             record,
             latest_plan=persisted_plan,
-            latest_summary=str(persisted_plan.get("plan_summary") or state.get("plan_summary") or ""),
+            latest_summary=str(persisted_plan.get("plan") or ""),
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
             model_override=normalize_runtime_model_override(state.get("model_override")),
             planner_status="draft",
@@ -992,12 +988,11 @@ def save_planner_result(
             "planner_save_finished",
             course_id=course_id,
             planner_session_id=record.id,
-            persisted_chapter_count=len(list(persisted_plan.get("chapter_plan") or [])),
+            persisted_chapter_count=len(list(persisted_plan.get("chapters") or [])),
             turn_count=len(turns),
         )
         return {
             "plan": persisted_plan,
-            "plan_summary": str(persisted_plan.get("plan_summary") or ""),
             "digest_mode": str(persisted_plan.get("digest_mode") or state.get("digest_mode") or ""),
             "model_override": _planner_model_override(record),
             "selected_file_ids": selected_file_ids,
@@ -1012,8 +1007,8 @@ def _normalized_plan_payload(
     planner_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     build_constraints = dict(plan.get("build_constraints") or {})
-    chapter_plan = _ensure_chapter_count_payload(
-        list(plan.get("chapter_plan") or []),
+    chapters = _ensure_chapter_count_payload(
+        list(plan.get("chapters") or []),
         min_chapters=int(build_constraints.get("min_chapters", 0) or 0),
         max_chapters=int(build_constraints.get("max_chapters", 0) or 0),
         digest_mode=str(plan.get("digest_mode") or ""),
@@ -1021,18 +1016,16 @@ def _normalized_plan_payload(
         plan=plan,
     )
     payload = {
-        "course": str(plan.get("course") or ""),
+        "course_name": str(plan.get("course_name") or ""),
+        "course_icon": str(plan.get("course_icon") or ""),
         "user_prompt": str(plan.get("user_prompt") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
-        "chapter_plan": chapter_plan,
+        "intent": str(plan.get("intent") or ""),
+        "summary": str(plan.get("summary") or ""),
+        "suggestion": str(plan.get("suggestion") or ""),
+        "plan": str(plan.get("plan") or ""),
+        "chapters": chapters,
         "build_constraints": build_constraints,
-        "plan_summary": str(plan.get("plan_summary") or ""),
-        "plan_steps": [str(item).strip() for item in list(plan.get("plan_steps") or []) if str(item).strip()],
-        "adjustment_questions": [
-            str(item).strip()
-            for item in list(plan.get("adjustment_questions") or [])
-            if str(item).strip()
-        ],
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
     context_payload = dict(planner_context or plan.get("planner_context") or {})
@@ -1191,10 +1184,10 @@ def confirm_planner_session(
                 status="confirmed",
                 user_prompt=str(meta.get("user_prompt") or ""),
                 digest_mode=str(plan_payload.get("digest_mode") or meta.get("digest_mode") or ""),
-                selected_file_ids_json=_planner_selected_file_ids(record),
-                chapter_plan_json=list(plan_payload.get("chapter_plan") or []),
-                build_constraints_json=dict(plan_payload.get("build_constraints") or {}),
-                plan_summary=str(plan_payload.get("plan_summary") or meta.get("latest_summary") or ""),
+                selected_file_ids=_planner_selected_file_ids(record),
+                chapters=list(plan_payload.get("chapters") or []),
+                build_constraints=dict(plan_payload.get("build_constraints") or {}),
+                plan=str(plan_payload.get("plan") or meta.get("latest_summary") or ""),
                 plan_json=plan_payload,
             ),
         )
@@ -1203,7 +1196,7 @@ def confirm_planner_session(
         session,
         record,
         latest_plan=plan_payload,
-        latest_summary=str(plan_payload.get("plan_summary") or ""),
+        latest_summary=str(plan_payload.get("plan") or ""),
         confirmed_plan_id=confirmed.id,
         model_override=model_override,
         planner_status="confirmed",
@@ -1217,10 +1210,15 @@ def confirm_planner_session(
         status=_planner_status(record),
         digest_mode=confirmed.digest_mode,
         model_override=model_override,
-        selected_file_ids=list(confirmed.selected_file_ids_json),
+        selected_file_ids=list(confirmed.selected_file_ids),
         user_prompt=confirmed.user_prompt,
-        plan_summary=confirmed.plan_summary,
-        chapter_plan=list(plan_payload.get("chapter_plan") or []),
+        course_name=str(plan_payload.get("course_name") or ""),
+        course_icon=str(plan_payload.get("course_icon") or ""),
+        intent=str(plan_payload.get("intent") or ""),
+        summary=str(plan_payload.get("summary") or ""),
+        suggestion=str(plan_payload.get("suggestion") or ""),
+        plan=str(plan_payload.get("plan") or confirmed.plan or ""),
+        chapters=list(plan_payload.get("chapters") or []),
         build_constraints=dict(plan_payload.get("build_constraints") or {}),
         plan_json=plan_payload,
         status_history=[confirmed.status, _planner_status(record)],
@@ -1248,7 +1246,7 @@ def get_latest_planner_session(
         planner_session_id=record.id,
         turn_count=len(turns),
         has_latest_plan=bool(plan_payload),
-        chapter_count=len(list(plan_payload.get("chapter_plan") or [])),
+        chapter_count=len(list(plan_payload.get("chapters") or [])),
     )
     return _planner_session_response(
         record,
@@ -1285,7 +1283,7 @@ def get_planner_adjust_click_context(
         "turn_count": len(turns),
         "selected_file_count": len(selected_file_ids),
         "has_latest_plan": bool(latest_plan),
-        "latest_plan_chapter_count": len(list(latest_plan.get("chapter_plan") or [])),
+        "latest_plan_chapter_count": len(list(latest_plan.get("chapters") or [])),
         "confirmed_plan_id": meta.get("confirmed_plan_id"),
     }
     logger.info(

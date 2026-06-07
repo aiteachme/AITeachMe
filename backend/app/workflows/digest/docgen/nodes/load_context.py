@@ -60,7 +60,7 @@ def build_load_context_node(*, context: WorkflowContext):
             location = location or "confirmed_plan"
             return {"error": f"已确认的构建方案字段不完整或格式错误：{location}"}
 
-        if not plan_contract.chapter_plan:
+        if not plan_contract.chapters:
             return {"error": "已确认的构建方案缺少章节规划，无法继续生成知识文档。"}
 
         digest_mode = str(plan_contract.digest_mode or digest_mode)
@@ -99,7 +99,7 @@ def build_load_context_node(*, context: WorkflowContext):
             "retrieval_policy": retrieval_policy,
             "teaching_action": str(state.get("teaching_action") or "docgen_build"),
             "user_prompt": str(plan_contract.user_prompt or state.get("user_prompt") or ""),
-            "plan_summary": str(plan_contract.plan_summary or ""),
+            "plan": str(plan_contract.plan or ""),
             "docgen_history_brief": docgen_history_brief,
             "planner_context": planner_context,
             "build_constraints": build_constraints,
@@ -112,7 +112,7 @@ def build_load_context_node(*, context: WorkflowContext):
             digest_mode=digest_mode,
             retrieval_profile=retrieval_profile,
             user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
-            plan_summary=str(plan_contract.plan_summary or ""),
+            plan=str(plan_contract.plan or ""),
             docgen_history_brief=docgen_history_brief,
             planner_context=planner_context,
             build_constraints=build_constraints,
@@ -132,14 +132,14 @@ def build_load_context_node(*, context: WorkflowContext):
             digest_mode=digest_mode,
             mode_reason=(plan_contract.mode_reason or "confirmed_build_plan"),
             current_stage_description=(
-                str(plan_contract.plan_summary or "方案已确认，开始按章节执行。")
+                str(plan_contract.plan or "方案已确认，开始按章节执行。")
                 if has_local_materials
-                else str(plan_contract.plan_summary or "方案已确认，当前没有本地资料，将优先执行联网研究。")
+                else str(plan_contract.plan or "方案已确认，当前没有本地资料，将优先执行联网研究。")
             ),
             total_chunks=len(assignments),
             processed_chunks=0,
             current_chunk=0,
-            plan_summary=str(plan_contract.plan_summary or ""),
+            plan=str(plan_contract.plan or ""),
             chapter_progress=[
                 {
                     "chapter_index": int(item.get("chapter_index", index + 1) or (index + 1)),

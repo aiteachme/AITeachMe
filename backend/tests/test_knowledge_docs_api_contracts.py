@@ -80,9 +80,15 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
         latest_plan=BuildPlannerPlanResponse(
             course_id=COURSE_ID,
             selected_file_ids=["file-a"],
+            course_name="API 课程规划",
+            course_icon="book-open",
             user_prompt="learn",
             digest_mode="sprint",
-            chapter_plan=[
+            intent="intent",
+            summary="summary",
+            suggestion="suggestion",
+            plan="plan",
+            chapters=[
                 {
                     "chapter_index": 1,
                     "title": "Intro",
@@ -90,9 +96,6 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
                 }
             ],
             build_constraints={},
-            plan_summary="summary",
-            plan_steps=["step"],
-            adjustment_questions=["question"],
             status="draft",
             planner_session_id="planner-session-12345678",
         ),
@@ -119,8 +122,13 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
         model_override="model-a",
         selected_file_ids=["file-a"],
         user_prompt="learn",
-        plan_summary="summary",
-        chapter_plan=[
+        course_name="API 课程规划",
+        course_icon="book-open",
+        intent="intent",
+        summary="summary",
+        suggestion="suggestion",
+        plan="plan",
+        chapters=[
             {
                 "chapter_index": 1,
                 "title": "Intro",

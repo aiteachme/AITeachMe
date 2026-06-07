@@ -13,12 +13,10 @@ PlannerModelSlot = Literal["light", "primary", "reason"]
 
 
 class PlannerModelStep(str, Enum):
-    STREAM_BRIEF = "stream_brief_and_extract_intent.stream_planner_brief"
-    EXTRACT_INTENT = "stream_brief_and_extract_intent.extract_plan_intent"
-    VISIBLE_PLAN = "stream_and_parse_plan_draft.visible_plan"
-    STRUCTURED_PLAN = "stream_and_parse_plan_draft.structured_plan"
-    COURSE_NAME = "generate_course_name"
-    COURSE_ICON = "generate_course_name.select_course_icon"
+    STREAM_INTENT = "understand_goal_and_materials.stream_intent"
+    SUMMARIZE_MATERIALS = "understand_goal_and_materials.summarize_materials"
+    DRAFT_PLAN = "compose_planner_draft"
+    COURSE_IDENTITY = "generate_course_identity"
 
 
 @dataclass(frozen=True)
@@ -78,59 +76,41 @@ class PlannerModelPolicy:
 
 
 _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
-    PlannerModelStep.STREAM_BRIEF: PlannerModelPolicy(
-        step=PlannerModelStep.STREAM_BRIEF,
+    PlannerModelStep.STREAM_INTENT: PlannerModelPolicy(
+        step=PlannerModelStep.STREAM_INTENT,
         call_type="stream",
         model="light",
         max_tokens=2200,
         timeout_s=300,
         temperature=0.2,
-        note="用户可见的资料边界判断，不负责最终合同，用 light 降低首屏等待。",
+        note="首轮流式识别学习意图和规划边界。",
     ),
-    PlannerModelStep.EXTRACT_INTENT: PlannerModelPolicy(
-        step=PlannerModelStep.EXTRACT_INTENT,
+    PlannerModelStep.SUMMARIZE_MATERIALS: PlannerModelPolicy(
+        step=PlannerModelStep.SUMMARIZE_MATERIALS,
         call_type="structured",
         model="light",
-        max_tokens=1800,
+        max_tokens=1600,
         timeout_s=120,
         temperature=0.1,
-        note="结构化抽取内部规划抓手，输出短，优先 light 提速。",
+        note="首轮摘要学习资料，形成 summary 字段。",
     ),
-    PlannerModelStep.VISIBLE_PLAN: PlannerModelPolicy(
-        step=PlannerModelStep.VISIBLE_PLAN,
+    PlannerModelStep.DRAFT_PLAN: PlannerModelPolicy(
+        step=PlannerModelStep.DRAFT_PLAN,
         call_type="stream",
         model="light",
-        max_tokens=1200,
+        max_tokens=5200,
         timeout_s=480,
-        temperature=0.2,
-        note="流式输出用户可见计划说明，不承载机器合同。",
+        temperature=0.1,
+        note="生成 suggestion、plan 和 chapters；plan 段落会流式展示。",
     ),
-    PlannerModelStep.STRUCTURED_PLAN: PlannerModelPolicy(
-        step=PlannerModelStep.STRUCTURED_PLAN,
+    PlannerModelStep.COURSE_IDENTITY: PlannerModelPolicy(
+        step=PlannerModelStep.COURSE_IDENTITY,
         call_type="structured",
         model="light",
-        max_tokens=5000,
-        timeout_s=480,
-        temperature=0.1,
-        note="通过 response_model 生成可确认课程方案和机器大纲合同。",
-    ),
-    PlannerModelStep.COURSE_NAME: PlannerModelPolicy(
-        step=PlannerModelStep.COURSE_NAME,
-        call_type="text",
-        model="light",
-        max_tokens=40,
+        max_tokens=240,
         timeout_s=300,
-        temperature=0.65,
-        note="短标题生成需要一定发散度，单独提高采样温度以减少同质化。",
-    ),
-    PlannerModelStep.COURSE_ICON: PlannerModelPolicy(
-        step=PlannerModelStep.COURSE_ICON,
-        call_type="text",
-        model="light",
-        max_tokens=20,
-        timeout_s=120,
-        temperature=0.1,
-        note="图标候选选择属于轻量分类任务。",
+        temperature=0.35,
+        note="一次结构化调用同时生成课程名和课程图标 key。",
     ),
 }
 

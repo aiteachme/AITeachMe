@@ -1,4 +1,4 @@
-"""Load persisted planner session data and parsed source materials."""
+"""Collect planner session state, selected files and readable material context."""
 
 from __future__ import annotations
 
@@ -135,16 +135,16 @@ def _load_existing_doc_context(*, course_id: str) -> str:
     return _read_existing_doc_structured_context(course_id=course_id)
 
 
-def build_load_planner_materials_node(*, context: WorkflowContext):
-    """构建 Planner 资料准备节点。
+def build_collect_planner_context_node(*, context: WorkflowContext):
+    """构建 Planner 上下文汇总节点。
 
-    负责把 API create/append 输入转成统一的 material_context。它会读取
-    或创建 planner session，选择本轮可用资料，并为后续意图识别和大纲
-    合成提供轻量资料摘要。
+    把 API create/append 输入转成统一的 planner 上下文：读取或创建
+    planner session，锁定本轮文件选择，加载可读资料摘要，并在资料尚未
+    解析完成时构造 seed context。
     """
 
-    async def load_planner_materials_node(state: BuildPlannerState) -> dict:
-        """读取 Planner 会话状态和资料理解包。"""
+    async def collect_planner_context_node(state: BuildPlannerState) -> dict:
+        """汇总 Planner 会话状态、资料边界和现有知识文档摘要。"""
 
         logger.info(
             "planner_load_materials_started",
@@ -185,14 +185,23 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
         if not material_context.source_documents:
             # 刚上传后 parsed markdown 可能还没准备好。seed context 让 planner
             # 至少可以基于文件名和用户提示先给出临时方案。
-            await emit_planner_event(
-                working_state,
-                event="planner.material.pending",
-                detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户提示生成临时方案。",
-            )
+            selected_ids = list(working_state.get("file_ids", []) or [])
+            if selected_ids:
+                await emit_planner_event(
+                    working_state,
+                    event="planner.material.pending",
+                    detail="当前资料正文尚未解析完成，本轮将先依据文件名和用户提示生成临时方案。",
+                    payload={"file_count": len(selected_ids)},
+                )
+            else:
+                await emit_planner_event(
+                    working_state,
+                    event="planner.material.empty",
+                    detail="本轮没有绑定上传资料，将只根据学习目标和通用课程常识规划，不会假装已读取材料。",
+                )
             material_context = _build_seed_material_context(
                 course_id=working_state["course_id"],
-                file_ids=list(working_state.get("file_ids", [])),
+                file_ids=selected_ids,
                 user_prompt=working_state.get("user_prompt"),
             )
             logger.warning(
@@ -255,16 +264,20 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
                 planner_context_mode=planner_context_mode,
             )
 
+        source_count = len(material_context.source_documents)
+        section_count = len(material_context.material_sections)
+        ready_detail = (
+            f"已读取 {source_count} 个资料文件，整理 {section_count} 个内容片段。"
+            if source_count
+            else "已确认本轮没有可读取资料，后续方案会只围绕学习目标展开。"
+        )
         await emit_planner_event(
             working_state,
             event="planner.material.ready",
-            detail=(
-                f"已读取 {len(material_context.source_documents)} 个资料文件，"
-                f"整理 {len(material_context.material_sections)} 个内容片段。"
-            ),
+            detail=ready_detail,
             payload={
-                "source_count": len(material_context.source_documents),
-                "section_count": len(material_context.material_sections),
+                "source_count": source_count,
+                "section_count": section_count,
             },
         )
         result = {
@@ -282,7 +295,7 @@ def build_load_planner_materials_node(*, context: WorkflowContext):
         )
         return result
 
-    return load_planner_materials_node
+    return collect_planner_context_node
 
 
-__all__ = ["build_load_planner_materials_node"]
+__all__ = ["build_collect_planner_context_node"]

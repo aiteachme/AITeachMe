@@ -1,6 +1,8 @@
 """Planner graph definition and public workflow entrypoints.
 
-真实链路主线：读取资料 -> 理解目标 ->（并行：生成标题 / 合成大纲）-> 保存方案。
+真实链路主线：
+读取输入 -> 首轮并行生成 intent/summary -> 二阶段并行生成 course identity 和 planner -> 保存。
+调整链路会复用上一版 intent/summary/course identity，只调用一次 planner 生成。
 """
 
 from __future__ import annotations
@@ -41,17 +43,11 @@ from app.workflows.digest.planner.lib.steps import (
     STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.lib.tracing import normalize_planner_operation, planner_trace_run_name
-from app.workflows.digest.planner.nodes.generate_course_name import build_generate_course_name_node
-from app.workflows.digest.planner.nodes.load_planner_materials import build_load_planner_materials_node
-from app.workflows.digest.planner.nodes.normalize_and_persist_plan import (
-    build_normalize_and_persist_plan_node,
-)
-from app.workflows.digest.planner.nodes.stream_and_parse_plan_draft import (
-    build_stream_and_parse_plan_draft_node,
-)
-from app.workflows.digest.planner.nodes.stream_brief_and_extract_intent import (
-    build_stream_brief_and_extract_intent_node,
-)
+from app.workflows.digest.planner.nodes.collect_planner_context import build_collect_planner_context_node
+from app.workflows.digest.planner.nodes.compose_planner_draft import build_compose_planner_draft_node
+from app.workflows.digest.planner.nodes.generate_course_identity import build_generate_course_identity_node
+from app.workflows.digest.planner.nodes.save_planner_draft import build_save_planner_draft_node
+from app.workflows.digest.planner.nodes.understand_goal_and_materials import build_understand_goal_and_materials_node
 from app.workflows.digest.planner.state import (
     BuildPlannerGraphInput,
     BuildPlannerGraphOutput,
@@ -63,9 +59,9 @@ logger = structlog.get_logger(__name__)
 NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     STEP_LOAD_MATERIALS: {
         "description": (
-            "读取或创建 Planner 会话，解析 create/append 请求中的资料选择、历史消息和最新方案，"
-            "并加载本轮可用的 DigestMaterialContext。若资料正文尚未解析完成，会基于文件名、用户提示和课程元信息生成 seed context，"
-            "保证 Planner 能先产出可继续修改的临时方案。"
+            "把 API 请求整理成本轮 Planner 可用上下文：读取或创建 planner session，锁定选择的资料，"
+            "加载可读 markdown / digest / 当前知识文档摘要。若资料还在解析，只用文件名、检测信息和用户目标构造 seed context，"
+            "明确标记为临时方案输入。"
         ),
         "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
         "writes": ["selected_file_ids", "material_context", "digest_mode", "planner_context_stats"],
@@ -95,11 +91,11 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     STEP_UNDERSTAND_GOAL: {
         "description": (
-            "并行执行两个轻规划动作：一边流式生成用户可见的资料边界/学习目标判断，一边抽取内部 PlanIntent。"
-            "输出 planner_brief 和 plan_intent，供后续大纲合成与标题生成共用；这个节点不写最终学习大纲。"
+            "首轮生成时并行完成两个理解动作：流式写出用户可见的 intent / 规划边界，结构化摘要资料与学科情况。"
+            "调整已有 planner 时不重新理解范围，直接复用上一版 intent 和 summary。"
         ),
         "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
-        "writes": ["planner_brief", "plan_intent"],
+        "writes": ["intent", "summary"],
         "input_keys": [
             "course_id",
             "material_context",
@@ -111,23 +107,23 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
             "model_override",
         ],
-        "output_keys": ["planner_brief", "plan_intent", "bootstrap_ms", "error"],
-        "fanout": "internal_async_brief_and_intent",
+        "output_keys": ["intent", "summary", "bootstrap_ms", "error"],
+        "fanout": "stream_intent + summarize_materials",
         "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
     },
     STEP_COMPOSE_PLAN: {
         "description": (
-            "基于 material_context、planner_brief、plan_intent、历史消息和 latest_plan 并行生成两类输出："
-            "流式用户可见计划说明，以及通过 response_model 校验的机器大纲合同 build_plan_draft。"
-            "结构化合同不完整时让 Planner 明确失败，不本地猜大纲。"
+            "用一次流式 LLM 把 intent、summary、历史对话和最新反馈合成新的 Planner 草案。"
+            "plan 标签内文本实时 SSE 给前端，完整输出解析为 suggestion、plan、chapters。"
+            "调整方案时，这一步是唯一会重新调用的 Planner 生成模型。"
         ),
-        "reads": ["material_context", "planner_brief", "plan_intent", "message_history", "latest_plan"],
+        "reads": ["material_context", "intent", "summary", "message_history", "latest_plan", "feedback_message"],
         "writes": ["build_plan_draft", "plan_outline_markdown"],
         "input_keys": [
             "course_id",
             "material_context",
-            "planner_brief",
-            "plan_intent",
+            "intent",
+            "summary",
             "user_prompt",
             "digest_mode",
             "model_override",
@@ -136,36 +132,37 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
         ],
         "output_keys": ["build_plan_draft", "plan_outline_markdown", "compose_ms", "error"],
-        "fanin": "joins STEP_GENERATE_TITLE at STEP_SAVE_PLAN",
+        "fanin": "joins generate_course_identity at save_planner_draft",
     },
     STEP_GENERATE_TITLE: {
         "description": (
-            "仅在创建新 Planner 会话时运行，和大纲合成并行。它根据资料文件名、topic hints、planner_brief 和 plan_intent "
-            "生成短课程标题，并选择课程图标；不会依赖最终大纲，也不会改章节计划。"
+            "仅在创建新 Planner 会话时运行，和 Planner 草案生成并行。"
+            "根据 intent、summary、资料文件名和 topic hints，通过一次结构化 LLM 生成 course_name 与 course_icon。"
+            "调整方案时不重复生成课程身份。"
         ),
-        "reads": ["material_context", "planner_brief", "plan_intent", "user_prompt", "digest_mode"],
+        "reads": ["material_context", "intent", "summary", "user_prompt", "digest_mode"],
         "writes": ["generated_course_name", "generated_course_icon_key"],
         "input_keys": [
             "planner_operation",
             "material_context",
-            "planner_brief",
-            "plan_intent",
+            "intent",
+            "summary",
             "user_prompt",
             "digest_mode",
             "model_override",
             "planner_session_id",
         ],
         "output_keys": ["generated_course_name", "generated_course_icon_key", "title_ms"],
-        "fanin": "joins STEP_COMPOSE_PLAN at STEP_SAVE_PLAN",
+        "fanin": "joins compose_planner_draft at save_planner_draft",
     },
     STEP_SAVE_PLAN: {
         "description": (
-            "等待大纲草稿和标题分支 fan-in 后，把 build_plan_draft 规范化成稳定 BuildPlan 合同，"
-            "补齐章节索引、目标、required_elements、模式和摘要，再写入 planner session / chat mirror。"
-            "这是 Planner 的发布边界，DocGen 只消费这里保存后的 confirmed plan。"
+            "等待 Planner 草案和课程身份两个分支汇合，把 build_plan_draft 规范化成稳定 latest_plan。"
+            "补齐章节索引、目标、required_elements、模式、course_name/course_icon，并写入 planner session 与 chat mirror。"
+            "这里保存的是可继续调整的草案；用户确认后才会冻结为 DocGen 消费的 confirmed planner。"
         ),
         "reads": ["build_plan_draft", "generated_course_name", "material_context", "latest_plan"],
-        "writes": ["plan", "plan_summary", "planner_record", "planner_turns", "digest_mode"],
+        "writes": ["plan", "planner_record", "planner_turns", "digest_mode"],
         "input_keys": [
             "course_id",
             "user_id",
@@ -177,14 +174,13 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         ],
         "output_keys": [
             "plan",
-            "plan_summary",
             "planner_record",
             "planner_turns",
             "digest_mode",
             "finalize_ms",
             "error",
         ],
-        "fanin": "STEP_COMPOSE_PLAN + STEP_GENERATE_TITLE",
+        "fanin": "compose_planner_draft + generate_course_identity",
     },
 }
 
@@ -226,8 +222,8 @@ def _langgraph_node_metadata(step: str) -> dict[str, object]:
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     """构建 Planner 的 LangGraph。
 
-    Planner 只负责生成和修订可确认的构建方案：读取资料、理解目标、
-    并行生成标题与大纲、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
+    Planner 只负责生成和修订可确认的 planner：读取资料、生成 intent/summary、
+    并行生成课程身份与 suggestion/plan/chapters、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
     也不要把 API 持久化细节塞进节点之外的地方。
     """
 
@@ -243,7 +239,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_LOAD_MATERIALS,
-            build_load_planner_materials_node(context=context),
+            build_collect_planner_context_node(context=context),
             timing_field="prepare_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_LOAD_MATERIALS),
@@ -253,7 +249,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_UNDERSTAND_GOAL,
-            build_stream_brief_and_extract_intent_node(context=context),
+            build_understand_goal_and_materials_node(context=context),
             timing_field="bootstrap_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_UNDERSTAND_GOAL),
@@ -263,7 +259,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_COMPOSE_PLAN,
-            build_stream_and_parse_plan_draft_node(context=context),
+            build_compose_planner_draft_node(context=context),
             timing_field="compose_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_COMPOSE_PLAN),
@@ -273,7 +269,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_GENERATE_TITLE,
-            build_generate_course_name_node(context=context),
+            build_generate_course_identity_node(context=context),
             timing_field="title_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_GENERATE_TITLE),
@@ -283,7 +279,7 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_SAVE_PLAN,
-            build_normalize_and_persist_plan_node(context=context),
+            build_save_planner_draft_node(context=context),
             timing_field="finalize_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_SAVE_PLAN),

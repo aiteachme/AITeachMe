@@ -267,8 +267,8 @@ export function useDocMarkdown(): DocMarkdownState {
     [renderedChapterHighlights, renderedMarkdown, renderedCourseLabel],
   );
   const renderedDocSummary = useMemo(
-    () => extractFirstMarkdownParagraph(renderedMarkdown) ?? buildPreview?.plan_summary?.trim() ?? "正在整理知识文档...",
-    [buildPreview?.plan_summary, renderedMarkdown],
+    () => extractFirstMarkdownParagraph(renderedMarkdown) ?? buildPreview?.plan?.trim() ?? "正在整理知识文档...",
+    [buildPreview?.plan, renderedMarkdown],
   );
 
   const sourceFilesQuery = useQuery({

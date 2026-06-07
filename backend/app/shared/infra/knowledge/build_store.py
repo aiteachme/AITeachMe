@@ -229,7 +229,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     doc_sync_llm_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
-    plan_summary: str | None = None
+    plan: str | None = None
     metrics: dict[str, object] = Field(default_factory=dict)
     chapter_progress: list[dict[str, object]] = Field(default_factory=list)
     chapter_previews: list[dict[str, object]] = Field(default_factory=list)

@@ -97,8 +97,8 @@ def _confirmed_plan(*, status: str = "confirmed") -> ConfirmedBuildPlan:
         status=status,
         user_prompt="按矩阵和线性映射生成知识文档",
         digest_mode="systematic",
-        selected_file_ids_json=["file-ready", "file-pending"],
-        chapter_plan_json=[
+        selected_file_ids=["file-ready", "file-pending"],
+        chapters=[
             {
                 "chapter_index": 1,
                 "title": "矩阵对象",
@@ -112,9 +112,31 @@ def _confirmed_plan(*, status: str = "confirmed") -> ConfirmedBuildPlan:
                 "required_elements": ["基变换"],
             },
         ],
-        build_constraints_json={"min_chapters": 2, "max_chapters": 2},
-        plan_summary="两章完成线性代数主线。",
-        plan_json={"course_name": "线性代数", "model_override": "qwen-flash"},
+        build_constraints={"min_chapters": 2, "max_chapters": 2},
+        plan="两章完成线性代数主线。",
+        plan_json={
+            "course_name": "线性代数",
+            "course_icon": "calculator",
+            "intent": "按矩阵和线性映射生成知识文档",
+            "summary": "资料围绕矩阵对象和线性映射。",
+            "suggestion": "如果更偏考试，可以增加题型训练。",
+            "plan": "两章完成线性代数主线。",
+            "chapters": [
+                {
+                    "chapter_index": 1,
+                    "title": "矩阵对象",
+                    "objective": "讲清矩阵基础",
+                    "required_elements": ["矩阵乘法"],
+                },
+                {
+                    "chapter_index": 2,
+                    "title": "线性映射",
+                    "objective": "讲清映射视角",
+                    "required_elements": ["基变换"],
+                },
+            ],
+            "model_override": "qwen-flash",
+        },
     )
 
 
@@ -239,7 +261,7 @@ def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.Mo
         progress_pct=42,
         current_stage_description="正在写章节",
         digest_mode="systematic",
-        plan_summary="两章计划",
+        plan="两章计划",
         sample_nodes=[{"name": "Matrix", "type": "concept"}, {"name": "", "type": "ignored"}],
         sample_cards=[{"title": "Card", "summary": "Summary", "card_type": ""}, {"title": "", "summary": "Ignored"}],
         chapter_progress=[{"chapter_index": 1, "title": "矩阵", "status": "drafting", "source_count": 2}],

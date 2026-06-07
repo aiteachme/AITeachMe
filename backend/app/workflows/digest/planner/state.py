@@ -35,8 +35,8 @@ class BuildPlannerState(TypedDict, total=False):
 
     # Planner working artifacts
     material_context: DigestMaterialContext
-    planner_brief: dict[str, Any]
-    plan_intent: dict[str, Any]
+    intent: str
+    summary: str
     generated_course_name: str
     generated_course_icon_key: str
     plan_outline_markdown: str
@@ -44,7 +44,6 @@ class BuildPlannerState(TypedDict, total=False):
 
     # Stable graph output
     plan: dict[str, Any]
-    plan_summary: str
     planner_record: dict[str, Any]
     planner_turns: list[dict[str, Any]]
 
@@ -90,7 +89,6 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
     name="BuildPlannerGraphOutput",
     fields=[
         "plan",
-        "plan_summary",
         "digest_mode",
         "model_override",
         "selected_file_ids",

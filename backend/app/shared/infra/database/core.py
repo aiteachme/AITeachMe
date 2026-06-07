@@ -804,6 +804,9 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
             if session_row is None:
                 continue
             meta = _sqlite_json_object(session_row.get("meta_json"))
+            raw_plan_json = _sqlite_json_object(row.get("plan_json"))
+            confirmed_chapters = list(raw_plan_json.get("chapters") or _sqlite_json_list(row.get("chapter_plan_json")))
+            confirmed_plan_text = str(raw_plan_json.get("plan") or row.get("plan_summary") or "")
             plan_payload = {
                 "id": row.get("id"),
                 "course_id": row.get("course_id"),
@@ -812,11 +815,11 @@ def _migrate_sqlite_confirmed_build_plans(engine: sa.Engine) -> None:
                 "status": row.get("status") or "confirmed",
                 "user_prompt": row.get("user_prompt") or "",
                 "digest_mode": row.get("digest_mode") or "",
-                "selected_file_ids_json": _sqlite_json_list(row.get("selected_file_ids_json")),
-                "chapter_plan_json": _sqlite_json_list(row.get("chapter_plan_json")),
-                "build_constraints_json": _sqlite_json_object(row.get("build_constraints_json")),
-                "plan_summary": row.get("plan_summary") or "",
-                "plan_json": _sqlite_json_object(row.get("plan_json")),
+                "selected_file_ids": _sqlite_json_list(row.get("selected_file_ids_json")),
+                "chapters": confirmed_chapters,
+                "build_constraints": _sqlite_json_object(row.get("build_constraints_json")),
+                "plan": confirmed_plan_text,
+                "plan_json": {**raw_plan_json, "chapters": confirmed_chapters, "plan": confirmed_plan_text},
                 "created_at": str(row.get("created_at") or ""),
                 "updated_at": str(row.get("updated_at") or ""),
             }

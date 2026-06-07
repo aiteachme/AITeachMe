@@ -117,7 +117,7 @@ def _seed_course_graph(session: Session) -> None:
             "confirmed_plan": {
                 "id": "plan-1",
                 "course_id": COURSE_ID,
-                "selected_file_ids_json": ["file-old"],
+                "selected_file_ids": ["file-old"],
                 "plan_json": {"course_id": COURSE_ID, "selected_file_ids": ["file-old"]},
             }
         },
@@ -454,7 +454,7 @@ def test_planner_meta_remap_updates_plan_identity_and_selected_files() -> None:
             "confirmed_plan": {
                 "id": "old-plan",
                 "course_id": "old-course",
-                "selected_file_ids_json": ["old-file"],
+                "selected_file_ids": ["old-file"],
                 "plan_json": {"course_id": "old-course", "selected_file_ids": ["old-file"]},
             },
         },
@@ -473,7 +473,7 @@ def test_planner_meta_remap_updates_plan_identity_and_selected_files() -> None:
     assert meta["selected_file_ids"] == ["new-file"]
     assert meta["confirmed_plan"]["course_id"] == IMPORTED_COURSE_ID
     assert meta["confirmed_plan"]["user_id"] == "user-2"
-    assert meta["confirmed_plan"]["selected_file_ids_json"] == ["new-file"]
+    assert meta["confirmed_plan"]["selected_file_ids"] == ["new-file"]
     assert meta["confirmed_plan"]["plan_json"]["confirmed_plan_id"] == meta["confirmed_plan"]["id"]
     assert meta["confirmed_plan_history"][0]["id"] == meta["confirmed_plan"]["id"]
 

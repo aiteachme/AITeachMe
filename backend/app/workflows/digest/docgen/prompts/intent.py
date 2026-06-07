@@ -14,7 +14,7 @@ def build_intent_core_messages(
     course_name: str,
     digest_mode: str,
     user_prompt: str,
-    plan_summary: str,
+    plan: str,
     material_profile: Mapping[str, Any],
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
@@ -32,13 +32,13 @@ def build_intent_core_messages(
 规划器已经决定大纲；你只判断文档应该怎样讲，不能修改章节数量、顺序或主题。
 """.strip()
     prompt = f"""
-请根据用户提示、规划摘要、材料画像和章节标题，识别本轮知识文档的文档级写作意图。
+请根据用户提示、Planner plan、材料画像和章节标题，识别本轮知识文档的文档级写作意图。
 这里的任务不是判断学科模板，而是判断“这份学习文档应该如何帮助用户学会材料”。
 
 主题：{course_name}
 模式：{mode_label}
 用户提示：{user_prompt or "未提供"}
-计划摘要：{plan_summary or "未提供"}
+Planner plan：{plan or "未提供"}
 规划器对话与修改摘要：{docgen_history_brief or "暂无"}
 章节标题：{chapter_titles or "未提供"}
 材料画像：{dict(material_profile or {})}

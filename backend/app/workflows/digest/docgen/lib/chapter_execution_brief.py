@@ -28,7 +28,7 @@ async def build_chapter_execution_brief(
     glossary_terms: Sequence[str],
     claim_targets: Sequence[str],
     confusion_targets: Sequence[str],
-    plan_summary: str = "",
+    plan: str = "",
     docgen_history_brief: str = "",
     extra_metadata: Mapping[str, object] | None = None,
 ) -> ChapterExecutionBrief:
@@ -44,7 +44,7 @@ async def build_chapter_execution_brief(
                 glossary_terms=glossary_terms,
                 claim_targets=claim_targets,
                 confusion_targets=confusion_targets,
-                plan_summary=plan_summary,
+                plan=plan,
                 docgen_history_brief=docgen_history_brief,
             ),
             **docgen_completion_kwargs_with_metadata(

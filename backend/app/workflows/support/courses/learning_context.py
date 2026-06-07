@@ -463,9 +463,9 @@ def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, A
     if not plan:
         return {}
 
-    chapter_plan: list[dict[str, Any]] = []
-    for index, item in enumerate(_mapping_items(plan.get("chapter_plan"), limit=24), start=1):
-        chapter_plan.append(
+    chapters: list[dict[str, Any]] = []
+    for index, item in enumerate(_mapping_items(plan.get("chapters"), limit=24), start=1):
+        chapters.append(
             {
                 "chapter_index": _extract_chapter_index(item, index),
                 "title": _clean_text(item.get("title") or item.get("name"), max_chars=180),
@@ -480,14 +480,14 @@ def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, A
         )
 
     return {
-        "plan_summary": _clean_text(plan.get("plan_summary") or plan.get("summary"), max_chars=1200),
+        "plan": _clean_text(plan.get("plan"), max_chars=1200),
         "learning_goal": _clean_text(
             plan.get("learning_goal") or plan.get("goal") or plan.get("user_goal"),
             max_chars=500,
         ),
         "constraints": _clean_string_list(plan.get("constraints") or plan.get("requirements"), limit=10, max_chars=160),
         "selected_file_ids": _clean_string_list(plan.get("selected_file_ids"), limit=100, max_chars=120),
-        "chapter_plan": chapter_plan,
+        "chapters": chapters,
     }
 
 
@@ -735,8 +735,8 @@ def build_course_learning_context_payload(
         or "未命名课程"
     )
     digest_mode = _clean_text(document_context.get("digest_mode") or docgen_context.get("digest_mode"))
-    plan_summary = _clean_text(
-        document_context.get("plan_summary") or docgen_context.get("plan_summary") or confirmed_plan.get("plan_summary"),
+    planner_plan = _clean_text(
+        document_context.get("plan") or docgen_context.get("plan") or confirmed_plan.get("plan"),
         max_chars=1200,
     )
     user_prompt = _clean_text(
@@ -785,8 +785,8 @@ def build_course_learning_context_payload(
         intent_lines.append(f"学习目标：{learning_goal}")
     if user_prompt and user_prompt != learning_goal:
         intent_lines.append(f"本次构建请求：{user_prompt}")
-    if plan_summary:
-        intent_lines.append(f"构建范围：{plan_summary}")
+    if planner_plan:
+        intent_lines.append(f"构建范围：{planner_plan}")
     if chapter_titles:
         intent_lines.append("章节范围：" + "、".join(chapter_titles[:10]))
     if intent_profile_v2.get("audience_profile_text"):
@@ -842,7 +842,7 @@ def build_course_learning_context_payload(
         "presentation_quality_summary": presentation_quality_summary,
         "user_prompt": user_prompt,
         "docgen_user_prompt": user_prompt,
-        "plan_summary": plan_summary,
+        "plan": planner_plan,
         "chapter_count": len(chapters),
         "chapter_titles": chapter_titles,
         "source_file_ids": _file_ids_for_ids(source_file_ids, source_file_lookup=source_file_lookup),
@@ -904,9 +904,9 @@ def render_course_llm_context(
             f"- 章节数：{_safe_int(document_summary_json.get('chapter_count'), default=len(chapters))}",
         ]
     )
-    plan_summary = _clean_text(document_summary_json.get("plan_summary"), max_chars=900)
-    if plan_summary:
-        lines.append(f"- 总体方案：{plan_summary}")
+    planner_plan = _clean_text(document_summary_json.get("plan"), max_chars=900)
+    if planner_plan:
+        lines.append(f"- 总体方案：{planner_plan}")
     if intent_profile:
         strategy = _clean_text(intent_profile.get("content_strategy_text"), max_chars=500)
         example_policy = _clean_text(intent_profile.get("example_practice_policy"), max_chars=360)

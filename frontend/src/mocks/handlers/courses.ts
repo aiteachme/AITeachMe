@@ -165,7 +165,7 @@ export const courseHandlers = [
         build: { status: "completed", digest_mode: "systematic" },
         build_metrics: { llm_total_calls: 12 },
         build_preview: {
-            plan_summary: "系统渲染 Mock 数据效果预览，确保样式与排版完全正确。",
+            plan: "系统渲染 Mock 数据效果预览，确保样式与排版完全正确。",
             latest_chapter_titles: ["Mock 样式概览"]
         }
       },

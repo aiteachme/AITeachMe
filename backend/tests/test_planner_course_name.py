@@ -1,35 +1,37 @@
 from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, get_planner_model_policy
-from app.workflows.digest.planner.nodes.generate_course_name import _clean_course_name
-from app.workflows.digest.planner.prompts.course_name import build_course_name_prompt
+from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
+from app.workflows.digest.planner.prompts.course_name import build_course_identity_messages
 
 
-def test_course_name_policy_uses_creative_temperature() -> None:
-    policy = get_planner_model_policy(PlannerModelStep.COURSE_NAME)
+def test_course_identity_policy_uses_structured_light_model() -> None:
+    policy = get_planner_model_policy(PlannerModelStep.COURSE_IDENTITY)
 
     kwargs = policy.completion_kwargs()
 
-    assert kwargs["temperature"] == 0.65
-    assert kwargs["max_tokens"] == 40
+    assert kwargs["temperature"] == 0.35
+    assert kwargs["max_tokens"] == 240
     assert kwargs["timeout"] == 300
     assert kwargs["max_retries"] == 3
     assert "task_type" not in kwargs
 
 
-def test_course_name_prompt_has_diverse_examples_and_anti_generic_rule() -> None:
-    prompt = build_course_name_prompt(
+def test_course_identity_prompt_generates_name_and_icon_together() -> None:
+    messages = build_course_identity_messages(
         user_prompt="Python 数据分析想学到能做作业",
         filenames=["课程PPT.pdf", "作业要求.docx"],
         digest_mode="sprint",
-        plan_intent="面向作业完成的实用学习路径",
-        planner_brief="用户更需要把概念、代码和调试串起来。",
+        intent="面向作业完成的实用学习路径",
+        summary="用户更需要把概念、代码和调试串起来。",
         topic_hints=["DataFrame", "数据清洗", "可视化"],
     )
+    prompt = "\n".join(message["content"] for message in messages)
 
-    assert "先在心里生成 4 个不同角度的候选" in prompt
-    assert "不要总是写成“某某学习”“某某复习”“某某课程”“某某资料”" in prompt
+    assert "course_name" in prompt
+    assert "course_icon" in prompt
+    assert "不要总是套“学习/课程/资料”后缀" in prompt
     assert "Python作业通关" in prompt
     assert "心理学入门地图" in prompt
-    assert "设计史脉络" in prompt
+    assert "财管重点清单" in prompt
 
 
 def test_clean_course_name_handles_numbered_or_labeled_candidates() -> None:

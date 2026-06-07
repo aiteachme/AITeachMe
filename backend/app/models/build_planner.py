@@ -21,10 +21,10 @@ class ConfirmedBuildPlan(BaseModel):
     status: str = "confirmed"
     user_prompt: str = ""
     digest_mode: str = "systematic"
-    selected_file_ids_json: list[str] = Field(default_factory=list)
-    chapter_plan_json: list[dict[str, Any]] = Field(default_factory=list)
-    build_constraints_json: dict[str, Any] = Field(default_factory=dict)
-    plan_summary: str = ""
+    selected_file_ids: list[str] = Field(default_factory=list)
+    chapters: list[dict[str, Any]] = Field(default_factory=list)
+    build_constraints: dict[str, Any] = Field(default_factory=dict)
+    plan: str = ""
     plan_json: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

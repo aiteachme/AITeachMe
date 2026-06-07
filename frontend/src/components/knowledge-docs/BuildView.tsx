@@ -295,7 +295,7 @@ export function BuildView({
     buildPreview?.draft_excerpt ||
     ""
   ).trim();
-  const planSummary = (sseSnapshot?.docgen_preview?.plan_summary ?? buildPreview?.plan_summary ?? "").trim();
+  const planSummary = (sseSnapshot?.docgen_preview?.plan ?? buildPreview?.plan ?? "").trim();
 
   const spotlightChapter = chapters.find((chapter) => ACTIVE_CHAPTER_STATUSES.has(chapter.status))
     ?? chapters.find((chapter) => chapter.status !== "pending")

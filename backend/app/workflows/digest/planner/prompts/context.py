@@ -60,13 +60,13 @@ def render_latest_feedback(latest_feedback: str | None) -> str:
 def render_latest_plan(latest_plan: dict[str, Any] | None) -> str:
     if not latest_plan:
         return EMPTY_LATEST_PLAN
-    plan_summary = _clean(latest_plan.get("plan_summary"))
-    raw_chapters = list(latest_plan.get("chapter_plan") or [])
+    plan_text = _clean(latest_plan.get("plan"))
+    suggestion = _clean(latest_plan.get("suggestion"))
+    raw_chapters = list(latest_plan.get("chapters") or [])
     chapter_count = len(raw_chapters)
-    step_count = len(list(latest_plan.get("plan_steps") or []))
-    lines = [f"上一版摘要：{plan_summary}"] if plan_summary else []
-    if step_count:
-        lines.append(f"上一版计划步骤数：{step_count}")
+    lines = [f"上一版 plan：{plan_text}"] if plan_text else []
+    if suggestion:
+        lines.append(f"上一版 suggestion：{suggestion}")
     lines.append(f"上一版章节数：{chapter_count}")
     chapter_lines: list[str] = []
     for index, chapter in enumerate(raw_chapters[:12], start=1):

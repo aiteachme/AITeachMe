@@ -198,9 +198,9 @@ def _reconcile_imported_planner_metadata(
 
         def reconcile_confirmed_plan(confirmed_plan: dict[str, Any]) -> dict[str, Any]:
             confirmed_plan = dict(confirmed_plan)
-            selected_file_ids = confirmed_plan.get("selected_file_ids_json")
+            selected_file_ids = confirmed_plan.get("selected_file_ids")
             if isinstance(selected_file_ids, list) and file_id_map:
-                confirmed_plan["selected_file_ids_json"] = [
+                confirmed_plan["selected_file_ids"] = [
                     new_id
                     for old_id in selected_file_ids
                     if (new_id := _lookup_imported_or_existing_id(old_id, file_id_map)) is not None
@@ -208,7 +208,7 @@ def _reconcile_imported_planner_metadata(
             plan_json = confirmed_plan.get("plan_json")
             if isinstance(plan_json, dict):
                 plan_json = dict(plan_json)
-                plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids_json") or [])
+                plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids") or [])
                 confirmed_plan["plan_json"] = plan_json
             return confirmed_plan
 
@@ -278,6 +278,9 @@ def _import_legacy_confirmed_build_plans(
         plan_json = dict(record.get("plan_json") or {})
         plan_json["course_id"] = course_id
         plan_json["selected_file_ids"] = selected_file_ids
+        plan_json["chapters"] = list(record.get("chapter_plan_json") or [])
+        plan_json["build_constraints"] = dict(record.get("build_constraints_json") or {})
+        plan_json["plan"] = record.get("plan_summary") or ""
         plan_json["planner_session_id"] = str(new_session_id)
         plan_json["confirmed_plan_id"] = new_plan_id
 
@@ -298,10 +301,10 @@ def _import_legacy_confirmed_build_plans(
             "status": record.get("status") or "confirmed",
             "user_prompt": record.get("user_prompt") or "",
             "digest_mode": record.get("digest_mode") or "",
-            "selected_file_ids_json": selected_file_ids,
-            "chapter_plan_json": list(record.get("chapter_plan_json") or []),
-            "build_constraints_json": dict(record.get("build_constraints_json") or {}),
-            "plan_summary": record.get("plan_summary") or "",
+            "selected_file_ids": selected_file_ids,
+            "chapters": list(record.get("chapter_plan_json") or []),
+            "build_constraints": dict(record.get("build_constraints_json") or {}),
+            "plan": record.get("plan_summary") or "",
             "plan_json": plan_json,
             "created_at": record.get("created_at"),
             "updated_at": record.get("updated_at"),

@@ -10,7 +10,7 @@ from app.models import RawFile, RetrievalChunk, Course, CourseFileLink, User
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.repositories.knowledge import knowledge_repo
 from app.workflows.digest.kg_doc_sync.lib.builds import _collect_graph_source_file_ids
-from app.workflows.digest.planner.nodes import load_planner_materials
+from app.workflows.digest.planner.nodes import collect_planner_context
 
 
 def _session() -> Session:
@@ -92,9 +92,9 @@ def test_seed_material_context_keeps_string_file_ids(monkeypatch) -> None:
         def fake_managed_session() -> Iterator[Session]:
             yield session
 
-        monkeypatch.setattr(load_planner_materials, "managed_session", fake_managed_session)
+        monkeypatch.setattr(collect_planner_context, "managed_session", fake_managed_session)
 
-        context = load_planner_materials._build_seed_material_context(
+        context = collect_planner_context._build_seed_material_context(
             course_id="course_a",
             file_ids=["file_seed"],
             user_prompt=None,

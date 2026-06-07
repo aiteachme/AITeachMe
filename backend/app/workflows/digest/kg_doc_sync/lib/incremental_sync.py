@@ -224,8 +224,8 @@ def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> 
 
     _add_items(summary.get("chapters"))
     _add_items(summary.get("kg_candidate_hints"))
-    _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapter_plan"))
-    _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapter_plan"))
+    _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapters"))
+    _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapters"))
     _add_items(_as_mapping(manifest.get("chapter_generation_plan_seed")).get("chapters"))
     _add_items(manifest.get("chapter_task_seeds"))
     _add_items(manifest.get("chapter_execution_briefs"))

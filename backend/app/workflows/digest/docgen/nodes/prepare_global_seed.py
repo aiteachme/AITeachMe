@@ -97,7 +97,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
                 course_name=docgen_context.course_name,
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
-                plan_summary=docgen_context.plan_summary or str(confirmed_plan.get("plan_summary") or ""),
+                plan=docgen_context.plan or str(confirmed_plan.get("plan") or ""),
                 material_profile=material_profile,
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,

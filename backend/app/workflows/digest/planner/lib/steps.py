@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-STEP_LOAD_MATERIALS = "load_planner_materials"
-STEP_UNDERSTAND_GOAL = "stream_brief_and_extract_intent"
-STEP_COMPOSE_PLAN = "stream_and_parse_plan_draft"
-STEP_GENERATE_TITLE = "generate_course_name"
-STEP_SAVE_PLAN = "normalize_and_persist_plan"
+STEP_LOAD_MATERIALS = "collect_planner_context"
+STEP_UNDERSTAND_GOAL = "understand_goal_and_materials"
+STEP_COMPOSE_PLAN = "compose_planner_draft"
+STEP_GENERATE_TITLE = "generate_course_identity"
+STEP_SAVE_PLAN = "save_planner_draft"
 
 STEP_DISPLAY_NAMES = {
-    STEP_LOAD_MATERIALS: "读取资料",
-    STEP_UNDERSTAND_GOAL: "理解目标",
-    STEP_COMPOSE_PLAN: "合成大纲",
-    STEP_GENERATE_TITLE: "生成标题",
-    STEP_SAVE_PLAN: "保存方案",
+    STEP_LOAD_MATERIALS: "汇总会话与资料上下文",
+    STEP_UNDERSTAND_GOAL: "理解学习目标与资料",
+    STEP_COMPOSE_PLAN: "生成 Planner 草案",
+    STEP_GENERATE_TITLE: "生成课程展示身份",
+    STEP_SAVE_PLAN: "保存 Planner 草案",
 }
 
 STEP_TIMING_FIELDS = (

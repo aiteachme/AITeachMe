@@ -249,9 +249,10 @@ def test_confirmed_build_plan_migration_embeds_plan_in_planner_session(tmp_path:
 
     meta = json.loads(meta_json)
     assert meta["confirmed_plan_id"] == "plan-1"
-    assert meta["confirmed_plan"]["selected_file_ids_json"] == ["file-1"]
-    assert meta["confirmed_plan"]["chapter_plan_json"] == [{"title": "Chapter"}]
-    assert meta["confirmed_plan"]["build_constraints_json"] == {"tone": "concise"}
+    assert meta["confirmed_plan"]["selected_file_ids"] == ["file-1"]
+    assert meta["confirmed_plan"]["chapters"] == [{"title": "Chapter"}]
+    assert meta["confirmed_plan"]["plan"] == "summary"
+    assert meta["confirmed_plan"]["build_constraints"] == {"tone": "concise"}
 
 
 def test_additive_schema_updates_backfill_parse_signatures_and_indexes(tmp_path: Path) -> None:

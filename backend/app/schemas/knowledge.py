@@ -321,7 +321,7 @@ class KnowledgeBuildPreviewResponse(BaseModel):
     discovered_node_types: dict[str, int] = Field(default_factory=dict, description="Node counts by node type.")
     sample_nodes: list[BuildPreviewNodeResponse] = Field(default_factory=list, description="Sample discovered nodes.")
     sample_cards: list[BuildSampleCardResponse] = Field(default_factory=list, description="Small preview cards for the waiting UI.")
-    plan_summary: str | None = Field(default=None, description="Confirmed build plan summary for the current build.")
+    plan: str | None = Field(default=None, description="Confirmed build plan for the current build.")
     chapter_progress: list[BuildPreviewChapterProgressResponse] = Field(default_factory=list, description="Per-chapter progress for the current build.")
     recent_events: list[BuildPreviewRecentEventResponse] = Field(default_factory=list, description="Recent research / writing / publishing events for this build.")
     chapter_previews: list[BuildPreviewChapterPreviewResponse] = Field(default_factory=list, description="Readable per-chapter live previews for the build workspace.")
@@ -750,7 +750,7 @@ class BuildPlannerTurnResponse(BaseModel):
     created_at: datetime
 
 
-class BuildPlannerChapterPlanResponse(BaseModel):
+class BuildPlannerChapterResponse(BaseModel):
     chapter_index: int
     title: str
     objective: str = ""
@@ -772,13 +772,16 @@ class BuildPlannerRuntimeStatsResponse(BaseModel):
 class BuildPlannerPlanResponse(BaseModel):
     course_id: str
     selected_file_ids: list[str] = Field(default_factory=list)
+    course_name: str = ""
+    course_icon: str = ""
     user_prompt: str
     digest_mode: str
-    chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
+    intent: str = ""
+    summary: str = ""
+    suggestion: str = ""
+    plan: str = ""
+    chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
     build_constraints: dict[str, object] = Field(default_factory=dict)
-    plan_summary: str = ""
-    plan_steps: list[str] = Field(default_factory=list)
-    adjustment_questions: list[str] = Field(default_factory=list)
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
@@ -809,8 +812,13 @@ class BuildPlannerConfirmResponse(BaseModel):
     model_override: str | None = None
     selected_file_ids: list[str] = Field(default_factory=list)
     user_prompt: str
-    plan_summary: str
-    chapter_plan: list[BuildPlannerChapterPlanResponse] = Field(default_factory=list)
+    course_name: str = ""
+    course_icon: str = ""
+    intent: str = ""
+    summary: str = ""
+    suggestion: str = ""
+    plan: str
+    chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
     build_constraints: dict[str, object] = Field(default_factory=dict)
     plan_json: dict[str, object] = Field(default_factory=dict)
     status_history: list[str] = Field(default_factory=list)
