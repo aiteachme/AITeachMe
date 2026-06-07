@@ -3,7 +3,7 @@ import {
   ChevronRight,
   Loader2,
   MessageSquareText,
-  Plus,
+  SquarePen,
   Trash2,
 } from "lucide-react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
@@ -440,6 +440,15 @@ export function AiConversationSidebarSection({
         <div className="flex h-6 items-center px-1">
           <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
         </div>
+        <button
+          type="button"
+          onClick={openNewConversation}
+          className="flex h-7 w-full items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+          aria-label={newConversationLabel}
+          title={newConversationLabel}
+        >
+          <SquarePen className="h-3.5 w-3.5" strokeWidth={2.1} />
+        </button>
         {isListLoading && visibleSessions.length === 0 ? (
           <div className="flex h-7 w-full items-center justify-center rounded-md text-slate-400 dark:text-slate-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -494,11 +503,11 @@ export function AiConversationSidebarSection({
       )}
     >
       {!hideHeader ? (
-        <div className="flex h-7 items-center gap-1">
+        <div className="flex h-8 items-center gap-1">
           <button
             type="button"
             onClick={() => updateExpanded((value) => !value)}
-            className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[11px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
+            className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[13px] font-medium text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
             aria-expanded={isExpanded}
           >
             <span className="truncate">{title}</span>
@@ -513,11 +522,12 @@ export function AiConversationSidebarSection({
           <button
             type="button"
             onClick={openNewConversation}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-sky-300"
+            className="flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-1.5 text-[13px] font-medium text-slate-500 transition hover:bg-[#eef3f8] hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
             aria-label={newConversationLabel}
             title={newConversationLabel}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <SquarePen className="h-3.5 w-3.5" strokeWidth={2.1} />
+            <span>新建对话</span>
           </button>
         </div>
       ) : null}

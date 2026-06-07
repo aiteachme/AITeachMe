@@ -4,19 +4,22 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerChapterPlanResponse } from './buildPlannerChapterPlanResponse';
+import type { BuildPlannerChapterResponse } from './buildPlannerChapterResponse';
 import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPlanResponseBuildConstraints';
 
 export interface BuildPlannerPlanResponse {
   course_id: string;
   selected_file_ids?: string[];
+  course_name?: string;
+  course_icon?: string;
   user_prompt: string;
   digest_mode: string;
-  chapter_plan?: BuildPlannerChapterPlanResponse[];
+  intent?: string;
+  summary?: string;
+  suggestion?: string;
+  plan?: string;
+  chapters?: BuildPlannerChapterResponse[];
   build_constraints?: BuildPlannerPlanResponseBuildConstraints;
-  plan_summary?: string;
-  plan_steps?: string[];
-  adjustment_questions?: string[];
   status?: string;
   planner_session_id?: string | null;
   confirmed_plan_id?: string | null;

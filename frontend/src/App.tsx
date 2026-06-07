@@ -28,9 +28,6 @@ const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ defau
 const GlobalAssistantPage = lazy(() =>
   import("./pages/GlobalAssistantPage").then((module) => ({ default: module.GlobalAssistantPage })),
 );
-const LearningSpacesPage = lazy(() =>
-  import("./pages/LearningSpacesPage").then((module) => ({ default: module.LearningSpacesPage })),
-);
 const LibraryPage = lazy(() => import("./pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const LibraryFilePage = lazy(() =>
   import("./pages/LibraryPage").then((module) => ({ default: module.LibraryFilePage })),
@@ -239,7 +236,6 @@ function App() {
                   <Route path="/" element={<Layout />}>
                     <Route index element={withRouteFallback(<HomePage />)} />
                     <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
-                    <Route path="spaces" element={withRouteFallback(<LearningSpacesPage />)} />
                     <Route path="library" element={withRouteFallback(<LibraryPage />)} />
                     <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
                     {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(

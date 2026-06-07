@@ -9185,7 +9185,7 @@
         "title": "BuildPlannerAdjustClickResponse",
         "description": "Acknowledgement for entering planner adjustment mode."
       },
-      "BuildPlannerChapterPlanResponse": {
+      "BuildPlannerChapterResponse": {
         "properties": {
           "chapter_index": {
             "type": "integer",
@@ -9218,7 +9218,7 @@
           "chapter_index",
           "title"
         ],
-        "title": "BuildPlannerChapterPlanResponse"
+        "title": "BuildPlannerChapterResponse"
       },
       "BuildPlannerConfirmResponse": {
         "properties": {
@@ -9269,16 +9269,41 @@
             "type": "string",
             "title": "User Prompt"
           },
-          "plan_summary": {
+          "course_name": {
             "type": "string",
-            "title": "Plan Summary"
+            "title": "Course Name",
+            "default": ""
           },
-          "chapter_plan": {
+          "course_icon": {
+            "type": "string",
+            "title": "Course Icon",
+            "default": ""
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "default": ""
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "suggestion": {
+            "type": "string",
+            "title": "Suggestion",
+            "default": ""
+          },
+          "plan": {
+            "type": "string",
+            "title": "Plan"
+          },
+          "chapters": {
             "items": {
-              "$ref": "#/components/schemas/BuildPlannerChapterPlanResponse"
+              "$ref": "#/components/schemas/BuildPlannerChapterResponse"
             },
             "type": "array",
-            "title": "Chapter Plan"
+            "title": "Chapters"
           },
           "build_constraints": {
             "additionalProperties": true,
@@ -9316,7 +9341,7 @@
           "status",
           "digest_mode",
           "user_prompt",
-          "plan_summary",
+          "plan",
           "created_at",
           "updated_at"
         ],
@@ -9432,6 +9457,16 @@
             "type": "array",
             "title": "Selected File Ids"
           },
+          "course_name": {
+            "type": "string",
+            "title": "Course Name",
+            "default": ""
+          },
+          "course_icon": {
+            "type": "string",
+            "title": "Course Icon",
+            "default": ""
+          },
           "user_prompt": {
             "type": "string",
             "title": "User Prompt"
@@ -9440,36 +9475,37 @@
             "type": "string",
             "title": "Digest Mode"
           },
-          "chapter_plan": {
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "default": ""
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "suggestion": {
+            "type": "string",
+            "title": "Suggestion",
+            "default": ""
+          },
+          "plan": {
+            "type": "string",
+            "title": "Plan",
+            "default": ""
+          },
+          "chapters": {
             "items": {
-              "$ref": "#/components/schemas/BuildPlannerChapterPlanResponse"
+              "$ref": "#/components/schemas/BuildPlannerChapterResponse"
             },
             "type": "array",
-            "title": "Chapter Plan"
+            "title": "Chapters"
           },
           "build_constraints": {
             "additionalProperties": true,
             "type": "object",
             "title": "Build Constraints"
-          },
-          "plan_summary": {
-            "type": "string",
-            "title": "Plan Summary",
-            "default": ""
-          },
-          "plan_steps": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Plan Steps"
-          },
-          "adjustment_questions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Adjustment Questions"
           },
           "status": {
             "type": "string",
@@ -13876,7 +13912,7 @@
             "title": "Sample Cards",
             "description": "Small preview cards for the waiting UI."
           },
-          "plan_summary": {
+          "plan": {
             "anyOf": [
               {
                 "type": "string"
@@ -13885,8 +13921,8 @@
                 "type": "null"
               }
             ],
-            "title": "Plan Summary",
-            "description": "Confirmed build plan summary for the current build."
+            "title": "Plan",
+            "description": "Confirmed build plan for the current build."
           },
           "chapter_progress": {
             "items": {

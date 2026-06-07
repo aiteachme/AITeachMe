@@ -38,8 +38,8 @@ export interface KnowledgeBuildPreviewResponse {
   sample_nodes?: BuildPreviewNodeResponse[];
   /** Small preview cards for the waiting UI. */
   sample_cards?: BuildSampleCardResponse[];
-  /** Confirmed build plan summary for the current build. */
-  plan_summary?: string | null;
+  /** Confirmed build plan for the current build. */
+  plan?: string | null;
   /** Per-chapter progress for the current build. */
   chapter_progress?: BuildPreviewChapterProgressResponse[];
   /** Recent research / writing / publishing events for this build. */

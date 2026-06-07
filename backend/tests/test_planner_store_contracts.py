@@ -110,10 +110,15 @@ def _material_context() -> DigestMaterialContext:
 
 def _plan(*, summary: str = "围绕矩阵和线性映射生成一份可执行学习计划。") -> dict[str, Any]:
     return {
-        "course": "线性代数",
+        "course_name": "线性代数",
+        "course_icon": "calculator",
         "user_prompt": "帮我把线性代数整理成可学习的知识文档",
         "digest_mode": "sprint",
-        "chapter_plan": [
+        "intent": "用两章快速建立矩阵和线性映射主线",
+        "summary": "线性代数入门材料，强调矩阵运算和空间直觉。",
+        "suggestion": "如果想更偏考试，可以增加题型和易错点密度。",
+        "plan": summary,
+        "chapters": [
             {
                 "chapter_index": 1,
                 "title": "矩阵对象",
@@ -134,8 +139,6 @@ def _plan(*, summary: str = "围绕矩阵和线性映射生成一份可执行学
             "max_chapters": 2,
             "target_chapter_count": 2,
         },
-        "plan_summary": summary,
-        "plan_steps": ["确认目标", "提炼主线", "安排练习"],
         "model_override": "qwen-flash",
     }
 
@@ -216,7 +219,7 @@ def test_planner_snapshot_helpers_keep_history_and_runtime_contracts() -> None:
         }
     )
 
-    assert snapshot["selected_file_ids_json"] == ["file-a", "file-b"]
+    assert snapshot["selected_file_ids"] == ["file-a", "file-b"]
     assert snapshot["model_override"] == "qwen-flash"
     assert context["planner_turn_count"] == 3
     assert context["user_revision_count"] == 1
@@ -258,7 +261,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
             "user_id": USER_ID,
             "generated_course_name": "线性代数速成",
             "generated_course_icon_key": "math",
-            "plan_intent": {"plan_intent": "用两章快速建立矩阵和线性映射主线"},
+            "intent": "用两章快速建立矩阵和线性映射主线",
             "model_override": "qwen-flash",
         },
         plan=_plan(),
@@ -285,12 +288,12 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
         }
     )
 
-    assert appended["latest_plan"]["plan_summary"] == _plan()["plan_summary"]
+    assert appended["latest_plan"]["plan"] == _plan()["plan"]
     assert appended["planner_context_stats"]["stored_turn_count"] == 3
     assert any("再补一个习题复盘章节" in item for item in appended["message_history"])
 
     revised_plan = _plan(summary="加入习题复盘后的三段式学习计划。")
-    revised_plan["chapter_plan"].append(
+    revised_plan["chapters"].append(
         {
             "chapter_index": 3,
             "title": "习题复盘",
@@ -343,6 +346,8 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert confirmed.model_override == "qwen-flash"
     assert confirmed.plan_json["planner_context"]["assistant_revision_count"] == 2
     assert "再补一个习题复盘章节" in confirmed.plan_json["docgen_history_brief"]
+    assert confirmed.plan_json["chapters"][2]["title"] == "习题复盘"
+    assert confirmed.plan_json["plan"] == "加入习题复盘后的三段式学习计划。"
     assert latest is not None
     assert latest.status == "confirmed"
     assert latest.revision == 4
@@ -355,7 +360,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
         user_id=USER_ID,
         plan_id=confirmed.confirmed_plan_id,
     )
-    assert stored_plan.plan_summary == "加入习题复盘后的三段式学习计划。"
+    assert stored_plan.plan == "加入习题复盘后的三段式学习计划。"
 
     planner_store.mark_confirmed_plan_status(
         managed_planner_session,

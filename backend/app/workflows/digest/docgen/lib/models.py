@@ -151,7 +151,7 @@ class DocGenContext(DocGenBaseModel):
     digest_mode: str = "systematic"
     retrieval_profile: str = ""
     user_prompt: str = ""
-    plan_summary: str = ""
+    plan: str = ""
     docgen_history_brief: str = ""
     planner_context: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
@@ -166,7 +166,7 @@ class DocGenContext(DocGenBaseModel):
         "digest_mode",
         "retrieval_profile",
         "user_prompt",
-        "plan_summary",
+        "plan",
         "docgen_history_brief",
         mode="before",
     )

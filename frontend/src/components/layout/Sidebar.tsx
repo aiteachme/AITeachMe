@@ -10,7 +10,6 @@ import {
   FileText,
   FolderOpen,
   Compass,
-  LayoutGrid,
   Loader2,
   Menu,
   MoreVertical,
@@ -234,7 +233,6 @@ export function Sidebar({
     notifyConversationSessionsChanged,
   } = useAiInteraction();
   const effectiveCollapsed = !isMobileOpen && isCollapsed;
-  const isMyLearningSpaceActive = location.pathname === "/spaces";
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
@@ -256,8 +254,7 @@ export function Sidebar({
       return;
     }
 
-    const timer = window.setTimeout(ensureCommunityQrPreloaded, 1200);
-    return () => window.clearTimeout(timer);
+    ensureCommunityQrPreloaded();
   }, []);
 
   useEffect(() => {
@@ -546,26 +543,6 @@ export function Sidebar({
                   setOpenMenuId(null);
                   setIsMobileOpen(false);
                   setIsCollapsed(false);
-                  navigate("/spaces");
-                }}
-                title="学习空间"
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-                  isMyLearningSpaceActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
-                )}
-              >
-                <LayoutGrid className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  setIsCollapsed(false);
                   navigate("/library");
                 }}
                 title="我的资料库"
@@ -612,45 +589,6 @@ export function Sidebar({
                   )}
                 >
                   新建课程
-                </span>
-              </button>
-
-              <button
-                type="button"
-                className={cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
-                  isMobileOpen ? "h-10" : "h-8",
-                  isMyLearningSpaceActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
-                )}
-                onClick={() => {
-                  setCourseActionError(undefined);
-                  setOpenMenuId(null);
-                  setIsMobileOpen(false);
-                  navigate("/spaces");
-                }}
-              >
-                <LayoutGrid
-                  className={cn(
-                    "shrink-0 transition-colors",
-                    isMobileOpen ? "h-5 w-5" : "h-4 w-4",
-                    isMyLearningSpaceActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
-                  )}
-                  strokeWidth={2.2}
-                />
-                <span
-                  className={cn(
-                    "whitespace-nowrap tracking-[0.01em]",
-                    isMobileOpen ? "text-sm" : "text-xs",
-                    isMyLearningSpaceActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
-                  )}
-                >
-                  学习空间
                 </span>
               </button>
 
@@ -707,11 +645,11 @@ export function Sidebar({
           )}
         >
           {!effectiveCollapsed ? (
-            <div className="flex h-8 items-center gap-1">
+            <div className={cn("flex items-center gap-1", isMobileOpen ? "h-10" : "h-8")}>
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
-                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[12px] font-medium text-slate-400 transition-colors hover:bg-[#eef3f8] hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
+                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[13px] font-medium text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
                 aria-expanded={isCourseSectionExpanded}
               >
                 <span className="truncate">课程</span>
@@ -731,13 +669,14 @@ export function Sidebar({
                   setIsImportModalOpen(true);
                 }}
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-[#eef3f8] hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
-                  isMobileOpen ? "h-10 w-10" : "h-8 w-8",
+                  "flex shrink-0 items-center justify-center gap-1 rounded-md font-medium text-slate-500 transition hover:bg-[#eef3f8] hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
+                  isMobileOpen ? "h-8 px-2 text-sm" : "h-7 px-1.5 text-[13px]",
                 )}
                 title="导入课程包"
                 aria-label="导入课程包"
               >
-                <PackagePlus className={cn(isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+                <PackagePlus className={cn("shrink-0", isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.1} />
+                <span>导入课程</span>
               </button>
             </div>
           ) : (

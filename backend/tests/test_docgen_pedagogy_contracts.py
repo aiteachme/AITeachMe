@@ -131,7 +131,7 @@ def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
         course_name="course_linear_algebra",
         digest_mode="sprint",
         user_prompt="",
-        plan_summary="",
+        plan="",
         source_strategy="",
         chapters=chapters,
     )

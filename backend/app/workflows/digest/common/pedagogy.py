@@ -168,12 +168,13 @@ def build_document_overview(
     course_name: str,
     digest_mode: str,
     user_prompt: str,
-    plan_summary: str,
+    plan: str,
     source_strategy: str = "",
     chapters: list[Mapping[str, object]],
 ) -> str:
     """构建知识文档开头的总览页。"""
 
+    del plan
     normalized_mode = _normalize_mode(digest_mode)
     mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
     display_course = _resolve_course_name(course_name)

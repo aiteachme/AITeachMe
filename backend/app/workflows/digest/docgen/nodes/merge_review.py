@@ -127,7 +127,7 @@ def build_merge_review_node(*, context: WorkflowContext):
         review = build_merge_review_report(
             enhanced_chapters=enhanced,
             expected_chapter_count=expected_chapter_count,
-            plan_summary=str((state.get("docgen_context") or {}).get("plan_summary") or ""),
+            plan=str((state.get("docgen_context") or {}).get("plan") or ""),
         )
         claim_ledgers_by_chapter = {
             int(item.get("chapter_index", 0) or 0): item

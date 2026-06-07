@@ -18,6 +18,7 @@ export function Layout() {
   const isFullBleed = isFullBleedCoursePath(pathname);
   const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
   const isAssistantPage = pathname === "/assistant";
+  const isHomePage = pathname === "/";
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (isAssistantPage) {
@@ -74,7 +75,7 @@ export function Layout() {
             )}
 
             <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || pathname === "/" || pathname === "/spaces" || isAssistantPage ? (
+              {isFullBleed || pathname === "/" || isAssistantPage ? (
                 <div
                   className={cn(
                     "flex min-h-0 w-full flex-1 flex-col",
@@ -90,7 +91,7 @@ export function Layout() {
               )}
             </main>
           </div>
-          <AiInteractionWindow suppressFloatingTrigger={isMobileSidebarOpen && !isExamFocusPage} />
+          <AiInteractionWindow suppressFloatingTrigger={(isMobileSidebarOpen && !isExamFocusPage) || isHomePage} />
         </div>
       </AiInteractionProvider>
 

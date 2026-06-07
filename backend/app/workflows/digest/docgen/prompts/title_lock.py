@@ -14,7 +14,7 @@ def build_title_lock_messages(
     course_name: str,
     digest_mode: str,
     user_prompt: str,
-    plan_summary: str,
+    plan: str,
     chapter: Mapping[str, Any],
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
@@ -30,7 +30,7 @@ def build_title_lock_messages(
 标题自然即可，避免口号化、过度对仗或统一句式。
 标题本身不要包含编号或样式说明。
 风格示例只展示“短、具体、像真实目录”的标题形状，不是候选词表，也不能照抄：现金流表、视图生命周期、句法结构、需求拆解、异常处理、实验设计、边界条件判断。
-如果本章领域与示例不同，必须回到 title / objective / required_elements / plan_summary 的真实语义重新命名。
+如果本章领域与示例不同，必须回到 title / objective / required_elements / plan 的真实语义重新命名。
 """.strip()
     prompt = f"""
 请为下面这一章锁定最终发布标题。
@@ -38,7 +38,7 @@ def build_title_lock_messages(
 主题：{course_name}
 模式：{mode_label}
 用户提示：{user_prompt or "未提供"}
-计划摘要：{plan_summary or "未提供"}
+Planner plan：{plan or "未提供"}
 规划器对话与修改摘要：{docgen_history_brief or "暂无"}
 
 当前章节：

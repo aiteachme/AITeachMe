@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 DEFAULT_DIGEST_MODE = "systematic"
@@ -145,12 +145,16 @@ class DigestConfirmedPlanContract(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
+    course_name: str = ""
+    course_icon: str = ""
     user_prompt: str = ""
     digest_mode: str = DEFAULT_DIGEST_MODE
-    chapter_plan: list[DigestChapterContract] = Field(default_factory=list)
+    intent: str = ""
+    summary: str = ""
+    suggestion: str = ""
+    plan: str = ""
+    chapters: list[DigestChapterContract] = Field(default_factory=list)
     build_constraints: DigestBuildConstraints = Field(default_factory=DigestBuildConstraints)
-    plan_summary: str = ""
     selected_file_ids: list[str] = Field(default_factory=list)
     planner_session_id: str = ""
     confirmed_plan_id: str = ""
@@ -160,9 +164,13 @@ class DigestConfirmedPlanContract(BaseModel):
 
     @field_validator(
         "course_name",
+        "course_icon",
         "user_prompt",
         "digest_mode",
-        "plan_summary",
+        "intent",
+        "summary",
+        "suggestion",
+        "plan",
         "planner_session_id",
         "confirmed_plan_id",
         "model_override",
@@ -196,7 +204,7 @@ class DigestConfirmedPlanContract(BaseModel):
             chapter.to_assignment(
                 default_source_file_ids=default_source_file_ids,
             )
-            for chapter in self.chapter_plan
+            for chapter in self.chapters
         ]
 
 

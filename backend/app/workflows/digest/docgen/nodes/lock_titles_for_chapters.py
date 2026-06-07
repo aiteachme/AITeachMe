@@ -35,7 +35,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
                 course_name=docgen_context.course_name,
                 digest_mode=docgen_context.digest_mode,
                 user_prompt=docgen_context.user_prompt,
-                plan_summary=docgen_context.plan_summary,
+                plan=docgen_context.plan,
                 chapter=chapter,
                 docgen_history_brief=docgen_context.docgen_history_brief,
                 extra_metadata={

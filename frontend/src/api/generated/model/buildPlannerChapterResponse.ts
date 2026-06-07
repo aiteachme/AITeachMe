@@ -5,7 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 
-export interface BuildPlannerChapterPlanResponse {
+export interface BuildPlannerChapterResponse {
   chapter_index: number;
   title: string;
   objective?: string;

@@ -1,4 +1,4 @@
-"""Normalize the plan contract and persist planner session state."""
+"""Normalize and persist the editable planner draft."""
 
 from __future__ import annotations
 
@@ -13,15 +13,16 @@ from app.workflows.digest.planner.state import BuildPlannerState
 logger = structlog.get_logger(__name__)
 
 
-def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
-    """构建 Planner 保存节点。
+def build_save_planner_draft_node(*, context: WorkflowContext):
+    """构建 Planner 草案保存节点。
 
-    负责把模型输出的 build_plan_draft 规范化成稳定合同，并写入 planner
-    session / chat mirror。这里是 Planner 图的最后一步。
+    把模型输出的 build_plan_draft 规范化成稳定合同，并写入 planner
+    session / chat mirror。这里保存的是 latest_plan，用户确认后才会冻结为
+    confirmed plan。
     """
 
-    async def normalize_and_persist_plan_node(state: BuildPlannerState) -> dict:
-        """保存当前 Planner 草稿并返回 API 响应所需状态。"""
+    async def save_planner_draft_node(state: BuildPlannerState) -> dict:
+        """保存当前 Planner 草案并返回 API 响应所需状态。"""
 
         if state.get("error"):
             return {}
@@ -45,16 +46,20 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
             latest_plan=state.get("latest_plan"),
         )
         generated_course_name = str(state.get("generated_course_name") or "").strip()
+        generated_course_icon = str(state.get("generated_course_icon_key") or "").strip()
         if generated_course_name:
             draft.course_name = generated_course_name
+        if generated_course_icon:
+            draft.course_icon = generated_course_icon
         logger.info(
             "planner_normalize_completed",
             planner_session_id=state.get("planner_session_id", ""),
-            chapter_count=len(draft.chapter_plan),
-            plan_step_count=len(draft.plan_steps),
+            chapter_count=len(draft.chapters),
             digest_mode=draft.digest_mode,
-            plan_summary_chars=len(draft.plan_summary or ""),
+            plan_chars=len(draft.plan or ""),
+            suggestion_chars=len(draft.suggestion or ""),
             generated_course_name=generated_course_name or None,
+            generated_course_icon_key=generated_course_icon or None,
         )
         plan = draft.model_dump(mode="json")
         outline_items = [
@@ -62,22 +67,21 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
                 "title": chapter.title,
                 "objective": chapter.objective,
             }
-            for chapter in draft.chapter_plan
+            for chapter in draft.chapters
         ]
         await emit_planner_event(
             state,
-            event="planner.plan.ready",
+            event="planner.saved",
             detail="已提炼出计划大纲，可以确认或继续修改。",
             payload={
-                "chapter_count": len(draft.chapter_plan),
+                "chapter_count": len(draft.chapters),
                 "digest_mode": draft.digest_mode,
-                "plan_summary": draft.plan_summary,
+                "plan": draft.plan,
                 "outline_items": outline_items,
             },
         )
         result = {
             "plan": plan,
-            "plan_summary": draft.plan_summary,
             "digest_mode": draft.digest_mode,
             "generated_course_name": generated_course_name,
         }
@@ -94,7 +98,7 @@ def build_normalize_and_persist_plan_node(*, context: WorkflowContext):
         )
         return {**result, **persist_update}
 
-    return normalize_and_persist_plan_node
+    return save_planner_draft_node
 
 
-__all__ = ["build_normalize_and_persist_plan_node"]
+__all__ = ["build_save_planner_draft_node"]

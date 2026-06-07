@@ -72,7 +72,7 @@ export * from './bodyImportUploadedCourseApiApiV1CoursesImportPost';
 export * from './bodyUploadFilesApiV1CoursesCourseIdFilesUploadPost';
 export * from './bodyUploadUserFilesApiV1FilesUploadPost';
 export * from './buildPlannerAdjustClickResponse';
-export * from './buildPlannerChapterPlanResponse';
+export * from './buildPlannerChapterResponse';
 export * from './buildPlannerConfirmResponse';
 export * from './buildPlannerConfirmResponseBuildConstraints';
 export * from './buildPlannerConfirmResponsePlanJson';

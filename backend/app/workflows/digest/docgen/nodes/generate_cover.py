@@ -24,7 +24,7 @@ def build_generate_cover_node(*, context: WorkflowContext):
             course_name=str(document_context.get("course_name") or "未命名课程"),
             build_session_id=state.get("build_session_id") or "",
             user_prompt=state.get("user_prompt"),
-            plan_summary=str(document_context.get("plan_summary") or ""),
+            plan=str(document_context.get("plan") or ""),
             digest_mode=state.get("digest_mode"),
             confirmed_plan=state.get("confirmed_plan"),
             requested_at=state.get("requested_at"),

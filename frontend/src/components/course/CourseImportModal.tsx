@@ -171,7 +171,7 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            导入成功后会出现在侧边栏和学习空间中
+            导入成功后会出现在侧边栏课程列表中
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>

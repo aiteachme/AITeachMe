@@ -1,28 +1,30 @@
 # Planner 链路说明
 
-最后更新：2026-06-03
+最后更新：2026-06-07
 
-`planner/` 是 Digest 的第一条链路。它只做一件事：把用户目标、资料范围和修改意见整理成一份可确认的学习方案。
+`digest/planner/` 是 Digest 的确认前规划链路。它负责把用户输入、已上传资料和后续修改意见整理成一份可确认的 `planner`；用户确认后，DocGen 只消费冻结后的 confirmed plan，不直接消费流式 token。
 
 ```text
-Planner 定方向：学什么、分几章、每章目标是什么。
-DocGen 做执行：怎么查资料、怎么写正文、怎么发布知识文档。
+Planner 定方向：学什么、怎么拆、每章解决什么问题。
+DocGen 做执行：查上下文、写正文、审校、发布知识文档。
 ```
 
-Planner 不写 `KnowledgeDoc`，不做章节检索，不绑定证据，不生成正文。
+Planner 不写 `KnowledgeDoc`，不做章节正文检索，不绑定证据来源，也不能假装读取尚未解析或未上传的资料。
 
-## 先看这几个文件
+## 文件入口
 
 ```text
 planner/
   graph.py                         # LangGraph 主线和公开运行入口
   state.py                         # 图内 state 字段
-  nodes/load_planner_materials.py   # 读取资料、会话、历史方案
-  nodes/stream_brief_and_extract_intent.py
-  nodes/stream_and_parse_plan_draft.py
-  nodes/normalize_and_persist_plan.py
+  nodes/collect_planner_context.py      # 汇总会话、资料选择、上一版 planner 与现有文档摘要
+  nodes/understand_goal_and_materials.py # 首轮并行生成 intent / summary
+  nodes/compose_planner_draft.py        # 流式生成 suggestion / plan / chapters
+  nodes/generate_course_identity.py     # 生成 course_name / course_icon
+  nodes/save_planner_draft.py           # 规范化并保存可继续调整的 latest_plan
   lib/store.py                     # planner session / confirmed plan 持久化
   lib/model_policy.py              # Planner LLM 策略
+  prompts/                         # intent / summary / planner / course identity prompts
 ```
 
 公开入口：
@@ -37,291 +39,197 @@ from app.workflows.digest.planner import (
 )
 ```
 
-## 短流程
+## 输出合同
 
-```text
-1. create / append
-   用户发起新方案，或在旧方案上继续提修改意见。
+前端和 DocGen 看到的业务合同统一叫 `planner`：
 
-2. load_planner_materials
-   读取 planner 会话、用户选择的文件、最近对话、上一版 latest_plan 和资料摘要。
-
-3. stream_brief_and_extract_intent
-   节点内部并行：
-   - 流式输出给用户看的理解说明。
-   - 结构化抽取 PlanIntent：是新建、局部修改，还是替换旧大纲。
-
-4. compose plan + generate title
-   LangGraph 分两路并行：
-   - stream_and_parse_plan_draft：生成可见计划说明 + 机器可解析章节合同。
-   - generate_course_name：仅 create 时生成课程短标题和图标。
-
-5. normalize_and_persist_plan
-   把模型草稿整理成稳定 latest_plan，写回 planner chat_session 和 assistant message。
-
-6. confirm_build_planner_session
-   用户点击确认后，把 latest_plan 冻结为 ConfirmedBuildPlan。
-   DocGen 后续只消费 confirmed_plan。
+```json
+{
+  "course_name": "高数主线重建",
+  "course_icon": "sigma",
+  "user_prompt": "我想系统复习初中数学，请构建一门 14 天课程",
+  "digest_mode": "systematic",
+  "intent": "用户希望在 14 天内系统重建初中数学知识体系...",
+  "summary": "资料/主题主要覆盖数与式、方程、函数、几何和统计概率...",
+  "suggestion": "如果更偏中考冲刺，可以增加压轴题和易错诊断比例。",
+  "plan": "本课程会按依赖关系拆成五个板块...",
+  "chapters": [
+    {
+      "chapter_index": 1,
+      "title": "数与式基础",
+      "objective": "建立数、式和方程的基础抓手。",
+      "required_elements": ["实数与代数式", "整式运算", "方程变形"],
+      "writing_instructions": "围绕本章知识点生成清晰讲解。"
+    }
+  ],
+  "build_constraints": {}
+}
 ```
 
-并行关系只看这张图：
+`chapters` 是完整章节列表，不是 diff。后续调整时也必须返回完整 `suggestion + plan + chapters`。
 
-```text
-load_planner_materials
-  -> stream_brief_and_extract_intent
-       ├─ stream_planner_brief      # 节点内部 run_llm_tasks
-       └─ extract_plan_intent       # 节点内部 run_llm_tasks
-  -> stream_and_parse_plan_draft ┐
-       ├─ stream_visible_plan    │  # 节点内部 asyncio 并行
-       └─ structured_plan        │  # 节点内部 asyncio 并行
-     generate_course_name        ┘  # LangGraph 分支并行
-  -> normalize_and_persist_plan
-  -> END
+## Graph 总览
+
+```mermaid
+flowchart TD
+    A["汇总会话与资料上下文<br/>collect_planner_context"] --> B["理解学习目标与资料<br/>understand_goal_and_materials"]
+    B --> C["生成 Planner 草案<br/>compose_planner_draft"]
+    B --> D["生成课程展示身份<br/>generate_course_identity"]
+    C --> E["保存 Planner 草案<br/>save_planner_draft"]
+    D --> E
+    E --> F["END"]
 ```
 
-## 长流程
+第一次生成时，`B` 内部并行跑两个任务：
 
-### 1. API / 用例入口
-
-`create_build_planner_session(...)`
-
-- 创建新的 `planner_session_id`。
-- 使用用户传入的 `file_ids / user_prompt / digest_mode / model`。
-- 调用 `run_build_planner_workflow(planner_operation="create")`。
-- 失败或取消时更新 planner session 状态。
-
-`append_build_planner_message(...)`
-
-- 读取已有 planner session。
-- 追加用户反馈 message。
-- 不重新选择资料，继续使用原 session 绑定的文件。
-- 调用 `run_build_planner_workflow(planner_operation="append")`。
-
-`record_build_planner_adjust_click(...)`
-
-- 只记录用户打开了调整入口。
-- 不改 plan，不跑 LLM。
-
-### 2. 图运行入口
-
-`run_build_planner_workflow(...)`
-
-- 创建 `WorkflowContext(workflow_name="digest.planner")`。
-- 把 `planner_operation / planner_session_id / digest_mode / model_override` 写进 trace metadata。
-- 使用 `use_runtime_model_override(model_override)` 包住整条图。
-- 初始 state 只带用户输入、会话 id、历史消息、回调和上一版 plan。
-
-### 3. `load_planner_materials`
-
-这个节点负责把“请求”变成“可规划上下文”。
-
-输入：
-
-- `planner_operation`
-- `course_id / user_id / planner_session_id`
-- `requested_file_ids`
-- `user_prompt / feedback_message`
-- `digest_mode / model_override`
-
-它做三件事：
-
-1. 调 `prepare_planner_run(state)` 处理会话。
-   - `create`：创建 `ChatSession(source="build_planner")`，写首条用户消息，保存文件选择。
-   - `append`：读取旧 session、最近历史消息、上一版 `latest_plan`，写入用户反馈。
-   - `generate_only`：只在内存跑，不写数据库。
-2. 调 `prepare_material_context(...)` 读取资料。
-   - 读取 `RawFile`、解析后的 Markdown、资料切片、课程画像、material digest。
-   - 如果正文还没解析好，退化为 seed context：文件名 + 用户目标 + RawFile 识别信息。
-3. 读取已有知识文档摘要。
-   - 有摘要：`planner_context_mode="rebuild_existing_doc"`。
-   - 没摘要：`planner_context_mode="fresh_build"`。
-
-输出：
-
-- `selected_file_ids / file_ids`
-- `message_history`
-- `latest_plan`
-- `material_context`
-- `existing_doc_context`
-- `planner_context_mode`
-
-### 4. `stream_brief_and_extract_intent`
-
-这个节点把“资料和用户话语”变成两类信号。
-
-并行子任务：
-
-| 子任务 | 输出 | 用途 |
-| --- | --- | --- |
-| `stream_planner_brief` | `planner_brief.markdown` | 用户可见，说明系统如何理解资料范围和目标 |
-| `extract_plan_intent` | `PlanIntent` | 机器使用，决定本轮如何生成或修改大纲 |
-
-`PlanIntent` 最重要的字段：
-
-- `plan_change_mode`
-  - `create_new`：新建方案。
-  - `patch_existing`：在旧方案上局部修改。
-  - `replace_existing_outline`：用户给了新主题或明确章数，旧方案只当上下文。
-- `target_scope`
-- `requested_chapter_count`
-- `plan_queries`
-- `adjustment_options`
-
-失败边界：
-
-- `planner_brief` 失败可以退化为空说明。
-- `PlanIntent` 结构化失败会让本轮 Planner 失败，因为后续大纲不能靠本地规则猜。
-
-### 5. `stream_and_parse_plan_draft`
-
-这个节点生成真正的方案草稿。
-
-节点内部并行：
-
-| 子任务 | 输出 | 用途 |
-| --- | --- | --- |
-| `stream_visible_plan_response` | `plan_outline_markdown` | 用户正在看的流式计划说明 |
-| `compose_outline_sketch_with_llm` | `PlannerOutlineSketch` | 机器可解析章节合同 |
-
-结构化草稿会被转换成：
-
-```text
-build_plan_draft
-  plan_text
-  plan_steps
-  chapter_plan[]
-    chapter_index
-    title
-    objective
-    required_elements
-    writing_instructions
-  build_constraints
-  adjustment_questions
+```mermaid
+flowchart LR
+    B["并行识别意图与摘要资料"] --> B1["流式 intent<br/>用户可见规划判断"]
+    B --> B2["结构化 summary<br/>资料与学科情况摘要"]
 ```
 
-关键规则：
+`C` 和 `D` 在图上并行：
 
-- 如果用户指定章数，结构化大纲必须严格等于这个章数。
-- `adjustment_questions` 来自上游 `PlanIntent.adjustment_options`，不是本节点重新发明。
-- 标题必须是课程目录标题；练习密度、易错点、教学动作放在 `key_points` 或章节说明里。
-- 结构化输出不完整时失败，不用本地关键词补大纲。
+```mermaid
+flowchart LR
+    X["intent + summary + user_prompt"] --> C["流式 planner<br/>suggestion + plan + chapters"]
+    X --> D["结构化 identity<br/>course_name + course_icon"]
+```
 
-### 6. `generate_course_name`
+## 第一次生成
 
-只在 `planner_operation="create"` 时有意义。
+触发入口：`create_build_planner_session(...)`
 
-输入：
+典型场景：用户输入“我想系统复习初中数学，请构建一门 14 天课程”，可选上传资料。
 
-- 用户目标
-- 文件名
-- material topic hints
-- planner brief
-- plan intent
+短流程：
 
-输出：
+```text
+1. 创建 planner session，保存用户首条目标和选择的文件。
+2. 读取已解析资料；资料未解析时只能使用文件名、检测信息和用户目标；没有资料时只按目标规划。
+3. 并行生成：
+   - intent：流式输出用户可见的学习意图、规划判断和资料边界。
+   - summary：结构化摘要资料/学科情况。
+4. 并行生成：
+   - course_name + course_icon：一次结构化调用生成课程展示身份。
+   - suggestion + plan + chapters：一次流式调用生成正式 planner，其中 plan 字段实时 SSE 展示。
+5. 规范化并保存 latest_plan。
+6. 前端展示可确认 planner，用户可以确认或继续调整。
+```
 
-- `generated_course_name`
-- `generated_course_icon_key`
+第一次生成的最终字段：
 
-这个标题只用于课程展示，不参与章节规划。
-
-### 7. `normalize_and_persist_plan`
-
-这个节点是 Planner 图的收口。
-
-步骤：
-
-1. 调 `normalize_planner_draft(...)`。
-   - 补齐课程名、章节索引、模式、摘要和构建约束。
-   - append 场景会吸收 `latest_plan`，保留用户修订语义。
-2. 如果生成了课程名，写进 plan。
-3. 发 `planner.plan.ready`。
-4. 调 `save_planner_result(...)`。
-
-数据库写入：
-
-- 更新 `ChatSession.meta_json.latest_plan`。
-- 更新 `latest_summary / digest_mode / model_override / planner_status="draft"`。
-- 写 assistant `ChatMessage(message_kind="planner_plan")`。
-- 必要时更新 `Course.name / description / user_intent`。
-
-输出给 API：
-
+- `intent`
+- `summary`
+- `course_name`
+- `course_icon`
+- `suggestion`
 - `plan`
-- `plan_summary`
-- `selected_file_ids`
-- `planner_record`
-- `planner_turns`
-- runtime timing
+- `chapters`
 
-### 8. `confirm_build_planner_session`
+## 后续调整
 
-确认不是 LangGraph 节点，但它是 Planner -> DocGen 的交接点。
+触发入口：`append_build_planner_message(...)`
 
-步骤：
+典型场景：
 
-1. 读取 planner `ChatSession`。
-2. 读取 session meta 里的 `latest_plan`。
-3. 读取完整 Planner turns，生成 `planner_context` 和 `docgen_history_brief`。
-4. 构建冻结 `plan_payload`。
-5. 把 `model_override` 写进 `plan_payload.model_override`。
-6. 如果内容未变，复用旧 `ConfirmedBuildPlan`。
-7. 否则新建一条 `ConfirmedBuildPlan(status="confirmed")`，递增 `version_no`。
-8. 更新 planner session meta 为 confirmed。
+- “改成 5 章”
+- “更偏考试”
+- “删除几何部分”
+- “只讲洛必达法则”
+- “把当前方案改成定积分的 5 个章节”
 
-DocGen 消费的就是这份 confirmed plan。
-
-## 关键数据流
+调整流程和第一次生成不同：
 
 ```text
-用户目标 / 修改意见
-  -> material_context
-  -> planner_brief + plan_intent
-  -> build_plan_draft
-  -> latest_plan
-  -> confirmed_plan
-  -> DocGen
+1. 读取已有 planner session、上一版 latest_plan 和最近对话。
+2. 追加用户反馈消息。
+3. 复用上一版 intent、summary、course_name、course_icon。
+4. 只调用一次 planner composer，生成新的 suggestion、plan、chapters。
+5. 保存完整 latest_plan；旧版本仍留在聊天历史里。
 ```
 
-`latest_plan` 和 `confirmed_plan` 不一样：
+调整时不再重新识别 `intent`，不再重新摘要 `summary`，也不重新生成 `course_name/course_icon`。如果用户明确要求换范围或换章节数，composer 必须在完整 `chapters` 中体现变化。
 
-| 字段 | 含义 |
+## SSE 展示合同
+
+Planner 的 SSE 不是单个 loading。前端应该分层展示阶段、判断和实时方案内容。
+
+事件类型：
+
+```text
+status 事件：阶段进度和中间判断
+token 事件：intent 与 plan 的自然语言流式内容
+done 事件：最终 BuildPlannerSessionResponse
+```
+
+关键事件：
+
+| 事件 | 用途 |
 | --- | --- |
-| `latest_plan` | 可继续修改的草稿，存在 planner session meta |
-| `confirmed_plan` | 用户确认后的冻结合同，存在 `ConfirmedBuildPlan` |
+| `accepted` | 请求已进入 Planner |
+| `planner.material.empty` | 没有绑定资料，只按目标规划 |
+| `planner.material.pending` | 资料未解析完成，先出临时方案 |
+| `planner.context.ready` | 资料上下文已准备 |
+| `planner.intent.started` | 开始流式规划判断 |
+| `planner.intent.ready` | `intent` 完成，可放到方案顶部的规划判断 |
+| `planner.summary.started` | 开始摘要资料/学科情况 |
+| `planner.summary.ready` | `summary` 完成 |
+| `planner.analysis.ready` | `intent + summary` 都完成 |
+| `planner.identity.started` | 开始生成课程名和图标 |
+| `planner.identity.ready` | `course_name + course_icon` 完成 |
+| `planner.plan.started` | 开始流式生成正式 `plan` |
+| `planner.plan.ready` | `suggestion + plan + chapters` 完成，携带 `plan_preview` |
+| `planner.saved` | latest_plan 已保存 |
 
-`model_override` 贯通路径：
+推荐 UI 排布：
 
-```text
-首页模型选择
-  -> Planner state.model_override
-  -> ChatSession.meta_json.model_override
-  -> ConfirmedBuildPlan.plan_json.model_override
-  -> DocGen
-  -> 自动 KG 同步
-```
+1. 顶部显示 `plan`，使用较强字重，作为最终方案总说明。
+2. 第二段显示 `suggestion`，标题可用“可以继续这样改”。
+3. `intent` 和 `summary` 放在上方的规划判断区域，而不是藏在 loading 文案里。
+4. `chapters` 左侧使用编号或章节图标，不使用像复选框的圆点，避免误导为可勾选。
+5. SSE 过程中已经收到的 `intent` 和 `plan` 都应实时展示，不能只显示“正在加载”。
+
+## 资料读取边界
+
+- 有已解析资料：`summary` 可以基于资料 Markdown、material digest 和主题提示形成摘要。
+- 有文件但正文未解析：只能说“检测到文件/资料名”，不能声称已经读完内容。
+- 没有文件：只能基于用户目标和通用课程常识规划，SSE 中要明确说明没有绑定上传资料。
+
+## 保存与确认
+
+`save_planner_draft` 保存的是可继续修改的 `latest_plan`：
+
+- 写入 `ChatSession.meta_json.latest_plan`
+- 写入 assistant `ChatMessage(message_kind="planner_plan")`
+- 必要时更新课程名、课程图标、课程描述和用户意图
+
+`confirm_build_planner_session(...)` 才会冻结为 confirmed plan：
+
+- 读取 planner session 的 `latest_plan`
+- 写入 `planner_context` 和 `docgen_history_brief`
+- 生成或复用 `confirmed_plan_id`
+- 更新 session 状态为 `confirmed`
+
+DocGen 消费 confirmed plan 的字段也是 `plan` 和 `chapters`。数据库表内仍有历史列名承载这些内容时，业务 JSON 和 API 不使用旧字段。
 
 ## 模型调用
 
 策略集中在 `lib/model_policy.py`。
 
-| 步骤 | 调用 | 槽位 |
+| 步骤 | 调用 | 模型槽位 |
 | --- | --- | --- |
-| `stream_planner_brief` | stream | `light` |
-| `extract_plan_intent` | structured | `light` |
-| `visible_plan` | stream | `light` |
-| `structured_plan` | structured | `light` |
-| `generate_course_name` | text | `light` |
-| `select_course_icon` | text | `light` |
+| `understand_goal_and_materials.stream_intent` | stream | `light` |
+| `understand_goal_and_materials.summarize_materials` | structured | `light` |
+| `compose_planner_draft` | stream | `light` |
+| `generate_course_identity` | structured | `light` |
 
 运行时如果传了 `model_override`，逻辑槽位仍写 `light`，实际 provider 模型由 runtime override / settings 决定。
 
-## 修改这条链路时检查
+## 修改检查
 
-- `graph.py` 节点顺序是否和本 README 的短流程一致。
-- 新 LLM 调用是否进了 `lib/model_policy.py`。
-- 新进度事件是否走 `planner_events.py`。
-- 任何会影响 DocGen 的字段，是否最终进入 `ConfirmedBuildPlan.plan_json`。
-- 不要在 Planner 里做正文生成、证据绑定或章节检索。
-
-建议提交类型：改本文档用 `docs`，改链路行为用 `refactor` 或 `fix`。
+- 改 graph 顺序时同步更新本文 Mermaid 图。
+- 新 LLM 调用必须进入 `lib/model_policy.py`。
+- 新用户可见进度优先走 Planner SSE 事件，不只写日志。
+- 新影响 DocGen 的字段必须进入 confirmed plan。
+- 不要在 Planner 中写正文、绑定证据或做章节检索。

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import re
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
@@ -27,14 +27,16 @@ class BuildPlannerDraft(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    course_name: str = Field(default="", validation_alias=AliasChoices("course_name", "course"))
+    course_name: str = ""
+    course_icon: str = ""
     user_prompt: str
     digest_mode: str = "systematic"
-    chapter_plan: list[PlannerChapterPlan] = Field(default_factory=list)
+    intent: str = ""
+    summary: str = ""
+    suggestion: str = ""
+    plan: str = ""
+    chapters: list[PlannerChapterPlan] = Field(default_factory=list)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
-    plan_summary: str = ""
-    plan_steps: list[str] = Field(default_factory=list)
-    adjustment_questions: list[str] = Field(default_factory=list)
 
 
 def _text(value: Any) -> str:
@@ -315,11 +317,14 @@ def normalize_planner_draft(
     previous = _mapping(latest_plan)
     current_constraints = _mapping(current.get("build_constraints"))
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    display_course = _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
+    display_course = (
+        _text(current.get("course_name") or previous.get("course_name"))
+        or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
+    )
     requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
 
-    current_chapters = _chapter_items(current.get("chapter_plan"))
-    previous_chapters = _chapter_items(previous.get("chapter_plan"))
+    current_chapters = _chapter_items(current.get("chapters"))
+    previous_chapters = _chapter_items(previous.get("chapters"))
     raw_chapters = current_chapters or previous_chapters
     if not raw_chapters:
         raise ValueError("planner plan is missing chapters")
@@ -330,26 +335,30 @@ def normalize_planner_draft(
         digest_mode=mode,
         requested_chapter_count=requested_chapter_count,
     )
-    plan_summary = _student_facing_text(current.get("plan_summary") or previous.get("plan_summary"))
-    if not plan_summary:
-        raise ValueError("planner plan is missing plan_summary")
-    plan_steps = _strings(current.get("plan_steps") or previous.get("plan_steps"))
-    adjustment_questions = _strings(current.get("adjustment_questions") or previous.get("adjustment_questions"))
+    plan_text = _student_facing_text(current.get("plan") or previous.get("plan"))
+    if not plan_text:
+        raise ValueError("planner plan is missing plan")
+    suggestion = _student_facing_text(current.get("suggestion") or previous.get("suggestion"))
+    intent = _student_facing_text(current.get("intent") or previous.get("intent"))
+    summary = _student_facing_text(current.get("summary") or previous.get("summary"))
+    course_icon = _text(current.get("course_icon") or previous.get("course_icon"))
 
     return BuildPlannerDraft(
         course_name=display_course,
+        course_icon=course_icon,
         user_prompt=resolved_user_prompt,
         digest_mode=mode,
-        chapter_plan=chapters,
+        intent=intent,
+        summary=summary,
+        suggestion=suggestion,
+        plan=plan_text,
+        chapters=chapters,
         build_constraints=_build_constraints(
             digest_mode=mode,
             chapter_count=len(chapters),
             shared_inputs=shared,
             requested_chapter_count=requested_chapter_count,
         ),
-        plan_summary=plan_summary,
-        plan_steps=plan_steps,
-        adjustment_questions=adjustment_questions,
     )
 
 

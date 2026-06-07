@@ -409,7 +409,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
       className={cn(
         "my-6 overflow-hidden border",
         isDocument
-          ? "rounded-[28px] border-indigo-100 bg-[radial-gradient(circle_at_top_left,#ede9fe_0%,#ffffff_38%,#f8fafc_100%)] shadow-[0_28px_80px_-56px_rgba(109,40,217,0.55)] dark:border-indigo-500/20 dark:bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16)_0%,rgba(15,23,42,0.96)_42%,rgba(2,6,23,0.98)_100%)] dark:shadow-[0_32px_72px_-56px_rgba(99,102,241,0.45)]"
+          ? "rounded-md border-[#D7DDE5] bg-white dark:border-slate-800 dark:bg-slate-950/80"
           : "rounded-2xl border-indigo-100 bg-indigo-50/70 shadow-sm dark:border-indigo-500/20 dark:bg-slate-950/80 dark:shadow-[0_18px_40px_-28px_rgba(0,0,0,0.72)]",
       )}
     >
@@ -417,7 +417,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
         className={cn(
           "flex items-center justify-between gap-3 border-b px-4 py-3",
           isDocument
-            ? "border-indigo-100/80 bg-white/70 dark:border-indigo-500/20 dark:bg-slate-950/70"
+            ? "border-[#E4E7EC] bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-900/80"
             : "border-indigo-100/80 bg-white/80 dark:border-indigo-500/20 dark:bg-slate-950/80",
         )}
       >

@@ -146,17 +146,15 @@ def _request_id(request: Request | object) -> str:
 def _planner_plan_analytics_properties(plan: object | None) -> dict[str, object]:
     if plan is None:
         return {
-            "adjustment_question_count": 0,
             "chapter_count": 0,
-            "has_plan_summary": False,
-            "plan_step_count": 0,
+            "has_plan": False,
+            "has_suggestion": False,
         }
     return {
-        "adjustment_question_count": len(getattr(plan, "adjustment_questions", []) or []),
-        "chapter_count": len(getattr(plan, "chapter_plan", []) or []),
+        "chapter_count": len(getattr(plan, "chapters", []) or []),
         "digest_mode": getattr(plan, "digest_mode", None),
-        "has_plan_summary": bool(str(getattr(plan, "plan_summary", "") or "").strip()),
-        "plan_step_count": len(getattr(plan, "plan_steps", []) or []),
+        "has_plan": bool(str(getattr(plan, "plan", "") or "").strip()),
+        "has_suggestion": bool(str(getattr(plan, "suggestion", "") or "").strip()),
     }
 
 
@@ -203,7 +201,7 @@ def _planner_stream_response(
                 "status",
                 {
                     "stage": "accepted",
-                    "detail": "请求已受理，正在读取学习目标与资料。",
+                    "detail": "已收到请求，马上开始拆解学习目标和资料边界。",
                 },
             )
 
@@ -571,10 +569,10 @@ def knowledge_build_plan_confirm(
         user_id=user.user_id,
         insert_id_parts=[data.confirmed_plan_id, data.updated_at.isoformat()],
         properties={
-            "chapter_count": len(data.chapter_plan or []),
+            "chapter_count": len(data.chapters or []),
             "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
             "digest_mode": data.digest_mode,
-            "has_plan_summary": bool((data.plan_summary or "").strip()),
+            "has_plan": bool((data.plan or "").strip()),
             "model_override_present": bool(data.model_override),
             "planner_session_id_suffix": _suffix(data.planner_session_id or session_id),
             "selected_file_count": len(data.selected_file_ids or []),

@@ -184,6 +184,107 @@ let publishedDoc = {
 };
 
 let pendingKnowledgeBuild: PendingKnowledgeBuild | null = null;
+let mockPlannerSeq = 1;
+const mockPlannerSessions = new Map<string, ReturnType<typeof buildMockPlannerSession>>();
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function chunkText(text: string, size = 18): string[] {
+  const chunks: string[] = [];
+  for (let index = 0; index < text.length; index += size) {
+    chunks.push(text.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildMockPlannerSession(course: string, prompt: string) {
+  const timestamp = now();
+  const sessionId = `mock-planner-${mockPlannerSeq++}`;
+  const plan = {
+    course_id: course,
+    selected_file_ids: mockFiles.filter((item) => item.markdown_ready).map((item) => item.id),
+    course_name: "初中数学系统复习",
+    course_icon: "book-open",
+    user_prompt: prompt,
+    digest_mode: "systematic",
+    intent: "用户希望在两周内重建初中数学知识体系，重点覆盖数与式、方程函数、几何和统计概率。",
+    summary: "当前资料以离散笔记和期末试卷为主，适合作为题型与复盘参考；解析失败文件暂不纳入规划。",
+    suggestion: "如果希望侧重中考压轴题，可以增加函数与几何综合题比例。\n如果 14 天节奏过快，可以延长到 21 天并增加复盘环节。",
+    plan: "本课程用 14 天重建初中数学主线：先稳住数与式基础，再推进方程、不等式、函数和几何，最后用统计概率与综合训练收口。",
+    chapters: [
+      {
+        chapter_index: 1,
+        title: "实数与代数式运算",
+        objective: "掌握实数分类、绝对值、平方根及幂的运算性质；练习代数式求值与复杂式化简。",
+      },
+      {
+        chapter_index: 2,
+        title: "方程与不等式基础",
+        objective: "梳理一元一次、二元一次方程组和一元二次方程，建立符号变形与应用题建模能力。",
+      },
+      {
+        chapter_index: 3,
+        title: "一次函数与图像性质",
+        objective: "理解函数解析式、图像特征、斜率截距和数形结合解题方式。",
+      },
+      {
+        chapter_index: 4,
+        title: "几何证明与模型",
+        objective: "围绕三角形、四边形、圆和相似模型，训练证明链条和辅助线意识。",
+      },
+      {
+        chapter_index: 5,
+        title: "统计概率与综合复盘",
+        objective: "掌握数据描述、概率计算和综合题复盘方法，形成最后的错题清单。",
+      },
+    ],
+    build_constraints: {},
+    status: "draft",
+    planner_session_id: sessionId,
+    confirmed_plan_id: null,
+    model_override: null,
+  };
+
+  return {
+    session_id: sessionId,
+    course_id: course,
+    title: plan.course_name,
+    status: "draft",
+    revision: 2,
+    latest_plan: plan,
+    model_override: null,
+    turns: [
+      { id: 1, role: "user", content: prompt, created_at: timestamp },
+      { id: 2, role: "assistant", content: plan.plan, plan_json: plan, created_at: timestamp },
+    ],
+    runtime_stats: {
+      elapsed_ms: 1280,
+      steps: [
+        { name: "understand_goal_and_materials", elapsed_ms: 360, status: "completed" },
+        { name: "compose_planner_draft", elapsed_ms: 720, status: "completed" },
+        { name: "save_planner_draft", elapsed_ms: 80, status: "completed" },
+      ],
+    },
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
+function getMockPlannerSession(course: string) {
+  const existing = mockPlannerSessions.get(course);
+  if (existing) {
+    return existing;
+  }
+
+  const session = buildMockPlannerSession(
+    course,
+    "我想系统复习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
+  );
+  mockPlannerSessions.set(course, session);
+  return session;
+}
 
 function advanceFileParsing(course: string) {
   for (const file of mockFiles) {
@@ -420,6 +521,57 @@ export const fileHandlers = [
       ? params.assetPath.join("/")
       : String(params.assetPath ?? "");
     return buildMockAssetResponse(String(params.course), assetPath);
+  }),
+
+  http.post("/api/v1/courses/:course/knowledge/build/plans/stream", async ({ params, request }) => {
+    const course = String(params.course);
+    const body = (await request.json().catch(() => ({}))) as { user_prompt?: string | null };
+    const prompt = body.user_prompt?.trim() || "请帮我规划一门系统课程";
+    const session = buildMockPlannerSession(course, prompt);
+    mockPlannerSessions.set(course, session);
+    const preview = [
+      session.latest_plan.intent,
+      "",
+      session.latest_plan.plan,
+    ].join("\n");
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (event: string, payload: object) => {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`));
+        };
+
+        emit("status", { stage: "accepted", detail: "已收到请求，马上开始拆解学习目标和资料边界。" });
+        await sleep(180);
+        emit("status", { stage: "planner.intent.started", detail: "正在判断学习目标和输出边界。" });
+        for (const chunk of chunkText(preview, 20)) {
+          await sleep(45);
+          emit("token", { content: chunk });
+        }
+        emit("status", { stage: "planner.summary.ready", detail: session.latest_plan.summary });
+        await sleep(160);
+        emit("status", { stage: "planner.plan.ready", detail: "方案已生成，可以继续调整或开始构建。" });
+        emit("done", { session });
+        controller.close();
+      },
+    });
+
+    return new HttpResponse(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }),
+
+  http.post("/api/v1/courses/:course/knowledge/build/plans/latest", ({ params }) => {
+    const course = String(params.course);
+    const session = getMockPlannerSession(course);
+    return HttpResponse.json({
+      code: 0,
+      data: session,
+    });
   }),
 
   http.post("/api/v1/courses/:course/knowledge/build", async ({ request }) => {

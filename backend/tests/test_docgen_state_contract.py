@@ -51,7 +51,7 @@ async def test_lock_titles_uses_course_id_state_key(monkeypatch) -> None:
                 "course_name": "计算机基础",
                 "digest_mode": "sprint",
                 "user_prompt": "学习计算机基础",
-                "plan_summary": "按核心模块组织内容",
+                "plan": "按核心模块组织内容",
             },
             "chapter_assignments": [
                 {

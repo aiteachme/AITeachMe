@@ -229,7 +229,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     doc_sync_llm_section_count: int = 0
     sample_cards: list[dict[str, str]] = Field(default_factory=list)
     mode_reason: str | None = None
-    plan_summary: str | None = None
+    plan: str | None = None
     metrics: dict[str, object] = Field(default_factory=dict)
     chapter_progress: list[dict[str, object]] = Field(default_factory=list)
     chapter_previews: list[dict[str, object]] = Field(default_factory=list)
@@ -454,12 +454,12 @@ def _posthog_insert_id(
     course_id: str,
     status: KnowledgeBuildRuntimeStatus,
 ) -> str:
+    build_identity = _datetime_to_iso(status.requested_at) or status.build_group_id or "unknown_build"
     stable_parts = [
         event_name,
         course_id.strip() or "unknown_course",
-        status.build_group_id or "",
-        status.confirmed_plan_id or "",
-        _datetime_to_iso(status.requested_at) or "",
+        status.build_kind or "docgen",
+        build_identity,
         status.status,
     ]
     digest = hashlib.sha256(":".join(stable_parts).encode("utf-8")).hexdigest()[:32]

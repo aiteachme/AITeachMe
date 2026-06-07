@@ -19,7 +19,7 @@ def build_chapter_execution_brief_messages(
     glossary_terms: Sequence[str],
     claim_targets: Sequence[str],
     confusion_targets: Sequence[str],
-    plan_summary: str = "",
+    plan: str = "",
     docgen_history_brief: str = "",
 ) -> list[dict[str, str]]:
     profile = get_docgen_mode_profile(digest_mode)
@@ -48,7 +48,7 @@ def build_chapter_execution_brief_messages(
 {dict(intent_core or {})}
 
 Planner handoff:
-- plan_summary: {plan_summary or "not provided"}
+- plan: {plan or "not provided"}
 - docgen_history_brief: {docgen_history_brief or "none"}
 
 骨架线索：
@@ -117,7 +117,7 @@ Planner handoff:
             "course_name": course_name,
             "digest_mode": digest_mode,
             "chapter_index": int(chapter.get("chapter_index", 0) or 0),
-            "has_plan_summary": bool(plan_summary),
+            "has_plan": bool(plan),
             "has_docgen_history": bool(docgen_history_brief),
             "glossary_count": len(list(glossary_terms or [])),
             "claim_target_count": len(list(claim_targets or [])),

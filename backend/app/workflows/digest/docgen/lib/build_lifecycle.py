@@ -271,9 +271,9 @@ def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[st
 
 
 def _build_initial_chapter_progress(plan: ConfirmedBuildPlan) -> list[dict[str, object]]:
-    chapter_plan = list(plan.chapter_plan_json or [])
+    chapter_contracts = list(plan.chapters or [])
     progress: list[dict[str, object]] = []
-    for index, chapter in enumerate(chapter_plan, start=1):
+    for index, chapter in enumerate(chapter_contracts, start=1):
         chapter_index = int(chapter.get("chapter_index", index) or index)
         progress.append(
             {
@@ -384,7 +384,7 @@ def _build_runtime_preview(*, build_status, draft_markdown: str, manifest) -> Kn
         discovered_node_types=(dict(build_status.discovered_node_types) if build_status is not None else {}),
         sample_nodes=sample_nodes,
         sample_cards=sample_cards,
-        plan_summary=(build_status.plan_summary if build_status is not None else None),
+        plan=(build_status.plan if build_status is not None else None),
         chapter_progress=chapter_progress,
         recent_events=recent_events,
         chapter_previews=chapter_previews,
@@ -547,10 +547,10 @@ def _build_confirmed_plan_payload(
     payload["course_name"] = course_name
     payload.setdefault("user_prompt", plan.user_prompt)
     payload.setdefault("digest_mode", plan.digest_mode)
-    payload.setdefault("chapter_plan", list(plan.chapter_plan_json))
-    payload.setdefault("build_constraints", dict(plan.build_constraints_json))
-    payload.setdefault("plan_summary", plan.plan_summary)
-    payload["selected_file_ids"] = list(plan.selected_file_ids_json)
+    payload.setdefault("chapters", list(plan.chapters))
+    payload.setdefault("build_constraints", dict(plan.build_constraints))
+    payload.setdefault("plan", plan.plan)
+    payload["selected_file_ids"] = list(plan.selected_file_ids)
     payload["planner_session_id"] = plan.planner_session_id
     payload["confirmed_plan_id"] = plan.id
     payload["confirmed_plan_version_no"] = int(plan.version_no or 1)
@@ -612,7 +612,7 @@ def trigger_docgen_build(
         clear_chunk_vector_metadata(session, course_id=course.id)
     planner_session_id = None
     digest_mode = None
-    plan_summary = None
+    planner_plan = None
     model_override = None
     chapter_progress: list[dict[str, object]] = []
     recent_events: list[dict[str, object]] = []
@@ -630,7 +630,7 @@ def trigger_docgen_build(
         raise CourseBuildLockConflictError(course.id)
     planner_session_id = plan.planner_session_id
     digest_mode = plan.digest_mode
-    plan_summary = plan.plan_summary
+    planner_plan = str((plan.plan_json or {}).get("plan") or plan.plan or "")
     model_override = _confirmed_plan_model_override(plan.plan_json)
     chapter_progress = _build_initial_chapter_progress(plan)
     recent_events = [
@@ -645,10 +645,10 @@ def trigger_docgen_build(
     accepted_files, ready_file_count = _select_ready_docgen_files_by_ids(
         session,
         course_id=course.id,
-        file_ids=list(plan.selected_file_ids_json),
+        file_ids=list(plan.selected_file_ids),
         allow_empty=True,
     )
-    plan_prompt = _clean_prompt(plan.user_prompt) or _clean_prompt(plan.plan_summary)
+    plan_prompt = _clean_prompt(plan.user_prompt) or _clean_prompt(planner_plan)
     if file_ids:
         logger.warning(
             "knowledge_build_file_selection_ignored_for_confirmed_plan",
@@ -705,7 +705,7 @@ def trigger_docgen_build(
         confirmed_plan_id=confirmed_plan_id,
         digest_mode=digest_mode,
         model_override=model_override,
-        plan_summary=plan_summary,
+        plan=planner_plan,
         chapter_progress=chapter_progress,
         recent_events=recent_events,
         current_stage_description=(

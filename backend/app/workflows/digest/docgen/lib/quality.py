@@ -315,11 +315,11 @@ def build_merge_review_report(
     *,
     enhanced_chapters: list[EnhancedChapterDraft],
     expected_chapter_count: int,
-    plan_summary: str,
+    plan: str,
 ) -> MergeReviewReport:
     """生成发布前的整本合并检查报告。"""
 
-    del plan_summary
+    del plan
     issues: list[MergeReviewIssue] = []
     if len(enhanced_chapters) != expected_chapter_count:
         issues.append(

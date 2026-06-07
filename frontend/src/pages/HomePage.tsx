@@ -679,7 +679,7 @@ export function HomePage() {
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       return created.course_id;
     } catch (err: unknown) {
-      const message = getApiErrorMessage(err, "创建学习空间失败，请重试");
+      const message = getApiErrorMessage(err, "创建课程失败，请重试");
       setError(message);
       throw new Error(message);
     } finally {
@@ -787,7 +787,7 @@ export function HomePage() {
   const hasEntryFiles = uploadedFiles.length > 0 || optimisticUploadingFiles.length > 0;
   const entryFilesStatusText = useMemo(() => {
     if (isCreatingDraftCourse) {
-      return "正在创建学习空间，并关联已选择资料。";
+      return "正在创建课程，并关联已选择资料。";
     }
     if (isUploadingFiles) {
       return "资料正在上传，上传完成后会继续后台解析；文件会保留在这里，除非你手动移除。";
@@ -1080,7 +1080,7 @@ export function HomePage() {
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      {isStartingBuild || isCreatingDraftCourse ? "正在创建学习空间..." : "正在上传并解析资料..."}
+                      {isStartingBuild || isCreatingDraftCourse ? "正在创建课程..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>

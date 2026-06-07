@@ -38,7 +38,7 @@ _REMOTE_IMAGE_TIMEOUT_S = 45
 
 def _chapter_titles(confirmed_plan: Mapping[str, Any] | None, *, limit: int = 5) -> list[str]:
     titles: list[str] = []
-    for chapter in list((confirmed_plan or {}).get("chapter_plan") or []):
+    for chapter in list((confirmed_plan or {}).get("chapters") or []):
         if not isinstance(chapter, Mapping):
             continue
         title = str(chapter.get("title") or "").strip()
@@ -52,7 +52,7 @@ def _chapter_titles(confirmed_plan: Mapping[str, Any] | None, *, limit: int = 5)
 def _course_cues(confirmed_plan: Mapping[str, Any] | None, *, limit: int = 8) -> list[str]:
     cues: list[str] = []
     seen: set[str] = set()
-    for chapter in list((confirmed_plan or {}).get("chapter_plan") or []):
+    for chapter in list((confirmed_plan or {}).get("chapters") or []):
         if not isinstance(chapter, Mapping):
             continue
         items = [
@@ -104,7 +104,7 @@ def _build_cover_prompt(
     *,
     course_name: str,
     user_prompt: str,
-    plan_summary: str,
+    plan: str,
     digest_mode: str,
     confirmed_plan: Mapping[str, Any] | None,
     file_summaries: list[Mapping[str, Any]] | None = None,
@@ -137,7 +137,7 @@ def _build_cover_prompt(
         "Course signals to loosely absorb, not literally depict:\n"
         f"- course: {course_name}\n"
         f"- build intent: {user_prompt or 'teaching document cover'}\n"
-        f"- plan summary: {plan_summary or 'structured learning document'}\n"
+        f"- planner plan: {plan or 'structured learning document'}\n"
         f"- chapter arc: {chapter_titles}\n"
         f"- curriculum motifs: {course_cues}\n"
         f"- source material cues: {file_cues}\n"
@@ -250,7 +250,7 @@ async def generate_docgen_cover_artifact(
     course_name: str,
     build_session_id: str,
     user_prompt: str | None,
-    plan_summary: str | None,
+    plan: str | None,
     digest_mode: str | None,
     confirmed_plan: Mapping[str, Any] | None,
     requested_at: datetime | None = None,
@@ -275,7 +275,7 @@ async def generate_docgen_cover_artifact(
     prompt = _build_cover_prompt(
         course_name=course_name,
         user_prompt=str(user_prompt or "").strip(),
-        plan_summary=str(plan_summary or "").strip(),
+        plan=str(plan or "").strip(),
         digest_mode=str(digest_mode or "").strip().lower(),
         confirmed_plan=confirmed_plan,
         file_summaries=file_summaries,
