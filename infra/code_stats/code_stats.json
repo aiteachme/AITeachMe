@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-01T03:41:07.578359",
-  "total_commits_analyzed": 1767,
+  "generated_at": "2026-06-08T03:40:08.552658",
+  "total_commits_analyzed": 1807,
   "stats": [
     {
       "date": "2026-03-11",
@@ -14137,6 +14137,326 @@
       "code_lines": 193089,
       "other_lines": 36712,
       "message": "feat: Add Profile Dashboard and ViewModel for cour"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "88cf068",
+      "total_lines": 212319,
+      "code_lines": 176697,
+      "other_lines": 35622,
+      "message": "feat: 资料库三点菜单与文件下载功能"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "75415f4",
+      "total_lines": 207527,
+      "code_lines": 172408,
+      "other_lines": 35119,
+      "message": "fix: 初始posthog统计信息"
+    },
+    {
+      "date": "2026-06-01",
+      "commit": "2438d4d",
+      "total_lines": 229801,
+      "code_lines": 193089,
+      "other_lines": 36712,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-06-02",
+      "commit": "ca60ece",
+      "total_lines": 230561,
+      "code_lines": 193737,
+      "other_lines": 36824,
+      "message": "chore: 合并 dev_cy 与 dev_mzp 更新"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "ebb065f",
+      "total_lines": 230695,
+      "code_lines": 193866,
+      "other_lines": 36829,
+      "message": "feat: 首页增加学习任务示例引导"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "f2e4766",
+      "total_lines": 229018,
+      "code_lines": 192321,
+      "other_lines": 36697,
+      "message": "refactor: 统一 Digest 链路结构与文档说明"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "eb9a525",
+      "total_lines": 230709,
+      "code_lines": 193873,
+      "other_lines": 36836,
+      "message": "fix: 修复首页建课入口和课程模板"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "b5b3b24",
+      "total_lines": 229166,
+      "code_lines": 192457,
+      "other_lines": 36709,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "6fe81c4",
+      "total_lines": 229190,
+      "code_lines": 192473,
+      "other_lines": 36717,
+      "message": "refactor: 统一上传类型校验来源"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "0d526a1",
+      "total_lines": 229166,
+      "code_lines": 192457,
+      "other_lines": 36709,
+      "message": "fix: 修复后端 CI 过期测试导入"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "092f453",
+      "total_lines": 229166,
+      "code_lines": 192457,
+      "other_lines": 36709,
+      "message": "fix: 修复 pre-push 后端环境校验"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "b0b612f",
+      "total_lines": 229166,
+      "code_lines": 192457,
+      "other_lines": 36709,
+      "message": "fix: 切换public url"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "a233a13",
+      "total_lines": 229190,
+      "code_lines": 192473,
+      "other_lines": 36717,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "4be03ec",
+      "total_lines": 229166,
+      "code_lines": 192457,
+      "other_lines": 36709,
+      "message": "fix: 修复部署地址和 pre-push 校验"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "5bf718b",
+      "total_lines": 229190,
+      "code_lines": 192473,
+      "other_lines": 36717,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-06-03",
+      "commit": "a4be7fc",
+      "total_lines": 229190,
+      "code_lines": 192473,
+      "other_lines": 36717,
+      "message": "fix: 修复 Sealos 前端后端代理地址"
+    },
+    {
+      "date": "2026-06-04",
+      "commit": "a8d1a3c",
+      "total_lines": 229215,
+      "code_lines": 192493,
+      "other_lines": 36722,
+      "message": "fix: 优化语义检索提示文案"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "c03b94b",
+      "total_lines": 229215,
+      "code_lines": 192493,
+      "other_lines": 36722,
+      "message": "merge: 合并 origin/main"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "0e5fc54",
+      "total_lines": 229181,
+      "code_lines": 192473,
+      "other_lines": 36708,
+      "message": "refactor(ingest): 整理 fast_parse 代码结构"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "acdff52",
+      "total_lines": 229380,
+      "code_lines": 192636,
+      "other_lines": 36744,
+      "message": "feat: 资料库文件详情页支持 Markdown 渲染预览"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "256f3ad",
+      "total_lines": 229360,
+      "code_lines": 192627,
+      "other_lines": 36733,
+      "message": "fix: 优化 DocGen 检索排序与 Planner 并行调度"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "40045cd",
+      "total_lines": 229525,
+      "code_lines": 192770,
+      "other_lines": 36755,
+      "message": "Merge remote-tracking branch 'origin/dev_cy'"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "bb6ea96",
+      "total_lines": 208359,
+      "code_lines": 173126,
+      "other_lines": 35233,
+      "message": "fix: 将PostHog核心埋点迁移到后端"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "747e041",
+      "total_lines": 230400,
+      "code_lines": 193531,
+      "other_lines": 36869,
+      "message": "Merge remote-tracking branch 'origin/dev_mzp'"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "1630d1d",
+      "total_lines": 230422,
+      "code_lines": 193548,
+      "other_lines": 36874,
+      "message": "fix: 恢复 fast_parse 旧导入兼容"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "5177c44",
+      "total_lines": 230422,
+      "code_lines": 193548,
+      "other_lines": 36874,
+      "message": "docs: 调整推送前检查说明"
+    },
+    {
+      "date": "2026-06-05",
+      "commit": "3b490a8",
+      "total_lines": 230487,
+      "code_lines": 193609,
+      "other_lines": 36878,
+      "message": "fix: 修复知识构建埋点去重逻辑"
+    },
+    {
+      "date": "2026-06-06",
+      "commit": "2fa0a97",
+      "total_lines": 230491,
+      "code_lines": 193616,
+      "other_lines": 36875,
+      "message": "feat: 添加附件按钮点击事件处理和库选择功能"
+    },
+    {
+      "date": "2026-06-06",
+      "commit": "ff3fdb7",
+      "total_lines": 231088,
+      "code_lines": 194103,
+      "other_lines": 36985,
+      "message": "feat: add grading functionality for question templ"
+    },
+    {
+      "date": "2026-06-06",
+      "commit": "42e5107",
+      "total_lines": 231039,
+      "code_lines": 194055,
+      "other_lines": 36984,
+      "message": "refactor: 移除 MasteryDrillPage 组件中的未使用代码和变量"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "96503fc",
+      "total_lines": 230191,
+      "code_lines": 193331,
+      "other_lines": 36860,
+      "message": "refactor: 移除学习空间和首页浮动对话入口"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "34ebc1c",
+      "total_lines": 230202,
+      "code_lines": 193342,
+      "other_lines": 36860,
+      "message": "feat: 优化侧边栏入口和社区预加载"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "82647ef",
+      "total_lines": 228647,
+      "code_lines": 191953,
+      "other_lines": 36694,
+      "message": "refactor: 重构 Planner 方案合同与流式体验"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "64a78d8",
+      "total_lines": 228867,
+      "code_lines": 192143,
+      "other_lines": 36724,
+      "message": "fix: 优化 DocGen 文档质量检查与渲染样式"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "d678df8",
+      "total_lines": 229484,
+      "code_lines": 192650,
+      "other_lines": 36834,
+      "message": "Merge remote-tracking branch 'origin/main' into de"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "8d8aa51",
+      "total_lines": 230272,
+      "code_lines": 193336,
+      "other_lines": 36936,
+      "message": "feat: 增加 DocGen 通用讲义图生成链路"
+    },
+    {
+      "date": "2026-06-07",
+      "commit": "327c64d",
+      "total_lines": 230290,
+      "code_lines": 193354,
+      "other_lines": 36936,
+      "message": "style: 优化首页建课入口与课程操作界面"
+    },
+    {
+      "date": "2026-06-08",
+      "commit": "00d5501",
+      "total_lines": 230546,
+      "code_lines": 193604,
+      "other_lines": 36942,
+      "message": "style: 优化课程导入导出删除操作界面"
+    },
+    {
+      "date": "2026-06-08",
+      "commit": "a2b304c",
+      "total_lines": 230560,
+      "code_lines": 193617,
+      "other_lines": 36943,
+      "message": "style: 精修课程操作面板高级感"
+    },
+    {
+      "date": "2026-06-08",
+      "commit": "b6c649b",
+      "total_lines": 230569,
+      "code_lines": 193626,
+      "other_lines": 36943,
+      "message": "style: 优化首页输入反馈与示例提示词布局"
     }
   ]
 }
