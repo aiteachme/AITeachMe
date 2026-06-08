@@ -209,8 +209,7 @@ function buildMockPlannerSession(course: string, prompt: string) {
     course_icon: "book-open",
     user_prompt: prompt,
     digest_mode: "systematic",
-    intent: "用户希望在两周内重建初中数学知识体系，重点覆盖数与式、方程函数、几何和统计概率。",
-    summary: "当前资料以离散笔记和期末试卷为主，适合作为题型与复盘参考；解析失败文件暂不纳入规划。",
+    planning_note: "用户希望在两周内重建初中数学知识体系，重点覆盖数与式、方程函数、几何和统计概率。当前资料以离散笔记和期末试卷为主，适合作为题型与复盘参考；解析失败文件暂不纳入规划。",
     suggestion: "如果希望侧重中考压轴题，可以增加函数与几何综合题比例。\n如果 14 天节奏过快，可以延长到 21 天并增加复盘环节。",
     plan: "本课程用 14 天重建初中数学主线：先稳住数与式基础，再推进方程、不等式、函数和几何，最后用统计概率与综合训练收口。",
     chapters: [
@@ -240,7 +239,6 @@ function buildMockPlannerSession(course: string, prompt: string) {
         objective: "掌握数据描述、概率计算和综合题复盘方法，形成最后的错题清单。",
       },
     ],
-    build_constraints: {},
     status: "draft",
     planner_session_id: sessionId,
     confirmed_plan_id: null,
@@ -259,14 +257,6 @@ function buildMockPlannerSession(course: string, prompt: string) {
       { id: 1, role: "user", content: prompt, created_at: timestamp },
       { id: 2, role: "assistant", content: plan.plan, plan_json: plan, created_at: timestamp },
     ],
-    runtime_stats: {
-      elapsed_ms: 1280,
-      steps: [
-        { name: "understand_goal_and_materials", elapsed_ms: 360, status: "completed" },
-        { name: "compose_planner_draft", elapsed_ms: 720, status: "completed" },
-        { name: "save_planner_draft", elapsed_ms: 80, status: "completed" },
-      ],
-    },
     created_at: timestamp,
     updated_at: timestamp,
   };
@@ -530,7 +520,7 @@ export const fileHandlers = [
     const session = buildMockPlannerSession(course, prompt);
     mockPlannerSessions.set(course, session);
     const preview = [
-      session.latest_plan.intent,
+      session.latest_plan.planning_note,
       "",
       session.latest_plan.plan,
     ].join("\n");
@@ -543,12 +533,12 @@ export const fileHandlers = [
 
         emit("status", { stage: "accepted", detail: "已收到请求，马上开始拆解学习目标和资料边界。" });
         await sleep(180);
-        emit("status", { stage: "planner.intent.started", detail: "正在判断学习目标和输出边界。" });
+        emit("status", { stage: "planner.planning_note.started", detail: "正在判断学习目标和输出边界。" });
         for (const chunk of chunkText(preview, 20)) {
           await sleep(45);
           emit("token", { content: chunk });
         }
-        emit("status", { stage: "planner.summary.ready", detail: session.latest_plan.summary });
+        emit("status", { stage: "planner.planning_note.ready", detail: "规划判断已完成。" });
         await sleep(160);
         emit("status", { stage: "planner.plan.ready", detail: "方案已生成，可以继续调整或开始构建。" });
         emit("done", { session });

@@ -14,7 +14,7 @@ logger = structlog.get_logger(__name__)
 
 
 def build_save_planner_draft_node(*, context: WorkflowContext):
-    """构建 Planner 草案保存节点。
+    """构建方案草案保存节点。
 
     把模型输出的 build_plan_draft 规范化成稳定合同，并写入 planner
     session / chat mirror。这里保存的是 latest_plan，用户确认后才会冻结为
@@ -22,7 +22,7 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
     """
 
     async def save_planner_draft_node(state: BuildPlannerState) -> dict:
-        """保存当前 Planner 草案并返回 API 响应所需状态。"""
+        """保存当前方案草案并返回 API 响应所需状态。"""
 
         if state.get("error"):
             return {}

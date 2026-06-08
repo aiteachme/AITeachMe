@@ -13,7 +13,7 @@ PlannerModelSlot = Literal["light", "primary", "reason"]
 
 
 class PlannerModelStep(str, Enum):
-    STREAM_INTENT = "understand_goal_and_materials.stream_intent"
+    STREAM_PLANNING_NOTE = "understand_goal_and_materials.stream_planning_note"
     SUMMARIZE_MATERIALS = "understand_goal_and_materials.summarize_materials"
     DRAFT_PLAN = "compose_planner_draft"
     COURSE_IDENTITY = "generate_course_identity"
@@ -76,14 +76,14 @@ class PlannerModelPolicy:
 
 
 _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
-    PlannerModelStep.STREAM_INTENT: PlannerModelPolicy(
-        step=PlannerModelStep.STREAM_INTENT,
+    PlannerModelStep.STREAM_PLANNING_NOTE: PlannerModelPolicy(
+        step=PlannerModelStep.STREAM_PLANNING_NOTE,
         call_type="stream",
         model="light",
         max_tokens=2200,
         timeout_s=300,
         temperature=0.2,
-        note="首轮流式识别学习意图和规划边界。",
+        note="首轮流式生成规划判断。",
     ),
     PlannerModelStep.SUMMARIZE_MATERIALS: PlannerModelPolicy(
         step=PlannerModelStep.SUMMARIZE_MATERIALS,
@@ -92,7 +92,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         max_tokens=1600,
         timeout_s=120,
         temperature=0.1,
-        note="首轮摘要学习资料，形成 summary 字段。",
+        note="首轮摘要学习资料，形成内部资料边界供方案生成使用。",
     ),
     PlannerModelStep.DRAFT_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.DRAFT_PLAN,

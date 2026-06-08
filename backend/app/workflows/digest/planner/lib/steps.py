@@ -11,9 +11,9 @@ STEP_SAVE_PLAN = "save_planner_draft"
 STEP_DISPLAY_NAMES = {
     STEP_LOAD_MATERIALS: "汇总会话与资料上下文",
     STEP_UNDERSTAND_GOAL: "理解学习目标与资料",
-    STEP_COMPOSE_PLAN: "生成 Planner 草案",
+    STEP_COMPOSE_PLAN: "生成方案草案",
     STEP_GENERATE_TITLE: "生成课程展示身份",
-    STEP_SAVE_PLAN: "保存 Planner 草案",
+    STEP_SAVE_PLAN: "保存方案草案",
 }
 
 STEP_TIMING_FIELDS = (

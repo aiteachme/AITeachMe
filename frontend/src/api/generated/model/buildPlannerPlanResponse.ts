@@ -5,7 +5,6 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { BuildPlannerChapterResponse } from './buildPlannerChapterResponse';
-import type { BuildPlannerPlanResponseBuildConstraints } from './buildPlannerPlanResponseBuildConstraints';
 
 export interface BuildPlannerPlanResponse {
   course_id: string;
@@ -14,12 +13,10 @@ export interface BuildPlannerPlanResponse {
   course_icon?: string;
   user_prompt: string;
   digest_mode: string;
-  intent?: string;
-  summary?: string;
+  planning_note?: string;
   suggestion?: string;
   plan?: string;
   chapters?: BuildPlannerChapterResponse[];
-  build_constraints?: BuildPlannerPlanResponseBuildConstraints;
   status?: string;
   planner_session_id?: string | null;
   confirmed_plan_id?: string | null;

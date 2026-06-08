@@ -34,8 +34,7 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
     return {
         "course_name": "高数主线重建",
         "course_icon": "sigma",
-        "intent": "用户想把高数混乱知识整理成可执行复习路径。",
-        "summary": "资料显示当前重点集中在极限、导数和积分。",
+        "planning_note": "用户想把高数混乱知识整理成可执行复习路径。\n资料显示当前重点集中在极限、导数和积分。",
         "suggestion": "如果更偏考试，可以增加题型和易错点密度。",
         "plan": "本课程会先用极限建立函数变化的基础，再进入导数规则与应用，最后把积分计算和综合题串起来。",
         "chapters": [
@@ -74,8 +73,8 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
 
     assert draft.course_name == "高数主线重建"
     assert draft.course_icon == "sigma"
-    assert draft.intent.startswith("用户想把高数")
-    assert draft.summary.startswith("资料显示")
+    assert draft.planning_note.startswith("用户想把高数")
+    assert "资料显示" in draft.planning_note
     assert draft.suggestion.startswith("如果更偏考试")
     assert draft.plan.startswith("本课程会先用极限")
     assert [chapter.title for chapter in draft.chapters] == ["任务切片 1", "任务切片 2", "任务切片 3"]
@@ -170,8 +169,8 @@ def test_planner_sse_preview_payload_exposes_new_planner_contract() -> None:
             "digest_mode": "sprint",
             "planner_session_id": "session_1",
             "model_override": "deepseek-v4-flash",
-            "intent": "用户要速成线性代数。",
-            "summary": "资料重点是矩阵和线性方程组。",
+            "planning_note": "用户要速成线性代数。",
+            "material_note": "资料重点是矩阵和线性方程组。",
         },
         {
             "suggestion": "可以继续改成考试冲刺。",
@@ -192,8 +191,7 @@ def test_planner_sse_preview_payload_exposes_new_planner_contract() -> None:
     assert preview["chapters"][0]["title"] == "行列式"
     assert preview["plan"] == "按课程目录组织线性代数速成。"
     assert preview["suggestion"] == "可以继续改成考试冲刺。"
-    assert preview["intent"] == "用户要速成线性代数。"
-    assert preview["summary"] == "资料重点是矩阵和线性方程组。"
+    assert preview["planning_note"] == "用户要速成线性代数。\n资料重点是矩阵和线性方程组。"
 
 
 def test_parse_planner_response_reads_marker_protocol() -> None:
@@ -267,8 +265,8 @@ def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.Monk
                 "course_id": "course_test",
                 "planner_session_id": "session_test",
                 "material_context": _material_context(),
-                "intent": "用户希望整理三年级数学。",
-                "summary": "没有绑定上传资料，只能按目标规划。",
+                "planning_note": "用户希望整理三年级数学。",
+                "material_note": "没有绑定上传资料，只能按目标规划。",
                 "user_prompt": "三年级数学",
                 "digest_mode": "sprint",
                 "message_history": ["用户：三年级数学"],
@@ -289,15 +287,14 @@ def test_planner_prompt_marks_revision_as_single_composer_call() -> None:
         user_prompt="高数",
         digest_mode="sprint",
         material_context=_material_context(),
-        intent="上一轮意图。",
-        summary="上一轮摘要。",
+        planning_note="上一轮规划判断。",
+        material_note="上一轮资料边界。",
         message_history=["用户：高数", "用户：帮我改成定积分的 5 个章节"],
         latest_feedback="帮我改成定积分的 5 个章节",
         latest_plan={
             "course_name": "高数主线重建",
             "course_icon": "sigma",
-            "intent": "上一轮意图。",
-            "summary": "上一轮摘要。",
+            "planning_note": "上一轮规划判断。",
             "suggestion": "上一轮建议。",
             "plan": "上一轮 plan。",
             "chapters": [{"title": "极限与连续", "required_elements": ["极限基础"]}],
@@ -305,27 +302,27 @@ def test_planner_prompt_marks_revision_as_single_composer_call() -> None:
     )
     prompt = "\n".join(message["content"] for message in messages)
 
-    assert "这是调整已有 planner，不是重新识别 intent/summary/course_name/course_icon" in prompt
+    assert "这是调整已有方案，不是重新识别 planning_note、course_name 或 course_icon" in prompt
     assert "你只能生成新的 suggestion、plan、chapters" in prompt
     assert "chapters 数量必须等于 N" in prompt
     assert "帮我改成定积分的 5 个章节" in prompt
 
 
-def test_planner_prompt_uses_intent_summary_for_first_generation() -> None:
+def test_planner_prompt_uses_planning_note_for_first_generation() -> None:
     messages = build_planner_stream_messages(
         course_name="初中数学",
         user_prompt="我想系统复习初中数学，请构建一门 14 天课程",
         digest_mode="systematic",
         material_context=_material_context(),
-        intent="用户要按 14 天重建初中数学知识体系。",
-        summary="资料覆盖数与式、方程、函数、几何和统计概率。",
+        planning_note="用户要按 14 天重建初中数学知识体系。",
+        material_note="资料覆盖数与式、方程、函数、几何和统计概率。",
         message_history=["用户：我想系统复习初中数学，请构建一门 14 天课程"],
     )
     prompt = "\n".join(message["content"] for message in messages)
 
-    assert "这是第一次生成 planner 的第二阶段" in prompt
-    assert "intent：" in prompt
-    assert "summary：" in prompt
+    assert "这是第一次生成方案的第二阶段" in prompt
+    assert "规划判断：" in prompt
+    assert "资料边界：" in prompt
     assert "用户要按 14 天重建初中数学知识体系" in prompt
     assert PLAN_START in prompt
     assert SUGGESTION_START in prompt

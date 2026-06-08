@@ -15,9 +15,7 @@ from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerPlanResponse,
-    BuildPlannerRuntimeStatsResponse,
     BuildPlannerSessionResponse,
-    BuildPlannerStepStatsResponse,
     DocGenBuildData,
     DocGenBuildRequest,
     KnowledgeDocInteractiveSelectionRequest,
@@ -84,8 +82,7 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
             course_icon="book-open",
             user_prompt="learn",
             digest_mode="sprint",
-            intent="intent",
-            summary="summary",
+            planning_note="planning note",
             suggestion="suggestion",
             plan="plan",
             chapters=[
@@ -95,16 +92,11 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
                     "objective": "Understand basics",
                 }
             ],
-            build_constraints={},
             status="draft",
             planner_session_id="planner-session-12345678",
         ),
         model_override="model-a",
         turns=[],
-        runtime_stats=BuildPlannerRuntimeStatsResponse(
-            elapsed_ms=1200,
-            steps=[BuildPlannerStepStatsResponse(name="draft", elapsed_ms=1200)],
-        ),
         created_at=now,
         updated_at=now,
     )
@@ -124,8 +116,7 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
         user_prompt="learn",
         course_name="API 课程规划",
         course_icon="book-open",
-        intent="intent",
-        summary="summary",
+        planning_note="planning note",
         suggestion="suggestion",
         plan="plan",
         chapters=[
@@ -135,8 +126,6 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
                 "objective": "Understand basics",
             }
         ],
-        build_constraints={},
-        plan_json={},
         status_history=["draft", "confirmed"],
         created_at=now,
         updated_at=now,
@@ -310,7 +299,7 @@ def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch)
         assert str(properties["$insert_id"]).startswith(f"{event}:")
         assert COURSE_ID not in str(properties["$insert_id"])
     assert captured[1][2]["chapter_count"] == 1
-    assert captured[1][2]["runtime_step_count"] == 1
+    assert captured[1][2]["has_planning_note"] is True
     assert captured[2][2]["confirmed_plan_id_suffix"] == "12345678"
 
 

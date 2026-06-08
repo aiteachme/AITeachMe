@@ -31,8 +31,7 @@ class BuildPlannerDraft(BaseModel):
     course_icon: str = ""
     user_prompt: str
     digest_mode: str = "systematic"
-    intent: str = ""
-    summary: str = ""
+    planning_note: str = ""
     suggestion: str = ""
     plan: str = ""
     chapters: list[PlannerChapterPlan] = Field(default_factory=list)
@@ -96,6 +95,13 @@ def _normalize_digest_mode(value: Any) -> str:
 
 def planner_mode_label(value: Any) -> str:
     return "快速复习" if _normalize_digest_mode(value) == "sprint" else "系统学习"
+
+
+def compose_planning_note(*items: Any) -> str:
+    """Collapse planner understanding artifacts into one user-facing note."""
+
+    parts = _strings(items)
+    return "\n".join(parts[:2])
 
 
 def render_planner_chapter_contract(value: Any) -> str:
@@ -339,8 +345,7 @@ def normalize_planner_draft(
     if not plan_text:
         raise ValueError("planner plan is missing plan")
     suggestion = _student_facing_text(current.get("suggestion") or previous.get("suggestion"))
-    intent = _student_facing_text(current.get("intent") or previous.get("intent"))
-    summary = _student_facing_text(current.get("summary") or previous.get("summary"))
+    planning_note = _student_facing_text(current.get("planning_note") or previous.get("planning_note"))
     course_icon = _text(current.get("course_icon") or previous.get("course_icon"))
 
     return BuildPlannerDraft(
@@ -348,8 +353,7 @@ def normalize_planner_draft(
         course_icon=course_icon,
         user_prompt=resolved_user_prompt,
         digest_mode=mode,
-        intent=intent,
-        summary=summary,
+        planning_note=planning_note,
         suggestion=suggestion,
         plan=plan_text,
         chapters=chapters,
@@ -384,6 +388,7 @@ def normalize_planner_payload(
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
+    "compose_planning_note",
     "_resolve_course_name",
     "normalize_planner_draft",
     "normalize_planner_payload",

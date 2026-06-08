@@ -25,8 +25,6 @@ def _build_event_message(
 ) -> dict[str, Any]:
     return {
         "stage": event,
-        "step": event,
-        "event": event,
         "detail": detail,
         **(payload or {}),
     }

@@ -153,18 +153,17 @@ def _planner_plan_analytics_properties(plan: object | None) -> dict[str, object]
     return {
         "chapter_count": len(getattr(plan, "chapters", []) or []),
         "digest_mode": getattr(plan, "digest_mode", None),
+        "has_planning_note": bool(str(getattr(plan, "planning_note", "") or "").strip()),
         "has_plan": bool(str(getattr(plan, "plan", "") or "").strip()),
         "has_suggestion": bool(str(getattr(plan, "suggestion", "") or "").strip()),
     }
 
 
 def _planner_response_analytics_properties(response: BuildPlannerSessionResponse) -> dict[str, object]:
-    runtime_stats = response.runtime_stats
     return {
         **_planner_plan_analytics_properties(response.latest_plan),
         "has_planner_session": bool(response.session_id),
         "planner_session_id_suffix": _suffix(response.session_id),
-        "runtime_step_count": len(runtime_stats.steps) if runtime_stats is not None else 0,
     }
 
 
@@ -223,24 +222,11 @@ def _planner_stream_response(
                 session_id=getattr(response, "session_id", ""),
                 status=getattr(response, "status", ""),
             )
-            runtime_stats = getattr(response, "runtime_stats", None)
-            elapsed_ms = 0
-            if runtime_stats is not None:
-                elapsed_ms = int(
-                    getattr(runtime_stats, "elapsed_ms", None)
-                    or getattr(runtime_stats, "workflow_elapsed_ms", 0)
-                    or 0
-                )
             await emitter.emit_event(
                 "status",
                 {
                     "stage": "completed",
-                    "detail": (
-                        f"构建方案已生成，用时 {elapsed_ms} ms。"
-                        if runtime_stats is not None
-                        else "构建方案已生成。"
-                    ),
-                    "elapsed_ms": elapsed_ms,
+                    "detail": "构建方案已生成。",
                 },
             )
             await emitter.emit_event("done", {"session": response.model_dump(mode="json")})

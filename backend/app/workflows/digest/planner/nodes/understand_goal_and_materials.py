@@ -12,12 +12,12 @@ from app.workflows.digest.planner.lib.model_policy import (
     PlannerModelStep,
     planner_completion_kwargs_with_metadata,
 )
-from app.workflows.digest.planner.lib.models import PlannerMaterialSummary
+from app.workflows.digest.planner.lib.models import PlannerMaterialNote
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import _resolve_course_name
-from app.workflows.digest.planner.prompts.intent_summary import (
-    build_material_summary_messages,
-    build_stream_intent_prompt,
+from app.workflows.digest.planner.lib.plans import _resolve_course_name, compose_planning_note
+from app.workflows.digest.planner.prompts.goal_materials import (
+    build_material_note_messages,
+    build_stream_planning_note_prompt,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -33,9 +33,9 @@ def _course_for_prompt(state: BuildPlannerState) -> str:
     )
 
 
-async def _stream_intent(state: BuildPlannerState) -> str:
+async def _stream_planning_note(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    prompt = build_stream_intent_prompt(
+    prompt = build_stream_planning_note_prompt(
         course_name=_course_for_prompt(state),
         user_prompt=state.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
@@ -45,14 +45,14 @@ async def _stream_intent(state: BuildPlannerState) -> str:
     tokens: list[str] = []
     started_at = time.monotonic()
     first_token_ms: int | None = None
-    await emit_planner_event(state, event="planner.intent.started", detail="正在识别学习意图和规划边界。")
+    await emit_planner_event(state, event="planner.planning_note.started", detail="正在识别学习意图和规划边界。")
     stream = acompletion_stream(
         [{"role": "user", "content": prompt}],
         **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.STREAM_INTENT,
+            PlannerModelStep.STREAM_PLANNING_NOTE,
             model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
-            substep="流式生成 intent",
+            substep="流式生成 planning_note",
         ),
     )
     async for token in stream:
@@ -62,28 +62,28 @@ async def _stream_intent(state: BuildPlannerState) -> str:
         await emit_planner_token(state, token)
     text = "".join(tokens).strip()
     logger.info(
-        "planner_intent_stream_completed",
+        "planner_planning_note_stream_completed",
         planner_session_id=state.get("planner_session_id") or "",
         course_id=state.get("course_id") or "",
         first_token_ms=first_token_ms,
-        intent_chars=len(text),
+        planning_note_chars=len(text),
     )
     if not text:
-        raise ValueError("planner intent stream returned empty text")
+        raise ValueError("planner planning_note stream returned empty text")
     await emit_planner_event(
         state,
-        event="planner.intent.ready",
-        detail="学习意图已识别，准备结合资料摘要生成方案。",
-        payload={"intent": text},
+        event="planner.planning_note.ready",
+        detail="规划判断已生成，准备结合资料边界生成方案。",
+        payload={"planning_note": text},
     )
     return text
 
 
 async def _summarize_materials(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    await emit_planner_event(state, event="planner.summary.started", detail="正在摘要资料和学科情况。")
+    await emit_planner_event(state, event="planner.material_note.started", detail="正在整理资料边界和学科情况。")
     result = await acompletion_with_fallback(
-        build_material_summary_messages(
+        build_material_note_messages(
             course_name=_course_for_prompt(state),
             user_prompt=state.get("user_prompt") or "",
             digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
@@ -93,24 +93,24 @@ async def _summarize_materials(state: BuildPlannerState) -> str:
             PlannerModelStep.SUMMARIZE_MATERIALS,
             model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
-            substep="生成 summary",
+            substep="生成 material_note",
         ),
-        response_model=PlannerMaterialSummary,
+        response_model=PlannerMaterialNote,
     )
-    summary = result.summary.strip() if isinstance(result, PlannerMaterialSummary) else PlannerMaterialSummary.model_validate(result).summary.strip()
-    if not summary:
-        raise ValueError("planner material summary returned empty text")
+    material_note = result.material_note.strip() if isinstance(result, PlannerMaterialNote) else PlannerMaterialNote.model_validate(result).material_note.strip()
+    if not material_note:
+        raise ValueError("planner material_note returned empty text")
     await emit_planner_event(
         state,
-        event="planner.summary.ready",
-        detail="资料摘要已生成。",
-        payload={"summary": summary},
+        event="planner.material_note.ready",
+        detail="资料边界已整理。",
+        payload={"material_note": material_note},
     )
-    return summary
+    return material_note
 
 
 def build_understand_goal_and_materials_node(*, context: WorkflowContext):
-    """Build the intent + summary fan-out node."""
+    """Build the planning note + material note fan-out node."""
 
     del context
 
@@ -119,19 +119,20 @@ def build_understand_goal_and_materials_node(*, context: WorkflowContext):
             return {}
         if str(state.get("planner_operation") or "") != "create":
             latest_plan = dict(state.get("latest_plan") or {})
+            planning_note = compose_planning_note(latest_plan.get("planning_note"))
             return {
-                "intent": str(latest_plan.get("intent") or ""),
-                "summary": str(latest_plan.get("summary") or ""),
+                "planning_note": planning_note,
+                "material_note": "",
             }
 
         logger.info(
-            "planner_intent_summary_node_started",
+            "planner_planning_note_node_started",
             planner_session_id=state.get("planner_session_id", ""),
             course_id=state.get("course_id", ""),
         )
-        intent, summary = await run_llm_tasks(
+        planning_note, material_note = await run_llm_tasks(
             [
-                lambda: _stream_intent(state),
+                lambda: _stream_planning_note(state),
                 lambda: _summarize_materials(state),
             ],
             lambda task: task(),
@@ -139,10 +140,10 @@ def build_understand_goal_and_materials_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.analysis.ready",
-            detail="intent 与 summary 已完成，开始并行生成课程身份和正式方案。",
-            payload={"intent": intent, "summary": summary},
+            detail="规划判断和资料边界已完成，开始并行生成课程身份和正式方案。",
+            payload={"planning_note": compose_planning_note(planning_note, material_note)},
         )
-        return {"intent": intent, "summary": summary}
+        return {"planning_note": planning_note, "material_note": material_note}
 
     return understand_goal_and_materials_node
 

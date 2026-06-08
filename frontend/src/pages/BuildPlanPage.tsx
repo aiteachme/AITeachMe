@@ -80,7 +80,6 @@ interface ChatMessage {
   content: string;
   timestamp: string;
   plan?: BuildPlannerPlanResponse | null;
-  runtimeStats?: PlannerRuntimeStats | null;
   streaming?: boolean;
 }
 
@@ -95,7 +94,7 @@ interface PersistedPlannerState {
 
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const LOGO_SRC = publicAssetPath("logo.svg");
-const PLANNER_STATE_VERSION = 4;
+const PLANNER_STATE_VERSION = 5;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
   "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
 const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
@@ -125,17 +124,6 @@ function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
   console.info(`[planner] ${event}`, payload);
 }
 
-interface PlannerRuntimeStep {
-  name: string;
-  elapsed_ms: number;
-  status?: string;
-}
-
-interface PlannerRuntimeStats {
-  elapsed_ms?: number;
-  steps?: PlannerRuntimeStep[];
-}
-
 interface PlannerOutlineItem {
   title: string;
   description?: string;
@@ -153,8 +141,7 @@ interface PlannerViewChapter {
 type PlannerViewPlan = BuildPlannerPlanResponse & {
   course_name?: string;
   course_icon?: string;
-  intent?: string;
-  summary?: string;
+  planning_note?: string;
   suggestion?: string;
   plan?: string;
   chapters?: PlannerViewChapter[];
@@ -176,10 +163,7 @@ interface PlannerStreamingBubbleProps {
   steps: PlannerStreamStepItem[];
 }
 
-type PlannerSessionWithRuntime = BuildPlannerSessionResponse & {
-  runtime_stats?: PlannerRuntimeStats | null;
-  model_override?: string | null;
-};
+type PlannerSessionWithModel = BuildPlannerSessionResponse & { model_override?: string | null };
 
 type PlannerTurnWithPlan = NonNullable<BuildPlannerSessionResponse["turns"]>[number] & {
   plan_json?: Record<string, unknown> | null;
@@ -193,7 +177,6 @@ function createMessage(
   role: ChatRole,
   content: string,
   plan: BuildPlannerPlanResponse | null = null,
-  runtimeStats: PlannerRuntimeStats | null = null,
   streaming = false,
 ): ChatMessage {
   return {
@@ -202,7 +185,6 @@ function createMessage(
     content,
     timestamp: new Date().toISOString(),
     plan,
-    runtimeStats,
     streaming,
   };
 }
@@ -214,7 +196,6 @@ function createStreamingAssistantMessage(id: string): ChatMessage {
     content: "",
     timestamp: new Date().toISOString(),
     plan: null,
-    runtimeStats: null,
     streaming: true,
   };
 }
@@ -400,11 +381,6 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-function parsePlannerRuntimeStats(response: BuildPlannerSessionResponse): PlannerRuntimeStats | null {
-  const candidate = (response as PlannerSessionWithRuntime).runtime_stats;
-  return candidate ?? null;
-}
-
 function asStringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
@@ -420,7 +396,6 @@ function planFromTurn(
     return null;
   }
   const latest = session.latest_plan;
-  const buildConstraints = isRecord(raw.build_constraints) ? raw.build_constraints : {};
   return usablePlannerPlan({
     course_id: String(raw.course_id ?? latest?.course_id ?? session.course_id ?? ""),
     selected_file_ids: asStringList(raw.selected_file_ids).length
@@ -430,12 +405,10 @@ function planFromTurn(
     course_icon: String(raw.course_icon ?? plannerView(latest)?.course_icon ?? ""),
     user_prompt: String(raw.user_prompt ?? latest?.user_prompt ?? ""),
     digest_mode: String(raw.digest_mode ?? latest?.digest_mode ?? "systematic"),
-    intent: String(raw.intent ?? plannerView(latest)?.intent ?? ""),
-    summary: String(raw.summary ?? plannerView(latest)?.summary ?? ""),
+    planning_note: String(raw.planning_note ?? plannerView(latest)?.planning_note ?? ""),
     suggestion: String(raw.suggestion ?? plannerView(latest)?.suggestion ?? ""),
     plan: String(raw.plan ?? plannerView(latest)?.plan ?? ""),
     chapters: Array.isArray(raw.chapters) ? raw.chapters as PlannerViewChapter[] : [],
-    build_constraints: buildConstraints,
     status: typeof raw.status === "string" ? raw.status : session.status,
     planner_session_id: String(raw.planner_session_id ?? session.session_id ?? ""),
     confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
@@ -454,7 +427,6 @@ function planFromSsePreviewPayload(payload: unknown): BuildPlannerPlanResponse |
   if (!raw) {
     return null;
   }
-  const buildConstraints = isRecord(raw.build_constraints) ? raw.build_constraints : {};
   return usablePlannerPlan({
     course_id: String(raw.course_id ?? ""),
     selected_file_ids: asStringList(raw.selected_file_ids),
@@ -462,12 +434,10 @@ function planFromSsePreviewPayload(payload: unknown): BuildPlannerPlanResponse |
     course_icon: String(raw.course_icon ?? ""),
     user_prompt: String(raw.user_prompt ?? ""),
     digest_mode: String(raw.digest_mode ?? "systematic"),
-    intent: String(raw.intent ?? ""),
-    summary: String(raw.summary ?? ""),
+    planning_note: String(raw.planning_note ?? ""),
     suggestion: String(raw.suggestion ?? ""),
     plan: String(raw.plan ?? ""),
     chapters: Array.isArray(raw.chapters) ? raw.chapters as PlannerViewChapter[] : [],
-    build_constraints: buildConstraints,
     status: typeof raw.status === "string" ? raw.status : "planning",
     planner_session_id: typeof raw.planner_session_id === "string" ? raw.planner_session_id : null,
     confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
@@ -482,11 +452,11 @@ function formatPlannerNodeLabel(stepName: string): string {
     case "understand_goal_and_materials":
       return "理解目标与资料";
     case "compose_planner_draft":
-      return "生成 planner 草案";
+      return "生成方案草案";
     case "generate_course_identity":
       return "生成课程身份";
     case "save_planner_draft":
-      return "保存 planner 草案";
+      return "保存方案草案";
     default:
       return stepName;
   }
@@ -532,14 +502,14 @@ function plannerStreamStepTitle(stage: string): string {
       return "读取已有文档";
     case "planner.material.ready":
       return "确认资料边界";
-    case "planner.intent.started":
-      return "流式识别 intent";
-    case "planner.intent.ready":
-      return "intent 完成";
-    case "planner.summary.started":
-      return "摘要资料";
-    case "planner.summary.ready":
-      return "summary 完成";
+    case "planner.planning_note.started":
+      return "生成规划判断";
+    case "planner.planning_note.ready":
+      return "规划判断完成";
+    case "planner.material_note.started":
+      return "整理资料边界";
+    case "planner.material_note.ready":
+      return "资料边界完成";
     case "planner.analysis.ready":
       return "前置分析完成";
     case "planner.identity.started":
@@ -549,7 +519,7 @@ function plannerStreamStepTitle(stage: string): string {
     case "planner.plan.started":
       return "流式生成 plan";
     case "planner.plan.ready":
-      return "planner 可确认";
+      return "方案可确认";
     case "planner.saved":
       return "planner 已保存";
     case "completed":
@@ -624,7 +594,7 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
 
 function buildPlannerStepItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 5): string[] {
   const view = plannerView(plan);
-  const rawSteps = [view?.intent, view?.summary].filter(Boolean);
+  const rawSteps = [view?.planning_note].filter(Boolean);
   const seen = new Set<string>();
   const steps: string[] = [];
   rawSteps.forEach((item) => {
@@ -665,7 +635,7 @@ function plannerPlanAnalyticsProperties(plan: BuildPlannerPlanResponse | null | 
     chapter_count: plannerChapters(plan).length,
     digest_mode: plan?.digest_mode ?? undefined,
     has_plan: Boolean(plannerPlanText(plan)),
-    has_summary: Boolean(plannerView(plan)?.summary?.trim()),
+    has_planning_note: Boolean(plannerView(plan)?.planning_note?.trim()),
   };
 }
 
@@ -673,7 +643,6 @@ function plannerResponseAnalyticsProperties(response: BuildPlannerSessionRespons
   return {
     ...plannerPlanAnalyticsProperties(response.latest_plan),
     has_planner_session: Boolean(response.session_id),
-    runtime_step_count: response.runtime_stats?.steps?.length ?? 0,
   };
 }
 
@@ -803,16 +772,13 @@ function PlannerOutlineCard({
         <details className="group mt-4 border-t border-zinc-100 pt-3 dark:border-slate-800">
           <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 outline-none transition hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-slate-500 dark:hover:text-slate-300">
             <span className="inline-flex items-center gap-1">
-              规划依据
+              规划判断
               <span className="text-zinc-300 transition group-open:rotate-90 dark:text-slate-600">›</span>
             </span>
           </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-3">
             {stepItems.map((item, index) => (
               <div key={`${index}-${item}`} className="text-sm leading-6 text-zinc-600 dark:text-slate-300">
-                <div className="mb-1 text-xs font-semibold text-zinc-400 dark:text-slate-500">
-                  {index === 0 ? "学习意图" : "资料摘要"}
-                </div>
                 <p>{item}</p>
               </div>
             ))}
@@ -1311,8 +1277,8 @@ async function streamPlannerSession(
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
   } = {},
-): Promise<PlannerSessionWithRuntime> {
-  let session: PlannerSessionWithRuntime | null = null;
+): Promise<PlannerSessionWithModel> {
+  let session: PlannerSessionWithModel | null = null;
   let streamError: string | null = null;
 
   const result = await postSseJson(url, body, {
@@ -1325,7 +1291,7 @@ async function streamPlannerSession(
     },
     onDone: (payload) => {
       if (isRecord(payload) && isRecord(payload.session)) {
-        session = payload.session as unknown as PlannerSessionWithRuntime;
+        session = payload.session as unknown as PlannerSessionWithModel;
       }
     },
     onError: (payload) => {
@@ -2090,7 +2056,6 @@ export function BuildPlanPage() {
 
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
-      const runtimeStats = parsePlannerRuntimeStats(response);
       const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
       const latestPlan = usablePlannerPlan(response.latest_plan);
       const pendingId = plannerPendingMessageIdRef.current;
@@ -2104,7 +2069,6 @@ export function BuildPlanPage() {
             ...message,
             content: resolvedContent,
             plan: latestPlan,
-            runtimeStats,
             streaming: false,
           }));
           if (replaced !== prev) {
@@ -2117,7 +2081,6 @@ export function BuildPlanPage() {
             "assistant",
             resolvedContent,
             latestPlan,
-            runtimeStats,
           ),
         ];
       });
@@ -2232,7 +2195,6 @@ export function BuildPlanPage() {
           courseId,
           plannerSessionId: response.session_id,
           chapterCount: plannerChapters(response.latest_plan).length,
-          runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
         });
         appendPlannerResponse(
           response,
@@ -2269,7 +2231,6 @@ export function BuildPlanPage() {
         courseId,
         plannerSessionId: response.session_id,
         chapterCount: plannerChapters(response.latest_plan).length,
-        runtimeSteps: response.runtime_stats?.steps?.map((step) => step.name) ?? [],
       });
       appendPlannerResponse(
         response,

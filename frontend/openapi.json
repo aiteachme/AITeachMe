@@ -9279,14 +9279,9 @@
             "title": "Course Icon",
             "default": ""
           },
-          "intent": {
+          "planning_note": {
             "type": "string",
-            "title": "Intent",
-            "default": ""
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary",
+            "title": "Planning Note",
             "default": ""
           },
           "suggestion": {
@@ -9304,16 +9299,6 @@
             },
             "type": "array",
             "title": "Chapters"
-          },
-          "build_constraints": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Build Constraints"
-          },
-          "plan_json": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Plan Json"
           },
           "status_history": {
             "items": {
@@ -9475,14 +9460,9 @@
             "type": "string",
             "title": "Digest Mode"
           },
-          "intent": {
+          "planning_note": {
             "type": "string",
-            "title": "Intent",
-            "default": ""
-          },
-          "summary": {
-            "type": "string",
-            "title": "Summary",
+            "title": "Planning Note",
             "default": ""
           },
           "suggestion": {
@@ -9501,11 +9481,6 @@
             },
             "type": "array",
             "title": "Chapters"
-          },
-          "build_constraints": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Build Constraints"
           },
           "status": {
             "type": "string",
@@ -9554,24 +9529,6 @@
         ],
         "title": "BuildPlannerPlanResponse"
       },
-      "BuildPlannerRuntimeStatsResponse": {
-        "properties": {
-          "elapsed_ms": {
-            "type": "integer",
-            "title": "Elapsed Ms",
-            "default": 0
-          },
-          "steps": {
-            "items": {
-              "$ref": "#/components/schemas/BuildPlannerStepStatsResponse"
-            },
-            "type": "array",
-            "title": "Steps"
-          }
-        },
-        "type": "object",
-        "title": "BuildPlannerRuntimeStatsResponse"
-      },
       "BuildPlannerSessionResponse": {
         "properties": {
           "session_id": {
@@ -9615,16 +9572,6 @@
             "type": "array",
             "title": "Turns"
           },
-          "runtime_stats": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BuildPlannerRuntimeStatsResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -9648,29 +9595,6 @@
           "updated_at"
         ],
         "title": "BuildPlannerSessionResponse"
-      },
-      "BuildPlannerStepStatsResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "default": "ok"
-          },
-          "elapsed_ms": {
-            "type": "integer",
-            "title": "Elapsed Ms",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "BuildPlannerStepStatsResponse"
       },
       "BuildPlannerTurnResponse": {
         "properties": {

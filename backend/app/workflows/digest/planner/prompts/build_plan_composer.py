@@ -30,8 +30,8 @@ def build_planner_stream_messages(
     user_prompt: str,
     digest_mode: str,
     material_context: DigestMaterialContext,
-    intent: str,
-    summary: str,
+    planning_note: str,
+    material_note: str,
     message_history: list[str],
     latest_feedback: str | None = None,
     latest_plan: dict[str, Any] | None = None,
@@ -43,17 +43,17 @@ def build_planner_stream_messages(
     plan_fields = _render_previous_planner(latest_plan)
     revision_rules = (
         """
-这是调整已有 planner，不是重新识别 intent/summary/course_name/course_icon。
+这是调整已有方案，不是重新识别 planning_note、course_name 或 course_icon。
 你只能生成新的 suggestion、plan、chapters：
 - 必须参考最近对话、用户本轮修改意见和上一版 planner。
 - 未被用户修改的核心边界应保持稳定。
 - 如果用户要求改范围、改章数、增删重点，chapters 必须可见地体现变化。
-- 不要重新输出 intent、summary、course_name 或 course_icon。
+- 不要重新输出 planning_note、course_name 或 course_icon。
 """.strip()
         if is_revision
         else """
-这是第一次生成 planner 的第二阶段。
-你要基于上一步的 intent 和 summary，生成 suggestion、plan、chapters。
+这是第一次生成方案的第二阶段。
+你要基于上一步的规划判断和资料边界，生成 suggestion、plan、chapters。
 """.strip()
     )
     system_prompt = f"""
@@ -64,17 +64,17 @@ def build_planner_stream_messages(
 {CHAPTERS_START} 到 {CHAPTERS_END} 之间只能放合法 JSON 数组，数组元素只能包含 title 和 key_points。
 """.strip()
     prompt = f"""
-请生成 planner 的 suggestion、plan、chapters。
+请生成方案的 suggestion、plan、chapters。
 
 课程/主题：{course_name}
 用户原始输入：{user_prompt or "未提供"}
 模式：{mode_label}
 
-intent：
-{intent or "暂无"}
+规划判断：
+{planning_note or "暂无"}
 
-summary：
-{summary or "暂无"}
+资料边界：
+{material_note or "暂无"}
 
 资料画像：
 {render_material_overview(material_context)}
@@ -128,8 +128,8 @@ suggestion 字段正文
             "course_name": course_name,
             "user_prompt_chars": len(user_prompt or ""),
             "digest_mode": digest_mode,
-            "intent_chars": len(intent or ""),
-            "summary_chars": len(summary or ""),
+            "planning_note_chars": len(planning_note or ""),
+            "material_note_chars": len(material_note or ""),
             "message_history_count": len(message_history),
             "latest_feedback_chars": len(latest_feedback or ""),
             "has_latest_plan": latest_plan is not None,
@@ -163,10 +163,9 @@ def build_planner_repair_messages(
 
 def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
     if not latest_plan:
-        return "暂无上一版 planner"
+        return "暂无上一版方案"
     payload = {
-        "intent": str(latest_plan.get("intent") or ""),
-        "summary": str(latest_plan.get("summary") or ""),
+        "planning_note": str(latest_plan.get("planning_note") or ""),
         "course_name": str(latest_plan.get("course_name") or ""),
         "course_icon": str(latest_plan.get("course_icon") or ""),
         "suggestion": str(latest_plan.get("suggestion") or ""),

@@ -74,8 +74,8 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
             if str(packet.filename or "").strip()
         ]
         topic_hints = _collect_topic_hints(state)
-        intent = str(state.get("intent") or "").strip()
-        summary = str(state.get("summary") or "").strip()
+        planning_note = str(state.get("planning_note") or "").strip()
+        material_note = str(state.get("material_note") or "").strip()
         await emit_planner_event(state, event="planner.identity.started", detail="正在生成课程名和图标。")
         try:
             result = await acompletion_with_fallback(
@@ -83,8 +83,8 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
                     user_prompt=state.get("user_prompt") or "",
                     filenames=filenames,
                     digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-                    intent=intent,
-                    summary=summary,
+                    planning_note=planning_note,
+                    material_note=material_note,
                     topic_hints=topic_hints,
                 ),
                 **planner_completion_kwargs_with_metadata(

@@ -35,8 +35,8 @@ class BuildPlannerState(TypedDict, total=False):
 
     # Planner working artifacts
     material_context: DigestMaterialContext
-    intent: str
-    summary: str
+    planning_note: str
+    material_note: str
     generated_course_name: str
     generated_course_icon_key: str
     plan_outline_markdown: str
@@ -47,7 +47,7 @@ class BuildPlannerState(TypedDict, total=False):
     planner_record: dict[str, Any]
     planner_turns: list[dict[str, Any]]
 
-    # Top-level runtime summary for the existing frontend contract
+    # Internal runtime summary for logs/tracing only
     workflow_elapsed_ms: int
     prepare_ms: int
     bootstrap_ms: int
@@ -94,13 +94,6 @@ BuildPlannerGraphOutput = project_typed_dict_schema(
         "selected_file_ids",
         "planner_record",
         "planner_turns",
-        "planner_context_stats",
-        "workflow_elapsed_ms",
-        "prepare_ms",
-        "bootstrap_ms",
-        "compose_ms",
-        "title_ms",
-        "finalize_ms",
         "error",
     ],
 )

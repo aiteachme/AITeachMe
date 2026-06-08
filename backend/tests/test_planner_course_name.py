@@ -20,8 +20,8 @@ def test_course_identity_prompt_generates_name_and_icon_together() -> None:
         user_prompt="Python 数据分析想学到能做作业",
         filenames=["课程PPT.pdf", "作业要求.docx"],
         digest_mode="sprint",
-        intent="面向作业完成的实用学习路径",
-        summary="用户更需要把概念、代码和调试串起来。",
+        planning_note="面向作业完成的实用学习路径",
+        material_note="用户更需要把概念、代码和调试串起来。",
         topic_hints=["DataFrame", "数据清洗", "可视化"],
     )
     prompt = "\n".join(message["content"] for message in messages)

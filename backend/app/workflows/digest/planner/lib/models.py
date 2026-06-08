@@ -5,16 +5,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
-class PlannerIntent(BaseModel):
-    """First-pass user intent streamed before the final plan."""
+class PlannerMaterialNote(BaseModel):
+    """Short subject/material note from the selected learning materials."""
 
-    intent: str = ""
-
-
-class PlannerMaterialSummary(BaseModel):
-    """Short subject/material summary from the selected learning materials."""
-
-    summary: str = ""
+    material_note: str = ""
 
 
 class PlannerCourseIdentity(BaseModel):
@@ -23,14 +17,7 @@ class PlannerCourseIdentity(BaseModel):
     course_name: str = ""
     course_icon: str = ""
 
-
-def build_empty_planner_intent() -> PlannerIntent:
-    return PlannerIntent(intent="")
-
-
 __all__ = [
     "PlannerCourseIdentity",
-    "PlannerIntent",
-    "PlannerMaterialSummary",
-    "build_empty_planner_intent",
+    "PlannerMaterialNote",
 ]

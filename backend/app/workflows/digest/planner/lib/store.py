@@ -35,9 +35,7 @@ from app.shared.infra.llm_support.model_choices import normalize_runtime_model_o
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerPlanResponse,
-    BuildPlannerRuntimeStatsResponse,
     BuildPlannerSessionResponse,
-    BuildPlannerStepStatsResponse,
     BuildPlannerTurnResponse,
 )
 from app.shared.infra.exceptions import (
@@ -56,7 +54,6 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_payload,
     planner_mode_label,
 )
-from app.workflows.digest.planner.lib.steps import STEP_TIMING_FIELDS
 from app.workflows.support.courses.icons import normalize_course_icon_key, set_course_icon_key
 
 logger = structlog.get_logger(__name__)
@@ -101,13 +98,31 @@ def _file_ids(raw_files: list[RawFile]) -> list[str]:
     return [require_id(item.id, "RawFile.id") for item in raw_files if item.id]
 
 
+def _planning_note_from_plan(plan: Mapping[str, Any]) -> str:
+    return str(plan.get("planning_note") or "")
+
+
+def _public_plan_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "course_name": str(plan.get("course_name") or ""),
+        "course_icon": str(plan.get("course_icon") or ""),
+        "user_prompt": str(plan.get("user_prompt") or ""),
+        "digest_mode": str(plan.get("digest_mode") or "systematic"),
+        "planning_note": _planning_note_from_plan(plan),
+        "suggestion": str(plan.get("suggestion") or ""),
+        "plan": str(plan.get("plan") or ""),
+        "chapters": list(plan.get("chapters") or []),
+        "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
+    }
+
+
 def _turn_response_from_snapshot(turn: Mapping[str, Any]) -> BuildPlannerTurnResponse:
     raw_plan = turn.get("plan_json")
     return BuildPlannerTurnResponse(
         id=turn.get("id"),
         role=str(turn.get("role") or ""),
         content=str(turn.get("content") or ""),
-        plan_json=dict(raw_plan) if isinstance(raw_plan, Mapping) and raw_plan else None,
+        plan_json=_public_plan_payload(raw_plan) if isinstance(raw_plan, Mapping) and raw_plan else None,
         created_at=turn["created_at"],
     )
 
@@ -225,9 +240,12 @@ def _build_course_description_from_plan(
 
 
 def _build_course_user_intent_from_state(state: Mapping[str, Any]) -> str:
-    intent = _clean_course_metadata_text(str(state.get("intent") or ""), max_chars=420)
-    if intent:
-        return intent
+    planning_note = _clean_course_metadata_text(
+        str(state.get("planning_note") or ""),
+        max_chars=420,
+    )
+    if planning_note:
+        return planning_note
     return _clean_course_metadata_text(str(state.get("user_prompt") or ""), max_chars=420)
 
 
@@ -377,45 +395,22 @@ def _plan_response(
     plan: dict[str, Any],
     model_override: str | None = None,
 ) -> BuildPlannerPlanResponse:
+    public_plan = _public_plan_payload(plan)
     return BuildPlannerPlanResponse(
         course_id=course_id,
         selected_file_ids=selected_file_ids,
-        course_name=str(plan.get("course_name") or ""),
-        course_icon=str(plan.get("course_icon") or ""),
-        user_prompt=str(plan.get("user_prompt") or ""),
-        digest_mode=str(plan.get("digest_mode") or "systematic"),
-        intent=str(plan.get("intent") or ""),
-        summary=str(plan.get("summary") or ""),
-        suggestion=str(plan.get("suggestion") or ""),
-        plan=str(plan.get("plan") or ""),
-        chapters=list(plan.get("chapters") or []),
-        build_constraints=dict(plan.get("build_constraints") or {}),
+        course_name=str(public_plan.get("course_name") or ""),
+        course_icon=str(public_plan.get("course_icon") or ""),
+        user_prompt=str(public_plan.get("user_prompt") or ""),
+        digest_mode=str(public_plan.get("digest_mode") or "systematic"),
+        planning_note=str(public_plan.get("planning_note") or ""),
+        suggestion=str(public_plan.get("suggestion") or ""),
+        plan=str(public_plan.get("plan") or ""),
+        chapters=list(public_plan.get("chapters") or []),
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
         model_override=normalize_runtime_model_override(model_override),
-    )
-
-
-def _runtime_stats_response(final_state: Mapping[str, Any] | None) -> BuildPlannerRuntimeStatsResponse | None:
-    if not isinstance(final_state, Mapping):
-        return None
-
-    steps: list[BuildPlannerStepStatsResponse] = []
-    for name, field_name in STEP_TIMING_FIELDS:
-        elapsed_ms = int(final_state.get(field_name, 0) or 0)
-        if elapsed_ms <= 0:
-            continue
-        steps.append(
-            BuildPlannerStepStatsResponse(
-                name=name,
-                elapsed_ms=elapsed_ms,
-                status="ok",
-            )
-        )
-    return BuildPlannerRuntimeStatsResponse(
-        elapsed_ms=int(final_state.get("workflow_elapsed_ms", 0) or 0),
-        steps=steps,
     )
 
 
@@ -452,7 +447,6 @@ def planner_session_response_from_state(final_state: Mapping[str, Any]) -> Build
             model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(turn) for turn in turns],
-        runtime_stats=_runtime_stats_response(final_state),
         created_at=record["created_at"],
         updated_at=record["updated_at"],
     )
@@ -485,7 +479,6 @@ def _planner_session_response(
             model_override=model_override,
         ),
         turns=[_turn_response_from_snapshot(_turn_snapshot(turn)) for turn in turns],
-        runtime_stats=None,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -1020,8 +1013,7 @@ def _normalized_plan_payload(
         "course_icon": str(plan.get("course_icon") or ""),
         "user_prompt": str(plan.get("user_prompt") or ""),
         "digest_mode": str(plan.get("digest_mode") or ""),
-        "intent": str(plan.get("intent") or ""),
-        "summary": str(plan.get("summary") or ""),
+        "planning_note": _planning_note_from_plan(plan),
         "suggestion": str(plan.get("suggestion") or ""),
         "plan": str(plan.get("plan") or ""),
         "chapters": chapters,
@@ -1214,13 +1206,10 @@ def confirm_planner_session(
         user_prompt=confirmed.user_prompt,
         course_name=str(plan_payload.get("course_name") or ""),
         course_icon=str(plan_payload.get("course_icon") or ""),
-        intent=str(plan_payload.get("intent") or ""),
-        summary=str(plan_payload.get("summary") or ""),
+        planning_note=str(plan_payload.get("planning_note") or ""),
         suggestion=str(plan_payload.get("suggestion") or ""),
         plan=str(plan_payload.get("plan") or confirmed.plan or ""),
         chapters=list(plan_payload.get("chapters") or []),
-        build_constraints=dict(plan_payload.get("build_constraints") or {}),
-        plan_json=plan_payload,
         status_history=[confirmed.status, _planner_status(record)],
         created_at=confirmed.created_at,
         updated_at=confirmed.updated_at,

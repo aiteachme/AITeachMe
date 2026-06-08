@@ -143,15 +143,13 @@ class DigestBuildConstraints(BaseModel):
 class DigestConfirmedPlanContract(BaseModel):
     """Typed confirmed-plan contract shared by planner and docgen lanes."""
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     course_name: str = ""
     course_icon: str = ""
     user_prompt: str = ""
     digest_mode: str = DEFAULT_DIGEST_MODE
-    intent: str = ""
-    summary: str = ""
-    suggestion: str = ""
+    planning_note: str = ""
     plan: str = ""
     chapters: list[DigestChapterContract] = Field(default_factory=list)
     build_constraints: DigestBuildConstraints = Field(default_factory=DigestBuildConstraints)
@@ -167,9 +165,7 @@ class DigestConfirmedPlanContract(BaseModel):
         "course_icon",
         "user_prompt",
         "digest_mode",
-        "intent",
-        "summary",
-        "suggestion",
+        "planning_note",
         "plan",
         "planner_session_id",
         "confirmed_plan_id",

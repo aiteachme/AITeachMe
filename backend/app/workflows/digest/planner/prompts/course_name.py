@@ -27,8 +27,8 @@ def build_course_identity_messages(
     user_prompt: str,
     filenames: list[str],
     digest_mode: str,
-    intent: str = "",
-    summary: str = "",
+    planning_note: str = "",
+    material_note: str = "",
     topic_hints: list[str] | None = None,
 ) -> list[dict[str, str]]:
     """Build the structured identity prompt used when creating a new learning space."""
@@ -40,7 +40,7 @@ def build_course_identity_messages(
 你是 AITeachMe 的课程命名与图标选择器。你只输出合法 JSON，不输出解释、Markdown 或额外文本。
 """.strip()
     prompt = f"""
-请根据用户学习目标、intent、summary、资料线索和主题提示，生成课程展示身份。
+请根据用户学习目标、规划判断、资料线索和主题提示，生成课程展示身份。
 
 字段要求：
 - course_name：2 到 10 个汉字为佳，最多 16 个字符；像真实对话标题一样自然。
@@ -51,8 +51,8 @@ def build_course_identity_messages(
 用户输入：{user_prompt or '未提供'}
 资料名：{'、'.join(filenames) or '暂无'}
 模式：{mode_label}
-intent：{intent or '暂无'}
-summary：{summary or '暂无'}
+规划判断：{planning_note or '暂无'}
+资料边界：{material_note or '暂无'}
 主题提示：{'、'.join(normalized_topic_hints) or '暂无'}
 
 候选 course_icon：
@@ -74,8 +74,8 @@ summary：{summary or '暂无'}
             "user_prompt_chars": len(user_prompt or ""),
             "filename_count": len(filenames),
             "digest_mode": digest_mode,
-            "intent_chars": len(intent or ""),
-            "summary_chars": len(summary or ""),
+            "planning_note_chars": len(planning_note or ""),
+            "material_note_chars": len(material_note or ""),
             "topic_hint_count": len(normalized_topic_hints),
             "icon_option_count": len(COURSE_ICON_OPTIONS),
         },

@@ -14,7 +14,7 @@ from app.workflows.digest.planner.lib.model_policy import (
     planner_completion_kwargs_with_metadata,
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import _resolve_course_name
+from app.workflows.digest.planner.lib.plans import _resolve_course_name, compose_planning_note
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
@@ -123,19 +123,23 @@ def _parse_planner_response(text: str) -> dict[str, Any]:
 
 def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> dict[str, Any]:
     latest_plan = dict(state.get("latest_plan") or {})
+    planning_note = str(
+        payload.get("planning_note")
+        or latest_plan.get("planning_note")
+        or compose_planning_note(state.get("planning_note"), state.get("material_note"))
+        or ""
+    )
     return {
         "course_id": state.get("course_id", ""),
         "selected_file_ids": list(state.get("selected_file_ids") or state.get("requested_file_ids") or []),
         "user_prompt": state.get("user_prompt") or latest_plan.get("user_prompt") or "",
         "digest_mode": state.get("digest_mode") or latest_plan.get("digest_mode") or "systematic",
-        "intent": str(state.get("intent") or latest_plan.get("intent") or ""),
-        "summary": str(state.get("summary") or latest_plan.get("summary") or ""),
+        "planning_note": planning_note,
         "course_name": str(latest_plan.get("course_name") or ""),
         "course_icon": str(latest_plan.get("course_icon") or ""),
         "suggestion": str(payload.get("suggestion") or ""),
         "plan": str(payload.get("plan") or ""),
         "chapters": list(payload.get("chapters") or []),
-        "build_constraints": dict(payload.get("build_constraints") or {}),
         "status": "planning",
         "planner_session_id": state.get("planner_session_id") or None,
         "confirmed_plan_id": None,
@@ -146,15 +150,15 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
 async def _stream_planner_response(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
     latest_plan = dict(state.get("latest_plan") or {})
-    intent = str(state.get("intent") or latest_plan.get("intent") or "").strip()
-    summary = str(state.get("summary") or latest_plan.get("summary") or "").strip()
+    planning_note = str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip()
+    material_note = str(state.get("material_note") or "").strip()
     messages = build_planner_stream_messages(
         course_name=_course_for_prompt(state),
         user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value,
         material_context=material_context,
-        intent=intent,
-        summary=summary,
+        planning_note=planning_note,
+        material_note=material_note,
         message_history=list(state.get("message_history", [])),
         latest_feedback=state.get("feedback_message") or "",
         latest_plan=latest_plan or None,
@@ -162,7 +166,7 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
     await emit_planner_event(
         state,
         event="planner.plan.started",
-        detail="正在生成 plan、suggestion 和 chapters。",
+        detail="正在生成方案总说明、修改建议和章节大纲。",
     )
     raw_tokens: list[str] = []
     emitted_plan_chars = 0
@@ -173,7 +177,7 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
             PlannerModelStep.DRAFT_PLAN,
             model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
-            substep="流式生成 planner",
+            substep="流式生成方案",
         ),
     )
     async for token in stream:
@@ -218,14 +222,17 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             await emit_planner_event(
                 state,
                 event="planner.plan.failed",
-                detail="模型没有按 planner 协议返回 suggestion、plan 和 chapters，请重试。",
+                detail="模型没有按协议返回修改建议、方案总说明和章节大纲，请重试。",
             )
             raise
 
         latest_plan = dict(state.get("latest_plan") or {})
+        planning_note = compose_planning_note(
+            state.get("planning_note") or latest_plan.get("planning_note"),
+            state.get("material_note"),
+        )
         draft_payload = {
-            "intent": str(state.get("intent") or latest_plan.get("intent") or ""),
-            "summary": str(state.get("summary") or latest_plan.get("summary") or ""),
+            "planning_note": planning_note,
             "course_name": str(latest_plan.get("course_name") or ""),
             "course_icon": str(latest_plan.get("course_icon") or ""),
             **parsed,
@@ -234,7 +241,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
         await emit_planner_event(
             state,
             event="planner.plan.ready",
-            detail=f"planner 已生成：{len(parsed.get('chapters') or [])} 个章节。",
+            detail=f"方案已生成：{len(parsed.get('chapters') or [])} 个章节。",
             payload={
                 "chapter_count": len(parsed.get("chapters") or []),
                 "plan_preview": _plan_preview_payload(state, draft_payload),

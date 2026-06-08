@@ -5,7 +5,6 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { BuildPlannerPlanResponse } from './buildPlannerPlanResponse';
-import type { BuildPlannerRuntimeStatsResponse } from './buildPlannerRuntimeStatsResponse';
 import type { BuildPlannerTurnResponse } from './buildPlannerTurnResponse';
 
 export interface BuildPlannerSessionResponse {
@@ -17,7 +16,6 @@ export interface BuildPlannerSessionResponse {
   latest_plan: BuildPlannerPlanResponse;
   model_override?: string | null;
   turns?: BuildPlannerTurnResponse[];
-  runtime_stats?: BuildPlannerRuntimeStatsResponse | null;
   created_at: string;
   updated_at: string;
 }

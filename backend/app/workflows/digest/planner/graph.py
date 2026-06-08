@@ -1,15 +1,15 @@
 """Planner graph definition and public workflow entrypoints.
 
 真实链路主线：
-读取输入 -> 首轮并行生成 intent/summary -> 二阶段并行生成 course identity 和 planner -> 保存。
-调整链路会复用上一版 intent/summary/course identity，只调用一次 planner 生成。
+读取输入 -> 首轮并行生成规划判断/资料边界 -> 二阶段并行生成课程身份和方案大纲 -> 保存。
+调整链路会复用上一版规划判断和课程身份，只调用一次方案生成。
 """
 
 from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any
+from typing import Any, Mapping
 
 import structlog
 from langgraph.graph import END, StateGraph
@@ -91,11 +91,11 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     STEP_UNDERSTAND_GOAL: {
         "description": (
-            "首轮生成时并行完成两个理解动作：流式写出用户可见的 intent / 规划边界，结构化摘要资料与学科情况。"
-            "调整已有 planner 时不重新理解范围，直接复用上一版 intent 和 summary。"
+            "首轮生成时并行完成两个理解动作：流式写出用户可见的规划判断，结构化整理资料边界与学科情况。"
+            "调整已有方案时不重新理解范围，直接复用上一版 planning_note。"
         ),
         "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
-        "writes": ["intent", "summary"],
+        "writes": ["planning_note", "material_note"],
         "input_keys": [
             "course_id",
             "material_context",
@@ -107,23 +107,23 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
             "model_override",
         ],
-        "output_keys": ["intent", "summary", "bootstrap_ms", "error"],
-        "fanout": "stream_intent + summarize_materials",
+        "output_keys": ["planning_note", "material_note", "bootstrap_ms", "error"],
+        "fanout": "stream_planning_note + summarize_materials",
         "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
     },
     STEP_COMPOSE_PLAN: {
         "description": (
-            "用一次流式 LLM 把 intent、summary、历史对话和最新反馈合成新的 Planner 草案。"
+            "用一次流式 LLM 把规划判断、资料边界、历史对话和最新反馈合成新的方案大纲。"
             "plan 标签内文本实时 SSE 给前端，完整输出解析为 suggestion、plan、chapters。"
             "调整方案时，这一步是唯一会重新调用的 Planner 生成模型。"
         ),
-        "reads": ["material_context", "intent", "summary", "message_history", "latest_plan", "feedback_message"],
+        "reads": ["material_context", "planning_note", "material_note", "message_history", "latest_plan", "feedback_message"],
         "writes": ["build_plan_draft", "plan_outline_markdown"],
         "input_keys": [
             "course_id",
             "material_context",
-            "intent",
-            "summary",
+            "planning_note",
+            "material_note",
             "user_prompt",
             "digest_mode",
             "model_override",
@@ -136,17 +136,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     STEP_GENERATE_TITLE: {
         "description": (
-            "仅在创建新 Planner 会话时运行，和 Planner 草案生成并行。"
-            "根据 intent、summary、资料文件名和 topic hints，通过一次结构化 LLM 生成 course_name 与 course_icon。"
+            "仅在创建新 Planner 会话时运行，和方案大纲生成并行。"
+            "根据规划判断、资料边界、资料文件名和 topic hints，通过一次结构化 LLM 生成 course_name 与 course_icon。"
             "调整方案时不重复生成课程身份。"
         ),
-        "reads": ["material_context", "intent", "summary", "user_prompt", "digest_mode"],
+        "reads": ["material_context", "planning_note", "material_note", "user_prompt", "digest_mode"],
         "writes": ["generated_course_name", "generated_course_icon_key"],
         "input_keys": [
             "planner_operation",
             "material_context",
-            "intent",
-            "summary",
+            "planning_note",
+            "material_note",
             "user_prompt",
             "digest_mode",
             "model_override",
@@ -157,7 +157,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     STEP_SAVE_PLAN: {
         "description": (
-            "等待 Planner 草案和课程身份两个分支汇合，把 build_plan_draft 规范化成稳定 latest_plan。"
+            "等待方案大纲和课程身份两个分支汇合，把 build_plan_draft 规范化成稳定 latest_plan。"
             "补齐章节索引、目标、required_elements、模式、course_name/course_icon，并写入 planner session 与 chat mirror。"
             "这里保存的是可继续调整的草案；用户确认后才会冻结为 DocGen 消费的 confirmed planner。"
         ),
@@ -222,7 +222,7 @@ def _langgraph_node_metadata(step: str) -> dict[str, object]:
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     """构建 Planner 的 LangGraph。
 
-    Planner 只负责生成和修订可确认的 planner：读取资料、生成 intent/summary、
+    Planner 只负责生成和修订可确认的方案：读取资料、生成规划判断/资料边界、
     并行生成课程身份与 suggestion/plan/chapters、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
     也不要把 API 持久化细节塞进节点之外的地方。
     """
@@ -491,7 +491,7 @@ async def create_build_planner_session(
         state_error=final_state.get("error"),
     )
     response = planner_session_response_from_state(final_state)
-    _log_planner_runtime(course_id=course.id, response=response)
+    _log_planner_runtime(course_id=course.id, session_id=response.session_id, final_state=final_state)
     return response
 
 
@@ -546,7 +546,7 @@ async def append_build_planner_message(
         state_error=final_state.get("error"),
     )
     response = planner_session_response_from_state(final_state)
-    _log_planner_runtime(course_id=course.id, response=response)
+    _log_planner_runtime(course_id=course.id, session_id=response.session_id, final_state=final_state)
     return response
 
 
@@ -582,16 +582,27 @@ def record_build_planner_adjust_click(
     }
 
 
-def _log_planner_runtime(*, course_id: str, response: BuildPlannerSessionResponse) -> None:
-    runtime_stats = response.runtime_stats
-    if runtime_stats is None:
+def _log_planner_runtime(*, course_id: str, session_id: str, final_state: Mapping[str, object]) -> None:
+    elapsed_ms = int(final_state.get("workflow_elapsed_ms", 0) or 0)
+    if elapsed_ms <= 0:
         return
+    step_fields = {
+        "collect_planner_context": "prepare_ms",
+        "understand_goal_and_materials": "bootstrap_ms",
+        "compose_planner_draft": "compose_ms",
+        "generate_course_identity": "title_ms",
+        "save_planner_draft": "finalize_ms",
+    }
     logger.info(
         "planner_runtime_summary",
         course_id=course_id,
-        planner_session_id=response.session_id,
-        elapsed_ms=runtime_stats.elapsed_ms,
-        steps=[step.model_dump(mode="json") for step in runtime_stats.steps],
+        planner_session_id=session_id,
+        elapsed_ms=elapsed_ms,
+        steps=[
+            {"name": name, "elapsed_ms": int(final_state.get(field, 0) or 0)}
+            for name, field in step_fields.items()
+            if int(final_state.get(field, 0) or 0) > 0
+        ],
     )
 
 

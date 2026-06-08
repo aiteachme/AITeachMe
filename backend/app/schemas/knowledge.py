@@ -758,17 +758,6 @@ class BuildPlannerChapterResponse(BaseModel):
     writing_instructions: str = ""
 
 
-class BuildPlannerStepStatsResponse(BaseModel):
-    name: str
-    status: str = "ok"
-    elapsed_ms: int = 0
-
-
-class BuildPlannerRuntimeStatsResponse(BaseModel):
-    elapsed_ms: int = 0
-    steps: list[BuildPlannerStepStatsResponse] = Field(default_factory=list)
-
-
 class BuildPlannerPlanResponse(BaseModel):
     course_id: str
     selected_file_ids: list[str] = Field(default_factory=list)
@@ -776,12 +765,10 @@ class BuildPlannerPlanResponse(BaseModel):
     course_icon: str = ""
     user_prompt: str
     digest_mode: str
-    intent: str = ""
-    summary: str = ""
+    planning_note: str = ""
     suggestion: str = ""
     plan: str = ""
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
-    build_constraints: dict[str, object] = Field(default_factory=dict)
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
@@ -797,7 +784,6 @@ class BuildPlannerSessionResponse(BaseModel):
     latest_plan: BuildPlannerPlanResponse
     model_override: str | None = None
     turns: list[BuildPlannerTurnResponse] = Field(default_factory=list)
-    runtime_stats: BuildPlannerRuntimeStatsResponse | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -814,13 +800,10 @@ class BuildPlannerConfirmResponse(BaseModel):
     user_prompt: str
     course_name: str = ""
     course_icon: str = ""
-    intent: str = ""
-    summary: str = ""
+    planning_note: str = ""
     suggestion: str = ""
     plan: str
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
-    build_constraints: dict[str, object] = Field(default_factory=dict)
-    plan_json: dict[str, object] = Field(default_factory=dict)
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
