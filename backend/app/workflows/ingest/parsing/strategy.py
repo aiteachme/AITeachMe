@@ -11,12 +11,12 @@ from app.shared.infra.exceptions import FileParseError, UnsupportedFileTypeError
 from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import llm_provider_requires_api_key
-from app.workflows.ingest.parsing.defaults import (
+from app.workflows.ingest.parsing.lib.defaults import (
     DEFAULT_PARSE_CONCURRENCY,
     DEFAULT_PARSER_TIMEOUT_S,
 )
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.formats import (
+from app.workflows.ingest.parsing.lib.formats import (
     categorize_text_extension,
     is_image_extension,
     is_text_extension,
@@ -27,7 +27,7 @@ from app.workflows.ingest.parsing.parsers import (
     get_available_parsers,
     resolve_parser_extension,
 )
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 _LARGE_DOCX_PAGE_COUNT = 60
 _MIN_INTERNAL_PARALLELISM = 5

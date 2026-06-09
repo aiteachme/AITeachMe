@@ -1,4 +1,4 @@
-"""Ingest fast-parse LangGraph node implementations."""
+"""Ingest parsing LangGraph node implementations."""
 
 from .finalize import build_finalize_failure_node, build_finalize_success_node
 from .load_raw_file import (

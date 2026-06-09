@@ -12,7 +12,7 @@ import structlog
 
 from app.shared.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.docx_archive import load_docx_archive
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import save_image_bytes
 
 

@@ -17,20 +17,20 @@ __all__ = [
 ]
 
 _ATTR_TO_MODULE = {
-    "IngestParseGraphInput": "app.workflows.ingest.fast_parse.state",
-    "IngestParseGraphOutput": "app.workflows.ingest.fast_parse.state",
-    "IngestParseState": "app.workflows.ingest.fast_parse.state",
-    "build_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
-    "create_parse_file_initial_state": "app.workflows.ingest.fast_parse.graph",
-    "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.fast_parse.graph",
-    "recover_stalled_enhancements": "app.workflows.ingest.fast_parse.lib.recovery",
-    "run_parse_file_workflow": "app.workflows.ingest.fast_parse.graph",
+    "IngestParseGraphInput": "app.workflows.ingest.parsing.state",
+    "IngestParseGraphOutput": "app.workflows.ingest.parsing.state",
+    "IngestParseState": "app.workflows.ingest.parsing.state",
+    "build_fast_parse_graph": "app.workflows.ingest.parsing.graph",
+    "create_parse_file_initial_state": "app.workflows.ingest.parsing.graph",
+    "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.parsing.graph",
+    "recover_stalled_enhancements": "app.workflows.ingest.parsing.lib.recovery",
+    "run_parse_file_workflow": "app.workflows.ingest.parsing.graph",
 }
 
 
 def _load_workflow_exports():
-    fast_parse_graph = import_module("app.workflows.ingest.fast_parse.graph")
-    return tuple(getattr(fast_parse_graph, "WORKFLOW_EXPORTS"))
+    parse_graph = import_module("app.workflows.ingest.parsing.graph")
+    return tuple(getattr(parse_graph, "WORKFLOW_EXPORTS"))
 
 
 def __getattr__(name: str):

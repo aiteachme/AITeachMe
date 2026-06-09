@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from app.workflows.ingest.parsing.formats import (
+from app.workflows.ingest.parsing.lib.formats import (
     is_image_extension,
     normalize_extension,
 )
-from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.parsing.provider_contracts import ParseDecision, ProviderCapability
+from app.workflows.ingest.parsing.lib.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.lib.provider_contracts import ParseDecision, ProviderCapability
 
 
 # Conservative defaults for MinerU Cloud-style document parsing. Deployments may

@@ -9,7 +9,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from app.workflows.ingest.parsing.docx_archive import summarize_docx_archive
-from app.workflows.ingest.parsing.formats import (
+from app.workflows.ingest.parsing.lib.formats import (
     categorize_text_extension,
     is_text_extension,
     normalize_extension,

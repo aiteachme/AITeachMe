@@ -20,7 +20,7 @@ from urllib.parse import unquote
 
 import structlog
 
-from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
+from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
 
 DEFAULT_PADDLE_OCR_JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 DEFAULT_PADDLE_OCR_MODEL = "PaddleOCR-VL-1.5"
