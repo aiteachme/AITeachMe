@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -64,6 +64,8 @@ class ModelsSettings(_SettingsModel):
 
 
 class LLMSettings(_SettingsModel):
+    api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
     concurrency_limit: int = Field(ge=1, le=MAX_LLM_CONCURRENCY_LIMIT)
     enforce_request_timeout: bool
 

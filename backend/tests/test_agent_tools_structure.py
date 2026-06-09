@@ -4,6 +4,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app.agent_tools.context import AgentToolContext
 from app.agent_tools.global_scope.ask_user import ask_user_options_tool
 from app.agent_tools.policy import AgentToolPolicyRequest, resolve_agent_tool_names
@@ -14,11 +16,18 @@ from app.shared.infra.agent_loop import (
     _execute_one_tool,
     _tool_stream_override_kwargs,
     _tool_stream_override_kwargs_with_choice,
+    run_agent_loop_stream,
 )
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.settings import set_system_settings_override
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.tooling import resolve_interact_tool_plan, synthesize_ask_user_options_action
+
+
+def teardown_function() -> None:
+    set_system_settings_override({})
 
 
 def test_agent_tool_registry_loads_scoped_tools(monkeypatch) -> None:
@@ -199,6 +208,85 @@ def test_agent_loop_injects_hidden_args_and_requires_approval() -> None:
     assert streamed.result == "stream:user_a"
 
 
+def test_agent_loop_stream_falls_back_when_tool_stream_is_empty(monkeypatch) -> None:
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="noop_tool",
+            description="noop",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=lambda: "noop",
+        )
+    )
+
+    class FakeEmptyToolStream:
+        def __init__(self) -> None:
+            self._chunks = iter([
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content=None, tool_calls=None),
+                        ),
+                    ],
+                ),
+            ])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    tool_calls: list[dict] = []
+    fallback_calls: list[dict] = []
+
+    class FakeLiteLLM:
+        async def acompletion(self, **kwargs):
+            tool_calls.append(kwargs)
+            return FakeEmptyToolStream()
+
+    async def fake_acompletion_stream(messages, **kwargs):
+        fallback_calls.append({"messages": messages, **kwargs})
+        yield "fallback answer"
+
+    monkeypatch.setattr("app.shared.infra.tools.registry._registry", registry)
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
+    monkeypatch.setattr("app.shared.infra.llm_support.litellm_loader.load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion_stream", fake_acompletion_stream, raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "auto"},
+    })
+
+    async def collect_chunks() -> list[str]:
+        return [
+            chunk
+            async for chunk in run_agent_loop_stream(
+                [{"role": "user", "content": "hello"}],
+                tools=["noop_tool"],
+                config=AgentLoopConfig(
+                    max_iterations=1,
+                    task_type=TaskType.CHAT,
+                    model="primary",
+                ),
+            )
+        ]
+
+    chunks = asyncio.run(collect_chunks())
+
+    assert chunks == ["fallback answer"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["tools"][0]["function"]["name"] == "noop_tool"
+    assert len(fallback_calls) == 1
+    assert fallback_calls[0]["model"] == "primary"
+    assert fallback_calls[0]["extra_metadata"]["agent_tool_stream_fallback"] == "empty_tool_response"
+
+
 def test_ask_user_options_tool_returns_client_action() -> None:
     result = asyncio.run(
         ask_user_options_tool(
@@ -304,3 +392,73 @@ def test_streaming_tool_loop_disables_parallel_tool_calls() -> None:
         "type": "function",
         "function": {"name": "ask_user_options"},
     }
+
+
+@pytest.mark.anyio
+async def test_streaming_tool_loop_falls_back_before_first_token(monkeypatch) -> None:
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="noop_tool",
+            description="noop",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=lambda: "noop",
+        )
+    )
+
+    class FakeChatStream:
+        def __init__(self) -> None:
+            self._chunks = iter([
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(delta=SimpleNamespace(content="fallback ok")),
+                    ],
+                ),
+            ])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    calls: list[dict] = []
+
+    class FakeLiteLLM:
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key":
+                raise RuntimeError("primary tools stream down")
+            return FakeChatStream()
+
+    monkeypatch.setattr("app.shared.infra.tools.registry._registry", registry)
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
+    monkeypatch.setattr("app.shared.infra.llm_support.litellm_loader.load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.2"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in run_agent_loop_stream(
+            [{"role": "user", "content": "hello"}],
+            tools=["noop_tool"],
+            config=AgentLoopConfig(
+                max_iterations=1,
+                task_type=TaskType.CHAT,
+                model="primary",
+            ),
+        )
+    ]
+
+    assert chunks == ["fallback ok"]
+    assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
+    assert calls[1]["model"] == "deepseek-chat"

@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Iterator, NoReturn
+from typing import Any, Iterator, Literal, NoReturn
 
 import structlog
 
@@ -30,11 +30,12 @@ from app.shared.infra.llm_support.routing import (
 from app.shared.infra.observability.trace import get_llm_trace_context
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 from app.shared.infra.settings.support import (
+    detect_llm_provider_from_base_url,
     get_llm_api_version,
+    get_llm_provider_model_defaults,
     llm_provider_requires_api_key,
     normalize_llm_provider_name,
     resolve_litellm_provider_name,
-    resolve_runtime_llm_provider,
     split_provider_model_name,
 )
 
@@ -46,6 +47,40 @@ _LLM_RUNTIME_SNAPSHOT: ContextVar["LLMRuntimeSnapshot | None"] = ContextVar(
     "llm_runtime_snapshot",
     default=None,
 )
+_PRIMARY_BASE_URL_ENV_NAME = "LLM_BASE_URL"
+_PRIMARY_API_KEY_ENV_NAME = "LLM_API_KEY"
+_PRIMARY_PROVIDER_ENV_NAME = "LLM_PROVIDER"
+_FALLBACK_BASE_URL_ENV_NAME = "LLM_FALLBACK_BASE_URL"
+_FALLBACK_API_KEY_ENV_NAME = "LLM_FALLBACK_API_KEY"
+_SETTINGS_MODEL_SELECTORS = frozenset(
+    {
+        "reason",
+        "primary",
+        "light",
+        "extract",
+        "vision",
+        "rerank",
+        "ocr",
+        "image_generation",
+        "speech_to_text",
+        "text_to_speech",
+        "video_generation",
+    }
+)
+
+EndpointRole = Literal["primary", "fallback"]
+
+
+@dataclass(frozen=True)
+class LLMEndpoint:
+    """One resolved upstream endpoint candidate for text-generation calls."""
+
+    role: EndpointRole
+    base_url: str | None
+    api_key: str | None
+    provider: str
+    api_version: str | None
+    use_default_models: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,9 +92,38 @@ class LLMRuntimeSnapshot:
     api_keys: tuple[str, ...]
     provider: str
     api_version: str | None
+    primary_endpoints: tuple[LLMEndpoint, ...] = ()
+    fallback_endpoints: tuple[LLMEndpoint, ...] = ()
 
     def choose_api_key(self) -> str | None:
-        return secrets.choice(self.api_keys) if self.api_keys else None
+        endpoint = self.choose_primary_endpoint()
+        return endpoint.api_key if endpoint is not None else None
+
+    def choose_primary_endpoint(self) -> LLMEndpoint | None:
+        endpoints = self.primary_endpoints or _legacy_primary_endpoints(self)
+        if not endpoints:
+            return None
+        first = endpoints[0]
+        same_route = all(
+            endpoint.base_url == first.base_url
+            and endpoint.provider == first.provider
+            and endpoint.api_version == first.api_version
+            for endpoint in endpoints
+        )
+        return secrets.choice(endpoints) if same_route else first
+
+    def completion_endpoints(self) -> tuple[LLMEndpoint, ...]:
+        primary = self.primary_endpoints or _legacy_primary_endpoints(self)
+        return (*primary, *self.fallback_endpoints)
+
+    def has_usable_completion_endpoint(self) -> bool:
+        for endpoint in self.completion_endpoints():
+            if endpoint.api_key is not None or not llm_provider_requires_api_key(
+                endpoint.provider,
+                base_url=endpoint.base_url,
+            ):
+                return True
+        return False
 
 
 @dataclass(frozen=True)
@@ -75,6 +139,7 @@ class CompletionContext:
     profile: LLMCallProfile
     model: str
     model_selector: str
+    endpoint_role: EndpointRole
 
 
 @dataclass(frozen=True)
@@ -168,12 +233,16 @@ def capture_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
     return get_llm_runtime_snapshot()
 
 
-def _current_api_keys() -> tuple[str, ...]:
-    raw_value = get_env("LLM_API_KEY") or ""
+def _split_env_csv(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(item.strip() for item in str(value).split(",") if item and item.strip())
+
+
+def _unique_values(raw_values: tuple[str, ...]) -> tuple[str, ...]:
     values: list[str] = []
     seen: set[str] = set()
-    for item in raw_value.split(","):
-        value = item.strip()
+    for value in raw_values:
         if not value or value in seen:
             continue
         seen.add(value)
@@ -181,21 +250,152 @@ def _current_api_keys() -> tuple[str, ...]:
     return tuple(values)
 
 
+def _env_csv(name: str) -> tuple[str, ...]:
+    return _split_env_csv(get_env(name))
+
+
+def _current_api_keys() -> tuple[str, ...]:
+    return _unique_values(_env_csv(_PRIMARY_API_KEY_ENV_NAME))
+
+
+def _paired_endpoint_values(
+    *,
+    role: EndpointRole,
+    base_urls: tuple[str, ...],
+    api_keys: tuple[str, ...],
+) -> tuple[tuple[str | None, str | None], ...]:
+    """Pair comma-separated base URLs and API keys conservatively."""
+
+    base_values: tuple[str | None, ...] = tuple(base_urls) or (None,)
+    key_values: tuple[str | None, ...] = tuple(api_keys) or (None,)
+
+    if len(base_values) == len(key_values):
+        raw_pairs = zip(base_values, key_values)
+    elif len(base_values) == 1:
+        raw_pairs = ((base_values[0], api_key) for api_key in key_values)
+    elif len(key_values) == 1:
+        raw_pairs = ((base_url, key_values[0]) for base_url in base_values)
+    else:
+        used_count = min(len(base_values), len(key_values))
+        logger.warning(
+            "llm_endpoint_pair_count_mismatch",
+            role=role,
+            base_url_count=len(base_values),
+            api_key_count=len(key_values),
+            used_count=used_count,
+        )
+        raw_pairs = zip(base_values[:used_count], key_values[:used_count])
+
+    pairs: list[tuple[str | None, str | None]] = []
+    seen: set[tuple[str | None, str | None]] = set()
+    for raw_base_url, raw_api_key in raw_pairs:
+        base_url = str(raw_base_url).strip() if raw_base_url is not None else ""
+        api_key = str(raw_api_key).strip() if raw_api_key is not None else ""
+        pair = (base_url or None, api_key or None)
+        if pair in seen:
+            continue
+        seen.add(pair)
+        pairs.append(pair)
+    return tuple(pairs)
+
+
+def _resolve_endpoint_provider(
+    *,
+    explicit_provider: str | None,
+    base_url: str | None,
+) -> str:
+    provider = normalize_llm_provider_name(explicit_provider)
+    if provider:
+        return provider
+    return detect_llm_provider_from_base_url(base_url) or "openai_compatible"
+
+
+def _build_endpoint_candidates(
+    *,
+    role: EndpointRole,
+    base_url_env_name: str,
+    api_key_env_name: str,
+    explicit_provider: str | None,
+    api_version: str | None,
+    use_default_models: bool,
+) -> tuple[LLMEndpoint, ...]:
+    base_urls = _env_csv(base_url_env_name)
+    api_keys = _env_csv(api_key_env_name)
+    if role == "fallback" and not base_urls and not api_keys:
+        return ()
+    pairs = _paired_endpoint_values(
+        role=role,
+        base_urls=base_urls,
+        api_keys=api_keys,
+    )
+    return tuple(
+        LLMEndpoint(
+            role=role,
+            base_url=base_url,
+            api_key=api_key,
+            provider=_resolve_endpoint_provider(
+                explicit_provider=explicit_provider,
+                base_url=base_url,
+            ),
+            api_version=api_version,
+            use_default_models=use_default_models,
+        )
+        for base_url, api_key in pairs
+    )
+
+
+def _legacy_primary_endpoints(snapshot: LLMRuntimeSnapshot) -> tuple[LLMEndpoint, ...]:
+    api_keys: tuple[str | None, ...] = snapshot.api_keys or (None,)
+    return tuple(
+        LLMEndpoint(
+            role="primary",
+            base_url=snapshot.base_url,
+            api_key=api_key,
+            provider=snapshot.provider,
+            api_version=snapshot.api_version,
+        )
+        for api_key in api_keys
+    )
+
+
+def _settings_with_provider_default_models(settings: Settings, provider: str | None) -> Settings:
+    models = settings.models.model_copy(
+        update=get_llm_provider_model_defaults(provider),
+        deep=True,
+    )
+    return settings.model_copy(update={"models": models}, deep=True)
+
+
 def get_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
     snapshot = _LLM_RUNTIME_SNAPSHOT.get()
     if snapshot is not None:
         return snapshot
-    base_url = get_env("LLM_BASE_URL")
-    explicit_provider = get_env("LLM_PROVIDER")
+    primary_api_version = get_llm_api_version()
+    primary_endpoints = _build_endpoint_candidates(
+        role="primary",
+        base_url_env_name=_PRIMARY_BASE_URL_ENV_NAME,
+        api_key_env_name=_PRIMARY_API_KEY_ENV_NAME,
+        explicit_provider=get_env(_PRIMARY_PROVIDER_ENV_NAME),
+        api_version=primary_api_version,
+        use_default_models=False,
+    )
+    fallback_endpoints = _build_endpoint_candidates(
+        role="fallback",
+        base_url_env_name=_FALLBACK_BASE_URL_ENV_NAME,
+        api_key_env_name=_FALLBACK_API_KEY_ENV_NAME,
+        explicit_provider=None,
+        api_version=primary_api_version,
+        use_default_models=True,
+    )
+    primary_endpoint = primary_endpoints[0]
     return LLMRuntimeSnapshot(
         settings=get_settings(),
-        base_url=base_url,
+        base_url=primary_endpoint.base_url,
         api_keys=_current_api_keys(),
-        provider=resolve_runtime_llm_provider(
-            explicit_provider=explicit_provider,
-            base_url=base_url,
-        ),
-        api_version=get_llm_api_version(),
+        provider=primary_endpoint.provider,
+        api_version=primary_endpoint.api_version,
+        primary_endpoints=primary_endpoints,
+        fallback_endpoints=fallback_endpoints,
     )
 
 
@@ -287,36 +487,100 @@ def resolve_task_type(task_type: object | None = None) -> str:
     return normalize_task_type(task_type)
 
 
+def _build_completion_context_for_endpoint(
+    *,
+    task_type: str,
+    profile: LLMCallProfile,
+    snapshot: LLMRuntimeSnapshot,
+    endpoint: LLMEndpoint,
+    model: str | None,
+) -> CompletionContext:
+    settings = (
+        _settings_with_provider_default_models(snapshot.settings, endpoint.provider)
+        if endpoint.use_default_models
+        else snapshot.settings
+    )
+    if endpoint.api_key is None and llm_provider_requires_api_key(
+        endpoint.provider,
+        base_url=endpoint.base_url,
+    ):
+        raise MissingLLMApiKeyError(
+            provider=endpoint.provider,
+            base_url_configured=bool((endpoint.base_url or "").strip()),
+        )
+    requested_selector = normalize_model_selector(model) or "primary"
+    model_for_resolution = (
+        requested_selector
+        if (not endpoint.use_default_models or requested_selector.lower() in _SETTINGS_MODEL_SELECTORS)
+        else "primary"
+    )
+    resolved_model, model_selector = resolve_settings_model(settings, model_for_resolution)
+    return CompletionContext(
+        task_type=task_type,
+        settings=settings,
+        base_url=endpoint.base_url,
+        provider=endpoint.provider,
+        api_version=endpoint.api_version,
+        api_key=endpoint.api_key,
+        profile=profile,
+        model=resolved_model,
+        model_selector=model_selector,
+        endpoint_role=endpoint.role,
+    )
+
+
+def build_completion_contexts(
+    task_type: object | None = None,
+    *,
+    model: str | None = None,
+) -> tuple[CompletionContext, ...]:
+    """Resolve all primary and fallback endpoint contexts for one LLM call."""
+
+    resolved_task_type = resolve_task_type(task_type)
+    profile = get_task_profile(resolved_task_type)
+    snapshot = get_llm_runtime_snapshot()
+    contexts: list[CompletionContext] = []
+    missing_key_error: MissingLLMApiKeyError | None = None
+
+    for endpoint in snapshot.completion_endpoints():
+        try:
+            contexts.append(
+                _build_completion_context_for_endpoint(
+                    task_type=resolved_task_type,
+                    profile=profile,
+                    snapshot=snapshot,
+                    endpoint=endpoint,
+                    model=model,
+                )
+            )
+        except MissingLLMApiKeyError as exc:
+            if missing_key_error is None:
+                missing_key_error = exc
+            logger.warning(
+                "llm_endpoint_skipped_missing_api_key",
+                role=endpoint.role,
+                provider=endpoint.provider,
+                base_url_configured=bool((endpoint.base_url or "").strip()),
+            )
+
+    if contexts:
+        return tuple(contexts)
+    if missing_key_error is not None:
+        raise missing_key_error
+    raise MissingLLMApiKeyError(
+        provider=snapshot.provider,
+        base_url_configured=bool((snapshot.base_url or "").strip()),
+    )
+
+
 def build_completion_context(
     task_type: object | None = None,
     *,
     model: str | None = None,
 ) -> CompletionContext:
-    """Resolve config and credentials for one task-scoped LLM call."""
+    """Resolve the first usable primary/fallback context for one LLM call."""
 
-    resolved_task_type = resolve_task_type(task_type)
-    snapshot = get_llm_runtime_snapshot()
-    settings = snapshot.settings
-    base_url = snapshot.base_url
-    provider = snapshot.provider
-    api_key = snapshot.choose_api_key()
-    if api_key is None and llm_provider_requires_api_key(provider, base_url=base_url):
-        raise MissingLLMApiKeyError(
-            provider=provider,
-            base_url_configured=bool((base_url or "").strip()),
-        )
-    resolved_model, model_selector = resolve_settings_model(settings, model)
-    return CompletionContext(
-        task_type=resolved_task_type,
-        settings=settings,
-        base_url=base_url,
-        provider=provider,
-        api_version=snapshot.api_version,
-        api_key=api_key,
-        profile=get_task_profile(resolved_task_type),
-        model=resolved_model,
-        model_selector=model_selector,
-    )
+    return build_completion_contexts(task_type=task_type, model=model)[0]
 
 
 def request_timeout_s(timeout_s: int, *, enabled: bool = True) -> int | None:
@@ -512,6 +776,7 @@ def prepare_completion_attempt(
     call_model, provider, tracked_model = _resolved_trace_model(
         call_kwargs,
         context.model,
+        runtime_provider=context.provider,
     )
     return CompletionAttempt(
         attempt=attempt,
@@ -537,6 +802,7 @@ def log_attempt_started(
         attempt=attempt.attempt,
         model=attempt.tracked_model,
         task_type=context.task_type,
+        endpoint_role=context.endpoint_role,
         timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
     )
@@ -557,6 +823,7 @@ def log_attempt_timeout(
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
         task_type=context.task_type,
+        endpoint_role=context.endpoint_role,
         timeout_s=effective_call_timeout_s(context, attempt.call_kwargs),
         **dict(extra or {}),
         **trace_log_fields(),
@@ -578,6 +845,7 @@ def log_attempt_cancelled(
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
         task_type=context.task_type,
+        endpoint_role=context.endpoint_role,
         **dict(extra or {}),
         **trace_log_fields(),
     )
@@ -601,6 +869,7 @@ def log_attempt_failed(
         elapsed_s=round(time.monotonic() - attempt.started_at, 2),
         model=attempt.tracked_model,
         task_type=context.task_type,
+        endpoint_role=context.endpoint_role,
         error=str(error),
         **dict(extra or {}),
         **trace_log_fields(),

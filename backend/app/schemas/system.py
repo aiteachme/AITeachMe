@@ -40,6 +40,13 @@ SettingSource = Literal["env", "settings", "system_settings", "user_settings", "
 SettingStatus = Literal["configured", "missing", "default", "disabled", "enabled", "runtime"]
 
 
+class SettingOption(BaseModel):
+    """Selectable value shown by settings UI."""
+
+    value: str | None = Field(description="Stable option value.")
+    label: str = Field(description="Display label.")
+
+
 class SettingEntry(BaseModel):
     """单个后端设置项的展示模型。"""
 
@@ -60,6 +67,7 @@ class SettingEntry(BaseModel):
     ui_group: str = Field(default="", description="设置页内的展示分组。")
     ui_order: int = Field(default=0, description="设置页内的稳定排序值。")
     description: str = Field(default="", description="说明。")
+    options: list[SettingOption] = Field(default_factory=list, description="Selectable values.")
 
 
 class SettingSection(BaseModel):

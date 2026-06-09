@@ -78,6 +78,8 @@ LLM_BASE_URL=https://api.example.com/v1
 ```
 
 未开启鉴权的本地模型网关可以不填 `LLM_API_KEY`。实际模型槽位可在设置页或项目 settings override 中配置。
+`LLM_API_KEY` / `LLM_BASE_URL` 支持英文逗号配置多组主用 endpoint：等长时按顺序配对，单地址多 key 或单 key 多地址会自动扩展。
+备用模型网关可配置 `LLM_FALLBACK_API_KEY` / `LLM_FALLBACK_BASE_URL`，主用 endpoint 失败时接管；备用地址会自动识别 provider，并使用该 provider 的默认文本模型。
 
 ## 常用检查
 

@@ -53,9 +53,9 @@ from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
 from app.shared.infra.settings.support import (
     get_llm_provider_model_defaults,
-    llm_provider_requires_api_key,
     resolve_runtime_llm_provider,
 )
+from app.shared.infra.llm_support.common import get_llm_runtime_snapshot
 
 logger = structlog.get_logger()
 
@@ -200,6 +200,9 @@ def _log_infra_diagnostics(settings) -> None:
     project_settings_source = get_teaching_runtime_settings_source()
     llm_base_url = get_env("LLM_BASE_URL")
     llm_api_keys = get_env_list("LLM_API_KEY")
+    llm_snapshot = get_llm_runtime_snapshot()
+    primary_endpoint_count = len(llm_snapshot.primary_endpoints)
+    fallback_endpoint_count = len(llm_snapshot.fallback_endpoints)
     runtime_provider = resolve_runtime_llm_provider(base_url=llm_base_url)
     runtime_provider_defaults = get_llm_provider_model_defaults(runtime_provider)
     openai_compatible_defaults = get_llm_provider_model_defaults("openai_compatible")
@@ -240,6 +243,8 @@ def _log_infra_diagnostics(settings) -> None:
         f"    STORAGE_BACKEND        : {os.environ.get('STORAGE_BACKEND', '!! NOT_SET !!')}",
         f"    LLM_BASE_URL           : {'SET' if llm_base_url else '!! NOT_SET !!'}",
         f"    LLM_API_KEY            : {'SET' if llm_api_keys else '!! NOT_SET !!'}",
+        f"    LLM Primary Endpoints  : {primary_endpoint_count}",
+        f"    LLM Fallback Endpoints : {fallback_endpoint_count}",
         "",
         "  [SETTINGS]",
         f"    {PROJECT_SETTINGS_ENV_NAME:<23}: {settings_file_info['configured_value'] or '!! NOT_SET !!'}",
@@ -346,7 +351,7 @@ def _log_infra_diagnostics(settings) -> None:
     lines.append(f"    Text->Speech Model     : {settings.models.text_to_speech or 'disabled'}")
     lines.append(f"    Video Model            : {settings.models.video_generation or 'disabled'}")
     lines.append(f"    Runtime Provider       : {runtime_provider}")
-    if llm_provider_requires_api_key(runtime_provider, base_url=llm_base_url) and not llm_api_keys:
+    if not llm_snapshot.has_usable_completion_endpoint():
         lines.append("    LLM Connectivity       : NOT_READY (missing LLM_API_KEY)")
     else:
         lines.append("    LLM Connectivity       : READY")

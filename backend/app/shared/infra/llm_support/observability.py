@@ -42,14 +42,20 @@ def _serialize_langsmith_value(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
-def _model_provider_and_name(model: str) -> tuple[str, str]:
+def _model_provider_and_name(
+    model: str,
+    *,
+    runtime_provider: str | None = None,
+) -> tuple[str, str]:
     normalized = str(model or "").strip()
     if not normalized:
         return "unknown", ""
     provider, model_name = split_provider_model_name(normalized)
     if provider:
         return provider, model_name or normalized
-    resolved_provider = normalize_llm_provider_name(resolve_runtime_llm_provider()) or "unknown"
+    resolved_provider = normalize_llm_provider_name(
+        runtime_provider or resolve_runtime_llm_provider()
+    ) or "unknown"
     if resolved_provider == "openai_compatible":
         resolved_provider = "openai"
     return resolved_provider, normalized
@@ -58,9 +64,14 @@ def _model_provider_and_name(model: str) -> tuple[str, str]:
 def _resolved_trace_model(
     call_kwargs: Mapping[str, Any],
     fallback_model: str,
+    *,
+    runtime_provider: str | None = None,
 ) -> tuple[str, str, str]:
     raw_model = str(call_kwargs.get("model") or fallback_model).strip() or fallback_model
-    provider, model_name = _model_provider_and_name(raw_model)
+    provider, model_name = _model_provider_and_name(
+        raw_model,
+        runtime_provider=runtime_provider,
+    )
     return raw_model, provider, model_name or fallback_model
 
 
@@ -168,6 +179,7 @@ def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, An
     for key in (
         "temperature",
         "max_tokens",
+        "max_output_tokens",
         "top_p",
         "presence_penalty",
         "frequency_penalty",
@@ -175,11 +187,12 @@ def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, An
         "stream",
         "tool_choice",
         "response_format",
+        "reasoning",
     ):
         value = call_kwargs.get(key)
         if value in (None, "", [], {}):
             continue
-        if key == "max_tokens":
+        if key in {"max_tokens", "max_output_tokens"}:
             invocation_params[key] = int(value)
             continue
         if key in {"temperature", "top_p", "presence_penalty", "frequency_penalty"}:
@@ -255,6 +268,8 @@ def _langsmith_llm_metadata(
             metadata["ls_temperature"] = invocation_params["temperature"]
         if "max_tokens" in invocation_params:
             metadata["ls_max_tokens"] = invocation_params["max_tokens"]
+        if "max_output_tokens" in invocation_params:
+            metadata["ls_max_tokens"] = invocation_params["max_output_tokens"]
         if "stop" in invocation_params:
             metadata["ls_stop"] = invocation_params["stop"]
     if attempt is not None:

@@ -14,7 +14,7 @@ import { Check, ChevronDown, Network } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-export const CHAT_MODEL_OPTIONS = ["settings", "deepseek-v4-flash", "qwen-flash"] as const;
+export const CHAT_MODEL_OPTIONS = ["settings", "gpt-5.5", "deepseek-v4-flash", "qwen-flash"] as const;
 
 export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 
@@ -32,11 +32,18 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
   title: string;
 }> = {
   settings: {
-    optionLabel: "默认",
-    triggerLabel: "默认",
-    menuLabel: "默认模型",
-    caption: "跟随系统设置",
-    title: "使用系统设置中的默认模型",
+    optionLabel: "设置",
+    triggerLabel: "设置",
+    menuLabel: "跟随设置模型",
+    caption: "使用设置页的主文本模型",
+    title: "使用设置页中配置的主文本模型",
+  },
+  "gpt-5.5": {
+    optionLabel: "gpt-5.5",
+    triggerLabel: "GPT-5.5",
+    menuLabel: "GPT-5.5",
+    caption: "Responses 路径 · 深度推理",
+    title: "切换到 gpt-5.5，适合复杂推理、规划和讲解",
   },
   "deepseek-v4-flash": {
     optionLabel: "deepseek-v4-flash",

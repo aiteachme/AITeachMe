@@ -6,7 +6,7 @@ export const SETTINGS_STYLES = {
     backdrop: "absolute inset-0 modal-backdrop modal-backdrop-strong",
     viewport: "pointer-events-none absolute inset-0 flex items-center justify-center p-2 sm:p-6",
     dialog:
-      "pointer-events-auto flex h-[calc(100dvh-1rem)] w-full max-w-[1024px] flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-[0_12px_28px_rgba(0,0,0,0.08)] ring-1 ring-zinc-200/70 dark:ring-zinc-800/70 sm:h-[85vh] sm:flex-row",
+      "pointer-events-auto flex h-[calc(100dvh-1rem)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-[0_12px_28px_rgba(0,0,0,0.08)] ring-1 ring-zinc-200/70 dark:ring-zinc-800/70 sm:h-[85vh] sm:flex-row",
     body: "flex min-w-0 flex-1 flex-col bg-white dark:bg-slate-900",
     header: "flex items-center justify-between border-b border-zinc-100 dark:border-slate-800 px-4 py-4 sm:px-8 sm:py-5",
     headerTitle: "text-lg font-bold text-zinc-900 dark:text-slate-100 tracking-tight",
@@ -15,7 +15,7 @@ export const SETTINGS_STYLES = {
       "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 dark:text-slate-500 transition-colors hover:bg-zinc-100 dark:hover:bg-slate-800 hover:text-zinc-900 dark:hover:text-slate-100 active:scale-95 sm:h-8 sm:w-8",
     closeIcon: "h-5 w-5",
     scrollArea: "min-h-0 flex-1 overflow-y-auto px-4 py-5 settings-scroll sm:px-12 sm:py-8",
-    sectionFrame: "max-w-[760px] mx-auto",
+    sectionFrame: "max-w-[860px] mx-auto",
   },
   nav: {
     root: "flex w-full shrink-0 flex-col border-b border-zinc-100 dark:border-slate-800 bg-zinc-50/35 dark:bg-slate-900/50 pt-2 sm:w-[240px] sm:border-b-0 sm:border-r",
@@ -82,7 +82,7 @@ export const SETTINGS_STYLES = {
     icon: "h-4 w-4",
     card: "rounded-xl border border-zinc-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-950/50 shadow-sm overflow-hidden",
     cardBody: "",
-    labelBlock: "flex flex-col gap-0.5 min-w-0 md:w-[200px] shrink-0",
+    labelBlock: "flex flex-col gap-1 min-w-0 md:w-[240px] shrink-0",
     label: "text-[14px] font-medium text-zinc-900 dark:text-zinc-100",
     description: "text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400",
     note: "text-[12px] leading-relaxed text-zinc-400 dark:text-zinc-500",

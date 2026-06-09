@@ -85,6 +85,9 @@ CORS_ALLOWED_ORIGINS=<frontend-origins>
 AUTH_ENABLED=true
 LLM_API_KEY=<model-api-key>
 LLM_BASE_URL=<model-api-base-url>
+# Optional: comma-separated fallback endpoint pairs.
+# LLM_FALLBACK_API_KEY=<fallback-model-api-key>
+# LLM_FALLBACK_BASE_URL=<fallback-model-api-base-url>
 LLM_CONCURRENCY_LIMIT=8
 WORKFLOW_STREAM_POSTGRES_BRIDGE_ENABLED=true
 ```
@@ -140,6 +143,8 @@ Environment:
   S3_*=<object storage config>
   LLM_API_KEY=<model-api-key>
   LLM_BASE_URL=<model-api-base-url>
+  LLM_FALLBACK_API_KEY=<optional-fallback-model-api-key>
+  LLM_FALLBACK_BASE_URL=<optional-fallback-model-api-base-url>
   CORS_ALLOWED_ORIGINS=<frontend-origins>
 Health Check: /api/health
 ```

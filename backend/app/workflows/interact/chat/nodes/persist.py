@@ -47,7 +47,7 @@ def build_persist_turn_node(*, context: WorkflowContext, session: Session | None
             workflow_logger.warning("interact_empty_response")
             return {
                 **state,
-                "error": "Assistant response is empty.",
+                "error": "模型没有返回可展示内容，请检查模型名、接口模式或上游网关兼容性。",
             }
         session_id = state.get("session_id")
         if not session_id:

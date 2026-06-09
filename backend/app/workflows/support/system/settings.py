@@ -70,6 +70,8 @@ class _OverviewContext:
     llm_api_version: str | None
     llm_base_url: str | None
     llm_api_key: str | None
+    llm_fallback_base_url: str | None
+    llm_fallback_api_key: str | None
 
 
 def _display(value: Any) -> str:
@@ -263,6 +265,7 @@ def _editable_settings_entry(
     editable_in_cloud: bool = True,
     ui_group: str = "",
     ui_order: int = 0,
+    options: tuple[tuple[str | None, str], ...] = (),
 ) -> SettingEntry:
     has_system_value, _ = _lookup_path(system_payload, key)
     has_user_value, user_value = _lookup_path(user_payload, key)
@@ -289,6 +292,7 @@ def _editable_settings_entry(
         ui_group=ui_group,
         ui_order=ui_order,
         description=description,
+        options=[{"value": value, "label": label} for value, label in options],
     )
 
 
@@ -388,6 +392,7 @@ def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext)
             editable_in_cloud=entry.editable_in_cloud,
             ui_group=entry.ui_group,
             ui_order=entry.ui_order,
+            options=entry.options,
         )
 
     if entry.kind == "env":
@@ -496,6 +501,8 @@ def build_settings_overview_data(
         llm_api_version=get_llm_api_version(),
         llm_base_url=get_env("LLM_BASE_URL"),
         llm_api_key=get_env("LLM_API_KEY"),
+        llm_fallback_base_url=get_env("LLM_FALLBACK_BASE_URL"),
+        llm_fallback_api_key=get_env("LLM_FALLBACK_API_KEY"),
     )
 
     return SettingsOverviewData(

@@ -39,6 +39,17 @@ const FRONTEND_MODE_OPTIONS: Array<{ value: FrontendRuntimeMode; label: string }
   { value: "development", label: "开发" },
 ];
 
+function prioritizeSettingsSections(sections: SettingSection[]): SettingSection[] {
+  const priority: Record<string, number> = {
+    connection: 0,
+    models: 1,
+    system_ui: 99,
+  };
+  return [...sections].sort(
+    (left, right) => (priority[left.id] ?? 50) - (priority[right.id] ?? 50),
+  );
+}
+
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
   const { mode: frontendMode, setMode: setFrontendMode } = useFrontendMode();
@@ -81,7 +92,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const isCloudRuntime = overview?.mode === "cloud";
   const showExamScores = examResultDisplayMode === "score";
   const sections = useMemo(
-    () => (isCloudRuntime ? [SYSTEM_SECTION] : [...(overview?.sections ?? []), SYSTEM_SECTION]),
+    () => (
+      isCloudRuntime
+        ? [SYSTEM_SECTION]
+        : prioritizeSettingsSections([...(overview?.sections ?? []), SYSTEM_SECTION])
+    ),
     [isCloudRuntime, overview?.sections],
   );
   const isLocalRuntime = !isCloudRuntime;

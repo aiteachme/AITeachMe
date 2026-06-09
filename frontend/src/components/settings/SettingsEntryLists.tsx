@@ -69,7 +69,7 @@ interface ReadonlySettingsListProps {
   error: string | null;
 }
 
-const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
+export const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
   entry,
 }: {
   entry: SettingEntry;
@@ -124,12 +124,15 @@ interface EditableSettingsRowProps {
   onChange: (key: string, value: SettingPrimitive) => void;
 }
 
-const EditableSettingsRow = memo(function EditableSettingsRow({
+export const EditableSettingsRow = memo(function EditableSettingsRow({
   entry,
   value,
   onChange,
 }: EditableSettingsRowProps) {
-  const selectOptions = useMemo(() => SETTING_SELECT_OPTIONS[entry.key], [entry.key]);
+  const selectOptions = useMemo(
+    () => entry.options?.length ? entry.options : SETTING_SELECT_OPTIONS[entry.key],
+    [entry.key, entry.options],
+  );
   const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const resolvedInputType = resolveEntryInputType(entry, value);
   const isConfiguredSecret = isConfiguredSecretEntry(entry);
@@ -220,8 +223,8 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
   ]);
 
   const handleSelectChange = useCallback(
-    (next: string) => {
-      setLocalValue(next);
+    (next: string | null) => {
+      setLocalValue(next ?? "");
       onChange(entry.key, next);
     },
     [entry.key, onChange],
@@ -274,7 +277,7 @@ const EditableSettingsRow = memo(function EditableSettingsRow({
         {selectOptions ? (
           <SelectInput
             id={controlId}
-            value={localValue}
+            value={value === null ? null : localValue}
             onChange={handleSelectChange}
             options={selectOptions}
           />

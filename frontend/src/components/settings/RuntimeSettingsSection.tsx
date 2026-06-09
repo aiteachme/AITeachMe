@@ -1,7 +1,7 @@
 import { memo } from "react";
 
 import { InfoCard, SectionDivider } from "./SettingsFields";
-import { EditableSettingsList, ReadonlySettingsList } from "./SettingsEntryLists";
+import { EditableSettingsRow, ReadonlySettingsRow } from "./SettingsEntryLists";
 import { SETTINGS_STYLES } from "./settingsStyles";
 import type { DraftRecord, SettingEntry, SettingSection } from "./settingsTypes";
 
@@ -18,12 +18,24 @@ interface RuntimeSettingsSectionProps {
 
 interface PreparedEntryGroup {
   label: string;
-  serverEditableEntries: SettingEntry[];
-  envEditableEntries: SettingEntry[];
-  readonlyEntries: SettingEntry[];
+  entries: SettingEntry[];
 }
 
 function renderGroupNote(label: string) {
+  if (label === "文本生成") {
+    return (
+      <p className={SETTINGS_STYLES.section.groupNote}>
+        主文本模型影响日常对话与生成；推理模型用于规划和复杂讲解；轻量模型用于标题、分类、摘要等快速任务。
+      </p>
+    );
+  }
+  if (label === "统一模型接入") {
+    return (
+      <p className={SETTINGS_STYLES.section.groupNote}>
+        模型网关密钥和地址优先配置；接口模式、推理强度和并发限制按上游能力微调。
+      </p>
+    );
+  }
   if (label === "解析服务授权") {
     return (
       <p className={SETTINGS_STYLES.section.groupNote}>
@@ -60,30 +72,57 @@ function buildEntryGroups(
       const sortedEntries = [...entries].sort(compareEntries);
       return {
         label,
-        envEditableEntries: isLocalRuntime
-          ? sortedEntries.filter((entry) => entry.editable && entry.source === "env")
-          : [],
-        serverEditableEntries: isLocalRuntime
-          ? sortedEntries.filter((entry) => entry.editable && entry.source !== "env")
-          : [],
-        readonlyEntries: isLocalRuntime
-          ? sortedEntries.filter((entry) => !entry.editable)
-          : sortedEntries,
+        entries: isLocalRuntime ? sortedEntries : sortedEntries.map((entry) => ({
+          ...entry,
+          editable: false,
+        })),
       };
     })
-    .filter(
-      (group) =>
-        group.serverEditableEntries.length > 0 ||
-        group.envEditableEntries.length > 0 ||
-        group.readonlyEntries.length > 0,
-    )
+    .filter((group) => group.entries.length > 0)
     .sort((left, right) => {
-      const leftEntry =
-        left.serverEditableEntries[0] ?? left.envEditableEntries[0] ?? left.readonlyEntries[0];
-      const rightEntry =
-        right.serverEditableEntries[0] ?? right.envEditableEntries[0] ?? right.readonlyEntries[0];
-      return compareEntries(leftEntry, rightEntry);
+      return compareEntries(left.entries[0], right.entries[0]);
     });
+}
+
+function RuntimeSettingsGroupList({
+  entries,
+  settingsDraft,
+  envDraft,
+  onServerChange,
+  onEnvChange,
+  loading,
+  error,
+}: {
+  entries: SettingEntry[];
+  settingsDraft: DraftRecord;
+  envDraft: DraftRecord;
+  onServerChange: (key: string, value: DraftRecord[string]) => void;
+  onEnvChange: (key: string, value: DraftRecord[string]) => void;
+  loading: boolean;
+  error: string | null;
+}) {
+  if (loading) return <InfoCard text="正在读取后端当前状态..." />;
+  if (error) return <InfoCard text={error} variant="warning" />;
+  if (!entries.length) return null;
+
+  return (
+    <div className={SETTINGS_STYLES.list.root}>
+      {entries.map((entry) => {
+        if (!entry.editable) {
+          return <ReadonlySettingsRow key={entry.key} entry={entry} />;
+        }
+        const isEnvEntry = entry.source === "env";
+        return (
+          <EditableSettingsRow
+            key={entry.key}
+            entry={entry}
+            value={(isEnvEntry ? envDraft : settingsDraft)[entry.key] ?? null}
+            onChange={isEnvEntry ? onEnvChange : onServerChange}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
@@ -110,33 +149,15 @@ export const RuntimeSettingsSection = memo(function RuntimeSettingsSection({
           {renderGroupNote(group.label)}
 
           <div className={SETTINGS_STYLES.section.cardWrapper}>
-            {group.serverEditableEntries.length > 0 ? (
-              <EditableSettingsList
-                entries={group.serverEditableEntries}
-                draft={settingsDraft}
-                onChange={onServerChange}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
-
-            {group.envEditableEntries.length > 0 ? (
-              <EditableSettingsList
-                entries={group.envEditableEntries}
-                draft={envDraft}
-                onChange={onEnvChange}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
-
-            {group.readonlyEntries.length > 0 ? (
-              <ReadonlySettingsList
-                entries={group.readonlyEntries}
-                loading={loading}
-                error={error}
-              />
-            ) : null}
+            <RuntimeSettingsGroupList
+              entries={group.entries}
+              settingsDraft={settingsDraft}
+              envDraft={envDraft}
+              onServerChange={onServerChange}
+              onEnvChange={onEnvChange}
+              loading={loading}
+              error={error}
+            />
           </div>
         </div>
       ))}

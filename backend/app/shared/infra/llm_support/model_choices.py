@@ -15,6 +15,7 @@ MODEL_USE_SETTINGS = "settings"
 ALLOWED_RUNTIME_MODEL_OVERRIDES = frozenset(
     {
         "deepseek-v4-flash",
+        "gpt-5.5",
         "qwen-flash",
     }
 )
@@ -53,6 +54,8 @@ def build_runtime_model_override_snapshot(value: str | None) -> LLMRuntimeSnapsh
         api_keys=snapshot.api_keys,
         provider=snapshot.provider,
         api_version=snapshot.api_version,
+        primary_endpoints=snapshot.primary_endpoints,
+        fallback_endpoints=snapshot.fallback_endpoints,
     )
 
 

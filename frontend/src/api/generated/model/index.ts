@@ -244,6 +244,7 @@ export * from './sendEmailCodeRequest';
 export * from './settingEntry';
 export * from './settingEntrySource';
 export * from './settingEntryStatus';
+export * from './settingOption';
 export * from './settingSection';
 export * from './settingsOverviewData';
 export * from './studyPlanStepResponse';

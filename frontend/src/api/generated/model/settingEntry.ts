@@ -6,6 +6,7 @@
  */
 import type { SettingEntrySource } from './settingEntrySource';
 import type { SettingEntryStatus } from './settingEntryStatus';
+import type { SettingOption } from './settingOption';
 
 /**
  * 单个后端设置项的展示模型。
@@ -45,4 +46,6 @@ export interface SettingEntry {
   ui_order?: number;
   /** 说明。 */
   description?: string;
+  /** Selectable values. */
+  options?: SettingOption[];
 }

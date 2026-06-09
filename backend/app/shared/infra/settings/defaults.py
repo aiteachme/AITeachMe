@@ -22,6 +22,8 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "video_generation": None,
     },
     "llm": {
+        "api_mode": "auto",
+        "reasoning_effort": None,
         "concurrency_limit": DEFAULT_LLM_CONCURRENCY_LIMIT,
         "enforce_request_timeout": True,
     },

@@ -34,6 +34,7 @@ export interface SettingEntry {
   ui_group?: string;
   ui_order?: number;
   description?: string;
+  options?: Array<{ value: string | null; label: string }>;
 }
 
 export interface SettingSection {

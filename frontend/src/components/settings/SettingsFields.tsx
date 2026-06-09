@@ -251,9 +251,9 @@ export function SecretInput({
 
 interface SelectInputProps {
   id?: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  value: string | null;
+  onChange: (value: string | null) => void;
+  options: { value: string | null; label: string }[];
 }
 
 export function SelectInput({ id, value, onChange, options }: SelectInputProps) {
@@ -264,7 +264,7 @@ export function SelectInput({ id, value, onChange, options }: SelectInputProps) 
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [highlightedValue, setHighlightedValue] = useState(value);
+  const [highlightedValue, setHighlightedValue] = useState<string | null>(value);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const selectedOption = options.find((option) => option.value === value) ?? options[0];
 
@@ -330,7 +330,7 @@ export function SelectInput({ id, value, onChange, options }: SelectInputProps) 
     }
   }, [open, value]);
 
-  const selectValue = (nextValue: string) => {
+  const selectValue = (nextValue: string | null) => {
     onChange(nextValue);
     setOpen(false);
     requestAnimationFrame(() => triggerRef.current?.focus());
@@ -389,7 +389,7 @@ export function SelectInput({ id, value, onChange, options }: SelectInputProps) 
         const highlighted = option.value === highlightedValue;
         return (
           <button
-            key={option.value}
+            key={option.value ?? "__null__"}
             type="button"
             role="option"
             aria-selected={selected}

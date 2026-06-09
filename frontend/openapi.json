@@ -16927,6 +16927,14 @@
             "title": "Description",
             "description": "说明。",
             "default": ""
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOption"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "Selectable values."
           }
         },
         "type": "object",
@@ -16938,6 +16946,34 @@
         ],
         "title": "SettingEntry",
         "description": "单个后端设置项的展示模型。"
+      },
+      "SettingOption": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Stable option value."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Display label."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "SettingOption",
+        "description": "Selectable value shown by settings UI."
       },
       "SettingSection": {
         "properties": {

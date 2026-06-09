@@ -179,6 +179,29 @@ async def run_agent_loop(
 
         # 2. 没有 tool_calls → LLM 给出了最终回答
         if not tool_calls:
+            if not (message.content or "").strip():
+                logger.warning(
+                    "agent_loop_empty_tool_response_fallback",
+                    iteration=iteration,
+                    model=cfg.model,
+                    task_type=cfg.task_type,
+                )
+                fallback_answer = await acompletion(
+                    current_messages,
+                    task_type=cfg.task_type,
+                    model=cfg.model,
+                    extra_metadata={
+                        **cfg.extra_metadata,
+                        "agent_tool_stream_fallback": "empty_tool_response",
+                    },
+                    **cfg.llm_kwargs,
+                )
+                return AgentLoopResult(
+                    final_answer=fallback_answer,
+                    iterations=iteration,
+                    tool_calls_made=all_tool_calls,
+                    client_actions=all_client_actions,
+                )
             return AgentLoopResult(
                 final_answer=message.content or "",
                 iterations=iteration,
@@ -274,6 +297,24 @@ async def run_agent_loop_stream(
         if streamed is None:
             return
         if not streamed.tool_calls:
+            if not streamed.content.strip():
+                logger.warning(
+                    "agent_loop_stream_empty_tool_response_fallback",
+                    iteration=iteration,
+                    model=cfg.model,
+                    task_type=cfg.task_type,
+                )
+                async for chunk in acompletion_stream(
+                    current_messages,
+                    task_type=cfg.task_type,
+                    model=cfg.model,
+                    extra_metadata={
+                        **cfg.extra_metadata,
+                        "agent_tool_stream_fallback": "empty_tool_response",
+                    },
+                    **cfg.llm_kwargs,
+                ):
+                    yield chunk
             return
 
         current_messages.append(_streaming_assistant_msg_to_dict(streamed))
@@ -312,7 +353,7 @@ async def _stream_one_tool_iteration(
 
     from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
     from app.shared.infra.llm_support.common import (
-        build_completion_context,
+        build_completion_contexts,
         context_request_timeout_s,
         effective_call_timeout_s,
         extract_usage,
@@ -335,146 +376,163 @@ async def _stream_one_tool_iteration(
     from app.shared.infra.observability.trace import langsmith_trace
 
     litellm = load_litellm()
-    context = build_completion_context(task_type=cfg.task_type, model=cfg.model)
+    contexts = build_completion_contexts(task_type=cfg.task_type, model=cfg.model)
     start = time.monotonic()
-    tracked_model = context.model
-    prepared = prepare_completion_attempt(
-        context=context,
-        messages=messages,
-        extra_kwargs=cfg.llm_kwargs,
-        attempt=1,
-        override_kwargs=_tool_stream_override_kwargs_with_choice(tools, tool_choice),
-    )
+    tracked_model = contexts[0].model
+    last_error: Exception | None = None
 
     async with get_llm_concurrency_limiter():
-        try:
-            tracked_model = prepared.tracked_model
-            log_attempt_started(
-                "llm_tools_stream_started",
-                attempt=prepared,
+        for attempt_number, context in enumerate(contexts, start=1):
+            prepared = prepare_completion_attempt(
                 context=context,
-                extra={"tool_count": len(tools)},
+                messages=messages,
+                extra_kwargs=cfg.llm_kwargs,
+                attempt=attempt_number,
+                override_kwargs=_tool_stream_override_kwargs_with_choice(tools, tool_choice),
             )
-            usage = (0, 0, 0)
-            content_parts: list[str] = []
-            tool_call_parts: dict[int, dict[str, str]] = {}
-            first_token_seen = False
-            with langsmith_trace(
-                name="LLM: stream with tools",
-                run_type="llm",
-                **_langsmith_trace_kwargs(
-                    task_type=context.task_type,
-                    call_model=prepared.call_model,
-                    provider=prepared.provider,
-                    model_name=tracked_model,
-                    mode="tools_stream",
-                    messages=messages,
-                    call_kwargs=prepared.call_kwargs,
-                    tools=tools,
-                    extra_metadata=cfg.extra_metadata,
-                ),
-            ) as trace_run:
-                response = await asyncio.wait_for(
-                    litellm.acompletion(**prepared.call_kwargs),
-                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
+            attempt_streamed_content = False
+            try:
+                tracked_model = prepared.tracked_model
+                log_attempt_started(
+                    "llm_tools_stream_started",
+                    attempt=prepared,
+                    context=context,
+                    extra={"tool_count": len(tools)},
                 )
-                usage = merge_usage(usage, extract_usage(response))
-                async for chunk in _stream_chunks_with_timeout(
-                    response,
-                    timeout_s=context_request_timeout_s(context, prepared.call_kwargs),
-                ):
-                    usage = merge_usage(usage, extract_usage(chunk))
-                    choices = getattr(chunk, "choices", None) or []
-                    if not choices:
-                        continue
-                    delta = getattr(choices[0], "delta", None)
-                    if delta is None:
-                        continue
-                    content = getattr(delta, "content", None)
-                    if content:
-                        if not first_token_seen:
-                            _record_new_token_event(trace_run)
-                            first_token_seen = True
-                        content_parts.append(content)
-                        yield content
-                    _accumulate_streaming_tool_calls(
-                        tool_call_parts,
-                        getattr(delta, "tool_calls", None),
+                usage = (0, 0, 0)
+                content_parts: list[str] = []
+                tool_call_parts: dict[int, dict[str, str]] = {}
+                first_token_seen = False
+                with langsmith_trace(
+                    name="LLM: stream with tools",
+                    run_type="llm",
+                    **_langsmith_trace_kwargs(
+                        task_type=context.task_type,
+                        call_model=prepared.call_model,
+                        provider=prepared.provider,
+                        model_name=tracked_model,
+                        mode="tools_stream",
+                        messages=messages,
+                        call_kwargs=prepared.call_kwargs,
+                        tools=tools,
+                        extra_metadata=cfg.extra_metadata,
+                    ),
+                ) as trace_run:
+                    response = await asyncio.wait_for(
+                        litellm.acompletion(**prepared.call_kwargs),
+                        timeout=context_request_timeout_s(context, prepared.call_kwargs),
                     )
-                tool_calls = _finalize_streaming_tool_calls(tool_call_parts)
+                    usage = merge_usage(usage, extract_usage(response))
+                    async for chunk in _stream_chunks_with_timeout(
+                        response,
+                        timeout_s=context_request_timeout_s(context, prepared.call_kwargs),
+                    ):
+                        usage = merge_usage(usage, extract_usage(chunk))
+                        choices = getattr(chunk, "choices", None) or []
+                        if not choices:
+                            continue
+                        delta = getattr(choices[0], "delta", None)
+                        if delta is None:
+                            continue
+                        content = getattr(delta, "content", None)
+                        if content:
+                            if not first_token_seen:
+                                _record_new_token_event(trace_run)
+                                first_token_seen = True
+                            content_parts.append(content)
+                            attempt_streamed_content = True
+                            yield content
+                        _accumulate_streaming_tool_calls(
+                            tool_call_parts,
+                            getattr(delta, "tool_calls", None),
+                        )
+                    tool_calls = _finalize_streaming_tool_calls(tool_call_parts)
+                    prompt_t, completion_t, total_t = usage
+                    _end_langsmith_trace(
+                        trace_run,
+                        text="".join(content_parts),
+                        tool_calls=[
+                            {
+                                "id": item.id,
+                                "type": item.type,
+                                "function": {
+                                    "name": item.function_name,
+                                    "arguments": item.arguments,
+                                },
+                            }
+                            for item in tool_calls
+                        ],
+                        prompt_tokens=prompt_t,
+                        completion_tokens=completion_t,
+                        total_tokens=total_t,
+                    )
+                logger.info(
+                    "llm_tools_stream_complete",
+                    elapsed_s=round(time.monotonic() - start, 2),
+                    model=tracked_model,
+                    task_type=context.task_type,
+                    endpoint_role=context.endpoint_role,
+                    has_tool_calls=bool(tool_calls),
+                )
                 prompt_t, completion_t, total_t = usage
-                _end_langsmith_trace(
-                    trace_run,
-                    text="".join(content_parts),
-                    tool_calls=[
-                        {
-                            "id": item.id,
-                            "type": item.type,
-                            "function": {
-                                "name": item.function_name,
-                                "arguments": item.arguments,
-                            },
-                        }
-                        for item in tool_calls
-                    ],
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=start,
+                    success=True,
                     prompt_tokens=prompt_t,
                     completion_tokens=completion_t,
                     total_tokens=total_t,
                 )
-            logger.info(
-                "llm_tools_stream_complete",
-                elapsed_s=round(time.monotonic() - start, 2),
-                model=tracked_model,
-                task_type=context.task_type,
-                has_tool_calls=bool(tool_calls),
-            )
-            prompt_t, completion_t, total_t = usage
-            track_call(
-                task_type=context.task_type,
-                model=tracked_model,
-                start=start,
-                success=True,
-                prompt_tokens=prompt_t,
-                completion_tokens=completion_t,
-                total_tokens=total_t,
-            )
-            yield StreamingToolIteration(content="".join(content_parts), tool_calls=tool_calls)
-        except asyncio.TimeoutError:
-            log_attempt_timeout("llm_tools_stream_timeout", attempt=prepared, context=context)
-            track_call(
-                task_type=context.task_type,
-                model=tracked_model,
-                start=start,
-                success=False,
-                error="timeout",
-            )
-            raise LLMTimeoutError(timeout_s=effective_call_timeout_s(context, prepared.call_kwargs))
-        except asyncio.CancelledError:
-            log_attempt_cancelled("llm_tools_stream_cancelled", attempt=prepared, context=context)
-            track_call(
-                task_type=context.task_type,
-                model=tracked_model,
-                start=start,
-                success=False,
-                error="cancelled",
-            )
-            raise
-        except Exception as exc:
-            track_call(
-                task_type=context.task_type,
-                model=tracked_model,
-                start=start,
-                success=False,
-                error=str(exc),
-            )
-            log_attempt_failed(
-                "llm_tools_stream_failed",
-                attempt=prepared,
-                context=context,
-                error=exc,
-                level="error",
-            )
-            raise LLMCallError(reason=str(exc)) from exc
+                yield StreamingToolIteration(content="".join(content_parts), tool_calls=tool_calls)
+                return
+            except asyncio.TimeoutError:
+                last_error = LLMTimeoutError(
+                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                )
+                log_attempt_timeout("llm_tools_stream_timeout", attempt=prepared, context=context)
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=start,
+                    success=False,
+                    error="timeout",
+                )
+                if attempt_streamed_content:
+                    raise last_error
+            except asyncio.CancelledError:
+                log_attempt_cancelled("llm_tools_stream_cancelled", attempt=prepared, context=context)
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=start,
+                    success=False,
+                    error="cancelled",
+                )
+                raise
+            except Exception as exc:
+                last_error = exc
+                track_call(
+                    task_type=context.task_type,
+                    model=tracked_model,
+                    start=start,
+                    success=False,
+                    error=str(exc),
+                )
+                log_attempt_failed(
+                    "llm_tools_stream_failed",
+                    attempt=prepared,
+                    context=context,
+                    error=exc,
+                    level="error",
+                )
+                if attempt_streamed_content:
+                    raise LLMCallError(reason=str(exc)) from exc
+
+    if isinstance(last_error, LLMTimeoutError):
+        raise last_error
+    if last_error is not None:
+        raise LLMCallError(reason=str(last_error)) from last_error
 
 
 def _accumulate_streaming_tool_calls(

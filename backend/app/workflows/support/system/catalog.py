@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 CatalogEntryKind = Literal["setting", "env", "runtime"]
+SettingOption = tuple[str | None, str]
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class SettingsCatalogEntry:
     editable_in_local: bool = True
     editable_in_cloud: bool = False
     value_path: str | None = None
+    options: tuple[SettingOption, ...] = ()
 
     @property
     def env_names(self) -> tuple[str, ...]:
@@ -50,6 +52,7 @@ def setting(
     ui_order: int,
     editable_in_local: bool = True,
     editable_in_cloud: bool = False,
+    options: tuple[SettingOption, ...] = (),
 ) -> SettingsCatalogEntry:
     return SettingsCatalogEntry(
         kind="setting",
@@ -61,6 +64,7 @@ def setting(
         editable_in_local=editable_in_local,
         editable_in_cloud=editable_in_cloud,
         restart_required=False,
+        options=tuple(options),
     )
 
 
@@ -117,7 +121,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     SettingsCatalogSection(
         id="connection",
         label="模型接入",
-        description="模型服务地址、密钥、提供商识别与请求等待策略。",
+        description="模型网关地址、密钥、备用接管与请求策略。",
         entries=(
             env(
                 "llm.api_key",
@@ -157,6 +161,53 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 restart_required=False,
                 ui_group="统一模型接入",
                 ui_order=20,
+            ),
+            env(
+                "llm.fallback_api_key",
+                "备用模型网关密钥",
+                "LLM_FALLBACK_API_KEY",
+                description="主模型网关失败时接管的备用密钥；可用英文逗号与备用地址按顺序配对。",
+                secret=True,
+                restart_required=False,
+                ui_group="备用模型接入",
+                ui_order=40,
+            ),
+            env(
+                "llm.fallback_base_url",
+                "备用模型网关地址",
+                "LLM_FALLBACK_BASE_URL",
+                description="主模型网关失败时接管的备用地址；可用英文逗号与备用密钥按顺序配对，并自动识别 provider。",
+                restart_required=False,
+                ui_group="备用模型接入",
+                ui_order=45,
+            ),
+            setting(
+                "llm.api_mode",
+                "接口模式",
+                description="Auto 会对支持 OpenAI Responses 的推理模型优先使用 Responses；不支持时自动回退一次 Chat Completions。",
+                ui_group="统一模型接入",
+                ui_order=22,
+                options=(
+                    ("auto", "Auto"),
+                    ("chat_completions", "Chat Completions"),
+                    ("responses", "Responses API"),
+                ),
+            ),
+            setting(
+                "llm.reasoning_effort",
+                "推理强度",
+                description="Responses reasoning.effort；留空使用模型默认值，不同模型和网关支持范围可能不同。",
+                ui_group="统一模型接入",
+                ui_order=23,
+                options=(
+                    (None, "Model default"),
+                    ("none", "none"),
+                    ("minimal", "minimal"),
+                    ("low", "low"),
+                    ("medium", "medium"),
+                    ("high", "high"),
+                    ("xhigh", "xhigh"),
+                ),
             ),
             setting(
                 "llm.enforce_request_timeout",
