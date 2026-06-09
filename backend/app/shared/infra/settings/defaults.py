@@ -24,6 +24,11 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "llm": {
         "api_mode": "auto",
         "reasoning_effort": None,
+        "native_web_search": "auto",
+        "native_web_search_external_access": True,
+        "native_file_search": "off",
+        "native_file_search_vector_store_ids": "",
+        "native_file_search_max_results": 5,
         "concurrency_limit": DEFAULT_LLM_CONCURRENCY_LIMIT,
         "enforce_request_timeout": True,
     },

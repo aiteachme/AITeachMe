@@ -27,6 +27,7 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.workflows.interact.chat.lib.tooling import (
     INTERACT_MODEL_SELECTOR,
     build_agent_loop_config,
+    build_interact_provider_native_tools,
     resolve_interact_tool_plan,
     synthesize_ask_user_options_action,
 )
@@ -179,6 +180,10 @@ def _build_response_stream(
         source=state.get("source"),
         question=state.get("question"),
     )
+    provider_native_tools = build_interact_provider_native_tools(
+        tool_plan=tool_plan,
+        course_id=course_id,
+    )
     if tool_plan.uses_tools:
         return run_agent_loop_stream(
             state["messages"],
@@ -189,6 +194,7 @@ def _build_response_stream(
                 user_id=state.get("user_id"),
                 session_id=state.get("session_id"),
                 source=state.get("source"),
+                provider_native_tools=provider_native_tools,
                 model_selector=model_selector,
                 tool_event_handler=_build_tool_event_handler(emitter),
                 client_action_handler=client_action_handler,
@@ -201,7 +207,9 @@ def _build_response_stream(
             InteractModelStep.RESPONSE_STREAM,
             model_override=model_override,
             extra_metadata=trace_metadata,
+            provider_native_tools=bool(provider_native_tools),
         ),
+        provider_native_tools=provider_native_tools or None,
     )
 
 
@@ -279,12 +287,17 @@ def build_stream_answer_node(
             source=state.get("source"),
             question=state.get("question"),
         )
+        provider_native_tools = build_interact_provider_native_tools(
+            tool_plan=tool_plan,
+            course_id=course_id,
+        )
         await _emit_status(
             emitter,
             "answering",
             _answering_status_detail(tool_plan.tool_names),
             execution_mode=execution_mode.value,
             tools=tool_plan.tool_names,
+            provider_native_tools=[tool.get("type") for tool in provider_native_tools],
             model=model_selector,
             model_override=normalize_runtime_model_override(state.get("model_override")),
         )

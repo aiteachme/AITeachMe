@@ -11,6 +11,11 @@ from app.shared.infra.llm_support.common import CompletionContext
 from app.shared.infra.settings.support import normalize_llm_provider_name
 
 from .litellm_loader import load_litellm
+from .native_tools import (
+    PROVIDER_NATIVE_TOOLS_KWARG,
+    has_provider_native_tool_requests,
+    provider_native_tools_for_responses,
+)
 
 ResolvedAPIMode = Literal["chat_completions", "responses"]
 
@@ -51,7 +56,10 @@ def resolve_provider_call(
         or (
             requested_mode == "auto"
             and _supports_auto_responses_call(context, clean_kwargs)
-            and _should_auto_route_model_to_responses(context, clean_kwargs)
+            and (
+                _should_auto_route_model_to_responses(context, clean_kwargs)
+                or _has_allowed_provider_native_tools(context, clean_kwargs)
+            )
             and _has_basic_responses_message_shape(clean_kwargs.get("messages"))
             and not _has_chat_only_output_shape(clean_kwargs)
         )
@@ -99,6 +107,7 @@ def to_chat_kwargs(
     """Build Chat Completions kwargs without leaking adapter-only settings."""
 
     chat_kwargs = dict(call_kwargs)
+    chat_kwargs.pop(PROVIDER_NATIVE_TOOLS_KWARG, None)
     effort = chat_kwargs.pop("reasoning_effort", None) or context.settings.llm.reasoning_effort
     if (
         effort
@@ -121,6 +130,11 @@ def to_responses_kwargs(
     """Build Responses API kwargs from the project's Chat-shaped kwargs."""
 
     responses_kwargs = dict(call_kwargs)
+    native_tools = provider_native_tools_for_responses(
+        responses_kwargs.pop(PROVIDER_NATIVE_TOOLS_KWARG, None),
+        allow_auto=_supports_auto_responses_call(context, responses_kwargs),
+        allow_force=True,
+    )
     messages = responses_kwargs.pop("messages", [])
     instructions, response_input = _responses_input_from_messages(messages)
     existing_instructions = responses_kwargs.pop("instructions", None)
@@ -150,6 +164,12 @@ def to_responses_kwargs(
             responses_kwargs["reasoning"] = {**dict(reasoning), "effort": effort}
         else:
             responses_kwargs["reasoning"] = {"effort": effort}
+    if native_tools:
+        existing_tools = responses_kwargs.get("tools")
+        if isinstance(existing_tools, list):
+            responses_kwargs["tools"] = [*existing_tools, *native_tools]
+        else:
+            responses_kwargs["tools"] = native_tools
     return responses_kwargs
 
 
@@ -249,6 +269,22 @@ def _supports_auto_responses_call(
     if provider != "openai_compatible":
         return False
     return call_kwargs.get("custom_llm_provider") == "openai"
+
+
+def _has_allowed_provider_native_tools(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any],
+) -> bool:
+    raw_tools = call_kwargs.get(PROVIDER_NATIVE_TOOLS_KWARG)
+    if not has_provider_native_tool_requests(raw_tools):
+        return False
+    return bool(
+        provider_native_tools_for_responses(
+            raw_tools,
+            allow_auto=_supports_auto_responses_call(context, call_kwargs),
+            allow_force=True,
+        )
+    )
 
 
 def _should_auto_route_model_to_responses(
@@ -368,6 +404,9 @@ def _is_responses_unsupported_error(error: Exception) -> bool:
         "instructions",
         "reasoning",
         "input",
+        "tools",
+        "web_search",
+        "file_search",
     )
     return any(marker in message for marker in unsupported_markers) and any(
         marker in message for marker in responses_markers

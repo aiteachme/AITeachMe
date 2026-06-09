@@ -66,6 +66,11 @@ class ModelsSettings(_SettingsModel):
 class LLMSettings(_SettingsModel):
     api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
+    native_web_search: Literal["off", "auto", "force"] = "auto"
+    native_web_search_external_access: bool = True
+    native_file_search: Literal["off", "auto", "force"] = "off"
+    native_file_search_vector_store_ids: str = ""
+    native_file_search_max_results: int = Field(default=5, ge=1, le=50)
     concurrency_limit: int = Field(ge=1, le=MAX_LLM_CONCURRENCY_LIMIT)
     enforce_request_timeout: bool
 

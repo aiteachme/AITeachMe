@@ -15,6 +15,8 @@ from typing import Any
 from app.agent_tools.context import AgentToolContext
 from app.agent_tools.policy import AgentToolPolicyRequest, is_global_assistant_source, resolve_agent_tool_names
 from app.shared.infra.agent_loop import AgentLoopConfig
+from app.shared.infra.llm_support.native_tools import build_provider_native_tools
+from app.shared.infra.settings import get_settings
 from app.utils.course import is_global_course
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.intent import ChatScene, parse_chat_scene
@@ -200,18 +202,23 @@ def build_agent_loop_config(
     attached_file_ids: list[str] | None = None,
     approved_tool_names: set[str] | None = None,
     model_selector: str | None = None,
+    provider_native_tools: list[dict[str, Any]] | None = None,
     tool_event_handler: Callable[[dict[str, Any]], Awaitable[None] | None] | None = None,
     client_action_handler: Callable[[list[dict[str, Any]], dict[str, Any]], Awaitable[None] | None] | None = None,
     extra_metadata: dict[str, object] | None = None,
 ) -> AgentLoopConfig:
     """Build the shared AgentLoop configuration for Interact."""
 
+    llm_kwargs = interact_llm_kwargs(InteractModelStep.RESPONSE_STREAM)
+    if provider_native_tools:
+        llm_kwargs["provider_native_tools"] = provider_native_tools
+
     return AgentLoopConfig(
         max_iterations=tool_plan.max_iterations,
         max_tool_calls_per_turn=tool_plan.max_tool_calls_per_turn,
         tool_timeout_s=tool_plan.tool_timeout_s,
         model=model_selector or tool_plan.model_selector,
-        llm_kwargs=interact_llm_kwargs(InteractModelStep.RESPONSE_STREAM),
+        llm_kwargs=llm_kwargs,
         tool_context=AgentToolContext(
             user_id=user_id,
             course_id=course_id,
@@ -228,12 +235,29 @@ def build_agent_loop_config(
     )
 
 
+def build_interact_provider_native_tools(
+    *,
+    tool_plan: InteractToolPlan,
+    course_id: str,
+) -> list[dict[str, Any]]:
+    """Return provider-native retrieval hints for one Interact turn."""
+
+    settings = get_settings()
+    has_course_scope = bool((course_id or "").strip()) and not is_global_course(course_id)
+    return build_provider_native_tools(
+        settings=settings,
+        web_search="web_search" in tool_plan.tool_names,
+        file_search=has_course_scope,
+    )
+
+
 __all__ = [
     "DEFAULT_INTERACT_TOOLS",
     "ASK_USER_OPTIONS_TOOL",
     "INTERACT_MODEL_SELECTOR",
     "InteractToolPlan",
     "build_agent_loop_config",
+    "build_interact_provider_native_tools",
     "is_explicit_ask_user_options_request",
     "resolve_forced_interact_tool_name",
     "resolve_interact_tool_plan",

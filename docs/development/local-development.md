@@ -81,6 +81,17 @@ LLM_BASE_URL=https://api.example.com/v1
 `LLM_API_KEY` / `LLM_BASE_URL` 支持英文逗号配置多组主用 endpoint：等长时按顺序配对，单地址多 key 或单 key 多地址会自动扩展。
 备用模型网关可配置 `LLM_FALLBACK_API_KEY` / `LLM_FALLBACK_BASE_URL`，主用 endpoint 失败时接管；备用地址会自动识别 provider，并使用该 provider 的默认文本模型。
 
+### 模型原生工具
+
+AITeachMe 的课程 RAG 默认使用自管 KnowledgeUnit / 知识图谱 / 本地向量检索，检索结果会进入 prompt 并落入可追踪引用。对于支持 OpenAI Responses built-in tools 的上游，可以在设置页 `模型接入 -> 模型原生工具` 启用 provider 原生工具作为增强：
+
+- `原生联网检索`：把外部/最新信息查询交给 Responses `web_search`。`Auto` 会随 OpenAI / OpenAI-compatible Responses 路线发送，不支持时按接口模式回退；`Force` 用于明确要求兼容网关接收该参数。
+- `原生文件检索`：把额外文件检索交给 Responses `file_search`。只有配置 OpenAI `vector_store_id` 列表后才会发送；留空时不会把课程资料交给外部托管索引。
+
+建议策略：课程私有资料仍优先使用自管 RAG；需要 provider 托管检索时，再显式配置 `file_search` vector store。
+
+分层约束：项目函数工具（如 `search_kb`、`web_search`、`recall_info`）由本系统执行；模型原生工具由上游 Responses API 执行。Agent tool-call 请求会剥离 `provider_native_tools` hint，最终普通回答和空工具流兜底路径再交给 Responses adapter 转换。
+
 ## 常用检查
 
 ```powershell

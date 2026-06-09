@@ -23,7 +23,11 @@ from app.shared.infra.settings import set_system_settings_override
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
-from app.workflows.interact.chat.lib.tooling import resolve_interact_tool_plan, synthesize_ask_user_options_action
+from app.workflows.interact.chat.lib.tooling import (
+    build_interact_provider_native_tools,
+    resolve_interact_tool_plan,
+    synthesize_ask_user_options_action,
+)
 
 
 def teardown_function() -> None:
@@ -102,6 +106,65 @@ def test_interact_tool_plan_forces_ask_user_options_when_requested() -> None:
 
     assert home_plan.tool_names == ["ask_user_options"]
     assert home_plan.forced_tool_name == "ask_user_options"
+
+
+def test_interact_native_tools_request_web_search_for_global_assistant() -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_web_search": "auto",
+            "native_web_search_external_access": False,
+        }
+    })
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.PLAN_EXECUTE,
+        course_id="global",
+        retrieval_results=[],
+        scene="global_assistant",
+        source="global_assistant",
+        question="latest AI news",
+    )
+
+    assert "web_search" in plan.tool_names
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="global",
+    ) == [
+        {"type": "web_search", "mode": "auto", "external_web_access": False},
+    ]
+
+
+def test_interact_native_tools_request_file_search_only_for_course_scope() -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_file_search": "auto",
+            "native_file_search_vector_store_ids": "vs_course",
+            "native_file_search_max_results": 3,
+        }
+    })
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.SINGLE_PASS,
+        course_id="course-1",
+        retrieval_results=[],
+        scene="course_chat",
+        source="quick_chat",
+        question="explain chapter 1",
+    )
+
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="course-1",
+    ) == [
+        {
+            "type": "file_search",
+            "mode": "auto",
+            "vector_store_ids": ["vs_course"],
+            "max_num_results": 3,
+        },
+    ]
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="global",
+    ) == []
 
 
 def test_synthesizes_ask_user_options_action_from_numbered_text() -> None:
@@ -462,3 +525,68 @@ async def test_streaming_tool_loop_falls_back_before_first_token(monkeypatch) ->
     assert chunks == ["fallback ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
     assert calls[1]["model"] == "deepseek-chat"
+
+
+def test_streaming_tool_loop_does_not_leak_provider_native_tools(monkeypatch) -> None:
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="noop_tool",
+            description="noop",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=lambda: "noop",
+        )
+    )
+
+    class EmptyToolStream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    calls: list[dict] = []
+    fallback_kwargs: list[dict] = []
+
+    class FakeLiteLLM:
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return EmptyToolStream()
+
+    async def fake_acompletion_stream(messages, **kwargs):
+        fallback_kwargs.append(kwargs)
+        yield "fallback ok"
+
+    monkeypatch.setattr("app.shared.infra.tools.registry._registry", registry)
+    monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
+    monkeypatch.setattr("app.shared.infra.llm_support.litellm_loader.load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr("app.shared.infra.llm_support.acompletion_stream", fake_acompletion_stream, raising=False)
+    set_system_settings_override({"llm": {"api_mode": "chat_completions"}})
+
+    async def collect_chunks() -> list[str]:
+        return [
+            chunk
+            async for chunk in run_agent_loop_stream(
+                [{"role": "user", "content": "hello"}],
+                tools=["noop_tool"],
+                config=AgentLoopConfig(
+                    max_iterations=1,
+                    task_type=TaskType.CHAT,
+                    model="primary",
+                    llm_kwargs={
+                        "provider_native_tools": [
+                            {"type": "web_search", "mode": "auto"},
+                        ],
+                    },
+                ),
+            )
+        ]
+
+    chunks = asyncio.run(collect_chunks())
+
+    assert chunks == ["fallback ok"]
+    assert calls
+    assert "provider_native_tools" not in calls[0]
+    assert fallback_kwargs[0]["provider_native_tools"] == [
+        {"type": "web_search", "mode": "auto"},
+    ]

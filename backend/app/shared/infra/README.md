@@ -69,6 +69,17 @@ from app.shared.infra.search import web_search, search_knowledge
 - profile 名是内部检索 preset，不表达教学意图；对外应展示 `retrieval_policy`（本地优先、是否联网、来源优先级和选择原因），不要把 `docgen_*` 名称当业务语义。
 - 不提供泛化抓站入口。新增外部网站必须是明确站点适配器，放入 `search/retrievers/sites/` 并说明使用边界。
 
+### Provider-native tools 边界
+
+`llm_support.native_tools` 只描述上游模型提供商内置工具的请求 hint，例如 OpenAI Responses `web_search` / `file_search`。它不注册项目函数工具，也不执行检索。
+
+分工约定：
+
+- 自管课程 RAG 仍走 `search_knowledge()`、KnowledgeUnit / KG / vector pipeline，并由 workflow 决定如何写入 prompt 和引用。
+- 项目函数工具仍走 `app.agent_tools` / `shared.infra.tools`，例如 `search_kb`、`web_search`、`recall_info`。
+- Provider-native tools 只通过 LLM helper 的 `provider_native_tools` kwarg 进入 Responses adapter；Chat Completions 和项目函数工具请求会丢弃该 hint，避免把 provider-specific 参数误传到普通网关。
+- `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；只有用户显式配置 vector store ids 时才发送。
+
 ## workflow / observability 公开接口
 
 现在 workflow 相关公开接口已经极简收口。

@@ -36,6 +36,13 @@ function renderGroupNote(label: string) {
       </p>
     );
   }
+  if (label === "模型原生工具") {
+    return (
+      <p className={SETTINGS_STYLES.section.groupNote}>
+        让支持 Responses 的模型使用 provider 内置 web_search / file_search；课程资料检索仍优先走本系统 RAG。
+      </p>
+    );
+  }
   if (label === "解析服务授权") {
     return (
       <p className={SETTINGS_STYLES.section.groupNote}>

@@ -29,6 +29,7 @@ from .common import (
     track_call,
 )
 from .litellm_loader import load_litellm
+from .native_tools import without_provider_native_tools
 from .observability import (
     _end_langsmith_trace,
     _langsmith_tool_calls,
@@ -66,7 +67,7 @@ async def acompletion_with_tools(
                 prepared = prepare_completion_attempt(
                     context=context,
                     messages=messages,
-                    extra_kwargs=kwargs,
+                    extra_kwargs=without_provider_native_tools(kwargs),
                     attempt=attempt_number,
                     override_kwargs={"tools": tools} if tools else None,
                 )

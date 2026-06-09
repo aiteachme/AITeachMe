@@ -21,6 +21,7 @@ from typing import Any, AsyncGenerator
 
 import structlog
 
+from app.shared.infra.llm_support.native_tools import without_provider_native_tools
 from app.shared.infra.llm_support.routing import TaskType
 
 logger = structlog.get_logger()
@@ -386,7 +387,7 @@ async def _stream_one_tool_iteration(
             prepared = prepare_completion_attempt(
                 context=context,
                 messages=messages,
-                extra_kwargs=cfg.llm_kwargs,
+                extra_kwargs=without_provider_native_tools(cfg.llm_kwargs),
                 attempt=attempt_number,
                 override_kwargs=_tool_stream_override_kwargs_with_choice(tools, tool_choice),
             )
@@ -619,7 +620,7 @@ def _tool_stream_override_kwargs_with_choice(
 
 
 def _tool_iteration_llm_kwargs(cfg: AgentLoopConfig, iteration: int) -> dict[str, Any]:
-    kwargs = dict(cfg.llm_kwargs)
+    kwargs = without_provider_native_tools(cfg.llm_kwargs)
     if iteration == 1:
         normalized_choice = _normalize_tool_choice(cfg.tool_choice)
         if normalized_choice is not None:
