@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileArchive, Loader2, PackagePlus, UploadCloud } from "lucide-react";
+import { FileArchive, Loader2, UploadCloud } from "lucide-react";
 
 import { getApiErrorMessage } from "../../api/client";
 import { importCoursePackage, type ImportResultData } from "../../lib/coursePackage";
@@ -77,48 +77,24 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
 
   return (
     <CourseOperationModal
-      eyebrow="Import"
-      title="导入课程包"
-      description="把本地课程包恢复为一门新课程，保留知识文档、题库记录和学习画像等可迁移内容。"
-      icon={PackagePlus}
+      title="导入课程"
+      icon={UploadCloud}
       tone="emerald"
       onClose={onClose}
-      sidebar={
-        <div className="grid gap-3 text-sm sm:grid-cols-3">
-          {[
-            { label: "文件格式", value: ".atmx / .zip" },
-            { label: "导入方式", value: "创建新课程" },
-            { label: "完成后", value: "刷新课程列表" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-start gap-2.5 text-slate-600 dark:text-slate-400">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
-              <span className="min-w-0">
-                <span className="block text-xs text-slate-500 dark:text-slate-400">{item.label}</span>
-                <span className="block font-medium leading-5 text-slate-900 dark:text-slate-100">{item.value}</span>
-              </span>
-            </div>
-          ))}
-        </div>
-      }
       footer={
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            {selectedFile ? `已选择 ${formatFileSize(selectedFile.size)} 的课程包` : "选择课程包后即可开始导入"}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
-              取消
-            </Button>
-            <Button
-              type="button"
-              onClick={() => importMutation.mutate()}
-              disabled={!selectedFile || importMutation.isPending}
-              className="rounded-lg bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-            >
-              {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackagePlus className="h-4 w-4" />}
-              导入课程
-            </Button>
-          </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} className="rounded-md text-slate-500 hover:text-slate-900">
+            取消
+          </Button>
+          <Button
+            type="button"
+            onClick={() => importMutation.mutate()}
+            disabled={!selectedFile || importMutation.isPending}
+            className="rounded-md bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+          >
+            {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+            导入
+          </Button>
         </div>
       }
     >
@@ -135,20 +111,8 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
         }}
       />
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <section>
-          <div className="flex flex-col gap-2 border-b border-slate-100 pb-4 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">课程包文件</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                拖入或选择由 AITeachMe 导出的课程包，系统会在导入前校验格式。
-              </p>
-            </div>
-            <span className="w-fit rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              .atmx / .zip
-            </span>
-          </div>
-
           <button
             type="button"
             onDragOver={(event) => {
@@ -162,8 +126,9 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
               selectFile(event.dataTransfer.files[0]);
             }}
             onClick={() => inputRef.current?.click()}
+            aria-label="选择或拖入课程包"
             className={cn(
-              "mt-5 flex w-full items-center gap-4 rounded-lg border border-dashed px-4 py-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:focus-visible:ring-slate-700 sm:px-5",
+              "flex min-h-40 w-full flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:focus-visible:ring-slate-700",
               dragOver
                 ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/20"
                 : selectedFile
@@ -171,47 +136,40 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900/45",
             )}
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {selectedFile ? <FileArchive className="h-5 w-5" /> : <UploadCloud className="h-5 w-5" />}
             </span>
-            <span className="min-w-0 flex-1">
+            <span className="mt-4 min-w-0">
               {selectedFile ? (
                 <>
-                  <span className="block truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{selectedFile.name}</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {formatFileSize(selectedFile.size)}，点击可重新选择文件
-                  </span>
+                  <span className="block max-w-full truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{selectedFile.name}</span>
+                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{formatFileSize(selectedFile.size)}</span>
                 </>
               ) : (
                 <>
                   <span className="block text-sm font-semibold text-slate-950 dark:text-slate-50">选择或拖入课程包</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    文件不会上传到第三方服务，仅用于恢复课程数据。
-                  </span>
+                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">.atmx / .zip</span>
                 </>
               )}
             </span>
           </button>
         </section>
 
-        <section className="border-t border-slate-100 pt-5 dark:border-slate-800">
+        <section>
           <label className="block">
             <span className="text-sm font-medium text-slate-800 dark:text-slate-200">课程名称</span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-              可选。留空时会沿用课程包内保存的名称。
-            </span>
             <input
               type="text"
               value={customName}
               onChange={(event) => setCustomName(event.target.value)}
-              placeholder="例如：初中数学复习全图谱"
-              className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+              placeholder="留空则使用课程包名称"
+              className="mt-2 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
             />
           </label>
         </section>
 
         {localError || importMutation.isError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {localError ?? getApiErrorMessage(importMutation.error, "导入失败，请重试")}
           </div>
         ) : null}

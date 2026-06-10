@@ -10,13 +10,13 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `model_policy.py` | 合并并压缩 workflow model-policy metadata，避免每条 lane 重复写 tracing metadata 清理逻辑 |
+| `model_policy.py` | 合并并压缩 workflow model-policy metadata；提供 `ProviderNativeToolPolicy`，让各 lane 在自己的 model policy 中声明是否允许模型原生 `web_search/file_search` |
 
 ## 可以放什么
 
 - 跨多个 workflow 真实复用的纯辅助逻辑。
 - 不访问数据库、不发起 LLM 调用、不读写存储的轻量函数。
-- 面向 workflow author 的公共契约辅助，例如 model policy metadata、未来的语言策略解析。
+- 面向 workflow author 的公共契约辅助，例如 model policy metadata、provider-native tool policy、未来的语言策略解析。
 
 如果后续实现英文模式，跨 workflow 的语言解析、`target_language` 标准化、prompt 语言片段构建可以放在这里，例如：
 

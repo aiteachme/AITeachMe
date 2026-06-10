@@ -14,6 +14,7 @@ from .litellm_loader import load_litellm
 from .native_tools import (
     PROVIDER_NATIVE_TOOLS_KWARG,
     has_provider_native_tool_requests,
+    provider_native_tool_request_types,
     provider_native_tools_for_responses,
 )
 
@@ -32,6 +33,15 @@ _REASONING_MODEL_NAME_MARKERS = (
     "glm-5",
     "grok-4",
 )
+_HTML_GATEWAY_ERROR_MARKERS = (
+    "<!doctype html",
+    "<html",
+    "text/html",
+    "reverse proxy",
+    "model server configuration",
+    "api gateway",
+    "sub2api",
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +51,24 @@ class ProviderCall:
     api_mode: ResolvedAPIMode
     kwargs: dict[str, Any]
     auto_chat_fallback_kwargs: dict[str, Any] | None = None
+    requested_api_mode: str = "auto"
+    route_reason: str = "chat_default"
+    provider_native_tool_types: tuple[str, ...] = ()
+
+
+def provider_call_metadata(provider_call: ProviderCall) -> dict[str, Any]:
+    """Return compact metadata describing one API-mode decision."""
+
+    metadata: dict[str, Any] = {
+        "llm_requested_api_mode": provider_call.requested_api_mode,
+        "llm_initial_api_mode": provider_call.api_mode,
+        "llm_api_mode_route_reason": provider_call.route_reason,
+    }
+    if provider_call.provider_native_tool_types:
+        metadata["llm_provider_native_tool_types"] = list(provider_call.provider_native_tool_types)
+    if provider_call.auto_chat_fallback_kwargs is not None:
+        metadata["llm_auto_responses_chat_fallback_available"] = True
+    return metadata
 
 
 def resolve_provider_call(
@@ -51,20 +79,29 @@ def resolve_provider_call(
     """Return a provider call using stable settings and conservative auto mode."""
 
     requested_mode, clean_kwargs = _pop_adapter_kwargs(context, call_kwargs)
+    supports_auto_responses = _supports_auto_responses_call(context, clean_kwargs)
+    native_tool_types = tuple(provider_native_tool_request_types(clean_kwargs.get(PROVIDER_NATIVE_TOOLS_KWARG)))
+    has_allowed_native_tools = _has_allowed_provider_native_tools(context, clean_kwargs)
+    should_auto_route_to_responses = _should_auto_route_model_to_responses(context, clean_kwargs)
+    has_basic_message_shape = _has_basic_responses_message_shape(clean_kwargs.get("messages"))
+    has_chat_only_output_shape = _has_chat_only_output_shape(clean_kwargs)
     should_use_responses = (
         requested_mode == "responses"
         or (
             requested_mode == "auto"
-            and _supports_auto_responses_call(context, clean_kwargs)
-            and (
-                _should_auto_route_model_to_responses(context, clean_kwargs)
-                or _has_allowed_provider_native_tools(context, clean_kwargs)
-            )
-            and _has_basic_responses_message_shape(clean_kwargs.get("messages"))
-            and not _has_chat_only_output_shape(clean_kwargs)
+            and supports_auto_responses
+            and (should_auto_route_to_responses or has_allowed_native_tools)
+            and has_basic_message_shape
+            and not has_chat_only_output_shape
         )
     )
     if should_use_responses:
+        if requested_mode == "responses":
+            route_reason = "forced_responses"
+        elif has_allowed_native_tools:
+            route_reason = "auto_provider_native_tools"
+        else:
+            route_reason = "auto_reasoning_model"
         return ProviderCall(
             api_mode="responses",
             kwargs=to_responses_kwargs(
@@ -76,10 +113,28 @@ def resolve_provider_call(
                 if requested_mode == "auto"
                 else None
             ),
+            requested_api_mode=requested_mode,
+            route_reason=route_reason,
+            provider_native_tool_types=native_tool_types,
         )
+    if requested_mode == "chat_completions":
+        route_reason = "forced_chat_completions"
+    elif has_chat_only_output_shape:
+        route_reason = "chat_only_output_shape"
+    elif not has_basic_message_shape:
+        route_reason = "chat_only_message_shape"
+    elif not supports_auto_responses:
+        route_reason = "auto_no_responses_support"
+    elif native_tool_types and not has_allowed_native_tools:
+        route_reason = "auto_native_tools_not_allowed"
+    else:
+        route_reason = "auto_plain_chat"
     return ProviderCall(
         api_mode="chat_completions",
         kwargs=to_chat_kwargs(context=context, call_kwargs=clean_kwargs),
+        requested_api_mode=requested_mode,
+        route_reason=route_reason,
+        provider_native_tool_types=native_tool_types,
     )
 
 
@@ -96,6 +151,9 @@ def chat_fallback_for_auto_responses(
     return ProviderCall(
         api_mode="chat_completions",
         kwargs=dict(provider_call.auto_chat_fallback_kwargs),
+        requested_api_mode=provider_call.requested_api_mode,
+        route_reason="auto_responses_unsupported_chat_fallback",
+        provider_native_tool_types=provider_call.provider_native_tool_types,
     )
 
 
@@ -176,6 +234,9 @@ def to_responses_kwargs(
 def extract_response_text(response: Any) -> str:
     """Extract visible assistant text from an OpenAI Responses-shaped object."""
 
+    if isinstance(response, str):
+        return response
+
     output_text = _get(response, "output_text")
     if output_text:
         return str(output_text)
@@ -193,8 +254,22 @@ def extract_response_text(response: Any) -> str:
     return "".join(parts)
 
 
+def response_output_tool_events(response: Any) -> list[dict[str, str]]:
+    """Return compact provider-native tool events exposed by a Responses object."""
+
+    events: list[dict[str, str]] = []
+    for item in _as_list(_get(response, "output")):
+        event = _response_output_tool_event(item)
+        if event is not None and event not in events:
+            events.append(event)
+    return events[:20]
+
+
 def response_stream_delta(chunk: Any) -> str:
     """Return visible text delta from one Responses streaming event."""
+
+    if isinstance(chunk, str):
+        return chunk
 
     chat_delta = _chat_completion_delta_text(chunk)
     if chat_delta:
@@ -228,6 +303,31 @@ def response_stream_final_text(chunk: Any) -> str:
     if event_type == "response.output_text.done":
         return _content_to_text(_get(chunk, "text"))
     return extract_response_text(chunk)
+
+
+def _response_output_tool_event(item: Any) -> dict[str, str] | None:
+    item_type = str(_get(item, "type") or "").strip()
+    if not _is_tool_output_type(item_type):
+        return None
+    event: dict[str, str] = {"type": item_type}
+    for key in ("id", "call_id", "status", "name"):
+        value = _get(item, key)
+        if value not in (None, ""):
+            event[key] = str(value)
+    action = _get(item, "action")
+    if isinstance(action, Mapping):
+        action_type = _get(action, "type")
+        if action_type not in (None, ""):
+            event["action_type"] = str(action_type)
+    return event
+
+
+def _is_tool_output_type(item_type: str) -> bool:
+    normalized = item_type.lower()
+    return any(
+        marker in normalized
+        for marker in ("web_search", "file_search", "function_call", "tool_call")
+    )
 
 
 def _pop_adapter_kwargs(
@@ -382,6 +482,8 @@ def _is_responses_unsupported_error(error: Exception) -> bool:
     message = str(error or "").lower()
     if not message:
         return False
+    if any(marker in message for marker in _HTML_GATEWAY_ERROR_MARKERS):
+        return True
     unsupported_markers = (
         "404",
         "not found",

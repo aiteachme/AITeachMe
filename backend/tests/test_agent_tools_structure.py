@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -22,7 +23,9 @@ from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings import set_system_settings_override
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
+from app.workflows.common.model_policy import ProviderNativeToolPolicy
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
+from app.workflows.interact.chat.lib import model_policy as interact_model_policy
 from app.workflows.interact.chat.lib.tooling import (
     build_interact_provider_native_tools,
     resolve_interact_tool_plan,
@@ -269,6 +272,38 @@ def test_interact_native_file_search_force_can_override_local_gate() -> None:
     ]
 
 
+def test_interact_native_tools_follow_step_model_policy(monkeypatch) -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_web_search": "force",
+            "native_file_search": "force",
+            "native_file_search_vector_store_ids": "vs_runtime",
+        }
+    })
+    current_policy = interact_model_policy.get_interact_model_policy(
+        interact_model_policy.InteractModelStep.RESPONSE_STREAM
+    )
+    monkeypatch.setitem(
+        interact_model_policy._POLICIES,
+        interact_model_policy.InteractModelStep.RESPONSE_STREAM,
+        replace(current_policy, provider_native_tools=ProviderNativeToolPolicy.disabled()),
+    )
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.PLAN_EXECUTE,
+        course_id="global",
+        retrieval_results=[],
+        scene="global_assistant",
+        source="global_assistant",
+        question="latest AI news",
+    )
+
+    assert "web_search" in plan.tool_names
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="global",
+    ) == []
+
+
 def test_synthesizes_ask_user_options_action_from_numbered_text() -> None:
     actions = synthesize_ask_user_options_action(
         question="使用ask_user_options问我问题",
@@ -371,6 +406,71 @@ def test_agent_loop_injects_hidden_args_and_requires_approval() -> None:
     )
     assert streamed.success
     assert streamed.result == "stream:user_a"
+
+
+def test_agent_loop_passes_tool_call_metadata_to_registry(monkeypatch) -> None:
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="trace_tool",
+            description="trace tool",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "course_id": {"type": "string"},
+                    "force_id": {"type": "string"},
+                },
+                "required": ["query", "course_id"],
+            },
+            handler=lambda query, course_id=None, force_id=None: "ok",
+            hidden_args=["course_id"],
+        )
+    )
+    captured: dict[str, object] = {}
+
+    async def fake_execute(name, _approval_granted=False, _trace_metadata=None, **kwargs):  # noqa: ANN001
+        captured["name"] = name
+        captured["approval_granted"] = _approval_granted
+        captured["trace_metadata"] = dict(_trace_metadata or {})
+        captured["kwargs"] = dict(kwargs)
+        return "ok"
+
+    monkeypatch.setattr(registry, "execute", fake_execute)
+    tool_call = SimpleNamespace(
+        id="call_trace",
+        function=SimpleNamespace(
+            name="trace_tool",
+            arguments=json.dumps({"query": "velocity"}),
+        ),
+    )
+
+    record = asyncio.run(
+        _execute_one_tool(
+            registry,
+            tool_call,
+            AgentLoopConfig(
+                tool_context=AgentToolContext(course_id="course_1"),
+                tool_argument_overrides={"trace_tool": {"force_id": "force_1"}},
+            ),
+            tool_call_index=3,
+        )
+    )
+
+    assert record.success
+    assert captured["name"] == "trace_tool"
+    assert captured["kwargs"] == {
+        "query": "velocity",
+        "course_id": "course_1",
+        "force_id": "force_1",
+    }
+    metadata = captured["trace_metadata"]
+    assert metadata["tool_call_id"] == "call_trace"
+    assert metadata["tool_call_index"] == 3
+    assert metadata["tool_visible_argument_names"] == ["query"]
+    assert metadata["tool_context_argument_names"] == ["course_id"]
+    assert metadata["tool_injected_argument_names"] == ["force_id"]
+    assert metadata["tool_hidden_argument_names"] == ["course_id"]
 
 
 def test_agent_loop_stream_falls_back_when_tool_stream_is_empty(monkeypatch) -> None:

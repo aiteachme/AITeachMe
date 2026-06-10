@@ -79,6 +79,9 @@ from app.shared.infra.search import web_search, search_knowledge
 - 项目函数工具仍走 `app.agent_tools` / `shared.infra.tools`，例如 `search_kb`、`web_search`、`recall_info`。
 - Provider-native tools 只通过 LLM helper 的 `provider_native_tools` kwarg 进入 Responses adapter；Chat Completions 和项目函数工具请求会丢弃该 hint，避免把 provider-specific 参数误传到普通网关。
 - `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
+- 全局 `settings.llm.native_*` 只提供默认能力开关；具体 workflow step 是否允许、继承或强制 provider-native tools，应由对应 `model_policy.py` 通过 `ProviderNativeToolPolicy` 声明。
+- 文本/流式普通输出会由 adapter 统一决定 `responses` 或 `chat_completions`；结构化输出和项目函数工具固定走 Chat Completions。
+- LangSmith LLM span 会记录 requested / initial / final API mode、route reason 和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
 
 ## workflow / observability 公开接口
 
@@ -205,6 +208,7 @@ await acompletion_with_fallback(messages, model="light")
 - 这些兜底 `timeout / max_retries` 应偏宽松，优先避免长文档生成、结构化修复、网络抖动导致的非业务失败；线上仍可用 `LLM_TIMEOUT_<TASK>_S` 和 `LLM_MAX_RETRIES_<TASK>` 覆盖存量调用。
 - `model=` 是模型槽位选择，业务 workflow 应显式传 `reason / primary / light`，不要指望 `task_type` 替你选模型。
 - workflow 的 `model_policy.py` 负责“这个业务步骤用哪个模型槽位、调用类型、必要的 token 上限、temperature、timeout、max_retries、稳定 metadata”。请求预算和采样参数应跟业务步骤走，不跟 `task_type` 走。
+- workflow 的 `model_policy.py` 也负责本步骤的 provider-native tool 策略；用 `ProviderNativeToolPolicy(off/settings/auto/force)` 控制是否继承全局设置或按链路覆盖。
 - 如果发现非 workflow 临时调用需要采样参数，应在调用点显式传 `temperature`；不要把新的 temperature 默认塞回 task profile。
 - 业务观测字段如 `planner_model_step / docgen_model_step` 应从 workflow 的 model policy 统一生成，再与运行时 metadata 合并，避免每个调用点手写一套。
 

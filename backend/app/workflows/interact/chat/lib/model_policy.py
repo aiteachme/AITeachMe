@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.workflows.common.model_policy import compact_metadata
+from app.shared.infra.settings import get_settings
+from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_metadata
 
 InteractModelSlot = Literal["light", "primary", "reason"]
 INTERACT_MODEL_SELECTOR: InteractModelSlot = "primary"
@@ -29,6 +30,7 @@ class InteractModelPolicy:
     timeout_s: int | None = None
     max_retries: int = 3
     temperature: float | None = None
+    provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -65,11 +67,24 @@ class InteractModelPolicy:
             "chat_max_tokens": self.max_tokens,
             "chat_timeout_s": self.timeout_s,
             "chat_max_retries": self.max_retries,
+            **self.provider_native_tools.metadata(prefix="chat_provider_native"),
         }
         resolved_override = normalize_runtime_model_override(model_override)
         if resolved_override:
             metadata["chat_model_override"] = resolved_override
         return metadata
+
+    def provider_native_tool_requests(
+        self,
+        *,
+        web_search: bool = False,
+        file_search: bool = False,
+    ) -> list[dict[str, object]]:
+        return self.provider_native_tools.build(
+            settings=get_settings(),
+            web_search=web_search,
+            file_search=file_search,
+        )
 
     def completion_kwargs_with_metadata(
         self,
@@ -95,6 +110,10 @@ _POLICIES: dict[InteractModelStep, InteractModelPolicy] = {
         max_tokens=12000,
         timeout_s=240,
         temperature=0.7,
+        provider_native_tools=ProviderNativeToolPolicy(
+            web_search="settings",
+            file_search="settings",
+        ),
         note="伴读最终回答可长可短，给足输出空间避免流式回答被过早截断。",
     ),
     InteractModelStep.SESSION_TITLE: InteractModelPolicy(
@@ -150,6 +169,7 @@ __all__ = [
     "InteractModelPolicy",
     "InteractModelSlot",
     "InteractModelStep",
+    "ProviderNativeToolPolicy",
     "get_interact_model_policy",
     "interact_completion_kwargs",
     "interact_completion_kwargs_with_metadata",

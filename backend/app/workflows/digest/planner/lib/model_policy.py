@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
+from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.workflows.common.model_policy import compact_metadata
+from app.shared.infra.settings import get_settings
+from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_metadata
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
+PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
 
 
 class PlannerModelStep(str, Enum):
@@ -24,10 +27,12 @@ class PlannerModelPolicy:
     step: PlannerModelStep
     call_type: Literal["stream", "structured", "text"]
     model: PlannerModelSlot
+    api_mode: PlannerAPIMode | None = None
     max_tokens: int | None = None
     timeout_s: int | None = None
     max_retries: int = 3
     temperature: float | None = None
+    provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
     note: str = ""
 
     def completion_kwargs(self, *, model_override: str | None = None) -> dict[str, object]:
@@ -39,6 +44,13 @@ class PlannerModelPolicy:
         kwargs: dict[str, object] = {
             "model": self.model,
         }
+        if self.api_mode is not None:
+            kwargs["api_mode"] = self.api_mode
+        kwargs[PROVIDER_NATIVE_TOOLS_KWARG] = self.provider_native_tools.build(
+            settings=get_settings(),
+            web_search=False,
+            file_search=False,
+        )
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
@@ -55,9 +67,11 @@ class PlannerModelPolicy:
             "planner_model_step": self.step.value,
             "planner_model_slot": self.model,
             "planner_call_type": self.call_type,
+            "planner_api_mode": self.api_mode,
             "planner_max_tokens": self.max_tokens,
             "planner_timeout_s": self.timeout_s,
             "planner_max_retries": self.max_retries,
+            **self.provider_native_tools.metadata(prefix="planner_provider_native"),
         }
         resolved_override = normalize_runtime_model_override(model_override)
         if resolved_override:
@@ -137,6 +151,7 @@ def planner_completion_kwargs_with_metadata(
 
 
 __all__ = [
+    "PlannerAPIMode",
     "PlannerModelPolicy",
     "PlannerModelSlot",
     "PlannerModelStep",

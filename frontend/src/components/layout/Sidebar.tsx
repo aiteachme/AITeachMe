@@ -147,13 +147,13 @@ function RenameCourseModal({
       }
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
+          <Button variant="ghost" onClick={onClose} className="rounded-md text-slate-500 hover:text-slate-900">
             取消
           </Button>
           <Button
             onClick={() => renameMutation.mutate()}
             disabled={!name.trim() || renameMutation.isPending}
-            className="rounded-lg bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            className="rounded-md bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
           >
             {renameMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             保存名称
@@ -176,13 +176,13 @@ function RenameCourseModal({
                 renameMutation.mutate();
               }
             }}
-            className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+            className="mt-3 h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
             placeholder="输入课程名称"
             autoFocus
           />
         </label>
         {renameMutation.isError ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {getApiErrorMessage(renameMutation.error, "重命名失败，请重试")}
           </p>
         ) : null}

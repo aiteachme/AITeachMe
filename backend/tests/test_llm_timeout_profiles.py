@@ -27,7 +27,7 @@ def test_llm_profile_timeout_env_override(monkeypatch):
 
 def test_task_type_profile_does_not_inject_generation_kwargs(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
-    context = build_completion_context(task_type=TaskType.CHAT)
+    context = build_completion_context(task_type=TaskType.CHAT, model="gpt-4o-mini")
     messages = [{"role": "user", "content": "hello"}]
 
     default_kwargs = build_completion_kwargs(
@@ -56,6 +56,28 @@ def test_task_type_profile_does_not_inject_generation_kwargs(monkeypatch):
     assert "max_retries" not in explicit_retry_kwargs
     assert explicit_kwargs["temperature"] == 0.2
     assert explicit_token_kwargs["max_tokens"] == 1234
+
+
+def test_openai_reasoning_models_drop_unsupported_temperature(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://aihubmix.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    context = build_completion_context(task_type=TaskType.EXTRACT, model="gpt-5.5")
+    messages = [{"role": "user", "content": "extract graph"}]
+
+    kwargs = build_completion_kwargs(
+        context=context,
+        messages=messages,
+        extra_kwargs={
+            "temperature": 0.1,
+            "max_tokens": 7000,
+        },
+    )
+
+    assert kwargs["model"] == "gpt-5.5"
+    assert kwargs["max_tokens"] == 7000
+    assert kwargs["custom_llm_provider"] == "openai"
+    assert "temperature" not in kwargs
 
 
 def test_explicit_max_retries_overrides_profile_without_provider_passthrough(monkeypatch):

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
-from app.workflows.common.model_policy import compact_metadata
+from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
+from app.shared.infra.settings import get_settings
+from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_metadata
 
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
 
@@ -32,6 +34,7 @@ class KGDocSyncModelPolicy:
     max_content_chars: int | None = None
     course_context_max_chars: int | None = None
     temperature: float | None = None
+    provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -39,6 +42,11 @@ class KGDocSyncModelPolicy:
 
         kwargs: dict[str, object] = {
             "model": self.model,
+            PROVIDER_NATIVE_TOOLS_KWARG: self.provider_native_tools.build(
+                settings=get_settings(),
+                web_search=False,
+                file_search=False,
+            ),
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
@@ -59,6 +67,7 @@ class KGDocSyncModelPolicy:
             "kg_doc_sync_max_tokens": self.max_tokens,
             "kg_doc_sync_timeout_s": self.timeout_s,
             "kg_doc_sync_max_retries": self.max_retries,
+            **self.provider_native_tools.metadata(prefix="kg_doc_sync_provider_native"),
         }
 
     def completion_kwargs_with_metadata(

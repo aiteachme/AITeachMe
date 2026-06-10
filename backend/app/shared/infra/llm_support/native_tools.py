@@ -78,6 +78,17 @@ def has_provider_native_tool_requests(raw_tools: object) -> bool:
     return bool(_normalize_tool_requests(raw_tools))
 
 
+def provider_native_tool_request_types(raw_tools: object) -> list[str]:
+    """Return stable provider-native tool type labels from raw requests."""
+
+    tool_types: list[str] = []
+    for request in _normalize_tool_requests(raw_tools):
+        tool_type = str(request.get("type") or "").strip()
+        if tool_type and tool_type not in tool_types:
+            tool_types.append(tool_type)
+    return tool_types
+
+
 def without_provider_native_tools(kwargs: Mapping[str, Any]) -> dict[str, Any]:
     """Return kwargs safe for call paths that do not use the Responses adapter."""
 
@@ -179,6 +190,7 @@ __all__ = [
     "build_provider_native_tools",
     "has_provider_native_tool_requests",
     "parse_vector_store_ids",
+    "provider_native_tool_request_types",
     "provider_native_tools_for_responses",
     "without_provider_native_tools",
 ]

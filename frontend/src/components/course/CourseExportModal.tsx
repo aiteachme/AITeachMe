@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, CheckCircle2, Download, FileText, Loader2, MessageSquareText, Package, Radar } from "lucide-react";
+import { Check, Download, Loader2 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type { ExportOptions, ExportPreviewData } from "../../api/generated/model";
@@ -67,44 +67,31 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
         key: "include_raw_markdowns" as const,
         title: "资料解析缓存",
         description: "资料记录、解析 Markdown 字段与检索切片",
-        count: stats?.raw_file_count ?? 0,
-        icon: FileText,
       },
       {
         key: "include_knowledge_docs" as const,
         title: "知识文档与构建计划",
         description: "章节正文、封面与已确认构建方案",
-        count: stats?.knowledge_document_count ?? 0,
-        icon: Package,
       },
       {
         key: "include_exam_history" as const,
         title: "题库与考试记录",
-        description: `${stats?.question_template_count ?? 0} 个题目模板，${stats?.exam_paper_count ?? 0} 份试卷`,
-        count: (stats?.question_template_count ?? 0) + (stats?.exam_paper_count ?? 0),
-        icon: CheckCircle2,
+        description: "题目模板与已生成试卷",
       },
       {
         key: "include_chat_history" as const,
         title: "对话记录",
         description: "课程内历史会话与消息",
-        count: stats?.chat_session_count ?? 0,
-        icon: MessageSquareText,
       },
       {
         key: "include_profile" as const,
         title: "学习画像",
         description: "知识点掌握度与复习状态",
-        count: stats?.user_knowledge_state_count ?? 0,
-        icon: Radar,
       },
     ],
-    [stats],
+    [],
   );
 
-  const selectedRows = optionRows.filter((row) => options[row.key]);
-  const selectedDynamicCount = selectedRows.reduce((sum, row) => sum + row.count, 0);
-  const coreCount = (stats?.knowledge_unit_count ?? 0) + (stats?.knowledge_edge_count ?? 0);
   const canExport = Boolean(stats) && !previewQuery.isLoading && !exportMutation.isPending;
 
   const toggleOption = (key: ExportOptionKey) => {
@@ -113,67 +100,48 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
 
   return (
     <CourseOperationModal
-      eyebrow="Export"
+      eyebrow="课程导出"
       title="导出课程"
       description={
         previewQuery.data?.course_name
-          ? `将「${previewQuery.data.course_name}」整理为可迁移的 .atmx 课程包。`
+          ? `将「${previewQuery.data.course_name}」打包为可迁移的 .atmx 课程包。`
           : "正在读取课程内容，稍后即可选择需要打包的范围。"
       }
       icon={Download}
       tone="blue"
       onClose={onClose}
+      className="max-w-[720px]"
       sidebar={
-        <div className="grid gap-3 text-sm sm:grid-cols-3">
-          <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">预计写入</div>
-            <div className="mt-1 font-mono text-lg font-semibold text-slate-950 dark:text-slate-50">
-              {previewQuery.isLoading ? "--" : selectedDynamicCount + coreCount}
-              <span className="ml-1 font-sans text-xs font-normal text-slate-500 dark:text-slate-400">条</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">固定包含</div>
-            <div className="mt-1 font-medium leading-5 text-slate-900 dark:text-slate-100">课程结构与知识图谱</div>
-          </div>
-          <div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">不会导出</div>
-            <div className="mt-1 font-medium leading-5 text-slate-900 dark:text-slate-100">向量索引与运行锁</div>
-          </div>
+        <div className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+          核心课程结构会自动包含，临时索引和运行状态不会写入课程包。
         </div>
       }
       footer={
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-            已选择 {selectedRows.length} 类可选内容，约 {selectedDynamicCount + coreCount} 条记录
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onClose} className="rounded-lg text-slate-500 hover:text-slate-900">
-              取消
-            </Button>
-            <Button
-              type="button"
-              onClick={() => exportMutation.mutate()}
-              disabled={!canExport}
-              className="rounded-lg bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-            >
-              {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              导出 .atmx
-            </Button>
-          </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} className="rounded-md text-slate-500 hover:text-slate-900">
+            取消
+          </Button>
+          <Button
+            type="button"
+            onClick={() => exportMutation.mutate()}
+            disabled={!canExport}
+            className="rounded-md bg-slate-950 px-4 text-white shadow-none hover:bg-slate-800 hover:shadow-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+          >
+            {exportMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            导出 .atmx
+          </Button>
         </div>
       }
     >
       {previewQuery.isLoading ? (
-        <div className="space-y-4">
-          <div className="border-b border-slate-100 pb-4 dark:border-slate-800">
+        <div className="space-y-3">
+          <div>
             <div className="h-5 w-32 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
             <div className="mt-2 h-4 w-80 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
           </div>
           {[0, 1, 2, 3].map((item) => (
-            <div key={item} className="flex items-center gap-3 rounded-lg border border-slate-100 px-4 py-4 dark:border-slate-800">
+            <div key={item} className="flex items-center gap-3 rounded-md px-2 py-3">
               <div className="h-5 w-5 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-              <div className="h-8 w-8 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
               <div className="min-w-0 flex-1">
                 <div className="h-4 w-36 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
                 <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
@@ -182,39 +150,25 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
           ))}
         </div>
       ) : stats ? (
-        <div className="space-y-5">
-          <section className="border-b border-slate-100 pb-5 dark:border-slate-800">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">打包内容</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  选择需要随课程迁移的学习上下文。核心课程结构会自动包含。
-                </p>
-              </div>
-              <div className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                核心 {coreCount}
-              </div>
-            </div>
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/35">
-              <div className="text-sm font-medium text-slate-900 dark:text-slate-100">课程信息、知识图谱节点与关系</div>
-              <div className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                {(stats?.knowledge_unit_count ?? 0)} 个知识点 / {(stats?.knowledge_edge_count ?? 0)} 条关系会固定写入课程包。
-              </div>
-            </div>
+        <div className="space-y-4">
+          <section>
+            <h3 className="text-sm font-semibold text-slate-950 dark:text-slate-50">打包内容</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              选择需要随课程迁移的学习上下文。
+            </p>
           </section>
 
-          <section className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+          <section className="space-y-1">
             {optionRows.map((row) => {
-              const Icon = row.icon;
               const checked = options[row.key];
               return (
                 <label
                   key={row.key}
                   className={cn(
-                    "group relative flex cursor-pointer items-start gap-3 px-4 py-4 transition",
+                    "group relative flex cursor-pointer items-start gap-3 rounded-md px-2.5 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-900/60",
                     checked
-                      ? "bg-white dark:bg-slate-950"
-                      : "bg-slate-50/70 text-slate-500 dark:bg-slate-900/35",
+                      ? "text-slate-950 dark:text-slate-50"
+                      : "text-slate-500 dark:text-slate-500",
                   )}
                 >
                   <input
@@ -226,23 +180,17 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition",
+                      "mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
                       checked
                         ? "border-slate-950 bg-slate-950 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950"
                         : "border-slate-300 bg-white text-transparent group-hover:border-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:group-hover:border-slate-500",
-                    )}
+                      )}
                   >
-                    <Check className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                    <Icon className="h-4 w-4" />
+                    <Check className="h-3 w-3" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-3">
                       <span className="text-sm font-semibold text-slate-950 dark:text-slate-50">{row.title}</span>
-                      <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {row.count}
-                      </span>
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{row.description}</span>
                   </span>
@@ -252,13 +200,13 @@ export function CourseExportModal({ courseId, onClose }: CourseExportModalProps)
           </section>
         </div>
       ) : (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {getApiErrorMessage(previewQuery.error, "导出预览加载失败")}
         </div>
       )}
 
       {exportMutation.isError ? (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {getApiErrorMessage(exportMutation.error, "导出失败，请重试")}
         </div>
       ) : null}

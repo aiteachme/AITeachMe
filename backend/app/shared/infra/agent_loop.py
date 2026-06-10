@@ -214,8 +214,13 @@ async def run_agent_loop(
         # 先将 assistant 的消息加入历史（包含 tool_calls 信息）
         current_messages.append(_assistant_msg_to_dict(message))
 
-        for tc in tool_calls[: cfg.max_tool_calls_per_turn]:
-            record = await _execute_one_tool(registry, tc, cfg)
+        for tool_call_index, tc in enumerate(tool_calls[: cfg.max_tool_calls_per_turn]):
+            record = await _execute_one_tool(
+                registry,
+                tc,
+                cfg,
+                tool_call_index=tool_call_index,
+            )
             all_tool_calls.append(record)
             all_client_actions.extend(record.client_actions)
             # 按 OpenAI 格式回传工具结果
@@ -319,8 +324,13 @@ async def run_agent_loop_stream(
             return
 
         current_messages.append(_streaming_assistant_msg_to_dict(streamed))
-        for tc in streamed.tool_calls[: cfg.max_tool_calls_per_turn]:
-            record = await _execute_one_tool(registry, tc, cfg)
+        for tool_call_index, tc in enumerate(streamed.tool_calls[: cfg.max_tool_calls_per_turn]):
+            record = await _execute_one_tool(
+                registry,
+                tc,
+                cfg,
+                tool_call_index=tool_call_index,
+            )
             current_messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
@@ -372,6 +382,7 @@ async def _stream_one_tool_iteration(
         _end_langsmith_trace,
         _langsmith_trace_kwargs,
         _record_new_token_event,
+        llm_api_mode_outputs,
     )
     from app.shared.infra.llm_support.stream import _stream_chunks_with_timeout
     from app.shared.infra.observability.trace import langsmith_trace
@@ -398,12 +409,22 @@ async def _stream_one_tool_iteration(
                     "llm_tools_stream_started",
                     attempt=prepared,
                     context=context,
-                    extra={"tool_count": len(tools)},
+                    extra={
+                        "tool_count": len(tools),
+                        "api_mode": "chat_completions",
+                    },
                 )
                 usage = (0, 0, 0)
                 content_parts: list[str] = []
                 tool_call_parts: dict[int, dict[str, str]] = {}
                 first_token_seen = False
+                trace_metadata = {
+                    **dict(cfg.extra_metadata or {}),
+                    "llm_requested_api_mode": str(
+                        cfg.llm_kwargs.get("api_mode") or context.settings.llm.api_mode
+                    ),
+                    "llm_api_mode_route_reason": "project_function_tools_stream_chat_completions",
+                }
                 with langsmith_trace(
                     name="LLM: stream with tools",
                     run_type="llm",
@@ -412,11 +433,13 @@ async def _stream_one_tool_iteration(
                         call_model=prepared.call_model,
                         provider=prepared.provider,
                         model_name=tracked_model,
-                        mode="tools_stream",
+                        mode="tools_stream_chat_completions",
                         messages=messages,
                         call_kwargs=prepared.call_kwargs,
                         tools=tools,
-                        extra_metadata=cfg.extra_metadata,
+                        endpoint_role=context.endpoint_role,
+                        model_selector=context.model_selector,
+                        extra_metadata=trace_metadata,
                     ),
                 ) as trace_run:
                     response = await asyncio.wait_for(
@@ -463,6 +486,11 @@ async def _stream_one_tool_iteration(
                             }
                             for item in tool_calls
                         ],
+                        extra_outputs=llm_api_mode_outputs(
+                            initial_api_mode="chat_completions",
+                            final_api_mode="chat_completions",
+                            final_route_reason="project_function_tools_stream_chat_completions",
+                        ),
                         prompt_tokens=prompt_t,
                         completion_tokens=completion_t,
                         total_tokens=total_t,
@@ -474,6 +502,7 @@ async def _stream_one_tool_iteration(
                     task_type=context.task_type,
                     endpoint_role=context.endpoint_role,
                     has_tool_calls=bool(tool_calls),
+                    api_mode="chat_completions",
                 )
                 prompt_t, completion_t, total_t = usage
                 track_call(
@@ -683,7 +712,13 @@ def _assistant_msg_to_dict(message) -> dict:
     return msg
 
 
-async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCallRecord:
+async def _execute_one_tool(
+    registry,
+    tool_call,
+    cfg: AgentLoopConfig,
+    *,
+    tool_call_index: int | None = None,
+) -> ToolCallRecord:
     """执行一次工具调用并返回记录。"""
 
     function = getattr(tool_call, "function", None)
@@ -691,7 +726,9 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
         getattr(function, "name", None)
         or getattr(tool_call, "function_name", "")
     )
+    tool_call_id = str(getattr(tool_call, "id", "") or "")
     tool_definition = registry.get(func_name)
+    hidden_arg_names = list(getattr(tool_definition, "hidden_args", []) or [])
     raw_arguments = (
         getattr(function, "arguments", None)
         if function is not None
@@ -709,7 +746,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
     context_args = _resolve_context_tool_args(
         cfg.tool_context,
         tool_name=func_name,
-        hidden_args=list(getattr(tool_definition, "hidden_args", []) or []),
+        hidden_args=hidden_arg_names,
     )
     injected_args = dict(cfg.tool_argument_overrides.get(func_name, {}) or {})
     if context_args or injected_args:
@@ -718,13 +755,29 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             **context_args,
             **injected_args,
         }
+    trace_metadata = {
+        "agent_task_type": cfg.task_type,
+        "agent_model_selector": cfg.model,
+        "agent_tool_timeout_s": cfg.tool_timeout_s,
+        "agent_tool_result_max_chars": cfg.result_max_chars,
+        "tool_call_id": tool_call_id,
+        "tool_call_index": tool_call_index,
+        "tool_visible_argument_names": sorted(str(name) for name in visible_args),
+        "tool_context_argument_names": sorted(str(name) for name in context_args),
+        "tool_injected_argument_names": sorted(str(name) for name in injected_args),
+        "tool_hidden_argument_names": sorted(
+            str(name)
+            for name in hidden_arg_names
+            if name in args or name in context_args or name in injected_args
+        ),
+    }
 
     start = time.monotonic()
     await _emit_tool_event(
         cfg,
         phase="started",
         tool_name=func_name,
-        tool_call_id=str(getattr(tool_call, "id", "") or ""),
+        tool_call_id=tool_call_id,
         argument_names=sorted(str(name) for name in visible_args.keys()),
     )
     try:
@@ -733,6 +786,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
                 func_name,
                 _approval_granted=_is_tool_approved(cfg.tool_context, func_name)
                 or func_name in cfg.approved_tool_names,
+                _trace_metadata=trace_metadata,
                 **args,
             ),
             timeout=cfg.tool_timeout_s,
@@ -743,7 +797,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
                 cfg,
                 client_actions,
                 tool_name=func_name,
-                tool_call_id=str(getattr(tool_call, "id", "") or ""),
+                tool_call_id=tool_call_id,
             )
         result_str = str(raw_result)[: cfg.result_max_chars]
         elapsed = round(time.monotonic() - start, 3)
@@ -757,7 +811,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             cfg,
             phase="completed",
             tool_name=func_name,
-            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            tool_call_id=tool_call_id,
             elapsed_s=elapsed,
             success=True,
         )
@@ -776,7 +830,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             cfg,
             phase="failed",
             tool_name=func_name,
-            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            tool_call_id=tool_call_id,
             elapsed_s=elapsed,
             success=False,
             error=error_msg,
@@ -797,7 +851,7 @@ async def _execute_one_tool(registry, tool_call, cfg: AgentLoopConfig) -> ToolCa
             cfg,
             phase="failed",
             tool_name=func_name,
-            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            tool_call_id=tool_call_id,
             elapsed_s=elapsed,
             success=False,
             error=str(exc),

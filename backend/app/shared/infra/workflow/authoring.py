@@ -21,11 +21,69 @@ from langsmith import tracing_context
 from app.shared.infra.observability.trace import (
     build_langsmith_metadata,
     build_langsmith_tags,
+    langsmith_trace,
     llm_trace_scope,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
 )
 from app.shared.infra.workflow.context import WorkflowContext
 
 logger = structlog.get_logger(__name__)
+
+
+def _state_value_summary(value: Any) -> Any:
+    if isinstance(value, str):
+        return {"type": "str", "chars": len(value)}
+    if isinstance(value, Mapping):
+        return {"type": "dict", "key_count": len(value)}
+    if isinstance(value, (list, tuple, set)):
+        return {"type": "list", "count": len(value)}
+    return value
+
+
+def _node_trace_inputs(
+    state: Mapping[str, Any],
+    *,
+    input_keys: Sequence[str],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "available_input_keys": [key for key in input_keys if key in state],
+        "state_key_count": len(state),
+    }
+    for key in ("course_id", "course_name", "build_session_id", "planner_session_id", "digest_mode"):
+        value = state.get(key)
+        if value not in (None, "", [], {}):
+            payload[key] = value
+    for key in input_keys:
+        if key in payload or key not in state:
+            continue
+        payload[f"{key}_summary"] = _state_value_summary(state[key])
+    return sanitize_langsmith_input(payload, field_name="workflow_node_inputs")
+
+
+def _node_trace_outputs(
+    result: Mapping[str, Any],
+    *,
+    output_keys: Sequence[str],
+    elapsed_ms: int,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "elapsed_ms": elapsed_ms,
+        "status": "failed" if result.get("error") else "ok",
+        "available_output_keys": [key for key in output_keys if key in result],
+    }
+    error = result.get("error")
+    if error:
+        payload["error"] = str(error)
+    for key in ("llm_calls_total", "llm_calls_skipped"):
+        value = result.get(key)
+        if value not in (None, ""):
+            payload[key] = value
+    for key in output_keys:
+        if key in payload or key not in result:
+            continue
+        payload[f"{key}_summary"] = _state_value_summary(result[key])
+    return sanitize_langsmith_output(payload, field_name="workflow_node_outputs")
 
 
 def _resolve_workflow_name(
@@ -92,6 +150,8 @@ class WorkflowTraceBinding:
             "state_outputs": list(output_keys or []),
             **trace_metadata,
         }
+        compact_input_keys = tuple(input_keys or [])
+        compact_output_keys = tuple(output_keys or [])
 
         @functools.wraps(handler)
         async def wrapper(state):
@@ -113,49 +173,68 @@ class WorkflowTraceBinding:
                 node=tag_node_name,
             )
 
-            with tracing_context(
-                metadata=node_metadata,
-                tags=node_tags,
-            ):
-                with llm_trace_scope(
-                    course_id=course_id,
-                    build_session_id=build_session_id,
-                    workflow=workflow_name,
-                    lane=lane,
-                    node=node_name,
-                ):
-                    try:
-                        result = handler(state)
-                        if inspect.isawaitable(result):
-                            result = await result
-                    except Exception:
-                        elapsed_ms = int((perf_counter() - started_at) * 1000)
-                        logger.bind(
-                            workflow=workflow_name,
-                            lane=lane,
-                            node=node_name,
-                            course_id=course_id,
-                            build_session_id=build_session_id,
-                        ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
-                        raise
-
-            elapsed_ms = int((perf_counter() - started_at) * 1000)
-            result_mapping = result if isinstance(result, dict) else {}
-            if timing_field and timing_field not in result_mapping:
-                result_mapping = {**result_mapping, timing_field: elapsed_ms}
-
-            logger.bind(
+            with langsmith_trace(
+                name=resolved_display_name,
+                run_type="chain",
+                inputs=_node_trace_inputs(state_mapping, input_keys=compact_input_keys),
+                course_id=course_id,
+                build_session_id=build_session_id,
                 workflow=workflow_name,
                 lane=lane,
                 node=node_name,
-                course_id=course_id,
-                build_session_id=build_session_id,
-            ).info(
-                "workflow_node_completed",
-                elapsed_ms=elapsed_ms,
-                status="failed" if result_mapping.get("error") else "ok",
-            )
-            return result_mapping if timing_field else result
+                extra_metadata=node_extra_metadata,
+                extra_tags=[f"node:{tag_node_name}"],
+            ) as trace_run:
+                with tracing_context(
+                    metadata=node_metadata,
+                    tags=node_tags,
+                ):
+                    with llm_trace_scope(
+                        course_id=course_id,
+                        build_session_id=build_session_id,
+                        workflow=workflow_name,
+                        lane=lane,
+                        node=node_name,
+                    ):
+                        try:
+                            result = handler(state)
+                            if inspect.isawaitable(result):
+                                result = await result
+                        except Exception:
+                            elapsed_ms = int((perf_counter() - started_at) * 1000)
+                            logger.bind(
+                                workflow=workflow_name,
+                                lane=lane,
+                                node=node_name,
+                                course_id=course_id,
+                                build_session_id=build_session_id,
+                            ).exception("workflow_node_failed", elapsed_ms=elapsed_ms)
+                            raise
+                    elapsed_ms = int((perf_counter() - started_at) * 1000)
+                    result_mapping = result if isinstance(result, dict) else {}
+                    if timing_field and timing_field not in result_mapping:
+                        result_mapping = {**result_mapping, timing_field: elapsed_ms}
+                    if trace_run is not None:
+                        trace_run.end(
+                            outputs=_node_trace_outputs(
+                                result_mapping,
+                                output_keys=compact_output_keys,
+                                elapsed_ms=elapsed_ms,
+                            )
+                        )
+
+                    logger.bind(
+                        workflow=workflow_name,
+                        lane=lane,
+                        node=node_name,
+                        course_id=course_id,
+                        build_session_id=build_session_id,
+                    ).info(
+                        "workflow_node_completed",
+                        elapsed_ms=elapsed_ms,
+                        status="failed" if result_mapping.get("error") else "ok",
+                    )
+                    return result_mapping if timing_field else result
 
         return wrapper
 

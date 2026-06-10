@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Literal
 
-from app.workflows.common.model_policy import compact_metadata
+from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
+from app.shared.infra.settings import get_settings
+from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_metadata
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
@@ -40,6 +42,7 @@ class DocGenModelPolicy:
     timeout_s: int | None = None
     max_retries: int = 3
     temperature: float | None = None
+    provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
     note: str = ""
 
     def completion_kwargs(self) -> dict[str, object]:
@@ -48,6 +51,12 @@ class DocGenModelPolicy:
         kwargs: dict[str, object] = {}
         if self.model is not None and self.model != "image_generation":
             kwargs["model"] = self.model
+        if self.call_type != "image":
+            kwargs[PROVIDER_NATIVE_TOOLS_KWARG] = self.provider_native_tools.build(
+                settings=get_settings(),
+                web_search=False,
+                file_search=False,
+            )
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
@@ -66,6 +75,7 @@ class DocGenModelPolicy:
             "docgen_call_type": self.call_type,
             "docgen_timeout_s": self.timeout_s or 0,
             "docgen_max_retries": self.max_retries,
+            **self.provider_native_tools.metadata(prefix="docgen_provider_native"),
         }
 
     def completion_kwargs_with_metadata(

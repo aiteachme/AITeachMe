@@ -34,6 +34,7 @@ from .observability import (
     _end_langsmith_trace,
     _langsmith_tool_calls,
     _langsmith_trace_kwargs,
+    llm_api_mode_outputs,
 )
 
 
@@ -76,9 +77,19 @@ async def acompletion_with_tools(
                     "llm_tools_started",
                     attempt=prepared,
                     context=context,
-                    extra={"tool_count": len(tools) if tools else 0},
+                    extra={
+                        "tool_count": len(tools) if tools else 0,
+                        "api_mode": "chat_completions",
+                    },
                 )
                 try:
+                    trace_metadata = {
+                        **dict(extra_metadata or {}),
+                        "llm_requested_api_mode": str(
+                            kwargs.get("api_mode") or context.settings.llm.api_mode
+                        ),
+                        "llm_api_mode_route_reason": "project_function_tools_chat_completions",
+                    }
                     with langsmith_trace(
                         name="LLM：工具调用",
                         run_type="llm",
@@ -87,14 +98,14 @@ async def acompletion_with_tools(
                             call_model=prepared.call_model,
                             provider=prepared.provider,
                             model_name=tracked_model,
-                            mode="tools",
+                            mode="tools_chat_completions",
                             messages=messages,
                             call_kwargs=prepared.call_kwargs,
                             attempt=prepared.attempt,
                             endpoint_role=context.endpoint_role,
                             model_selector=context.model_selector,
                             tools=tools,
-                            extra_metadata=extra_metadata,
+                            extra_metadata=trace_metadata,
                         ),
                     ) as trace_run:
                         response = await asyncio.wait_for(
@@ -107,6 +118,11 @@ async def acompletion_with_tools(
                             trace_run,
                             text=message.content or "",
                             tool_calls=_langsmith_tool_calls(message),
+                            extra_outputs=llm_api_mode_outputs(
+                                initial_api_mode="chat_completions",
+                                final_api_mode="chat_completions",
+                                final_route_reason="project_function_tools_chat_completions",
+                            ),
                             prompt_tokens=prompt_t,
                             completion_tokens=completion_t,
                             total_tokens=total_t,
@@ -119,6 +135,7 @@ async def acompletion_with_tools(
                         task_type=context.task_type,
                         endpoint_role=context.endpoint_role,
                         has_tool_calls=bool(getattr(response.choices[0].message, "tool_calls", None)),
+                        api_mode="chat_completions",
                     )
                     track_call(
                         task_type=context.task_type,

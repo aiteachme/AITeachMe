@@ -15,7 +15,6 @@ from typing import Any
 from app.agent_tools.context import AgentToolContext
 from app.agent_tools.policy import AgentToolPolicyRequest, is_global_assistant_source, resolve_agent_tool_names
 from app.shared.infra.agent_loop import AgentLoopConfig
-from app.shared.infra.llm_support.native_tools import build_provider_native_tools
 from app.shared.infra.settings import get_settings
 from app.utils.course import is_global_course
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
@@ -23,6 +22,7 @@ from app.workflows.interact.chat.lib.intent import ChatScene, parse_chat_scene
 from app.workflows.interact.chat.lib.model_policy import (
     INTERACT_MODEL_SELECTOR,
     InteractModelStep,
+    get_interact_model_policy,
     interact_llm_kwargs,
 )
 from app.workflows.interact.chat.lib.types import RetrievedContext
@@ -243,16 +243,17 @@ def build_interact_provider_native_tools(
 ) -> list[dict[str, Any]]:
     """Return provider-native retrieval hints for one Interact turn."""
 
+    policy = get_interact_model_policy(InteractModelStep.RESPONSE_STREAM)
     settings = get_settings()
     has_course_scope = bool((course_id or "").strip()) and not is_global_course(course_id)
     should_use_file_search = has_course_scope and (
-        settings.llm.native_file_search == "force"
+        policy.provider_native_tools.effective_file_search_mode(settings) == "force"
         or (
             "search_kb" in tool_plan.tool_names
             and _local_context_needs_provider_file_search(retrieval_results or [])
         )
     )
-    return build_provider_native_tools(
+    return policy.provider_native_tools.build(
         settings=settings,
         web_search="web_search" in tool_plan.tool_names,
         file_search=should_use_file_search,

@@ -29,10 +29,12 @@ from .common import (
     track_call,
 )
 from .litellm_loader import load_litellm
-from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
+from .observability import _end_langsmith_trace, _langsmith_trace_kwargs, llm_api_mode_outputs
 from .responses_adapter import (
     chat_fallback_for_auto_responses,
     extract_response_text,
+    provider_call_metadata,
+    response_output_tool_events,
     resolve_provider_call,
 )
 
@@ -80,6 +82,13 @@ async def acompletion(
                         context=context,
                         call_kwargs=prepared.call_kwargs,
                     )
+                    initial_api_mode = provider_call.api_mode
+                    route_reason = provider_call.route_reason
+                    auto_responses_chat_fallback = False
+                    trace_metadata = {
+                        **dict(extra_metadata or {}),
+                        **provider_call_metadata(provider_call),
+                    }
                     with langsmith_trace(
                         name="LLM：文本生成",
                         run_type="llm",
@@ -94,7 +103,7 @@ async def acompletion(
                             attempt=prepared.attempt,
                             endpoint_role=context.endpoint_role,
                             model_selector=context.model_selector,
-                            extra_metadata=extra_metadata,
+                            extra_metadata=trace_metadata,
                         ),
                     ) as trace_run:
                         try:
@@ -114,12 +123,14 @@ async def acompletion(
                             )
                             if fallback_call is None:
                                 raise
+                            auto_responses_chat_fallback = True
                             logger.warning(
                                 "llm_auto_responses_fallback_to_chat",
                                 attempt=prepared.attempt,
                                 model=tracked_model,
                                 task_type=context.task_type,
                                 endpoint_role=context.endpoint_role,
+                                route_reason=route_reason,
                                 error=str(provider_exc),
                             )
                             provider_call = fallback_call
@@ -133,9 +144,20 @@ async def acompletion(
                             if provider_call.api_mode == "responses"
                             else response.choices[0].message.content or ""
                         )
+                        extra_outputs = llm_api_mode_outputs(
+                            initial_api_mode=initial_api_mode,
+                            final_api_mode=provider_call.api_mode,
+                            final_route_reason=provider_call.route_reason,
+                            auto_responses_chat_fallback=auto_responses_chat_fallback,
+                        )
+                        if provider_call.api_mode == "responses":
+                            tool_events = response_output_tool_events(response)
+                            if tool_events:
+                                extra_outputs["llm_provider_tool_events"] = tool_events
                         _end_langsmith_trace(
                             trace_run,
                             text=content,
+                            extra_outputs=extra_outputs,
                             prompt_tokens=prompt_t,
                             completion_tokens=completion_t,
                             total_tokens=total_t,
@@ -147,6 +169,11 @@ async def acompletion(
                         model=tracked_model,
                         task_type=context.task_type,
                         endpoint_role=context.endpoint_role,
+                        initial_api_mode=initial_api_mode,
+                        final_api_mode=provider_call.api_mode,
+                        initial_route_reason=route_reason,
+                        final_route_reason=provider_call.route_reason,
+                        auto_responses_chat_fallback=auto_responses_chat_fallback,
                     )
                     track_call(
                         task_type=context.task_type,

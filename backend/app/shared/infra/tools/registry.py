@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -23,7 +24,10 @@ def _tool_result_summary(result: Any) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "result_type": type(result).__name__,
     }
-    if isinstance(result, dict):
+    if isinstance(result, str):
+        summary["result_chars"] = len(result)
+        summary["result_preview"] = result[:800]
+    elif isinstance(result, dict):
         summary["result_keys"] = sorted(str(key) for key in list(result.keys())[:6])
     elif isinstance(result, (list, tuple, set)):
         summary["item_count"] = len(result)
@@ -31,10 +35,24 @@ def _tool_result_summary(result: Any) -> dict[str, Any]:
 
 
 def _tool_trace_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    arguments = dict(inputs.get("arguments") or {})
+    tool_definition = inputs.get("tool_definition")
+    hidden_arg_names = {
+        str(name)
+        for name in list(getattr(tool_definition, "hidden_args", []) or [])
+        if str(name) in arguments
+    }
+    visible_arguments = {
+        str(key): value
+        for key, value in arguments.items()
+        if str(key) not in hidden_arg_names
+    }
     return {
         "name": str(inputs.get("tool_name") or ""),
+        "visible_argument_names": sorted(visible_arguments),
+        "hidden_argument_names": sorted(hidden_arg_names),
         "arguments": sanitize_langsmith_input(
-            dict(inputs.get("arguments") or {}),
+            visible_arguments,
             field_name="arguments",
         ),
     }
@@ -63,6 +81,13 @@ def _tool_trace_metadata(
         "tool_source": tool_definition.source,
         "tool_tags": list(tool_definition.tags),
         "tool_is_async": tool_definition.is_async,
+        "tool_risk_level": tool_definition.risk_level,
+        "tool_scopes": list(tool_definition.scopes),
+        "tool_requires_course": tool_definition.requires_course,
+        "tool_requires_approval": tool_definition.requires_approval,
+        "tool_cache_policy": tool_definition.cache_policy,
+        "tool_timeout_s": tool_definition.timeout_s,
+        "tool_hidden_args": list(tool_definition.hidden_args),
     }
 
 
@@ -116,6 +141,7 @@ class ToolRegistry:
         langsmith_extra: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         del langsmith_extra
+        started_at = time.monotonic()
         decision = await check_action_safety(tool_name, dict(arguments))
         if not decision.allowed:
             raise PermissionError(decision.reason or f"工具 `{tool_name}` 被安全策略拦截")
@@ -129,19 +155,32 @@ class ToolRegistry:
             "result": result,
             "trace": {
                 "success": True,
+                "elapsed_s": round(time.monotonic() - started_at, 3),
                 **sanitize_langsmith_output(_tool_result_summary(result), field_name="result_summary"),
             },
         }
 
-    async def execute(self, name: str, _approval_granted: bool = False, **kwargs: Any) -> Any:
+    async def execute(
+        self,
+        name: str,
+        _approval_granted: bool = False,
+        _trace_metadata: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
         td = self._tools.get(name)
         if td is None:
             raise ValueError(f"工具 `{name}` 未注册")
+        langsmith_extra = (
+            {"metadata": dict(_trace_metadata)}
+            if _trace_metadata
+            else None
+        )
         payload = await self._run_traced_tool(
             tool_name=name,
             arguments=dict(kwargs),
             tool_definition=td,
             approval_granted=_approval_granted,
+            langsmith_extra=langsmith_extra,
         )
         return payload["result"]
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 import threading
 import time
@@ -52,6 +53,9 @@ _PRIMARY_API_KEY_ENV_NAME = "LLM_API_KEY"
 _PRIMARY_PROVIDER_ENV_NAME = "LLM_PROVIDER"
 _FALLBACK_BASE_URL_ENV_NAME = "LLM_FALLBACK_BASE_URL"
 _FALLBACK_API_KEY_ENV_NAME = "LLM_FALLBACK_API_KEY"
+_OPENAI_DEFAULT_SAMPLING_MODEL_PATTERN = re.compile(r"^(?:gpt-5(?:$|[.-])|o\d(?:$|[.-]))")
+_OPENAI_DEFAULT_SAMPLING_PARAMS = frozenset({"temperature"})
+_RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
 _SETTINGS_MODEL_SELECTORS = frozenset(
     {
         "reason",
@@ -448,6 +452,67 @@ def build_litellm_provider_kwargs(
     return kwargs
 
 
+def _model_name_candidates(model: Any) -> tuple[str, ...]:
+    raw = str(model or "").strip()
+    if not raw:
+        return ()
+    parts = [part for part in raw.replace("\\", "/").split("/") if part]
+    candidates: list[str] = [raw]
+    if parts:
+        candidates.append(parts[-1])
+    if len(parts) >= 2 and parts[-2].lower() in _RESPONSES_ROUTE_MARKERS:
+        candidates.append(parts[-1])
+    return tuple(dict.fromkeys(candidates))
+
+
+def _canonical_model_name(model: Any) -> str:
+    candidates = _model_name_candidates(model)
+    value = candidates[-1] if candidates else ""
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _uses_openai_sampling_contract(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any],
+) -> bool:
+    provider = normalize_llm_provider_name(context.provider)
+    custom_provider = normalize_llm_provider_name(
+        str(call_kwargs.get("custom_llm_provider") or "") or None
+    )
+    if provider in {"openai", "openai_compatible", "azure"}:
+        return True
+    if custom_provider in {"openai", "azure"}:
+        return True
+    api_base = str(call_kwargs.get("api_base") or context.base_url or "").lower()
+    return "api.openai.com" in api_base or "openai.azure.com" in api_base
+
+
+def _uses_default_sampling_model(model: Any) -> bool:
+    return bool(_OPENAI_DEFAULT_SAMPLING_MODEL_PATTERN.match(_canonical_model_name(model)))
+
+
+def _drop_unsupported_sampling_params(
+    *,
+    context: CompletionContext,
+    call_kwargs: dict[str, Any],
+) -> None:
+    if not _uses_openai_sampling_contract(context, call_kwargs):
+        return
+    if not _uses_default_sampling_model(call_kwargs.get("model")):
+        return
+    dropped = [key for key in _OPENAI_DEFAULT_SAMPLING_PARAMS if key in call_kwargs]
+    if not dropped:
+        return
+    for key in dropped:
+        call_kwargs.pop(key, None)
+    logger.debug(
+        "llm_completion_sampling_params_dropped",
+        model=call_kwargs.get("model"),
+        provider=context.provider,
+        dropped_params=sorted(dropped),
+    )
+
+
 def resolve_settings_model(settings: Settings, model: str | None = None) -> tuple[str, str]:
     """Resolve a provider model name from ``settings.models``."""
 
@@ -751,6 +816,10 @@ def build_completion_kwargs(
         )
     )
     completion_kwargs.update(remaining_kwargs)
+    _drop_unsupported_sampling_params(
+        context=context,
+        call_kwargs=completion_kwargs,
+    )
     return completion_kwargs
 
 

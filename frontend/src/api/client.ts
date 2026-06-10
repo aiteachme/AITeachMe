@@ -326,6 +326,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function sanitizeErrorText(value: string, fallback = "请求失败，请重试。"): string {
+  const text = value.trim();
+  if (!text) {
+    return fallback;
+  }
+  const lowered = text.toLowerCase();
+  if (
+    lowered.includes("<!doctype html") ||
+    lowered.includes("<html") ||
+    lowered.includes("<head") ||
+    lowered.includes("<body") ||
+    lowered.includes("text/html")
+  ) {
+    return "服务返回了网页内容而不是接口响应，请检查网关地址或反向代理配置。";
+  }
+  return text.length > 800 ? `${text.slice(0, 800).trim()}...` : text;
+}
+
 function isBackendDisconnectError(error: unknown): boolean {
   const apiError = error as ApiErrorShape & { response?: unknown; name?: string };
   if (apiError.response || apiError.code === "ERR_CANCELED" || apiError.name === "AbortError") {
@@ -371,21 +389,21 @@ export async function runTrackedApiFetch<T>(
 
 function extractErrorMessage(payload: unknown, fallback = "请求失败，请重试。"): string {
   if (typeof payload === "string" && payload.trim()) {
-    return payload.trim();
+    return sanitizeErrorText(payload, fallback);
   }
   if (isRecord(payload)) {
     const detail = payload.detail;
     if (typeof detail === "string" && detail.trim()) {
-      return detail.trim();
+      return sanitizeErrorText(detail, fallback);
     }
     const message = payload.message;
     if (typeof message === "string" && message.trim()) {
-      return message.trim();
+      return sanitizeErrorText(message, fallback);
     }
     if (isRecord(payload.error)) {
       const nestedDetail = payload.error.detail;
       if (typeof nestedDetail === "string" && nestedDetail.trim()) {
-        return nestedDetail.trim();
+        return sanitizeErrorText(nestedDetail, fallback);
       }
     }
   }
@@ -789,7 +807,7 @@ export function getApiErrorMessage(
     apiError.message;
 
   if (typeof message === "string" && message.trim()) {
-    return message;
+    return sanitizeErrorText(message, fallback);
   }
 
   return fallback;

@@ -27,6 +27,7 @@ from .common import (
     log_attempt_failed,
     log_attempt_started,
     log_attempt_timeout,
+    merge_usage,
     prepare_completion_attempt,
     raise_last_error,
     context_request_timeout_s,
@@ -34,7 +35,16 @@ from .common import (
     trace_log_fields,
     track_call,
 )
-from .observability import _end_langsmith_trace, _langsmith_trace_kwargs
+from .observability import _end_langsmith_trace, _langsmith_trace_kwargs, llm_api_mode_outputs
+from .native_tools import without_provider_native_tools
+from .responses_adapter import (
+    ProviderCall,
+    chat_fallback_for_auto_responses,
+    extract_response_text,
+    provider_call_metadata,
+    resolve_provider_call,
+    response_output_tool_events,
+)
 from .structured import (
     JSON_OBJECT_RESPONSE_FORMAT,
     _build_structured_fallback_messages,
@@ -197,6 +207,94 @@ def _structured_mode_label(*, use_instructor: bool, use_json_response_format: bo
     return "instructor_json" if use_json_response_format else "instructor_tools"
 
 
+def _provider_response_text(response: Any, provider_call: ProviderCall) -> str:
+    if provider_call.api_mode == "responses":
+        return extract_response_text(response)
+    return _completion_response_text(response)
+
+
+async def _execute_provider_call(
+    *,
+    litellm: Any,
+    context: Any,
+    provider_call: ProviderCall,
+) -> Any:
+    provider_coro = (
+        litellm.aresponses(**provider_call.kwargs)
+        if provider_call.api_mode == "responses"
+        else litellm.acompletion(**provider_call.kwargs)
+    )
+    return await asyncio.wait_for(
+        provider_coro,
+        timeout=context_request_timeout_s(context, provider_call.kwargs),
+    )
+
+
+async def _execute_provider_call_with_auto_fallback(
+    *,
+    litellm: Any,
+    context: Any,
+    provider_call: ProviderCall,
+    attempt: int,
+    model: str,
+    route_reason: str,
+) -> tuple[Any, ProviderCall, bool]:
+    try:
+        return (
+            await _execute_provider_call(
+                litellm=litellm,
+                context=context,
+                provider_call=provider_call,
+            ),
+            provider_call,
+            False,
+        )
+    except Exception as provider_exc:
+        fallback_call = chat_fallback_for_auto_responses(provider_call, provider_exc)
+        if fallback_call is None:
+            raise
+        logger.warning(
+            "llm_structured_auto_responses_fallback_to_chat",
+            attempt=attempt,
+            model=model,
+            task_type=context.task_type,
+            endpoint_role=context.endpoint_role,
+            route_reason=route_reason,
+            error=str(provider_exc),
+        )
+        return (
+            await _execute_provider_call(
+                litellm=litellm,
+                context=context,
+                provider_call=fallback_call,
+            ),
+            fallback_call,
+            True,
+        )
+
+
+def _structured_json_prompt_kwargs(
+    *,
+    call_kwargs: Mapping[str, Any],
+    response_model: type[T],
+    messages: list[ChatMessage],
+    failure_reason: str | None = None,
+    invalid_response: str | None = None,
+    force_api_mode: str | None = None,
+) -> dict[str, Any]:
+    prompt_kwargs = dict(call_kwargs)
+    prompt_kwargs["messages"] = _build_structured_fallback_messages(
+        response_model,
+        messages,
+        failure_reason=failure_reason,
+        invalid_response=invalid_response,
+    )
+    prompt_kwargs.pop("response_format", None)
+    if force_api_mode:
+        prompt_kwargs["api_mode"] = force_api_mode
+    return prompt_kwargs
+
+
 async def acompletion_structured(
     response_model: type[T],
     messages: list[ChatMessage],
@@ -239,27 +337,39 @@ async def acompletion_structured(
                 prepared = prepare_completion_attempt(
                     context=context,
                     messages=messages,
-                    extra_kwargs=kwargs,
+                    extra_kwargs=without_provider_native_tools(kwargs),
                     attempt=attempt_number,
                 )
                 tracked_model = prepared.tracked_model
-                provider = _call_provider(prepared.call_kwargs, prepared.provider)
-                use_json_response_format = _should_use_json_object_response_format(
+                base_provider_call = resolve_provider_call(
+                    context=context,
                     call_kwargs=prepared.call_kwargs,
-                    call_model=prepared.call_model,
-                    provider=provider,
                 )
-                if use_json_response_format:
-                    _with_json_object_response_format(prepared.call_kwargs)
-                instructor_mode = None
-                client = None
-                if use_instructor:
-                    instructor_mode = instructor.Mode.JSON if use_json_response_format else instructor.Mode.TOOLS
-                    client = instructor.from_litellm(litellm.acompletion, mode=instructor_mode)
-                mode_label = _structured_mode_label(
-                    use_instructor=use_instructor,
-                    use_json_response_format=use_json_response_format,
-                )
+                if base_provider_call.api_mode == "chat_completions":
+                    prepared.call_kwargs.clear()
+                    prepared.call_kwargs.update(base_provider_call.kwargs)
+                    provider = _call_provider(prepared.call_kwargs, prepared.provider)
+                    use_json_response_format = _should_use_json_object_response_format(
+                        call_kwargs=prepared.call_kwargs,
+                        call_model=prepared.call_model,
+                        provider=provider,
+                    )
+                    if use_json_response_format:
+                        _with_json_object_response_format(prepared.call_kwargs)
+                    instructor_mode = None
+                    client = None
+                    if use_instructor:
+                        instructor_mode = instructor.Mode.JSON if use_json_response_format else instructor.Mode.TOOLS
+                        client = instructor.from_litellm(litellm.acompletion, mode=instructor_mode)
+                    mode_label = _structured_mode_label(
+                        use_instructor=use_instructor,
+                        use_json_response_format=use_json_response_format,
+                    )
+                else:
+                    use_json_response_format = False
+                    instructor_mode = None
+                    client = None
+                    mode_label = "json_prompt_responses"
                 log_attempt_started(
                     "llm_structured_started",
                     attempt=prepared,
@@ -275,6 +385,137 @@ async def acompletion_structured(
                     total_t = 0
                     assistant_text = ""
                     trace_messages = messages
+                    if base_provider_call.api_mode == "responses":
+                        response_call_kwargs = _structured_json_prompt_kwargs(
+                            call_kwargs=prepared.call_kwargs,
+                            response_model=response_model,
+                            messages=messages,
+                        )
+                        provider_call = resolve_provider_call(
+                            context=context,
+                            call_kwargs=response_call_kwargs,
+                        )
+                        initial_api_mode = provider_call.api_mode
+                        route_reason = provider_call.route_reason
+                        auto_responses_chat_fallback = False
+                        trace_messages = response_call_kwargs["messages"]
+                        trace_metadata = {
+                            **dict(extra_metadata or {}),
+                            **provider_call_metadata(provider_call),
+                        }
+                        with langsmith_trace(
+                            name="LLM：结构化生成",
+                            run_type="llm",
+                            **_langsmith_trace_kwargs(
+                                task_type=context.task_type,
+                                call_model=prepared.call_model,
+                                provider=prepared.provider,
+                                model_name=tracked_model,
+                                mode=f"structured_{provider_call.api_mode}",
+                                messages=trace_messages,
+                                call_kwargs=provider_call.kwargs,
+                                attempt=prepared.attempt,
+                                endpoint_role=context.endpoint_role,
+                                model_selector=context.model_selector,
+                                extra_metadata=trace_metadata,
+                            ),
+                        ) as trace_run:
+                            usage = (0, 0, 0)
+                            response, provider_call, did_fallback = await _execute_provider_call_with_auto_fallback(
+                                litellm=litellm,
+                                context=context,
+                                provider_call=provider_call,
+                                attempt=prepared.attempt,
+                                model=tracked_model,
+                                route_reason=route_reason,
+                            )
+                            auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
+                            usage = merge_usage(usage, extract_usage(response))
+                            raw_text = _provider_response_text(response, provider_call)
+                            assistant_text = raw_text
+                            try:
+                                result = _parse_structured_response_text(response_model, raw_text)
+                            except Exception as parse_exc:
+                                repair_call_kwargs = _structured_json_prompt_kwargs(
+                                    call_kwargs=prepared.call_kwargs,
+                                    response_model=response_model,
+                                    messages=messages,
+                                    failure_reason=str(parse_exc),
+                                    invalid_response=raw_text,
+                                    force_api_mode=(
+                                        "chat_completions"
+                                        if provider_call.api_mode == "chat_completions"
+                                        else None
+                                    ),
+                                )
+                                repair_call = resolve_provider_call(
+                                    context=context,
+                                    call_kwargs=repair_call_kwargs,
+                                )
+                                response, provider_call, did_fallback = (
+                                    await _execute_provider_call_with_auto_fallback(
+                                        litellm=litellm,
+                                        context=context,
+                                        provider_call=repair_call,
+                                        attempt=prepared.attempt,
+                                        model=tracked_model,
+                                        route_reason=repair_call.route_reason,
+                                    )
+                                )
+                                auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
+                                usage = merge_usage(usage, extract_usage(response))
+                                raw_text = _provider_response_text(response, provider_call)
+                                assistant_text = raw_text
+                                result = _parse_structured_response_text(response_model, raw_text)
+                            prompt_t, completion_t, total_t = usage
+                            extra_outputs = llm_api_mode_outputs(
+                                initial_api_mode=initial_api_mode,
+                                final_api_mode=provider_call.api_mode,
+                                final_route_reason=provider_call.route_reason,
+                                auto_responses_chat_fallback=auto_responses_chat_fallback,
+                            )
+                            if provider_call.api_mode == "responses":
+                                tool_events = response_output_tool_events(response)
+                                if tool_events:
+                                    extra_outputs["llm_provider_tool_events"] = tool_events
+                            _end_langsmith_trace(
+                                trace_run,
+                                text=assistant_text.strip() or _serialize_structured_result(result),
+                                result=result,
+                                extra_outputs=extra_outputs,
+                                prompt_tokens=prompt_t,
+                                completion_tokens=completion_t,
+                                total_tokens=total_t,
+                            )
+                        logger.info(
+                            "llm_structured_complete",
+                            attempt=prepared.attempt,
+                            elapsed_s=round(time.monotonic() - prepared.started_at, 2),
+                            response_model=response_model.__name__,
+                            model=tracked_model,
+                            task_type=context.task_type,
+                            endpoint_role=context.endpoint_role,
+                            mode=mode_label,
+                            initial_api_mode=initial_api_mode,
+                            final_api_mode=provider_call.api_mode,
+                            initial_route_reason=route_reason,
+                            final_route_reason=provider_call.route_reason,
+                            auto_responses_chat_fallback=auto_responses_chat_fallback,
+                        )
+                        track_call(
+                            task_type=context.task_type,
+                            model=tracked_model,
+                            start=call_started_at,
+                            success=True,
+                            prompt_tokens=prompt_t,
+                            completion_tokens=completion_t,
+                            total_tokens=total_t,
+                        )
+                        return result
+                    trace_metadata = {
+                        **dict(extra_metadata or {}),
+                        **provider_call_metadata(base_provider_call),
+                    }
                     if not use_instructor:
                         repair_call_kwargs = _build_structured_repair_call_kwargs(
                             call_kwargs=prepared.call_kwargs,
@@ -293,13 +534,13 @@ async def acompletion_structured(
                             call_model=prepared.call_model,
                             provider=prepared.provider,
                             model_name=tracked_model,
-                            mode="structured",
+                            mode="structured_chat_completions",
                             messages=trace_messages,
                             call_kwargs=prepared.call_kwargs,
                             attempt=prepared.attempt,
                             endpoint_role=context.endpoint_role,
                             model_selector=context.model_selector,
-                            extra_metadata=extra_metadata,
+                            extra_metadata=trace_metadata,
                         ),
                     ) as trace_run:
                         if use_instructor:
@@ -359,6 +600,11 @@ async def acompletion_structured(
                             trace_run,
                             text=assistant_text.strip() or _serialize_structured_result(result),
                             result=result,
+                            extra_outputs=llm_api_mode_outputs(
+                                initial_api_mode=base_provider_call.api_mode,
+                                final_api_mode=base_provider_call.api_mode,
+                                final_route_reason=base_provider_call.route_reason,
+                            ),
                             prompt_tokens=prompt_t,
                             completion_tokens=completion_t,
                             total_tokens=total_t,
@@ -372,6 +618,8 @@ async def acompletion_structured(
                         task_type=context.task_type,
                         endpoint_role=context.endpoint_role,
                         mode=mode_label,
+                        api_mode=base_provider_call.api_mode,
+                        route_reason=base_provider_call.route_reason,
                     )
                     track_call(
                         task_type=context.task_type,

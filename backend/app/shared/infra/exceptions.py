@@ -2,8 +2,39 @@
 
 from __future__ import annotations
 
+import re
 from http import HTTPStatus
 from typing import Any
+
+
+_HTML_ERROR_MARKERS = (
+    "<!doctype html",
+    "<html",
+    "<head",
+    "<body",
+    "text/html",
+    "sub2api",
+    "reverse proxy",
+    "model server configuration",
+)
+
+
+def _sanitize_llm_error_reason(reason: str) -> str:
+    text = " ".join(str(reason or "").split()).strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if any(marker in lowered for marker in _HTML_ERROR_MARKERS):
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+        title = " ".join(title_match.group(1).split()).strip() if title_match else ""
+        suffix = f"（返回页面：{title}）" if title else ""
+        return (
+            "上游网关返回了网页内容而不是模型 API 响应"
+            f"{suffix}，请检查 LLM_BASE_URL 是否指向模型 API 端点，以及兼容网关/反向代理是否支持当前接口模式。"
+        )
+    if len(text) > 600:
+        return f"{text[:600].rstrip()}..."
+    return text
 
 
 class AITeachMeError(Exception):
@@ -216,8 +247,9 @@ class LLMCallError(AITeachMeError):
 
     def __init__(self, reason: str = "") -> None:
         detail = "上游模型调用失败。"
-        if reason:
-            detail = f"{detail}{reason}"
+        sanitized_reason = _sanitize_llm_error_reason(reason)
+        if sanitized_reason:
+            detail = f"{detail}{sanitized_reason}"
         super().__init__(detail=detail)
 
 

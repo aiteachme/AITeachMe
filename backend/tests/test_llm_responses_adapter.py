@@ -1,14 +1,25 @@
 ﻿from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from app.shared.infra.llm_support import responses_adapter
 from app.shared.infra.llm_support.common import build_completion_context, build_completion_contexts
-from app.shared.infra.llm_support.responses_adapter import resolve_provider_call
+from app.shared.infra.llm_support.responses_adapter import (
+    chat_fallback_for_auto_responses,
+    extract_response_text,
+    resolve_provider_call,
+    response_output_tool_events,
+    response_stream_delta,
+    response_stream_final_text,
+)
 from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.exceptions import LLMCallError
+from app.shared.infra.settings.defaults import get_default_settings_values
 from app.shared.infra.settings import set_system_settings_override
+from app.shared.infra.settings.support import get_llm_provider_model_defaults
 
 
 class FakeResponseEventType:
@@ -82,6 +93,95 @@ def test_auto_uses_responses_for_openai_compatible_reasoning_gateway(monkeypatch
     assert "max_tokens" not in call.kwargs
     assert "reasoning" not in call.kwargs
     assert call.auto_chat_fallback_kwargs is not None
+
+
+def test_auto_responses_html_gateway_error_falls_back_to_chat(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "auto"},
+    })
+    context = build_completion_context(task_type=TaskType.CHAT, model="primary")
+    call = resolve_provider_call(
+        context=context,
+        call_kwargs={
+            "model": "gpt-5.5",
+            "messages": [{"role": "user", "content": "hello"}],
+            "api_base": "https://gateway.example.com/v1",
+            "custom_llm_provider": "openai",
+        },
+    )
+
+    fallback = chat_fallback_for_auto_responses(
+        call,
+        RuntimeError(
+            "<!DOCTYPE html><html><head><title>Sub2API - AI API Gateway</title></head></html>. "
+            "Check the reverse proxy or model server configuration."
+        ),
+    )
+
+    assert fallback is not None
+    assert fallback.api_mode == "chat_completions"
+    assert fallback.kwargs["model"] == "gpt-5.5"
+    assert fallback.kwargs["messages"] == [{"role": "user", "content": "hello"}]
+
+
+def test_responses_output_tool_events_summarize_provider_native_calls() -> None:
+    response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                type="web_search_call",
+                id="ws_1",
+                status="completed",
+                action={"type": "search"},
+            ),
+            SimpleNamespace(type="message", content="done"),
+            {
+                "type": "file_search_call",
+                "call_id": "fs_1",
+                "status": "completed",
+            },
+        ],
+    )
+
+    assert response_output_tool_events(response) == [
+        {
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+            "action_type": "search",
+        },
+        {
+            "type": "file_search_call",
+            "call_id": "fs_1",
+            "status": "completed",
+        },
+    ]
+
+
+def test_responses_text_extractors_accept_raw_text_and_sdk_events() -> None:
+    assert extract_response_text("plain response text") == "plain response text"
+    assert response_stream_delta("plain stream text") == "plain stream text"
+    assert response_stream_delta(
+        SimpleNamespace(type=FakeResponseEventType("response.output_text.delta"), delta="delta text")
+    ) == "delta text"
+    assert response_stream_final_text(
+        SimpleNamespace(type="response.output_text.done", text="done text")
+    ) == "done text"
+    assert extract_response_text(
+        SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    type="message",
+                    content=[
+                        SimpleNamespace(type="output_text", text="nested text"),
+                    ],
+                )
+            ]
+        )
+    ) == "nested text"
 
 
 def test_auto_uses_litellm_reasoning_probe_for_gateway_alias(monkeypatch):
@@ -264,11 +364,78 @@ async def test_text_completion_calls_litellm_responses_in_auto(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_text_completion_records_provider_native_tool_events(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    trace_outputs: list[dict] = []
+
+    class FakeTraceRun:
+        def end(self, *, outputs):
+            trace_outputs.append(outputs)
+
+    @contextmanager
+    def fake_langsmith_trace(**kwargs):
+        yield FakeTraceRun()
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            return SimpleNamespace(
+                output_text="searched answer",
+                output=[
+                    SimpleNamespace(
+                        type="web_search_call",
+                        id="ws_1",
+                        status="completed",
+                    )
+                ],
+                usage=SimpleNamespace(input_tokens=3, output_tokens=4, total_tokens=7),
+            )
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - should not be called
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "langsmith_trace", fake_langsmith_trace)
+    set_system_settings_override({
+        "models": {"primary": "gpt-4.1"},
+        "llm": {"api_mode": "auto", "native_web_search": "auto"},
+    })
+
+    result = await text_module.acompletion(
+        [{"role": "user", "content": "latest AI news"}],
+        task_type=TaskType.CHAT,
+        model="primary",
+        provider_native_tools=[{"type": "web_search", "mode": "auto"}],
+    )
+
+    assert result == "searched answer"
+    assert trace_outputs[0]["llm_provider_tool_events"] == [
+        {
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+        }
+    ]
+
+
+@pytest.mark.anyio
 async def test_text_completion_auto_responses_falls_back_once_to_chat(monkeypatch):
     from app.shared.infra.llm_support import text as text_module
 
     response_calls: list[dict] = []
     chat_calls: list[dict] = []
+    trace_outputs: list[dict] = []
+
+    class FakeTraceRun:
+        def end(self, *, outputs):
+            trace_outputs.append(outputs)
+
+    @contextmanager
+    def fake_langsmith_trace(**kwargs):
+        yield FakeTraceRun()
 
     class FakeLiteLLM:
         async def aresponses(self, **kwargs):
@@ -290,6 +457,7 @@ async def test_text_completion_auto_responses_falls_back_once_to_chat(monkeypatc
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "langsmith_trace", fake_langsmith_trace)
     set_system_settings_override({
         "models": {"primary": "gpt-5.2"},
         "llm": {"api_mode": "auto", "reasoning_effort": "high"},
@@ -308,6 +476,10 @@ async def test_text_completion_auto_responses_falls_back_once_to_chat(monkeypatc
     assert chat_calls[0]["messages"] == [{"role": "user", "content": "hello"}]
     assert chat_calls[0]["max_tokens"] == 32
     assert chat_calls[0]["reasoning_effort"] == "high"
+    assert trace_outputs[0]["llm_initial_api_mode"] == "responses"
+    assert trace_outputs[0]["llm_final_api_mode"] == "chat_completions"
+    assert trace_outputs[0]["llm_auto_responses_chat_fallback"] is True
+    assert trace_outputs[0]["llm_final_api_mode_route_reason"] == "auto_responses_unsupported_chat_fallback"
 
 
 @pytest.mark.anyio
@@ -459,6 +631,85 @@ async def test_stream_completion_reads_chat_shaped_responses_chunks(monkeypatch)
 
 
 @pytest.mark.anyio
+async def test_stream_completion_reads_raw_text_responses_chunks(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    class FakeResponsesStream:
+        def __init__(self) -> None:
+            self._chunks = iter(["he", "llo"])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            return FakeResponsesStream()
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - should not be called
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "auto"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            max_tokens=32,
+        )
+    ]
+
+    assert "".join(chunks) == "hello"
+
+
+@pytest.mark.anyio
+async def test_stream_completion_accepts_non_stream_responses_text(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            return SimpleNamespace(output_text="non-stream response text")
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - should not be called
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "auto"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            max_tokens=32,
+        )
+    ]
+
+    assert "".join(chunks) == "non-stream response text"
+
+
+@pytest.mark.anyio
 async def test_stream_completion_reads_completed_responses_fallback(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 
@@ -508,6 +759,87 @@ async def test_stream_completion_reads_completed_responses_fallback(monkeypatch)
     ]
 
     assert "".join(chunks) == "completed text"
+
+
+@pytest.mark.anyio
+async def test_stream_completion_records_provider_native_tool_events(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    trace_outputs: list[dict] = []
+
+    class FakeTraceRun:
+        def add_event(self, event):  # noqa: ANN001
+            return None
+
+        def end(self, *, outputs):
+            trace_outputs.append(outputs)
+
+    @contextmanager
+    def fake_langsmith_trace(**kwargs):
+        yield FakeTraceRun()
+
+    class FakeResponsesStream:
+        def __init__(self) -> None:
+            self._chunks = iter([
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(
+                        output_text="completed text",
+                        output=[
+                            SimpleNamespace(
+                                type="web_search_call",
+                                id="ws_1",
+                                status="completed",
+                            )
+                        ],
+                    ),
+                ),
+            ])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            return FakeResponsesStream()
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - should not be called
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "langsmith_trace", fake_langsmith_trace)
+    set_system_settings_override({
+        "models": {"primary": "gpt-4.1"},
+        "llm": {"api_mode": "auto", "native_web_search": "auto"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "latest AI news"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            provider_native_tools=[{"type": "web_search", "mode": "auto"}],
+        )
+    ]
+
+    assert "".join(chunks) == "completed text"
+    assert trace_outputs[0]["llm_provider_tool_events"] == [
+        {
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+        }
+    ]
 
 
 def test_runtime_snapshot_pairs_primary_and_fallback_endpoints(monkeypatch):
@@ -590,9 +922,30 @@ def test_fallback_openai_compatible_uses_compatible_default_model(monkeypatch):
 
     contexts = build_completion_contexts(task_type=TaskType.CHAT, model="light")
 
+    assert contexts[0].endpoint_role == "primary"
+    assert contexts[0].model == "gpt-4o-mini"
     assert contexts[1].endpoint_role == "fallback"
     assert contexts[1].provider == "openai_compatible"
-    assert contexts[1].model == "gpt-5.5"
+    assert contexts[1].model == "gemini-3.1-flash-lite"
+
+
+def test_openai_compatible_provider_defaults_are_fallback_models():
+    defaults = get_llm_provider_model_defaults("openai_compatible")
+
+    assert defaults["primary"] == "gemini-3.1-flash-lite"
+    assert defaults["reason"] == "gemini-3.1-flash-lite"
+    assert defaults["light"] == "gemini-3.1-flash-lite"
+
+
+def test_unconfigured_openai_compatible_settings_use_support_defaults(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://aihubmix.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+    defaults = get_default_settings_values()
+
+    assert defaults["models"]["primary"] == "gemini-3.1-flash-lite"
+    assert defaults["models"]["reason"] == "gemini-3.1-flash-lite"
+    assert defaults["models"]["light"] == "gemini-3.1-flash-lite"
 
 
 def test_langsmith_trace_metadata_records_actual_model_route():
@@ -664,6 +1017,50 @@ async def test_text_completion_falls_back_to_default_provider_model(monkeypatch)
 
 
 @pytest.mark.anyio
+async def test_text_completion_does_not_use_fallback_when_primary_succeeds(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    calls: list[dict] = []
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):  # pragma: no cover - chat mode in this test
+            raise AssertionError("Responses should not be used")
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="primary ok"),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+            )
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.2"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    result = await text_module.acompletion(
+        [{"role": "user", "content": "hello"}],
+        task_type=TaskType.CHAT,
+        model="primary",
+        max_retries=1,
+    )
+
+    assert result == "primary ok"
+    assert len(calls) == 1
+    assert calls[0]["api_key"] == "primary-key"
+    assert calls[0]["model"] == "gpt-5.2"
+
+
+@pytest.mark.anyio
 async def test_stream_completion_falls_back_before_first_token(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 
@@ -720,3 +1117,87 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
     assert chunks == ["ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
     assert calls[1]["model"] == "deepseek-chat"
+
+
+@pytest.mark.anyio
+async def test_stream_auto_responses_html_iteration_error_falls_back_to_chat(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls: list[tuple[str, dict]] = []
+
+    class BrokenResponsesStream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise RuntimeError(
+                "<html><head><title>Sub2API - AI API Gateway</title></head></html>. "
+                "Check the reverse proxy or model server configuration."
+            )
+
+    class FakeChatStream:
+        def __init__(self) -> None:
+            self._chunks = iter([
+                SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(delta=SimpleNamespace(content="chat ok")),
+                    ],
+                ),
+            ])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(("responses", kwargs))
+            return BrokenResponsesStream()
+
+        async def acompletion(self, **kwargs):
+            calls.append(("chat", kwargs))
+            return FakeChatStream()
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "auto"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+        )
+    ]
+
+    assert chunks == ["chat ok"]
+    assert [kind for kind, _ in calls] == ["responses", "chat"]
+    assert calls[0][1]["model"] == "gpt-5.5"
+    assert calls[1][1]["model"] == "gpt-5.5"
+    assert "input" in calls[0][1]
+    assert "messages" in calls[1][1]
+
+
+def test_llm_call_error_sanitizes_html_gateway_page():
+    error = LLMCallError(
+        reason=(
+            "<!DOCTYPE html><html><head><title>Sub2API - AI API Gateway</title></head>"
+            "<body><script>window.__APP_CONFIG__={}</script></body></html>"
+        )
+    )
+
+    assert "上游网关返回了网页内容" in error.detail
+    assert "Sub2API - AI API Gateway" in error.detail
+    assert "<html" not in error.detail
+    assert "__APP_CONFIG__" not in error.detail

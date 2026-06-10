@@ -56,7 +56,6 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   fetchKnowledgeBuildRuntime,
 } from "../lib/knowledgeBuildRuntime";
-import { formatDigestModeLabel } from "../lib/digestMode";
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { trackCourseAnalyticsEvent } from "../lib/analytics";
 import {
@@ -127,6 +126,7 @@ function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
 interface PlannerOutlineItem {
   title: string;
   description?: string;
+  tooltip?: string;
 }
 
 interface PlannerViewChapter {
@@ -160,7 +160,7 @@ interface PlannerStreamStepItem {
 interface PlannerStreamingBubbleProps {
   preview: string;
   statusText: string;
-  steps: PlannerStreamStepItem[];
+  plan?: BuildPlannerPlanResponse | null;
 }
 
 type PlannerSessionWithModel = BuildPlannerSessionResponse & { model_override?: string | null };
@@ -589,13 +589,25 @@ function mergePlannerStreamStep(
 
 function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefined, limit?: number): PlannerOutlineItem[] {
   const chapters = plannerChapters(plan)
-    .map((chapter) => ({
-      title: String(chapter.title ?? "").trim(),
-      description: String(
-        chapter.objective
-          ?? [...(chapter.required_elements ?? []), ...(chapter.key_points ?? [])].filter(Boolean).join("；"),
-      ).trim(),
-    }))
+    .map((chapter) => {
+      const seenKeywords = new Set<string>();
+      const keywords = [...(chapter.required_elements ?? []), ...(chapter.key_points ?? [])]
+        .map((item) => String(item ?? "").trim())
+        .filter((item) => {
+          const key = item.toLowerCase();
+          if (!item || seenKeywords.has(key)) {
+            return false;
+          }
+          seenKeywords.add(key);
+          return true;
+        });
+      const objective = String(chapter.objective ?? "").trim();
+      return {
+        title: String(chapter.title ?? "").trim(),
+        description: objective || keywords.join("；"),
+        tooltip: [objective, keywords.length ? `关键词：${keywords.join("、")}` : ""].filter(Boolean).join("\n"),
+      };
+    })
     .filter((item) => item.title);
 
   if (chapters.length) {
@@ -642,29 +654,61 @@ function plannerResponseAnalyticsProperties(response: BuildPlannerSessionRespons
   };
 }
 
-function PlannerStreamingBubble({ preview, statusText }: PlannerStreamingBubbleProps) {
+function PlannerStreamingOutlinePreview({ plan }: { plan: BuildPlannerPlanResponse }) {
+  const outlineItems = buildPlannerOutlineItems(plan, 6);
+
+  if (!outlineItems.length) {
+    return null;
+  }
+
+  return (
+    <ol className="mt-4 space-y-2.5">
+      {outlineItems.map((item, index) => (
+        <li key={`${index}-${item.title}`} className="flex items-start gap-3 py-1">
+          <span className="mt-0.5 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
+            {item.description ? (
+              <div
+                title={item.tooltip || item.description}
+                className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400"
+              >
+                {item.description}
+              </div>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function PlannerStreamingBubble({ preview, statusText, plan }: PlannerStreamingBubbleProps) {
   const trimmedPreview = preview.trim();
   const currentStatus = compactPlannerDetail(statusText || "正在整理学习目标...", 86);
+  const hasPlanPreview = hasUsablePlannerPlan(plan);
 
   return (
     <div
       aria-live="polite"
-      className="planner-stream-bubble rounded-xl rounded-tl-sm border border-zinc-200/80 bg-white px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950"
+      className="planner-stream-bubble rounded-lg border border-zinc-200/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950"
     >
-      <div className="flex items-center gap-2 text-sm">
-        <span className="build-live-dot h-2 w-2 text-zinc-950 dark:text-slate-100" aria-hidden="true" />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <span className="font-semibold text-zinc-950 dark:text-slate-100">正在规划</span>
         <span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-slate-400">{currentStatus}</span>
       </div>
 
       {trimmedPreview ? (
-        <div className="relative mt-3 max-h-56 overflow-hidden border-l border-zinc-200 pl-3 text-sm leading-7 text-zinc-600 dark:border-slate-800 dark:text-slate-300">
+        <div className="relative mt-3 max-h-56 overflow-hidden text-sm leading-7 text-zinc-600 dark:text-slate-300">
           <div className="planner-stream-preview">
-            <PlannerPreviewMarkdown markdown={trimmedPreview} streaming />
+            <PlannerPreviewMarkdown markdown={trimmedPreview} />
           </div>
         </div>
       ) : null}
 
+      {hasPlanPreview ? <PlannerStreamingOutlinePreview plan={plan} /> : null}
     </div>
   );
 }
@@ -678,7 +722,6 @@ function PlannerOutlineCard({
   onConfirm,
   onAdjust,
   onOpenKnowledgeDocs,
-  isPreviewing = false,
 }: {
   plan: BuildPlannerPlanResponse;
   needsRefresh: boolean;
@@ -688,62 +731,57 @@ function PlannerOutlineCard({
   onConfirm: () => void;
   onAdjust: () => void;
   onOpenKnowledgeDocs: () => void;
-  isPreviewing?: boolean;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
   const adjustmentQuestions = buildPlannerAdjustmentQuestions(plan);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
   const courseName = String(view?.course_name ?? "").trim();
-  const showSummary = !isPreviewing || !outlineItems.length;
 
   return (
-    <article className="rounded-xl border border-zinc-200/80 bg-white px-5 py-5 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950">
-      {showSummary ? (
-        <div>
-          {courseName ? (
-            <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
-              <BookOpen className="h-3.5 w-3.5" />
-              {courseName}
+    <article className="rounded-lg bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800">
+      <div>
+        {courseName ? (
+          <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
+            <BookOpen className="h-3.5 w-3.5" />
+            {courseName}
+          </div>
+        ) : null}
+        <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
+          {planText || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
+        </p>
+        {adjustmentQuestions.length ? (
+          <div className="mt-4 rounded-md bg-zinc-50/80 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/60 dark:text-slate-300">
+            <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
+              <RefreshCw className="h-3.5 w-3.5" />
+              可以继续这样改
             </div>
-          ) : null}
-          <p className="text-[17px] font-semibold leading-8 text-zinc-950 dark:text-slate-100">
-            {planText || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
-          </p>
-          {adjustmentQuestions.length ? (
-            <div className="mt-4 rounded-lg bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/70 dark:text-slate-300">
-              <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-slate-400">
-                <RefreshCw className="h-3.5 w-3.5" />
-                可以继续这样改
-              </div>
-              {adjustmentQuestions.map((item, index) => (
-                <p key={`${index}-${item}`}>{item}</p>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+            {adjustmentQuestions.map((item, index) => (
+              <p key={`${index}-${item}`}>{item}</p>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
-      <ol className={`${showSummary ? "mt-5" : ""} divide-y divide-zinc-100 dark:divide-slate-800`}>
+      <ol className="mt-5 space-y-3">
         {outlineItems.map((item, index) => (
-          <li key={`${index}-${item.title}`} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-            <span className="mt-0.5 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
+          <li key={`${index}-${item.title}`} className="flex items-start gap-3 rounded-md px-1 py-1">
+            <span className="mt-1 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
               {String(index + 1).padStart(2, "0")}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-base font-semibold leading-7 text-zinc-900 dark:text-slate-100">{item.title}</div>
+              <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
               {item.description ? (
-                <div className="mt-0.5 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">{item.description}</div>
+                <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
+                  {item.description}
+                </div>
               ) : null}
             </div>
           </li>
         ))}
       </ol>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className="text-xs text-zinc-400 dark:text-slate-500">
-          {formatDigestModeLabel(plan.digest_mode)}
-        </span>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         {needsRefresh ? (
           <span className="text-xs text-amber-600 dark:text-amber-400">
             资料已变化
@@ -755,49 +793,40 @@ function PlannerOutlineCard({
           </span>
         ) : null}
         <div className="flex-1" />
-        {isPreviewing ? (
-          <span className="inline-flex min-h-9 items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
-            <span className="build-live-dot h-2 w-2 text-zinc-950 dark:text-slate-100" aria-hidden="true" />
-            正在整理章节...
-          </span>
-        ) : (
-          <>
-            {publishedDocReady ? (
-              <button
-                type="button"
-                onClick={onOpenKnowledgeDocs}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                <BookOpen className="h-4 w-4" />
-                进入文档
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onAdjust}
-              disabled={isDisabled}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <RefreshCw className="h-4 w-4" />
-              调整
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isDisabled}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-            >
-              {isBuilding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : publishedDocReady ? (
-                <RefreshCw className="h-4 w-4" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              {publishedDocReady ? "重新构建" : "开始构建"}
-            </button>
-          </>
-        )}
+        {publishedDocReady ? (
+          <button
+            type="button"
+            onClick={onOpenKnowledgeDocs}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <BookOpen className="h-4 w-4" />
+            进入文档
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onAdjust}
+          disabled={isDisabled}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <RefreshCw className="h-4 w-4" />
+          调整
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isDisabled}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        >
+          {isBuilding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : publishedDocReady ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {publishedDocReady ? "重新构建" : "开始构建"}
+        </button>
       </div>
     </article>
   );
@@ -817,7 +846,7 @@ function BuildInProgressBubble({
   onOpen: () => void;
 }) {
   return (
-    <div className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
+    <div className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
           {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -855,7 +884,7 @@ function BuildInProgressBubble({
               <button
                 type="button"
                 onClick={onOpen}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
+                className="inline-flex items-center gap-1.5 rounded-md bg-zinc-950 px-3 py-2 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 进入知识文档
@@ -955,11 +984,11 @@ function LibraryPickerModal({
         role="dialog"
         aria-modal="true"
         aria-label="从资料库选择"
-        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        className="relative z-10 flex max-h-[82vh] w-[640px] max-w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900">
               <FolderOpen className="h-5 w-5" />
             </div>
             <div>
@@ -985,14 +1014,14 @@ function LibraryPickerModal({
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="搜索文件名或格式"
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
+                className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-100/10"
               />
             </div>
             <button
               type="button"
               onClick={() => void filesQuery.refetch()}
               disabled={filesQuery.isFetching}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <RefreshCw className={`h-4 w-4 ${filesQuery.isFetching ? "animate-spin" : ""}`} />
               刷新
@@ -1009,7 +1038,7 @@ function LibraryPickerModal({
           ) : null}
 
           {!filesQuery.isLoading && files.length === 0 ? (
-            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center dark:border-slate-800 dark:bg-slate-800/30">
               <FolderOpen className="h-8 w-8 text-slate-400" />
               <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">资料库还没有文件</p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">先上传资料后，就可以在这里选择。</p>
@@ -1031,7 +1060,7 @@ function LibraryPickerModal({
                 return (
                   <label
                     key={file.id}
-                    className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition ${
+                    className={`flex items-center gap-3 rounded-md border px-3 py-3 transition ${
                       linked
                         ? "cursor-default border-blue-100 bg-blue-50/60 dark:border-blue-500/30 dark:bg-blue-500/10"
                         : checked
@@ -1082,14 +1111,14 @@ function LibraryPickerModal({
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 dark:border-slate-800/80 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3 bg-white px-5 pb-5 pt-3 dark:bg-slate-900">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">已选 {selectedCount} 份资料</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             >
               取消
             </button>
@@ -1097,7 +1126,7 @@ function LibraryPickerModal({
               type="button"
               onClick={() => onConfirm(Array.from(selected))}
               disabled={selectedCount === 0 || isSubmitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+              className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
             >
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               加入课程
@@ -1343,7 +1372,7 @@ export function BuildPlanPage() {
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
   const [plannerStreamingPlan, setPlannerStreamingPlan] = useState<BuildPlannerPlanResponse | null>(null);
-  const [plannerStreamingSteps, setPlannerStreamingSteps] = useState<PlannerStreamStepItem[]>([]);
+  const [, setPlannerStreamingSteps] = useState<PlannerStreamStepItem[]>([]);
 
   const handlePlannerStatusPayload = useCallback((payload: unknown) => {
     setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -2423,7 +2452,7 @@ export function BuildPlanPage() {
             {shouldShowPlannerEmptyState ? (
               <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">
                 <div className="max-w-xl text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
                     <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                   <h1 className="mt-5 text-xl font-semibold tracking-normal text-zinc-950 dark:text-slate-100">
@@ -2445,21 +2474,8 @@ export function BuildPlanPage() {
                   <PlannerStreamingBubble
                     preview={plannerStreamingPreview}
                     statusText={plannerPendingStatusText}
-                    steps={plannerStreamingSteps}
+                    plan={plannerStreamingPlan}
                   />
-                  {plannerStreamingPlan ? (
-                    <PlannerOutlineCard
-                      plan={plannerStreamingPlan}
-                      needsRefresh={false}
-                      isDisabled
-                      isBuilding={false}
-                      publishedDocReady={false}
-                      onConfirm={handleConfirmBuild}
-                      onAdjust={handleContinueAdjust}
-                      onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
-                      isPreviewing
-                    />
-                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -2484,7 +2500,7 @@ export function BuildPlanPage() {
                 <div
                   className={
                     message.role === "user"
-                      ? "max-w-[80%] rounded-2xl rounded-tr-md bg-zinc-900 px-4 py-3 text-sm text-white shadow-sm"
+                      ? "max-w-[80%] rounded-lg rounded-tr-sm bg-zinc-900 px-4 py-3 text-sm text-white shadow-sm"
                       : message.role === "system"
                         ? "rounded-full bg-zinc-100 dark:bg-slate-800 px-3 py-1 text-xs text-zinc-500 dark:text-slate-400"
                         : "min-w-0 flex-1 space-y-2"
@@ -2496,26 +2512,12 @@ export function BuildPlanPage() {
                         <PlannerStreamingBubble
                           preview={plannerStreamingPreview}
                           statusText={plannerPendingStatusText}
-                          steps={plannerStreamingSteps}
-                        />
-                      ) : null}
-
-                      {message.streaming && !message.plan && plannerStreamingPlan ? (
-                        <PlannerOutlineCard
                           plan={plannerStreamingPlan}
-                          needsRefresh={false}
-                          isDisabled
-                          isBuilding={false}
-                          publishedDocReady={false}
-                          onConfirm={handleConfirmBuild}
-                          onAdjust={handleContinueAdjust}
-                          onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
-                          isPreviewing
                         />
                       ) : null}
 
                       {!message.plan && message.content ? (
-                        <div className="rounded-2xl rounded-tl-md border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
+                        <div className="rounded-lg rounded-tl-sm border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
                           <PlannerPreviewMarkdown markdown={message.content} />
                         </div>
                       ) : null}
@@ -2582,7 +2584,7 @@ export function BuildPlanPage() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100">
                   <AlertCircle className="h-4 w-4 text-red-500" />
                 </div>
-                <div className="rounded-2xl rounded-tl-md border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-lg rounded-tl-sm border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {knowledgeBuild.errorMessage}
                 </div>
               </div>
@@ -2594,7 +2596,7 @@ export function BuildPlanPage() {
 
         <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
-            <div className="w-full rounded-2xl border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
+            <div className="w-full rounded-lg border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -2626,13 +2628,13 @@ export function BuildPlanPage() {
 
               <div className="px-3 pb-3 flex flex-col gap-2">
                 {files.length > 0 && (
-                  <div className="flex flex-wrap gap-2 px-1 py-2 border-t border-zinc-100 dark:border-slate-800">
+                  <div className="flex flex-wrap gap-2 px-1 py-1">
                     {files.map((file) => {
                       const meta = fileMeta(file);
                       return (
                         <div
                           key={file.id}
-                          className="group relative flex items-center gap-1.5 rounded-lg border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
+                          className="group relative flex items-center gap-1.5 rounded-md border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
                         >
                           {fileIcon(file)}
                           <span className="max-w-[140px] truncate font-medium">
@@ -2674,7 +2676,7 @@ export function BuildPlanPage() {
                       htmlFor="files-page-upload"
                       aria-label={uploadMutation.isPending ? "上传中" : "上传资料"}
                       title={uploadMutation.isPending ? "上传中" : "上传资料"}
-                      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-within:ring-slate-100/10"
+                      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-within:outline-none focus-within:ring-4 focus-within:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-within:ring-slate-100/10"
                     >
                       {uploadMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -2687,7 +2689,7 @@ export function BuildPlanPage() {
                       type="button"
                       onClick={() => setLibraryPickerOpen(true)}
                       disabled={isBuilding || plannerStreaming || linkLibraryMutation.isPending}
-                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
                       title="从我的资料库选择已有文件"
                     >
                       {linkLibraryMutation.isPending ? (
@@ -2728,7 +2730,7 @@ export function BuildPlanPage() {
                       }
                       title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
                       className={
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all sm:h-9 sm:w-9 " +
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-all sm:h-9 sm:w-9 " +
                         (isBuilding || plannerStreaming
                           ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
                           : (!inputValue.trim() || confirmPlannerMutation.isPending)

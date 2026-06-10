@@ -31,10 +31,15 @@ from .observability import (
     _end_langsmith_trace,
     _langsmith_trace_kwargs,
     _record_new_token_event,
+    llm_api_mode_outputs,
 )
 from .responses_adapter import (
+    ProviderCall,
     chat_fallback_for_auto_responses,
+    extract_response_text,
+    provider_call_metadata,
     resolve_provider_call,
+    response_output_tool_events,
     response_stream_delta,
     response_stream_final_text,
 )
@@ -48,6 +53,94 @@ def _is_stream_usage_calculation_error(exc: Exception) -> bool:
         "error building chunks for logging/streaming usage calculation" in message
         or "streaming usage calculation" in message
     )
+
+
+def _stream_chunk_content(
+    *,
+    provider_call: ProviderCall,
+    chunk: Any,
+    streamed_chunks: list[str],
+) -> str | None:
+    if provider_call.api_mode == "responses":
+        content = response_stream_delta(chunk)
+        if not content and not streamed_chunks:
+            content = response_stream_final_text(chunk)
+        return content
+
+    choices = getattr(chunk, "choices", None) or []
+    if not choices:
+        return None
+    delta = getattr(choices[0], "delta", None)
+    return getattr(delta, "content", None) if delta is not None else None
+
+
+async def _stream_content_parts(
+    *,
+    response: Any,
+    context,
+    provider_call: ProviderCall,
+    trace_run: Any,
+    usage: tuple[int, int, int],
+    streamed_chunks: list[str],
+    provider_tool_events: list[dict[str, str]],
+) -> AsyncGenerator[tuple[str, tuple[int, int, int]], None]:
+    first_token_seen = bool(streamed_chunks)
+    if not hasattr(response, "__aiter__"):
+        content = _non_stream_response_text(provider_call=provider_call, response=response)
+        if content:
+            if not first_token_seen:
+                _record_new_token_event(trace_run)
+            streamed_chunks.append(content)
+            yield content, usage
+        return
+
+    async for chunk in _stream_chunks_with_timeout(
+        response,
+        timeout_s=context_request_timeout_s(context, provider_call.kwargs),
+    ):
+        usage = merge_usage(usage, extract_usage(chunk))
+        if provider_call.api_mode == "responses":
+            for event in response_output_tool_events(_get_response_payload(chunk)):
+                if event not in provider_tool_events:
+                    provider_tool_events.append(event)
+        content = _stream_chunk_content(
+            provider_call=provider_call,
+            chunk=chunk,
+            streamed_chunks=streamed_chunks,
+        )
+        if not content:
+            continue
+        if not first_token_seen:
+            _record_new_token_event(trace_run)
+            first_token_seen = True
+        streamed_chunks.append(content)
+        yield content, usage
+
+
+def _get_response_payload(chunk: Any) -> Any:
+    if isinstance(chunk, Mapping):
+        return chunk.get("response") or chunk
+    return getattr(chunk, "response", None) or chunk
+
+
+def _non_stream_response_text(
+    *,
+    provider_call: ProviderCall,
+    response: Any,
+) -> str:
+    if provider_call.api_mode == "responses":
+        return extract_response_text(response)
+
+    choices = getattr(response, "choices", None) or []
+    for choice in choices:
+        message = getattr(choice, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        if content:
+            return str(content)
+        text = getattr(choice, "text", None)
+        if text:
+            return str(text)
+    return response if isinstance(response, str) else ""
 
 
 async def _stream_chunks_with_timeout(
@@ -114,9 +207,16 @@ async def acompletion_stream(
                     context=context,
                     call_kwargs=prepared.call_kwargs,
                 )
+                initial_api_mode = provider_call.api_mode
+                route_reason = provider_call.route_reason
+                auto_responses_chat_fallback = False
+                trace_metadata = {
+                    **dict(extra_metadata or {}),
+                    **provider_call_metadata(provider_call),
+                }
                 streamed_chunks: list[str] = []
+                provider_tool_events: list[dict[str, str]] = []
                 usage = (0, 0, 0)
-                first_token_seen = False
                 with langsmith_trace(
                     name="LLM：流式生成",
                     run_type="llm",
@@ -130,7 +230,7 @@ async def acompletion_stream(
                         call_kwargs=provider_call.kwargs,
                         endpoint_role=context.endpoint_role,
                         model_selector=context.model_selector,
-                        extra_metadata=extra_metadata,
+                        extra_metadata=trace_metadata,
                     ),
                 ) as trace_run:
                     try:
@@ -150,12 +250,14 @@ async def acompletion_stream(
                         )
                         if fallback_call is None:
                             raise
+                        auto_responses_chat_fallback = True
                         logger.warning(
                             "llm_stream_auto_responses_fallback_to_chat",
                             attempt=prepared.attempt,
                             model=tracked_model,
                             task_type=context.task_type,
                             endpoint_role=context.endpoint_role,
+                            route_reason=route_reason,
                             error=str(provider_exc),
                         )
                         provider_call = fallback_call
@@ -165,43 +267,75 @@ async def acompletion_stream(
                         )
                     usage = merge_usage(usage, extract_usage(response))
                     try:
-                        async for chunk in _stream_chunks_with_timeout(
-                            response,
-                            timeout_s=context_request_timeout_s(context, provider_call.kwargs),
+                        async for content, usage in _stream_content_parts(
+                            response=response,
+                            context=context,
+                            provider_call=provider_call,
+                            trace_run=trace_run,
+                            usage=usage,
+                            streamed_chunks=streamed_chunks,
+                            provider_tool_events=provider_tool_events,
                         ):
-                            usage = merge_usage(usage, extract_usage(chunk))
-                            if provider_call.api_mode == "responses":
-                                content = response_stream_delta(chunk)
-                                if not content and not streamed_chunks:
-                                    content = response_stream_final_text(chunk)
-                            else:
-                                choices = getattr(chunk, "choices", None) or []
-                                if not choices:
-                                    continue
-                                delta = getattr(choices[0], "delta", None)
-                                content = getattr(delta, "content", None) if delta is not None else None
-                            if not content:
-                                continue
-                            if not first_token_seen:
-                                _record_new_token_event(trace_run)
-                                first_token_seen = True
-                            streamed_chunks.append(content)
                             attempt_streamed_content = True
                             yield content
                     except Exception as exc:
-                        if not streamed_chunks or not _is_stream_usage_calculation_error(exc):
-                            raise
-                        logger.info(
-                            "llm_stream_usage_calculation_failed_ignored",
-                            model=tracked_model,
-                            task_type=context.task_type,
-                            endpoint_role=context.endpoint_role,
-                            error=str(exc),
+                        fallback_call = chat_fallback_for_auto_responses(
+                            provider_call,
+                            exc,
                         )
+                        fallback_stream_succeeded = False
+                        if fallback_call is not None and not streamed_chunks:
+                            auto_responses_chat_fallback = True
+                            logger.warning(
+                                "llm_stream_auto_responses_iteration_fallback_to_chat",
+                                attempt=prepared.attempt,
+                                model=tracked_model,
+                                task_type=context.task_type,
+                                endpoint_role=context.endpoint_role,
+                                route_reason=route_reason,
+                                error=str(exc),
+                            )
+                            provider_call = fallback_call
+                            response = await asyncio.wait_for(
+                                litellm.acompletion(**provider_call.kwargs),
+                                timeout=context_request_timeout_s(context, provider_call.kwargs),
+                            )
+                            usage = merge_usage(usage, extract_usage(response))
+                            async for content, usage in _stream_content_parts(
+                                response=response,
+                                context=context,
+                                provider_call=provider_call,
+                                trace_run=trace_run,
+                                usage=usage,
+                                streamed_chunks=streamed_chunks,
+                                provider_tool_events=provider_tool_events,
+                            ):
+                                attempt_streamed_content = True
+                                yield content
+                            fallback_stream_succeeded = True
+                        if not fallback_stream_succeeded:
+                            if not streamed_chunks or not _is_stream_usage_calculation_error(exc):
+                                raise
+                            logger.info(
+                                "llm_stream_usage_calculation_failed_ignored",
+                                model=tracked_model,
+                                task_type=context.task_type,
+                                endpoint_role=context.endpoint_role,
+                                error=str(exc),
+                            )
                     prompt_t, completion_t, total_t = usage
+                    extra_outputs = llm_api_mode_outputs(
+                        initial_api_mode=initial_api_mode,
+                        final_api_mode=provider_call.api_mode,
+                        final_route_reason=provider_call.route_reason,
+                        auto_responses_chat_fallback=auto_responses_chat_fallback,
+                    )
+                    if provider_tool_events:
+                        extra_outputs["llm_provider_tool_events"] = provider_tool_events
                     _end_langsmith_trace(
                         trace_run,
                         text="".join(streamed_chunks),
+                        extra_outputs=extra_outputs,
                         prompt_tokens=prompt_t,
                         completion_tokens=completion_t,
                         total_tokens=total_t,
@@ -212,6 +346,11 @@ async def acompletion_stream(
                     model=tracked_model,
                     task_type=context.task_type,
                     endpoint_role=context.endpoint_role,
+                    initial_api_mode=initial_api_mode,
+                    final_api_mode=provider_call.api_mode,
+                    initial_route_reason=route_reason,
+                    final_route_reason=provider_call.route_reason,
+                    auto_responses_chat_fallback=auto_responses_chat_fallback,
                 )
                 prompt_t, completion_t, total_t = usage
                 track_call(

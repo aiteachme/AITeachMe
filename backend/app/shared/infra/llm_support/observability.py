@@ -137,6 +137,7 @@ def _langsmith_outputs(
     text: str | None = None,
     result: Any = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    extra_outputs: Mapping[str, Any] | None = None,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
@@ -170,6 +171,18 @@ def _langsmith_outputs(
             outputs["result"] = _sanitize_langsmith_value(result, capture_text=True, field_name="result")
         else:
             outputs["result_type"] = type(result).__name__
+    if extra_outputs:
+        outputs.update(
+            {
+                str(key): _sanitize_langsmith_value(
+                    value,
+                    capture_text=capture_outputs,
+                    field_name=str(key),
+                )
+                for key, value in extra_outputs.items()
+                if value not in (None, "", [], {})
+            }
+        )
     return outputs
 
 
@@ -209,6 +222,35 @@ def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, An
     return invocation_params
 
 
+def _langsmith_api_mode_from_mode(mode: str) -> str:
+    mode_text = str(mode or "").strip()
+    if mode_text.endswith("_chat_completions") or mode_text == "chat_completions":
+        return "chat_completions"
+    if mode_text.endswith("_responses") or mode_text == "responses":
+        return "responses"
+    if mode_text in {"structured", "tools", "tools_stream"}:
+        return "chat_completions"
+    return mode_text
+
+
+def _langsmith_provider_tool_types(call_kwargs: Mapping[str, Any]) -> list[str]:
+    tool_types: list[str] = []
+    tools = call_kwargs.get("tools")
+    if not isinstance(tools, list):
+        return tool_types
+    for tool in tools:
+        if not isinstance(tool, Mapping):
+            continue
+        tool_type = str(tool.get("type") or "").strip()
+        if not tool_type:
+            function = tool.get("function")
+            if isinstance(function, Mapping):
+                tool_type = str(function.get("name") or "").strip()
+        if tool_type and tool_type not in tool_types:
+            tool_types.append(tool_type)
+    return tool_types
+
+
 def _record_new_token_event(trace_run: Any | None) -> None:
     if trace_run is None:
         return
@@ -220,12 +262,33 @@ def _record_new_token_event(trace_run: Any | None) -> None:
             return
 
 
+def llm_api_mode_outputs(
+    *,
+    initial_api_mode: str,
+    final_api_mode: str,
+    final_route_reason: str | None = None,
+    auto_responses_chat_fallback: bool = False,
+) -> dict[str, Any]:
+    """Return compact output fields that explain the final provider transport."""
+
+    outputs: dict[str, Any] = {
+        "llm_initial_api_mode": initial_api_mode,
+        "llm_final_api_mode": final_api_mode,
+        "llm_api_mode_changed": initial_api_mode != final_api_mode,
+        "llm_auto_responses_chat_fallback": auto_responses_chat_fallback,
+    }
+    if final_route_reason:
+        outputs["llm_final_api_mode_route_reason"] = final_route_reason
+    return outputs
+
+
 def _end_langsmith_trace(
     trace_run: Any | None,
     *,
     text: str | None = None,
     result: Any = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    extra_outputs: Mapping[str, Any] | None = None,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
@@ -237,6 +300,7 @@ def _end_langsmith_trace(
             text=text,
             result=result,
             tool_calls=tool_calls,
+            extra_outputs=extra_outputs,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
@@ -259,6 +323,7 @@ def _langsmith_llm_metadata(
     metadata: dict[str, Any] = {
         "task_type": task_label,
         "mode": mode,
+        "llm_initial_api_mode": _langsmith_api_mode_from_mode(mode),
         "model": model_name,
         "ls_provider": provider,
         "ls_model_name": model_name,
@@ -301,6 +366,7 @@ def _langsmith_trace_kwargs(
 ) -> dict[str, Any]:
     trace_context = get_llm_trace_context()
     invocation_params = _langsmith_invocation_params(call_kwargs or {})
+    provider_tool_types = _langsmith_provider_tool_types(call_kwargs or {})
     task_label = normalize_task_type(task_type)
     metadata = {
         **dict(extra_metadata or {}),
@@ -315,6 +381,15 @@ def _langsmith_trace_kwargs(
             model_selector=model_selector,
         ),
     }
+    if provider_tool_types:
+        metadata["llm_tool_types"] = provider_tool_types
+        provider_native_tool_types = [
+            tool_type
+            for tool_type in provider_tool_types
+            if tool_type in {"web_search", "file_search"}
+        ]
+        if provider_native_tool_types and "llm_provider_native_tool_types" not in metadata:
+            metadata["llm_provider_native_tool_types"] = provider_native_tool_types
     return {
         "inputs": _langsmith_inputs(call_model=call_model, messages=messages, tools=tools),
         "course_id": trace_context.course_id,
