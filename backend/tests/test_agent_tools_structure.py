@@ -28,6 +28,7 @@ from app.workflows.interact.chat.lib.tooling import (
     resolve_interact_tool_plan,
     synthesize_ask_user_options_action,
 )
+from app.workflows.interact.chat.lib.types import RetrievedContext
 
 
 def teardown_function() -> None:
@@ -133,12 +134,105 @@ def test_interact_native_tools_request_web_search_for_global_assistant() -> None
     ]
 
 
-def test_interact_native_tools_request_file_search_only_for_course_scope() -> None:
+def test_interact_native_tools_request_file_search_when_course_agent_lacks_local_context() -> None:
     set_system_settings_override({
         "llm": {
             "native_file_search": "auto",
             "native_file_search_vector_store_ids": "vs_course",
             "native_file_search_max_results": 3,
+        }
+    })
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.PLAN_EXECUTE,
+        course_id="course-1",
+        retrieval_results=[],
+        scene="course_chat",
+        source="quick_chat",
+        question="explain chapter 1",
+    )
+
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="course-1",
+        retrieval_results=[],
+    ) == [
+        {
+            "type": "file_search",
+            "mode": "auto",
+            "vector_store_ids": ["vs_course"],
+            "max_num_results": 3,
+        },
+    ]
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="global",
+        retrieval_results=[],
+    ) == []
+
+
+def test_interact_native_file_search_auto_does_not_shadow_strong_local_rag() -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_file_search": "auto",
+            "native_file_search_vector_store_ids": "vs_course",
+        }
+    })
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.PLAN_EXECUTE,
+        course_id="course-1",
+        retrieval_results=[],
+        scene="course_chat",
+        source="quick_chat",
+        question="explain chapter 1",
+    )
+
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="course-1",
+        retrieval_results=[
+            RetrievedContext(
+                chunk_id=1,
+                file_id="file-1",
+                title="本地强证据",
+                header_path="第一章",
+                content="课程资料里的高相关解释。",
+                score=0.86,
+                low_relevance=False,
+                retrieval_source="vector",
+            )
+        ],
+    ) == []
+
+
+def test_interact_native_file_search_auto_skips_plain_course_single_pass() -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_file_search": "auto",
+            "native_file_search_vector_store_ids": "vs_course",
+        }
+    })
+    plan = resolve_interact_tool_plan(
+        execution_mode=InteractExecutionMode.SINGLE_PASS,
+        course_id="course-1",
+        retrieval_results=[],
+        scene="course_chat",
+        source="quick_chat",
+        question="explain chapter 1",
+    )
+
+    assert plan.tool_names == []
+    assert build_interact_provider_native_tools(
+        tool_plan=plan,
+        course_id="course-1",
+        retrieval_results=[],
+    ) == []
+
+
+def test_interact_native_file_search_force_can_override_local_gate() -> None:
+    set_system_settings_override({
+        "llm": {
+            "native_file_search": "force",
+            "native_file_search_vector_store_ids": "vs_course",
         }
     })
     plan = resolve_interact_tool_plan(
@@ -153,18 +247,26 @@ def test_interact_native_tools_request_file_search_only_for_course_scope() -> No
     assert build_interact_provider_native_tools(
         tool_plan=plan,
         course_id="course-1",
+        retrieval_results=[
+            RetrievedContext(
+                chunk_id=1,
+                file_id="file-1",
+                title="本地强证据",
+                header_path="第一章",
+                content="课程资料里的高相关解释。",
+                score=0.86,
+                low_relevance=False,
+                retrieval_source="vector",
+            )
+        ],
     ) == [
         {
             "type": "file_search",
-            "mode": "auto",
+            "mode": "force",
             "vector_store_ids": ["vs_course"],
-            "max_num_results": 3,
+            "max_num_results": 5,
         },
     ]
-    assert build_interact_provider_native_tools(
-        tool_plan=plan,
-        course_id="global",
-    ) == []
 
 
 def test_synthesizes_ask_user_options_action_from_numbered_text() -> None:

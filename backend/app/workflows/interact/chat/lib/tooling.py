@@ -239,16 +239,32 @@ def build_interact_provider_native_tools(
     *,
     tool_plan: InteractToolPlan,
     course_id: str,
+    retrieval_results: list[RetrievedContext] | None = None,
 ) -> list[dict[str, Any]]:
     """Return provider-native retrieval hints for one Interact turn."""
 
     settings = get_settings()
     has_course_scope = bool((course_id or "").strip()) and not is_global_course(course_id)
+    should_use_file_search = has_course_scope and (
+        settings.llm.native_file_search == "force"
+        or (
+            "search_kb" in tool_plan.tool_names
+            and _local_context_needs_provider_file_search(retrieval_results or [])
+        )
+    )
     return build_provider_native_tools(
         settings=settings,
         web_search="web_search" in tool_plan.tool_names,
-        file_search=has_course_scope,
+        file_search=should_use_file_search,
     )
+
+
+def _local_context_needs_provider_file_search(results: list[RetrievedContext]) -> bool:
+    """Return whether provider file_search should supplement local course RAG."""
+
+    if not results:
+        return True
+    return not any(not item.low_relevance for item in results)
 
 
 __all__ = [

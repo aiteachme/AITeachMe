@@ -231,7 +231,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "llm.native_file_search",
                 "原生文件检索",
-                description="允许模型调用 provider 托管 file_search。只有配置了 OpenAI vector store IDs 后才会启用；课程私有 RAG 仍由本系统优先执行。",
+                description="允许模型调用 provider 托管 file_search。Auto 只在课程工具链且本地 RAG 证据不足时补充；Force 表示显式强制发送。课程私有 RAG 仍由本系统优先执行。",
                 ui_group="模型原生工具",
                 ui_order=26,
                 options=(

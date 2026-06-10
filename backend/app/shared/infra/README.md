@@ -78,7 +78,7 @@ from app.shared.infra.search import web_search, search_knowledge
 - 自管课程 RAG 仍走 `search_knowledge()`、KnowledgeUnit / KG / vector pipeline，并由 workflow 决定如何写入 prompt 和引用。
 - 项目函数工具仍走 `app.agent_tools` / `shared.infra.tools`，例如 `search_kb`、`web_search`、`recall_info`。
 - Provider-native tools 只通过 LLM helper 的 `provider_native_tools` kwarg 进入 Responses adapter；Chat Completions 和项目函数工具请求会丢弃该 hint，避免把 provider-specific 参数误传到普通网关。
-- `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；只有用户显式配置 vector store ids 时才发送。
+- `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
 
 ## workflow / observability 公开接口
 

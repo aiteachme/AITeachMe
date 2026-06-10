@@ -183,6 +183,7 @@ def _build_response_stream(
     provider_native_tools = build_interact_provider_native_tools(
         tool_plan=tool_plan,
         course_id=course_id,
+        retrieval_results=state.get("retrieval_results", []),
     )
     if tool_plan.uses_tools:
         return run_agent_loop_stream(
@@ -290,6 +291,7 @@ def build_stream_answer_node(
         provider_native_tools = build_interact_provider_native_tools(
             tool_plan=tool_plan,
             course_id=course_id,
+            retrieval_results=state.get("retrieval_results", []),
         )
         await _emit_status(
             emitter,

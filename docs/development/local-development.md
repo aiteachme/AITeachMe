@@ -86,7 +86,7 @@ LLM_BASE_URL=https://api.example.com/v1
 AITeachMe 的课程 RAG 默认使用自管 KnowledgeUnit / 知识图谱 / 本地向量检索，检索结果会进入 prompt 并落入可追踪引用。对于支持 OpenAI Responses built-in tools 的上游，可以在设置页 `模型接入 -> 模型原生工具` 启用 provider 原生工具作为增强：
 
 - `原生联网检索`：把外部/最新信息查询交给 Responses `web_search`。`Auto` 会随 OpenAI / OpenAI-compatible Responses 路线发送，不支持时按接口模式回退；`Force` 用于明确要求兼容网关接收该参数。
-- `原生文件检索`：把额外文件检索交给 Responses `file_search`。只有配置 OpenAI `vector_store_id` 列表后才会发送；留空时不会把课程资料交给外部托管索引。
+- `原生文件检索`：把额外文件检索交给 Responses `file_search`。只有配置 OpenAI `vector_store_id` 列表后才会发送；`Auto` 只在课程工具链且本地 RAG 没有高相关证据时作为补充，`Force` 才会显式强制参与。
 
 建议策略：课程私有资料仍优先使用自管 RAG；需要 provider 托管检索时，再显式配置 `file_search` vector store。
 
