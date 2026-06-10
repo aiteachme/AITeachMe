@@ -91,6 +91,8 @@ async def acompletion_with_tools(
                             messages=messages,
                             call_kwargs=prepared.call_kwargs,
                             attempt=prepared.attempt,
+                            endpoint_role=context.endpoint_role,
+                            model_selector=context.model_selector,
                             tools=tools,
                             extra_metadata=extra_metadata,
                         ),

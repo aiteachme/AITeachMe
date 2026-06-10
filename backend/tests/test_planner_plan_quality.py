@@ -218,6 +218,16 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
 
 
+def test_partial_chapters_supports_streaming_preview() -> None:
+    chapters = plan_draft_node._partial_chapters(
+        f'{CHAPTERS_START}[{{"title":"数与式","key_points":["代数式","方程"]}},{{"title":"函数图像","key_points":["一次函数"'
+    )
+
+    assert [chapter["title"] for chapter in chapters] == ["数与式", "函数图像"]
+    assert chapters[0]["required_elements"] == ["代数式", "方程"]
+    assert chapters[1]["objective"] == "一次函数"
+
+
 def test_parse_planner_response_rejects_empty_chapter_points() -> None:
     with pytest.raises(ValueError, match="key_points"):
         plan_draft_node._parse_planner_response(
@@ -231,7 +241,7 @@ def test_parse_planner_response_rejects_empty_chapter_points() -> None:
 
 def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted_tokens: list[str] = []
-    emitted_events: list[str] = []
+    emitted_events: list[tuple[str, dict | None]] = []
     raw_output = (
         f"{PLAN_START}本轮先识别目标，再组织章节和练习。{PLAN_END}"
         f"{SUGGESTION_START}可以继续改成考试冲刺。{SUGGESTION_END}"
@@ -251,8 +261,8 @@ def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.Monk
         emitted_tokens.append(token)
 
     async def fake_emit_event(state, *, event: str, detail: str, payload=None) -> None:
-        del state, detail, payload
-        emitted_events.append(event)
+        del state, detail
+        emitted_events.append((event, payload))
 
     monkeypatch.setattr(plan_draft_node, "acompletion_stream", fake_acompletion_stream)
     monkeypatch.setattr(plan_draft_node, "emit_planner_token", fake_emit_token)
@@ -278,7 +288,18 @@ def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.Monk
     assert result["build_plan_draft"]["plan"] == "本轮先识别目标，再组织章节和练习。"
     assert result["build_plan_draft"]["suggestion"] == "可以继续改成考试冲刺。"
     assert result["build_plan_draft"]["chapters"][0]["title"] == "目标拆解"
-    assert emitted_events == ["planner.plan.started", "planner.plan.ready"]
+    assert [event for event, _payload in emitted_events] == [
+        "planner.plan.started",
+        "planner.suggestion.started",
+        "planner.chapters.started",
+        "planner.chapters.progress",
+        "planner.plan.ready",
+    ]
+    progress_payload = emitted_events[3][1]
+    assert progress_payload is not None
+    assert progress_payload["partial_chapter_count"] == 1
+    assert progress_payload["plan_preview"]["plan"] == "本轮先识别目标，再组织章节和练习。"
+    assert progress_payload["plan_preview"]["chapters"][0]["title"] == "目标拆解"
 
 
 def test_planner_prompt_marks_revision_as_single_composer_call() -> None:

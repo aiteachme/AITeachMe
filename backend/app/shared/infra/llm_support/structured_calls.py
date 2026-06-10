@@ -297,6 +297,8 @@ async def acompletion_structured(
                             messages=trace_messages,
                             call_kwargs=prepared.call_kwargs,
                             attempt=prepared.attempt,
+                            endpoint_role=context.endpoint_role,
+                            model_selector=context.model_selector,
                             extra_metadata=extra_metadata,
                         ),
                     ) as trace_run:

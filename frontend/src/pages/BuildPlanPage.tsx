@@ -462,16 +462,23 @@ function formatPlannerNodeLabel(stepName: string): string {
   }
 }
 
+function polishPlannerStatusText(text: string): string {
+  return text
+    .replace(/规划判断/g, "学习边界")
+    .replace(/planning_note/gi, "学习边界")
+    .trim();
+}
+
 function resolvePlannerStatusText(payload: unknown): string {
   if (!isRecord(payload)) {
     return "正在思考目标与资料...";
   }
   if (typeof payload.detail === "string" && payload.detail.trim()) {
-    return payload.detail.trim();
+    return polishPlannerStatusText(payload.detail);
   }
   if (typeof payload.step === "string" && payload.step.trim()) {
     const label = formatPlannerNodeLabel(payload.step.trim());
-    return `${label} 进行中...`;
+    return polishPlannerStatusText(`${label} 进行中...`);
   }
   return "正在思考目标与资料...";
 }
@@ -503,9 +510,9 @@ function plannerStreamStepTitle(stage: string): string {
     case "planner.material.ready":
       return "确认资料边界";
     case "planner.planning_note.started":
-      return "生成规划判断";
+      return "整理学习边界";
     case "planner.planning_note.ready":
-      return "规划判断完成";
+      return "学习边界完成";
     case "planner.material_note.started":
       return "整理资料边界";
     case "planner.material_note.ready":
@@ -518,6 +525,12 @@ function plannerStreamStepTitle(stage: string): string {
       return "课程身份完成";
     case "planner.plan.started":
       return "流式生成 plan";
+    case "planner.suggestion.started":
+      return "整理调整建议";
+    case "planner.chapters.started":
+      return "生成章节大纲";
+    case "planner.chapters.progress":
+      return "章节大纲生成中";
     case "planner.plan.ready":
       return "方案可确认";
     case "planner.saved":
@@ -592,23 +605,6 @@ function buildPlannerOutlineItems(plan: BuildPlannerPlanResponse | null | undefi
   return [];
 }
 
-function buildPlannerStepItems(plan: BuildPlannerPlanResponse | null | undefined, limit = 5): string[] {
-  const view = plannerView(plan);
-  const rawSteps = [view?.planning_note].filter(Boolean);
-  const seen = new Set<string>();
-  const steps: string[] = [];
-  rawSteps.forEach((item) => {
-    const text = String(item ?? "").trim();
-    const key = text.toLowerCase();
-    if (!text || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    steps.push(text);
-  });
-  return steps.slice(0, limit);
-}
-
 function buildPlannerAdjustmentQuestions(plan: BuildPlannerPlanResponse | null | undefined, limit = 4): string[] {
   const suggestion = plannerSuggestionText(plan);
   if (!suggestion) {
@@ -646,27 +642,19 @@ function plannerResponseAnalyticsProperties(response: BuildPlannerSessionRespons
   };
 }
 
-function PlannerStreamingBubble({ preview, statusText, steps }: PlannerStreamingBubbleProps) {
+function PlannerStreamingBubble({ preview, statusText }: PlannerStreamingBubbleProps) {
   const trimmedPreview = preview.trim();
   const currentStatus = compactPlannerDetail(statusText || "正在整理学习目标...", 86);
-  const visibleSteps = steps.filter((item) => item.stage !== "accepted").slice(-5);
-  const activeStep =
-    [...visibleSteps].reverse().find((item) => item.status === "active")
-    ?? (visibleSteps.length ? visibleSteps[visibleSteps.length - 1] : null);
-  const doneCount = visibleSteps.filter((item) => item.status === "done").length;
 
   return (
     <div
       aria-live="polite"
-      className="rounded-xl rounded-tl-sm border border-zinc-200/80 bg-white px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950"
+      className="planner-stream-bubble rounded-xl rounded-tl-sm border border-zinc-200/80 bg-white px-4 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950"
     >
       <div className="flex items-center gap-2 text-sm">
         <span className="build-live-dot h-2 w-2 text-zinc-950 dark:text-slate-100" aria-hidden="true" />
         <span className="font-semibold text-zinc-950 dark:text-slate-100">正在规划</span>
         <span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-slate-400">{currentStatus}</span>
-        {doneCount > 0 ? (
-          <span className="shrink-0 text-xs text-zinc-400 dark:text-slate-500">{doneCount}/{visibleSteps.length}</span>
-        ) : null}
       </div>
 
       {trimmedPreview ? (
@@ -677,40 +665,6 @@ function PlannerStreamingBubble({ preview, statusText, steps }: PlannerStreaming
         </div>
       ) : null}
 
-      {!trimmedPreview && activeStep ? (
-        <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-slate-300">{activeStep.detail}</p>
-      ) : null}
-
-      {visibleSteps.length ? (
-        <details className="group mt-3 border-t border-zinc-100 pt-2 dark:border-slate-800">
-          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 outline-none transition hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-slate-500 dark:hover:text-slate-300">
-            <span className="inline-flex items-center gap-1">
-              过程
-              <span className="text-zinc-300 transition group-open:rotate-90 dark:text-slate-600">›</span>
-            </span>
-          </summary>
-          <div className="mt-2 space-y-1.5">
-            {visibleSteps.map((item) => (
-              <div key={item.id} className="flex items-start gap-2 text-xs leading-5 text-zinc-500 dark:text-slate-400">
-                <span
-                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                    item.status === "done"
-                      ? "bg-emerald-500"
-                      : item.status === "warning"
-                        ? "bg-amber-500"
-                        : item.status === "error"
-                          ? "bg-red-500"
-                          : "bg-zinc-400 dark:bg-slate-500"
-                  }`}
-                  aria-hidden="true"
-                />
-                <span className="font-medium text-zinc-600 dark:text-slate-300">{item.title}</span>
-                <span className="min-w-0 flex-1 truncate">{compactPlannerDetail(item.detail, 72)}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
     </div>
   );
 }
@@ -737,56 +691,40 @@ function PlannerOutlineCard({
   isPreviewing?: boolean;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
-  const stepItems = buildPlannerStepItems(plan);
   const adjustmentQuestions = buildPlannerAdjustmentQuestions(plan);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
   const courseName = String(view?.course_name ?? "").trim();
+  const showSummary = !isPreviewing || !outlineItems.length;
 
   return (
     <article className="rounded-xl border border-zinc-200/80 bg-white px-5 py-5 shadow-[0_10px_28px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950">
-      <div>
-        {courseName ? (
-          <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
-            <BookOpen className="h-3.5 w-3.5" />
-            {courseName}
-          </div>
-        ) : null}
-        <p className="text-[17px] font-semibold leading-8 text-zinc-950 dark:text-slate-100">
-          {planText || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
-        </p>
-        {adjustmentQuestions.length ? (
-          <div className="mt-4 rounded-lg bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/70 dark:text-slate-300">
-            <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-slate-400">
-              <RefreshCw className="h-3.5 w-3.5" />
-              可以继续这样改
+      {showSummary ? (
+        <div>
+          {courseName ? (
+            <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
+              <BookOpen className="h-3.5 w-3.5" />
+              {courseName}
             </div>
-            {adjustmentQuestions.map((item, index) => (
-              <p key={`${index}-${item}`}>{item}</p>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      {stepItems.length ? (
-        <details className="group mt-4 border-t border-zinc-100 pt-3 dark:border-slate-800">
-          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 outline-none transition hover:text-zinc-600 focus-visible:ring-2 focus-visible:ring-zinc-300 dark:text-slate-500 dark:hover:text-slate-300">
-            <span className="inline-flex items-center gap-1">
-              规划判断
-              <span className="text-zinc-300 transition group-open:rotate-90 dark:text-slate-600">›</span>
-            </span>
-          </summary>
-          <div className="mt-3 space-y-3">
-            {stepItems.map((item, index) => (
-              <div key={`${index}-${item}`} className="text-sm leading-6 text-zinc-600 dark:text-slate-300">
-                <p>{item}</p>
+          ) : null}
+          <p className="text-[17px] font-semibold leading-8 text-zinc-950 dark:text-slate-100">
+            {planText || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
+          </p>
+          {adjustmentQuestions.length ? (
+            <div className="mt-4 rounded-lg bg-zinc-50 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/70 dark:text-slate-300">
+              <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-slate-400">
+                <RefreshCw className="h-3.5 w-3.5" />
+                可以继续这样改
               </div>
-            ))}
-          </div>
-        </details>
+              {adjustmentQuestions.map((item, index) => (
+                <p key={`${index}-${item}`}>{item}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      <ol className="mt-5 divide-y divide-zinc-100 dark:divide-slate-800">
+      <ol className={`${showSummary ? "mt-5" : ""} divide-y divide-zinc-100 dark:divide-slate-800`}>
         {outlineItems.map((item, index) => (
           <li key={`${index}-${item.title}`} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
             <span className="mt-0.5 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
@@ -820,7 +758,7 @@ function PlannerOutlineCard({
         {isPreviewing ? (
           <span className="inline-flex min-h-9 items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
             <span className="build-live-dot h-2 w-2 text-zinc-950 dark:text-slate-100" aria-hidden="true" />
-            正在保存方案...
+            正在整理章节...
           </span>
         ) : (
           <>
@@ -1740,7 +1678,7 @@ export function BuildPlanPage() {
     setPlannerStreamingPreview("");
     setPlannerStreamingPlan(null);
     setPlannerStreamingSteps([]);
-    setPlannerStreamingStatus("正在理解目标和资料，整理思考过程...");
+    setPlannerStreamingStatus("正在理解目标和资料，整理学习边界...");
 
     // Clear autoStart from navigation state
     navigate(location.pathname, { replace: true, state: null });
@@ -2167,7 +2105,7 @@ export function BuildPlanPage() {
     const initialStatus = shouldCreateSession
       ? readyFileIds.length === 0 && plannerFileIds.length > 0
         ? "资料仍在解析，先基于文件名思考临时大纲..."
-        : "正在理解目标和资料，整理思考过程..."
+        : "正在理解目标和资料，整理学习边界..."
       : "正在根据你的补充重新思考大纲...";
     setPlannerStreamingStatus(initialStatus);
 

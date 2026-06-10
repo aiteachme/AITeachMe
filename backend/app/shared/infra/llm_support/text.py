@@ -92,6 +92,8 @@ async def acompletion(
                             messages=messages,
                             call_kwargs=provider_call.kwargs,
                             attempt=prepared.attempt,
+                            endpoint_role=context.endpoint_role,
+                            model_selector=context.model_selector,
                             extra_metadata=extra_metadata,
                         ),
                     ) as trace_run:

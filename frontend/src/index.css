@@ -930,6 +930,45 @@
   }
 }
 
+@keyframes planner-stream-breathing {
+  0%, 100% {
+    box-shadow:
+      0 10px 28px rgba(15, 23, 42, 0.045),
+      inset 0 0 0 1px rgba(24, 24, 27, 0);
+    filter: saturate(1) brightness(1);
+  }
+  50% {
+    box-shadow:
+      0 14px 34px rgba(15, 23, 42, 0.065),
+      0 0 22px rgba(99, 102, 241, 0.08),
+      inset 0 0 0 1px rgba(99, 102, 241, 0.08);
+    filter: saturate(1.04) brightness(1.01);
+  }
+}
+
+@keyframes planner-stream-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%) skewX(-14deg);
+  }
+  32% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(155%) skewX(-14deg);
+  }
+}
+
+@keyframes planner-stream-content-breathing {
+  0%, 100% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .progress-bar-active {
   background-image: linear-gradient(
     90deg,
@@ -1053,6 +1092,38 @@
   animation: build-dot-breathing 2.8s ease-in-out infinite;
 }
 
+.planner-stream-bubble {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  will-change: filter, box-shadow;
+  animation: planner-stream-breathing 3.8s ease-in-out infinite;
+}
+
+.planner-stream-bubble::after {
+  content: "";
+  position: absolute;
+  inset: -18% -28%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 100%
+  );
+  animation: planner-stream-sheen 4.2s ease-in-out infinite;
+}
+
+.planner-stream-bubble > * {
+  position: relative;
+  z-index: 1;
+}
+
+.planner-stream-preview {
+  animation: planner-stream-content-breathing 2.8s ease-in-out infinite;
+}
+
 .dark .progress-bar-active {
   background-image: linear-gradient(
     90deg,
@@ -1077,6 +1148,15 @@
   );
 }
 
+.dark .planner-stream-bubble::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(129, 140, 248, 0.16) 50%,
+    transparent 100%
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
   .progress-bar-active,
   .progress-bar-breathing,
@@ -1086,7 +1166,10 @@
   .build-loading-progress-track,
   .build-loading-progress-track::before,
   .build-loading-progress-fill,
-  .build-live-dot {
+  .build-live-dot,
+  .planner-stream-bubble,
+  .planner-stream-bubble::after,
+  .planner-stream-preview {
     animation: none !important;
     filter: none !important;
     transform: none !important;

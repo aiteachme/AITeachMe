@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import structlog
@@ -54,18 +55,70 @@ def _extract_between(text: str, start: str, end: str) -> str:
     return text[content_start:end_index].strip()
 
 
-def _partial_plan_content(text: str) -> str:
-    start_index = text.find(PLAN_START)
+def _partial_content_between_markers(text: str, start: str, end: str) -> str:
+    start_index = text.find(start)
     if start_index < 0:
         return ""
-    content_start = start_index + len(PLAN_START)
-    end_index = text.find(PLAN_END, content_start)
+    content_start = start_index + len(start)
+    end_index = text.find(end, content_start)
     content = text[content_start:] if end_index < 0 else text[content_start:end_index]
-    for prefix_len in range(len(PLAN_END) - 1, 0, -1):
-        if content.endswith(PLAN_END[:prefix_len]):
+    for prefix_len in range(len(end) - 1, 0, -1):
+        if content.endswith(end[:prefix_len]):
             content = content[:-prefix_len]
             break
     return content
+
+
+def _partial_plan_content(text: str) -> str:
+    return _partial_content_between_markers(text, PLAN_START, PLAN_END)
+
+
+def _partial_suggestion_content(text: str) -> str:
+    return _partial_content_between_markers(text, SUGGESTION_START, SUGGESTION_END)
+
+
+def _decode_json_string_fragment(value: str) -> str:
+    try:
+        decoded = json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        decoded = value
+    return _clean_text(decoded)
+
+
+def _partial_chapters(text: str) -> list[dict[str, Any]]:
+    start_index = text.find(CHAPTERS_START)
+    if start_index < 0:
+        return []
+    content_start = start_index + len(CHAPTERS_START)
+    end_index = text.find(CHAPTERS_END, content_start)
+    content = text[content_start:] if end_index < 0 else text[content_start:end_index]
+    title_matches = list(re.finditer(r'"title"\s*:\s*"(?P<title>(?:\\.|[^"\\])*)"', content))
+    chapters: list[dict[str, Any]] = []
+    for index, match in enumerate(title_matches, start=1):
+        title = _decode_json_string_fragment(match.group("title"))
+        if not title:
+            continue
+        next_start = title_matches[index].start() if index < len(title_matches) else len(content)
+        segment = content[match.end() : next_start]
+        points_match = re.search(r'"key_points"\s*:\s*\[(?P<points>.*?)(?:\]|$)', segment, re.S)
+        key_points: list[str] = []
+        if points_match:
+            key_points = _string_list(
+                [
+                    _decode_json_string_fragment(item.group("value"))
+                    for item in re.finditer(r'"(?P<value>(?:\\.|[^"\\])*)"', points_match.group("points"))
+                ]
+            )
+        chapters.append(
+            {
+                "chapter_index": len(chapters) + 1,
+                "title": title,
+                "objective": "；".join(key_points) if key_points else "正在整理本章重点。",
+                "required_elements": key_points,
+                "writing_instructions": "围绕本章知识点生成清晰讲解。",
+            }
+        )
+    return chapters
 
 
 def _string_list(value: Any) -> list[str]:
@@ -171,6 +224,9 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
     raw_tokens: list[str] = []
     emitted_plan_chars = 0
     emitted_separator = False
+    emitted_suggestion_status = False
+    emitted_chapters_status = False
+    emitted_chapter_count = 0
     stream = acompletion_stream(
         messages,
         **planner_completion_kwargs_with_metadata(
@@ -184,6 +240,40 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
         raw_tokens.append(token)
         raw_text = "".join(raw_tokens)
         visible_plan = _partial_plan_content(raw_text)
+        if not emitted_suggestion_status and PLAN_END in raw_text:
+            emitted_suggestion_status = True
+            await emit_planner_event(
+                state,
+                event="planner.suggestion.started",
+                detail="正在整理后续调整建议。",
+            )
+        if not emitted_chapters_status and (SUGGESTION_END in raw_text or CHAPTERS_START in raw_text):
+            emitted_chapters_status = True
+            await emit_planner_event(
+                state,
+                event="planner.chapters.started",
+                detail="正在生成章节大纲。",
+            )
+        partial_chapters = _partial_chapters(raw_text)
+        chapter_count = len(partial_chapters)
+        if chapter_count > emitted_chapter_count:
+            emitted_chapter_count = chapter_count
+            payload: dict[str, Any] = {"partial_chapter_count": chapter_count}
+            if partial_chapters:
+                payload["plan_preview"] = _plan_preview_payload(
+                    state,
+                    {
+                        "suggestion": _partial_suggestion_content(raw_text),
+                        "plan": visible_plan,
+                        "chapters": partial_chapters,
+                    },
+                )
+            await emit_planner_event(
+                state,
+                event="planner.chapters.progress",
+                detail=f"正在生成章节大纲，已整理 {chapter_count} 个章节。",
+                payload=payload,
+            )
         if len(visible_plan) > emitted_plan_chars:
             delta = visible_plan[emitted_plan_chars:]
             emitted_plan_chars = len(visible_plan)

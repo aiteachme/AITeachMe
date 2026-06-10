@@ -579,6 +579,44 @@ def test_fallback_context_uses_provider_default_models(monkeypatch):
     assert contexts[1].model == "deepseek-reasoner"
 
 
+def test_fallback_openai_compatible_uses_compatible_default_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gpt-4o-mini", "light": "gpt-4o-mini"},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="light")
+
+    assert contexts[1].endpoint_role == "fallback"
+    assert contexts[1].provider == "openai_compatible"
+    assert contexts[1].model == "gpt-5.5"
+
+
+def test_langsmith_trace_metadata_records_actual_model_route():
+    from app.shared.infra.llm_support.observability import _langsmith_trace_kwargs
+
+    trace_kwargs = _langsmith_trace_kwargs(
+        task_type=TaskType.CHAT,
+        call_model="gpt-5.5",
+        provider="openai",
+        model_name="gpt-5.5",
+        mode="text_chat_completions",
+        messages=[{"role": "user", "content": "hello"}],
+        call_kwargs={"model": "gpt-5.5", "messages": [{"role": "user", "content": "hello"}]},
+        endpoint_role="fallback",
+        model_selector="light",
+    )
+
+    metadata = trace_kwargs["extra_metadata"]
+    assert trace_kwargs["inputs"]["model"] == "gpt-5.5"
+    assert metadata["ls_model_name"] == "gpt-5.5"
+    assert metadata["llm_endpoint_role"] == "fallback"
+    assert metadata["llm_model_selector"] == "light"
+
+
 @pytest.mark.anyio
 async def test_text_completion_falls_back_to_default_provider_model(monkeypatch):
     from app.shared.infra.llm_support import text as text_module

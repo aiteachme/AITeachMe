@@ -252,6 +252,8 @@ def _langsmith_llm_metadata(
     invocation_params: Mapping[str, Any] | None = None,
     attempt: int | None = None,
     mode: str,
+    endpoint_role: str | None = None,
+    model_selector: str | None = None,
 ) -> dict[str, Any]:
     task_label = normalize_task_type(task_type)
     metadata: dict[str, Any] = {
@@ -262,6 +264,10 @@ def _langsmith_llm_metadata(
         "ls_model_name": model_name,
         "ls_model_type": "chat",
     }
+    if endpoint_role:
+        metadata["llm_endpoint_role"] = endpoint_role
+    if model_selector:
+        metadata["llm_model_selector"] = model_selector
     if invocation_params:
         metadata["ls_invocation_params"] = dict(invocation_params)
         if "temperature" in invocation_params:
@@ -287,6 +293,8 @@ def _langsmith_trace_kwargs(
     messages: list[ChatMessage],
     call_kwargs: Mapping[str, Any] | None = None,
     attempt: int | None = None,
+    endpoint_role: str | None = None,
+    model_selector: str | None = None,
     tools: list[dict] | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
     extra_tags: list[str] | None = None,
@@ -303,6 +311,8 @@ def _langsmith_trace_kwargs(
             invocation_params=invocation_params,
             attempt=attempt,
             mode=mode,
+            endpoint_role=endpoint_role,
+            model_selector=model_selector,
         ),
     }
     return {
