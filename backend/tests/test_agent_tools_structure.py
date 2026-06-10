@@ -759,6 +759,7 @@ def test_streaming_tool_loop_does_not_leak_provider_native_tools(monkeypatch) ->
         fallback_kwargs.append(kwargs)
         yield "fallback ok"
 
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setattr("app.shared.infra.tools.registry._registry", registry)
     monkeypatch.setattr("app.shared.infra.tools.api.ensure_project_tool_modules_loaded", lambda: None)
     monkeypatch.setattr("app.shared.infra.llm_support.litellm_loader.load_litellm", lambda: FakeLiteLLM())
