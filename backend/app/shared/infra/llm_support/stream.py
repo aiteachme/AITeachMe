@@ -13,7 +13,9 @@ from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
     build_completion_contexts,
+    completion_context_groups,
     effective_call_timeout_s,
+    effective_max_retries,
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
@@ -24,6 +26,8 @@ from .common import (
     merge_usage,
     prepare_completion_attempt,
     context_request_timeout_s,
+    should_try_endpoint_fallback,
+    sleep_before_retry,
     track_call,
 )
 from .litellm_loader import load_litellm
@@ -186,233 +190,256 @@ async def acompletion_stream(
     tracked_model = primary_context.model
     last_error: Exception | None = None
 
+    attempt_number = 0
     async with get_llm_concurrency_limiter():
-        for attempt_number, context in enumerate(contexts, start=1):
-            prepared = prepare_completion_attempt(
-                context=context,
-                messages=messages,
-                extra_kwargs=kwargs,
-                attempt=attempt_number,
-                override_kwargs={"stream": True},
-            )
-            tracked_model = prepared.tracked_model
-            attempt_streamed_content = False
-            try:
-                log_attempt_started(
-                    "llm_stream_started",
-                    attempt=prepared,
-                    context=context,
+        for group_index, context_group in enumerate(completion_context_groups(contexts)):
+            if (
+                group_index > 0
+                and context_group[0].endpoint_role == "fallback"
+                and not should_try_endpoint_fallback(last_error)
+            ):
+                logger.warning(
+                    "llm_stream_endpoint_fallback_skipped_non_endpoint_error",
+                    task_type=primary_context.task_type,
+                    model=tracked_model,
+                    error=str(last_error),
+                    error_type=last_error.__class__.__name__ if last_error is not None else "",
                 )
-                provider_call = resolve_provider_call(
-                    context=context,
-                    call_kwargs=prepared.call_kwargs,
-                )
-                initial_api_mode = provider_call.api_mode
-                route_reason = provider_call.route_reason
-                auto_responses_chat_fallback = False
-                trace_metadata = {
-                    **dict(extra_metadata or {}),
-                    **provider_call_metadata(provider_call),
-                }
-                streamed_chunks: list[str] = []
-                provider_tool_events: list[dict[str, str]] = []
-                usage = (0, 0, 0)
-                with langsmith_trace(
-                    name="LLM：流式生成",
-                    run_type="llm",
-                    **_langsmith_trace_kwargs(
-                        task_type=context.task_type,
-                        call_model=prepared.call_model,
-                        provider=prepared.provider,
-                        model_name=tracked_model,
-                        mode=f"stream_{provider_call.api_mode}",
+                break
+            group_max_retries = max(effective_max_retries(context_group[0], kwargs), 1)
+            for retry_round in range(1, group_max_retries + 1):
+                for context in context_group:
+                    attempt_number += 1
+                    prepared = prepare_completion_attempt(
+                        context=context,
                         messages=messages,
-                        call_kwargs=provider_call.kwargs,
-                        endpoint_role=context.endpoint_role,
-                        model_selector=context.model_selector,
-                        extra_metadata=trace_metadata,
-                    ),
-                ) as trace_run:
+                        extra_kwargs=kwargs,
+                        attempt=attempt_number,
+                        override_kwargs={"stream": True},
+                    )
+                    tracked_model = prepared.tracked_model
+                    attempt_streamed_content = False
                     try:
-                        provider_coro = (
-                            litellm.aresponses(**provider_call.kwargs)
-                            if provider_call.api_mode == "responses"
-                            else litellm.acompletion(**provider_call.kwargs)
+                        log_attempt_started(
+                            "llm_stream_started",
+                            attempt=prepared,
+                            context=context,
                         )
-                        response = await asyncio.wait_for(
-                            provider_coro,
-                            timeout=context_request_timeout_s(context, provider_call.kwargs),
+                        provider_call = resolve_provider_call(
+                            context=context,
+                            call_kwargs=prepared.call_kwargs,
                         )
-                    except Exception as provider_exc:
-                        fallback_call = chat_fallback_for_auto_responses(
-                            provider_call,
-                            provider_exc,
-                        )
-                        if fallback_call is None:
-                            raise
-                        auto_responses_chat_fallback = True
-                        logger.warning(
-                            "llm_stream_auto_responses_fallback_to_chat",
-                            attempt=prepared.attempt,
+                        initial_api_mode = provider_call.api_mode
+                        route_reason = provider_call.route_reason
+                        auto_responses_chat_fallback = False
+                        trace_metadata = {
+                            **dict(extra_metadata or {}),
+                            **provider_call_metadata(provider_call),
+                        }
+                        streamed_chunks: list[str] = []
+                        provider_tool_events: list[dict[str, str]] = []
+                        usage = (0, 0, 0)
+                        with langsmith_trace(
+                            name="LLM：流式生成",
+                            run_type="llm",
+                            **_langsmith_trace_kwargs(
+                                task_type=context.task_type,
+                                call_model=prepared.call_model,
+                                provider=prepared.provider,
+                                model_name=tracked_model,
+                                mode=f"stream_{provider_call.api_mode}",
+                                messages=messages,
+                                call_kwargs=provider_call.kwargs,
+                                endpoint_role=context.endpoint_role,
+                                model_selector=context.model_selector,
+                                extra_metadata=trace_metadata,
+                            ),
+                        ) as trace_run:
+                            try:
+                                provider_coro = (
+                                    litellm.aresponses(**provider_call.kwargs)
+                                    if provider_call.api_mode == "responses"
+                                    else litellm.acompletion(**provider_call.kwargs)
+                                )
+                                response = await asyncio.wait_for(
+                                    provider_coro,
+                                    timeout=context_request_timeout_s(context, provider_call.kwargs),
+                                )
+                            except Exception as provider_exc:
+                                fallback_call = chat_fallback_for_auto_responses(
+                                    provider_call,
+                                    provider_exc,
+                                )
+                                if fallback_call is None:
+                                    raise
+                                auto_responses_chat_fallback = True
+                                logger.warning(
+                                    "llm_stream_auto_responses_fallback_to_chat",
+                                    attempt=prepared.attempt,
+                                    model=tracked_model,
+                                    task_type=context.task_type,
+                                    endpoint_role=context.endpoint_role,
+                                    route_reason=route_reason,
+                                    error=str(provider_exc),
+                                )
+                                provider_call = fallback_call
+                                response = await asyncio.wait_for(
+                                    litellm.acompletion(**provider_call.kwargs),
+                                    timeout=context_request_timeout_s(context, provider_call.kwargs),
+                                )
+                            usage = merge_usage(usage, extract_usage(response))
+                            try:
+                                async for content, usage in _stream_content_parts(
+                                    response=response,
+                                    context=context,
+                                    provider_call=provider_call,
+                                    trace_run=trace_run,
+                                    usage=usage,
+                                    streamed_chunks=streamed_chunks,
+                                    provider_tool_events=provider_tool_events,
+                                ):
+                                    attempt_streamed_content = True
+                                    yield content
+                            except Exception as exc:
+                                fallback_call = chat_fallback_for_auto_responses(
+                                    provider_call,
+                                    exc,
+                                )
+                                fallback_stream_succeeded = False
+                                if fallback_call is not None and not streamed_chunks:
+                                    auto_responses_chat_fallback = True
+                                    logger.warning(
+                                        "llm_stream_auto_responses_iteration_fallback_to_chat",
+                                        attempt=prepared.attempt,
+                                        model=tracked_model,
+                                        task_type=context.task_type,
+                                        endpoint_role=context.endpoint_role,
+                                        route_reason=route_reason,
+                                        error=str(exc),
+                                    )
+                                    provider_call = fallback_call
+                                    response = await asyncio.wait_for(
+                                        litellm.acompletion(**provider_call.kwargs),
+                                        timeout=context_request_timeout_s(context, provider_call.kwargs),
+                                    )
+                                    usage = merge_usage(usage, extract_usage(response))
+                                    async for content, usage in _stream_content_parts(
+                                        response=response,
+                                        context=context,
+                                        provider_call=provider_call,
+                                        trace_run=trace_run,
+                                        usage=usage,
+                                        streamed_chunks=streamed_chunks,
+                                        provider_tool_events=provider_tool_events,
+                                    ):
+                                        attempt_streamed_content = True
+                                        yield content
+                                    fallback_stream_succeeded = True
+                                if not fallback_stream_succeeded:
+                                    if not streamed_chunks or not _is_stream_usage_calculation_error(exc):
+                                        raise
+                                    logger.info(
+                                        "llm_stream_usage_calculation_failed_ignored",
+                                        model=tracked_model,
+                                        task_type=context.task_type,
+                                        endpoint_role=context.endpoint_role,
+                                        error=str(exc),
+                                    )
+                            if not "".join(streamed_chunks).strip():
+                                raise ValueError("empty_llm_response")
+                            prompt_t, completion_t, total_t = usage
+                            extra_outputs = llm_api_mode_outputs(
+                                initial_api_mode=initial_api_mode,
+                                final_api_mode=provider_call.api_mode,
+                                final_route_reason=provider_call.route_reason,
+                                auto_responses_chat_fallback=auto_responses_chat_fallback,
+                            )
+                            if provider_tool_events:
+                                extra_outputs["llm_provider_tool_events"] = provider_tool_events
+                            _end_langsmith_trace(
+                                trace_run,
+                                text="".join(streamed_chunks),
+                                extra_outputs=extra_outputs,
+                                prompt_tokens=prompt_t,
+                                completion_tokens=completion_t,
+                                total_tokens=total_t,
+                            )
+                        logger.info(
+                            "llm_stream_complete",
+                            elapsed_s=round(time.monotonic() - start, 2),
                             model=tracked_model,
                             task_type=context.task_type,
                             endpoint_role=context.endpoint_role,
-                            route_reason=route_reason,
-                            error=str(provider_exc),
+                            initial_api_mode=initial_api_mode,
+                            final_api_mode=provider_call.api_mode,
+                            initial_route_reason=route_reason,
+                            final_route_reason=provider_call.route_reason,
+                            auto_responses_chat_fallback=auto_responses_chat_fallback,
                         )
-                        provider_call = fallback_call
-                        response = await asyncio.wait_for(
-                            litellm.acompletion(**provider_call.kwargs),
-                            timeout=context_request_timeout_s(context, provider_call.kwargs),
+                        prompt_t, completion_t, total_t = usage
+                        track_call(
+                            task_type=context.task_type,
+                            model=tracked_model,
+                            start=start,
+                            success=True,
+                            prompt_tokens=prompt_t,
+                            completion_tokens=completion_t,
+                            total_tokens=total_t,
                         )
-                    usage = merge_usage(usage, extract_usage(response))
-                    try:
-                        async for content, usage in _stream_content_parts(
-                            response=response,
+                        return
+                    except asyncio.TimeoutError:
+                        last_error = LLMTimeoutError(
+                            timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                        )
+                        log_attempt_timeout(
+                            "llm_stream_timeout",
+                            attempt=prepared,
                             context=context,
-                            provider_call=provider_call,
-                            trace_run=trace_run,
-                            usage=usage,
-                            streamed_chunks=streamed_chunks,
-                            provider_tool_events=provider_tool_events,
-                        ):
-                            attempt_streamed_content = True
-                            yield content
-                    except Exception as exc:
-                        fallback_call = chat_fallback_for_auto_responses(
-                            provider_call,
-                            exc,
                         )
-                        fallback_stream_succeeded = False
-                        if fallback_call is not None and not streamed_chunks:
-                            auto_responses_chat_fallback = True
-                            logger.warning(
-                                "llm_stream_auto_responses_iteration_fallback_to_chat",
-                                attempt=prepared.attempt,
-                                model=tracked_model,
+                        if attempt_streamed_content:
+                            track_call(
                                 task_type=context.task_type,
-                                endpoint_role=context.endpoint_role,
-                                route_reason=route_reason,
+                                model=tracked_model,
+                                start=start,
+                                success=False,
+                                error="timeout_after_stream_started",
+                            )
+                            raise last_error
+                    except asyncio.CancelledError:
+                        log_attempt_cancelled(
+                            "llm_stream_cancelled",
+                            attempt=prepared,
+                            context=context,
+                        )
+                        track_call(
+                            task_type=context.task_type,
+                            model=tracked_model,
+                            start=start,
+                            success=False,
+                            error="cancelled",
+                        )
+                        raise
+                    except Exception as exc:
+                        last_error = exc
+                        log_attempt_failed(
+                            "llm_stream_failed",
+                            attempt=prepared,
+                            context=context,
+                            error=exc,
+                            level="error" if attempt_streamed_content else "warning",
+                        )
+                        if attempt_streamed_content:
+                            track_call(
+                                task_type=context.task_type,
+                                model=tracked_model,
+                                start=start,
+                                success=False,
                                 error=str(exc),
                             )
-                            provider_call = fallback_call
-                            response = await asyncio.wait_for(
-                                litellm.acompletion(**provider_call.kwargs),
-                                timeout=context_request_timeout_s(context, provider_call.kwargs),
-                            )
-                            usage = merge_usage(usage, extract_usage(response))
-                            async for content, usage in _stream_content_parts(
-                                response=response,
-                                context=context,
-                                provider_call=provider_call,
-                                trace_run=trace_run,
-                                usage=usage,
-                                streamed_chunks=streamed_chunks,
-                                provider_tool_events=provider_tool_events,
-                            ):
-                                attempt_streamed_content = True
-                                yield content
-                            fallback_stream_succeeded = True
-                        if not fallback_stream_succeeded:
-                            if not streamed_chunks or not _is_stream_usage_calculation_error(exc):
-                                raise
-                            logger.info(
-                                "llm_stream_usage_calculation_failed_ignored",
-                                model=tracked_model,
-                                task_type=context.task_type,
-                                endpoint_role=context.endpoint_role,
-                                error=str(exc),
-                            )
-                    prompt_t, completion_t, total_t = usage
-                    extra_outputs = llm_api_mode_outputs(
-                        initial_api_mode=initial_api_mode,
-                        final_api_mode=provider_call.api_mode,
-                        final_route_reason=provider_call.route_reason,
-                        auto_responses_chat_fallback=auto_responses_chat_fallback,
-                    )
-                    if provider_tool_events:
-                        extra_outputs["llm_provider_tool_events"] = provider_tool_events
-                    _end_langsmith_trace(
-                        trace_run,
-                        text="".join(streamed_chunks),
-                        extra_outputs=extra_outputs,
-                        prompt_tokens=prompt_t,
-                        completion_tokens=completion_t,
-                        total_tokens=total_t,
-                    )
-                logger.info(
-                    "llm_stream_complete",
-                    elapsed_s=round(time.monotonic() - start, 2),
-                    model=tracked_model,
-                    task_type=context.task_type,
-                    endpoint_role=context.endpoint_role,
-                    initial_api_mode=initial_api_mode,
-                    final_api_mode=provider_call.api_mode,
-                    initial_route_reason=route_reason,
-                    final_route_reason=provider_call.route_reason,
-                    auto_responses_chat_fallback=auto_responses_chat_fallback,
-                )
-                prompt_t, completion_t, total_t = usage
-                track_call(
-                    task_type=context.task_type,
-                    model=tracked_model,
-                    start=start,
-                    success=True,
-                    prompt_tokens=prompt_t,
-                    completion_tokens=completion_t,
-                    total_tokens=total_t,
-                )
-                return
-            except asyncio.TimeoutError:
-                last_error = LLMTimeoutError(
-                    timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
-                )
-                log_attempt_timeout(
-                    "llm_stream_timeout",
-                    attempt=prepared,
-                    context=context,
-                )
-                if attempt_streamed_content:
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=start,
-                        success=False,
-                        error="timeout_after_stream_started",
-                    )
-                    raise last_error
-            except asyncio.CancelledError:
-                log_attempt_cancelled(
-                    "llm_stream_cancelled",
-                    attempt=prepared,
-                    context=context,
-                )
-                track_call(
-                    task_type=context.task_type,
-                    model=tracked_model,
-                    start=start,
-                    success=False,
-                    error="cancelled",
-                )
-                raise
-            except Exception as exc:
-                last_error = exc
-                log_attempt_failed(
-                    "llm_stream_failed",
-                    attempt=prepared,
-                    context=context,
-                    error=exc,
-                    level="error" if attempt_streamed_content else "warning",
-                )
-                if attempt_streamed_content:
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=start,
-                        success=False,
-                        error=str(exc),
-                    )
-                    raise LLMCallError(reason=str(exc)) from exc
+                            raise LLMCallError(reason=str(exc)) from exc
+
+                if retry_round < group_max_retries:
+                    await sleep_before_retry(retry_round, error=last_error)
 
         track_call(
             task_type=primary_context.task_type,

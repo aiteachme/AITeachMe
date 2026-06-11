@@ -520,7 +520,7 @@ def test_textbook_headings_remove_generic_untitled_example_prefix() -> None:
         focus_items=[],
     )
 
-    assert "## 1. 典型例题解析" in fixed
+    assert "## 典型例题解析" in fixed
     assert "未命名章节的典型例题解析" not in fixed
 
 
@@ -545,7 +545,7 @@ def test_textbook_headings_do_not_skip_from_h1_to_h3() -> None:
     )
 
     assert "\n**本章目标与知识点**" in fixed
-    assert "\n## 1. 分式约分" in fixed
+    assert "\n## 分式约分" in fixed
     assert "## 学习目标与核心概念" not in fixed
     assert "\n#### 学习目标与核心概念" not in fixed
 
@@ -596,6 +596,21 @@ def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
     assert clean_heading_focus("理解多元函数、偏导数、全微分、方向导数等基础概念") == "理解多元函数、偏导数、全微分"
 
 
+def test_textbook_heading_focus_preserves_inline_math_symbols() -> None:
+    assert clean_heading_focus("$dy=f'(x)dx$ 的使用条件", max_chars=80) == "$dy=f'(x)dx$ 的使用条件"
+
+
+def test_textbook_heading_normalization_preserves_inline_math_comparisons() -> None:
+    fixed = normalize_textbook_headings(
+        "# 中值定理\n\n### 证明当 $x>0$ 时，$e^x>1+x$\n\n正文。",
+        digest_mode="sprint",
+    )
+
+    assert "## 证明当 $x>0$ 时，$e^x>1+x$" in fixed
+    assert "$x 0$" not in fixed
+    assert "$e^x 1+x$" not in fixed
+
+
 def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> None:
     raw = "\n".join(
         [
@@ -617,12 +632,12 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
     )
 
     assert "区分不定积分、定积分及其几何意义，先的" not in fixed
-    assert "## 1. 区分不定积分、定积分及其几何意义的边界说明" in fixed
+    assert "## 区分不定积分、定积分及其几何意义的边界说明" in fixed
     assert "### 解题步骤" in fixed
     assert "### 题目条件" in fixed
     assert "### 易错诊断" in fixed
     assert "方向导的判定规则" not in fixed
-    assert "## 2. 理解多元函数、偏导数、全微分、方向导数的判定规则" in fixed
+    assert "## 理解多元函数、偏导数、全微分、方向导数的判定规则" in fixed
 
 
 def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
@@ -673,7 +688,7 @@ def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
     assert "\n**学习大纲**" in fixed
     assert "\n**方法与例题**" in fixed
     assert "\n**小结**" in fixed
-    assert "\n## 1. 真实知识点" in fixed
+    assert "\n## 真实知识点" in fixed
     assert "\n## 单元测试" in fixed
     assert "## 典型例题回顾" not in fixed
     assert "## 本章高频规则清单" not in fixed

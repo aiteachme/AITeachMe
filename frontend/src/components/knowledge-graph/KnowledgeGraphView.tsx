@@ -63,7 +63,7 @@ export function KnowledgeGraphView({
   canBuildGraph?: boolean;
   onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("insights");
+  const [viewMode, setViewMode] = useState<ViewMode>("graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -103,23 +103,23 @@ export function KnowledgeGraphView({
     <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-900">
       <button
         type="button"
-        aria-pressed={viewMode === "insights"}
-        title="按学习路径阅读课程结构"
-        onClick={() => setViewMode("insights")}
-        className={viewButtonClass(viewMode === "insights")}
-      >
-        <BarChart3 className="h-3.5 w-3.5" />
-        学习地图
-      </button>
-      <button
-        type="button"
         aria-pressed={viewMode === "graph"}
         title="探索节点之间的直接关系"
         onClick={() => setViewMode("graph")}
         className={viewButtonClass(viewMode === "graph")}
       >
         <Share2 className="h-3.5 w-3.5" />
-        关系网络
+        图谱
+      </button>
+      <button
+        type="button"
+        aria-pressed={viewMode === "insights"}
+        title="按学习路径阅读课程结构"
+        onClick={() => setViewMode("insights")}
+        className={viewButtonClass(viewMode === "insights")}
+      >
+        <BarChart3 className="h-3.5 w-3.5" />
+        地图
       </button>
       <button
         type="button"

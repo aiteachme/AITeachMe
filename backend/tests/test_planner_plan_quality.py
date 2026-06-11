@@ -116,6 +116,37 @@ def test_normalize_planner_draft_respects_user_requested_chapter_count() -> None
     assert draft.build_constraints["chapter_count_source"] == "user_request"
 
 
+def test_normalize_planner_draft_respects_user_requested_chapter_range() -> None:
+    payload = _planner_payload(chapter_count=9)
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="高数",
+        user_prompt="我要学习大学高等数学上册，请拆成 8-10 章，每章给出知识框架和练习。",
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.chapters) == 9
+    assert draft.build_constraints["requested_chapter_min"] == 8
+    assert draft.build_constraints["requested_chapter_max"] == 10
+    assert draft.build_constraints["chapter_count_source"] == "user_request_range"
+    assert not any("超出章节预算后合并覆盖" in item for item in draft.chapters[-1].required_elements)
+
+
+def test_normalize_planner_draft_does_not_treat_duration_as_chapter_range() -> None:
+    config = get_planner_mode_contract("sprint")
+
+    draft = normalize_planner_draft(
+        _planner_payload(chapter_count=config.max_chapters + 2),
+        course_id="高数",
+        user_prompt="我要学习大学高等数学上册，请构建一门 4 周系统课程。",
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.chapters) == config.max_chapters
+    assert draft.build_constraints.get("chapter_count_source") != "user_request_range"
+
+
 def test_confirm_payload_enforces_max_chapter_count() -> None:
     chapters = [
         {

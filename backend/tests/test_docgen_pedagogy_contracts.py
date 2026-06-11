@@ -140,13 +140,13 @@ def test_chapter_overview_mermaid_inserted_after_opening_table() -> None:
             "| 考点 | 重要程度 | 常见题型 |\n"
             "| --- | --- | --- |\n"
             "| 数轴距离 | 高 | 化简 |\n\n"
-            "## 1. 数轴距离\n正文。"
+            "## 数轴距离\n正文。"
         ),
         chapter_title="绝对值",
         digest_mode="sprint",
     )
 
-    assert rendered.index("ATM_DOCGEN_ASSET_REQUEST") < rendered.index("## 1. 数轴距离")
+    assert rendered.index("ATM_DOCGEN_ASSET_REQUEST") < rendered.index("## 数轴距离")
 
 
 def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
@@ -301,8 +301,38 @@ def test_textbook_heading_normalization_drops_duplicate_headings_without_local_t
         focus_items=["CPU、运算器、控制器与内存储器的构成关系"],
     )
 
-    assert normalized.count("## 1. CPU 与内存协作") == 1
-    assert "\n## 2. 指令执行路径" in normalized
+    assert normalized.count("## CPU 与内存协作") == 1
+    assert "\n## 指令执行路径" in normalized
+
+
+def test_textbook_heading_normalization_resets_dedupe_per_chapter() -> None:
+    markdown = (
+        "# 函数与极限\n\n"
+        "## 单元测试\n\n"
+        "第一章测试。\n\n"
+        "# 连续性\n\n"
+        "## 单元测试\n\n"
+        "第二章测试。\n"
+    )
+
+    normalized = normalize_textbook_headings(markdown, digest_mode="sprint")
+
+    assert normalized.count("## 单元测试") == 2
+
+
+def test_textbook_heading_normalization_collapses_adjacent_demoted_labels() -> None:
+    markdown = (
+        "# 导数应用\n\n"
+        "## 阶段测验\n\n"
+        "\n"
+        "## 章节练习\n\n"
+        "- 判断单调区间。\n"
+    )
+
+    normalized = normalize_textbook_headings(markdown, digest_mode="sprint")
+
+    assert normalized.count("**练习**") == 1
+    assert "- 判断单调区间。" in normalized
 
 
 def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywords() -> None:
@@ -340,6 +370,35 @@ def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywo
     ]
     assert organization_actions == []
     assert report.passed is False
+
+
+def test_rule_review_records_exact_contract_misses_without_local_patch() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="函数与极限",
+        markdown="# 函数与极限\n\n## 极限直观\n\n极限描述变量逼近时的趋势。\n\n## 单元测试\n\n**题目**：判断极限是否存在。\n",
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="函数与极限",
+        required_elements=["函数的基本概念、常见初等函数与图像性质"],
+        min_word_count=1,
+    )
+
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="sprint",
+    )
+
+    coverage_actions = [action for action in actions if action.action_id == "review_ch01_section_patch"]
+    assert coverage_actions
+    assert coverage_actions[0].action_type == "record_only"
+    assert coverage_actions[0].severity == "info"
+    assert report.passed is True
 
 
 def test_rule_review_coverage_uses_exact_contract_text_not_keyword_tokens() -> None:
@@ -552,8 +611,8 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
     assert "蜂考式讲义结构" in prompt
     assert "考点/任务导航表" in prompt
-    assert "`## 1. 具体知识点名`" in prompt
-    assert "每个编号知识点" in prompt
+    assert "`## 具体知识点名`" in prompt
+    assert "每个知识点小节" in prompt
     assert "**知识点**、**例题/任务**、**解析**、**答案/结论**、**易错点/检查点**" in prompt
     assert "一级标题后必须先给 3-5 行考点/任务导航表" in prompt
     assert "每章至少要有一处图示化整理" in prompt

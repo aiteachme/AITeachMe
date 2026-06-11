@@ -158,23 +158,22 @@ def _rule_review_chapter(
             )
         )
     if missing:
-        warnings.append("章节未完全覆盖执行合同中的关键点。")
+        warnings.append("章节存在执行合同覆盖提示，需结合 LLM 语义复核判断。")
         actions.append(
             ReviewAction(
                 action_id=f"review_ch{draft.chapter_index:02d}_section_patch",
-                action_type="section_patch",
+                action_type="record_only",
                 chapter_index=draft.chapter_index,
-                severity="warning",
+                severity="info",
                 reason="缺少学习大纲项：" + "、".join(missing[:5]),
                 target_anchor=_chapter_anchor(draft),
-                instruction="补齐章节中缺失的学习大纲项：" + "、".join(missing[:8]),
+                instruction="记录规则覆盖提示，语义覆盖和是否需要改写交由结构化 LLM 复核判断：" + "、".join(missing[:8]),
                 constraints=[
                     "不得新增、删除或重排 confirmed plan 章节。",
-                    "只允许修改本章相关小节。",
-                    "不得引入没有证据支撑的新断言。",
+                    "不得因为执行合同长短语未逐字出现就直接触发正文补丁。",
                     *scope_constraints,
                 ],
-                expected_effect="章节正文能覆盖执行合同中的关键点，且不改变章节边界。",
+                expected_effect="避免基于字符串命中率误判语义缺失，降低 repair 阶段的过度扩写风险。",
             )
         )
     # Example density, training-chapter role, self-check completeness and task

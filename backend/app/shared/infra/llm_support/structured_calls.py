@@ -18,6 +18,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 from .litellm_loader import load_litellm
 from .common import (
     build_completion_contexts,
+    completion_context_groups,
     effective_call_timeout_s,
     effective_max_retries,
     extract_usage,
@@ -31,6 +32,7 @@ from .common import (
     prepare_completion_attempt,
     raise_last_error,
     context_request_timeout_s,
+    should_try_endpoint_fallback,
     sleep_before_retry,
     trace_log_fields,
     track_call,
@@ -331,78 +333,220 @@ async def acompletion_structured(
         )
 
     async with get_llm_concurrency_limiter():
-        for retry_round in range(1, max_retries + 1):
-            for context in contexts:
-                attempt_number += 1
-                prepared = prepare_completion_attempt(
-                    context=context,
-                    messages=messages,
-                    extra_kwargs=without_provider_native_tools(kwargs),
-                    attempt=attempt_number,
+        for group_index, context_group in enumerate(completion_context_groups(contexts)):
+            if (
+                group_index > 0
+                and context_group[0].endpoint_role == "fallback"
+                and not should_try_endpoint_fallback(last_error)
+            ):
+                logger.warning(
+                    "llm_structured_endpoint_fallback_skipped_non_endpoint_error",
+                    task_type=primary_context.task_type,
+                    model=tracked_model,
+                    response_model=response_model.__name__,
+                    error=str(last_error),
+                    error_type=last_error.__class__.__name__ if last_error is not None else "",
                 )
-                tracked_model = prepared.tracked_model
-                base_provider_call = resolve_provider_call(
-                    context=context,
-                    call_kwargs=prepared.call_kwargs,
-                )
-                if base_provider_call.api_mode == "chat_completions":
-                    prepared.call_kwargs.clear()
-                    prepared.call_kwargs.update(base_provider_call.kwargs)
-                    provider = _call_provider(prepared.call_kwargs, prepared.provider)
-                    use_json_response_format = _should_use_json_object_response_format(
+                break
+            for retry_round in range(1, max_retries + 1):
+                for context in context_group:
+                    attempt_number += 1
+                    prepared = prepare_completion_attempt(
+                        context=context,
+                        messages=messages,
+                        extra_kwargs=without_provider_native_tools(kwargs),
+                        attempt=attempt_number,
+                    )
+                    tracked_model = prepared.tracked_model
+                    base_provider_call = resolve_provider_call(
+                        context=context,
                         call_kwargs=prepared.call_kwargs,
-                        call_model=prepared.call_model,
-                        provider=provider,
                     )
-                    if use_json_response_format:
-                        _with_json_object_response_format(prepared.call_kwargs)
-                    instructor_mode = None
-                    client = None
-                    if use_instructor:
-                        instructor_mode = instructor.Mode.JSON if use_json_response_format else instructor.Mode.TOOLS
-                        client = instructor.from_litellm(litellm.acompletion, mode=instructor_mode)
-                    mode_label = _structured_mode_label(
-                        use_instructor=use_instructor,
-                        use_json_response_format=use_json_response_format,
-                    )
-                else:
-                    use_json_response_format = False
-                    instructor_mode = None
-                    client = None
-                    mode_label = "json_prompt_responses"
-                log_attempt_started(
-                    "llm_structured_started",
-                    attempt=prepared,
-                    context=context,
-                    extra={
-                        "response_model": response_model.__name__,
-                        "mode": mode_label,
-                    },
-                )
-                try:
-                    prompt_t = 0
-                    completion_t = 0
-                    total_t = 0
-                    assistant_text = ""
-                    trace_messages = messages
-                    if base_provider_call.api_mode == "responses":
-                        response_call_kwargs = _structured_json_prompt_kwargs(
+                    if base_provider_call.api_mode == "chat_completions":
+                        prepared.call_kwargs.clear()
+                        prepared.call_kwargs.update(base_provider_call.kwargs)
+                        provider = _call_provider(prepared.call_kwargs, prepared.provider)
+                        use_json_response_format = _should_use_json_object_response_format(
                             call_kwargs=prepared.call_kwargs,
-                            response_model=response_model,
-                            messages=messages,
+                            call_model=prepared.call_model,
+                            provider=provider,
                         )
-                        provider_call = resolve_provider_call(
-                            context=context,
-                            call_kwargs=response_call_kwargs,
+                        if use_json_response_format:
+                            _with_json_object_response_format(prepared.call_kwargs)
+                        instructor_mode = None
+                        client = None
+                        if use_instructor:
+                            instructor_mode = instructor.Mode.JSON if use_json_response_format else instructor.Mode.TOOLS
+                            client = instructor.from_litellm(litellm.acompletion, mode=instructor_mode)
+                        mode_label = _structured_mode_label(
+                            use_instructor=use_instructor,
+                            use_json_response_format=use_json_response_format,
                         )
-                        initial_api_mode = provider_call.api_mode
-                        route_reason = provider_call.route_reason
-                        auto_responses_chat_fallback = False
-                        trace_messages = response_call_kwargs["messages"]
+                    else:
+                        use_json_response_format = False
+                        instructor_mode = None
+                        client = None
+                        mode_label = "json_prompt_responses"
+                    log_attempt_started(
+                        "llm_structured_started",
+                        attempt=prepared,
+                        context=context,
+                        extra={
+                            "response_model": response_model.__name__,
+                            "mode": mode_label,
+                        },
+                    )
+                    try:
+                        prompt_t = 0
+                        completion_t = 0
+                        total_t = 0
+                        assistant_text = ""
+                        trace_messages = messages
+                        if base_provider_call.api_mode == "responses":
+                            response_call_kwargs = _structured_json_prompt_kwargs(
+                                call_kwargs=prepared.call_kwargs,
+                                response_model=response_model,
+                                messages=messages,
+                            )
+                            provider_call = resolve_provider_call(
+                                context=context,
+                                call_kwargs=response_call_kwargs,
+                            )
+                            initial_api_mode = provider_call.api_mode
+                            route_reason = provider_call.route_reason
+                            auto_responses_chat_fallback = False
+                            trace_messages = response_call_kwargs["messages"]
+                            trace_metadata = {
+                                **dict(extra_metadata or {}),
+                                **provider_call_metadata(provider_call),
+                            }
+                            with langsmith_trace(
+                                name="LLM：结构化生成",
+                                run_type="llm",
+                                **_langsmith_trace_kwargs(
+                                    task_type=context.task_type,
+                                    call_model=prepared.call_model,
+                                    provider=prepared.provider,
+                                    model_name=tracked_model,
+                                    mode=f"structured_{provider_call.api_mode}",
+                                    messages=trace_messages,
+                                    call_kwargs=provider_call.kwargs,
+                                    attempt=prepared.attempt,
+                                    endpoint_role=context.endpoint_role,
+                                    model_selector=context.model_selector,
+                                    extra_metadata=trace_metadata,
+                                ),
+                            ) as trace_run:
+                                usage = (0, 0, 0)
+                                response, provider_call, did_fallback = await _execute_provider_call_with_auto_fallback(
+                                    litellm=litellm,
+                                    context=context,
+                                    provider_call=provider_call,
+                                    attempt=prepared.attempt,
+                                    model=tracked_model,
+                                    route_reason=route_reason,
+                                )
+                                auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
+                                usage = merge_usage(usage, extract_usage(response))
+                                raw_text = _provider_response_text(response, provider_call)
+                                if not raw_text.strip():
+                                    raise ValueError("empty_llm_response")
+                                assistant_text = raw_text
+                                try:
+                                    result = _parse_structured_response_text(response_model, raw_text)
+                                except Exception as parse_exc:
+                                    repair_call_kwargs = _structured_json_prompt_kwargs(
+                                        call_kwargs=prepared.call_kwargs,
+                                        response_model=response_model,
+                                        messages=messages,
+                                        failure_reason=str(parse_exc),
+                                        invalid_response=raw_text,
+                                        force_api_mode=(
+                                            "chat_completions"
+                                            if provider_call.api_mode == "chat_completions"
+                                            else None
+                                        ),
+                                    )
+                                    repair_call = resolve_provider_call(
+                                        context=context,
+                                        call_kwargs=repair_call_kwargs,
+                                    )
+                                    response, provider_call, did_fallback = (
+                                        await _execute_provider_call_with_auto_fallback(
+                                            litellm=litellm,
+                                            context=context,
+                                            provider_call=repair_call,
+                                            attempt=prepared.attempt,
+                                            model=tracked_model,
+                                            route_reason=repair_call.route_reason,
+                                        )
+                                    )
+                                    auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
+                                    usage = merge_usage(usage, extract_usage(response))
+                                    raw_text = _provider_response_text(response, provider_call)
+                                    if not raw_text.strip():
+                                        raise ValueError("empty_llm_response")
+                                    assistant_text = raw_text
+                                    result = _parse_structured_response_text(response_model, raw_text)
+                                prompt_t, completion_t, total_t = usage
+                                extra_outputs = llm_api_mode_outputs(
+                                    initial_api_mode=initial_api_mode,
+                                    final_api_mode=provider_call.api_mode,
+                                    final_route_reason=provider_call.route_reason,
+                                    auto_responses_chat_fallback=auto_responses_chat_fallback,
+                                )
+                                if provider_call.api_mode == "responses":
+                                    tool_events = response_output_tool_events(response)
+                                    if tool_events:
+                                        extra_outputs["llm_provider_tool_events"] = tool_events
+                                _end_langsmith_trace(
+                                    trace_run,
+                                    text=assistant_text.strip() or _serialize_structured_result(result),
+                                    result=result,
+                                    extra_outputs=extra_outputs,
+                                    prompt_tokens=prompt_t,
+                                    completion_tokens=completion_t,
+                                    total_tokens=total_t,
+                                )
+                            logger.info(
+                                "llm_structured_complete",
+                                attempt=prepared.attempt,
+                                elapsed_s=round(time.monotonic() - prepared.started_at, 2),
+                                response_model=response_model.__name__,
+                                model=tracked_model,
+                                task_type=context.task_type,
+                                endpoint_role=context.endpoint_role,
+                                mode=mode_label,
+                                initial_api_mode=initial_api_mode,
+                                final_api_mode=provider_call.api_mode,
+                                initial_route_reason=route_reason,
+                                final_route_reason=provider_call.route_reason,
+                                auto_responses_chat_fallback=auto_responses_chat_fallback,
+                            )
+                            track_call(
+                                task_type=context.task_type,
+                                model=tracked_model,
+                                start=call_started_at,
+                                success=True,
+                                prompt_tokens=prompt_t,
+                                completion_tokens=completion_t,
+                                total_tokens=total_t,
+                            )
+                            return result
                         trace_metadata = {
                             **dict(extra_metadata or {}),
-                            **provider_call_metadata(provider_call),
+                            **provider_call_metadata(base_provider_call),
                         }
+                        if not use_instructor:
+                            repair_call_kwargs = _build_structured_repair_call_kwargs(
+                                call_kwargs=prepared.call_kwargs,
+                                response_model=response_model,
+                                messages=messages,
+                                use_json_response_format=use_json_response_format,
+                            )
+                            prepared.call_kwargs.clear()
+                            prepared.call_kwargs.update(repair_call_kwargs)
+                            trace_messages = prepared.call_kwargs["messages"]
                         with langsmith_trace(
                             name="LLM：结构化生成",
                             run_type="llm",
@@ -411,78 +555,81 @@ async def acompletion_structured(
                                 call_model=prepared.call_model,
                                 provider=prepared.provider,
                                 model_name=tracked_model,
-                                mode=f"structured_{provider_call.api_mode}",
+                                mode="structured_chat_completions",
                                 messages=trace_messages,
-                                call_kwargs=provider_call.kwargs,
+                                call_kwargs=prepared.call_kwargs,
                                 attempt=prepared.attempt,
                                 endpoint_role=context.endpoint_role,
                                 model_selector=context.model_selector,
                                 extra_metadata=trace_metadata,
                             ),
                         ) as trace_run:
-                            usage = (0, 0, 0)
-                            response, provider_call, did_fallback = await _execute_provider_call_with_auto_fallback(
-                                litellm=litellm,
-                                context=context,
-                                provider_call=provider_call,
-                                attempt=prepared.attempt,
-                                model=tracked_model,
-                                route_reason=route_reason,
-                            )
-                            auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
-                            usage = merge_usage(usage, extract_usage(response))
-                            raw_text = _provider_response_text(response, provider_call)
-                            assistant_text = raw_text
-                            try:
-                                result = _parse_structured_response_text(response_model, raw_text)
-                            except Exception as parse_exc:
-                                repair_call_kwargs = _structured_json_prompt_kwargs(
-                                    call_kwargs=prepared.call_kwargs,
-                                    response_model=response_model,
-                                    messages=messages,
-                                    failure_reason=str(parse_exc),
-                                    invalid_response=raw_text,
-                                    force_api_mode=(
-                                        "chat_completions"
-                                        if provider_call.api_mode == "chat_completions"
-                                        else None
-                                    ),
-                                )
-                                repair_call = resolve_provider_call(
-                                    context=context,
-                                    call_kwargs=repair_call_kwargs,
-                                )
-                                response, provider_call, did_fallback = (
-                                    await _execute_provider_call_with_auto_fallback(
-                                        litellm=litellm,
-                                        context=context,
-                                        provider_call=repair_call,
-                                        attempt=prepared.attempt,
-                                        model=tracked_model,
-                                        route_reason=repair_call.route_reason,
+                            if use_instructor:
+                                assert client is not None
+                                try:
+                                    result = await asyncio.wait_for(
+                                        client.chat.completions.create(
+                                            response_model=response_model,
+                                            max_retries=0,
+                                            **prepared.call_kwargs,
+                                        ),
+                                        timeout=context_request_timeout_s(context, prepared.call_kwargs),
                                     )
+                                    prompt_t, completion_t, total_t = extract_usage(result)
+                                except asyncio.TimeoutError:
+                                    raise
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as instructor_exc:
+                                    failure_reason, invalid_response = _structured_failure_feedback(instructor_exc)
+                                    logger.warning(
+                                        "llm_structured_instructor_parse_failed_trying_repair",
+                                        response_model=response_model.__name__,
+                                        mode=mode_label,
+                                        error=str(instructor_exc)[:200],
+                                        **trace_log_fields(),
+                                    )
+                                    repair_use_json_response_format = use_json_response_format
+                                    if _is_response_format_unsupported_error(instructor_exc):
+                                        repair_use_json_response_format = False
+                                    repair_call_kwargs = _build_structured_repair_call_kwargs(
+                                        call_kwargs=prepared.call_kwargs,
+                                        response_model=response_model,
+                                        messages=messages,
+                                        use_json_response_format=repair_use_json_response_format,
+                                        failure_reason=failure_reason,
+                                        invalid_response=invalid_response,
+                                    )
+                                    raw_response = await asyncio.wait_for(
+                                        litellm.acompletion(**repair_call_kwargs),
+                                        timeout=context_request_timeout_s(context, repair_call_kwargs),
+                                    )
+                                    prompt_t, completion_t, total_t = extract_usage(raw_response)
+                                    raw_text = _completion_response_text(raw_response)
+                                    if not raw_text.strip():
+                                        raise ValueError("empty_llm_response")
+                                    assistant_text = raw_text
+                                    result = _parse_structured_response_text(response_model, raw_text)
+                            else:
+                                response = await asyncio.wait_for(
+                                    litellm.acompletion(**prepared.call_kwargs),
+                                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
                                 )
-                                auto_responses_chat_fallback = auto_responses_chat_fallback or did_fallback
-                                usage = merge_usage(usage, extract_usage(response))
-                                raw_text = _provider_response_text(response, provider_call)
-                                assistant_text = raw_text
-                                result = _parse_structured_response_text(response_model, raw_text)
-                            prompt_t, completion_t, total_t = usage
-                            extra_outputs = llm_api_mode_outputs(
-                                initial_api_mode=initial_api_mode,
-                                final_api_mode=provider_call.api_mode,
-                                final_route_reason=provider_call.route_reason,
-                                auto_responses_chat_fallback=auto_responses_chat_fallback,
-                            )
-                            if provider_call.api_mode == "responses":
-                                tool_events = response_output_tool_events(response)
-                                if tool_events:
-                                    extra_outputs["llm_provider_tool_events"] = tool_events
+                                prompt_t, completion_t, total_t = extract_usage(response)
+                                raw_content = response.choices[0].message.content or ""
+                                if not raw_content.strip():
+                                    raise ValueError("empty_llm_response")
+                                assistant_text = raw_content
+                                result = _parse_structured_response_text(response_model, raw_content)
                             _end_langsmith_trace(
                                 trace_run,
                                 text=assistant_text.strip() or _serialize_structured_result(result),
                                 result=result,
-                                extra_outputs=extra_outputs,
+                                extra_outputs=llm_api_mode_outputs(
+                                    initial_api_mode=base_provider_call.api_mode,
+                                    final_api_mode=base_provider_call.api_mode,
+                                    final_route_reason=base_provider_call.route_reason,
+                                ),
                                 prompt_tokens=prompt_t,
                                 completion_tokens=completion_t,
                                 total_tokens=total_t,
@@ -496,11 +643,8 @@ async def acompletion_structured(
                             task_type=context.task_type,
                             endpoint_role=context.endpoint_role,
                             mode=mode_label,
-                            initial_api_mode=initial_api_mode,
-                            final_api_mode=provider_call.api_mode,
-                            initial_route_reason=route_reason,
-                            final_route_reason=provider_call.route_reason,
-                            auto_responses_chat_fallback=auto_responses_chat_fallback,
+                            api_mode=base_provider_call.api_mode,
+                            route_reason=base_provider_call.route_reason,
                         )
                         track_call(
                             task_type=context.task_type,
@@ -512,172 +656,53 @@ async def acompletion_structured(
                             total_tokens=total_t,
                         )
                         return result
-                    trace_metadata = {
-                        **dict(extra_metadata or {}),
-                        **provider_call_metadata(base_provider_call),
-                    }
-                    if not use_instructor:
-                        repair_call_kwargs = _build_structured_repair_call_kwargs(
-                            call_kwargs=prepared.call_kwargs,
-                            response_model=response_model,
-                            messages=messages,
-                            use_json_response_format=use_json_response_format,
+                    except asyncio.TimeoutError:
+                        last_error = LLMTimeoutError(
+                            timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
                         )
-                        prepared.call_kwargs.clear()
-                        prepared.call_kwargs.update(repair_call_kwargs)
-                        trace_messages = prepared.call_kwargs["messages"]
-                    with langsmith_trace(
-                        name="LLM：结构化生成",
-                        run_type="llm",
-                        **_langsmith_trace_kwargs(
+                        log_attempt_timeout(
+                            "llm_structured_timeout",
+                            attempt=prepared,
+                            context=context,
+                            extra={
+                                "response_model": response_model.__name__,
+                                "mode": mode_label,
+                            },
+                        )
+                    except asyncio.CancelledError:
+                        last_error = asyncio.CancelledError()
+                        log_attempt_cancelled(
+                            "llm_structured_cancelled",
+                            attempt=prepared,
+                            context=context,
+                            extra={
+                                "response_model": response_model.__name__,
+                                "mode": mode_label,
+                            },
+                        )
+                        track_call(
                             task_type=context.task_type,
-                            call_model=prepared.call_model,
-                            provider=prepared.provider,
-                            model_name=tracked_model,
-                            mode="structured_chat_completions",
-                            messages=trace_messages,
-                            call_kwargs=prepared.call_kwargs,
-                            attempt=prepared.attempt,
-                            endpoint_role=context.endpoint_role,
-                            model_selector=context.model_selector,
-                            extra_metadata=trace_metadata,
-                        ),
-                    ) as trace_run:
-                        if use_instructor:
-                            assert client is not None
-                            try:
-                                result = await asyncio.wait_for(
-                                    client.chat.completions.create(
-                                        response_model=response_model,
-                                        max_retries=0,
-                                        **prepared.call_kwargs,
-                                    ),
-                                    timeout=context_request_timeout_s(context, prepared.call_kwargs),
-                                )
-                                prompt_t, completion_t, total_t = extract_usage(result)
-                            except asyncio.TimeoutError:
-                                raise
-                            except asyncio.CancelledError:
-                                raise
-                            except Exception as instructor_exc:
-                                failure_reason, invalid_response = _structured_failure_feedback(instructor_exc)
-                                logger.warning(
-                                    "llm_structured_instructor_parse_failed_trying_repair",
-                                    response_model=response_model.__name__,
-                                    mode=mode_label,
-                                    error=str(instructor_exc)[:200],
-                                    **trace_log_fields(),
-                                )
-                                repair_use_json_response_format = use_json_response_format
-                                if _is_response_format_unsupported_error(instructor_exc):
-                                    repair_use_json_response_format = False
-                                repair_call_kwargs = _build_structured_repair_call_kwargs(
-                                    call_kwargs=prepared.call_kwargs,
-                                    response_model=response_model,
-                                    messages=messages,
-                                    use_json_response_format=repair_use_json_response_format,
-                                    failure_reason=failure_reason,
-                                    invalid_response=invalid_response,
-                                )
-                                raw_response = await asyncio.wait_for(
-                                    litellm.acompletion(**repair_call_kwargs),
-                                    timeout=context_request_timeout_s(context, repair_call_kwargs),
-                                )
-                                prompt_t, completion_t, total_t = extract_usage(raw_response)
-                                raw_text = _completion_response_text(raw_response)
-                                assistant_text = raw_text
-                                result = _parse_structured_response_text(response_model, raw_text)
-                        else:
-                            response = await asyncio.wait_for(
-                                litellm.acompletion(**prepared.call_kwargs),
-                                timeout=context_request_timeout_s(context, prepared.call_kwargs),
-                            )
-                            prompt_t, completion_t, total_t = extract_usage(response)
-                            raw_content = response.choices[0].message.content or ""
-                            assistant_text = raw_content
-                            result = _parse_structured_response_text(response_model, raw_content)
-                        _end_langsmith_trace(
-                            trace_run,
-                            text=assistant_text.strip() or _serialize_structured_result(result),
-                            result=result,
-                            extra_outputs=llm_api_mode_outputs(
-                                initial_api_mode=base_provider_call.api_mode,
-                                final_api_mode=base_provider_call.api_mode,
-                                final_route_reason=base_provider_call.route_reason,
-                            ),
-                            prompt_tokens=prompt_t,
-                            completion_tokens=completion_t,
-                            total_tokens=total_t,
+                            model=tracked_model,
+                            start=call_started_at,
+                            success=False,
+                            error="cancelled",
                         )
-                    logger.info(
-                        "llm_structured_complete",
-                        attempt=prepared.attempt,
-                        elapsed_s=round(time.monotonic() - prepared.started_at, 2),
-                        response_model=response_model.__name__,
-                        model=tracked_model,
-                        task_type=context.task_type,
-                        endpoint_role=context.endpoint_role,
-                        mode=mode_label,
-                        api_mode=base_provider_call.api_mode,
-                        route_reason=base_provider_call.route_reason,
-                    )
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=call_started_at,
-                        success=True,
-                        prompt_tokens=prompt_t,
-                        completion_tokens=completion_t,
-                        total_tokens=total_t,
-                    )
-                    return result
-                except asyncio.TimeoutError:
-                    last_error = LLMTimeoutError(
-                        timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
-                    )
-                    log_attempt_timeout(
-                        "llm_structured_timeout",
-                        attempt=prepared,
-                        context=context,
-                        extra={
-                            "response_model": response_model.__name__,
-                            "mode": mode_label,
-                        },
-                    )
-                except asyncio.CancelledError:
-                    last_error = asyncio.CancelledError()
-                    log_attempt_cancelled(
-                        "llm_structured_cancelled",
-                        attempt=prepared,
-                        context=context,
-                        extra={
-                            "response_model": response_model.__name__,
-                            "mode": mode_label,
-                        },
-                    )
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=call_started_at,
-                        success=False,
-                        error="cancelled",
-                    )
-                    raise
-                except Exception as exc:
-                    last_error = exc
-                    log_attempt_failed(
-                        "llm_structured_failed",
-                        attempt=prepared,
-                        context=context,
-                        error=exc,
-                        extra={
-                            "response_model": response_model.__name__,
-                            "mode": mode_label,
-                        },
-                    )
+                        raise
+                    except Exception as exc:
+                        last_error = exc
+                        log_attempt_failed(
+                            "llm_structured_failed",
+                            attempt=prepared,
+                            context=context,
+                            error=exc,
+                            extra={
+                                "response_model": response_model.__name__,
+                                "mode": mode_label,
+                            },
+                        )
 
-            if retry_round < max_retries:
-                await sleep_before_retry(retry_round)
+                if retry_round < max_retries:
+                    await sleep_before_retry(retry_round, error=last_error)
 
     track_call(
         task_type=primary_context.task_type,

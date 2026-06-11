@@ -89,6 +89,28 @@ def _positive_int(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+_CHAPTER_COUNT_UNIT_PATTERN = r"(?:个\s*)?(?:章节|章)"
+_CHAPTER_COUNT_RANGE_RE = re.compile(
+    rf"(?<!\d)(?P<min>\d{{1,2}})\s*(?:[-~—–]|至|到)\s*(?P<max>\d{{1,2}})\s*{_CHAPTER_COUNT_UNIT_PATTERN}"
+)
+
+
+def _chapter_count_range_from_text(value: Any) -> tuple[int, int] | None:
+    text = _text(value)
+    match = _CHAPTER_COUNT_RANGE_RE.search(text)
+    if not match:
+        return None
+    min_count = _positive_int(match.group("min"))
+    max_count = _positive_int(match.group("max"))
+    if min_count is None or max_count is None:
+        return None
+    if min_count > max_count:
+        min_count, max_count = max_count, min_count
+    if 1 <= min_count <= max_count <= 30:
+        return (min_count, max_count)
+    return None
+
+
 def _normalize_digest_mode(value: Any) -> str:
     return normalize_planner_mode(value, default=get_teaching_runtime_config().planner.default_digest_mode)
 
@@ -131,8 +153,9 @@ def render_planner_chapter_contract(value: Any) -> str:
             "- 不要按文件名、页码、资料来源、PPT 顺序机械切章；要按学习者真正需要建立的理解路径切章。",
             "- 不要把同一个知识对象拆成多个空心章节，也不要把多个独立主题硬塞进一个大杂烩章节。",
             "- 章节标题要能回答“这一章到底帮我学会什么/解决什么问题”。",
-            "- 章节标题要短，通常 4-12 个中文字符；不使用冒号副标题、分号说明或长串枚举，细节放到 required_elements/key_points。",
-            "- 章节标题要自然像真实讲义目录，避免口号化、过度对仗或统一句式。",
+            "- 章节标题要自然、具体，像真实讲义目录；可以保留必要限定词、方法词或场景词，让学生离开上下文也能看懂边界。",
+            "- 不使用冒号副标题、分号说明或长串枚举；多个知识点、题型、适用条件和训练范围都放到 required_elements/key_points。",
+            "- 不要为了短而压成“基础/技巧/应用”这类空泛词；也避免口号化、过度对仗、统一句式和“定义、性质、应用、训练”式堆叠。",
         ]
     )
 
@@ -237,13 +260,12 @@ def _dedupe_chapters_by_title(chapters: list[PlannerChapterPlan]) -> list[Planne
     return _reindex_chapters(result)
 
 
-def _cap_chapters_to_maximum(
+def _cap_chapters_to_limit(
     chapters: list[PlannerChapterPlan],
     *,
-    digest_mode: str,
+    chapter_limit: int,
+    note_prefix: str,
 ) -> list[PlannerChapterPlan]:
-    contract = get_planner_mode_contract(digest_mode)
-    chapter_limit = max(contract.min_chapters, contract.max_chapters)
     if len(chapters) <= chapter_limit:
         return _reindex_chapters(chapters)
 
@@ -255,9 +277,22 @@ def _cap_chapters_to_maximum(
         kept[-1] = _merge_chapter_into(
             kept[-1],
             extra,
-            note_prefix="超出章节预算后合并覆盖",
+            note_prefix=note_prefix,
         )
     return _reindex_chapters(kept)
+
+
+def _cap_chapters_to_maximum(
+    chapters: list[PlannerChapterPlan],
+    *,
+    digest_mode: str,
+) -> list[PlannerChapterPlan]:
+    contract = get_planner_mode_contract(digest_mode)
+    return _cap_chapters_to_limit(
+        chapters,
+        chapter_limit=max(contract.min_chapters, contract.max_chapters),
+        note_prefix="超出章节预算后合并覆盖",
+    )
 
 
 def _normalize_chapter_count(
@@ -265,6 +300,7 @@ def _normalize_chapter_count(
     *,
     digest_mode: str,
     requested_chapter_count: int | None = None,
+    requested_chapter_count_range: tuple[int, int] | None = None,
 ) -> list[PlannerChapterPlan]:
     if requested_chapter_count is not None:
         if len(chapters) != requested_chapter_count:
@@ -273,6 +309,14 @@ def _normalize_chapter_count(
             )
         return _reindex_chapters(chapters)
     chapters = _dedupe_chapters_by_title(chapters)
+    if requested_chapter_count_range is not None:
+        _min_count, max_count = requested_chapter_count_range
+        chapters = _cap_chapters_to_limit(
+            chapters,
+            chapter_limit=max_count,
+            note_prefix="超出用户章节范围后合并覆盖",
+        )
+        return _reindex_chapters(chapters)
     chapters = _cap_chapters_to_maximum(chapters, digest_mode=digest_mode)
     return _reindex_chapters(chapters)
 
@@ -283,6 +327,7 @@ def _build_constraints(
     chapter_count: int,
     shared_inputs: SharedInputs,
     requested_chapter_count: int | None = None,
+    requested_chapter_count_range: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     contract = get_planner_mode_contract(digest_mode)
     constraints = {
@@ -299,6 +344,11 @@ def _build_constraints(
     if requested_chapter_count is not None:
         constraints["requested_chapter_count"] = requested_chapter_count
         constraints["chapter_count_source"] = "user_request"
+    elif requested_chapter_count_range is not None:
+        min_count, max_count = requested_chapter_count_range
+        constraints["requested_chapter_min"] = min_count
+        constraints["requested_chapter_max"] = max_count
+        constraints["chapter_count_source"] = "user_request_range"
     return constraints
 
 
@@ -328,6 +378,14 @@ def normalize_planner_draft(
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
     requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
+    requested_chapter_count_range: tuple[int, int] | None = None
+    if requested_chapter_count is None:
+        requested_min = _positive_int(current_constraints.get("requested_chapter_min"))
+        requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
+        if requested_min is not None and requested_max is not None:
+            requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
+        else:
+            requested_chapter_count_range = _chapter_count_range_from_text(resolved_user_prompt)
 
     current_chapters = _chapter_items(current.get("chapters"))
     previous_chapters = _chapter_items(previous.get("chapters"))
@@ -340,6 +398,7 @@ def normalize_planner_draft(
         chapters,
         digest_mode=mode,
         requested_chapter_count=requested_chapter_count,
+        requested_chapter_count_range=requested_chapter_count_range,
     )
     plan_text = _student_facing_text(current.get("plan") or previous.get("plan"))
     if not plan_text:
@@ -362,6 +421,7 @@ def normalize_planner_draft(
             chapter_count=len(chapters),
             shared_inputs=shared,
             requested_chapter_count=requested_chapter_count,
+            requested_chapter_count_range=requested_chapter_count_range,
         ),
     )
 

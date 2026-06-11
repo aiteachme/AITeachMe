@@ -133,7 +133,7 @@ prefetch_extract（可选，DocGen sidecar，发布前不落库）
 
 当前并发口径：
 
-- 全局 LLM 并发只由 `settings.llm.concurrency_limit` 控制，默认 `16`，所有 LLM 调用共享。
+- 全局 LLM 并发只由 `settings.llm.concurrency_limit` 控制，默认 `4`，所有 LLM 调用共享。
 - 预抽取阶段由 `settings.knowledge_graph.prefetch_concurrency` 控制，默认 `2`，实际执行仍受全局 LLM limiter 限制。
 - 正式同步阶段由 `settings.knowledge_graph.max_parallel_extractions` 控制任务规划和默认执行上限，默认 `16`；章节少但大章很长时会拆成子章节任务，最多扩展到该上限。
 - 正式同步执行并发默认等于任务规划上限，并会被全局 LLM limiter 进一步约束。

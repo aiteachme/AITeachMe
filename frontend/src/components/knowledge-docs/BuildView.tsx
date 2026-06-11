@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, ChevronRight, Code2, FileText, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, Code2, Loader2, PanelRightClose, PanelRightOpen, PlayCircle } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
@@ -81,7 +81,7 @@ type BuildEventItem = {
 };
 
 function shouldOpenDetailsByDefault(): boolean {
-  return false;
+  return true;
 }
 
 const BUILD_MODE_LABELS: Record<string, string> = {
@@ -100,8 +100,31 @@ function formatBuildModeReason(reason?: string | null): string | null {
   return BUILD_MODE_LABELS[normalized] ?? null;
 }
 
-function formatCompactCount(value: number): string {
-  return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+const PREVIEW_DEBUG_SECTION_HEADINGS = [
+  "检索结果",
+  "执行过的查询",
+  "仍需补强的点",
+];
+
+function stripLivePreviewDebugSections(value: string): string {
+  const lines = String(value ?? "").split(/\r?\n/);
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (PREVIEW_DEBUG_SECTION_HEADINGS.includes(trimmed)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^#{1,6}\s+\S/.test(trimmed)) {
+      skipping = false;
+    }
+    if (skipping) continue;
+    if (/^检索与证据整理已完成/.test(trimmed)) continue;
+    if (/^(本地命中|联网命中|已执行查询|已打开网页|已纳入文档)[：:]/.test(trimmed)) continue;
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
 }
 
 function buildEventIdentity(event: BuildEventItem): string {
@@ -148,7 +171,7 @@ interface LiveMarkdownRenderState {
 }
 
 function prepareLiveMarkdownContent(content: string, isStreaming: boolean): LiveMarkdownRenderState {
-  const source = String(content ?? "");
+  const source = stripLivePreviewDebugSections(content);
   const limit = isStreaming ? LIVE_MARKDOWN_RENDER_LIMIT : LIVE_MARKDOWN_RENDER_LIMIT * 2;
   const shouldTruncate = source.length > limit;
   const markdown = shouldTruncate ? source.slice(0, limit).trimEnd() : source;
@@ -353,18 +376,10 @@ export function BuildView({
                   {statusText || "正在准备知识文档..."}
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-slate-400">
-                  <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
-                    {chapters.length > 0 ? `${chapters.length} 个章节` : "等待章节计划"}
-                  </span>
-                  {buildModeLabel ? (
-                    <span className="rounded-md bg-zinc-50 px-2 py-0.5 ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
-                      {buildModeLabel}
-                    </span>
-                  ) : null}
                   {(sseConnected || isBuildActive) ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
-                      {sseConnected ? "实时更新" : "等待实时更新"}
+                      {sseConnected ? "实时" : "等待"}
                     </span>
                   ) : null}
                   <button
@@ -379,7 +394,7 @@ export function BuildView({
                     )}
                   >
                     {detailsOpen ? <PanelRightClose className="h-3 w-3" /> : <PanelRightOpen className="h-3 w-3" />}
-                    {detailsOpen ? "收起细节" : "查看细节"}
+                    {detailsOpen ? "收起" : "细节"}
                   </button>
                 </div>
               </div>
@@ -409,16 +424,14 @@ export function BuildView({
                   }}
                 />
               </div>
-              <span className="w-12 rounded-md bg-zinc-50 px-2 py-1 text-right text-[13px] font-semibold tabular-nums text-zinc-900 ring-1 ring-zinc-200 dark:bg-slate-900 dark:text-zinc-100 dark:ring-slate-800">
-                {roundedProgress}%
-              </span>
             </div>
           </div>
         </div>
 
+        {detailsOpen ? (
         <div className="relative mt-4 overflow-x-auto pb-1 build-scroll">
           <div className="flex min-w-max items-center gap-3">
-            {timelineSteps.map((step, idx) => {
+            {timelineSteps.map((step) => {
               const isDone = step.state === "done";
               const isActive = step.state === "active";
               return (
@@ -441,7 +454,14 @@ export function BuildView({
                         ? "border-blue-500 bg-white text-blue-600 dark:bg-slate-900"
                         : "border-zinc-200 text-zinc-400 dark:border-slate-700",
                   )}>
-                    {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : idx + 1}
+                    {isDone ? (
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                    ) : (
+                      <span className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        isActive ? "bg-blue-500" : "bg-zinc-300 dark:bg-slate-600",
+                      )} />
+                    )}
                   </span>
                   <span className="whitespace-nowrap font-medium">{step.title}</span>
                   {isActive ? <span className="hidden text-[11px] text-blue-500/70 md:inline">{step.description}</span> : null}
@@ -450,15 +470,20 @@ export function BuildView({
             })}
           </div>
         </div>
+        ) : null}
       </div>
 
       <div className="flex-1 min-h-0 flex bg-white dark:bg-slate-950">
         <div className="flex-1 min-w-0 flex flex-col lg:flex-row">
+          {detailsOpen ? (
           <div className="w-full shrink-0 border-b border-zinc-200 bg-zinc-50/60 dark:border-slate-800 dark:bg-slate-950 lg:w-[292px] lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between px-4 py-3.5">
               <div>
                 <div className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">章节进度</div>
-                <div className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">选择章节查看生成预览</div>
+                <div className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">
+                  {chapters.length > 0 ? `${chapters.length} 章` : "等待章节"}
+                  {buildModeLabel ? ` · ${buildModeLabel}` : ""}
+                </div>
               </div>
               <ChevronRight className="hidden h-4 w-4 text-zinc-300 lg:block" />
             </div>
@@ -493,7 +518,7 @@ export function BuildView({
                     </div>
                     <div className="flex-1 pr-1">
                       <div className="line-clamp-2 font-medium leading-snug">
-                        {String(chapter.chapter_index).padStart(2, "0")}. {chapter.title}
+                        {chapter.title}
                       </div>
                       <div className={cn("mt-1 text-[10.5px]", isSelected ? "text-blue-500 dark:text-blue-300" : "text-zinc-400 dark:text-slate-500")}>
                         {buildChapterStatusLabel(effectiveChapterStatus)}
@@ -507,6 +532,7 @@ export function BuildView({
               )}
             </div>
           </div>
+          ) : null}
 
           <div className="relative flex h-full min-w-0 flex-1 flex-col bg-white dark:bg-slate-900">
             {selectedPreviewChapter ? (() => {
@@ -533,27 +559,21 @@ export function BuildView({
                   : canUseMergeFallback
                     ? draftExcerpt
                     : "";
-              const selectedHeadings = preview?.latest_headings ?? [];
-              const selectedWordCount = preview?.word_count ?? selChapter?.word_count ?? 0;
               const previewUpdatedAt = streamPreview?.updatedAt
                 ? formatBuildEventTime(streamPreview.updatedAt)
                 : preview?.updated_at
                   ? formatBuildEventTime(preview.updated_at)
                   : null;
-              const usingMergeFallback = !streamExcerpt.trim() && !previewExcerpt.trim() && canUseMergeFallback && Boolean(selectedExcerpt.trim());
               const usingSseDelta = Boolean(streamExcerpt.trim());
-              const hasPreviewMeta =
-                selectedWordCount > 0 ||
-                usingMergeFallback ||
-                usingSseDelta;
 
               return (
                 <>
                   <div className="flex items-center justify-between gap-4 border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold leading-5 text-zinc-900 dark:text-slate-100">
-                        {String(selectedPreviewChapter).padStart(2, "0")}. {selectedTitle}
+                        {selectedTitle}
                       </div>
+                      {detailsOpen ? (
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="rounded-md bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-500 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-slate-800">
                           {buildChapterStatusLabel(selectedStatus)}
@@ -564,6 +584,7 @@ export function BuildView({
                           </span>
                         ) : null}
                       </div>
+                      ) : null}
                     </div>
                     {(isStreaming || sseConnected) && (
                       <div className="shrink-0 flex items-center gap-2 rounded-md bg-blue-50 px-2.5 py-1 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:ring-blue-500/20">
@@ -584,57 +605,23 @@ export function BuildView({
                           "mx-auto grid w-full gap-8 pb-12",
                           detailsOpen
                             ? "max-w-[980px]"
-                            : "max-w-[1280px] 2xl:grid-cols-[minmax(0,920px)_300px]",
+                            : "max-w-[940px]",
                         )}
                       >
-                        <div className="min-w-0 space-y-5">
-                          {hasPreviewMeta ? (
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                              {selectedWordCount > 0 ? (
-                                <span>
-                                  约 {selectedWordCount} 字
-                                </span>
-                              ) : null}
-                              {usingMergeFallback ? (
-                                <span className="text-blue-600 dark:text-blue-400">
-                                  当前显示整本合并预览
-                                </span>
-                              ) : null}
-                              {usingSseDelta ? (
-                                <span className="text-blue-600 dark:text-blue-400">
-                                  实时增量
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          {selectedHeadings.length > 0 ? (
-                            <p className="max-w-[960px] text-[12px] leading-6 text-zinc-500 dark:text-slate-400">
-                              <span className="text-zinc-400 dark:text-slate-500">生成聚焦：</span>
-                              {selectedHeadings.join(" / ")}
-                            </p>
-                          ) : null}
-
+                      <div className="min-w-0 space-y-5">
                           <LiveTextDocument
                             key={selectedPreviewChapter}
                             content={selectedExcerpt}
                             isStreaming={isStreaming}
                           />
-
-                          {detailsOpen && selectedChapterEvents.length > 0 ? (
-                            <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
-                          ) : null}
                         </div>
 
                       </div>
-                    ) : selectedChapterEvents.length > 0 ? (
+                    ) : detailsOpen && selectedChapterEvents.length > 0 ? (
                       <div className="mx-auto w-full max-w-[1120px] space-y-4 pb-10">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-zinc-500 dark:text-slate-400">
-                          <span className="text-blue-600 dark:text-blue-400">
-                            正在捕获章节执行事件
-                          </span>
+                        <div className="flex h-40 items-center justify-center text-[13px] text-zinc-400 dark:text-slate-500">
+                          等待章节预览
                         </div>
-                        <EventTrail events={selectedChapterEvents} selectedPreviewChapter={selectedPreviewChapter} />
                       </div>
                     ) : isDone ? (
                       <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-slate-500 space-y-3">
@@ -653,7 +640,7 @@ export function BuildView({
             })() : (
               <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-3">
                 <PlayCircle className="w-10 h-10 text-zinc-200" strokeWidth={1.5} />
-                <span className="text-[12px]">选择左侧章节查看流</span>
+                <span className="text-[12px]">等待章节预览</span>
               </div>
             )}
           </div>
@@ -670,8 +657,7 @@ export function BuildView({
           <aside className="fixed bottom-0 right-0 top-0 z-[90] flex w-[min(330px,calc(100vw-1rem))] shrink-0 flex-col border-l border-zinc-100 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950 lg:static lg:z-auto lg:w-[330px] lg:shadow-none">
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-4 dark:border-slate-800">
               <div>
-                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">构建细节</p>
-                <p className="mt-1 text-[11px] text-zinc-400 dark:text-slate-500">记录实时事件和方案摘要</p>
+                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">细节</p>
               </div>
               <button
                 type="button"
@@ -691,9 +677,6 @@ export function BuildView({
               </div>
             ) : null}
             <div className="flex-1 overflow-y-auto px-3 py-3 build-scroll">
-              <p className="px-1 pb-2 text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">
-                最近事件
-              </p>
               <div className="divide-y divide-zinc-100 dark:divide-slate-800">
                 {recentEvents.map((event, index) => {
                   const stage = (event.stage ?? "").trim();
@@ -715,7 +698,7 @@ export function BuildView({
                 })}
                 {recentEvents.length === 0 ? (
                   <div className="py-8 text-center text-[12px] text-zinc-300 dark:text-slate-600">
-                    等待构建事件...
+                    等待事件
                   </div>
                 ) : null}
               </div>
@@ -728,32 +711,6 @@ export function BuildView({
   );
 }
 
-function EventTrail({
-  events,
-  selectedPreviewChapter,
-}: {
-  events: Array<{ stage?: string | null; summary?: string | null }>;
-  selectedPreviewChapter: number;
-}) {
-  return (
-    <div className="space-y-2 border-t border-zinc-100 pt-5 dark:border-slate-800">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400 dark:text-slate-500">
-        改进轨迹
-      </p>
-      <div className="divide-y divide-zinc-100 border-y border-zinc-100 dark:divide-slate-800 dark:border-slate-800">
-        {events.map((event, index) => (
-          <div
-            key={`${selectedPreviewChapter}-${event.stage}-${index}`}
-            className="py-3 text-[12px] leading-6 text-zinc-600 dark:text-slate-300"
-          >
-            {event.summary}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const LiveTextDocument = memo(function LiveTextDocument({
   content,
   isStreaming,
@@ -762,58 +719,23 @@ const LiveTextDocument = memo(function LiveTextDocument({
   isStreaming: boolean;
 }) {
   const renderState = useLiveMarkdownRenderState(content, isStreaming);
-  const statusText = renderState.pending
-    ? "正在整理新片段"
-    : isStreaming
-      ? "Markdown 实时渲染"
-      : "预览已稳定";
 
   return (
     <article>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3 dark:border-slate-800">
-        <div className="flex min-w-0 items-center gap-2 text-zinc-500 dark:text-slate-400">
-          <FileText className="h-4 w-4 shrink-0" />
-          <div className="min-w-0">
-            <p className="truncate text-[12px] font-medium text-zinc-700 dark:text-slate-200">章节草稿</p>
-            <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-slate-500">
-              {formatCompactCount(renderState.sourceLength)} 字符已接收
-            </p>
-          </div>
-        </div>
-        <div
-          className={cn(
-            "inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[11px] font-medium ring-1",
-            isStreaming
-              ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
-              : "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
-          )}
-          aria-live="polite"
-        >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              isStreaming ? "build-live-dot text-blue-500" : "bg-emerald-500",
-            )}
-          />
-          {statusText}
-        </div>
-      </div>
-
       <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
         <MarkdownViewer content={renderState.markdown} variant="document" />
       </div>
 
       {renderState.truncated ? (
         <div className="mt-5 border-l-2 border-amber-400 bg-amber-50/60 px-3 py-2 text-[12px] leading-5 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-          实时预览先渲染前 {formatCompactCount(renderState.displayedLength)} 字符，完整正文仍会继续写入最终文档。
+          实时预览已节选，完整正文仍会继续写入最终文档。
         </div>
       ) : null}
 
       {isStreaming ? (
-        <div className="mt-5 flex items-center gap-2 text-[12px] text-blue-600 dark:text-blue-300">
-          <motion.span className="inline-block h-[15px] w-[2px] animate-blink bg-blue-500 align-middle dark:bg-blue-400" />
-          <span>{renderState.pending ? "新内容已到达，正在排版..." : "保持接收中..."}</span>
-        </div>
+        <span className="sr-only" aria-live="polite">
+          {renderState.pending ? "正在更新预览" : "正在生成章节"}
+        </span>
       ) : null}
     </article>
   );

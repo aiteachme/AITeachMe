@@ -979,6 +979,7 @@ function looksLikeMermaidLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return true;
   if (/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(trimmed)) return true;
+  if (/^(classDef|class|style|linkStyle|click|subgraph|end|direction|accTitle|accDescr|title)\b/i.test(trimmed)) return true;
   if (/^\s/.test(line)) return true;
   return /-->|---|==>|\||\[|\]|\(|\)|\{|\}/.test(trimmed);
 }
@@ -1670,7 +1671,7 @@ function formatHeadingNumber(level: number, counters: number[]): string {
     }
     parts.push(counters[index]);
   }
-  return level === 1 ? `${parts[0]}.` : parts.join(".");
+  return parts.map(String).join(".");
 }
 
 function annotateHeadingIds(
@@ -2493,7 +2494,7 @@ function InteractiveHtmlEmbed({
   );
 }
 
-function containsInteractiveEmbed(children: ReactNode): boolean {
+function containsInteractiveEmbed(children: ReactNode, fallbackCourseId?: string): boolean {
   return Children.toArray(children).some((child) => {
     if (!isValidElement(child)) {
       return false;
@@ -2501,8 +2502,11 @@ function containsInteractiveEmbed(children: ReactNode): boolean {
     if (child.type === InteractiveHtmlEmbed) {
       return true;
     }
-    const props = child.props as { children?: ReactNode };
-    return containsInteractiveEmbed(props.children);
+    const props = child.props as { children?: ReactNode; href?: string };
+    if (typeof props.href === "string" && parseInteractivePreviewHref(props.href, { fallbackCourseId })) {
+      return true;
+    }
+    return containsInteractiveEmbed(props.children, fallbackCourseId);
   });
 }
 
@@ -2655,7 +2659,7 @@ export function MarkdownViewer({
             <span
               aria-hidden="true"
               data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#1F2329] [-webkit-user-select:none] dark:text-slate-200"
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#2563EB] [-webkit-user-select:none] dark:text-blue-300"
             >
               {headingNumber}&nbsp;
             </span>
@@ -2710,7 +2714,7 @@ export function MarkdownViewer({
           );
         },
         p: ({ children }) => (
-          containsInteractiveEmbed(children)
+          containsInteractiveEmbed(children, assetCourse)
             ? <div className="my-4">{children}</div>
             : <p className={styles.paragraph}>{children}</p>
         ),
@@ -2725,7 +2729,7 @@ export function MarkdownViewer({
           if (!callout) {
             return <blockquote className={styles.blockquote}>{children}</blockquote>;
           }
-          if (containsInteractiveEmbed(callout.body)) {
+          if (containsInteractiveEmbed(callout.body, assetCourse)) {
             return <div className="my-4">{callout.body}</div>;
           }
 

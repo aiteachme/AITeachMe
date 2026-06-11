@@ -202,3 +202,51 @@ async def test_structured_completion_repairs_responses_parse_failure_without_cha
     assert result.title == "函数"
     assert len(calls) == 2
     assert "Previous structured output did not validate." in calls[1]["input"][-1]["content"]
+
+
+@pytest.mark.anyio
+async def test_structured_completion_retries_empty_primary_before_fallback(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key" and len(calls) == 1:
+                return SimpleNamespace(
+                    output_text="",
+                    usage=SimpleNamespace(input_tokens=2, output_tokens=0, total_tokens=2),
+                )
+            return SimpleNamespace(
+                output_text='{"title":"函数","key_points":["定义"]}',
+                usage=SimpleNamespace(input_tokens=2, output_tokens=3, total_tokens=5),
+            )
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - forced responses in this test
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com")
+    monkeypatch.setattr(structured_calls, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(structured_calls, "_load_instructor", lambda: None)
+    monkeypatch.setattr(structured_calls, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "responses"},
+    })
+
+    result = await structured_calls.acompletion_structured(
+        _RepairChapter,
+        [{"role": "user", "content": "生成章节"}],
+        task_type=TaskType.CHAT,
+        model="primary",
+        max_retries=2,
+    )
+
+    assert result.title == "函数"
+    assert [call["api_key"] for call in calls] == ["primary-key", "primary-key"]

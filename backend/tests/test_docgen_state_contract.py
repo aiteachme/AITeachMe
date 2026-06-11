@@ -824,6 +824,41 @@ async def test_repair_patch_applies_local_snippet(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
+async def test_repair_rejects_patch_that_repeats_existing_h2(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown="## 核心概念\n\n- 把已有小节再写一遍。",
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown="# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n## 本章小结\n\n记住公式。\n",
+    )
+    action = ReviewAction(
+        action_id="a1",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="缺少补充说明",
+        target_anchor="核心概念",
+        instruction="补充说明。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert repaired[0].markdown == chapter.markdown
+    assert updated_actions[0].status == "downgraded"
+    assert unresolved
+    assert traces[0].changed is False
+    assert "Rejected unsafe LLM local patch" in traces[0].detail
+
+
+@pytest.mark.anyio
 async def test_repair_appends_unit_test_patch_to_chapter_end(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
         return repair._LocalMarkdownPatch(
@@ -1088,3 +1123,49 @@ async def test_deterministic_rendering_patch_does_not_consume_llm_patch_limit(mo
     assert [trace.llm_attempted for trace in traces] == [False, True]
     assert "FIXED_TABLE" in repaired[0].markdown
     assert "## 易错补充" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+async def test_repair_rejects_patch_that_adds_presentation_regression(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=(
+                "## 易错补充\n\n"
+                "- 先看定义。\n"
+                "- 再看条件。\n"
+                "- 检查符号。\n"
+                "- 检查单位。\n"
+                "- 代入公式。\n"
+                "- 验证边界。\n"
+                "- 对照反例。\n"
+                "- 回看题干。\n"
+                "- 写出结论。\n"
+            ),
+            covered_action_ids=["a1"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="函数与极限",
+        markdown="# 函数与极限\n\n## 核心概念\n\n极限描述变量逼近时的趋势。\n\n## 本章小结\n\n抓住趋势。\n",
+    )
+    action = ReviewAction(
+        action_id="a1",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="缺少易错提醒",
+        target_anchor="核心概念",
+        instruction="补充一个局部易错提醒。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert repaired[0].markdown == chapter.markdown
+    assert updated_actions[0].status == "downgraded"
+    assert unresolved
+    assert "新增展示结构问题" in traces[0].detail

@@ -13,6 +13,7 @@ from app.shared.infra.observability.trace import langsmith_trace
 
 from .common import (
     build_completion_contexts,
+    completion_context_groups,
     effective_call_timeout_s,
     effective_max_retries,
     extract_usage,
@@ -25,6 +26,7 @@ from .common import (
     prepare_completion_attempt,
     raise_last_error,
     context_request_timeout_s,
+    should_try_endpoint_fallback,
     sleep_before_retry,
     track_call,
 )
@@ -62,126 +64,140 @@ async def acompletion_with_tools(
     attempt_number = 0
 
     async with get_llm_concurrency_limiter():
-        for retry_round in range(1, max_retries + 1):
-            for context in contexts:
-                attempt_number += 1
-                prepared = prepare_completion_attempt(
-                    context=context,
-                    messages=messages,
-                    extra_kwargs=without_provider_native_tools(kwargs),
-                    attempt=attempt_number,
-                    override_kwargs={"tools": tools} if tools else None,
+        for group_index, context_group in enumerate(completion_context_groups(contexts)):
+            if (
+                group_index > 0
+                and context_group[0].endpoint_role == "fallback"
+                and not should_try_endpoint_fallback(last_error)
+            ):
+                logger.warning(
+                    "llm_tools_endpoint_fallback_skipped_non_endpoint_error",
+                    task_type=primary_context.task_type,
+                    model=tracked_model,
+                    error=str(last_error),
+                    error_type=last_error.__class__.__name__ if last_error is not None else "",
                 )
-                tracked_model = prepared.tracked_model
-                log_attempt_started(
-                    "llm_tools_started",
-                    attempt=prepared,
-                    context=context,
-                    extra={
-                        "tool_count": len(tools) if tools else 0,
-                        "api_mode": "chat_completions",
-                    },
-                )
-                try:
-                    trace_metadata = {
-                        **dict(extra_metadata or {}),
-                        "llm_requested_api_mode": str(
-                            kwargs.get("api_mode") or context.settings.llm.api_mode
-                        ),
-                        "llm_api_mode_route_reason": "project_function_tools_chat_completions",
-                    }
-                    with langsmith_trace(
-                        name="LLM：工具调用",
-                        run_type="llm",
-                        **_langsmith_trace_kwargs(
-                            task_type=context.task_type,
-                            call_model=prepared.call_model,
-                            provider=prepared.provider,
-                            model_name=tracked_model,
-                            mode="tools_chat_completions",
-                            messages=messages,
-                            call_kwargs=prepared.call_kwargs,
-                            attempt=prepared.attempt,
-                            endpoint_role=context.endpoint_role,
-                            model_selector=context.model_selector,
-                            tools=tools,
-                            extra_metadata=trace_metadata,
-                        ),
-                    ) as trace_run:
-                        response = await asyncio.wait_for(
-                            litellm.acompletion(**prepared.call_kwargs),
-                            timeout=context_request_timeout_s(context, prepared.call_kwargs),
-                        )
-                        prompt_t, completion_t, total_t = extract_usage(response)
-                        message = response.choices[0].message
-                        _end_langsmith_trace(
-                            trace_run,
-                            text=message.content or "",
-                            tool_calls=_langsmith_tool_calls(message),
-                            extra_outputs=llm_api_mode_outputs(
-                                initial_api_mode="chat_completions",
-                                final_api_mode="chat_completions",
-                                final_route_reason="project_function_tools_chat_completions",
+                break
+            for retry_round in range(1, max_retries + 1):
+                for context in context_group:
+                    attempt_number += 1
+                    prepared = prepare_completion_attempt(
+                        context=context,
+                        messages=messages,
+                        extra_kwargs=without_provider_native_tools(kwargs),
+                        attempt=attempt_number,
+                        override_kwargs={"tools": tools} if tools else None,
+                    )
+                    tracked_model = prepared.tracked_model
+                    log_attempt_started(
+                        "llm_tools_started",
+                        attempt=prepared,
+                        context=context,
+                        extra={
+                            "tool_count": len(tools) if tools else 0,
+                            "api_mode": "chat_completions",
+                        },
+                    )
+                    try:
+                        trace_metadata = {
+                            **dict(extra_metadata or {}),
+                            "llm_requested_api_mode": str(
+                                kwargs.get("api_mode") or context.settings.llm.api_mode
                             ),
+                            "llm_api_mode_route_reason": "project_function_tools_chat_completions",
+                        }
+                        with langsmith_trace(
+                            name="LLM：工具调用",
+                            run_type="llm",
+                            **_langsmith_trace_kwargs(
+                                task_type=context.task_type,
+                                call_model=prepared.call_model,
+                                provider=prepared.provider,
+                                model_name=tracked_model,
+                                mode="tools_chat_completions",
+                                messages=messages,
+                                call_kwargs=prepared.call_kwargs,
+                                attempt=prepared.attempt,
+                                endpoint_role=context.endpoint_role,
+                                model_selector=context.model_selector,
+                                tools=tools,
+                                extra_metadata=trace_metadata,
+                            ),
+                        ) as trace_run:
+                            response = await asyncio.wait_for(
+                                litellm.acompletion(**prepared.call_kwargs),
+                                timeout=context_request_timeout_s(context, prepared.call_kwargs),
+                            )
+                            prompt_t, completion_t, total_t = extract_usage(response)
+                            message = response.choices[0].message
+                            _end_langsmith_trace(
+                                trace_run,
+                                text=message.content or "",
+                                tool_calls=_langsmith_tool_calls(message),
+                                extra_outputs=llm_api_mode_outputs(
+                                    initial_api_mode="chat_completions",
+                                    final_api_mode="chat_completions",
+                                    final_route_reason="project_function_tools_chat_completions",
+                                ),
+                                prompt_tokens=prompt_t,
+                                completion_tokens=completion_t,
+                                total_tokens=total_t,
+                            )
+                        logger.info(
+                            "llm_tools_complete",
+                            attempt=prepared.attempt,
+                            elapsed_s=round(time.monotonic() - prepared.started_at, 2),
+                            model=tracked_model,
+                            task_type=context.task_type,
+                            endpoint_role=context.endpoint_role,
+                            has_tool_calls=bool(getattr(response.choices[0].message, "tool_calls", None)),
+                            api_mode="chat_completions",
+                        )
+                        track_call(
+                            task_type=context.task_type,
+                            model=tracked_model,
+                            start=call_started_at,
+                            success=True,
                             prompt_tokens=prompt_t,
                             completion_tokens=completion_t,
                             total_tokens=total_t,
                         )
-                    logger.info(
-                        "llm_tools_complete",
-                        attempt=prepared.attempt,
-                        elapsed_s=round(time.monotonic() - prepared.started_at, 2),
-                        model=tracked_model,
-                        task_type=context.task_type,
-                        endpoint_role=context.endpoint_role,
-                        has_tool_calls=bool(getattr(response.choices[0].message, "tool_calls", None)),
-                        api_mode="chat_completions",
-                    )
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=call_started_at,
-                        success=True,
-                        prompt_tokens=prompt_t,
-                        completion_tokens=completion_t,
-                        total_tokens=total_t,
-                    )
-                    return response
-                except asyncio.TimeoutError:
-                    last_error = LLMTimeoutError(
-                        timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
-                    )
-                    log_attempt_timeout(
-                        "llm_tools_timeout",
-                        attempt=prepared,
-                        context=context,
-                    )
-                except asyncio.CancelledError:
-                    last_error = asyncio.CancelledError()
-                    log_attempt_cancelled(
-                        "llm_tools_cancelled",
-                        attempt=prepared,
-                        context=context,
-                    )
-                    track_call(
-                        task_type=context.task_type,
-                        model=tracked_model,
-                        start=call_started_at,
-                        success=False,
-                        error="cancelled",
-                    )
-                    raise
-                except Exception as exc:
-                    last_error = exc
-                    log_attempt_failed(
-                        "llm_tools_failed",
-                        attempt=prepared,
-                        context=context,
-                        error=exc,
-                    )
+                        return response
+                    except asyncio.TimeoutError:
+                        last_error = LLMTimeoutError(
+                            timeout_s=effective_call_timeout_s(context, prepared.call_kwargs)
+                        )
+                        log_attempt_timeout(
+                            "llm_tools_timeout",
+                            attempt=prepared,
+                            context=context,
+                        )
+                    except asyncio.CancelledError:
+                        last_error = asyncio.CancelledError()
+                        log_attempt_cancelled(
+                            "llm_tools_cancelled",
+                            attempt=prepared,
+                            context=context,
+                        )
+                        track_call(
+                            task_type=context.task_type,
+                            model=tracked_model,
+                            start=call_started_at,
+                            success=False,
+                            error="cancelled",
+                        )
+                        raise
+                    except Exception as exc:
+                        last_error = exc
+                        log_attempt_failed(
+                            "llm_tools_failed",
+                            attempt=prepared,
+                            context=context,
+                            error=exc,
+                        )
 
-            if retry_round < max_retries:
-                await sleep_before_retry(retry_round)
+                if retry_round < max_retries:
+                    await sleep_before_retry(retry_round, error=last_error)
 
     track_call(
         task_type=primary_context.task_type,

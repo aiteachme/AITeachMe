@@ -929,6 +929,24 @@ def test_fallback_openai_compatible_uses_compatible_default_model(monkeypatch):
     assert contexts[1].model == "gemini-3.1-flash-lite"
 
 
+def test_fallback_api_key_without_base_url_is_ignored(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+    assert [context.endpoint_role for context in contexts] == ["primary"]
+    assert contexts[0].base_url == "https://primary-gateway.example.com"
+    assert contexts[0].api_key == "primary-key"
+    assert contexts[0].model == "gpt-5.4-mini"
+
+
 def test_openai_compatible_provider_defaults_are_fallback_models():
     defaults = get_llm_provider_model_defaults("openai_compatible")
 
@@ -1061,6 +1079,156 @@ async def test_text_completion_does_not_use_fallback_when_primary_succeeds(monke
 
 
 @pytest.mark.anyio
+async def test_text_completion_retries_empty_primary_before_fallback(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):  # pragma: no cover - chat mode in this test
+            raise AssertionError("Responses should not be used")
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key" and len(calls) == 1:
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+                    usage=SimpleNamespace(prompt_tokens=2, completion_tokens=0, total_tokens=2),
+                )
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="primary retry ok"),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+            )
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    result = await text_module.acompletion(
+        [{"role": "user", "content": "hello"}],
+        task_type=TaskType.CHAT,
+        model="primary",
+        max_retries=2,
+    )
+
+    assert result == "primary retry ok"
+    assert [call["api_key"] for call in calls] == ["primary-key", "primary-key"]
+
+
+@pytest.mark.anyio
+async def test_text_completion_does_not_fallback_after_empty_primary_exhausted(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):  # pragma: no cover - chat mode in this test
+            raise AssertionError("Responses should not be used")
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "fallback-key":
+                return SimpleNamespace(
+                    choices=[SimpleNamespace(message=SimpleNamespace(content="fallback should not run"))],
+                    usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+                )
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=""))],
+                usage=SimpleNamespace(prompt_tokens=2, completion_tokens=0, total_tokens=2),
+            )
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    with pytest.raises(LLMCallError):
+        await text_module.acompletion(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            max_retries=2,
+        )
+
+    assert [call["api_key"] for call in calls] == ["primary-key", "primary-key"]
+
+
+@pytest.mark.anyio
+async def test_text_completion_exhausts_primary_retries_before_fallback(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):  # pragma: no cover - chat mode in this test
+            raise AssertionError("Responses should not be used")
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key":
+                raise RuntimeError("primary unavailable")
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="fallback ok"),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+            )
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    result = await text_module.acompletion(
+        [{"role": "user", "content": "hello"}],
+        task_type=TaskType.CHAT,
+        model="primary",
+        max_retries=2,
+    )
+
+    assert result == "fallback ok"
+    assert [call["api_key"] for call in calls] == [
+        "primary-key",
+        "primary-key",
+        "fallback-key",
+    ]
+
+
+@pytest.mark.anyio
 async def test_stream_completion_falls_back_before_first_token(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 
@@ -1111,12 +1279,123 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
             [{"role": "user", "content": "hello"}],
             task_type=TaskType.CHAT,
             model="primary",
+            max_retries=1,
         )
     ]
 
     assert chunks == ["ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
     assert calls[1]["model"] == "deepseek-chat"
+
+
+@pytest.mark.anyio
+async def test_stream_completion_retries_empty_primary_before_fallback(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeResponsesStream:
+        def __init__(self, chunks: list[object]) -> None:
+            self._chunks = iter(chunks)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key" and len(calls) == 1:
+                return FakeResponsesStream([])
+            return FakeResponsesStream([
+                SimpleNamespace(type=FakeResponseEventType("response.output_text.delta"), delta="retry ok"),
+            ])
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - forced responses in this test
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com")
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "responses"},
+    })
+
+    chunks = [
+        chunk
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            max_retries=2,
+        )
+    ]
+
+    assert chunks == ["retry ok"]
+    assert [call["api_key"] for call in calls] == ["primary-key", "primary-key"]
+
+
+@pytest.mark.anyio
+async def test_stream_completion_does_not_fallback_after_empty_primary_exhausted(monkeypatch):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeResponsesStream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            return FakeResponsesStream()
+
+        async def acompletion(self, **kwargs):  # pragma: no cover - forced responses in this test
+            raise AssertionError("Chat Completions should not be used")
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com")
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "responses"},
+    })
+
+    with pytest.raises(LLMCallError):
+        [
+            chunk
+            async for chunk in stream_module.acompletion_stream(
+                [{"role": "user", "content": "hello"}],
+                task_type=TaskType.CHAT,
+                model="primary",
+                max_retries=2,
+            )
+        ]
+
+    assert [call["api_key"] for call in calls] == ["primary-key", "primary-key"]
 
 
 @pytest.mark.anyio
@@ -1178,6 +1457,7 @@ async def test_stream_auto_responses_html_iteration_error_falls_back_to_chat(mon
             [{"role": "user", "content": "hello"}],
             task_type=TaskType.CHAT,
             model="primary",
+            max_retries=1,
         )
     ]
 
