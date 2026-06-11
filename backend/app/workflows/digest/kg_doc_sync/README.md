@@ -350,7 +350,7 @@ DocGen enhanced Markdown
 
 并发：
 
-- 全局 LLM 并发：`settings.llm.concurrency_limit`，默认 16。
+- 全局 LLM 并发：`settings.llm.concurrency_limit`，默认 4。
 - DocGen prefetch sidecar：`settings.knowledge_graph.prefetch_concurrency`，默认 2。
 - 正式同步任务规划和本批调度：`settings.knowledge_graph.max_parallel_extractions`，默认 16。
 - 实际模型请求仍进入统一 LLM limiter。

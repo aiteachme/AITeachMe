@@ -12,6 +12,10 @@ from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_task
 from app.shared.infra.llm_support.context_window import ContextWindowManager
 from app.shared.infra.llm_support.litellm_loader import load_litellm
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
+from app.workflows.digest.planner.lib.model_policy import (
+    PlannerModelStep,
+    planner_completion_kwargs_with_metadata,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -223,20 +227,16 @@ async def _summarize_material_batch(batch: _MaterialSectionBatch) -> _MaterialBa
     if not excerpt:
         return _fallback_batch_summary(batch)
     try:
+        llm_kwargs = planner_completion_kwargs_with_metadata(
+            PlannerModelStep.MATERIAL_BATCH_SUMMARY,
+            section_batch_index=batch.batch_index,
+            section_batch_total=batch.total_batches,
+            section_count=len(batch.sections),
+        )
         response = await acompletion_with_fallback(
             _build_batch_summary_messages(batch, excerpt),
-            model="light",
-            max_tokens=1800,
-            timeout=120,
-            max_retries=2,
-            temperature=0.1,
             response_model=_MaterialBatchSummary,
-            extra_metadata={
-                "planner_model_step": "load_materials.summarize_section_batch",
-                "section_batch_index": batch.batch_index,
-                "section_batch_total": batch.total_batches,
-                "section_count": len(batch.sections),
-            },
+            **llm_kwargs,
         )
     except Exception as exc:
         logger.warning(

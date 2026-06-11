@@ -14,12 +14,14 @@ import re
 
 
 _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
+_BOLD_LABEL_LINE_RE = re.compile(r"^\s*\*\*(?P<title>[^*\n]{1,30})\*\*\s*$")
 _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
 _CALLOUT_MARKER_RE = re.compile(
     r"^\s*\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\]",
     re.IGNORECASE,
 )
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
+_INLINE_MATH_RE = re.compile(r"\$[^$\n]+\$")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
 _HEADING_NUMBER_TOKEN_RE = r"(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万]+|[ivxlcdm]+)"
@@ -110,6 +112,12 @@ _GENERIC_TEXTBOOK_HEADING_LABELS = {
     "学习大纲": "学习大纲",
     "快速检查这章是否学会了": "自查",
     "常见错因与修正方法": "错因修正",
+    "典型误区清单": "易错点",
+    "快速复习抓手": "复习抓手",
+    "阶段测验": "练习",
+    "章节练习": "练习",
+    "章末短练习": "练习",
+    "相邻内容合": "前后联系",
     "易错点整理": "易错点",
     "核心概念与复习主线": "复习主线",
     "本章高频规则清单": "高频规则",
@@ -127,6 +135,7 @@ _GENERIC_TEXTBOOK_HEADING_PREFIX_RE = re.compile(
     r"典型例题回顾|典型例题|典型方法与例题|典型题的完整思路|典型题型与解题主线|"
     r"例题|课后练习与自测|章末练习与自测|课后练习|章末练习|章末测试|练习|学习大纲|"
     r"快速检查这章是否学会了|常见错因与修正方法|易错点整理|核心概念与复习主线|"
+    r"典型误区清单|快速复习抓手|阶段测验|章节练习|章末短练习|相邻内容合|"
     r"本章高频规则清单|高频规则清单|本章小结|章末小结|小结|常见任务|易错点|易错提醒|"
     r"最容易错在哪里)\s*[:：]\s*(?P<rest>.+)$"
 )
@@ -142,8 +151,19 @@ def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
     text = re.sub(r"^[\s\-*]*(?:目标|要求|覆盖点|知识点)\s*[:：]\s*", "", text)
     text = re.sub(r"[：:；;。！？!?].*$", "", text)
     text = _FOCUS_ACTION_CLAUSE_RE.sub("", text)
+    protected_math: list[str] = []
+
+    def protect_math(match: re.Match[str]) -> str:
+        protected_math.append(match.group(0))
+        return f" ATMMATH{len(protected_math) - 1}TOKEN "
+
+    text = _INLINE_MATH_RE.sub(protect_math, text)
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;|-")
+    for index, formula in enumerate(protected_math):
+        text = text.replace(f"ATMMATH{index}TOKEN", formula)
+    text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;|-")
+    text = re.sub(r"([，,：:；;。！？!?])\s+(\$)", r"\1\2", text)
     text = _TRAILING_ACTION_CONNECTOR_RE.sub("", text).strip(" ：:，,。；;|-")
     if not text:
         return ""
@@ -283,6 +303,13 @@ def _drop_repeated_visible_heading_line(line: str, seen_titles: set[str]) -> str
     return line
 
 
+def _bold_label_key(line: str) -> str:
+    match = _BOLD_LABEL_LINE_RE.match(str(line or "").strip())
+    if match is None:
+        return ""
+    return re.sub(r"\s+", "", match.group("title")).casefold()
+
+
 def _clamp_heading_level_jump(line: str, *, previous_level: int | None) -> str:
     match = _HEADING_LINE_RE.match(str(line or "").strip())
     if match is None or previous_level is None:
@@ -291,33 +318,6 @@ def _clamp_heading_level_jump(line: str, *, previous_level: int | None) -> str:
     if level <= previous_level + 1:
         return line
     return f"{'#' * (previous_level + 1)} {match.group('title').strip()}"
-
-
-def _number_content_h2_headings(lines: list[str]) -> list[str]:
-    """Normalize visible H2 sections into numbered knowledge-point entries."""
-
-    numbered_lines: list[str] = []
-    h2_index = 0
-    in_code_fence = False
-    for line in lines:
-        if line.lstrip().startswith("```"):
-            in_code_fence = not in_code_fence
-            numbered_lines.append(line)
-            continue
-        if in_code_fence:
-            numbered_lines.append(line)
-            continue
-        match = _HEADING_LINE_RE.match(str(line or "").strip())
-        if match is None or match.group("prefix") != "##":
-            numbered_lines.append(line)
-            continue
-        title = strip_heading_number_prefix(match.group("title").strip())
-        if title == "单元测试":
-            numbered_lines.append("## 单元测试")
-            continue
-        h2_index += 1
-        numbered_lines.append(f"## {h2_index}. {title}")
-    return numbered_lines
 
 
 def normalize_textbook_headings(
@@ -333,10 +333,12 @@ def normalize_textbook_headings(
     in_code_fence = False
     seen_visible_headings: set[str] = set()
     previous_heading_level: int | None = None
+    last_standalone_label_key = ""
     for line in str(markdown or "").splitlines():
         if line.lstrip().startswith("```"):
             in_code_fence = not in_code_fence
             lines.append(line)
+            last_standalone_label_key = ""
             continue
         if in_code_fence:
             lines.append(line)
@@ -347,13 +349,24 @@ def normalize_textbook_headings(
             fallback_title=fallback_title,
             focus_items=focus_items,
         )
+        match_before_dedupe = _HEADING_LINE_RE.match(str(rewritten or "").strip())
+        if match_before_dedupe is not None and match_before_dedupe.group("prefix").count("#") == 1:
+            seen_visible_headings.clear()
         rewritten = _drop_repeated_visible_heading_line(rewritten, seen_visible_headings)
         rewritten = _clamp_heading_level_jump(rewritten, previous_level=previous_heading_level)
         match = _HEADING_LINE_RE.match(str(rewritten or "").strip())
         if match is not None:
             previous_heading_level = match.group("prefix").count("#")
+        label_key = _bold_label_key(rewritten)
+        if label_key:
+            if label_key == last_standalone_label_key:
+                rewritten = ""
+            else:
+                last_standalone_label_key = label_key
+        elif str(rewritten or "").strip():
+            last_standalone_label_key = ""
         lines.append(rewritten)
-    return "\n".join(_number_content_h2_headings(lines))
+    return "\n".join(lines)
 
 
 def _infer_callout_kind(body_lines: Iterable[str]) -> str:

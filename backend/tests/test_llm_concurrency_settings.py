@@ -11,6 +11,7 @@ from app.shared.infra.llm_support import (
     get_llm_concurrency_limit,
     get_llm_concurrency_limiter,
 )
+from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
@@ -26,6 +27,7 @@ from app.workflows.support.system.settings import build_settings_overview_data
 def _reset_settings_state() -> None:
     reset_project_settings_cache()
     set_system_settings_override({})
+    llm_common._LLM_LIMITER = None
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +134,38 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_temporarily_reduces_after_concurrency_rate_limit() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 4}})
+    limiter = get_llm_concurrency_limiter()
+    limiter.note_rate_limit()
+
+    active = 0
+    max_active = 0
+    first_two_started = asyncio.Event()
+    release_workers = asyncio.Event()
+
+    async def worker() -> None:
+        nonlocal active, max_active
+        async with limiter:
+            active += 1
+            max_active = max(max_active, active)
+            if active == 2:
+                first_two_started.set()
+            try:
+                await release_workers.wait()
+            finally:
+                active -= 1
+
+    tasks = [asyncio.create_task(worker()) for _ in range(3)]
+    await asyncio.wait_for(first_two_started.wait(), timeout=1)
+    await asyncio.sleep(0.05)
+
+    assert max_active == 2
+    release_workers.set()
+    await asyncio.gather(*tasks)
 
 
 @pytest.mark.anyio

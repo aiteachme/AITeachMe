@@ -169,17 +169,21 @@ class _LimiterWaiter:
 class LLMConcurrencyLimiter:
     """Async context manager enforcing the live global LLM concurrency limit."""
 
+    _RATE_LIMIT_COOLDOWN_S = 60.0
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._active = 0
         self._waiters: list[_LimiterWaiter] = []
+        self._rate_limit_cap: int | None = None
+        self._rate_limit_until = 0.0
 
     async def __aenter__(self) -> "LLMConcurrencyLimiter":
         loop = asyncio.get_running_loop()
         while True:
             waiter: _LimiterWaiter | None = None
             with self._lock:
-                if self._active < get_llm_concurrency_limit():
+                if self._active < self._effective_limit_locked():
                     self._active += 1
                     return self
                 future: asyncio.Future[None] = loop.create_future()
@@ -192,6 +196,31 @@ class LLMConcurrencyLimiter:
             except asyncio.CancelledError:
                 self._remove_waiter(waiter)
                 raise
+
+    def _effective_limit_locked(self) -> int:
+        configured = get_llm_concurrency_limit()
+        if self._rate_limit_cap is None or time.monotonic() >= self._rate_limit_until:
+            self._rate_limit_cap = None
+            self._rate_limit_until = 0.0
+            return configured
+        return max(1, min(configured, self._rate_limit_cap))
+
+    def note_rate_limit(self) -> None:
+        """Temporarily reduce local fan-out after an upstream concurrency 429."""
+
+        with self._lock:
+            configured = get_llm_concurrency_limit()
+            current_cap = self._rate_limit_cap if self._rate_limit_cap is not None else configured
+            next_cap = max(1, min(configured, current_cap // 2 if current_cap > 1 else 1))
+            self._rate_limit_cap = next_cap
+            self._rate_limit_until = time.monotonic() + self._RATE_LIMIT_COOLDOWN_S
+        logger.warning(
+            "llm_concurrency_rate_limit_cooldown",
+            configured_limit=configured,
+            temporary_limit=next_cap,
+            cooldown_s=int(self._RATE_LIMIT_COOLDOWN_S),
+            **trace_log_fields(),
+        )
 
     def _remove_waiter(self, waiter: _LimiterWaiter) -> None:
         with self._lock:
@@ -326,6 +355,12 @@ def _build_endpoint_candidates(
     base_urls = _env_csv(base_url_env_name)
     api_keys = _env_csv(api_key_env_name)
     if role == "fallback" and not base_urls and not api_keys:
+        return ()
+    if role == "fallback" and api_keys and not base_urls:
+        logger.warning(
+            "llm_fallback_endpoint_ignored_missing_base_url",
+            api_key_count=len(api_keys),
+        )
         return ()
     pairs = _paired_endpoint_values(
         role=role,
@@ -638,6 +673,77 @@ def build_completion_contexts(
     )
 
 
+def completion_context_groups(contexts: tuple[CompletionContext, ...]) -> tuple[tuple[CompletionContext, ...], ...]:
+    """Group endpoint attempts so primary routes exhaust before fallback routes."""
+
+    primary = tuple(context for context in contexts if context.endpoint_role == "primary")
+    fallback = tuple(context for context in contexts if context.endpoint_role == "fallback")
+    return tuple(group for group in (primary, fallback) if group)
+
+
+_ENDPOINT_FALLBACK_ERROR_NAME_MARKERS = (
+    "Authentication",
+    "Permission",
+    "RateLimit",
+    "APIConnection",
+    "APIError",
+    "APITimeout",
+    "Timeout",
+    "HTTPStatus",
+    "ServiceUnavailable",
+    "InternalServer",
+)
+_ENDPOINT_FALLBACK_MESSAGE_MARKERS = (
+    "connection",
+    "connect",
+    "timeout",
+    "timed out",
+    "rate limit",
+    "unauthorized",
+    "forbidden",
+    "bad gateway",
+    "service unavailable",
+    "internal server",
+    "gateway down",
+    "gateway unavailable",
+    "primary unavailable",
+    "primary gateway down",
+    "primary stream down",
+)
+_CONCURRENCY_RATE_LIMIT_MARKERS = (
+    "concurrency limit exceeded",
+    "concurrent limit exceeded",
+    "too many concurrent",
+    "too many simultaneous",
+    "rate_limit_error",
+)
+
+
+def is_concurrency_rate_limit_error(error: Exception | None) -> bool:
+    """Return whether an error is an upstream concurrent-request quota hit."""
+
+    if error is None:
+        return False
+    message = str(error).lower()
+    return any(marker in message for marker in _CONCURRENCY_RATE_LIMIT_MARKERS)
+
+
+def should_try_endpoint_fallback(error: Exception | None) -> bool:
+    """Return whether a failed primary attempt should advance to fallback endpoints."""
+
+    if error is None:
+        return False
+    if isinstance(error, LLMTimeoutError):
+        return True
+    message = str(error).lower()
+    if "empty_llm_response" in message:
+        return False
+    error_name = error.__class__.__name__
+    if any(marker in error_name for marker in _ENDPOINT_FALLBACK_ERROR_NAME_MARKERS):
+        return True
+    return any(marker in message for marker in _ENDPOINT_FALLBACK_MESSAGE_MARKERS)
+
+
 def build_completion_context(
     task_type: object | None = None,
     *,
@@ -943,12 +1049,15 @@ def log_attempt_failed(
         **dict(extra or {}),
         **trace_log_fields(),
     )
+    if is_concurrency_rate_limit_error(error):
+        get_llm_concurrency_limiter().note_rate_limit()
 
 
-async def sleep_before_retry(attempt: int) -> None:
+async def sleep_before_retry(attempt: int, *, error: Exception | None = None) -> None:
     """Apply the current linear retry backoff."""
 
-    await asyncio.sleep(attempt * 2)
+    delay_s = min(30, attempt * 8) if is_concurrency_rate_limit_error(error) else attempt * 2
+    await asyncio.sleep(delay_s)
 
 
 def track_call(

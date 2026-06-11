@@ -26,6 +26,20 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
 _PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
 _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER = 3
 _MAX_PATCH_CONTEXT_CHARS = 7000
+_MAX_LOCAL_PATCH_CHARS = 2200
+_MAX_PATCH_GROWTH_CHARS = 3200
+_MAX_PATCH_GROWTH_RATIO = 0.55
+_PATCH_PRESENTATION_REGRESSION_MARKERS = (
+    "标题层级",
+    "标题过长",
+    "过长正文",
+    "连续列表过长",
+    "缺少题目、解析或答案字段",
+    "高亮过多",
+    "表格列数过多",
+    "不受控 HTML",
+    "display math 疑似吞入",
+)
 
 
 class _LocalMarkdownPatch(DocGenBaseModel):
@@ -185,6 +199,117 @@ def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _normalized_visible_heading(value: str) -> str:
+    cleaned = re.sub(
+        r"^\s*(?:\d+(?:\.\d+)*|[一二三四五六七八九十百千万]+|[ivxlcdm]+)\s*[.)）．、:：]?\s*",
+        "",
+        str(value or "").strip(),
+        flags=re.IGNORECASE,
+    )
+    return _normalize_anchor(cleaned)
+
+
+def _heading_titles(markdown: str, *, levels: set[int]) -> list[str]:
+    titles: list[str] = []
+    for line in str(markdown or "").splitlines():
+        match = _heading_match(line)
+        if match is None:
+            continue
+        if len(match.group("marks")) in levels:
+            titles.append(match.group("title").strip())
+    return titles
+
+
+def _duplicate_h2_titles(markdown: str) -> list[str]:
+    seen: dict[str, str] = {}
+    duplicates: list[str] = []
+    for title in _heading_titles(markdown, levels={2}):
+        key = _normalized_visible_heading(title)
+        if not key:
+            continue
+        if key in seen and seen[key] not in duplicates:
+            duplicates.append(seen[key])
+        else:
+            seen[key] = title
+    return duplicates
+
+
+def _repeated_content_block_reason(markdown: str) -> str | None:
+    lines = [
+        _normalize_anchor(re.sub(r"^[>\-\s*`#]+", "", line))
+        for line in str(markdown or "").splitlines()
+        if len(_normalize_anchor(line)) >= 16 and not _heading_match(line)
+    ]
+    seen: dict[str, int] = {}
+    for index in range(0, max(0, len(lines) - 3)):
+        block = "|".join(lines[index:index + 4])
+        if len(block) < 120:
+            continue
+        previous = seen.get(block)
+        if previous is not None and index - previous > 4:
+            return "检测到重复正文块，疑似 repair 把已有内容再次插入。"
+        seen[block] = index
+    return None
+
+
+def _local_patch_risk_reason(
+    *,
+    original_markdown: str,
+    patch_markdown: str,
+    append_to_end: bool,
+) -> str | None:
+    patch = str(patch_markdown or "").strip()
+    if not patch:
+        return None
+    if len(patch) > _MAX_LOCAL_PATCH_CHARS:
+        return f"局部补丁过长（{len(patch)} 字符），已拒收以避免整章改写。"
+    if _heading_titles(patch, levels={1}):
+        return "局部补丁包含一级标题，疑似整章片段。"
+
+    patch_h2 = _heading_titles(patch, levels={2})
+    if not append_to_end and len(patch_h2) > 1:
+        return "局部补丁包含多个二级标题，疑似跨小节改写。"
+    existing_h2 = {_normalized_visible_heading(title): title for title in _heading_titles(original_markdown, levels={2})}
+    patch_h2_keys = [_normalized_visible_heading(title) for title in patch_h2]
+    if append_to_end:
+        non_unit_titles = [title for title, key in zip(patch_h2, patch_h2_keys, strict=False) if key != _normalize_anchor("单元测试")]
+        if non_unit_titles:
+            return "章末补丁只能新增 `## 单元测试`，不能附带其它二级标题。"
+        if _normalize_anchor("单元测试") in existing_h2 and patch_h2:
+            return "原章节已经存在 `## 单元测试`，拒绝重复追加。"
+    else:
+        overlaps = [existing_h2[key] for key in patch_h2_keys if key and key in existing_h2]
+        if overlaps:
+            return f"局部补丁重复已有二级标题：{', '.join(overlaps[:3])}。"
+
+    repeated = _repeated_content_block_reason(patch)
+    if repeated:
+        return repeated
+    return None
+
+
+def _patched_markdown_risk_reason(*, original_markdown: str, patched_markdown: str) -> str | None:
+    growth = len(patched_markdown) - len(original_markdown)
+    if growth > _MAX_PATCH_GROWTH_CHARS and growth / max(1, len(original_markdown)) > _MAX_PATCH_GROWTH_RATIO:
+        return f"修补后正文增长过大（+{growth} 字符），疑似非局部改写。"
+    duplicate_h2 = _duplicate_h2_titles(patched_markdown)
+    if duplicate_h2:
+        return f"修补后出现重复二级标题：{', '.join(duplicate_h2[:3])}。"
+    repeated = _repeated_content_block_reason(patched_markdown)
+    if repeated:
+        return repeated
+    before_issues = set(find_docgen_presentation_issues(original_markdown))
+    after_issues = set(find_docgen_presentation_issues(patched_markdown))
+    regressions = [
+        issue
+        for issue in after_issues - before_issues
+        if any(marker in issue for marker in _PATCH_PRESENTATION_REGRESSION_MARKERS)
+    ]
+    if regressions:
+        return f"修补后新增展示结构问题：{'；'.join(regressions[:3])}。"
+    return None
+
+
 def _fallback_insert_offset(markdown: str) -> int:
     matches = list(
         re.finditer(
@@ -221,6 +346,39 @@ def _insert_local_patch(
     if after:
         return f"{middle}\n{after}".rstrip() + "\n"
     return middle.rstrip() + "\n"
+
+
+def _rejected_llm_patch_results(
+    *,
+    indexed_actions: list[tuple[int, ReviewAction]],
+    repair_round: int,
+    llm_call_group: str,
+    reason: str,
+) -> list[tuple[int, ReviewAction, RepairTraceItem, str | None]]:
+    results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
+    for action_index, action in indexed_actions:
+        updated_action = action.model_copy(update={"status": "downgraded"})
+        results.append(
+            (
+                action_index,
+                updated_action,
+                RepairTraceItem(
+                    trace_id=f"repair_trace_{repair_round:02d}_{_repair_action_key(action_index, action)}",
+                    action_id=action.action_id,
+                    action_type=action.action_type,
+                    chapter_index=action.chapter_index,
+                    status="downgraded",
+                    reason=action.reason,
+                    target_anchor=action.target_anchor,
+                    changed=False,
+                    llm_attempted=True,
+                    llm_call_group=llm_call_group,
+                    detail=f"Rejected unsafe LLM local patch: {reason}",
+                ),
+                _unresolved_message(updated_action, status="downgraded"),
+            )
+        )
+    return results
 
 
 async def _apply_patch_action(
@@ -385,17 +543,44 @@ async def _apply_llm_patch_actions(
         _is_unit_test_append_action(action) and _repair_action_key(action_index, action) in covered_keys
         for action_index, action in indexed_actions
     )
+    patch_markdown = _clean_patch_snippet(patch.patch_markdown, chapter_title=chapter.title)
+    if patch.status != "no_change":
+        risk_reason = _local_patch_risk_reason(
+            original_markdown=chapter.markdown,
+            patch_markdown=patch_markdown,
+            append_to_end=append_to_end,
+        )
+        if risk_reason:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions,
+                repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason=risk_reason,
+            ), []
     patched = (
         chapter.markdown
         if patch.status == "no_change"
         else _insert_local_patch(
             chapter.markdown,
-            patch.patch_markdown,
+            patch_markdown,
             target_anchor=patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys),
             chapter_title=chapter.title,
             append_to_end=append_to_end,
         )
     )
+    if patched and patched != chapter.markdown:
+        normalized_patched = normalize_docgen_presentation(patched, title=chapter.title)
+        risk_reason = _patched_markdown_risk_reason(
+            original_markdown=chapter.markdown,
+            patched_markdown=normalized_patched,
+        )
+        if risk_reason:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions,
+                repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason=risk_reason,
+            ), []
     if not patched or patched == chapter.markdown:
         results = []
         for action_index, action in indexed_actions:

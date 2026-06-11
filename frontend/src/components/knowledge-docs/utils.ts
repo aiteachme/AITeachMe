@@ -153,6 +153,7 @@ function looksLikeMermaidLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return true;
   if (/^(mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(trimmed)) return true;
+  if (/^(classDef|class|style|linkStyle|click|subgraph|end|direction|accTitle|accDescr|title)\b/i.test(trimmed)) return true;
   if (/^\s/.test(line)) return true;
   return /-->|---|==>|\||\[|\]|\(|\)|\{|\}/.test(trimmed);
 }

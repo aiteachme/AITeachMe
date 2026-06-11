@@ -110,7 +110,15 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     cleaned = str(markdown or "").strip()
     if not cleaned:
         return ""
-    fallback_title = resolve_effective_chapter_title({"title": title, "resolved_title": title}, fallback_title=title)
+    provided_title = str(title or "").strip()
+    fallback_title = (
+        resolve_effective_chapter_title(
+            {"title": provided_title, "resolved_title": provided_title},
+            fallback_title=provided_title,
+        )
+        if provided_title
+        else ""
+    )
 
     lines = cleaned.splitlines()
     first_heading_index = next(
@@ -118,10 +126,13 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
         None,
     )
     if first_heading_index is None:
-        lines.insert(0, f"# {fallback_title}")
+        if fallback_title:
+            lines.insert(0, f"# {fallback_title}")
     elif not lines[first_heading_index].lstrip().startswith("# "):
         visible_title = lines[first_heading_index].lstrip("#").strip() or fallback_title
         lines[first_heading_index] = f"# {visible_title}"
+    elif fallback_title:
+        lines[first_heading_index] = f"# {fallback_title}"
 
     return "\n".join(lines).strip() + "\n"
 

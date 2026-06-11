@@ -19,10 +19,22 @@ from app.workflows.digest.common.pedagogy import (
 )
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
+from app.workflows.digest.docgen.lib.title_lock import prefer_confirmed_catalog_title
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
 _GENERIC_TITLE_RE = re.compile(r"^第\s*\d+\s*章$|^untitled(?:\s+chapter)?$|^未命名章节$|^本章内容$", re.IGNORECASE)
+_TITLE_ENUMERATION_SEPARATORS = ("、", "，", ",", "；", ";", "：", ":", "/", "／")
+_TITLE_EXPOSITION_MARKERS = (
+    "的定义",
+    "几何意义",
+    "求导法则",
+    "判定",
+    "关系及",
+    "常用运算",
+    "重要极限",
+    "适用条件",
+)
 
 
 def _clean_title(title: str) -> str:
@@ -32,14 +44,67 @@ def _clean_title(title: str) -> str:
     return cleaned
 
 
-def _locked_title(*, chapter: dict, chapter_index: int) -> str:
+def _prefer_catalog_title(*, catalog_title: str, current_title: str) -> bool:
+    catalog = _clean_title(catalog_title)
+    current = _clean_title(current_title)
+    if not catalog or not is_usable_resolved_chapter_title(catalog):
+        return False
+    if not current or _GENERIC_TITLE_RE.match(current) or not is_usable_resolved_chapter_title(current):
+        return True
+    return prefer_confirmed_catalog_title(confirmed_title=catalog, candidate_title=current)
+
+
+def _looks_overexpanded_title(title: str) -> bool:
+    cleaned = _clean_title(title)
+    if len(cleaned) > 14:
+        return True
+    return any(marker in cleaned for marker in (*_TITLE_ENUMERATION_SEPARATORS, *_TITLE_EXPOSITION_MARKERS))
+
+
+def _meaningful_title_chars(title: str) -> set[str]:
+    return {
+        char
+        for char in _clean_title(title)
+        if char.strip() and char not in set("的与和及、，,；;：:/／（）()【】[]")
+    }
+
+
+def _prefer_compact_enhanced_title(*, confirmed_title: str, enhanced_title: str) -> bool:
+    confirmed = _clean_title(confirmed_title)
+    enhanced = _clean_title(enhanced_title)
+    if not enhanced or _GENERIC_TITLE_RE.match(enhanced) or not is_usable_resolved_chapter_title(enhanced):
+        return False
+    if not confirmed or not is_usable_resolved_chapter_title(confirmed):
+        return True
+    if not _looks_overexpanded_title(confirmed):
+        return False
+    if len(enhanced) >= len(confirmed) or len(enhanced) > 14:
+        return False
+    if any(separator in enhanced for separator in _TITLE_ENUMERATION_SEPARATORS):
+        return False
+    return bool(_meaningful_title_chars(confirmed) & _meaningful_title_chars(enhanced))
+
+
+def _locked_title(*, chapter: dict, chapter_index: int, locked_title: dict | None = None) -> tuple[str, str]:
+    locked = locked_title or {}
+    confirmed = _clean_title(str(locked.get("confirmed_title") or chapter.get("confirmed_title") or ""))
+    enhanced = _clean_title(str(locked.get("enhanced_title") or chapter.get("enhanced_title") or ""))
     current = _clean_title(str(chapter.get("resolved_title") or chapter.get("title") or ""))
+    if _prefer_compact_enhanced_title(confirmed_title=confirmed, enhanced_title=enhanced):
+        return enhanced, "locked_compact_title"
+    if confirmed and is_usable_resolved_chapter_title(confirmed):
+        return confirmed, "confirmed_plan_title"
+    if _prefer_catalog_title(catalog_title=confirmed, current_title=current or enhanced):
+        return confirmed, "confirmed_plan_title"
+    if enhanced and is_usable_resolved_chapter_title(enhanced) and not _GENERIC_TITLE_RE.match(enhanced):
+        if not confirmed or not _prefer_catalog_title(catalog_title=confirmed, current_title=enhanced):
+            return enhanced, "locked_enhanced_title"
     if current and not _GENERIC_TITLE_RE.match(current) and is_usable_resolved_chapter_title(current):
-        return current
+        return current, "chapter_metadata_title"
     derived = resolve_effective_chapter_title(chapter, chapter_index=chapter_index, fallback_title=current)
     if is_usable_resolved_chapter_title(derived):
-        return derived
-    return f"第 {chapter_index} 章"
+        return derived, "derived_title"
+    return f"第 {chapter_index} 章", "fallback_chapter_index"
 
 
 def _replace_first_h1(markdown: str, title: str) -> str:
@@ -76,10 +141,19 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
         title_records: list[dict[str, object]] = []
         updated_chapters: list[dict] = []
         changed_count = 0
+        locked_by_index = {
+            int(item.get("chapter_index", 0) or 0): dict(item)
+            for item in list(state.get("locked_titles") or [])
+            if isinstance(item, dict)
+        }
         for chapter in chapter_metadatas:
             chapter_index = int(chapter.get("chapter_index", 0) or 0) or len(updated_chapters) + 1
             before = _clean_title(str(chapter.get("title") or ""))
-            final_title = _locked_title(chapter=chapter, chapter_index=chapter_index)
+            final_title, title_source = _locked_title(
+                chapter=chapter,
+                chapter_index=chapter_index,
+                locked_title=locked_by_index.get(chapter_index),
+            )
             updated = dict(chapter)
             updated["title"] = final_title
             updated["resolved_title"] = final_title
@@ -93,7 +167,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
                     "before": before,
                     "after": final_title,
                     "changed": changed,
-                    "source": "locked_dispatch_title",
+                    "source": title_source,
                 }
             )
 

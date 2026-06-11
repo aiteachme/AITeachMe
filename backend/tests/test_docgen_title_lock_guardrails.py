@@ -2,7 +2,13 @@ import pytest
 
 from app.workflows.digest.docgen.lib import title_lock as title_lock_module
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle
-from app.workflows.digest.docgen.lib.title_lock import _resolve_locked_title, lock_title_for_chapter
+from app.workflows.digest.docgen.lib.title_lock import (
+    _resolve_locked_title,
+    lock_title_for_chapter,
+    prefer_confirmed_catalog_title,
+)
+from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
+from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
 from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
 
@@ -26,6 +32,41 @@ def test_title_lock_does_not_keyword_match_semantic_titles() -> None:
     assert warning is None
 
 
+def test_title_lock_keeps_informative_specific_expansion() -> None:
+    assert not prefer_confirmed_catalog_title(
+        confirmed_title="连续性",
+        candidate_title="函数连续性与间断点判定",
+    )
+
+    resolved, warning = _resolve_locked_title(
+        "函数连续性与间断点判定",
+        confirmed_title="连续性",
+    )
+
+    assert resolved == "函数连续性与间断点判定"
+    assert warning is None
+
+
+def test_title_lock_prefers_catalog_title_for_mechanical_enumeration() -> None:
+    resolved, warning = _resolve_locked_title(
+        "罗尔定理、拉格朗日中值定理与柯西中值定理",
+        confirmed_title="中值定理",
+    )
+
+    assert resolved == "中值定理"
+    assert warning is not None
+
+
+def test_title_lock_keeps_specific_title_over_too_short_confirmed_title() -> None:
+    resolved, warning = _resolve_locked_title(
+        "函数连续性与间断点判断",
+        confirmed_title="连续",
+    )
+
+    assert resolved == "函数连续性与间断点判断"
+    assert warning is None
+
+
 def test_title_lock_falls_back_for_unusable_title_shape() -> None:
     resolved, warning = _resolve_locked_title(
         "2",
@@ -44,6 +85,72 @@ def test_title_lock_falls_back_for_generic_placeholder_title() -> None:
 
     assert resolved == "极限计算"
     assert warning is not None
+
+
+def test_sync_locked_title_prefers_confirmed_catalog_title_over_long_draft_title() -> None:
+    title, source = _locked_title(
+        chapter={
+            "chapter_index": 1,
+            "title": "函数、极限与常用运算",
+            "resolved_title": "函数、极限与常用运算",
+        },
+        chapter_index=1,
+        locked_title={
+            "chapter_index": 1,
+            "confirmed_title": "函数与极限",
+            "enhanced_title": "函数、极限与常用运算",
+        },
+    )
+
+    assert title == "函数与极限"
+    assert source == "confirmed_plan_title"
+
+
+def test_sync_locked_title_never_shortens_confirmed_application_title() -> None:
+    title, source = _locked_title(
+        chapter={
+            "chapter_index": 5,
+            "title": "导数应",
+            "resolved_title": "导数应",
+        },
+        chapter_index=5,
+        locked_title={
+            "chapter_index": 5,
+            "confirmed_title": "导数应用",
+            "enhanced_title": "导数应",
+        },
+    )
+
+    assert title == "导数应用"
+    assert source == "confirmed_plan_title"
+
+
+def test_sync_locked_title_allows_compact_locked_title_for_enumerated_confirmed_title() -> None:
+    title, source = _locked_title(
+        chapter={
+            "chapter_index": 4,
+            "title": "导数的定义、几何意义与求导法则",
+            "resolved_title": "导数的定义、几何意义与求导法则",
+        },
+        chapter_index=4,
+        locked_title={
+            "chapter_index": 4,
+            "confirmed_title": "导数的定义、几何意义与求导法则",
+            "enhanced_title": "导数基础",
+        },
+    )
+
+    assert title == "导数基础"
+    assert source == "locked_compact_title"
+
+
+def test_publish_markdown_uses_locked_title_over_existing_h1() -> None:
+    markdown = _prepare_chapter_markdown(
+        "# 导数应\n\n导数应用的核心是用导数分析函数。",
+        title="导数应用",
+    )
+
+    assert markdown.splitlines()[0] == "# 导数应用"
 
 
 @pytest.mark.anyio

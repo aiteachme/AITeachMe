@@ -16,6 +16,7 @@ PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
 
 
 class PlannerModelStep(str, Enum):
+    MATERIAL_BATCH_SUMMARY = "load_materials.summarize_section_batch"
     STREAM_PLANNING_NOTE = "understand_goal_and_materials.stream_planning_note"
     SUMMARIZE_MATERIALS = "understand_goal_and_materials.summarize_materials"
     DRAFT_PLAN = "compose_planner_draft"
@@ -90,6 +91,16 @@ class PlannerModelPolicy:
 
 
 _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
+    PlannerModelStep.MATERIAL_BATCH_SUMMARY: PlannerModelPolicy(
+        step=PlannerModelStep.MATERIAL_BATCH_SUMMARY,
+        call_type="structured",
+        model="light",
+        max_tokens=1800,
+        timeout_s=120,
+        max_retries=2,
+        temperature=0.1,
+        note="Planner material batch summary for uploaded section map-reduce.",
+    ),
     PlannerModelStep.STREAM_PLANNING_NOTE: PlannerModelPolicy(
         step=PlannerModelStep.STREAM_PLANNING_NOTE,
         call_type="stream",

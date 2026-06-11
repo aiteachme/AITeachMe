@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
+import { Download, Loader2, Maximize2, Minus, Plus, Sparkles, TriangleAlert, X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -366,6 +366,86 @@ function resolveDiagramLabel(chart: string): string {
   return "知识图示";
 }
 
+function sanitizeDownloadName(value: string): string {
+  const cleaned = value
+    .normalize("NFKC")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  return cleaned || "aiteachme-diagram";
+}
+
+function getSvgSize(svgMarkup: string): { width: number; height: number } {
+  try {
+    const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+    const svg = doc.documentElement;
+    const viewBox = svg.getAttribute("viewBox")?.split(/\s+/).map(Number).filter(Number.isFinite) ?? [];
+    const width = Number(svg.getAttribute("width")) || viewBox[2] || 1400;
+    const height = Number(svg.getAttribute("height")) || viewBox[3] || 800;
+    return {
+      width: Math.max(320, Math.min(6000, width)),
+      height: Math.max(180, Math.min(6000, height)),
+    };
+  } catch {
+    return { width: 1400, height: 800 };
+  }
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadSvgAsPng(svgMarkup: string, filename: string) {
+  const { width, height } = getSvgSize(svgMarkup);
+  const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    const imageLoaded = new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("图片导出失败"));
+    });
+    image.src = svgUrl;
+    await imageLoaded;
+
+    const scale = Math.max(1, Math.min(3, 2200 / Math.max(width, height)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Canvas 不可用");
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const pngBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("图片导出失败"));
+        }
+      }, "image/png");
+    });
+    downloadBlob(pngBlob, filename);
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+}
+
 export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) {
   const rawId = useId();
   const diagramId = useMemo(
@@ -374,6 +454,9 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
   );
   const [svgMarkup, setSvgMarkup] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerZoom, setViewerZoom] = useState(1);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -386,6 +469,8 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
         const rendered = await renderMermaidChart(diagramId, chart);
         if (!disposed) {
           setSvgMarkup(rendered.svg);
+          setViewerOpen(false);
+          setViewerZoom(1);
         }
       } catch (error) {
         if (!disposed) {
@@ -403,6 +488,25 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
 
   const diagramLabel = resolveDiagramLabel(chart);
   const isDocument = variant === "document";
+  const canUseRenderedDiagram = Boolean(svgMarkup);
+  const viewerSvgSize = useMemo(
+    () => (svgMarkup ? getSvgSize(svgMarkup) : { width: 1400, height: 800 }),
+    [svgMarkup],
+  );
+  const downloadFilename = `${sanitizeDownloadName(diagramLabel)}-${hashChart(chart)}.png`;
+  const handleDownload = async () => {
+    if (!svgMarkup || downloadBusy) {
+      return;
+    }
+    setDownloadBusy(true);
+    try {
+      await downloadSvgAsPng(svgMarkup, downloadFilename);
+    } catch {
+      downloadBlob(new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" }), downloadFilename.replace(/\.png$/i, ".svg"));
+    } finally {
+      setDownloadBusy(false);
+    }
+  };
 
   return (
     <figure
@@ -422,19 +526,45 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
         )}
       >
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
-            <Sparkles className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {diagramLabel}
-            </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Mermaid 实时渲染</p>
-          </div>
+          {!isDocument ? (
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+              <Sparkles className="h-4 w-4" />
+            </span>
+          ) : null}
+          <p className={cn(
+            "font-semibold text-slate-900 dark:text-slate-100",
+            isDocument ? "text-[13px]" : "text-sm",
+          )}>
+            {diagramLabel}
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          {svgMarkup ? null : errorMessage ? (
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          {canUseRenderedDiagram ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setViewerOpen(true)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-slate-500 transition-colors hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                aria-label={`放大查看${diagramLabel}`}
+                title={`放大查看${diagramLabel}`}
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">查看</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDownload()}
+                disabled={downloadBusy}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-slate-500 transition-colors hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                aria-label={`下载${diagramLabel}图片`}
+                title={`下载${diagramLabel}图片`}
+              >
+                {downloadBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">下载</span>
+              </button>
+            </>
+          ) : errorMessage ? (
             <>
               <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
               <span>已回退到源码视图</span>
@@ -468,6 +598,84 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
           ) : null}
         </div>
       )}
+      {viewerOpen && svgMarkup ? (
+        <div
+          className="fixed inset-0 z-[1000] flex bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${diagramLabel}大图查看`}
+          onClick={() => setViewerOpen(false)}
+        >
+          <div
+            className="flex min-h-0 w-full flex-col overflow-hidden rounded-lg bg-white shadow-2xl ring-1 ring-black/10 dark:bg-slate-950 dark:ring-white/10"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-3 dark:border-slate-800">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{diagramLabel}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom((value) => Math.max(0.5, Number((value - 0.25).toFixed(2))))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label="缩小"
+                  title="缩小"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="w-12 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                  {Math.round(viewerZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom((value) => Math.min(3, Number((value + 0.25).toFixed(2))))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label="放大"
+                  title="放大"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={downloadBusy}
+                  className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label={`下载${diagramLabel}图片`}
+                  title={`下载${diagramLabel}图片`}
+                >
+                  {downloadBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  PNG
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewerOpen(false)}
+                  className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  aria-label="关闭大图"
+                  title="关闭"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-50 p-6 dark:bg-slate-900/60">
+              <div
+                className="relative mx-auto"
+                style={{
+                  width: Math.ceil((viewerSvgSize.width + 48) * viewerZoom),
+                  height: Math.ceil((viewerSvgSize.height + 48) * viewerZoom),
+                }}
+              >
+                <div
+                  className="absolute left-0 top-0 inline-block origin-top-left rounded-md bg-white p-6 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800 [&_svg]:h-auto [&_svg]:max-w-none"
+                  style={{ transform: `scale(${viewerZoom})`, transformOrigin: "top left" }}
+                  dangerouslySetInnerHTML={{ __html: svgMarkup }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </figure>
   );
 }

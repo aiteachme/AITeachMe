@@ -47,8 +47,9 @@ def build_chapter_patch_messages(
 4. 如果无法安全修补，返回 no_change。
 5. 如果需要新增例题或章末单元测试，要保留题目/任务、推理/解析、答案/结论和易错提醒等学习价值；传统题不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。
 6. 除固定章末 `## 单元测试` 外，新增标题必须具体说明本章知识对象、方法、题型或操作任务；不要使用固定表头、泛标题或序号占位题型名。
-7. 保留已有 `> [!TIP]`、`> [!IMPORTANT]`、`> [!WARNING]`、`> [!EXAMPLE]`、`> [!PRACTICE]` 提示块风格；新增例题优先使用 `> [!EXAMPLE]`，新增章末单元测试优先使用 `> [!PRACTICE]`。
-8. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
+7. patch 必须短而局部：不要超过 1200 字符；不要复制已有小节；不要一次输出多个已有二级标题。
+8. 完整例题、案例和章末练习不要放进大块 callout；提示块只用于短提示、短警告或短重点。
+9. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

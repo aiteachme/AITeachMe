@@ -33,17 +33,43 @@ _TITLE_GENERIC_PLACEHOLDERS = {
     "Untitled Chapter",
 }
 _TITLE_GENERIC_PLACEHOLDER_KEYS = {item.casefold() for item in _TITLE_GENERIC_PLACEHOLDERS}
+_TITLE_ENUM_PUNCT_RE = re.compile(r"[、,，/／：:；;]")
+_TITLE_CORE_STOP_CHARS = set("与和及的之基础概念")
 
 
 def _is_publishable_title_shape(title: str) -> bool:
     cleaned = clean_generated_chapter_title(clean_text(title))
     if not cleaned or cleaned.casefold() in _TITLE_GENERIC_PLACEHOLDER_KEYS:
         return False
-    if len(cleaned) < 3 or len(cleaned) > 36:
+    if len(cleaned) < 2 or len(cleaned) > 36:
         return False
     if not re.search(r"[\u3400-\u9fffA-Za-z]", cleaned):
         return False
     return not bool(_TITLE_ONLY_NUMBER_RE.fullmatch(cleaned) or _TITLE_CHAPTER_ONLY_RE.fullmatch(cleaned))
+
+
+def _catalog_core_chars(title: str) -> set[str]:
+    return {
+        char
+        for char in clean_generated_chapter_title(clean_text(title))
+        if char not in _TITLE_CORE_STOP_CHARS and re.search(r"[\u3400-\u9fffA-Za-z0-9]", char)
+    }
+
+
+def prefer_confirmed_catalog_title(*, confirmed_title: str, candidate_title: str) -> bool:
+    """Prefer confirmed catalog titles only for mechanical enumerations."""
+
+    confirmed = clean_generated_chapter_title(clean_text(confirmed_title))
+    candidate = clean_generated_chapter_title(clean_text(candidate_title))
+    if not confirmed or not candidate or confirmed == candidate:
+        return False
+    if not _is_publishable_title_shape(confirmed) or not _is_publishable_title_shape(candidate):
+        return False
+    core_chars = _catalog_core_chars(confirmed)
+    catalog_covered = bool(core_chars) and core_chars.issubset(set(candidate))
+    if not catalog_covered:
+        return False
+    return bool(_TITLE_ENUM_PUNCT_RE.search(candidate))
 
 
 def _chapter_index(chapter: Mapping[str, Any]) -> int:
@@ -63,6 +89,8 @@ def _resolve_locked_title(
         return confirmed, f"标题 `{label}` 不是可发布标题形态，已回退到 `{confirmed}`。"
     if not _is_publishable_title_shape(candidate):
         return confirmed, f"标题 `{candidate}` 不是可发布标题形态，已回退到 `{confirmed}`。"
+    if prefer_confirmed_catalog_title(confirmed_title=confirmed, candidate_title=candidate):
+        return confirmed, f"标题 `{candidate}` 是对目录标题 `{confirmed}` 的展开，已保留目录标题。"
     return candidate, None
 
 
@@ -148,4 +176,4 @@ async def lock_title_for_chapter(
     return locked
 
 
-__all__ = ["fallback_locked_title", "lock_title_for_chapter"]
+__all__ = ["fallback_locked_title", "lock_title_for_chapter", "prefer_confirmed_catalog_title"]

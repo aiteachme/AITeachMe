@@ -662,13 +662,10 @@ function PlannerStreamingOutlinePreview({ plan }: { plan: BuildPlannerPlanRespon
   }
 
   return (
-    <ol className="mt-4 space-y-2.5">
+    <div className="mt-4 space-y-2.5">
       {outlineItems.map((item, index) => (
-        <li key={`${index}-${item.title}`} className="flex items-start gap-3 py-1">
-          <span className="mt-0.5 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
-            {String(index + 1).padStart(2, "0")}
-          </span>
-          <div className="min-w-0 flex-1">
+        <div key={`${index}-${item.title}`} className="py-1">
+          <div className="min-w-0">
             <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
             {item.description ? (
               <div
@@ -679,9 +676,9 @@ function PlannerStreamingOutlinePreview({ plan }: { plan: BuildPlannerPlanRespon
               </div>
             ) : null}
           </div>
-        </li>
+        </div>
       ))}
-    </ol>
+    </div>
   );
 }
 
@@ -763,13 +760,10 @@ function PlannerOutlineCard({
         ) : null}
       </div>
 
-      <ol className="mt-5 space-y-3">
+      <div className="mt-5 space-y-3">
         {outlineItems.map((item, index) => (
-          <li key={`${index}-${item.title}`} className="flex items-start gap-3 rounded-md px-1 py-1">
-            <span className="mt-1 w-7 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-400 dark:text-slate-500">
-              {String(index + 1).padStart(2, "0")}
-            </span>
-            <div className="min-w-0 flex-1">
+          <div key={`${index}-${item.title}`} className="rounded-md px-1 py-1">
+            <div className="min-w-0">
               <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
               {item.description ? (
                 <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
@@ -777,9 +771,9 @@ function PlannerOutlineCard({
                 </div>
               ) : null}
             </div>
-          </li>
+          </div>
         ))}
-      </ol>
+      </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         {needsRefresh ? (

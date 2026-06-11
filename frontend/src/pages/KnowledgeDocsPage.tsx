@@ -22,7 +22,6 @@ import {
   Sparkles,
   RefreshCw,
   ExternalLink,
-  ListOrdered,
   ListCollapse,
   ListTree,
   SlidersHorizontal,
@@ -135,7 +134,13 @@ interface KnowledgeDocsViewPrefs {
   widePage: boolean;
   showToc: boolean;
   showCommentPanel: boolean;
-  autoHeadingNumbering: boolean;
+}
+
+interface KnowledgeDocsReadingPosition {
+  scrollTop: number;
+  headingId: string;
+  contentLength: number;
+  updatedAt: number;
 }
 
 interface SelectionHighlight {
@@ -338,7 +343,6 @@ function createDefaultKnowledgeDocsViewPrefs(): KnowledgeDocsViewPrefs {
     widePage: false,
     showToc: true,
     showCommentPanel: false,
-    autoHeadingNumbering: true,
   };
 }
 
@@ -352,12 +356,15 @@ function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
     widePage: candidate.widePage === true,
     showToc: candidate.showToc !== false,
     showCommentPanel: candidate.showCommentPanel === true,
-    autoHeadingNumbering: candidate.autoHeadingNumbering !== false,
   };
 }
 
 function knowledgeDocsViewPrefsStorageKey(courseId?: string): string {
   return `aiteachme:knowledge-docs-view:v${KNOWLEDGE_DOCS_VIEW_PREFS_VERSION}:${courseId ?? "default"}`;
+}
+
+function knowledgeDocsReadingPositionStorageKey(courseId?: string): string {
+  return `aiteachme:knowledge-docs-reading:v1:${courseId ?? "default"}`;
 }
 
 function readKnowledgeDocsViewPrefs(courseId?: string): KnowledgeDocsViewPrefs {
@@ -389,6 +396,45 @@ function persistKnowledgeDocsViewPrefs(courseId: string | undefined, prefs: Know
     );
   } catch {
     // Ignore storage failures and fall back to in-memory state.
+  }
+}
+
+function readKnowledgeDocsReadingPosition(courseId?: string): KnowledgeDocsReadingPosition | null {
+  if (!courseId || typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(knowledgeDocsReadingPositionStorageKey(courseId));
+    if (!raw) {
+      return null;
+    }
+    const value = JSON.parse(raw) as Partial<KnowledgeDocsReadingPosition>;
+    const scrollTop = Number(value.scrollTop ?? 0);
+    if (!Number.isFinite(scrollTop) || scrollTop < 0) {
+      return null;
+    }
+    return {
+      scrollTop,
+      headingId: String(value.headingId ?? ""),
+      contentLength: Number(value.contentLength ?? 0) || 0,
+      updatedAt: Number(value.updatedAt ?? 0) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistKnowledgeDocsReadingPosition(courseId: string | undefined, position: KnowledgeDocsReadingPosition) {
+  if (!courseId || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      knowledgeDocsReadingPositionStorageKey(courseId),
+      JSON.stringify(position),
+    );
+  } catch {
+    // Ignore storage failures; reading continuity is a progressive enhancement.
   }
 }
 
@@ -524,6 +570,19 @@ function resolveVisibleActiveTocId(
   return activeId;
 }
 
+function splitTocDisplayText(text: string): { number: string | null; title: string } {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^((?:\d+\.)*\d+)\s+(.+)$/);
+  if (!match) {
+    return { number: null, title: trimmed };
+  }
+  const number = match[1]
+    .split(".")
+    .map((part) => String(Number(part) || part))
+    .join(".");
+  return { number, title: match[2].trim() };
+}
+
 function getHeadingLevel(node: Element | null | undefined): number {
   if (!node) return 0;
   const level = Number(node.tagName.replace("H", ""));
@@ -589,6 +648,11 @@ function findHeadingPath(contentRoot: HTMLElement, anchorId: string): HTMLElemen
 
 function isVisibleHeading(heading: HTMLElement): boolean {
   return heading.getClientRects().length > 0;
+}
+
+function isTocTrackedHeading(heading: HTMLElement): boolean {
+  const level = getHeadingLevel(heading);
+  return level >= 1 && level <= 3;
 }
 
 function findHeadingSectionElement(heading: HTMLElement): HTMLElement | null {
@@ -1412,12 +1476,10 @@ function buildCommentThreadLayout(
 const DocMarkdown = memo(function DocMarkdown({
   content,
   courseId,
-  headingNumbering,
   onHeadingCollapseChange,
 }: {
   content: string;
   courseId?: string;
-  headingNumbering: boolean;
   onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
 }) {
   return (
@@ -1425,7 +1487,7 @@ const DocMarkdown = memo(function DocMarkdown({
       content={content}
       variant="document"
       headingAnchors
-      headingNumbering={headingNumbering}
+      headingNumbering
       collapsibleHeadings
       onHeadingCollapseChange={onHeadingCollapseChange}
       assetCourse={courseId}
@@ -1596,9 +1658,7 @@ function DocLoadingState() {
         <Loader2 className="absolute -right-1 -top-1 h-4 w-4 animate-spin text-indigo-500 dark:text-indigo-300" />
       </div>
       <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在加载知识文档</h2>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-        正在读取文档状态和最近一次构建进度，稍等一下就会自动切换到文档或生成过程。
-      </p>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">正在加载内容。</p>
       <div className="mt-6 w-full max-w-md space-y-2" aria-hidden="true">
         <div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
         <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
@@ -2089,7 +2149,9 @@ export function KnowledgeDocsPage() {
   const tocScrollbarTimerRef = useRef<number | null>(null);
   const tocAutoScrollingRef = useRef(false);
   const tocAutoScrollReleaseTimerRef = useRef<number | null>(null);
-  const activeHeadingLockRef = useRef<string | null>(null);
+  const readingPositionSaveTimerRef = useRef<number | null>(null);
+  const readingPositionRestoredRef = useRef<string>("");
+  const activeHeadingRef = useRef(activeHeading);
   const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
   const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
@@ -2463,8 +2525,8 @@ export function KnowledgeDocsPage() {
         .map((node): TocItem | null => {
           const id = node.getAttribute("data-heading-id") ?? node.id;
           if (!id) return null;
-          const level = Number(node.tagName.replace("H", ""));
-          if (!Number.isInteger(level) || level < 1 || level > 3) return null;
+          if (!isTocTrackedHeading(node)) return null;
+          const level = getHeadingLevel(node);
           const text = node.textContent?.trim() || id;
           const section = findHeadingSectionElement(node);
           const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
@@ -2478,7 +2540,7 @@ export function KnowledgeDocsPage() {
       }
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [renderedMarkdown, viewPrefs.autoHeadingNumbering]);
+  }, [renderedMarkdown]);
 
   useEffect(() => {
     if (collapsedDocHeadingCommitTimerRef.current !== null) {
@@ -2558,6 +2620,9 @@ export function KnowledgeDocsPage() {
       }
       if (tocAutoScrollReleaseTimerRef.current !== null) {
         window.clearTimeout(tocAutoScrollReleaseTimerRef.current);
+      }
+      if (readingPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(readingPositionSaveTimerRef.current);
       }
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
@@ -2681,13 +2746,101 @@ export function KnowledgeDocsPage() {
     commentsRef.current = comments;
   }, [comments]);
 
+  useEffect(() => {
+    activeHeadingRef.current = activeHeading;
+  }, [activeHeading]);
+
+  useEffect(() => {
+    readingPositionRestoredRef.current = "";
+  }, [courseId, renderedMarkdown]);
+
+  useLayoutEffect(() => {
+    if (!courseId || !renderedMarkdown.trim()) {
+      return;
+    }
+    const restoreKey = `${courseId}:${renderedMarkdown.length}`;
+    if (readingPositionRestoredRef.current === restoreKey || pendingSelectionJumpRef.current) {
+      return;
+    }
+    readingPositionRestoredRef.current = restoreKey;
+    const saved = readKnowledgeDocsReadingPosition(courseId);
+    if (!saved) {
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      if (!container) {
+        return;
+      }
+      const targetHeading = saved.headingId
+        ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
+        : null;
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const nextScrollTop = targetHeading
+        ? Math.max(0, targetHeading.offsetTop - 28)
+        : Math.max(0, Math.min(maxScrollTop, saved.scrollTop));
+      const previousScrollBehavior = container.style.scrollBehavior;
+      container.style.scrollBehavior = "auto";
+      container.scrollTop = Math.min(maxScrollTop, nextScrollTop);
+      if (previousScrollBehavior) {
+        container.style.scrollBehavior = previousScrollBehavior;
+      } else {
+        container.style.removeProperty("scroll-behavior");
+      }
+      container.dispatchEvent(new Event("scroll"));
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [courseId, renderedMarkdown]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!courseId || !renderedMarkdown.trim() || !container) {
+      return;
+    }
+
+    const saveNow = () => {
+      persistKnowledgeDocsReadingPosition(courseId, {
+        scrollTop: container.scrollTop,
+        headingId: activeHeadingRef.current,
+        contentLength: renderedMarkdown.length,
+        updatedAt: Date.now(),
+      });
+    };
+
+    const scheduleSave = () => {
+      if (readingPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(readingPositionSaveTimerRef.current);
+      }
+      readingPositionSaveTimerRef.current = window.setTimeout(() => {
+        readingPositionSaveTimerRef.current = null;
+        saveNow();
+      }, 240);
+    };
+
+    container.addEventListener("scroll", scheduleSave, { passive: true });
+    window.addEventListener("beforeunload", saveNow);
+
+    return () => {
+      container.removeEventListener("scroll", scheduleSave);
+      window.removeEventListener("beforeunload", saveNow);
+      if (readingPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(readingPositionSaveTimerRef.current);
+        readingPositionSaveTimerRef.current = null;
+      }
+      saveNow();
+    };
+  }, [courseId, renderedMarkdown]);
+
   // Track active heading from a single scroll position so the TOC highlight does not bounce.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
     const headingRoot = contentAreaRef.current;
-    const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"));
+    const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"))
+      .filter(isTocTrackedHeading);
     if (headings.length === 0) {
       setActiveHeading("");
       return;
@@ -2718,12 +2871,6 @@ export function KnowledgeDocsPage() {
     const syncActiveHeading = () => {
       window.cancelAnimationFrame(rafId);
       rafId = window.requestAnimationFrame(() => {
-        const lockedHeadingId = activeHeadingLockRef.current;
-        if (lockedHeadingId && headings.some((heading) => heading.getAttribute("data-heading-id") === lockedHeadingId && isVisibleHeading(heading))) {
-          setActiveHeading((prev) => (prev === lockedHeadingId ? prev : lockedHeadingId));
-          return;
-        }
-
         const nextId = findActiveHeadingId();
         setActiveHeading((prev) => (prev === nextId ? prev : nextId));
       });
@@ -2732,32 +2879,14 @@ export function KnowledgeDocsPage() {
     const handleScroll = () => {
       syncActiveHeading();
     };
-    const clearHeadingLock = () => {
-      activeHeadingLockRef.current = null;
-      syncActiveHeading();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
-        clearHeadingLock();
-      }
-    };
-
     container.addEventListener("scroll", handleScroll, { passive: true });
-    container.addEventListener("wheel", clearHeadingLock, { passive: true });
-    container.addEventListener("touchstart", clearHeadingLock, { passive: true });
-    container.addEventListener("pointerdown", clearHeadingLock);
     window.addEventListener("resize", handleScroll);
-    window.addEventListener("keydown", handleKeyDown);
     syncActiveHeading();
 
     return () => {
       window.cancelAnimationFrame(rafId);
       container.removeEventListener("scroll", handleScroll);
-      container.removeEventListener("wheel", clearHeadingLock);
-      container.removeEventListener("touchstart", clearHeadingLock);
-      container.removeEventListener("pointerdown", clearHeadingLock);
       window.removeEventListener("resize", handleScroll);
-      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [renderedMarkdown]);
 
@@ -2801,7 +2930,7 @@ export function KnowledgeDocsPage() {
     headingFlashTimersRef.current.set(headingId, timer);
   }, []);
 
-  const scrollToHeading = useCallback((id: string, options: { lockActive?: boolean; retryingAfterExpand?: boolean } = {}) => {
+  const scrollToHeading = useCallback((id: string, options: { retryingAfterExpand?: boolean } = {}) => {
     const container = scrollRef.current;
     if (!container) return;
     const headingRoot = contentAreaRef.current;
@@ -2815,10 +2944,7 @@ export function KnowledgeDocsPage() {
       return;
     }
 
-    if (options.lockActive !== false) {
-      activeHeadingLockRef.current = id;
-      setActiveHeading((prev) => (prev === id ? prev : id));
-    }
+    setActiveHeading((prev) => (prev === id ? prev : id));
 
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
@@ -3187,6 +3313,7 @@ export function KnowledgeDocsPage() {
   }, [showTocScrollbarTemporarily, updateTocScrollThumb]);
 
   const handleTocItemClick = useCallback((id: string) => {
+    setActiveHeading((prev) => (prev === id ? prev : id));
     scrollToHeading(id);
     if (isCompactToc) {
       setActiveDrawer(null);
@@ -4259,7 +4386,6 @@ export function KnowledgeDocsPage() {
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
       const nextTop = Math.max(0, Math.min(maxScrollTop, targetCenter - container.clientHeight / 2));
       const activeTargetHeadingId = selectionHeading?.getAttribute("data-heading-id") ?? anchorId;
-      activeHeadingLockRef.current = activeTargetHeadingId;
       setActiveHeading((prev) => (prev === activeTargetHeadingId ? prev : activeTargetHeadingId));
       container.scrollTo({ top: nextTop, behavior: "smooth" });
       if (fallbackHeading) {
@@ -5144,24 +5270,20 @@ export function KnowledgeDocsPage() {
       const isActive = visibleActiveHeading === item.id;
       const count = commentsForAnchor(item.id);
       const indent = depth * 12;
+      const displayText = splitTocDisplayText(item.text);
 
       return (
         <div key={item.id}>
           <div
             data-toc-id={item.id}
             className={cn(
-              "group flex items-center rounded-md transition-all duration-150 relative",
+              "group relative flex items-center rounded-md transition-colors duration-150",
               isActive
-                ? "bg-indigo-50/80 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300"
+                ? "bg-slate-100/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100"
                 : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
             )}
             style={{ paddingLeft: indent + 2 }}
           >
-            {/* Left active indicator (Feishu-style) */}
-            {isActive && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2.5px] h-4 rounded-full bg-indigo-500" />
-            )}
-
             {/* Expand/collapse arrow */}
             {hasChildren ? (
               <button
@@ -5172,7 +5294,9 @@ export function KnowledgeDocsPage() {
                 }}
                 className={cn(
                   "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
-                  isActive ? "text-indigo-500 hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-500/10" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                  isActive
+                    ? "text-blue-500 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                    : "text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 )}
                 title={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
                 aria-label={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
@@ -5196,12 +5320,26 @@ export function KnowledgeDocsPage() {
               aria-label={`跳转到：${item.text}`}
               className={cn(
                 "flex-1 min-w-0 text-left py-1.5 pr-1 text-[14px] leading-5 truncate transition-colors",
-                isActive ? "font-semibold" : "font-normal",
-                item.level === 1 && "font-semibold text-[14.5px]",
+                isActive
+                  ? "font-semibold text-slate-900 dark:text-slate-100"
+                  : item.level === 1
+                    ? "font-semibold text-slate-800 dark:text-slate-100"
+                    : "font-normal text-slate-700 dark:text-slate-300",
+                item.level === 1 && "text-[14.5px]",
                 item.level >= 3 && "text-[13.5px]"
               )}
             >
-              {item.text}
+              {displayText.number ? (
+                <span
+                  className={cn(
+                    "mr-1.5 select-none font-semibold",
+                    "text-blue-600 dark:text-blue-300"
+                  )}
+                >
+                  {displayText.number}
+                </span>
+              ) : null}
+              <span>{displayText.title}</span>
             </button>
 
             {/* Comment count badge */}
@@ -5613,18 +5751,11 @@ export function KnowledgeDocsPage() {
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
   const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
-  if (!hasRenderedMarkdown && showDocLoadingState) {
-    return (
-      <div className="relative flex h-[100dvh] w-full items-center justify-center overflow-hidden bg-slate-50 px-4 dark:bg-slate-950">
-        <DocLoadingState />
-      </div>
-    );
-  }
-
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-white dark:bg-slate-950">
+      <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-white dark:bg-slate-950">
         <BuildView
+          className="h-full"
           isFetching={docMarkdownQuery.isFetching}
           progress={buildProgress}
           statusText={buildStatusText}
@@ -5637,6 +5768,48 @@ export function KnowledgeDocsPage() {
           isDocumentReady={isRequestedBuildReady}
           courseId={courseId}
         />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocLoadingState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadingState />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocBuildFailureState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={buildStatusText}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocEmptyState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocEmptyState />
       </div>
     );
   }
@@ -5746,14 +5919,17 @@ export function KnowledgeDocsPage() {
             ) : (
               <>
                 <div className="sticky top-0 z-10 flex items-center justify-between bg-white/92 px-3 pb-1 pt-3 backdrop-blur-md dark:bg-slate-950/92">
-                  <button
-                    onClick={() => setIsTocCollapsed(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4F46E5] transition-colors hover:bg-[#EEF2FF] hover:text-[#4338CA] dark:text-indigo-300 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
-                    aria-label="收起目录"
-                    title="收起目录"
-                  >
-                    <ChevronsLeft className="h-4 w-4" />
-                  </button>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      onClick={() => setIsTocCollapsed(true)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4F46E5] transition-colors hover:bg-[#EEF2FF] hover:text-[#4338CA] dark:text-indigo-300 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
+                      aria-label="收起目录"
+                      title="收起目录"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </button>
+                    <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">目录</span>
+                  </div>
                   <div className="flex items-center gap-0.5 text-slate-400">
                     <button
                       type="button"
@@ -5826,7 +6002,8 @@ export function KnowledgeDocsPage() {
                 ref={contentAreaRef}
                 className={cn("feishu-doc-content min-w-0 w-full", docColumnMaxWidthClass)}
               >
-                <article className="min-w-0 px-2 py-2 md:px-4">
+                <div className="relative flex min-w-0 items-start">
+                  <article className="min-w-0 flex-1 px-2 py-2 md:px-4">
                   <CourseVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -5837,7 +6014,7 @@ export function KnowledgeDocsPage() {
                     />
                   ) : showDocLoadingState ? (
                     <DocLoadingState />
-                  ) : showDocGeneratingState ? (
+                  ) : isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState ? (
                     <BuildView
                       className="h-[70vh] min-h-[600px] overflow-hidden rounded-xl border border-zinc-100 dark:border-slate-800"
                       isFetching={docMarkdownQuery.isFetching}
@@ -5879,7 +6056,6 @@ export function KnowledgeDocsPage() {
                       <DocMarkdown
                         content={renderedMarkdown}
                         courseId={courseId}
-                        headingNumbering={viewPrefs.autoHeadingNumbering}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
                       {pendingInteractiveBlocks.map((block) => (
@@ -5891,7 +6067,8 @@ export function KnowledgeDocsPage() {
                       ))}
                     </>
                   )}
-                </article>
+                  </article>
+                </div>
               </div>
               {showDesktopCommentPanel && (
                 <aside
@@ -6090,28 +6267,6 @@ export function KnowledgeDocsPage() {
               </div>
               <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
                 <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
-              </span>
-            </button>
-            <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
-            <button
-              type="button"
-              onClick={() => {
-                updateViewPrefs((prev) => ({ ...prev, autoHeadingNumbering: !prev.autoHeadingNumbering }));
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
-              aria-pressed={viewPrefs.autoHeadingNumbering}
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                  <ListOrdered className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">标题自动编号</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">为一二三级标题显示飞书风格序号；序号不会进入划词内容。</p>
-                </div>
-              </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.autoHeadingNumbering ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
-                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.autoHeadingNumbering ? "translate-x-5" : "translate-x-0")} />
               </span>
             </button>
             <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
