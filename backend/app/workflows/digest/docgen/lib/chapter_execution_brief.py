@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list
 from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
@@ -28,13 +28,17 @@ async def build_chapter_execution_brief(
     glossary_terms: Sequence[str],
     claim_targets: Sequence[str],
     confusion_targets: Sequence[str],
+    source_slices: Sequence[Mapping[str, object]] = (),
+    evidence_items: Sequence[Mapping[str, object]] = (),
     plan: str = "",
     docgen_history_brief: str = "",
+    learner_profile_text: str = "",
     extra_metadata: Mapping[str, object] | None = None,
 ) -> ChapterExecutionBrief:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
-    try:
-        response = await acompletion_with_fallback(
+
+    async def _run_chapter_brief(_: object) -> object:
+        return await acompletion_with_fallback(
             build_chapter_execution_brief_messages(
                 course_name=course_name,
                 digest_mode=digest_mode,
@@ -44,8 +48,11 @@ async def build_chapter_execution_brief(
                 glossary_terms=glossary_terms,
                 claim_targets=claim_targets,
                 confusion_targets=confusion_targets,
+                source_slices=source_slices,
+                evidence_items=evidence_items,
                 plan=plan,
                 docgen_history_brief=docgen_history_brief,
+                learner_profile_text=learner_profile_text,
             ),
             **docgen_completion_kwargs_with_metadata(
                 DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
@@ -55,6 +62,9 @@ async def build_chapter_execution_brief(
             ),
             response_model=ChapterExecutionBrief,
         )
+
+    try:
+        (response,) = await run_llm_tasks([None], _run_chapter_brief, max_concurrent=1)
     except Exception as exc:
         logger.warning("docgen_chapter_brief_failed", chapter_index=chapter_index, error=str(exc))
         raise ChapterExecutionBriefError(f"LLM failed to build chapter brief for chapter {chapter_index}.") from exc

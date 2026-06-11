@@ -35,13 +35,15 @@ def clean_string_list(value: Any, *, limit: int | None = None) -> list[str]:
 
 
 LEARNING_CONTENT_ROLE_TYPES: tuple[str, ...] = (
-    "core_knowledge",
-    "method_demo",
-    "explanation_support",
-    "principle_reasoning",
-    "practice_assessment",
-    "knowledge_organization",
-    "application_extension",
+    "topic",
+    "concept",
+    "principle",
+    "formula_model",
+    "procedure",
+    "skill",
+    "misconception",
+    "application_case",
+    "resource",
 )
 
 
@@ -153,6 +155,8 @@ class DocGenContext(DocGenBaseModel):
     user_prompt: str = ""
     plan: str = ""
     docgen_history_brief: str = ""
+    learner_profile_text: str = ""
+    learner_profile_context: dict[str, Any] = Field(default_factory=dict)
     planner_context: dict[str, Any] = Field(default_factory=dict)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
@@ -168,6 +172,7 @@ class DocGenContext(DocGenBaseModel):
         "user_prompt",
         "plan",
         "docgen_history_brief",
+        "learner_profile_text",
         mode="before",
     )
     @classmethod
@@ -772,13 +777,13 @@ class ChapterGenerationTask(DocGenBaseModel):
                 limit=10,
             )
             if core_items:
-                role_targets["core_knowledge"] = core_items
+                role_targets["concept"] = core_items
             method_items = clean_string_list(self.example_targets, limit=8)
             if method_items:
-                role_targets["method_demo"] = method_items
+                role_targets["application_case"] = method_items
             support_items = clean_string_list(self.pitfall_targets, limit=8)
             if support_items:
-                role_targets["explanation_support"] = support_items
+                role_targets["misconception"] = support_items
             self.content_role_targets = role_targets
         if not self.example_coverage_plan:
             example_targets = clean_string_list(
@@ -852,7 +857,7 @@ class CanonicalGlossaryItem(DocGenBaseModel):
 class ConceptDependencyEdge(DocGenBaseModel):
     from_concept: str = ""
     to_concept: str = ""
-    relation: str = "prerequisite"
+    relation: str = "prerequisite_for"
     reason: str = ""
 
     @field_validator("from_concept", "to_concept", "relation", "reason", mode="before")
@@ -1265,6 +1270,19 @@ class ReviewAction(DocGenBaseModel):
         return clean_string_list(value, limit=12)
 
 
+class LLMDocumentConsistencyReviewResult(DocGenBaseModel):
+    passed: bool = True
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    glossary_warnings: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    actions: list[ReviewAction] = Field(default_factory=list)
+
+    @field_validator("glossary_warnings", "warnings", mode="before")
+    @classmethod
+    def _warnings(cls, value: Any) -> list[str]:
+        return clean_string_list(value, limit=18)
+
+
 class RepairTraceItem(DocGenBaseModel):
     trace_id: str = ""
     action_id: str = ""
@@ -1321,6 +1339,7 @@ __all__ = [
     "FileMaterialSummaryBatch",
     "HighConfidenceEvidenceUnit",
     "LLMChapterReviewResult",
+    "LLMDocumentConsistencyReviewResult",
     "LEARNING_CONTENT_ROLE_TYPES",
     "MergeReviewIssue",
     "MergeReviewReport",

@@ -55,11 +55,7 @@ from app.shared.infra.knowledge.build_store import (
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
 )
-from app.shared.infra.llm_support.common import capture_llm_runtime_snapshot
-from app.shared.infra.llm_support.model_choices import (
-    build_runtime_model_override_snapshot,
-    normalize_runtime_model_override,
-)
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import (
     CourseStorageScope,
@@ -302,7 +298,7 @@ def _build_preview_sample_nodes(build_status) -> list[BuildPreviewNodeResponse]:
         nodes.append(
             BuildPreviewNodeResponse(
                 name=name,
-                knowledge_unit_type=str(item.get("type", "core_knowledge")).strip() or "core_knowledge",
+                knowledge_unit_type=str(item.get("type", "concept")).strip() or "concept",
             )
         )
         if len(nodes) >= 6:
@@ -759,20 +755,18 @@ async def run_docgen_background(
 
     负责把 API 接受的构建请求转成一次真实 workflow run：加载 confirmed
     plan、运行 `run_docgen_workflow`、持久化知识文档、
-    更新状态、按设置派发独立图谱同步任务并释放构建锁。异常处理也集中在这里，避免 API 层持有
+    更新状态并释放构建锁。自动图谱同步已经是 DocGen 图的后置节点；异常处理也集中在这里，避免 API 层持有
     长任务细节。
     """
 
     from app.workflows.digest import run_docgen_workflow
     from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
-    from app.workflows.digest.kg_doc_sync.lib.builds import run_graph_docs_sync_auto_build
     from app.workflows.digest.kg_doc_sync.lib.prefetch import cancel_docgen_kg_prefetch
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
     resolved_digest_mode = None
     resolved_model_override = normalize_runtime_model_override(model_override)
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
-    graph_llm_snapshot = None
     docgen_published = False
     logger.info(
         "knowledge_build_background_started",
@@ -815,11 +809,6 @@ async def run_docgen_background(
         planner_session_id = planner_session_id or plan.planner_session_id
         resolved_digest_mode = plan.digest_mode
         resolved_model_override = _confirmed_plan_model_override(confirmed_plan_payload) or resolved_model_override
-        if sync_graph_after_docgen:
-            graph_llm_snapshot = (
-                build_runtime_model_override_snapshot(resolved_model_override)
-                or capture_llm_runtime_snapshot()
-            )
         _mark_confirmed_plan_status(
             course_id=course_id,
             user_id=user_id,
@@ -877,6 +866,7 @@ async def run_docgen_background(
             file_ids=file_ids,
             user_prompt=prompt,
             requested_at=requested_at,
+            build_group_id=build_group_id,
             build_session_id=build_session_id,
             confirmed_plan=confirmed_plan_payload,
             planner_session_id=planner_session_id,
@@ -937,48 +927,11 @@ async def run_docgen_background(
         )
         docgen_published = True
         if sync_graph_after_docgen:
-            graph_coro = run_graph_docs_sync_auto_build(
-                course_id=course_id,
-                requested_at=requested_at,
-                build_group_id=build_group_id,
-                build_session_id=build_session_id,
-                file_ids=file_ids,
-                prompt=prompt,
-                llm_snapshot=graph_llm_snapshot,
-                docgen_state=final_docgen_state,
-                course_scope=course_scope,
-                background_task_registry=background_task_registry,
-            )
-            if background_task_registry is not None:
-                background_task_registry.spawn(
-                    graph_coro,
-                    kind="knowledge.build.graph",
-                    course_id=course_id,
-                    name=f"knowledge.build.graph:auto:{course_id}",
-                )
-            else:
-                graph_task = asyncio.create_task(graph_coro, name=f"knowledge.build.graph:auto:{course_id}")
-
-                def _log_graph_task_result(task: asyncio.Task[Any]) -> None:
-                    if task.cancelled():
-                        return
-                    try:
-                        exc = task.exception()
-                    except asyncio.CancelledError:
-                        return
-                    if exc is not None:
-                        logger.warning(
-                            "knowledge_graph_auto_task_failed",
-                            course_id=course_id,
-                            error=str(exc),
-                        )
-
-                graph_task.add_done_callback(_log_graph_task_result)
             logger.info(
-                "knowledge_graph_auto_build_spawned_after_docgen",
+                "knowledge_graph_auto_build_completed_in_docgen",
                 course_id=course_id,
                 build_group_id=build_group_id,
-                registered=background_task_registry is not None,
+                graph_sync_status=final_docgen_state.get("graph_sync_status"),
             )
         else:
             _write_graph_status(

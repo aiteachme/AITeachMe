@@ -53,6 +53,7 @@ def _unit(unit_id: int = 1) -> KnowledgeUnitResponse:
         id=unit_id,
         course_id="course_math00000000",
         knowledge_unit_type="concept",
+        knowledge_unit_type_label="概念术语",
         canonical_name=f"Unit {unit_id}",
         status="active",
         confidence=0.9,
@@ -71,7 +72,8 @@ def _relation() -> KnowledgeRelationResponse:
         target_node_id=2,
         target_node_name="Unit 2",
         target_node_type="concept",
-        edge_type="prerequisite",
+        edge_type="prerequisite_for",
+        edge_type_label="前置",
         weight=0.8,
         confidence=0.7,
     )
@@ -127,7 +129,8 @@ def test_knowledge_graph_query_endpoints_delegate_with_normalized_course(
                         id=1,
                         source_node_id=1,
                         target_node_id=2,
-                        edge_type="prerequisite",
+                        edge_type="prerequisite_for",
+                        edge_type_label="前置",
                         weight=1.0,
                         confidence=0.9,
                     )
@@ -182,7 +185,9 @@ def test_knowledge_graph_query_endpoints_delegate_with_normalized_course(
 
     assert all(response.status_code == 200 for response in responses)
     assert responses[0].json()["data"]["items"][0]["canonical_name"] == "Unit 1"
-    assert responses[2].json()["data"][0]["edge_type"] == "prerequisite"
+    assert responses[0].json()["data"]["items"][0]["knowledge_unit_type_label"] == "概念术语"
+    assert responses[2].json()["data"][0]["edge_type"] == "prerequisite_for"
+    assert responses[2].json()["data"][0]["edge_type_label"] == "前置"
     assert responses[6].json()["data"]["edges"][0]["confidence"] == 0.9
     assert responses[7].json()["data"]["chunk_id"] == 99
     assert [name for name, _kwargs in calls] == [

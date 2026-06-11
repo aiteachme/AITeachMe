@@ -29,6 +29,7 @@ class KnowledgeUnitTypeSpec:
     """One prompt-facing learning-graph node type."""
 
     value: str
+    label_zh: str
     description: str
 
     @property
@@ -49,6 +50,7 @@ class KnowledgeRelationTypeSpec:
     """One prompt-facing learning-graph edge type."""
 
     value: str
+    label_zh: str
     description: str
     source_type_preferences: tuple[str, ...] = ()
     target_type_preferences: tuple[str, ...] = ()
@@ -102,127 +104,154 @@ class LearningGraphOntology:
 
 
 _PRIMARY_ENDPOINT_TYPES = (
-    KnowledgeUnitType.CORE_KNOWLEDGE.value,
-    KnowledgeUnitType.METHOD_DEMO.value,
-    KnowledgeUnitType.PRINCIPLE_REASONING.value,
-    KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value,
-    KnowledgeUnitType.APPLICATION_EXTENSION.value,
+    KnowledgeUnitType.CONCEPT.value,
+    KnowledgeUnitType.PRINCIPLE.value,
+    KnowledgeUnitType.FORMULA_MODEL.value,
+    KnowledgeUnitType.PROCEDURE.value,
+    KnowledgeUnitType.SKILL.value,
+    KnowledgeUnitType.MISCONCEPTION.value,
+    KnowledgeUnitType.APPLICATION_CASE.value,
 )
 _SUPPORT_ENDPOINT_TYPES = (
-    KnowledgeUnitType.EXPLANATION_SUPPORT.value,
-    KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
+    KnowledgeUnitType.TOPIC.value,
+    KnowledgeUnitType.RESOURCE.value,
 )
 
 
 LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
-    name="kg_doc_sync_learning_graph_v2",
-    purpose="表达广义学习材料中的知识内容角色，以及它们之间的教学关系。",
+    name="kg_doc_sync_learning_graph_v3",
+    purpose="表达学习内容中的主题、知识、技能、易错点与教学路径关系。",
     unit_types=(
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.CORE_KNOWLEDGE.value,
-            "核心知识：概念、定义、定理、性质、公式、结论、规则、事实、原则、标准、术语，回答必须知道什么",
+            KnowledgeUnitType.TOPIC.value,
+            "主题模块",
+            "主题模块：课程、章节、单元或知识簇，用于组织结构，不直接代表一个需要测量掌握度的知识点。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.METHOD_DEMO.value,
-            "方法示范：例题、方法、步骤、流程、解题思路、操作范例、演示过程，回答怎么做",
+            KnowledgeUnitType.CONCEPT.value,
+            "概念术语",
+            "概念术语：定义、对象、术语、性质名称、基础事实，回答学习者必须先知道什么。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.EXPLANATION_SUPPORT.value,
-            "解释辅助：背景、直观解释、例子、备注、类比、易错点、概念辨析、常见误区，帮助理解",
+            KnowledgeUnitType.PRINCIPLE.value,
+            "原理性质",
+            "原理性质：定理、规律、机制、成立条件、证明结论、因果关系，回答为什么成立。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.PRINCIPLE_REASONING.value,
-            "原理推理：证明、推导、命题、机制解释、因果分析、验证过程、适用条件，回答为什么成立或有效",
+            KnowledgeUnitType.FORMULA_MODEL.value,
+            "公式模型",
+            "公式模型：公式、方程、图像模型、符号模型、计算关系和适用边界。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
-            "练习评估：练习、解析、自测题、纠错任务、评分标准、操作检查、错题分析、复盘任务",
+            KnowledgeUnitType.PROCEDURE.value,
+            "方法步骤",
+            "方法步骤：解题流程、操作步骤、证明套路、实验流程、分析框架，回答怎么做。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value,
-            "知识组织：学习目标、重点难点、学习路径、知识框架、模块划分、先修知识、总结",
+            KnowledgeUnitType.SKILL.value,
+            "解题技能",
+            "解题技能：可训练、可诊断的能力点，例如建模、化简、判别、画图、迁移、检查。",
         ),
         KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.APPLICATION_EXTENSION.value,
-            "应用拓展：案例、实验、应用场景、项目任务、真实问题、综合任务、迁移训练、开放任务",
+            KnowledgeUnitType.MISCONCEPTION.value,
+            "易错辨析",
+            "易错辨析：常见误区、混淆项、错误方法、边界条件和纠错提示。",
+        ),
+        KnowledgeUnitTypeSpec(
+            KnowledgeUnitType.APPLICATION_CASE.value,
+            "应用案例",
+            "应用案例：例题、实验、真实场景、综合任务、迁移问题，用于连接知识和使用情境。",
+        ),
+        KnowledgeUnitTypeSpec(
+            KnowledgeUnitType.RESOURCE.value,
+            "学习资源",
+            "学习资源：背景材料、补充说明、来源片段、阅读资料或图表说明，作为证据和解释支撑。",
         ),
     ),
     relation_types=(
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.PREREQUISITE.value,
-            "前置：source 是理解、学习或掌握 target 的先修内容",
+            KnowledgeRelationType.PART_OF.value,
+            "归属",
+            "归属：source 是 target 的组成部分、子主题或被纳入的知识点。",
+            source_type_preferences=_PRIMARY_ENDPOINT_TYPES,
+            target_type_preferences=(KnowledgeUnitType.TOPIC.value, *_PRIMARY_ENDPOINT_TYPES),
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.PREREQUISITE_FOR.value,
+            "前置",
+            "前置：掌握 source 是学习 target 的必要或强建议先修条件。",
             source_type_preferences=_PRIMARY_ENDPOINT_TYPES,
             target_type_preferences=_PRIMARY_ENDPOINT_TYPES,
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.CONTAINS.value,
-            "包含：source 在结构上包含 target，或者 target 属于 source",
-            source_type_preferences=(KnowledgeUnitType.KNOWLEDGE_ORGANIZATION.value, *(_PRIMARY_ENDPOINT_TYPES)),
-            target_type_preferences=(*_PRIMARY_ENDPOINT_TYPES, *_SUPPORT_ENDPOINT_TYPES),
+            KnowledgeRelationType.DERIVES_TO.value,
+            "推导",
+            "推导：source 能推导、证明、解释或生成 target。",
+            source_type_preferences=(KnowledgeUnitType.CONCEPT.value, KnowledgeUnitType.PRINCIPLE.value, KnowledgeUnitType.FORMULA_MODEL.value),
+            target_type_preferences=(KnowledgeUnitType.PRINCIPLE.value, KnowledgeUnitType.FORMULA_MODEL.value, KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.SKILL.value),
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.REASONING.value,
-            "推理：source 可以推出 target，或者 target 基于 source 的证明、推导、机制或因果解释得到",
-            source_type_preferences=(
-                KnowledgeUnitType.CORE_KNOWLEDGE.value,
-                KnowledgeUnitType.PRINCIPLE_REASONING.value,
-                KnowledgeUnitType.METHOD_DEMO.value,
-            ),
-            target_type_preferences=(
-                KnowledgeUnitType.CORE_KNOWLEDGE.value,
-                KnowledgeUnitType.METHOD_DEMO.value,
-                KnowledgeUnitType.APPLICATION_EXTENSION.value,
-            ),
+            KnowledgeRelationType.APPLIES_TO.value,
+            "应用",
+            "应用：source 可用于解决、解释或迁移到 target。",
+            source_type_preferences=(KnowledgeUnitType.CONCEPT.value, KnowledgeUnitType.PRINCIPLE.value, KnowledgeUnitType.FORMULA_MODEL.value, KnowledgeUnitType.PROCEDURE.value),
+            target_type_preferences=(KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.SKILL.value, KnowledgeUnitType.APPLICATION_CASE.value),
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.APPLICATION.value,
-            "应用：source 被用于解决 target，或者 source 在 target 场景中使用",
-            source_type_preferences=(
-                KnowledgeUnitType.CORE_KNOWLEDGE.value,
-                KnowledgeUnitType.METHOD_DEMO.value,
-                KnowledgeUnitType.PRINCIPLE_REASONING.value,
-            ),
-            target_type_preferences=(
-                KnowledgeUnitType.METHOD_DEMO.value,
-                KnowledgeUnitType.PRACTICE_ASSESSMENT.value,
-                KnowledgeUnitType.APPLICATION_EXTENSION.value,
-            ),
+            KnowledgeRelationType.USES_METHOD.value,
+            "用方法",
+            "用方法：source 需要使用 target 这一方法、步骤或技能才能完成。",
+            source_type_preferences=(KnowledgeUnitType.SKILL.value, KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.FORMULA_MODEL.value),
+            target_type_preferences=(KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.SKILL.value),
         ),
         KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.EXPLANATION.value,
-            "说明：target 对 source 做解释、补充、备注、直观化、例子化或易错提醒",
+            KnowledgeRelationType.ASSESSES.value,
+            "考察",
+            "考察：source 这类技能、题型或任务用于检验 target 的掌握情况。",
+            source_type_preferences=(KnowledgeUnitType.SKILL.value, KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.PROCEDURE.value),
+            target_type_preferences=(KnowledgeUnitType.CONCEPT.value, KnowledgeUnitType.PRINCIPLE.value, KnowledgeUnitType.FORMULA_MODEL.value, KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.SKILL.value, KnowledgeUnitType.MISCONCEPTION.value),
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.EXPLAINS.value,
+            "解释",
+            "解释：source 对 target 做直观说明、背景补充、证据支撑或换一种说法。",
+            source_type_preferences=(KnowledgeUnitType.RESOURCE.value, KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.PROCEDURE.value),
+            target_type_preferences=_PRIMARY_ENDPOINT_TYPES,
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.REMEDIATES.value,
+            "补救",
+            "补救：source 用于修正 target 的误区、薄弱点或错误方法。",
+            source_type_preferences=(KnowledgeUnitType.MISCONCEPTION.value, KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.SKILL.value),
+            target_type_preferences=_PRIMARY_ENDPOINT_TYPES,
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.CONFUSES_WITH.value,
+            "易混",
+            "易混：source 和 target 容易混淆，或需要通过差异比较学习。",
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.SIMILAR_TO.value,
+            "相似",
+            "相似：source 和 target 有相近结构、方法或原理，可类比理解。",
+        ),
+        KnowledgeRelationTypeSpec(
+            KnowledgeRelationType.EXTENDS_TO.value,
+            "拓展",
+            "拓展：source 可进一步迁移、延伸或综合到 target。",
             source_type_preferences=_PRIMARY_ENDPOINT_TYPES,
-            target_type_preferences=(KnowledgeUnitType.EXPLANATION_SUPPORT.value,),
-        ),
-        KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.TRAINING.value,
-            "训练：target 用来训练、考察、巩固或评估 source",
-            source_type_preferences=(
-                KnowledgeUnitType.CORE_KNOWLEDGE.value,
-                KnowledgeUnitType.METHOD_DEMO.value,
-                KnowledgeUnitType.PRINCIPLE_REASONING.value,
-                KnowledgeUnitType.APPLICATION_EXTENSION.value,
-            ),
-            target_type_preferences=(KnowledgeUnitType.PRACTICE_ASSESSMENT.value,),
-        ),
-        KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.CONTRAST.value,
-            "对比：source 和 target 需要区分差异、容易混淆或适合通过差异比较来学习",
-        ),
-        KnowledgeRelationTypeSpec(
-            KnowledgeRelationType.SIMILAR.value,
-            "相似：source 和 target 有相近结构、方法、原理，或者可以类比理解",
+            target_type_preferences=(KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.SKILL.value, KnowledgeUnitType.CONCEPT.value),
         ),
     ),
 )
 
 
 def format_ontology_unit_type_bullets() -> str:
-    return "\n".join(f"- `{spec.value}`: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.unit_types)
+    return "\n".join(f"- `{spec.value}`（{spec.label_zh}）: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.unit_types)
 
 
 def format_ontology_relation_type_bullets() -> str:
-    return "\n".join(f"- `{spec.value}`: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.relation_types)
+    return "\n".join(f"- `{spec.value}`（{spec.label_zh}）: {spec.description}" for spec in LEARNING_GRAPH_ONTOLOGY.relation_types)
 
 
 def format_ontology_relation_direction_bullets() -> str:
@@ -243,17 +272,15 @@ def relation_endpoint_type_preferences(
 
 def default_relation_for_unit_type(unit_type: str) -> str:
     normalized = normalize_knowledge_unit_type(unit_type)
-    if normalized == KnowledgeUnitType.METHOD_DEMO.value:
-        return KnowledgeRelationType.APPLICATION.value
-    if normalized == KnowledgeUnitType.PRINCIPLE_REASONING.value:
-        return KnowledgeRelationType.REASONING.value
-    if normalized == KnowledgeUnitType.PRACTICE_ASSESSMENT.value:
-        return KnowledgeRelationType.TRAINING.value
-    if normalized == KnowledgeUnitType.EXPLANATION_SUPPORT.value:
-        return KnowledgeRelationType.EXPLANATION.value
-    if normalized == KnowledgeUnitType.APPLICATION_EXTENSION.value:
-        return KnowledgeRelationType.APPLICATION.value
-    return KnowledgeRelationType.CONTAINS.value
+    if normalized in {KnowledgeUnitType.PRINCIPLE.value, KnowledgeUnitType.FORMULA_MODEL.value}:
+        return KnowledgeRelationType.DERIVES_TO.value
+    if normalized == KnowledgeUnitType.SKILL.value:
+        return KnowledgeRelationType.ASSESSES.value
+    if normalized == KnowledgeUnitType.MISCONCEPTION.value:
+        return KnowledgeRelationType.REMEDIATES.value
+    if normalized == KnowledgeUnitType.RESOURCE.value:
+        return KnowledgeRelationType.EXPLAINS.value
+    return KnowledgeRelationType.PART_OF.value
 
 
 __all__ = [

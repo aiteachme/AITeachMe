@@ -19,6 +19,11 @@ from app.workflows.digest.docgen.lib.models import (
     LockedChapterTitle,
     SourceAffinityByChapter,
 )
+from app.workflows.digest.docgen.lib.pipeline_artifacts import (
+    build_chapters_enhanced,
+    build_dispatch_table,
+    build_preliminary_kg,
+)
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -73,7 +78,19 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
             plan=generation_plan,
             backbone=document_backbone,
         )
+        guideline = dict(state.get("guideline") or {})
+        summary_enhanced = dict(state.get("summary_enhanced") or {})
         tasks = [task.model_dump(mode="json") for task in generation_plan.chapters]
+        chapters_enhanced = build_chapters_enhanced(
+            tasks=list(generation_plan.chapters),
+            briefs=chapter_briefs,
+            summary_enhanced=summary_enhanced,
+        )
+        dispatch_table = build_dispatch_table(
+            chapter_tasks=list(generation_plan.chapters),
+            guideline=guideline,
+            summary_enhanced=summary_enhanced,
+        )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
             state["course_id"],
@@ -108,6 +125,13 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         return {
             "chapter_execution_briefs": [item.model_dump(mode="json") for item in chapter_briefs],
             "chapter_generation_plan": generation_plan.model_dump(mode="json"),
+            "chapters_enhanced": chapters_enhanced,
+            "dispatch_table": dispatch_table,
+            "preliminary_kg": build_preliminary_kg(
+                chapters_enhanced=chapters_enhanced,
+                dispatch_table=dispatch_table,
+                guideline=guideline,
+            ),
             "chapter_tasks": tasks,
             "assemble_tasks_ms": elapsed_ms,
             "llm_calls_total": 0,

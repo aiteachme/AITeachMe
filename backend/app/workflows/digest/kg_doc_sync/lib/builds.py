@@ -382,6 +382,7 @@ async def run_graph_docs_sync_after_doc_build(
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
     early_units_callback: object | None = None,
+    embedded_in_parent_trace: bool = False,
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -451,6 +452,7 @@ async def run_graph_docs_sync_after_doc_build(
                 "knowledge_doc_source": knowledge_doc_source,
                 "chapter_count": len(doc_chapter_metadatas),
             },
+            embedded_in_parent_trace=embedded_in_parent_trace,
         )
     if sync_result.failed:
         raise RuntimeError(sync_result.error.detail)
@@ -498,6 +500,7 @@ async def run_graph_docs_sync_manual_build(
         cancelled_description="图谱构建已停止。",
         failure_log_event="knowledge_graph_manual_build_failed",
         course_scope=course_scope,
+        embedded_in_parent_trace=False,
     )
 
 
@@ -513,8 +516,8 @@ async def run_graph_docs_sync_auto_build(
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
     background_task_registry: Any | None = None,
-) -> None:
-    """Run an automatic graph sync after DocGen without blocking the doc lane."""
+) -> str:
+    """Run an automatic graph sync after DocGen and return the final graph status."""
 
     exam_prewarm_tasks: list[asyncio.Task[None]] = []
 
@@ -584,6 +587,7 @@ async def run_graph_docs_sync_auto_build(
             failure_log_event="knowledge_graph_auto_build_failed",
             course_scope=course_scope,
             early_units_callback=_schedule_exam_prewarm_after_units,
+            embedded_in_parent_trace=True,
         )
         if graph_status == "failed":
             for task in exam_prewarm_tasks:
@@ -595,6 +599,7 @@ async def run_graph_docs_sync_auto_build(
                 graph_status=graph_status,
                 exam_prewarm_task_count=len(exam_prewarm_tasks),
             )
+        return graph_status
     except asyncio.CancelledError:
         for task in exam_prewarm_tasks:
             if not task.done():
@@ -617,6 +622,7 @@ async def _run_graph_docs_sync_build(
     failure_log_event: str,
     course_scope: CourseStorageScope | None = None,
     early_units_callback: object | None = None,
+    embedded_in_parent_trace: bool = False,
 ) -> str:
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
@@ -635,6 +641,7 @@ async def _run_graph_docs_sync_build(
             docgen_state=docgen_state,
             course_scope=course_scope,
             early_units_callback=early_units_callback,
+            embedded_in_parent_trace=embedded_in_parent_trace,
         )
         failed_section_count = int(doc_sync_metrics.get("doc_sync_failed_section_count") or 0)
         completion_status = "partial_failed" if failed_section_count > 0 else "completed"

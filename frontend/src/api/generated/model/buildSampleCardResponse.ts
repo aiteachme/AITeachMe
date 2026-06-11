@@ -10,7 +10,7 @@
  */
 export interface BuildSampleCardResponse {
   title: string;
-  /** mode / topic / core_knowledge / method_demo / practice_assessment */
+  /** mode / topic / concept / procedure / skill */
   card_type: string;
   summary: string;
 }

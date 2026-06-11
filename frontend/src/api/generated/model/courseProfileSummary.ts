@@ -10,6 +10,7 @@ import type { CourseProfileSummaryQuestionTypeAccuracy } from './courseProfileSu
 export interface CourseProfileSummary {
   course_id: string;
   generated_at: string;
+  profile_text?: string;
   avg_mastery?: number | null;
   weak_knowledge_unit_count?: number;
   pending_review_count?: number;

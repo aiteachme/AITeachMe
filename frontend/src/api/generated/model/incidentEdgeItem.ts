@@ -11,10 +11,12 @@
 export interface IncidentEdgeItem {
   id: number;
   edge_type: string;
+  edge_type_label?: string;
   /** outgoing or incoming. */
   direction: string;
   other_node_id: number;
   other_node_name: string;
   other_node_type: string;
+  other_node_type_label?: string;
   confidence: number;
 }

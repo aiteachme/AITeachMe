@@ -9,7 +9,12 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_execution_brief import build_chapter_execution_brief
-from app.workflows.digest.docgen.lib.models import ChapterGenerationTaskSeed, DocGenContext, DocumentBackbone
+from app.workflows.digest.docgen.lib.models import (
+    ChapterGenerationTaskSeed,
+    DocGenContext,
+    DocumentBackbone,
+    HighConfidenceEvidenceUnit,
+)
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -31,6 +36,11 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
         docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         intent_core = dict(state.get("intent_core") or {})
+        user_profile = dict(state.get("user_profile") or {})
+        evidence_units = [
+            HighConfidenceEvidenceUnit.model_validate(item)
+            for item in list(state.get("high_confidence_evidence_units") or [])
+        ]
 
         async def _build_one(task_seed: ChapterGenerationTaskSeed) -> dict:
             glossary_terms = [
@@ -48,6 +58,26 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 for item in document_backbone.confusion_map
                 if task_seed.chapter_index in item.target_chapters and (item.topic or item.contrast)
             ][:3]
+            evidence_items = [
+                item.model_dump(mode="json")
+                for item in sorted(
+                    [
+                        evidence
+                        for evidence in evidence_units
+                        if task_seed.chapter_index in evidence.chapter_affinity
+                    ],
+                    key=lambda evidence: evidence.confidence,
+                    reverse=True,
+                )[:8]
+            ]
+            learner_profile_text = "\n".join(
+                item
+                for item in [
+                    docgen_context.learner_profile_text,
+                    str(user_profile.get("prompt_addendum") or "").strip(),
+                ]
+                if item
+            ).strip()
             brief = await build_chapter_execution_brief(
                 course_name=docgen_context.course_name,
                 digest_mode=docgen_context.digest_mode,
@@ -63,8 +93,11 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 glossary_terms=glossary_terms,
                 claim_targets=claim_targets,
                 confusion_targets=confusion_targets,
+                source_slices=[item.model_dump(mode="json") for item in task_seed.source_slices[:8]],
+                evidence_items=evidence_items,
                 plan=docgen_context.plan,
                 docgen_history_brief=docgen_context.docgen_history_brief,
+                learner_profile_text=learner_profile_text,
                 extra_metadata={
                     "build_session_id": state.get("build_session_id") or "",
                     "planner_session_id": state.get("planner_session_id") or "",

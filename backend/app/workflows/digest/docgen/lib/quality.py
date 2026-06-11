@@ -7,7 +7,9 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
     ClaimEvidenceBinding,
@@ -21,12 +23,15 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     EvidenceItem,
     EvidenceLedger,
+    LLMDocumentConsistencyReviewResult,
     MergeReviewIssue,
     MergeReviewReport,
+    ReviewAction,
     ReviewedChapterDraft,
     clean_string_list,
     clean_unit_float,
 )
+from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
 
@@ -311,6 +316,102 @@ def review_document_consistency(
     )
 
 
+def _merge_document_review_report(
+    *,
+    rule_report: DocumentConsistencyReport,
+    llm_result: LLMDocumentConsistencyReviewResult,
+) -> DocumentConsistencyReport:
+    issues = [
+        *list(rule_report.issues or []),
+        *list(llm_result.issues or []),
+    ][:24]
+    glossary_warnings = clean_string_list(
+        [
+            *list(rule_report.glossary_warnings or []),
+            *list(llm_result.glossary_warnings or []),
+            *list(llm_result.warnings or []),
+        ],
+        limit=24,
+    )
+    has_error_issue = any(str(item.get("severity") or "") == "error" for item in issues if isinstance(item, dict))
+    return DocumentConsistencyReport(
+        passed=rule_report.passed and llm_result.passed and not has_error_issue,
+        issues=issues,
+        glossary_warnings=glossary_warnings,
+        source_summary={
+            **dict(rule_report.source_summary or {}),
+            "document_review_mode": "llm_structured_with_rule_guardrails",
+            "llm_issue_count": len(list(llm_result.issues or [])),
+            "llm_action_count": len(list(llm_result.actions or [])),
+        },
+        fallback_used=False,
+    )
+
+
+def _document_review_actions(llm_result: LLMDocumentConsistencyReviewResult) -> list[ReviewAction]:
+    actions: list[ReviewAction] = []
+    for index, action in enumerate(list(llm_result.actions or []), start=1):
+        action_id = action.action_id or f"document_review_{index:02d}_{action.action_type}"
+        actions.append(action.model_copy(update={"action_id": action_id, "status": "recorded"}))
+    return actions
+
+
+async def review_document_consistency_with_llm(
+    *,
+    reviewed_chapters: list[ReviewedChapterDraft],
+    document_backbone: DocumentBackbone,
+    expected_chapter_count: int,
+    digest_mode: str = "",
+    guideline: dict[str, Any] | None = None,
+    dispatch_table: dict[str, Any] | None = None,
+    learner_profile_text: str = "",
+) -> tuple[DocumentConsistencyReport, list[ReviewAction], int]:
+    """Run deterministic whole-document review, then one bounded LLM review."""
+
+    rule_report = review_document_consistency(
+        reviewed_chapters=reviewed_chapters,
+        document_backbone=document_backbone,
+        expected_chapter_count=expected_chapter_count,
+    )
+    async def _run_document_review(_: object) -> LLMDocumentConsistencyReviewResult:
+        result = await acompletion_with_fallback(
+            build_document_review_messages(
+                digest_mode=digest_mode,
+                reviewed_chapters=[chapter.model_dump(mode="json") for chapter in reviewed_chapters],
+                rule_report=rule_report.model_dump(mode="json"),
+                guideline=guideline or {},
+                dispatch_table=dispatch_table or {},
+                learner_profile_text=learner_profile_text,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.DOCUMENT_REVIEW,
+                digest_mode=digest_mode,
+                chapter_count=len(reviewed_chapters),
+                rule_issue_count=len(rule_report.issues),
+            ),
+            response_model=LLMDocumentConsistencyReviewResult,
+        )
+        assert isinstance(result, LLMDocumentConsistencyReviewResult)
+        return result
+
+    try:
+        (llm_result,) = await run_llm_tasks([None], _run_document_review, max_concurrent=1)
+    except Exception as exc:
+        fallback_report = rule_report.model_copy(
+            update={
+                "fallback_used": True,
+                "source_summary": {
+                    **dict(rule_report.source_summary or {}),
+                    "document_review_mode": "rule_fallback_after_llm_error",
+                    "llm_error_type": type(exc).__name__,
+                    "llm_error": str(exc)[:180],
+                },
+            }
+        )
+        return fallback_report, [], 1
+    return _merge_document_review_report(rule_report=rule_report, llm_result=llm_result), _document_review_actions(llm_result), 1
+
+
 def build_merge_review_report(
     *,
     enhanced_chapters: list[EnhancedChapterDraft],
@@ -401,4 +502,5 @@ __all__ = [
     "mark_evidence_used",
     "resolve_conflicts_for_chapter",
     "review_document_consistency",
+    "review_document_consistency_with_llm",
 ]

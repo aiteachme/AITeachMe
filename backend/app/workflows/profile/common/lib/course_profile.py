@@ -12,6 +12,7 @@ from app.repositories import profile_repo
 from app.schemas.profile import CourseProfileSummary
 from app.utils.time import is_at_or_before, utcnow
 from app.workflows.profile.common.lib.conversation_memory import build_conversation_profile_signals
+from app.workflows.profile.common.lib.profile_text import render_course_profile_text
 
 _WEAK_THRESHOLD = 0.8
 _RECENT_EXAM_ITEM_LIMIT = 200
@@ -264,7 +265,8 @@ def build_course_profile_summary(
         limit=40,
     )
 
-    return CourseProfileSummary(
+    course_record = _load_course_record(session, course_id=course_id)
+    summary = CourseProfileSummary(
         course_id=course_id,
         generated_at=now,
         avg_mastery=avg_mastery,
@@ -294,6 +296,11 @@ def build_course_profile_summary(
             *conversation_signals.notes,
         ],
     )
+    summary.profile_text = render_course_profile_text(
+        summary.model_dump(mode="python"),
+        course_name=course_record.name if course_record is not None else "",
+    )
+    return summary
 
 
 def load_course_profile_summary(

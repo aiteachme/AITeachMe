@@ -65,21 +65,21 @@ _SKIPPABLE_HEADING_PREFIXES = (
 )
 
 _LABEL_TYPE_MAP = {
-    "\u5b9a\u4e49": "core_knowledge",
-    "definition": "core_knowledge",
-    "\u5b9a\u7406": "core_knowledge",
-    "theorem": "core_knowledge",
-    "\u516c\u5f0f": "core_knowledge",
-    "formula": "core_knowledge",
-    "\u4f8b\u9898": "method_demo",
-    "\u793a\u4f8b": "method_demo",
-    "example": "method_demo",
-    "\u7ec3\u4e60": "practice_assessment",
-    "exercise": "practice_assessment",
-    "\u8bc1\u660e": "principle_reasoning",
-    "proof": "principle_reasoning",
-    "\u5907\u6ce8": "explanation_support",
-    "remark": "explanation_support",
+    "\u5b9a\u4e49": "concept",
+    "definition": "concept",
+    "\u5b9a\u7406": "principle",
+    "theorem": "principle",
+    "\u516c\u5f0f": "formula_model",
+    "formula": "formula_model",
+    "\u4f8b\u9898": "application_case",
+    "\u793a\u4f8b": "application_case",
+    "example": "application_case",
+    "\u7ec3\u4e60": "skill",
+    "exercise": "skill",
+    "\u8bc1\u660e": "principle",
+    "proof": "principle",
+    "\u5907\u6ce8": "resource",
+    "remark": "resource",
 }
 
 
@@ -89,7 +89,7 @@ class MarkdownKnowledgeUnit:
 
     anchor: str
     name: str
-    knowledge_unit_type: str = "core_knowledge"
+    knowledge_unit_type: str = "concept"
     summary: str = ""
     body_markdown: str = ""
     knowledge_images: list[str] = field(default_factory=list)
@@ -225,10 +225,10 @@ def extract_markdown_knowledge_units(markdown: str) -> list[MarkdownKnowledgeUni
 
     chunks = extract_markdown_section_chunks(markdown)
     return [
-        MarkdownKnowledgeUnit(
-            anchor=chunk.anchor,
-            name=chunk.title,
-            knowledge_unit_type="core_knowledge",
+            MarkdownKnowledgeUnit(
+                anchor=chunk.anchor,
+                name=chunk.title,
+                knowledge_unit_type="concept",
             summary=chunk.summary,
             body_markdown=chunk.body_markdown,
             knowledge_images=chunk.knowledge_images,
@@ -459,8 +459,8 @@ def _infer_node_type(line: str, explicit_type: str) -> str:
         return normalize_knowledge_unit_type(explicit_type)
     label = _LABEL_RE.match(line)
     if label:
-        return normalize_knowledge_unit_type(_LABEL_TYPE_MAP.get(label.group("label").lower(), "core_knowledge"))
-    return "core_knowledge"
+        return normalize_knowledge_unit_type(_LABEL_TYPE_MAP.get(label.group("label").lower(), "concept"))
+    return "concept"
 
 
 def _collect_unit_section_lines(lines: list[str], index: int) -> list[str]:

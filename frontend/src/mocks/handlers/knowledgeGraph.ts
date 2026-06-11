@@ -4,32 +4,40 @@ const nowIso = new Date().toISOString();
 
 const layerSeeds = [
   {
-    type: "knowledge_organization",
+    type: "topic",
     names: ["数据库学习路线", "SQL 模块划分", "事务学习目标", "索引优化路径", "性能排查框架", "权限治理框架"],
   },
   {
-    type: "core_knowledge",
+    type: "concept",
     names: ["查询执行顺序", "关系模型", "规范化", "连接", "子查询", "聚合", "窗口函数", "执行计划", "隔离级别", "死锁", "权限模型", "备份恢复"],
   },
   {
-    type: "method_demo",
+    type: "principle",
+    names: ["事务 ACID 机制", "两阶段锁协议", "索引命中原则", "查询重写依据", "并发一致性分析"],
+  },
+  {
+    type: "formula_model",
+    names: ["代价估算模型", "选择率估计", "B+ 树高度模型", "锁等待图", "分页偏移模型"],
+  },
+  {
+    type: "procedure",
     names: ["SELECT 查询模板", "JOIN 分析步骤", "GROUP BY 使用流程", "执行计划分析", "慢查询定位", "索引优化", "分页优化", "锁等待排查"],
   },
   {
-    type: "principle_reasoning",
-    names: ["事务 ACID 机制", "两阶段锁协议", "索引命中原则", "查询重写依据", "代价估算模型", "并发一致性分析"],
-  },
-  {
-    type: "explanation_support",
+    type: "misconception",
     names: ["NULL 比较陷阱", "隐式转换提醒", "LIKE 前缀提醒", "大事务风险", "过度索引提醒", "权限泄露风险"],
   },
   {
-    type: "practice_assessment",
+    type: "skill",
     names: ["查询改写练习", "索引设计练习", "事务隔离练习", "执行计划练习", "锁冲突诊断", "备份恢复自测"],
   },
   {
-    type: "application_extension",
+    type: "application_case",
     names: ["订单查询案例", "用户统计案例", "库存扣减场景", "批量导入任务", "权限审计任务", "报表分页项目", "死锁复现案例", "备份演练任务"],
+  },
+  {
+    type: "resource",
+    names: ["执行计划截图说明", "事务日志片段", "索引结构图", "慢查询样例", "权限表说明"],
   },
 ];
 
@@ -74,14 +82,16 @@ function buildMockGraphEdges() {
     });
   };
 
-  connect(nodeIdsByType("knowledge_organization"), nodeIdsByType("core_knowledge"), "contains");
-  connect(nodeIdsByType("core_knowledge"), nodeIdsByType("method_demo"), "application");
-  connect(nodeIdsByType("principle_reasoning"), nodeIdsByType("core_knowledge"), "reasoning", 2);
-  connect(nodeIdsByType("core_knowledge"), nodeIdsByType("explanation_support"), "explanation");
-  connect(nodeIdsByType("method_demo"), nodeIdsByType("practice_assessment"), "training", 2);
-  connect(nodeIdsByType("method_demo"), nodeIdsByType("application_extension"), "application");
-  connect(nodeIdsByType("explanation_support"), nodeIdsByType("method_demo"), "contrast");
-  connect(nodeIdsByType("core_knowledge").slice(0, 6), nodeIdsByType("core_knowledge").slice(6), "similar");
+  connect(nodeIdsByType("concept"), nodeIdsByType("topic"), "part_of");
+  connect(nodeIdsByType("concept"), nodeIdsByType("procedure"), "applies_to");
+  connect(nodeIdsByType("principle"), nodeIdsByType("formula_model"), "derives_to", 2);
+  connect(nodeIdsByType("formula_model"), nodeIdsByType("procedure"), "applies_to");
+  connect(nodeIdsByType("application_case"), nodeIdsByType("procedure"), "uses_method");
+  connect(nodeIdsByType("skill"), nodeIdsByType("concept"), "assesses", 2);
+  connect(nodeIdsByType("misconception"), nodeIdsByType("concept"), "remediates");
+  connect(nodeIdsByType("resource"), nodeIdsByType("concept"), "explains");
+  connect(nodeIdsByType("concept").slice(0, 6), nodeIdsByType("concept").slice(6), "similar_to");
+  connect(nodeIdsByType("misconception"), nodeIdsByType("procedure"), "confuses_with");
   return edges;
 }
 
@@ -136,7 +146,7 @@ function buildNodeDetail(nodeId: number) {
         direction: isOutgoing ? "outgoing" : "incoming",
         other_node_id: otherNodeId,
         other_node_name: otherNode?.canonical_name ?? "关联知识点",
-        other_node_type: otherNode?.knowledge_unit_type ?? "core_knowledge",
+        other_node_type: otherNode?.knowledge_unit_type ?? "concept",
         confidence: edge.confidence,
       };
     });

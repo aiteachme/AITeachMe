@@ -12,6 +12,7 @@ export interface KnowledgeUnitResponse {
   id: number;
   course_id: string;
   knowledge_unit_type: string;
+  knowledge_unit_type_label?: string;
   canonical_name: string;
   status: string;
   confidence: number;

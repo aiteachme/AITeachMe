@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.presentation_policy import find_docgen_presentation_issues
@@ -49,6 +50,20 @@ def _coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
 
 def _chapter_anchor(draft: EnhancedChapterDraft) -> str:
     return draft.title or f"chapter:{draft.chapter_index}"
+
+
+def _chapter_unit_test_issue(markdown: str) -> str:
+    h2_titles = [
+        match.group("title").strip()
+        for match in re.finditer(r"(?m)^##\s+(?P<title>.+?)\s*$", str(markdown or ""))
+    ]
+    if not h2_titles:
+        return "缺少二级标题结构，无法放置固定的章末单元测试模块。"
+    if "单元测试" not in h2_titles:
+        return "缺少固定的章末 `## 单元测试` 模块。"
+    if h2_titles[-1] != "单元测试":
+        return "`## 单元测试` 必须是本章最后一个二级标题。"
+    return ""
 
 
 def _dedupe_actions(actions: Sequence[ReviewAction]) -> list[ReviewAction]:
@@ -96,6 +111,7 @@ def _rule_review_chapter(
         "不得补入其他章节的知识对象；如果材料里出现 forbidden_scope 中的主题，只能一句带过作为前后联系，不能新增为独立小节。"
     ] if task.forbidden_scope else []
     rendering_issues = find_docgen_presentation_issues(draft.markdown)
+    unit_test_issue = _chapter_unit_test_issue(draft.markdown)
     if rendering_issues:
         warnings.extend(rendering_issues)
         actions.append(
@@ -115,6 +131,30 @@ def _rule_review_chapter(
                     *scope_constraints,
                 ],
                 expected_effect="章节 Markdown 可以稳定渲染，并且重点、提示块、表格、代码块、公式、Mermaid、例题和练习都能清晰显示。",
+            )
+        )
+    if unit_test_issue:
+        warnings.append(unit_test_issue)
+        actions.append(
+            ReviewAction(
+                action_id=f"review_ch{draft.chapter_index:02d}_unit_test",
+                action_type="section_patch",
+                chapter_index=draft.chapter_index,
+                severity="warning",
+                reason=unit_test_issue,
+                target_anchor=_chapter_anchor(draft),
+                instruction=(
+                    "在本章末尾补齐固定二级标题 `## 单元测试`，围绕本章核心概念、方法、易错点或应用任务生成短题/"
+                    "案例检查/边界辨析，并为每题给出答案、判定依据或解析要点。"
+                ),
+                constraints=[
+                    "`## 单元测试` 必须是本章最后一个二级标题。",
+                    "不得把其它章节主题补成测试主体。",
+                    "传统题不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。",
+                    "每题必须可判断，不能只写“自行思考”。",
+                    *scope_constraints,
+                ],
+                expected_effect="每章都有可被 examine/profile 继续利用的章末测试信号，且不影响其它标题由模型按内容自然命名。",
             )
         )
     if missing:
@@ -244,6 +284,11 @@ async def review_chapter(
     claim_evidence_map: ClaimEvidenceMap | None,
     conflict_report: ConflictReport | None,
     digest_mode: str = "",
+    guideline_summary: dict | None = None,
+    dispatch_item: dict | None = None,
+    chapter_contract: dict | None = None,
+    evidence_items: list[dict] | None = None,
+    learner_profile_text: str = "",
 ) -> tuple[ReviewedChapterDraft, ChapterReviewReport, list[ReviewAction]]:
     """Run LLM content review with deterministic guardrail fallback."""
 
@@ -257,25 +302,33 @@ async def review_chapter(
     )
     task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
     try:
-        llm_result = await acompletion_with_fallback(
-            build_chapter_review_messages(
-                chapter_title=draft.title,
-                digest_mode=digest_mode,
-                chapter_task=task.model_dump(mode="json"),
-                markdown=draft.markdown,
-                claim_ledger=(claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).model_dump(mode="json"),
-                claim_evidence_map=(claim_evidence_map or ClaimEvidenceMap(chapter_index=draft.chapter_index)).model_dump(mode="json"),
-                conflict_report=(conflict_report or ConflictReport(chapter_index=draft.chapter_index)).model_dump(mode="json"),
-                rule_review=rule_report.model_dump(mode="json"),
-            ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.CHAPTER_REVIEW,
-                digest_mode=digest_mode,
-                chapter_index=draft.chapter_index,
-                review_mode="docgen_content_review",
-            ),
-            response_model=LLMChapterReviewResult,
-        )
+        async def _run_chapter_review(_: object) -> object:
+            return await acompletion_with_fallback(
+                build_chapter_review_messages(
+                    chapter_title=draft.title,
+                    digest_mode=digest_mode,
+                    chapter_task=task.model_dump(mode="json"),
+                    markdown=draft.markdown,
+                    claim_ledger=(claim_ledger or ClaimLedger(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                    claim_evidence_map=(claim_evidence_map or ClaimEvidenceMap(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                    conflict_report=(conflict_report or ConflictReport(chapter_index=draft.chapter_index)).model_dump(mode="json"),
+                    rule_review=rule_report.model_dump(mode="json"),
+                    guideline_summary=guideline_summary or {},
+                    dispatch_item=dispatch_item or {},
+                    chapter_contract=chapter_contract or {},
+                    evidence_items=list(evidence_items or []),
+                    learner_profile_text=learner_profile_text,
+                ),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.CHAPTER_REVIEW,
+                    digest_mode=digest_mode,
+                    chapter_index=draft.chapter_index,
+                    review_mode="docgen_content_review",
+                ),
+                response_model=LLMChapterReviewResult,
+            )
+
+        (llm_result,) = await run_llm_tasks([None], _run_chapter_review, max_concurrent=1)
         assert isinstance(llm_result, LLMChapterReviewResult)
     except Exception as exc:
         fallback_report = rule_report.model_copy(

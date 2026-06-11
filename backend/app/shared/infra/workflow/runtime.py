@@ -246,6 +246,7 @@ async def run_state_graph(
     graph_builder,
     initial_state: Any,
     context: WorkflowContext,
+    trace_as_root: bool = True,
 ) -> WorkflowResult[Any]:
     """Run one LangGraph workflow and normalize result handling."""
 
@@ -272,26 +273,33 @@ async def run_state_graph(
             workflow=workflow_name,
             lane=lane,
         ):
-            with langsmith_trace(
-                name=str(context.metadata.get("langsmith_run_name") or workflow_name),
-                run_type="chain",
-                inputs=_compact_graph_inputs(initial_state),
-                course_id=context.course_id,
-                build_session_id=build_session_id,
-                workflow=workflow_name,
-                lane=lane,
-                extra_metadata={
-                    "workflow_trace_kind": "compact_langgraph_root",
-                    "context_metadata": dict(context.metadata),
-                },
-            ) as trace_run:
+            if trace_as_root:
+                with langsmith_trace(
+                    name=str(context.metadata.get("langsmith_run_name") or workflow_name),
+                    run_type="chain",
+                    inputs=_compact_graph_inputs(initial_state),
+                    course_id=context.course_id,
+                    build_session_id=build_session_id,
+                    workflow=workflow_name,
+                    lane=lane,
+                    extra_metadata={
+                        "workflow_trace_kind": "compact_langgraph_root",
+                        "context_metadata": dict(context.metadata),
+                    },
+                ) as trace_run:
+                    with _graph_tracing_context():
+                        graph = graph_builder()
+                        compiled = graph.compile()
+                        final_state = await compiled.ainvoke(initial_state, config=config)
+                    elapsed_ms = int((perf_counter() - started_at) * 1000)
+                    if trace_run is not None:
+                        trace_run.end(outputs=_compact_graph_outputs(final_state, elapsed_ms=elapsed_ms))
+            else:
                 with _graph_tracing_context():
                     graph = graph_builder()
                     compiled = graph.compile()
                     final_state = await compiled.ainvoke(initial_state, config=config)
                 elapsed_ms = int((perf_counter() - started_at) * 1000)
-                if trace_run is not None:
-                    trace_run.end(outputs=_compact_graph_outputs(final_state, elapsed_ms=elapsed_ms))
         workflow_logger.info("workflow_completed", workflow_name=workflow_name, elapsed_ms=elapsed_ms)
         if isinstance(final_state, dict):
             final_state.setdefault("workflow_elapsed_ms", elapsed_ms)

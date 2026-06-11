@@ -145,6 +145,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
                 "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
                 "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
+                "preliminary_kg": dict(state.get("preliminary_kg") or {}),
                 "digest_mode": str(state.get("digest_mode") or ""),
             },
         )

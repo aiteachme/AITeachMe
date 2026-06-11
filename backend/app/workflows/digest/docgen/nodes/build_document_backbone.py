@@ -12,10 +12,12 @@ from app.workflows.digest.docgen.lib.document_backbone import (
 )
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
+    ChapterGenerationPlanSeed,
     ChapterGenerationTaskSeed,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
 )
+from app.workflows.digest.docgen.lib.pipeline_artifacts import build_guideline
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -46,6 +48,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
             FileMaterialSummary.model_validate(item)
             for item in list(state.get("file_summaries") or [])
         ]
+        plan_seed = ChapterGenerationPlanSeed.model_validate(state.get("chapter_generation_plan_seed") or {})
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
@@ -96,6 +99,10 @@ def build_document_backbone_node(*, context: WorkflowContext):
         )
         return {
             "document_backbone": document_backbone.model_dump(mode="json"),
+            "guideline": build_guideline(
+                document_backbone=document_backbone,
+                writing_rules=plan_seed.writing_rules,
+            ),
             "backbone_conflict_warnings": [item.model_dump(mode="json") for item in warnings],
             "backbone_ms": elapsed_ms,
         }

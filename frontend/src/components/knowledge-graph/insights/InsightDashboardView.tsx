@@ -22,7 +22,7 @@ type ConfidenceBin = {
   color: string;
 };
 
-const PEER_FOCUS_RELATIONS = new Set(["contrast", "similar", "explanation", "training"]);
+const PEER_FOCUS_RELATIONS = new Set(["confuses_with", "similar_to", "explains", "remediates"]);
 
 function buildPeerPairs(model: GraphInsightModel): PeerFocusPair[] {
   const nodeMap = new Map(model.nodes.map((node) => [node.id, node]));

@@ -11,6 +11,11 @@ from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files
 from app.workflows.digest.docgen.lib.intent import infer_intent_core
 from app.workflows.digest.docgen.lib.models import DocGenContext, DocGenIntentProfile
+from app.workflows.digest.docgen.lib.pipeline_artifacts import (
+    build_intent_enhanced,
+    build_summary_enhanced,
+    build_user_profile_enhanced,
+)
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -101,6 +106,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
                 material_profile=material_profile,
                 chapters=chapters,
                 docgen_history_brief=docgen_context.docgen_history_brief,
+                learner_profile_text=docgen_context.learner_profile_text,
                 extra_metadata=extra,
             )
             return result, int((perf_counter() - step_started_at) * 1000)
@@ -150,10 +156,27 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             },
         )
         intent_payload = _intent_payload_for_state(intent_core)
+        intent_enhanced = build_intent_enhanced(
+            intent_core=intent_payload,
+            docgen_context=docgen_context,
+            chapters=chapters,
+            material_profile=material_profile,
+            source_affinity_by_chapter=source_affinity,
+            high_confidence_evidence_units=evidence_units,
+        )
+        summary_enhanced = build_summary_enhanced(
+            file_summaries=file_summaries,
+            source_affinity_by_chapter=source_affinity,
+            high_confidence_evidence_units=evidence_units,
+        )
+        user_profile = build_user_profile_enhanced(docgen_context=docgen_context)
         return {
             "intent_core": intent_payload,
             "intent_profile": intent_payload,
+            "intent_enhanced": intent_enhanced,
+            "user_profile": user_profile,
             "file_summaries": [item.model_dump(mode="json") for item in file_summaries],
+            "summary_enhanced": summary_enhanced,
             "source_affinity_by_chapter": [item.model_dump(mode="json") for item in source_affinity],
             "high_confidence_evidence_units": [item.model_dump(mode="json") for item in evidence_units],
             "prepare_ms": elapsed_ms,

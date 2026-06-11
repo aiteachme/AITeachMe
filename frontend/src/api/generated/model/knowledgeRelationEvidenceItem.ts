@@ -12,6 +12,7 @@ import type { EvidenceSummary } from './evidenceSummary';
 export interface KnowledgeRelationEvidenceItem {
   edge_id: number;
   edge_type: string;
+  edge_type_label?: string;
   source_node_id: number;
   target_node_id: number;
   description?: string;

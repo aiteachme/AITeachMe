@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
+from app.models.knowledge_taxonomy import knowledge_unit_type_label, relation_type_label
 from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
     KnowledgeUnitNotFoundError,
@@ -41,6 +42,7 @@ def _to_unit_response(knowledge_unit: KnowledgeUnit) -> KnowledgeUnitResponse:
         id=knowledge_unit.id,  # type: ignore[arg-type]
         course_id=knowledge_unit.course_id,
         knowledge_unit_type=knowledge_unit.knowledge_unit_type,
+        knowledge_unit_type_label=knowledge_unit_type_label(knowledge_unit.knowledge_unit_type),
         canonical_name=knowledge_unit.canonical_name,
         status=knowledge_unit.status,
         confidence=knowledge_unit.confidence,
@@ -67,10 +69,13 @@ def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
         source_node_id=edge.source_node_id,
         source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
         source_node_type=source.knowledge_unit_type if source else "unknown",
+        source_node_type_label=knowledge_unit_type_label(source.knowledge_unit_type if source else None),
         target_node_id=edge.target_node_id,
         target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
         target_node_type=target.knowledge_unit_type if target else "unknown",
+        target_node_type_label=knowledge_unit_type_label(target.knowledge_unit_type if target else None),
         edge_type=edge.edge_type,
+        edge_type_label=relation_type_label(edge.edge_type),
         description=edge.description,
         weight=edge.weight,
         confidence=edge.confidence,
@@ -109,10 +114,13 @@ def _to_relation_response_with_units(
         source_node_id=edge.source_node_id,
         source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
         source_node_type=source.knowledge_unit_type if source else "unknown",
+        source_node_type_label=knowledge_unit_type_label(source.knowledge_unit_type if source else None),
         target_node_id=edge.target_node_id,
         target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
         target_node_type=target.knowledge_unit_type if target else "unknown",
+        target_node_type_label=knowledge_unit_type_label(target.knowledge_unit_type if target else None),
         edge_type=edge.edge_type,
+        edge_type_label=relation_type_label(edge.edge_type),
         description=edge.description,
         weight=edge.weight,
         confidence=edge.confidence,
@@ -271,10 +279,12 @@ def get_knowledge_unit_detail(
             IncidentEdgeItem(
                 id=edge.id,  # type: ignore[arg-type]
                 edge_type=edge.edge_type,
+                edge_type_label=relation_type_label(edge.edge_type),
                 direction=direction,
                 other_node_id=other_id,
                 other_node_name=other_name,
                 other_node_type=other_type,
+                other_node_type_label=knowledge_unit_type_label(other_type),
                 confidence=edge.confidence,
             )
         )
@@ -283,6 +293,7 @@ def get_knowledge_unit_detail(
         id=node.id,  # type: ignore[arg-type]
         course_id=node.course_id,
         knowledge_unit_type=node.knowledge_unit_type,
+        knowledge_unit_type_label=knowledge_unit_type_label(node.knowledge_unit_type),
         canonical_name=node.canonical_name,
         normalized_name=node.normalized_name,
         status=node.status,
@@ -325,6 +336,7 @@ def get_full_graph(
             source_node_id=edge.source_node_id,
             target_node_id=edge.target_node_id,
             edge_type=edge.edge_type,
+            edge_type_label=relation_type_label(edge.edge_type),
             weight=edge.weight,
             confidence=edge.confidence,
         )
@@ -579,6 +591,7 @@ def explain_relation_path(
             KnowledgeRelationEvidenceItem(
                 edge_id=edge.id,
                 edge_type=edge.edge_type,
+                edge_type_label=relation_type_label(edge.edge_type),
                 source_node_id=edge.source_node_id,
                 target_node_id=edge.target_node_id,
                 description=edge.description,

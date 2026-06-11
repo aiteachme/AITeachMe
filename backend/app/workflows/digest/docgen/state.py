@@ -33,6 +33,9 @@ class DocGenState(TypedDict, total=False):
     shared_inputs: Any
     raw_chunks: list[dict[str, Any]]
     course_profile: dict[str, Any] | None
+    learner_profile_context: dict[str, Any]
+    learner_profile_text: str
+    user_profile: dict[str, Any]
     document_context: dict[str, Any] | None
     docgen_context: dict[str, Any]
 
@@ -40,21 +43,27 @@ class DocGenState(TypedDict, total=False):
     chapter_assignment: dict[str, Any]
     intent_core: dict[str, Any]
     intent_profile: dict[str, Any]
+    intent_enhanced: dict[str, Any]
     locked_title_items: Annotated[list[dict[str, Any]], operator.add]
     locked_titles: list[dict[str, Any]]
     file_summaries: list[dict[str, Any]]
+    summary_enhanced: dict[str, Any]
     source_affinity_by_chapter: list[dict[str, Any]]
     high_confidence_evidence_units: list[dict[str, Any]]
     plan_mismatch_warnings: list[str]
     chapter_generation_plan_seed: dict[str, Any]
     chapter_task_seeds: list[dict[str, Any]]
+    chapters_enhanced: list[dict[str, Any]]
+    preliminary_kg: dict[str, Any]
     chapter_task_seed: dict[str, Any]
     backbone_research_agenda: dict[str, Any]
     document_backbone: dict[str, Any]
+    guideline: dict[str, Any]
     backbone_conflict_warnings: list[dict[str, Any]]
     chapter_execution_brief_items: Annotated[list[dict[str, Any]], operator.add]
     chapter_execution_briefs: list[dict[str, Any]]
     chapter_generation_plan: dict[str, Any]
+    dispatch_table: dict[str, Any]
     chapter_tasks: list[dict[str, Any]]
     chapter_task: dict[str, Any]
     enhanced_chapter_draft: dict[str, Any]
@@ -98,6 +107,9 @@ class DocGenState(TypedDict, total=False):
     merged_path: str
     doc_ids: list[int]
     built_paths: list[tuple[int, str]]
+    build_group_id: str
+    graph_sync_status: str
+    graph_sync_metrics: dict[str, Any]
 
     load_ms: int
     prepare_ms: Annotated[int, operator.add]
@@ -115,6 +127,7 @@ class DocGenState(TypedDict, total=False):
     repair_ms: int
     merge_review_ms: int
     finalize_ms: int
+    graph_sync_ms: int
     file_summary_llm_calls: Annotated[int, operator.add]
     llm_calls_total: Annotated[int, operator.add]
     llm_calls_skipped: Annotated[int, operator.add]

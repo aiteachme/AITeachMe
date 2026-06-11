@@ -25,7 +25,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             MarkdownKnowledgeUnit(
                 anchor=anchor,
                 name=name,
-                knowledge_unit_type="core_knowledge",
+                knowledge_unit_type="concept",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=0,
@@ -40,7 +40,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
         node_contexts_by_anchor={
             anchor: {
                 "name": name,
-                "knowledge_unit_type": "core_knowledge",
+                "knowledge_unit_type": "concept",
                 "section_index": 0,
                 "knowledge_document_id": None,
                 "source_file_ids": [],
@@ -53,7 +53,7 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             body_markdown="body",
             primary_anchor=anchor,
             primary_name=name,
-            primary_type="core_knowledge",
+            primary_type="concept",
         ),
         diagnostics={
             "section_count": 0,
@@ -83,7 +83,7 @@ def _edge_payload(
             MarkdownKnowledgeUnit(
                 anchor=source_anchor,
                 name=source_name,
-                knowledge_unit_type="core_knowledge",
+                knowledge_unit_type="concept",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=1,
@@ -93,7 +93,7 @@ def _edge_payload(
             MarkdownKnowledgeUnit(
                 anchor=target_anchor,
                 name=target_name,
-                knowledge_unit_type="core_knowledge",
+                knowledge_unit_type="concept",
                 summary="summary",
                 body_markdown="body",
                 chapter_index=1,
@@ -107,7 +107,7 @@ def _edge_payload(
                 target_candidate_id="n2",
                 source_name=source_name,
                 target_name=target_name,
-                edge_type="prerequisite",
+                edge_type="prerequisite_for",
                 description="source before target",
                 knowledge_document_id=1,
                 chapter_index=1,
@@ -127,7 +127,7 @@ def _edge_payload(
             body_markdown="body",
             primary_anchor=source_anchor,
             primary_name=source_name,
-            primary_type="core_knowledge",
+            primary_type="concept",
         ),
         diagnostics={
             "section_count": 0,
@@ -290,9 +290,9 @@ def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> N
         }
     )
 
-    assert result.nodes[0].knowledge_unit_type == "method_demo"
-    assert result.nodes[1].knowledge_unit_type == "explanation_support"
-    assert result.edges[0].edge_type == "explanation"
+    assert result.nodes[0].knowledge_unit_type == "procedure"
+    assert result.nodes[1].knowledge_unit_type == "resource"
+    assert result.edges[0].edge_type == "explains"
 
 
 def test_prefetched_section_payload_is_reused_and_context_is_finalized() -> None:
@@ -368,7 +368,7 @@ def test_prefetch_payload_reused_when_only_heading_changes() -> None:
     assert [unit.anchor for unit in units] == ["ku_a"]
 
 
-def test_docgen_backbone_only_links_existing_units() -> None:
+def test_docgen_backbone_links_existing_units_and_fills_missing_skeleton_units() -> None:
     structured_context = {
         "docgen_manifest": {
             "document_backbone_snapshot": {
@@ -391,11 +391,51 @@ def test_docgen_backbone_only_links_existing_units() -> None:
         existing_normalized_names={"alpha", "beta"},
     )
 
-    assert units == []
-    assert len(edges) == 1
+    assert [unit.name for unit in units] == ["Gamma"]
+    assert units[0].source_kind == "docgen_backbone"
+    assert len(edges) == 2
     assert edges[0].source_name == "Alpha"
     assert edges[0].target_name == "Beta"
     assert edges[0].source_kind == "docgen_backbone"
+    assert edges[1].source_name == "Alpha"
+    assert edges[1].target_name == "Gamma"
+    assert edges[1].source_kind == "docgen_backbone"
+
+
+def test_preliminary_kg_creates_rule_seed_units_and_edges() -> None:
+    structured_context = {
+        "docgen_manifest": {
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "矩阵基础", "knowledge_unit_type": "topic", "chapter_index": 1, "summary": "章节主题"},
+                    {"name": "矩阵乘法", "knowledge_unit_type": "concept", "chapter_index": 1, "summary": "按行列配对求和"},
+                ],
+                "edges": [
+                    {
+                        "source_name": "矩阵乘法",
+                        "target_name": "矩阵基础",
+                        "edge_type": "part_of",
+                        "description": "矩阵乘法属于本章。",
+                        "chapter_index": 1,
+                    }
+                ],
+            }
+        }
+    }
+
+    units, edges = _build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts={1: ChapterSourceContext(knowledge_document_id=10, chapter_index=1, source_file_ids=["file-a"])},
+        existing_normalized_names=set(),
+    )
+
+    assert {unit.name for unit in units} == {"矩阵基础", "矩阵乘法"}
+    assert {unit.knowledge_unit_type for unit in units} == {"topic", "concept"}
+    assert all(unit.source_kind == "docgen_preliminary_kg" for unit in units)
+    assert edges[0].source_name == "矩阵乘法"
+    assert edges[0].target_name == "矩阵基础"
+    assert edges[0].edge_type == "part_of"
+    assert edges[0].source_kind == "docgen_preliminary_kg"
 
 
 def test_chunk_extraction_result_caps_candidate_counts() -> None:
@@ -405,7 +445,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                 {
                     "candidate_id": f"n{index}",
                     "name": f"Node {index}",
-                    "knowledge_unit_type": "core_knowledge",
+                    "knowledge_unit_type": "concept",
                     "local_summary": "summary",
                 }
                 for index in range(12)
@@ -414,7 +454,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                 {
                     "source_name": "Node 0",
                     "target_name": "Node 1",
-                    "edge_type": "prerequisite",
+                    "edge_type": "prerequisite_for",
                     "description": "description",
                 }
                 for _index in range(14)
@@ -433,13 +473,13 @@ def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
                 {
                     "candidate_id": "core",
                     "name": "核心对象",
-                    "knowledge_unit_type": "core_knowledge",
+                    "knowledge_unit_type": "concept",
                     "local_summary": "本节说明核心对象。",
                 },
                 {
                     "candidate_id": "method",
                     "name": "操作方法",
-                    "knowledge_unit_type": "method_demo",
+                    "knowledge_unit_type": "procedure",
                     "local_summary": "本节给出操作方法。",
                 },
             ],
@@ -447,7 +487,7 @@ def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
                 {
                     "source_name": "核心对象",
                     "target_name": "操作方法",
-                    "edge_type": "application",
+                    "edge_type": "applies_to",
                     "description": "核心对象用于操作方法。",
                 },
                 {
@@ -455,7 +495,7 @@ def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
                     "target_name": "不存在的练习",
                     "source_candidate_id": "core",
                     "target_candidate_id": "fabricated",
-                    "edge_type": "training",
+                    "edge_type": "assesses",
                     "description": "端点不在本次节点中。",
                 },
             ],

@@ -21,6 +21,16 @@ from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 logger = structlog.get_logger()
 
 
+def _seed_source_from_diagnostics(diagnostics: dict[str, object]) -> str:
+    prefetch_units = int(diagnostics.get("prefetch_early_unit_count", 0) or 0)
+    docgen_seed_units = int(diagnostics.get("docgen_seed_unit_count", 0) or 0)
+    if prefetch_units > 0 and docgen_seed_units > 0:
+        return "prefetch_and_docgen_seed"
+    if docgen_seed_units > 0:
+        return "docgen_seed"
+    return "prefetch"
+
+
 async def _notify_early_units_callback(
     state: DocsSyncState,
     *,
@@ -52,7 +62,7 @@ async def _notify_early_units_callback(
 
 
 async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
-    """在正式抽取前，只提前写入 DocGen LLM 预抽取命中的种子知识点。"""
+    """在正式抽取前，提前写入 DocGen 已知的种子知识点。"""
 
     started_at = perf_counter()
     run_context = state.get("sync_run_context")
@@ -74,8 +84,9 @@ async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
             structured_context=dict(state.get("structured_context") or {}),
             prefetched_records=list(state.get("prefetched_sections") or []),
         )
-        seed_source = "prefetch"
         payload = prefetched_payload
+        diagnostics = dict(payload.diagnostics_totals or {})
+        seed_source = _seed_source_from_diagnostics(diagnostics)
         if not payload.units:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             return with_node_metrics(
@@ -86,7 +97,7 @@ async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
                     "elapsed_ms": elapsed_ms,
                     "seed_source": seed_source,
                     "unit_count": 0,
-                    "non_llm_seed_skipped": True,
+                    "docgen_seed_unit_count": int(diagnostics.get("docgen_seed_unit_count", 0) or 0),
                     "early_units_callback_requested": False,
                 },
                 error=None,
@@ -114,7 +125,6 @@ async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
                 "emitted_at": utcnow().isoformat(),
             },
         )
-        diagnostics = dict(payload.diagnostics_totals or {})
         prefetch_complete = bool(int(diagnostics.get("prefetch_complete_section_coverage", 0) or 0))
         callback_requested, callback_error = await _notify_early_units_callback(
             state,

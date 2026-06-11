@@ -9900,7 +9900,7 @@
           "card_type": {
             "type": "string",
             "title": "Card Type",
-            "description": "mode / topic / core_knowledge / method_demo / practice_assessment"
+            "description": "mode / topic / concept / procedure / skill"
           },
           "summary": {
             "type": "string",
@@ -11235,6 +11235,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Generated At"
+          },
+          "profile_text": {
+            "type": "string",
+            "title": "Profile Text",
+            "default": ""
           },
           "avg_mastery": {
             "anyOf": [
@@ -13406,6 +13411,11 @@
             "type": "string",
             "title": "Edge Type"
           },
+          "edge_type_label": {
+            "type": "string",
+            "title": "Edge Type Label",
+            "default": ""
+          },
           "weight": {
             "type": "number",
             "title": "Weight"
@@ -13498,6 +13508,11 @@
             "type": "string",
             "title": "Edge Type"
           },
+          "edge_type_label": {
+            "type": "string",
+            "title": "Edge Type Label",
+            "default": ""
+          },
           "direction": {
             "type": "string",
             "title": "Direction",
@@ -13514,6 +13529,11 @@
           "other_node_type": {
             "type": "string",
             "title": "Other Node Type"
+          },
+          "other_node_type_label": {
+            "type": "string",
+            "title": "Other Node Type Label",
+            "default": ""
           },
           "confidence": {
             "type": "number",
@@ -14836,6 +14856,11 @@
             "type": "string",
             "title": "Edge Type"
           },
+          "edge_type_label": {
+            "type": "string",
+            "title": "Edge Type Label",
+            "default": ""
+          },
           "source_node_id": {
             "type": "integer",
             "title": "Source Node Id"
@@ -14946,6 +14971,11 @@
             "type": "string",
             "title": "Source Node Type"
           },
+          "source_node_type_label": {
+            "type": "string",
+            "title": "Source Node Type Label",
+            "default": ""
+          },
           "target_node_id": {
             "type": "integer",
             "title": "Target Node Id"
@@ -14958,9 +14988,19 @@
             "type": "string",
             "title": "Target Node Type"
           },
+          "target_node_type_label": {
+            "type": "string",
+            "title": "Target Node Type Label",
+            "default": ""
+          },
           "edge_type": {
             "type": "string",
             "title": "Edge Type"
+          },
+          "edge_type_label": {
+            "type": "string",
+            "title": "Edge Type Label",
+            "default": ""
           },
           "description": {
             "type": "string",
@@ -15110,6 +15150,11 @@
           "knowledge_unit_type": {
             "type": "string",
             "title": "Knowledge Unit Type"
+          },
+          "knowledge_unit_type_label": {
+            "type": "string",
+            "title": "Knowledge Unit Type Label",
+            "default": ""
           },
           "canonical_name": {
             "type": "string",
@@ -15291,6 +15336,11 @@
           "knowledge_unit_type": {
             "type": "string",
             "title": "Knowledge Unit Type"
+          },
+          "knowledge_unit_type_label": {
+            "type": "string",
+            "title": "Knowledge Unit Type Label",
+            "default": ""
           },
           "canonical_name": {
             "type": "string",
@@ -17140,6 +17190,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Generated At"
+          },
+          "profile_text": {
+            "type": "string",
+            "title": "Profile Text",
+            "default": ""
           },
           "active_course_count": {
             "type": "integer",

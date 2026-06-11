@@ -49,6 +49,7 @@ from app.workflows.digest.docgen.nodes.review_content import (
     build_review_chapter_node,
 )
 from app.workflows.digest.docgen.nodes.sync_locked_titles import build_sync_locked_titles_node
+from app.workflows.digest.docgen.nodes.sync_knowledge_graph import build_sync_knowledge_graph_node
 from app.workflows.digest.docgen.nodes.common import resolve_docgen_retrieval_profile
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -68,6 +69,7 @@ NODE_REPAIR_OR_ROUTE = "repair_or_route"
 NODE_MERGE_REVIEW = "merge_review"
 NODE_SYNC_LOCKED_TITLES = "sync_locked_titles"
 NODE_PUBLISH = "publish_document"
+NODE_SYNC_KNOWLEDGE_GRAPH = "sync_knowledge_graph"
 RUN_NAME_DOCGEN = "织网引擎：生成知识文档"
 
 NODE_DISPLAY_NAMES = {
@@ -87,6 +89,7 @@ NODE_DISPLAY_NAMES = {
     NODE_MERGE_REVIEW: "合并检查整本文档",
     NODE_SYNC_LOCKED_TITLES: "同步锁定标题",
     NODE_PUBLISH: "发布知识文档",
+    NODE_SYNC_KNOWLEDGE_GRAPH: "同步课程知识图谱",
 }
 
 NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
@@ -121,7 +124,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "writes": [
             "intent_core",
             "intent_profile",
+            "intent_enhanced",
+            "user_profile",
             "file_summaries",
+            "summary_enhanced",
             "source_affinity_by_chapter",
             "high_confidence_evidence_units",
         ],
@@ -129,7 +135,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "output_keys": [
             "intent_core",
             "intent_profile",
+            "intent_enhanced",
+            "user_profile",
             "file_summaries",
+            "summary_enhanced",
             "source_affinity_by_chapter",
             "high_confidence_evidence_units",
             "plan_mismatch_warnings",
@@ -181,7 +190,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "source_affinity_by_chapter",
             "high_confidence_evidence_units",
         ],
-        "writes": ["chapter_generation_plan_seed", "chapter_task_seeds", "backbone_research_agenda", "locked_titles"],
+        "writes": ["chapter_generation_plan_seed", "chapter_task_seeds", "chapters_enhanced", "backbone_research_agenda", "locked_titles"],
         "input_keys": [
             "confirmed_plan",
             "locked_titles",
@@ -189,7 +198,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "source_affinity_by_chapter",
             "high_confidence_evidence_units",
         ],
-        "output_keys": ["chapter_generation_plan_seed", "chapter_task_seeds", "backbone_research_agenda", "seed_backbone_ms"],
+        "output_keys": ["chapter_generation_plan_seed", "chapter_task_seeds", "chapters_enhanced", "backbone_research_agenda", "seed_backbone_ms"],
     },
     NODE_BUILD_BACKBONE: {
         "description": (
@@ -197,9 +206,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "当前实现以规则和 DocGen 结构化信号为主，用来约束后续章节写作和图谱同步，而不是直接产出正文。"
         ),
         "reads": ["chapter_task_seeds", "shared_inputs", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "writes": ["document_backbone", "backbone_conflict_warnings"],
+        "writes": ["document_backbone", "guideline", "backbone_conflict_warnings"],
         "input_keys": ["chapter_task_seeds", "shared_inputs", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "output_keys": ["document_backbone", "backbone_conflict_warnings", "backbone_ms"],
+        "output_keys": ["document_backbone", "guideline", "backbone_conflict_warnings", "backbone_ms"],
     },
     NODE_BUILD_CHAPTER_BRIEFS: {
         "description": (
@@ -226,7 +235,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "document_backbone",
             "file_summaries",
         ],
-        "writes": ["chapter_generation_plan", "chapter_tasks", "chapter_execution_briefs"],
+        "writes": ["chapter_generation_plan", "chapter_tasks", "chapters_enhanced", "dispatch_table", "preliminary_kg", "chapter_execution_briefs"],
         "input_keys": [
             "confirmed_plan",
             "locked_titles",
@@ -236,7 +245,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "document_backbone",
             "file_summaries",
         ],
-        "output_keys": ["chapter_generation_plan", "chapter_tasks", "chapter_execution_briefs", "assemble_tasks_ms", "error"],
+        "output_keys": ["chapter_generation_plan", "chapter_tasks", "chapters_enhanced", "dispatch_table", "preliminary_kg", "chapter_execution_briefs", "assemble_tasks_ms", "error"],
         "routing": "next step sends one branch per chapter",
     },
     NODE_GENERATE_CHAPTERS: {
@@ -289,6 +298,11 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "review_claim_ledger",
             "review_claim_evidence_map",
             "review_conflict_report",
+            "guideline",
+            "dispatch_table",
+            "summary_enhanced",
+            "chapters_enhanced",
+            "user_profile",
         ],
         "writes": ["reviewed_chapter_overlay_items", "chapter_review_report_items", "review_action_items"],
         "input_keys": [
@@ -297,6 +311,11 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "review_claim_ledger",
             "review_claim_evidence_map",
             "review_conflict_report",
+            "guideline",
+            "dispatch_table",
+            "summary_enhanced",
+            "chapters_enhanced",
+            "user_profile",
             "total_chapters",
         ],
         "output_keys": [
@@ -312,7 +331,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_DOCUMENT_CONSISTENCY_REVIEW: {
         "description": (
             "在所有章节复核 fan-in 后执行整本文档一致性检查，重点看跨章术语、符号、定义、前置关系、重复讲解和风格断裂。"
-            "当前主要是规则复核，不检索、不改正文，只产出 document_consistency_report 和整本 review_decision。"
+            "先用规则基线兜底，再做一次结构化 LLM 整本复核；不检索、不改正文，只产出 document_consistency_report、"
+            "整本 review_decision 和可交给 repair 节点处理的 document-level review_actions。"
         ),
         "reads": [
             "enhanced_chapter_drafts",
@@ -320,6 +340,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "chapter_review_report_items",
             "review_action_items",
             "document_backbone",
+            "guideline",
+            "dispatch_table",
+            "learner_profile_text",
         ],
         "writes": ["reviewed_chapter_drafts", "chapter_review_reports", "review_actions", "document_consistency_report", "review_decision"],
         "input_keys": [
@@ -328,6 +351,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "chapter_review_report_items",
             "review_action_items",
             "document_backbone",
+            "guideline",
+            "dispatch_table",
+            "learner_profile_text",
         ],
         "output_keys": [
             "reviewed_chapter_drafts",
@@ -336,6 +362,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "document_consistency_report",
             "review_decision",
             "review_ms",
+            "llm_calls_total",
             "error",
         ],
     },
@@ -389,13 +416,38 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_PUBLISH: {
         "description": (
             "发布 DocGen 产物：写出章节 Markdown、整本 Markdown、docgen_manifest、版本归档和 KnowledgeDoc rows。"
-            "如果 sync_after_docgen 开启，后续由构建生命周期触发 kg_doc_sync；"
-            "可复用的 KG 预抽取只作为 sidecar 缓存存在，本节点自身只负责文档持久化。"
+            "可复用的 KG 预抽取只作为 sidecar 缓存存在，本节点自身只负责文档持久化；"
+            "后续图谱同步由同一 DocGen 图里的同步节点承接，避免发布后另起一条不可关联的自动链路。"
         ),
         "reads": ["merged_markdown", "chapter_metadatas", "docgen_artifacts", "document_context", "cover_artifact"],
         "writes": ["doc_ids", "built_paths", "merged_path", "enriched_markdown"],
         "input_keys": ["merged_markdown", "chapter_metadatas", "document_context", "build_session_id"],
         "output_keys": ["doc_ids", "built_paths", "merged_path", "enriched_markdown", "error"],
+    },
+    NODE_SYNC_KNOWLEDGE_GRAPH: {
+        "description": (
+            "在知识文档发布后，沿用同一 DocGen trace 上下文同步课程知识图谱。"
+            "该节点复用 kg_doc_sync 的完整子图、状态写入和质量审计，但不再由 lifecycle 单独 create_task；"
+            "因此 LangSmith 中能看到发布文档后接着同步图谱的连续路径。"
+        ),
+        "reads": ["doc_ids", "merged_markdown", "chapter_metadatas", "preliminary_kg", "document_backbone", "build_group_id"],
+        "writes": ["graph_sync_status", "graph_sync_metrics", "graph_sync_ms"],
+        "input_keys": [
+            "course_id",
+            "user_id",
+            "file_ids",
+            "user_prompt",
+            "requested_at",
+            "build_group_id",
+            "build_session_id",
+            "model_override",
+            "doc_ids",
+            "merged_markdown",
+            "chapter_metadatas",
+            "preliminary_kg",
+            "document_backbone",
+        ],
+        "output_keys": ["graph_sync_status", "graph_sync_metrics", "graph_sync_ms"],
     },
 }
 
@@ -570,6 +622,16 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_docgen_node(trace, NODE_PUBLISH, build_publish_document_node(context=context)),
         metadata=_langgraph_node_metadata(NODE_PUBLISH),
     )
+    workflow.add_node(
+        NODE_SYNC_KNOWLEDGE_GRAPH,
+        _trace_docgen_node(
+            trace,
+            NODE_SYNC_KNOWLEDGE_GRAPH,
+            build_sync_knowledge_graph_node(context=context),
+            timing_field="graph_sync_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_SYNC_KNOWLEDGE_GRAPH),
+    )
 
     workflow.set_entry_point(NODE_LOAD_CONTEXT)
     workflow.add_conditional_edges(
@@ -639,7 +701,12 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         route_after_step_for_trace,
         {"continue": NODE_PUBLISH, "fail": END},
     )
-    workflow.add_edge(NODE_PUBLISH, END)
+    workflow.add_conditional_edges(
+        NODE_PUBLISH,
+        route_after_step_for_trace,
+        {"continue": NODE_SYNC_KNOWLEDGE_GRAPH, "fail": END},
+    )
+    workflow.add_edge(NODE_SYNC_KNOWLEDGE_GRAPH, END)
     return workflow
 
 
@@ -652,6 +719,7 @@ def create_docgen_initial_state(
     user_prompt: str | None,
     requested_at: datetime,
     build_session_id: str | None,
+    build_group_id: str | None = None,
     shared_inputs: Any | None = None,
     confirmed_plan: dict[str, Any] | None = None,
     planner_session_id: str | None = None,
@@ -669,6 +737,7 @@ def create_docgen_initial_state(
         "user_prompt": user_prompt,
         "requested_at": requested_at,
         "build_session_id": build_session_id or "",
+        "build_group_id": build_group_id or "",
         "shared_inputs": shared_inputs,
         "confirmed_plan": confirmed_plan,
         "planner_session_id": planner_session_id or "",
@@ -683,7 +752,16 @@ def create_docgen_initial_state(
         "retrieval_policy": {},
         "teaching_action": "docgen_build",
         "document_context": None,
+        "learner_profile_context": {},
+        "learner_profile_text": "",
+        "user_profile": {},
         "docgen_context": {},
+        "intent_enhanced": {},
+        "summary_enhanced": {},
+        "chapters_enhanced": [],
+        "guideline": {},
+        "dispatch_table": {},
+        "preliminary_kg": {},
         "error": None,
     }
 
@@ -715,6 +793,17 @@ def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, 
     }
 
 
+def _chapter_branch_shared_artifacts(state: DocGenState) -> dict[str, Any]:
+    return {
+        "learner_profile_text": state.get("learner_profile_text", ""),
+        "user_profile": state.get("user_profile", {}),
+        "summary_enhanced": state.get("summary_enhanced", {}),
+        "chapters_enhanced": state.get("chapters_enhanced", []),
+        "guideline": state.get("guideline", {}),
+        "dispatch_table": state.get("dispatch_table", {}),
+    }
+
+
 def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
     if state.get("error"):
         return "fail"
@@ -734,6 +823,7 @@ def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
                 "document_context": state.get("document_context"),
                 "docgen_context": state.get("docgen_context"),
                 "document_backbone": state.get("document_backbone"),
+                **_chapter_branch_shared_artifacts(state),
                 "chapter_task": task,
                 "total_chapters": total,
             },
@@ -784,6 +874,7 @@ def build_review_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
             NODE_REVIEW_CHAPTERS,
             {
                 **_child_state_base(state, teaching_action="chapter_review"),
+                **_chapter_branch_shared_artifacts(state),
                 "enhanced_chapter_draft": draft,
                 "review_chapter_task": tasks_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
                 "review_claim_ledger": claim_ledgers_by_chapter.get(int(draft.get("chapter_index", 0) or 0), {}),
@@ -819,6 +910,7 @@ async def run_docgen_workflow(
     requested_at: datetime,
     event_bus: InProcessEventBus | None = None,
     build_session_id: str | None = None,
+    build_group_id: str | None = None,
     shared_inputs: object | None = None,
     confirmed_plan: dict | None = None,
     planner_session_id: str | None = None,
@@ -846,6 +938,7 @@ async def run_docgen_workflow(
             "lane": "docgen",
             "langsmith_run_name": RUN_NAME_DOCGEN,
             "build_session_id": build_session_id or "",
+            "build_group_id": build_group_id or "",
             "planner_session_id": planner_session_id or "",
             "confirmed_plan_id": confirmed_plan_id or "",
             "digest_mode": digest_mode or "",
@@ -865,6 +958,7 @@ async def run_docgen_workflow(
                 user_prompt=user_prompt,
                 requested_at=requested_at,
                 build_session_id=build_session_id,
+                build_group_id=build_group_id,
                 shared_inputs=shared_inputs,
                 confirmed_plan=confirmed_plan,
                 planner_session_id=planner_session_id,

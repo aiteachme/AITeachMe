@@ -17,24 +17,29 @@ from app.workflows.digest.docgen.lib.textbook_style import (
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 LEARNING_ROLE_LABELS = {
-    "core_knowledge": "核心知识",
-    "method_demo": "方法示范",
-    "explanation_support": "解释辅助",
-    "principle_reasoning": "原理推理",
-    "practice_assessment": "练习评估",
-    "knowledge_organization": "知识组织",
-    "application_extension": "应用拓展",
+    "topic": "主题模块",
+    "concept": "概念术语",
+    "principle": "原理性质",
+    "formula_model": "公式模型",
+    "procedure": "方法步骤",
+    "skill": "解题技能",
+    "misconception": "易错辨析",
+    "application_case": "应用案例",
+    "resource": "学习资源",
 }
 
 RELATION_LABELS = {
-    "prerequisite": "前置",
-    "contains": "包含",
-    "reasoning": "推理",
-    "application": "应用",
-    "explanation": "说明",
-    "training": "训练",
-    "contrast": "对比",
-    "similar": "相似",
+    "part_of": "归属",
+    "prerequisite_for": "前置",
+    "derives_to": "推导",
+    "applies_to": "应用",
+    "uses_method": "用方法",
+    "assesses": "考察",
+    "explains": "解释",
+    "remediates": "补救",
+    "confuses_with": "易混",
+    "similar_to": "相似",
+    "extends_to": "拓展",
 }
 
 
@@ -50,18 +55,18 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
             "heading_levels": "一级标题只用于章节标题，二/三级标题按内容层级展开，不跳级。",
             "emphasis": "核心概念、关键条件、结论、易错边界可加粗；不要整段加粗。",
             "highlight": "只对短关键句使用 ==...== 或受控 <mark>...</mark>，不要大量高亮。",
-            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION", "EXAMPLE", "PRACTICE"],
+            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"],
             "tables": "表格用于对比、分类、步骤、公式汇总、错因分析和学习路径；建议 3-5 列。",
             "visual_grouping": "定义、公式、步骤、例题、易错点和高频规则清单要有清晰边界，避免连续大段正文把不同学习功能混在一起。",
             "formulas": "行内公式用 $...$，多步推导或长公式用 $$...$$，变量和适用条件要解释。",
             "code_blocks": "代码、配置、命令、伪代码必须使用 fenced code block 并标注语言。",
-            "mermaid": "Mermaid 必须放在 ```mermaid 代码块；知识图谱关系标签只使用 8 类关系。",
+            "mermaid": "Mermaid 必须放在 ```mermaid 代码块；知识图谱关系标签只使用受控关系类型。",
             "html_sidecar": "交互内容只允许独立单文件 HTML sidecar，正文 Markdown 不内嵌任意 HTML。",
         },
         "reader_experience_checks": {
-            "long_paragraphs": "避免连续长段正文；长解释要拆成步骤、表格、公式块、例题或 callout。",
+            "long_paragraphs": "避免连续长段正文；长解释要拆成步骤、表格、公式块、例题或短提示。",
             "learning_callout_fields": "例题和练习必须能自查，至少有题目/任务、解析/判定依据、答案/结论。",
-            "reading_blocks": "长章节需要有 callout、表格、公式、图示或代码块等阅读分组，避免整章只有正文和列表。",
+            "reading_blocks": "长章节需要有短提示、表格、公式、图示、代码块或例题等阅读分组，避免整章只有正文和列表。",
             "list_rhythm": "长列表要拆分成小节、表格或练习块，避免学生扫读疲劳。",
         },
         "learning_roles": LEARNING_ROLE_LABELS,
@@ -85,12 +90,13 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
 使用清晰、美观、可渲染的 Markdown。样式服务学习，不做纯装饰；读者应能一眼分清定义、公式、步骤、例题、易错点和高频规则清单。
 
 结构：
-- 一级标题只用于章节标题，二级/三级标题按内容自然展开，不跳级，不写内部流程名。
+- 一级标题只用于章节标题；正文优先采用突击讲义节奏：考点/任务表 -> 编号知识点 -> 题/解穿插 -> 单元测试。
+- 二级标题优先写成 `## 1. 具体知识点名` 这类编号知识点，最后一个二级标题固定为 `## 单元测试`；三级标题只服务同一知识点下真正并列的子主题，不跳级，不写内部流程名。
 - 文档按学习功能自然覆盖：{role_text}；这些是检查维度，不要求固定作为标题。
 - {profile.prompt_label}模式下仍要遵守当前学习大纲：快速复习强调例题/任务/错误诊断密度，但密度和形式要跟章节角色匹配；系统学习强调知识细讲和例题覆盖。
 - 快速复习章节要像可直接复习的讲义：考试/冲刺/速成取向章节可有由本章内容自然生成的题型或任务导航、方法对照、完整例题、变式题和易错诊断；概念型章节用短例子、反例、条件辨析和边界提醒增强直观性，不要硬塞题型表。自测或思考题必须给答案、解析要点或判定依据。
-- 同一小节不要连续铺开两三段长正文；定义或公式之后，要用短说明、步骤、表格、callout 或例题块分清“是什么、何时用、怎么做、哪里容易错”。
-- 长章节不能只有正文和普通列表；需要自然穿插 callout、表格、公式块、图示、代码块或例题/练习块形成阅读分组。
+- 同一小节不要连续铺开两三段长正文；定义或公式之后，要用短说明、步骤、表格、短提示或例题分清“是什么、何时用、怎么做、哪里容易错”。
+- 长章节不能只有正文和普通列表；需要自然穿插短提示、表格、公式块、图示、代码块或例题/练习形成阅读分组。
 - 列表连续过长时必须拆分为小标题、表格或任务块；不要把整节写成十几条并列 bullet。
 
 重点表达：
@@ -100,11 +106,13 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
 
 可渲染组件：
 - 对比、分类、步骤、公式汇总、错因分析优先用 3-5 列 Markdown 表格。
-- 教学提示块使用 `> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]` / `> [!NOTE]` / `> [!CAUTION]`；例题可用 `> [!EXAMPLE]`，章末练习收束可用 `> [!PRACTICE]`。
-- 例题和练习块必须拆成 **题目/任务**、**解析/判定依据**、**答案/结论**、**易错点**；这些字段各自独立成段或列表项，不要把题目、步骤、答案、提醒混写成一段。
-- 一个 callout 只解决一个学习功能：重点、提示、警告、例题、练习或边界说明，不要把多个功能塞进同一个长块。
+- 教学提示块只用于短重点、短提示、短警告或短注意：`> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]` / `> [!NOTE]` / `> [!CAUTION]`；不要用大片连续色块包裹长解释。
+- 完整例题、案例和章末练习不要放进大块 callout；优先用普通小标题或加粗标签组织，并拆成 **题目/任务**、**解析/判定依据**、**答案/结论**、**易错点**。
+- 一个 callout 只解决一个短提醒功能；不要把例题、练习、公式和长解释塞进同一个彩色块。
 - 公式必须成对闭合：短公式 `$...$`，长推导 `$$...$$`；变量和适用条件要解释。
 - 代码、命令、配置、伪代码必须使用带语言名的 fenced code block。
+- 上传资料中的图片只能根据已解析 OCR、图注、上下文或占位说明使用；抽象图要先转写为关系、步骤、条件或公式含义，再重构成 Mermaid/静态 HTML 图示，不臆造看不到的图中细节。
+- 每章至少要有一处图示化整理：优先用 Mermaid 思维导图/流程图整理本章主线；局部结构、步骤、公式关系或题图可由静态 HTML sidecar 承载。
 - Mermaid 必须使用 ```mermaid 代码块；若表达知识图谱，关系标签只使用：{relation_text}。
 - 不在正文 Markdown 中使用任意 HTML 或内联样式；交互内容只能作为独立 HTML sidecar。
 """.strip()
