@@ -37,11 +37,11 @@ const mockMistakes = [
 ];
 
 const mockKnowledgeUnits = [
-  { id: 101, course: "mock", knowledge_unit_type: "core_knowledge", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 102, course: "mock", knowledge_unit_type: "core_knowledge", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 103, course: "mock", knowledge_unit_type: "core_knowledge", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 104, course: "mock", knowledge_unit_type: "core_knowledge", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
-  { id: 105, course: "mock", knowledge_unit_type: "core_knowledge", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 101, course: "mock", knowledge_unit_type: "concept", canonical_name: "Limits", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, course: "mock", knowledge_unit_type: "concept", canonical_name: "Derivative", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 103, course: "mock", knowledge_unit_type: "formula_model", canonical_name: "Integral", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 104, course: "mock", knowledge_unit_type: "skill", canonical_name: "Differential Equation", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 105, course: "mock", knowledge_unit_type: "application_case", canonical_name: "Implicit Function", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
 ];
 
 const mockUnitItems = [

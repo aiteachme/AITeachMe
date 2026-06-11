@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from time import perf_counter
 
+from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import (
@@ -24,19 +25,25 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewAction,
     ReviewedChapterDraft,
 )
+from app.workflows.digest.docgen.lib.pipeline_context import (
+    contract_item_for_chapter,
+    evidence_items_for_chapter,
+    guideline_summary_for_chapter,
+    learner_profile_text_for_branch,
+)
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
-from app.workflows.digest.docgen.lib.quality import review_document_consistency
+from app.workflows.digest.docgen.lib.quality import review_document_consistency_with_llm
 from app.workflows.digest.docgen.state import DocGenState
 
 
-def _review_decision(actions: list[ReviewAction], *, document_issue_count: int) -> str:
+def _review_decision(actions: list[ReviewAction], *, document_issue_count: int, document_has_error: bool = False) -> str:
     blocking_types = {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
     has_blocking_action = any(
         action.action_type in blocking_types and action.severity in {"warning", "error"}
         for action in actions
     )
     has_error_action = any(action.severity == "error" for action in actions)
-    if has_error_action:
+    if has_error_action or document_has_error:
         return "fail"
     if has_blocking_action:
         return "needs_repair"
@@ -147,6 +154,18 @@ def build_review_chapter_node(*, context: WorkflowContext):
             single_key="review_conflict_report",
             collection_key="conflict_reports",
         )
+        user_profile = dict(state.get("user_profile") or {})
+        dispatch_item = contract_item_for_chapter(dict(state.get("dispatch_table") or {}), draft.chapter_index)
+        chapter_contract = contract_item_for_chapter(
+            {"items": state.get("chapters_enhanced") or []},
+            draft.chapter_index,
+        )
+        guideline_summary = guideline_summary_for_chapter(dict(state.get("guideline") or {}), draft.chapter_index)
+        evidence_items = evidence_items_for_chapter(dict(state.get("summary_enhanced") or {}), draft.chapter_index)
+        learner_profile_text = learner_profile_text_for_branch(
+            state_profile_text=state.get("learner_profile_text", ""),
+            user_profile=user_profile,
+        )
 
         update_knowledge_build_status(
             state["course_id"],
@@ -177,6 +196,11 @@ def build_review_chapter_node(*, context: WorkflowContext):
             claim_evidence_map=claim_evidence_map,
             conflict_report=conflict_report,
             digest_mode=state.get("digest_mode") or "",
+            guideline_summary=guideline_summary,
+            dispatch_item=dispatch_item,
+            chapter_contract=chapter_contract,
+            evidence_items=evidence_items,
+            learner_profile_text=learner_profile_text,
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         upsert_knowledge_build_chapter_progress(
@@ -242,8 +266,8 @@ def build_review_chapter_node(*, context: WorkflowContext):
 def build_document_consistency_review_node(*, context: WorkflowContext):
     """构建整本一致性复核节点。
 
-    所有章节复核 fan-in 后运行，只做跨章术语、标题、章节数量和整体
-    风格一致性判断，不再发起章节级 LLM 调用。
+    所有章节复核 fan-in 后运行，先做规则基线，再做一次整本文档结构化
+    LLM 复核，只输出跨章问题和回流动作，不直接重写正文。
     """
 
     async def document_consistency_review_node(state: DocGenState) -> dict:
@@ -258,14 +282,24 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             ReviewAction.model_validate(item)
             for item in list(state.get("review_action_items") or [])
         ]
-        consistency_report = review_document_consistency(
+        consistency_report, document_actions, llm_calls = await review_document_consistency_with_llm(
             reviewed_chapters=reviewed,
             document_backbone=document_backbone,
             expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
+            digest_mode=state.get("digest_mode") or "",
+            guideline=dict(state.get("guideline") or {}),
+            dispatch_table=dict(state.get("dispatch_table") or {}),
+            learner_profile_text=str(state.get("learner_profile_text") or ""),
         )
+        actions = [*actions, *document_actions]
         review_decision = _review_decision(
             actions,
             document_issue_count=len(consistency_report.issues),
+            document_has_error=any(
+                str(item.get("severity") or "") == "error"
+                for item in list(consistency_report.issues or [])
+                if isinstance(item, dict)
+            ),
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
@@ -291,10 +325,11 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             stage="content_reviewed",
             payload={
                 "chapter_count": len(reviewed),
-                "review_parallelism": min(6, len(reviewed)),
+                "review_parallelism": min(get_llm_concurrency_limit(), len(reviewed)),
                 "review_decision": review_decision,
                 "review_action_count": len(actions),
                 "document_issue_count": len(consistency_report.issues),
+                "document_review_llm_calls": llm_calls,
             },
         )
         return {
@@ -304,6 +339,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             "document_consistency_report": consistency_report.model_dump(mode="json"),
             "review_decision": review_decision,
             "review_ms": elapsed_ms,
+            "llm_calls_total": llm_calls,
         }
 
     return document_consistency_review_node

@@ -30,7 +30,15 @@ from app.workflows.digest.docgen.lib.models import (
     ClaimEvidenceMap,
     ClaimLedger,
     ConflictReport,
+    DocGenContext,
     DocumentBackbone,
+)
+from app.workflows.digest.docgen.lib.pipeline_context import (
+    contract_item_for_chapter as _contract_item_for_chapter,
+    evidence_items_for_chapter as _evidence_items_for_chapter,
+    guideline_summary_for_chapter as _guideline_summary_for_writer,
+    learner_profile_text_for_branch,
+    mapping_list as _mapping_list,
 )
 from app.workflows.digest.docgen.lib.quality import (
     align_claim_evidence,
@@ -173,6 +181,66 @@ def _unique_strings(values: list[str]) -> list[str]:
     return list(dict.fromkeys(item for item in values if str(item).strip()))
 
 
+def _chapter_context_prefix_for_writer(
+    *,
+    task: ChapterGenerationTask,
+    dispatch_item: dict,
+    chapter_contract: dict,
+    guideline_summary: dict,
+    evidence_items: list[dict],
+) -> str:
+    lines: list[str] = []
+    lines.append("## DocGen 章节执行上下文")
+    lines.append("")
+    lines.append("这些内容是上游章节合同、资料分配和全局规范的压缩结果，只用于写作边界和一致性控制。")
+    lines.append("")
+    if guideline_summary.get("writing_rules"):
+        lines.append("### 全局写作规范")
+        lines.extend(f"- {item}" for item in guideline_summary["writing_rules"])
+        lines.append("")
+    if guideline_summary.get("canonical_glossary"):
+        lines.append("### 本章术语规范")
+        for item in guideline_summary["canonical_glossary"]:
+            term = str(item.get("term") or "").strip()
+            definition = str(item.get("definition") or "").strip()
+            if term:
+                lines.append(f"- {term}: {definition}")
+        lines.append("")
+    if guideline_summary.get("notation_rules"):
+        lines.append("### 符号与表述一致性")
+        for item in guideline_summary["notation_rules"]:
+            symbol = str(item.get("symbol") or "").strip()
+            meaning = str(item.get("meaning") or "").strip()
+            if symbol or meaning:
+                lines.append(f"- {symbol}: {meaning}")
+        lines.append("")
+    source_slices = _mapping_list(dispatch_item.get("source_slices")) or _mapping_list(chapter_contract.get("source_slices"))
+    if source_slices:
+        lines.append("### 本章优先资料切片")
+        for item in source_slices[:12]:
+            title = str(item.get("section_title") or item.get("header_path") or item.get("section_ref") or "").strip()
+            summary = str(item.get("summary") or item.get("excerpt") or "").strip()
+            if title or summary:
+                lines.append(f"- {title}: {summary}")
+        lines.append("")
+    if evidence_items:
+        lines.append("### 高置信证据")
+        for item in evidence_items[:12]:
+            evidence_id = str(item.get("evidence_id") or "").strip()
+            text = str(item.get("text") or "").strip()
+            source = str(item.get("source_title") or item.get("source_ref") or "").strip()
+            if text:
+                lines.append(f"- {evidence_id} | {source}: {text}")
+        lines.append("")
+    if task.chapter_end_practice_plan:
+        lines.append("### 章末练习计划")
+        for item in task.chapter_end_practice_plan[:8]:
+            if isinstance(item, dict):
+                lines.append(f"- {item.get('target') or ''}: {item.get('purpose') or ''}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 def _media_hints_from_requests(requests: list[dict]) -> dict[str, list[str]]:
     media_hints = {"mermaid": []}
     for item in requests:
@@ -228,6 +296,11 @@ def _execution_contract_for_writer(
     claim_ledger: ClaimLedger | None,
     claim_evidence_map: ClaimEvidenceMap | None,
     conflict_report: ConflictReport | None,
+    learner_profile_text: str = "",
+    guideline_summary: dict | None = None,
+    dispatch_item: dict | None = None,
+    chapter_contract: dict | None = None,
+    evidence_items: list[dict] | None = None,
 ) -> dict:
     practice_style = str((task.practice_seed_policy or {}).get("style") or "").strip().lower()
     example_ratio = _unit_float((task.practice_seed_policy or {}).get("example_ratio"))
@@ -272,6 +345,11 @@ def _execution_contract_for_writer(
         "coverage_policy": list((task.practice_seed_policy or {}).get("coverage_policy") or []),
         "example_density_policy": density_policy,
         "chapter_end_practice_plan": chapter_end_practice_plan,
+        "learner_profile": learner_profile_text,
+        "guideline_summary": dict(guideline_summary or {}),
+        "dispatch_item": dict(dispatch_item or {}),
+        "chapter_contract": dict(chapter_contract or {}),
+        "high_confidence_evidence": list(evidence_items or []),
         "repair_enabled": True,
         "practice_quota": {
             "learning_activities": max(learning_activity_target, worked_example_target + practice_task_target),
@@ -295,10 +373,15 @@ def _chapter_plan_for_writer(
     task: ChapterGenerationTask,
     *,
     total_chapters: int,
+    learner_profile_text: str = "",
     source_details: list[dict] | None = None,
     claim_ledger: ClaimLedger | None = None,
     claim_evidence_map: ClaimEvidenceMap | None = None,
     conflict_report: ConflictReport | None = None,
+    guideline_summary: dict | None = None,
+    dispatch_item: dict | None = None,
+    chapter_contract: dict | None = None,
+    evidence_items: list[dict] | None = None,
 ) -> dict:
     # Writer plan 是给写作器看的合同快照；结构化证据不在这里静默截断。
     media_hints = _media_hints_from_requests(task.placeholder_requests)
@@ -329,6 +412,11 @@ def _chapter_plan_for_writer(
             claim_ledger=claim_ledger,
             claim_evidence_map=claim_evidence_map,
             conflict_report=conflict_report,
+            learner_profile_text=learner_profile_text,
+            guideline_summary=guideline_summary,
+            dispatch_item=dispatch_item,
+            chapter_contract=chapter_contract,
+            evidence_items=evidence_items,
         ),
         "source_file_ids": task.priority_file_ids,
         "source_details": list(source_details or []),
@@ -502,8 +590,22 @@ def build_generate_chapters_node(*, context: WorkflowContext):
 
         started_at = perf_counter()
         task = ChapterGenerationTask.model_validate(state["chapter_task"])
+        docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
         document_backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
         total_chapters = int(state.get("total_chapters", 0) or 0)
+        guideline = dict(state.get("guideline") or {})
+        dispatch_table = dict(state.get("dispatch_table") or {})
+        summary_enhanced = dict(state.get("summary_enhanced") or {})
+        user_profile = dict(state.get("user_profile") or {})
+        dispatch_item = _contract_item_for_chapter(dispatch_table, task.chapter_index)
+        chapter_contract = _contract_item_for_chapter({"items": state.get("chapters_enhanced") or []}, task.chapter_index)
+        guideline_summary = _guideline_summary_for_writer(guideline, task.chapter_index)
+        evidence_items = _evidence_items_for_chapter(summary_enhanced, task.chapter_index)
+        learner_profile_text = learner_profile_text_for_branch(
+            docgen_context_text=docgen_context.learner_profile_text,
+            state_profile_text=state.get("learner_profile_text", ""),
+            user_profile=user_profile,
+        )
         title = task.enhanced_title or task.confirmed_title
         task_preview = _task_preview_markdown(task, title=title, total_chapters=total_chapters)
 
@@ -650,6 +752,22 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             research_trace.budget_used = {
                 **dict(research_trace.budget_used or {}),
                 "llm_selected_source_slices": priority_context.local_source_count,
+            }
+
+        chapter_context_prefix = _chapter_context_prefix_for_writer(
+            task=task,
+            dispatch_item=dispatch_item,
+            chapter_contract=chapter_contract,
+            guideline_summary=guideline_summary,
+            evidence_items=evidence_items,
+        )
+        if chapter_context_prefix:
+            dense_context = "\n\n".join(item for item in [chapter_context_prefix, dense_context] if item.strip()).strip()
+            research_trace.budget_used = {
+                **dict(research_trace.budget_used or {}),
+                "docgen_dispatch_source_slice_count": len(_mapping_list(dispatch_item.get("source_slices"))),
+                "docgen_guideline_glossary_count": len(_mapping_list(guideline_summary.get("canonical_glossary"))),
+                "docgen_evidence_item_count": len(evidence_items),
             }
 
         research_preview = _research_preview_markdown(
@@ -817,10 +935,15 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 chapter_plan=_chapter_plan_for_writer(
                     task,
                     total_chapters=total_chapters,
+                    learner_profile_text=learner_profile_text,
                     source_details=source_details,
                     claim_ledger=claim_ledger,
                     claim_evidence_map=claim_evidence_map,
                     conflict_report=conflict_report,
+                    guideline_summary=guideline_summary,
+                    dispatch_item=dispatch_item,
+                    chapter_contract=chapter_contract,
+                    evidence_items=evidence_items,
                 ),
                 dense_context=dense_context,
                 digest_mode=state.get("digest_mode") or "systematic",

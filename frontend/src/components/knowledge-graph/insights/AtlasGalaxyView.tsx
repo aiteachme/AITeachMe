@@ -39,13 +39,15 @@ type GalaxyEdge = {
 };
 
 const TYPE_ORDER = [
-  "core_knowledge",
-  "principle_reasoning",
-  "method_demo",
-  "practice_assessment",
-  "knowledge_organization",
-  "explanation_support",
-  "application_extension",
+  "topic",
+  "concept",
+  "formula_model",
+  "principle",
+  "procedure",
+  "skill",
+  "misconception",
+  "application_case",
+  "resource",
 ];
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -137,7 +139,7 @@ function buildGalaxy(model: GraphInsightModel): {
         label,
         labelWidth: labelWidth(label),
         defaultLabelVisible: nodeIndex < visibleBudget || node.issueScore >= 3.2 || node.degree >= 7,
-        radius: 0.1 + Math.sqrt(Math.max(1, node.degree)) * 0.048 + (type === "core_knowledge" ? 0.035 : 0),
+        radius: 0.1 + Math.sqrt(Math.max(1, node.degree)) * 0.048 + (type === "concept" ? 0.035 : 0),
         clusterIndex: clusterMeta?.index ?? 0,
         position: [
           cluster.position[0] + localX,

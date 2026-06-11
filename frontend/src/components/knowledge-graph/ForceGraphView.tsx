@@ -39,7 +39,6 @@ import {
   graphNodePriority,
   isAssessmentCoreNode,
   isBackboneEdge,
-  isDirectionalLearningEdge,
   nodeBaseLayer,
   nodeStyle,
   relationLabel,
@@ -188,16 +187,18 @@ type LoadedGraphData = {
   edges: GraphEdgeResponse[];
 };
 
-const DETAIL_NODE_TYPES = new Set(["explanation_support", "practice_assessment", "application_extension"]);
-const BACKBONE_RELATION_TYPES = new Set(["prerequisite", "contains", "reasoning", "application", "training"]);
+const DETAIL_NODE_TYPES = new Set(["resource", "misconception", "application_case"]);
+const BACKBONE_RELATION_TYPES = new Set(["prerequisite_for", "part_of", "derives_to", "applies_to", "uses_method", "assesses"]);
 const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxColumns: number }> = {
-  knowledge_organization: { xBias: -0.42, yRatio: 0.38, maxColumns: 3 },
-  core_knowledge: { xBias: -0.24, yRatio: 0.48, maxColumns: 4 },
-  principle_reasoning: { xBias: -0.02, yRatio: 0.34, maxColumns: 4 },
-  method_demo: { xBias: 0.18, yRatio: 0.64, maxColumns: 5 },
-  explanation_support: { xBias: 0.36, yRatio: 0.3, maxColumns: 5 },
-  practice_assessment: { xBias: 0.38, yRatio: 0.78, maxColumns: 4 },
-  application_extension: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
+  topic: { xBias: -0.42, yRatio: 0.38, maxColumns: 3 },
+  concept: { xBias: -0.24, yRatio: 0.48, maxColumns: 4 },
+  formula_model: { xBias: -0.12, yRatio: 0.54, maxColumns: 4 },
+  principle: { xBias: -0.02, yRatio: 0.34, maxColumns: 4 },
+  procedure: { xBias: 0.18, yRatio: 0.64, maxColumns: 5 },
+  skill: { xBias: 0.3, yRatio: 0.72, maxColumns: 4 },
+  misconception: { xBias: 0.36, yRatio: 0.42, maxColumns: 4 },
+  application_case: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
+  resource: { xBias: 0.4, yRatio: 0.3, maxColumns: 5 },
 };
 const LAYER_GUIDE_COLORS = ["#6366f1", "#2563eb", "#0f766e", "#f59e0b", "#f43f5e"];
 const GRAPH_LAYOUT_VERSION = 13;
@@ -423,8 +424,8 @@ function selectBackboneEdgeIds(links: GraphLink[], visibleNodeCount: number, sho
     .filter((link) => BACKBONE_RELATION_TYPES.has(link.edge_type))
     .sort((left, right) => edgePriority(right) - edgePriority(left) || left.id - right.id);
 
-  for (const link of learningLinks.filter((item) => item.edge_type === "prerequisite")) add(link, true);
-  for (const link of learningLinks.filter((item) => item.edge_type !== "prerequisite")) add(link);
+  for (const link of learningLinks.filter((item) => item.edge_type === "prerequisite_for")) add(link, true);
+  for (const link of learningLinks.filter((item) => item.edge_type !== "prerequisite_for")) add(link);
   for (const link of learningLinks) add(link, true);
 
   return selected;
@@ -549,18 +550,9 @@ function buildStructuredNodePositions(nodes: GraphNode[], width: number, height:
 
 type GraphSettingsSidebarProps = {
   nodes: GraphNode[];
-  links: GraphLink[];
   presentTypes: { type: string; fill: string; label: string; role: NodeVisualRole }[];
   presentRelationTypes: RelationFilterItem[];
   nodeCount: number;
-  edgeCount: number;
-  activeEdgeCount: number;
-  backboneEdgeCount: number;
-  coreNodeCount: number;
-  visibleSmartLabelCount: number;
-  totalLoadedNodeCount: number;
-  totalNodeCount?: number;
-  totalEdgeCount?: number;
   showDetailNodes: boolean;
   showAllEdges: boolean;
   showAllNodeLabels: boolean;
@@ -583,18 +575,9 @@ type GraphSettingsSidebarProps = {
 
 function GraphSettingsSidebar({
   nodes,
-  links,
   presentTypes,
   presentRelationTypes,
   nodeCount,
-  edgeCount,
-  activeEdgeCount,
-  backboneEdgeCount,
-  coreNodeCount,
-  visibleSmartLabelCount,
-  totalLoadedNodeCount,
-  totalNodeCount,
-  totalEdgeCount,
   showDetailNodes,
   showAllEdges,
   showAllNodeLabels,
@@ -624,11 +607,6 @@ function GraphSettingsSidebar({
       nodes: layerNodes.slice(0, 3),
     };
   });
-  const directedCount = links.filter((link) => isDirectionalLearningEdge(link.edge_type)).length;
-  const lateralCount = Math.max(0, links.length - directedCount);
-  const resolvedTotalNodeCount = totalLoadedNodeCount || totalNodeCount || nodeCount;
-  const resolvedTotalEdgeCount = totalEdgeCount && totalEdgeCount > 0 ? totalEdgeCount : edgeCount;
-  const visibleEdgeCount = showAllEdges ? activeEdgeCount : backboneEdgeCount;
   const segmentClass = (active: boolean) =>
     `flex min-h-10 flex-1 items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
       active
@@ -647,24 +625,12 @@ function GraphSettingsSidebar({
           <div className="min-w-0">
             <p className="text-sm font-semibold">图谱视图</p>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {showDetailNodes ? "完整图谱" : "精简主图"} · {visibleEdgeCount}/{resolvedTotalEdgeCount} 关系
+              {showDetailNodes ? "展示完整节点" : "优先展示主干节点"}
             </p>
           </div>
           <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
-            {nodeCount}/{resolvedTotalNodeCount}
+            可探索
           </span>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {[
-            ["节点", nodeCount],
-            ["关系", visibleEdgeCount],
-            ["考点", coreNodeCount],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-              <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">{label}</p>
-              <p className="mt-0.5 text-sm font-semibold tabular-nums">{value}</p>
-            </div>
-          ))}
         </div>
       </div>
 
@@ -672,7 +638,7 @@ function GraphSettingsSidebar({
         <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">显示范围</p>
-            <span className="text-[11px] text-slate-400">{visibleSmartLabelCount} 个智能标签</span>
+            <span className="text-[11px] text-slate-400">默认优先主干</span>
           </div>
           <div className="flex rounded-lg bg-slate-100 p-1 dark:bg-slate-900">
             <button
@@ -684,7 +650,6 @@ function GraphSettingsSidebar({
               className={segmentClass(showDetailNodes)}
             >
               <span>完整</span>
-              <span className="font-semibold tabular-nums">{resolvedTotalNodeCount}</span>
             </button>
             <button
               type="button"
@@ -695,7 +660,6 @@ function GraphSettingsSidebar({
               className={segmentClass(!showDetailNodes)}
             >
               <span>精简</span>
-              <span className="font-semibold tabular-nums">{nodeCount}</span>
             </button>
           </div>
         </section>
@@ -712,7 +676,6 @@ function GraphSettingsSidebar({
               className={segmentClass(!showAllEdges)}
             >
               <span>主干</span>
-              <span className="font-semibold tabular-nums">{backboneEdgeCount}</span>
             </button>
             <button
               type="button"
@@ -723,7 +686,6 @@ function GraphSettingsSidebar({
               className={segmentClass(showAllEdges)}
             >
               <span>全部</span>
-              <span className="font-semibold tabular-nums">{activeEdgeCount}</span>
             </button>
           </div>
         </section>
@@ -758,7 +720,7 @@ function GraphSettingsSidebar({
         <section className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">学习层级</p>
-            <span className="text-[11px] text-slate-400">{directedCount} 主线 · {lateralCount} 横向</span>
+            <span className="text-[11px] text-slate-400">按课程顺序分层</span>
           </div>
           <div className="space-y-2">
             {layerItems.map((layer) => (
@@ -770,7 +732,6 @@ function GraphSettingsSidebar({
                     style={{ width: `${Math.max(6, Math.min(100, (layer.count / Math.max(1, nodeCount)) * 100))}%` }}
                   />
                 </div>
-                <div className="w-9 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">{layer.count}</div>
               </div>
             ))}
           </div>
@@ -1158,14 +1119,8 @@ export function ForceGraphView({
     presentTypes,
     presentRelationTypes,
     nodeCount,
-    edgeCount,
-    activeEdgeCount,
-    coreNodeCount,
-    backboneEdgeCount,
-    visibleSmartLabelCount,
-    totalLoadedNodeCount,
   } = useMemo(() => {
-    if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentTypes: [] as { type: string; fill: string; label: string; role: NodeVisualRole }[], presentRelationTypes: [] as RelationFilterItem[], nodeCount: 0, edgeCount: 0, activeEdgeCount: 0, coreNodeCount: 0, backboneEdgeCount: 0, visibleSmartLabelCount: 0, totalLoadedNodeCount: 0 };
+    if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentTypes: [] as { type: string; fill: string; label: string; role: NodeVisualRole }[], presentRelationTypes: [] as RelationFilterItem[], nodeCount: 0 };
 
     const nodeIdSet = new Set((rawData.nodes ?? []).map((n: any) => n.id));
     const typeSet = new Set<string>();
@@ -1290,7 +1245,7 @@ export function ForceGraphView({
         const toLayer = layerByNodeId.get(direction.to);
         if (fromLayer == null || toLayer == null) continue;
         const baseToLayer = baseLayerByNodeId.get(direction.to) ?? toLayer;
-        const promotionAllowance = edge.edge_type === "prerequisite" ? 2 : 1;
+        const promotionAllowance = edge.edge_type === "prerequisite_for" ? 2 : 1;
         const maxPromotedLayer = clampGraphLayer(baseToLayer + promotionAllowance);
         const nextLayer = Math.min(maxPromotedLayer, clampGraphLayer(fromLayer + 1));
         if (nextLayer > toLayer) {
@@ -1332,7 +1287,6 @@ export function ForceGraphView({
       }))
       .sort((a, b) => graphNodePriority(a) - graphNodePriority(b));
 
-    const totalLoadedNodeCount = nodes.length;
     const visibleNodeIds = showDetailNodes
       ? new Set(nodes.map((node) => node.id))
       : new Set(
@@ -1375,12 +1329,7 @@ export function ForceGraphView({
         active: !hiddenRelationTypes.has(type),
       }))
       .sort((left, right) => (EDGE_TYPE_PRIORITY[right.type] ?? 0) - (EDGE_TYPE_PRIORITY[left.type] ?? 0) || left.label.localeCompare(right.label));
-    const coreNodeCount = visibleNodes.filter((node) => isAssessmentCoreNode(node)).length;
-    const backboneEdgeCount = links.filter((link) => link.is_backbone).length;
-    const emptyNeighbors = new Set<number>();
-    const visibleSmartLabelCount = visibleNodes.filter((node) => shouldShowSmartNodeLabel(node, null, emptyNeighbors, false)).length;
-
-    return { nodes: visibleNodes, links, presentTypes: types, presentRelationTypes: relationTypes, nodeCount: visibleNodes.length, edgeCount: validEdges.length, activeEdgeCount: links.length, coreNodeCount, backboneEdgeCount, visibleSmartLabelCount, totalLoadedNodeCount };
+    return { nodes: visibleNodes, links, presentTypes: types, presentRelationTypes: relationTypes, nodeCount: visibleNodes.length };
   }, [hiddenRelationTypes, rawData, selectedNodeId, showDetailNodes]);
 
   const nodeSearchResults = useMemo(() => {
@@ -1737,7 +1686,7 @@ export function ForceGraphView({
         .attr("font-weight", 800)
         .attr("font-family", "system-ui, sans-serif")
         .attr("fill", "#0f172a")
-        .text(`${layer.label} ${layerNodeCounts.get(index) ?? 0}`);
+        .text(layer.label);
       layerBand.append("text")
         .attr("x", zone.x + 50)
         .attr("y", zone.y + 48)
@@ -1747,7 +1696,7 @@ export function ForceGraphView({
         .attr("font-family", "system-ui, sans-serif")
         .attr("fill", "#64748b")
         .text(typeSummary.length
-          ? typeSummary.map((item) => `${item.style.label} ${item.count}`).join(" / ")
+          ? typeSummary.map((item) => item.style.label).join(" / ")
           : layer.description.split("/")[0].trim());
     });
     // Zoom behavior
@@ -2287,18 +2236,12 @@ export function ForceGraphView({
   const graphProgressPct = typeof graphLane?.progress_pct === "number"
     ? Math.max(0, Math.min(100, Math.round(graphLane.progress_pct)))
     : null;
-  const latestStreamUnitDelta = Number(
-    latestGraphStreamDelta?.created_unit_count ?? latestGraphStreamDelta?.unit_count ?? 0,
-  );
-  const latestStreamEdgeDelta = Number(
-    latestGraphStreamDelta?.created_edge_count ?? latestGraphStreamDelta?.edge_count ?? 0,
-  );
   const graphLiveMessage = graphIsLive
     ? `图谱实时更新中${graphProgressPct !== null ? ` · ${graphProgressPct}%` : ""}`
     : graphDelta
-      ? `已更新 +${graphDelta.nodes} 节点 +${graphDelta.edges} 边`
-      : latestGraphStreamDelta && (latestStreamUnitDelta > 0 || latestStreamEdgeDelta > 0)
-        ? `已写入 +${Math.max(0, latestStreamUnitDelta)} 节点 +${Math.max(0, latestStreamEdgeDelta)} 边`
+      ? "图谱已更新"
+      : latestGraphStreamDelta
+        ? "正在写入图谱"
         : initialFetching && rawData
           ? "正在同步最新图谱"
           : "";
@@ -2360,7 +2303,7 @@ export function ForceGraphView({
           </div>
         </div>
         <span className="inline-flex max-w-full items-center rounded-lg bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
-          {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount ?? edgeCount} 关系
+          {showDetailNodes ? "完整图谱" : "精简主图"} · {showAllEdges ? "全部关系" : "主干关系"}
         </span>
       </div>
       {/* Graph panel */}
@@ -2373,7 +2316,7 @@ export function ForceGraphView({
         <div className="pointer-events-auto absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 sm:pr-28 lg:right-44 lg:flex lg:max-w-none lg:pr-0">
           {toolbar}
           <span className="inline-flex h-8 items-center rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
-            {showDetailNodes ? "完整图谱" : "精简主图"} · {nodeCount}{totalLoadedNodeCount ? `/${totalLoadedNodeCount}` : totalNodeCount ? `/${totalNodeCount}` : ""} 节点 · {showAllEdges ? activeEdgeCount : backboneEdgeCount}/{totalEdgeCount && totalEdgeCount > 0 ? totalEdgeCount : edgeCount} 关系
+            {showDetailNodes ? "完整图谱" : "精简主图"} · {showAllEdges ? "全部关系" : "主干关系"}
           </span>
           {expandingNodeId ? (
             <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
@@ -2554,18 +2497,9 @@ export function ForceGraphView({
         ) : (
           <GraphSettingsSidebar
             nodes={nodes}
-            links={links}
             presentTypes={presentTypes}
             presentRelationTypes={presentRelationTypes}
             nodeCount={nodeCount}
-            edgeCount={edgeCount}
-            activeEdgeCount={activeEdgeCount}
-            backboneEdgeCount={backboneEdgeCount}
-            coreNodeCount={coreNodeCount}
-            visibleSmartLabelCount={visibleSmartLabelCount}
-            totalLoadedNodeCount={totalLoadedNodeCount}
-            totalNodeCount={totalNodeCount}
-            totalEdgeCount={totalEdgeCount}
             showDetailNodes={showDetailNodes}
             showAllEdges={showAllEdges}
             showAllNodeLabels={showAllNodeLabels}

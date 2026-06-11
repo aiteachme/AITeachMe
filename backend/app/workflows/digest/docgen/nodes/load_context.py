@@ -16,6 +16,7 @@ from app.workflows.digest.docgen.nodes.common import (
     publish_docgen_progress,
     serialize_section,
 )
+from app.workflows.digest.docgen.lib.learner_profile import load_docgen_learner_profile_context
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.common.contracts import build_digest_retrieval_policy
@@ -79,6 +80,22 @@ def build_load_context_node(*, context: WorkflowContext):
             or planner_context.get("docgen_history_brief")
             or ""
         ).strip()
+        try:
+            learner_profile_context = load_docgen_learner_profile_context(
+                course_id=state["course_id"],
+                user_id=state.get("user_id") or None,
+            )
+        except Exception:
+            learner_profile_context = {
+                "schema_version": 1,
+                "course_id": state["course_id"],
+                "user_id": state.get("user_id") or "",
+                "has_profile": False,
+                "profile_text": "",
+                "user_profile": {},
+                "course_profile": {},
+            }
+        learner_profile_text = str(learner_profile_context.get("profile_text") or "").strip()
 
         has_local_materials = bool(shared_inputs.source_packets)
         plan_course_label = str(plan_contract.course_name or plan_contract.user_prompt or "").strip()
@@ -101,6 +118,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "user_prompt": str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             "plan": str(plan_contract.plan or ""),
             "docgen_history_brief": docgen_history_brief,
+            "learner_profile_text": learner_profile_text,
+            "learner_profile_context": learner_profile_context,
             "planner_context": planner_context,
             "build_constraints": build_constraints,
             "source_strategy": "local_first" if has_local_materials else "web_first",
@@ -114,6 +133,8 @@ def build_load_context_node(*, context: WorkflowContext):
             user_prompt=str(plan_contract.user_prompt or state.get("user_prompt") or ""),
             plan=str(plan_contract.plan or ""),
             docgen_history_brief=docgen_history_brief,
+            learner_profile_text=learner_profile_text,
+            learner_profile_context=learner_profile_context,
             planner_context=planner_context,
             build_constraints=build_constraints,
             source_strategy="local_first" if has_local_materials else "web_first",
@@ -188,6 +209,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "shared_inputs": shared_inputs,
             "raw_chunks": [serialize_section(section) for section in shared_inputs.section_packets],
             "course_profile": shared_inputs.course_profile.model_dump(mode="json"),
+            "learner_profile_context": learner_profile_context,
+            "learner_profile_text": learner_profile_text,
             "course_name": plan_course_label,
             "chapter_assignments": assignments,
             "confirmed_plan": plan_payload,

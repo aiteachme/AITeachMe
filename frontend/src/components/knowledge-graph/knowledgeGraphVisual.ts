@@ -58,13 +58,15 @@ export interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 }
 
 export const NODE_COLORS: Record<string, NodeVisualStyle> = {
-  core_knowledge: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "核心知识", role: "assessment_core", roleLabel: "必须知道" },
-  method_demo: { fill: "#f59e0b", dark: "#d97706", soft: "#fef3c7", label: "方法示范", role: "assessment_core", roleLabel: "怎么做" },
-  explanation_support: { fill: "#64748b", dark: "#475569", soft: "#f1f5f9", label: "解释辅助", role: "support", roleLabel: "帮助理解" },
-  principle_reasoning: { fill: "#0f766e", dark: "#115e59", soft: "#ccfbf1", label: "原理推理", role: "assessment_core", roleLabel: "为什么" },
-  practice_assessment: { fill: "#f43f5e", dark: "#e11d48", soft: "#ffe4e6", label: "练习评估", role: "assessment_core", roleLabel: "练会了吗" },
-  knowledge_organization: { fill: "#6366f1", dark: "#4f46e5", soft: "#e0e7ff", label: "知识组织", role: "context", roleLabel: "怎么安排" },
-  application_extension: { fill: "#a855f7", dark: "#9333ea", soft: "#f3e8ff", label: "应用拓展", role: "support", roleLabel: "能做什么" },
+  topic: { fill: "#6366f1", dark: "#4f46e5", soft: "#e0e7ff", label: "主题模块", role: "context", roleLabel: "结构" },
+  concept: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "概念术语", role: "assessment_core", roleLabel: "知道什么" },
+  principle: { fill: "#0f766e", dark: "#115e59", soft: "#ccfbf1", label: "原理性质", role: "assessment_core", roleLabel: "为什么" },
+  formula_model: { fill: "#0891b2", dark: "#0e7490", soft: "#cffafe", label: "公式模型", role: "assessment_core", roleLabel: "怎么算" },
+  procedure: { fill: "#f59e0b", dark: "#d97706", soft: "#fef3c7", label: "方法步骤", role: "assessment_core", roleLabel: "怎么做" },
+  skill: { fill: "#f43f5e", dark: "#e11d48", soft: "#ffe4e6", label: "解题技能", role: "assessment_core", roleLabel: "练会了吗" },
+  misconception: { fill: "#dc2626", dark: "#b91c1c", soft: "#fee2e2", label: "易错辨析", role: "assessment_core", roleLabel: "别踩坑" },
+  application_case: { fill: "#a855f7", dark: "#9333ea", soft: "#f3e8ff", label: "应用案例", role: "support", roleLabel: "能做什么" },
+  resource: { fill: "#64748b", dark: "#475569", soft: "#f1f5f9", label: "学习资源", role: "support", roleLabel: "补充" },
 };
 
 export const DEFAULT_COLOR: NodeVisualStyle = {
@@ -77,54 +79,65 @@ export const DEFAULT_COLOR: NodeVisualStyle = {
 };
 
 export const RELATION_LABELS: Record<string, string> = {
-  prerequisite: "前置",
-  contains: "包含",
-  reasoning: "推理",
-  application: "应用",
-  explanation: "说明",
-  training: "训练",
-  contrast: "对比",
-  similar: "相似",
+  part_of: "归属",
+  prerequisite_for: "前置",
+  derives_to: "推导",
+  applies_to: "应用",
+  uses_method: "用方法",
+  assesses: "考察",
+  explains: "解释",
+  remediates: "补救",
+  confuses_with: "易混",
+  similar_to: "相似",
+  extends_to: "拓展",
 };
 
 export const RELATION_COLORS: Record<string, string> = {
-  prerequisite: "#64748b",
-  contains: "#94a3b8",
-  reasoning: "#0f766e",
-  application: "#6366f1",
-  explanation: "#64748b",
-  training: "#f43f5e",
-  contrast: "#f59e0b",
-  similar: "#14b8a6",
+  part_of: "#94a3b8",
+  prerequisite_for: "#64748b",
+  derives_to: "#0f766e",
+  applies_to: "#6366f1",
+  uses_method: "#f59e0b",
+  assesses: "#f43f5e",
+  explains: "#64748b",
+  remediates: "#dc2626",
+  confuses_with: "#f97316",
+  similar_to: "#14b8a6",
+  extends_to: "#a855f7",
 };
 
 export const GRAPH_LAYERS: GraphLayer[] = [
   { label: "组织", description: "目标 / 框架 / 路径" },
-  { label: "知识", description: "概念 / 规则 / 事实" },
+  { label: "知识", description: "概念 / 公式 / 事实" },
   { label: "原理", description: "推理 / 机制 / 条件" },
-  { label: "方法", description: "例题 / 步骤 / 操作" },
-  { label: "路径", description: "练习 / 应用 / 拓展" },
+  { label: "方法", description: "步骤 / 技能 / 纠错" },
+  { label: "应用", description: "案例 / 迁移 / 资源" },
 ];
 
 export const EDGE_TYPE_PRIORITY: Record<string, number> = {
-  prerequisite: 8,
-  contains: 7,
-  reasoning: 6,
-  application: 5,
-  explanation: 4,
-  training: 4,
-  contrast: 2,
-  similar: 1,
+  prerequisite_for: 8,
+  part_of: 7,
+  derives_to: 6,
+  applies_to: 5,
+  uses_method: 5,
+  assesses: 4,
+  explains: 3,
+  remediates: 3,
+  confuses_with: 2,
+  similar_to: 1,
+  extends_to: 1,
 };
 
 const NODE_TYPE_LAYER: Record<string, number> = {
-  knowledge_organization: 0,
-  core_knowledge: 1,
-  principle_reasoning: 2,
-  method_demo: 3,
-  explanation_support: 3,
-  practice_assessment: 4,
-  application_extension: 4,
+  topic: 0,
+  concept: 1,
+  formula_model: 1,
+  principle: 2,
+  procedure: 3,
+  skill: 3,
+  misconception: 3,
+  application_case: 4,
+  resource: 4,
 };
 
 export function truncateGraphLabel(value: string, maxChars = 12): string {
@@ -161,7 +174,7 @@ export function nodeBaseLayer(nodeType: string): number {
 }
 
 export function isDirectionalLearningEdge(edgeType: string): boolean {
-  return edgeType !== "similar" && edgeType !== "contrast";
+  return edgeType !== "similar_to" && edgeType !== "confuses_with";
 }
 
 export function getLearningEdgeDirection(edge: Pick<GraphLink, "source_node_id" | "target_node_id" | "edge_type">): {
@@ -180,8 +193,8 @@ export function edgePriority(edge: Pick<GraphLink, "edge_type" | "confidence" | 
 }
 
 export function isBackboneEdge(edge: Pick<GraphLink, "edge_type" | "confidence" | "weight" | "source_degree" | "target_degree">): boolean {
-  if (edge.edge_type === "prerequisite" || edge.edge_type === "contains" || edge.edge_type === "reasoning") return true;
-  if (edge.edge_type === "application" || edge.edge_type === "training") {
+  if (edge.edge_type === "prerequisite_for" || edge.edge_type === "part_of" || edge.edge_type === "derives_to") return true;
+  if (edge.edge_type === "applies_to" || edge.edge_type === "uses_method" || edge.edge_type === "assesses") {
     return Math.max(edge.source_degree, edge.target_degree) >= 2 || edgePriority(edge) >= 4.8;
   }
   return edgePriority(edge) >= 3.1 && Math.min(edge.source_degree, edge.target_degree) <= 4;

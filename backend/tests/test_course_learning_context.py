@@ -56,9 +56,9 @@ def test_course_learning_context_payload_persists_docgen_signals() -> None:
                         "concept_targets": ["核心概念"],
                         "example_targets": ["代表性例子"],
                         "content_role_targets": {
-                            "core_knowledge": ["核心概念"],
-                            "method_demo": ["代表性例子"],
-                            "practice_assessment": ["自测任务"],
+                            "concept": ["核心概念"],
+                            "application_case": ["代表性例子"],
+                            "skill": ["自测任务"],
                         },
                         "example_coverage_plan": [
                             {
@@ -69,7 +69,7 @@ def test_course_learning_context_payload_persists_docgen_signals() -> None:
                             }
                         ],
                         "practice_seed_policy": {
-                            "content_mix_policy": {"core_knowledge": 0.3, "method_demo": 0.16},
+                            "content_mix_policy": {"concept": 0.3, "application_case": 0.16},
                             "example_density_policy": {
                                 "minimum_practice_share": 0.3,
                                 "worked_examples_per_chapter": 3,
@@ -104,13 +104,13 @@ def test_course_learning_context_payload_persists_docgen_signals() -> None:
     assert payload["schema_version"] == 3
     assert payload["intent_profile_v2"]["learning_goal_text"] == "学会材料主线"
     assert payload["retrieval_policy"]["local_first"] is True
-    assert payload["learning_taxonomy"]["node_types"][0]["value"] == "core_knowledge"
+    assert payload["learning_taxonomy"]["node_types"][0]["value"] == "topic"
     assert payload["content_mix_policy"]["example_density_policy"]["worked_examples_per_chapter"] == 3
-    assert payload["role_coverage_by_chapter"][0]["role_targets"]["core_knowledge"] == ["核心概念"]
+    assert payload["role_coverage_by_chapter"][0]["role_targets"]["concept"] == ["核心概念"]
     assert payload["example_coverage_by_chapter"][0]["planned_example_count"] == 2
     assert payload["kg_candidate_hints"][0]["candidate_terms"] == ["核心概念"]
-    assert payload["kg_candidate_hints"][0]["candidate_nodes"][0]["node_type"] == "core_knowledge"
-    assert payload["kg_candidate_hints"][0]["candidate_edges"][0]["edge_type"] == "training"
+    assert payload["kg_candidate_hints"][0]["candidate_nodes"][0]["node_type"] == "concept"
+    assert payload["kg_candidate_hints"][0]["candidate_edges"][0]["edge_type"] == "assesses"
     assert payload["quality_summary"]["applied_patch_count"] == 1
     assert "生成意图" in llm_context
     assert "学习内容分类与例题策略" in llm_context

@@ -1,6 +1,6 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Loader2, Network, Sparkles, type LucideIcon } from "lucide-react";
+import { BarChart3, Loader2, Network, type LucideIcon } from "lucide-react";
 
 import { graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost } from "../../api/generated/knowledge";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
@@ -8,17 +8,11 @@ import { InsightDashboardView } from "./insights/InsightDashboardView";
 import { buildInsightModel } from "./insights/insightsCore";
 import { ReadableMapView } from "./insights/ReadableMapView";
 
-type InsightMode = "map" | "galaxy" | "analysis";
-
-const AtlasGalaxyView = lazy(async () => {
-  const module = await import("./insights/AtlasGalaxyView");
-  return { default: module.AtlasGalaxyView };
-});
+type InsightMode = "map" | "analysis";
 
 const TABS: Array<{ id: InsightMode; label: string; icon: LucideIcon; title: string }> = [
   { id: "map", label: "学习地图", icon: Network, title: "按学习层级阅读课程结构" },
   { id: "analysis", label: "结构诊断", icon: BarChart3, title: "查看主干、闭环和断点" },
-  { id: "galaxy", label: "3D 概览", icon: Sparkles, title: "用空间视角浏览知识簇" },
 ];
 
 function LoadingState({ toolbar }: { toolbar?: ReactNode }) {
@@ -103,18 +97,6 @@ export function KnowledgeGraphInsightsView({
 
       <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
         {mode === "map" ? <ReadableMapView model={model} /> : null}
-        {mode === "galaxy" ? (
-          <Suspense
-            fallback={
-              <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                正在加载 3D 展示...
-              </div>
-            }
-          >
-            <AtlasGalaxyView model={model} />
-          </Suspense>
-        ) : null}
         {mode === "analysis" ? <InsightDashboardView model={model} /> : null}
       </div>
     </div>

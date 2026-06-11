@@ -14,10 +14,13 @@ export interface KnowledgeRelationResponse {
   source_node_id: number;
   source_node_name: string;
   source_node_type: string;
+  source_node_type_label?: string;
   target_node_id: number;
   target_node_name: string;
   target_node_type: string;
+  target_node_type_label?: string;
   edge_type: string;
+  edge_type_label?: string;
   description?: string;
   weight: number;
   confidence: number;

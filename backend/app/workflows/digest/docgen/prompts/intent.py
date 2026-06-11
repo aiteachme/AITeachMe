@@ -18,6 +18,7 @@ def build_intent_core_messages(
     material_profile: Mapping[str, Any],
     chapters: Sequence[Mapping[str, Any]],
     docgen_history_brief: str = "",
+    learner_profile_text: str = "",
 ) -> list[dict[str, str]]:
     # 文档级意图判断只需要短上下文；按章风格脚手架后移到章节 brief 阶段。
     mode_label = get_docgen_mode_profile(digest_mode).prompt_label
@@ -40,6 +41,7 @@ def build_intent_core_messages(
 用户提示：{user_prompt or "未提供"}
 Planner plan：{plan or "未提供"}
 规划器对话与修改摘要：{docgen_history_brief or "暂无"}
+学习者画像补充：{learner_profile_text or "暂无可用画像"}
 章节标题：{chapter_titles or "未提供"}
 材料画像：{dict(material_profile or {})}
 
@@ -77,6 +79,7 @@ Planner plan：{plan or "未提供"}
             "digest_mode": digest_mode,
             "chapter_count": len(chapters),
             "has_history": bool(docgen_history_brief),
+            "has_learner_profile": bool(learner_profile_text),
         },
         output=messages,
     )

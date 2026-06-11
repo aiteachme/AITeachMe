@@ -20,18 +20,22 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
 )
 
 _PRIMARY_UNIT_TYPES = {
-    "core_knowledge",
-    "method_demo",
-    "principle_reasoning",
-    "knowledge_organization",
-    "application_extension",
+    "concept",
+    "principle",
+    "formula_model",
+    "procedure",
+    "skill",
+    "misconception",
+    "application_case",
 }
 _SECONDARY_TO_PARENT_RELATION = {
-    "method_demo": "application",
-    "principle_reasoning": "reasoning",
-    "explanation_support": "explanation",
-    "practice_assessment": "training",
-    "application_extension": "application",
+    "procedure": "part_of",
+    "principle": "part_of",
+    "formula_model": "part_of",
+    "resource": "explains",
+    "skill": "assesses",
+    "misconception": "remediates",
+    "application_case": "part_of",
 }
 _MAX_SECTION_STITCH_EDGES_PER_SECTION = 6
 _MAX_MENTION_STITCH_EDGES = 160
@@ -68,11 +72,13 @@ def _unit_type(unit: MarkdownKnowledgeUnit) -> str:
 
 def _choose_section_parent(units: list[MarkdownKnowledgeUnit]) -> MarkdownKnowledgeUnit | None:
     for preferred_type in (
-        "core_knowledge",
-        "method_demo",
-        "principle_reasoning",
-        "knowledge_organization",
-        "application_extension",
+        "concept",
+        "principle",
+        "formula_model",
+        "procedure",
+        "skill",
+        "application_case",
+        "topic",
     ):
         for unit in units:
             if _unit_type(unit) == preferred_type:
@@ -86,7 +92,7 @@ def _relation_to_section_parent(unit: MarkdownKnowledgeUnit, parent: MarkdownKno
     relation = _SECONDARY_TO_PARENT_RELATION.get(unit_type)
     if relation is None:
         return None
-    if relation in {"explanation", "training"}:
+    if relation in {"explains", "assesses", "remediates"}:
         return relation if parent_type in _PRIMARY_UNIT_TYPES else None
     return relation
 
@@ -166,10 +172,7 @@ def _add_section_local_edges(
             relation = _relation_to_section_parent(unit, parent)
             if relation is None:
                 continue
-            if relation in {"application", "explanation", "training", "contains"}:
-                source_unit, target_unit = parent, unit
-            else:
-                source_unit, target_unit = unit, parent
+            source_unit, target_unit = unit, parent
             edge = _new_edge(
                 source=source_unit,
                 target=target_unit,
@@ -188,18 +191,20 @@ def _add_section_local_edges(
 def _infer_reference_relation(text: str, source_type: str) -> str:
     normalized = normalize_name(text)
     if any(token in normalized for token in ("前提", "基础", "先学", "先掌握", "依赖")):
-        return "prerequisite"
+        return "prerequisite_for"
     if any(token in normalized for token in ("区别", "对比", "比较", "不同于", "相反")):
-        return "contrast"
+        return "confuses_with"
     if any(token in normalized for token in ("类似", "相似", "同理")):
-        return "similar"
-    if normalize_knowledge_unit_type(source_type) == "practice_assessment":
-        return "training"
-    if normalize_knowledge_unit_type(source_type) == "explanation_support":
-        return "explanation"
+        return "similar_to"
+    if normalize_knowledge_unit_type(source_type) == "skill":
+        return "assesses"
+    if normalize_knowledge_unit_type(source_type) == "resource":
+        return "explains"
+    if normalize_knowledge_unit_type(source_type) == "misconception":
+        return "remediates"
     if any(token in normalized for token in ("利用", "应用", "借助", "结合", "使用")):
-        return "application"
-    return "contains"
+        return "applies_to"
+    return "part_of"
 
 
 def _unique_name_index(units: list[MarkdownKnowledgeUnit]) -> dict[str, MarkdownKnowledgeUnit]:
@@ -237,10 +242,10 @@ def _add_mention_edges(
             if target.anchor == unit.anchor or normalized_name not in text:
                 continue
             relation = _infer_reference_relation(text, unit.knowledge_unit_type)
-            if relation == "prerequisite":
+            if relation == "prerequisite_for":
                 source, target_unit = target, unit
-            elif relation in {"explanation", "training"}:
-                source, target_unit = target, unit
+            elif relation in {"explains", "assesses", "remediates"}:
+                source, target_unit = unit, target
             else:
                 source, target_unit = unit, target
             edge = _new_edge(

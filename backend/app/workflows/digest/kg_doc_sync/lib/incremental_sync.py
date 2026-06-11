@@ -183,6 +183,8 @@ def _source_confidence_for_kind(source_kind: str) -> float:
     kind = str(source_kind or "").strip().casefold()
     if kind.startswith("llm_") or kind == "llm_relation":
         return 0.86
+    if kind == "docgen_preliminary_kg":
+        return 0.62
     if kind == "docgen_backbone":
         return 0.58
     if kind == "structural_heading":
@@ -198,7 +200,7 @@ def _unit_type_source_for_kind(source_kind: str) -> tuple[str, float]:
     kind = str(source_kind or "").strip().casefold()
     if kind.startswith("llm_"):
         return "llm", _source_confidence_for_kind(kind)
-    if kind in {"docgen_backbone", "structural_heading", "cross_section_semantic", "markdown"}:
+    if kind in {"docgen_preliminary_kg", "docgen_backbone", "structural_heading", "cross_section_semantic", "markdown"}:
         return "rule", _source_confidence_for_kind(kind)
     return "manual", 1.0
 
@@ -210,6 +212,8 @@ def _structured_context_payload(value: dict[str, object] | None) -> dict[str, ob
 def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> dict[int, list[dict[str, object]]]:
     manifest = _as_mapping(structured_context.get("docgen_manifest"))
     summary = _as_mapping(structured_context.get("document_summary_json"))
+    guideline = _as_mapping(manifest.get("guideline"))
+    summary_enhanced = _as_mapping(manifest.get("summary_enhanced"))
     lookup: dict[int, list[dict[str, object]]] = {}
 
     def _add_items(items: object, *, chapter_key: str = "chapter_index") -> None:
@@ -226,10 +230,39 @@ def _docgen_chapter_payloads_by_index(structured_context: dict[str, object]) -> 
     _add_items(summary.get("kg_candidate_hints"))
     _add_items(_as_mapping(summary.get("confirmed_plan")).get("chapters"))
     _add_items(_as_mapping(manifest.get("confirmed_plan")).get("chapters"))
+    _add_items(manifest.get("chapters_enhanced"))
+    _add_items(_as_mapping(manifest.get("dispatch_table")).get("items"))
+    _add_items(summary_enhanced.get("chapter_source_affinity"))
     _add_items(_as_mapping(manifest.get("chapter_generation_plan_seed")).get("chapters"))
     _add_items(manifest.get("chapter_task_seeds"))
     _add_items(manifest.get("chapter_execution_briefs"))
     _add_items(_as_mapping(manifest.get("chapter_generation_plan")).get("chapters"))
+
+    for item in _as_list(guideline.get("canonical_glossary")):
+        payload = _as_mapping(item)
+        term = str(payload.get("term") or "").strip()
+        if not term:
+            continue
+        for chapter_index in _clean_int_list(payload.get("target_chapters")):
+            lookup.setdefault(chapter_index, []).append(
+                {
+                    "chapter_index": chapter_index,
+                    "concept_targets": [term],
+                    "definition_targets": [payload.get("definition") or ""],
+                }
+            )
+
+    global_payload = {
+        "objective": _as_mapping(manifest.get("intent_enhanced")).get("learning_goal_text"),
+        "content_strategy_text": _as_mapping(manifest.get("intent_enhanced")).get("content_strategy_text"),
+        "concept_targets": summary_enhanced.get("concepts"),
+        "definition_targets": summary_enhanced.get("definitions"),
+        "formula_targets": summary_enhanced.get("formulas"),
+        "example_targets": summary_enhanced.get("examples"),
+    }
+    if any(global_payload.values()):
+        for chapter_index in list(lookup):
+            lookup[chapter_index].append(global_payload)
     return lookup
 
 
@@ -288,13 +321,15 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
     for payload in payloads:
         role_payload = _as_mapping(payload.get("content_role_targets"))
         for role_name in (
-            "core_knowledge",
-            "method_demo",
-            "principle_reasoning",
-            "explanation_support",
-            "practice_assessment",
-            "knowledge_organization",
-            "application_extension",
+            "concept",
+            "principle",
+            "formula_model",
+            "procedure",
+            "skill",
+            "misconception",
+            "application_case",
+            "topic",
+            "resource",
         ):
             role_targets.extend(_clean_context_list(role_payload.get(role_name), limit=4, max_chars=90))
     role_targets = _clean_context_list(role_targets, limit=10, max_chars=90)
@@ -315,6 +350,9 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
     candidate_claims = _merged_context_values(payloads, "candidate_claims", limit=5, max_chars=140)
     if candidate_claims:
         hints.append("候选主张线索：" + "；".join(candidate_claims))
+    strategy = _first_context_text(payloads, "content_strategy_text", max_chars=180)
+    if strategy:
+        hints.append("全局写作策略：" + strategy)
     outline = _merged_context_values(payloads, "teaching_outline", limit=4, max_chars=120)
     if outline:
         hints.append("讲解路径：" + "；".join(outline))
@@ -330,6 +368,18 @@ def _chapter_context_lookup(structured_context: dict[str, object]) -> dict[int, 
         if chapter_index <= 0:
             continue
         digest_mode, docgen_hints = _chapter_docgen_hints(docgen_payloads_by_index.get(chapter_index, []))
+        source_file_ids = _clean_string_list(
+            [
+                *_clean_string_list(payload.get("source_file_ids")),
+                *_merged_context_values(
+                    docgen_payloads_by_index.get(chapter_index, []),
+                    "source_file_ids",
+                    "file_ids",
+                    limit=16,
+                    max_chars=120,
+                ),
+            ]
+        )
         lookup[chapter_index] = ChapterSourceContext(
             knowledge_document_id=(_safe_int(payload.get("knowledge_document_id")) or None),
             chapter_index=chapter_index,
@@ -337,7 +387,7 @@ def _chapter_context_lookup(structured_context: dict[str, object]) -> dict[int, 
             summary=str(payload.get("summary") or "").strip(),
             digest_mode=str(payload.get("digest_mode") or digest_mode or "").strip(),
             docgen_hints=docgen_hints,
-            source_file_ids=_clean_string_list(payload.get("source_file_ids")),
+            source_file_ids=source_file_ids,
         )
     return lookup
 
@@ -349,13 +399,37 @@ def _chapter_context_for_index(
     return chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
 
 
+def _guideline_as_backbone_payload(guideline: dict[str, object]) -> dict[str, object]:
+    if not guideline:
+        return {}
+    payload = dict(guideline)
+    if "concept_dependency_graph" not in payload and "dependency_edges" in payload:
+        payload["concept_dependency_graph"] = payload.get("dependency_edges")
+    return payload
+
+
 def _document_backbone_payload(structured_context: dict[str, object]) -> dict[str, object]:
     manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    guideline_backbone = _guideline_as_backbone_payload(_as_mapping(manifest.get("guideline")))
     backbone = _as_mapping(manifest.get("document_backbone_snapshot"))
     if backbone:
+        if guideline_backbone:
+            backbone.setdefault("canonical_glossary", guideline_backbone.get("canonical_glossary"))
+            backbone.setdefault("concept_dependency_graph", guideline_backbone.get("concept_dependency_graph"))
         return backbone
+    if guideline_backbone:
+        return guideline_backbone
     summary = _as_mapping(structured_context.get("document_summary_json"))
     return _as_mapping(summary.get("docgen_learning_backbone") or summary.get("document_backbone"))
+
+
+def _preliminary_kg_payload(structured_context: dict[str, object]) -> dict[str, object]:
+    manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    preliminary = _as_mapping(manifest.get("preliminary_kg"))
+    if preliminary:
+        return preliminary
+    summary = _as_mapping(structured_context.get("document_summary_json"))
+    return _as_mapping(summary.get("preliminary_kg"))
 
 
 def sync_markdown_knowledge_graph(
@@ -498,11 +572,16 @@ def build_prefetched_knowledge_graph_units_payload(
     structured_context: dict[str, object] | None = None,
     prefetched_records: list[SectionExtractionRecord] | None = None,
 ) -> KnowledgeSyncExtractionPayload:
-    """把 DocGen 预抽取中已匹配最终文档的 section payload 合成早期知识点。"""
+    """把 DocGen 已有图谱信号合成早期知识点。
+
+    优先复用已匹配最终文档的 section LLM 预抽取；即使预抽取为空，也会使用
+    DocGen 规划阶段产出的 preliminary_kg/backbone 规则种子，避免自动图谱
+    在后置抽取被取消时完全没有可用知识点。
+    """
 
     records = list(prefetched_records or [])
     chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
-    if not chapters or not records:
+    if not chapters:
         diagnostics = _empty_extraction_diagnostics()
         diagnostics["prefetch_section_count"] = len(records)
         return KnowledgeSyncExtractionPayload(units=[], extracted_edges=[], diagnostics_totals=diagnostics)
@@ -555,6 +634,21 @@ def build_prefetched_knowledge_graph_units_payload(
     diagnostics["prefetch_complete_section_coverage"] = (
         1 if extraction_tasks and len(used_prefetch_keys) == len(extraction_tasks) else 0
     )
+
+    existing_names = {normalize_name(unit.name) for unit in units if normalize_name(unit.name)}
+    backbone_units, backbone_edges = _build_backbone_graph_items(
+        structured_context=normalized_context,
+        chapter_contexts=chapter_contexts,
+        existing_normalized_names=existing_names,
+    )
+    if backbone_units:
+        units = [*backbone_units, *units]
+        diagnostics["backbone_unit_count"] = len(backbone_units)
+    if backbone_edges:
+        diagnostics["backbone_edge_count"] = len(backbone_edges)
+    diagnostics["docgen_seed_unit_count"] = len(backbone_units)
+    diagnostics["docgen_seed_edge_count"] = len(backbone_edges)
+    diagnostics["early_unit_count"] = len(units)
     return KnowledgeSyncExtractionPayload(units=units, extracted_edges=[], diagnostics_totals=diagnostics)
 
 
@@ -1717,12 +1811,42 @@ def _build_backbone_graph_items(
     existing_normalized_names: set[str] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[PendingMarkdownExtractedEdge]]:
     backbone = _document_backbone_payload(structured_context)
-    if not backbone:
+    preliminary_kg = _preliminary_kg_payload(structured_context)
+    if not backbone and not preliminary_kg:
         return [], []
 
     existing_normalized_names = set(existing_normalized_names or set())
     target_chapters_by_term: dict[str, list[int]] = {}
     units: list[MarkdownKnowledgeUnit] = []
+    used_backbone_anchors: set[str] = set()
+    for item in _as_list(preliminary_kg.get("nodes")):
+        payload = _as_mapping(item)
+        name = str(payload.get("name") or "").strip()
+        normalized_name = normalize_name(name)
+        if not name or not normalized_name or normalized_name in existing_normalized_names:
+            continue
+        target_chapters = _clean_int_list(payload.get("target_chapters")) or _clean_int_list(payload.get("chapter_index"))
+        target_chapters_by_term[normalized_name] = target_chapters
+        chapter_index = target_chapters[0] if target_chapters else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        summary = _source_quote(str(payload.get("summary") or name), max_chars=300)
+        unit_type = normalize_knowledge_unit_type(str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"))
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=build_knowledge_unit_anchor(f"docgen-preliminary-{name}", used=used_backbone_anchors),
+                name=name,
+                knowledge_unit_type=unit_type,
+                summary=summary,
+                body_markdown=summary,
+                source_kind="docgen_preliminary_kg",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=summary,
+            )
+        )
+        existing_normalized_names.add(normalized_name)
+
     for item in _as_list(backbone.get("canonical_glossary")):
         payload = _as_mapping(item)
         term = str(payload.get("term") or "").strip()
@@ -1730,19 +1854,82 @@ def _build_backbone_graph_items(
             continue
         target_chapters = _clean_int_list(payload.get("target_chapters"))
         normalized_term = normalize_name(term)
-        if normalized_term and normalized_term in existing_normalized_names:
-            target_chapters_by_term[normalized_term] = target_chapters
+        if not normalized_term:
+            continue
+        target_chapters_by_term[normalized_term] = target_chapters
+        if normalized_term in existing_normalized_names:
+            continue
+        chapter_index = target_chapters[0] if target_chapters else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        definition = _source_quote(str(payload.get("definition") or payload.get("summary") or term), max_chars=300)
+        unit_type = normalize_knowledge_unit_type(str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"))
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=build_knowledge_unit_anchor(f"docgen-backbone-{term}", used=used_backbone_anchors),
+                name=term,
+                knowledge_unit_type=unit_type,
+                summary=definition,
+                body_markdown=definition,
+                source_kind="docgen_backbone",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=definition,
+            )
+        )
+        existing_normalized_names.add(normalized_term)
 
     edges: list[PendingMarkdownExtractedEdge] = []
     seen_edges: set[tuple[str, str, str]] = set()
+    for item in _as_list(preliminary_kg.get("edges")):
+        payload = _as_mapping(item)
+        source_name = str(payload.get("source_name") or payload.get("source") or "").strip()
+        target_name = str(payload.get("target_name") or payload.get("target") or "").strip()
+        if not source_name or not target_name:
+            continue
+        edge_type = normalize_relation_type(str(payload.get("edge_type") or payload.get("relation") or "applies_to"))
+        source_key = normalize_name(source_name)
+        target_key = normalize_name(target_name)
+        if source_key not in existing_normalized_names or target_key not in existing_normalized_names:
+            continue
+        key = (source_key, target_key, edge_type)
+        if not key[0] or not key[1] or key[0] == key[1] or key in seen_edges:
+            continue
+        seen_edges.add(key)
+        chapter_candidates = (
+            _clean_int_list(payload.get("target_chapters"))
+            or _clean_int_list(payload.get("chapter_index"))
+            or target_chapters_by_term.get(target_key)
+            or target_chapters_by_term.get(source_key)
+            or []
+        )
+        chapter_index = chapter_candidates[0] if chapter_candidates else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        description = str(payload.get("description") or "").strip()
+        edges.append(
+            PendingMarkdownExtractedEdge(
+                source_candidate_id=None,
+                target_candidate_id=None,
+                source_name=source_name,
+                target_name=target_name,
+                edge_type=edge_type,
+                description=description or f"{source_name} 关联 {target_name}。",
+                source_kind="docgen_preliminary_kg",
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(chapter_context.source_file_ids),
+                quote_text=description,
+            )
+        )
+
     for item in _as_list(backbone.get("concept_dependency_graph")):
         payload = _as_mapping(item)
-        source_name = str(payload.get("from_concept") or "").strip()
-        target_name = str(payload.get("to_concept") or "").strip()
+        source_name = str(payload.get("from_concept") or payload.get("from") or "").strip()
+        target_name = str(payload.get("to_concept") or payload.get("to") or "").strip()
         if not source_name or not target_name:
             continue
         raw_relation = str(payload.get("relation") or "").strip()
-        edge_type = "prerequisite" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
+        edge_type = "prerequisite_for" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
         source_key = normalize_name(source_name)
         target_key = normalize_name(target_name)
         if source_key not in existing_normalized_names or target_key not in existing_normalized_names:
@@ -1810,7 +1997,7 @@ def _build_structural_heading_edges(
         if not source_anchor or not parent_anchor or source_anchor == parent_anchor:
             continue
 
-        key = (parent_anchor, source_anchor, "contains")
+        key = (source_anchor, parent_anchor, "part_of")
         if key in seen:
             continue
         seen.add(key)
@@ -1818,9 +2005,9 @@ def _build_structural_heading_edges(
             PendingMarkdownExtractedEdge(
                 source_candidate_id=None,
                 target_candidate_id=None,
-                source_name=parent_title,
-                target_name=section.title,
-                edge_type="contains",
+                source_name=section.title,
+                target_name=parent_title,
+                edge_type="part_of",
                 description=f"{section.title} 属于主题 {parent_title}。",
                 source_kind="structural_heading",
                 quote_text=section.header_path,
@@ -1835,20 +2022,22 @@ def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) 
     if not text:
         return None
     normalized_primary_type = normalize_knowledge_unit_type(primary_type)
-    if normalized_primary_type == "practice_assessment":
-        return "training"
-    if normalized_primary_type == "explanation_support":
-        return "explanation"
+    if normalized_primary_type == "skill":
+        return "assesses"
+    if normalized_primary_type == "resource":
+        return "explains"
+    if normalized_primary_type == "misconception":
+        return "remediates"
     if any(token in text for token in ("前提", "基础", "先学", "先掌握", "依赖")):
-        return "prerequisite"
+        return "prerequisite_for"
     if any(token in text for token in ("由", "推出", "推得", "可得", "基于", "建立在")):
-        return "reasoning"
+        return "derives_to"
     if any(token in text for token in ("利用", "应用", "借助", "结合", "使用")):
-        return "application"
+        return "applies_to"
     if any(token in text for token in ("区别", "对比", "比较", "不同于", "相反")):
-        return "contrast"
+        return "confuses_with"
     if any(token in text for token in ("类似", "相似", "同理")):
-        return "similar"
+        return "similar_to"
     return None
 
 
@@ -1896,7 +2085,7 @@ def _build_cross_section_semantic_edges(
 
     for source_anchor, context in node_contexts_by_anchor.items():
         source_name = str(context.get("name") or "").strip()
-        source_type = str(context.get("knowledge_unit_type") or "core_knowledge").strip()
+        source_type = str(context.get("knowledge_unit_type") or "concept").strip()
         source_section_index = int(context.get("section_index", -1) or -1)
         for hint_field in ("parent_entity_name", "taxonomy_hint"):
             hint_name = str(context.get(hint_field) or "").strip()
@@ -1916,10 +2105,7 @@ def _build_cross_section_semantic_edges(
                 continue
             relation = default_relation_for_unit_type(source_type)
             target_name = str(target_context.get("name") or hint_name)
-            if relation in {"contains", "application", "explanation", "training"}:
-                edge_source, edge_target = target_name, source_name
-            else:
-                edge_source, edge_target = source_name, target_name
+            edge_source, edge_target = source_name, target_name
             _push_edge(
                 edge_source,
                 edge_target,
@@ -1943,10 +2129,10 @@ def _build_cross_section_semantic_edges(
             normalized_other_name = normalize_name(other.primary_name)
             if not normalized_other_name or normalized_other_name not in body_text:
                 continue
-            if relation == "training":
+            if relation == "assesses":
                 _push_edge(
-                    other.primary_name,
                     context.primary_name,
+                    other.primary_name,
                     relation,
                     f"{context.primary_name} 在正文中作为 {other.primary_name} 的训练或评估任务出现。",
                     source_context={
@@ -1955,7 +2141,7 @@ def _build_cross_section_semantic_edges(
                         "source_file_ids": context.source_file_ids,
                     },
                 )
-            elif relation in {"similar", "contrast"}:
+            elif relation in {"similar_to", "confuses_with"}:
                 _push_edge(
                     context.primary_name,
                     other.primary_name,

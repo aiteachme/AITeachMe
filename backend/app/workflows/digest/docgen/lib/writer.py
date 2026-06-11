@@ -9,7 +9,7 @@ from typing import Any
 
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
-from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support import acompletion_stream, run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
@@ -103,11 +103,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         )
         markdown = ""
         if on_stream_update is not None and self.context.llm_caller is None:
-            chunks: list[str] = []
             streamed_chars = 0
-            stream_callback_last_at = perf_counter()
-            stream_callback_last_len = 0
-            try:
+
+            async def _run_writer_stream(_: object) -> str:
+                nonlocal streamed_chars
+                chunks: list[str] = []
+                stream_callback_last_at = perf_counter()
+                stream_callback_last_len = 0
                 async for chunk in acompletion_stream(
                     messages,
                     **writer_model_kwargs,
@@ -125,8 +127,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
                         stream_callback_last_at = now
                         stream_callback_last_len = streamed_chars
                         await self._safe_stream_update(on_stream_update, "".join(chunks))
-                markdown = "".join(chunks)
-                await self._safe_stream_update(on_stream_update, markdown)
+                result = "".join(chunks)
+                await self._safe_stream_update(on_stream_update, result)
+                return result
+
+            try:
+                (markdown,) = await run_llm_tasks([None], _run_writer_stream, max_concurrent=1)
             except Exception as exc:
                 self.logger.warning(
                     "docgen_writer_stream_failed_falling_back",
@@ -136,10 +142,10 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
 
         if not markdown.strip():
-            markdown = await llm(
-                messages,
-                **writer_model_kwargs,
-            )
+            async def _run_writer_completion(_: object) -> str:
+                return str(await llm(messages, **writer_model_kwargs) or "")
+
+            (markdown,) = await run_llm_tasks([None], _run_writer_completion, max_concurrent=1)
 
         markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
@@ -247,17 +253,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
             chapter_count=chapter_count,
         )
         try:
-            repaired = await llm(
-                messages,
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.HEADING_REPAIR,
-                    digest_mode=digest_mode,
-                    extra_metadata=self.context.trace_metadata(
-                        chapter_index=chapter_index,
-                        substep="heading_repair",
-                    ),
-                ),
-            )
+            async def _run_heading_repair(_: object) -> str:
+                return str(
+                    await llm(
+                        messages,
+                        **docgen_completion_kwargs_with_metadata(
+                            DocGenModelStep.HEADING_REPAIR,
+                            digest_mode=digest_mode,
+                            extra_metadata=self.context.trace_metadata(
+                                chapter_index=chapter_index,
+                                substep="heading_repair",
+                            ),
+                        ),
+                    )
+                    or ""
+                )
+
+            (repaired,) = await run_llm_tasks([None], _run_heading_repair, max_concurrent=1)
         except Exception:
             return None
 

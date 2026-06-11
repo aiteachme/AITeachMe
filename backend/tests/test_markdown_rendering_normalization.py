@@ -468,6 +468,40 @@ def test_textbook_style_promotes_educational_emoji_quotes_to_callouts() -> None:
     assert "> 普通引用不应变化。" in fixed
 
 
+def test_textbook_style_flattens_large_example_and_practice_callouts() -> None:
+    raw = "\n".join(
+        [
+            "> [!EXAMPLE]",
+            ">",
+            "> **题目/任务**：计算一元一次方程，并说明每一步为什么可以等价变形。",
+            ">",
+            "> **解析/判定依据**：先移项，再合并同类项，最后把系数化为 1。",
+            ">",
+            "> **答案/结论**：得到唯一解。",
+            "",
+            "> [!PRACTICE]",
+            ">",
+            "> **任务**：判断下一步变形是否等价。",
+            ">",
+            "> **答案**：等价。",
+            "",
+            "> [!TIP]",
+            ">",
+            "> 先看条件。",
+        ]
+    )
+
+    fixed = normalize_educational_callouts(raw)
+
+    assert "> [!EXAMPLE]" not in fixed
+    assert "> [!PRACTICE]" not in fixed
+    assert "**例题**" in fixed
+    assert "**练习**" in fixed
+    assert "**题目/任务**：计算一元一次方程" in fixed
+    assert "**任务**：判断下一步变形是否等价" in fixed
+    assert "> [!TIP]\n>\n> 先看条件。" in fixed
+
+
 def test_textbook_headings_remove_generic_untitled_example_prefix() -> None:
     raw = "\n".join(
         [
@@ -486,8 +520,69 @@ def test_textbook_headings_remove_generic_untitled_example_prefix() -> None:
         focus_items=[],
     )
 
-    assert "### 典型例题解析" in fixed
+    assert "## 1. 典型例题解析" in fixed
     assert "未命名章节的典型例题解析" not in fixed
+
+
+def test_textbook_headings_do_not_skip_from_h1_to_h3() -> None:
+    raw = "\n".join(
+        [
+            "# 数与式运算、化简与因式分解",
+            "",
+            "### 学习目标与核心概念",
+            "正文。",
+            "",
+            "#### 分式约分",
+            "正文。",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="数与式运算、化简与因式分解",
+        focus_items=[],
+    )
+
+    assert "\n**本章目标与知识点**" in fixed
+    assert "\n## 1. 分式约分" in fixed
+    assert "## 学习目标与核心概念" not in fixed
+    assert "\n#### 学习目标与核心概念" not in fixed
+
+
+def test_textbook_headings_demote_generic_learning_function_titles() -> None:
+    raw = "\n".join(
+        [
+            "# 有理数基础",
+            "",
+            "## 学习目标",
+            "会做计算。",
+            "",
+            "## 核心概念",
+            "数轴、绝对值。",
+            "",
+            "## 易错点",
+            "符号错误。",
+            "",
+            "## 单元测试",
+            "1. 计算。",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="有理数基础",
+        focus_items=[],
+    )
+
+    assert "**本章目标**" in fixed
+    assert "**知识点速览**" in fixed
+    assert "**易错点**" in fixed
+    assert "## 学习目标" not in fixed
+    assert "## 核心概念" not in fixed
+    assert "## 易错点" not in fixed
+    assert "## 单元测试" in fixed
 
 
 def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
@@ -522,12 +617,70 @@ def test_textbook_heading_normalization_repairs_malformed_sprint_titles() -> Non
     )
 
     assert "区分不定积分、定积分及其几何意义，先的" not in fixed
-    assert "区分不定积分、定积分及其几何意义的边界说明" in fixed
+    assert "## 1. 区分不定积分、定积分及其几何意义的边界说明" in fixed
     assert "### 解题步骤" in fixed
     assert "### 题目条件" in fixed
     assert "### 易错诊断" in fixed
     assert "方向导的判定规则" not in fixed
-    assert "方向导数的判定规则" in fixed
+    assert "## 2. 理解多元函数、偏导数、全微分、方向导数的判定规则" in fixed
+
+
+def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
+    raw = "\n".join(
+        [
+            "# 连续与间断",
+            "",
+            "## 学习目标与核心概念",
+            "理解连续定义。",
+            "",
+            "## 典型例题回顾",
+            "题1. 判断连续性。",
+            "",
+            "## 本章高频规则清单",
+            "分界点优先看左右极限。",
+            "",
+            "## 章末练习",
+            "题1. 判断左右极限。",
+            "",
+            "## 学习大纲",
+            "连续、间断、极限。",
+            "",
+            "## 典型方法与例题",
+            "分段函数先看分界点。",
+            "",
+            "## 章末小结",
+            "左右极限相等才可能连续。",
+            "",
+            "## 真实知识点",
+            "这里保留为知识点。",
+            "",
+            "## 单元测试",
+            "1. 判断间断点类型。答案：可去间断点。",
+        ]
+    )
+
+    fixed = normalize_textbook_headings(
+        raw,
+        digest_mode="sprint",
+        fallback_title="连续与间断",
+        focus_items=[],
+    )
+
+    assert "\n**本章目标与知识点**" in fixed
+    assert "\n**例题回顾**" in fixed
+    assert "\n**高频规则**" in fixed
+    assert "\n**练习**" in fixed
+    assert "\n**学习大纲**" in fixed
+    assert "\n**方法与例题**" in fixed
+    assert "\n**小结**" in fixed
+    assert "\n## 1. 真实知识点" in fixed
+    assert "\n## 单元测试" in fixed
+    assert "## 典型例题回顾" not in fixed
+    assert "## 本章高频规则清单" not in fixed
+    assert "## 章末练习" not in fixed
+    assert "## 学习大纲" not in fixed
+    assert "## 典型方法与例题" not in fixed
+    assert "## 章末小结" not in fixed
 
 
 def test_textbook_heading_normalization_drops_repeated_visible_titles() -> None:

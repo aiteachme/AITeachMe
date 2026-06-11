@@ -248,7 +248,7 @@ class BuildSampleCardResponse(BaseModel):
     """Lightweight preview card shown while digest is building."""
 
     title: str
-    card_type: str = Field(description="mode / topic / core_knowledge / method_demo / practice_assessment")
+    card_type: str = Field(description="mode / topic / concept / procedure / skill")
     summary: str
 
 
@@ -505,6 +505,7 @@ class KnowledgeUnitResponse(BaseModel):
     id: int
     course_id: str
     knowledge_unit_type: str
+    knowledge_unit_type_label: str = ""
     canonical_name: str
     status: str
     confidence: float
@@ -553,10 +554,12 @@ class IncidentEdgeItem(BaseModel):
 
     id: int
     edge_type: str
+    edge_type_label: str = ""
     direction: str = Field(description="outgoing or incoming.")
     other_node_id: int
     other_node_name: str
     other_node_type: str
+    other_node_type_label: str = ""
     confidence: float
 
 
@@ -594,6 +597,7 @@ class KnowledgeUnitDetailResponse(BaseModel):
     id: int
     course_id: str
     knowledge_unit_type: str
+    knowledge_unit_type_label: str = ""
     canonical_name: str
     normalized_name: str
     status: str
@@ -616,6 +620,7 @@ class GraphEdgeResponse(BaseModel):
     source_node_id: int
     target_node_id: int
     edge_type: str
+    edge_type_label: str = ""
     weight: float
     confidence: float
 
@@ -628,10 +633,13 @@ class KnowledgeRelationResponse(BaseModel):
     source_node_id: int
     source_node_name: str
     source_node_type: str
+    source_node_type_label: str = ""
     target_node_id: int
     target_node_name: str
     target_node_type: str
+    target_node_type_label: str = ""
     edge_type: str
+    edge_type_label: str = ""
     description: str = ""
     weight: float
     confidence: float
@@ -665,6 +673,7 @@ class KnowledgeRelationEvidenceItem(BaseModel):
 
     edge_id: int
     edge_type: str
+    edge_type_label: str = ""
     source_node_id: int
     target_node_id: int
     description: str = ""

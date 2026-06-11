@@ -20,6 +20,7 @@ from app.models import (
 from app.schemas.profile import CourseProfileSummary, UserProfileSummary
 from app.utils.time import is_at_or_after, is_at_or_before, utcnow
 from app.workflows.profile.common.lib.conversation_memory import build_conversation_profile_signals
+from app.workflows.profile.common.lib.profile_text import render_user_profile_text
 
 _RECENT_EXAM_ITEM_LIMIT = 300
 _RECENT_EXAM_PAPER_LIMIT = 80
@@ -255,7 +256,7 @@ def build_user_profile_summary(
         limit=80,
     )
 
-    return UserProfileSummary(
+    summary = UserProfileSummary(
         user_id=user_id,
         generated_at=generated_at,
         active_course_count=len(courses),
@@ -285,6 +286,8 @@ def build_user_profile_summary(
             *conversation_signals.notes,
         ],
     )
+    summary.profile_text = render_user_profile_text(summary.model_dump(mode="python"))
+    return summary
 
 
 def load_user_profile_summary(

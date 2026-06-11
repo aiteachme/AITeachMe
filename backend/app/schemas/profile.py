@@ -27,6 +27,7 @@ class MasteryStateResponse(BaseModel):
 class CourseProfileSummary(BaseModel):
     course_id: str
     generated_at: datetime
+    profile_text: str = ""
     avg_mastery: float | None = None
     weak_knowledge_unit_count: int = 0
     pending_review_count: int = 0
@@ -45,6 +46,7 @@ class CourseProfileSummary(BaseModel):
 class UserProfileSummary(BaseModel):
     user_id: str
     generated_at: datetime
+    profile_text: str = ""
     active_course_count: int = 0
     active_course_ids: list[str] = Field(default_factory=list)
     recent_course_ids: list[str] = Field(default_factory=list)

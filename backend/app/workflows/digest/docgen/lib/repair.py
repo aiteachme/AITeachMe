@@ -156,6 +156,20 @@ def _fallback_patch_target_anchor(
     return ""
 
 
+def _is_unit_test_append_action(action: ReviewAction) -> bool:
+    text = " ".join(
+        str(item or "")
+        for item in (
+            action.action_id,
+            action.reason,
+            action.instruction,
+            action.expected_effect,
+            " ".join(action.constraints or []),
+        )
+    )
+    return "单元测试" in text
+
+
 def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
     cleaned = normalize_markdown_rendering(_strip_markdown_fence(markdown)).strip()
     lines = []
@@ -189,14 +203,18 @@ def _insert_local_patch(
     *,
     target_anchor: str,
     chapter_title: str,
+    append_to_end: bool = False,
 ) -> str:
     patch = _clean_patch_snippet(patch_markdown, chapter_title=chapter_title)
     if not patch:
         return markdown
     if _normalize_anchor(patch) and _normalize_anchor(patch) in _normalize_anchor(markdown):
         return markdown
-    section = _find_heading_section(markdown, anchor=target_anchor, chapter_title=chapter_title)
-    insert_at = section[1] if section is not None else _fallback_insert_offset(markdown)
+    section = None if append_to_end else _find_heading_section(markdown, anchor=target_anchor, chapter_title=chapter_title)
+    if append_to_end:
+        insert_at = len(markdown)
+    else:
+        insert_at = section[1] if section is not None else _fallback_insert_offset(markdown)
     before = markdown[:insert_at].rstrip()
     after = markdown[insert_at:].lstrip()
     middle = f"{before}\n\n{patch}\n"
@@ -363,6 +381,10 @@ async def _apply_llm_patch_actions(
     unresolved_keys &= set(action_keys)
     if not covered_keys and not unresolved_keys:
         covered_keys = set(action_keys)
+    append_to_end = any(
+        _is_unit_test_append_action(action) and _repair_action_key(action_index, action) in covered_keys
+        for action_index, action in indexed_actions
+    )
     patched = (
         chapter.markdown
         if patch.status == "no_change"
@@ -371,6 +393,7 @@ async def _apply_llm_patch_actions(
             patch.patch_markdown,
             target_anchor=patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys),
             chapter_title=chapter.title,
+            append_to_end=append_to_end,
         )
     )
     if not patched or patched == chapter.markdown:
@@ -492,16 +515,25 @@ async def repair_or_route_review_actions(
             current_chapter = patched_chapter
             results.append((action_index, updated_action, trace_item, unresolved_message))
 
-        remaining_llm_actions = llm_actions
-        for repair_round in range(1, _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER + 1):
-            if not remaining_llm_actions:
-                break
-            current_chapter, round_results, remaining_llm_actions = await _apply_llm_patch_actions(
-                chapter=current_chapter,
-                indexed_actions=remaining_llm_actions,
-                repair_round=repair_round,
-            )
-            results.extend(round_results)
+        regular_llm_actions = [
+            indexed_action for indexed_action in llm_actions if not _is_unit_test_append_action(indexed_action[1])
+        ]
+        unit_test_llm_actions = [
+            indexed_action for indexed_action in llm_actions if _is_unit_test_append_action(indexed_action[1])
+        ]
+        remaining_llm_actions: list[tuple[int, ReviewAction]] = []
+        repair_round = 1
+        for action_batch in (regular_llm_actions, unit_test_llm_actions):
+            current_batch = action_batch
+            while current_batch and repair_round <= _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER:
+                current_chapter, round_results, current_batch = await _apply_llm_patch_actions(
+                    chapter=current_chapter,
+                    indexed_actions=current_batch,
+                    repair_round=repair_round,
+                )
+                repair_round += 1
+                results.extend(round_results)
+            remaining_llm_actions.extend(current_batch)
 
         for action_index, action in remaining_llm_actions:
             updated_action = action.model_copy(update={"status": "skipped"})

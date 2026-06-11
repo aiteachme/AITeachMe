@@ -7,7 +7,7 @@ def _unit(
     anchor: str,
     name: str,
     *,
-    knowledge_unit_type: str = "core_knowledge",
+    knowledge_unit_type: str = "concept",
     summary: str = "",
     body_markdown: str = "shared section body",
     line_no: int = 10,
@@ -42,8 +42,8 @@ def test_section_local_stitching_links_secondary_units_to_primary_parent() -> No
         _payload(
             [
                 _unit("ku_matrix", "Matrix"),
-                _unit("ku_svd", "SVD example", knowledge_unit_type="method_demo"),
-                _unit("ku_drill", "Matrix drill", knowledge_unit_type="practice_assessment"),
+                _unit("ku_svd", "SVD example", knowledge_unit_type="procedure"),
+                _unit("ku_drill", "Matrix drill", knowledge_unit_type="skill"),
             ]
         )
     )
@@ -53,8 +53,8 @@ def test_section_local_stitching_links_secondary_units_to_primary_parent() -> No
         for edge in result.extracted_edges
     }
     assert stitched == {
-        ("ku_matrix", "ku_svd", "application", "section_local_stitch"),
-        ("ku_matrix", "ku_drill", "training", "section_local_stitch"),
+        ("ku_svd", "ku_matrix", "part_of", "section_local_stitch"),
+        ("ku_drill", "ku_matrix", "assesses", "section_local_stitch"),
     }
     assert result.diagnostics_totals["section_local_stitch_edge_count"] == 2
     assert result.diagnostics_totals["mention_stitch_edge_count"] == 0
@@ -62,7 +62,7 @@ def test_section_local_stitching_links_secondary_units_to_primary_parent() -> No
     assert result.diagnostics_totals["graph_component_count"] == 1
 
 
-def test_mention_stitching_infers_prerequisite_and_training_directions() -> None:
+def test_mention_stitching_infers_prerequisite_and_assessment_directions() -> None:
     result = stitch_knowledge_graph_relations(
         _payload(
             [
@@ -77,7 +77,7 @@ def test_mention_stitching_infers_prerequisite_and_training_directions() -> None
                 _unit(
                     "ku_practice",
                     "Practice",
-                    knowledge_unit_type="practice_assessment",
+                    knowledge_unit_type="skill",
                     summary="利用 Matrix 完成训练",
                     body_markdown="practice body",
                     line_no=3,
@@ -90,8 +90,8 @@ def test_mention_stitching_infers_prerequisite_and_training_directions() -> None
         (edge.source_anchor, edge.target_anchor, edge.edge_type, edge.source_kind)
         for edge in result.extracted_edges
     }
-    assert ("ku_matrix", "ku_rank", "prerequisite", "mention_stitch") in stitched
-    assert ("ku_matrix", "ku_practice", "training", "mention_stitch") in stitched
+    assert ("ku_matrix", "ku_rank", "prerequisite_for", "mention_stitch") in stitched
+    assert ("ku_practice", "ku_matrix", "assesses", "mention_stitch") in stitched
     assert result.diagnostics_totals["mention_stitch_edge_count"] == 2
     assert result.diagnostics_totals["graph_active_edge_count"] == 2
     assert result.diagnostics_totals["graph_largest_component_unit_count"] == 3
@@ -99,9 +99,9 @@ def test_mention_stitching_infers_prerequisite_and_training_directions() -> None
 
 def test_existing_edges_are_preserved_and_prevent_duplicate_stitches() -> None:
     existing = MarkdownExtractedEdge(
-        source_anchor="ku_matrix",
-        target_anchor="ku_svd",
-        edge_type="application",
+        source_anchor="ku_svd",
+        target_anchor="ku_matrix",
+        edge_type="part_of",
         description="existing",
         source_kind="llm_relation",
     )
@@ -110,7 +110,7 @@ def test_existing_edges_are_preserved_and_prevent_duplicate_stitches() -> None:
         _payload(
             [
                 _unit("ku_matrix", "Matrix"),
-                _unit("ku_svd", "SVD example", knowledge_unit_type="method_demo"),
+                _unit("ku_svd", "SVD example", knowledge_unit_type="procedure"),
                 _unit("ku_note", "Loose note", body_markdown="standalone", line_no=99),
             ],
             edges=[existing],
@@ -121,7 +121,7 @@ def test_existing_edges_are_preserved_and_prevent_duplicate_stitches() -> None:
     assert [
         (edge.source_anchor, edge.target_anchor, edge.edge_type)
         for edge in result.extracted_edges
-    ].count(("ku_matrix", "ku_svd", "application")) == 1
+    ].count(("ku_svd", "ku_matrix", "part_of")) == 1
     assert result.diagnostics_totals["stitched_edge_count"] == 0
     assert result.diagnostics_totals["graph_isolated_unit_count"] == 1
     assert result.diagnostics_totals["graph_component_count"] == 2

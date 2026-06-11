@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.models.knowledge_taxonomy import KNOWLEDGE_RELATION_TYPE_LABELS, KNOWLEDGE_UNIT_TYPE_LABELS
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
@@ -146,6 +147,90 @@ def _compact_conflict_report(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _compact_guideline(guideline: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "writing_rules": _string_list(guideline.get("writing_rules")),
+        "canonical_glossary": [
+            {
+                "term": item.get("term"),
+                "definition": item.get("definition"),
+                "target_chapters": item.get("target_chapters"),
+            }
+            for item in list(guideline.get("canonical_glossary") or [])[:8]
+            if isinstance(item, dict)
+        ],
+        "notation_rules": [
+            {
+                "symbol": item.get("symbol"),
+                "meaning": item.get("meaning"),
+            }
+            for item in list(guideline.get("notation_rules") or [])[:6]
+            if isinstance(item, dict)
+        ],
+        "confusion_checks": [
+            {
+                "pair": item.get("pair") or item.get("terms"),
+                "check": item.get("check") or item.get("risk") or item.get("note"),
+            }
+            for item in list(guideline.get("confusion_checks") or [])[:6]
+            if isinstance(item, dict)
+        ],
+        "global_claim_count": guideline.get("global_claim_count") or guideline.get("claim_count"),
+    }
+
+
+def _compact_dispatch_item(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "chapter_index": item.get("chapter_index"),
+        "preferred_sources": _string_list(item.get("preferred_sources"), limit=8),
+        "source_section_refs": _string_list(item.get("source_section_refs"), limit=8),
+        "evidence_ids": _string_list(item.get("evidence_ids"), limit=8),
+        "source_slices": [
+            {
+                "section_ref": raw.get("section_ref"),
+                "section_title": raw.get("section_title") or raw.get("header_path"),
+                "summary": raw.get("summary") or raw.get("excerpt"),
+            }
+            for raw in list(item.get("source_slices") or [])[:8]
+            if isinstance(raw, dict)
+        ],
+    }
+
+
+def _compact_chapter_contract(contract: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "chapter_index": contract.get("chapter_index"),
+        "title": contract.get("title") or contract.get("confirmed_title") or contract.get("enhanced_title"),
+        "learning_objective": contract.get("learning_objective") or contract.get("objective"),
+        "required_elements": _string_list(contract.get("required_elements") or contract.get("content_points")),
+        "evidence_ids": _string_list(contract.get("evidence_ids"), limit=8),
+        "teaching_outline": _string_list(contract.get("teaching_outline"), limit=8),
+    }
+
+
+def _compact_evidence_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compacted: list[dict[str, Any]] = []
+    for item in items[:10]:
+        if not isinstance(item, dict):
+            continue
+        compacted.append(
+            {
+                "evidence_id": item.get("evidence_id"),
+                "text": _trim_text(item.get("text"), max_chars=240),
+                "source_title": item.get("source_title"),
+                "source_ref": item.get("source_ref"),
+                "confidence": item.get("confidence"),
+            }
+        )
+    return compacted
+
+
+def _taxonomy_label_text() -> str:
+    unit_labels = "、".join(KNOWLEDGE_UNIT_TYPE_LABELS.values())
+    relation_labels = "、".join(KNOWLEDGE_RELATION_TYPE_LABELS.values())
+    return f"节点类型：{unit_labels}；关系类型：{relation_labels}"
+
+
 def build_chapter_review_messages(
     *,
     chapter_title: str,
@@ -156,6 +241,11 @@ def build_chapter_review_messages(
     claim_evidence_map: dict,
     conflict_report: dict,
     rule_review: dict,
+    guideline_summary: dict | None = None,
+    dispatch_item: dict | None = None,
+    chapter_contract: dict | None = None,
+    evidence_items: list[dict] | None = None,
+    learner_profile_text: str = "",
 ) -> list[dict[str, str]]:
     """Build messages for read-only chapter review."""
 
@@ -171,7 +261,13 @@ def build_chapter_review_messages(
     compact_claim_ledger = _compact_claim_ledger(claim_ledger)
     compact_claim_evidence_map = _compact_claim_evidence_map(claim_evidence_map)
     compact_conflict_report = _compact_conflict_report(conflict_report)
+    compact_guideline = _compact_guideline(dict(guideline_summary or {}))
+    compact_dispatch = _compact_dispatch_item(dict(dispatch_item or {}))
+    compact_chapter_contract = _compact_chapter_contract(dict(chapter_contract or {}))
+    compact_evidence_items = _compact_evidence_items(list(evidence_items or []))
     scoped_markdown = _trim_text(markdown, max_chars=_MAX_REVIEW_MARKDOWN_CHARS)
+    taxonomy_text = _taxonomy_label_text()
+    learner_profile_excerpt = _trim_text(learner_profile_text, max_chars=1200)
     system_prompt = """
 你是 AITeachMe 的内容质检员，只负责复核，不负责改写。
 你必须严格检查章节是否符合用户已确认的学习大纲、是否有证据支撑、是否越界、是否适合学习。
@@ -200,6 +296,15 @@ def build_chapter_review_messages(
 冲突报告：
 {compact_conflict_report}
 
+DocGen 全局一致性上下文：
+{{
+  "guideline": {compact_guideline},
+  "dispatch": {compact_dispatch},
+  "chapter_contract": {compact_chapter_contract},
+  "high_confidence_evidence": {compact_evidence_items},
+  "learner_profile": {learner_profile_excerpt!r}
+}}
+
 章节 Markdown：
 {scoped_markdown}
 
@@ -208,10 +313,10 @@ def build_chapter_review_messages(
 2. `forbidden_scope` 是其它章节的主题边界。除非正文只用一句话做前后联系，否则不得要求把 forbidden_scope 中的主题补成独立小节、例题、练习或标题。
 3. 快速复习要看章节角色：考试/冲刺/速成取向章节应有紧凑题型/任务导航、方法对照、完整例题、变式或自测，不套固定口号或本地模板；概念型章节应有短例子、反例、条件辨析或小任务。缺失时输出 `section_patch`。
 4. 每个主要 `##` 必须像完整学习单元：讲清本小节对象、关键条件或边界、解释依据或处理路径，并至少有例子、任务、反例、操作检查或诊断标准之一；如果只是提纲式短句、名词堆叠或结论堆叠，输出 `section_patch`。
-5. 每章末尾应有一个短练习收束块：快速复习通常 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统学习通常 2-4 个更深的案例检查、操作任务、边界辨析或迁移任务，并给出答案、判定依据、解析步骤或结论。缺失、无答案或与本章不贴合时输出 `section_patch`。
+5. 每章最后一个二级标题必须固定为 `## 单元测试`，这是唯一固定标题；其它二级标题必须按本章内容自然命名。`## 单元测试` 中快速复习通常 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统学习通常 2-4 个更深的案例检查、操作任务、边界辨析或迁移任务，并给出答案、判定依据、解析步骤或结论。缺失、位置不是最后、无答案或与本章不贴合时输出 `section_patch`。
 6. 自测、辨析或思考题必须有参考答案、判定依据、解析步骤或结论；系统课核心知识点也要有例题、案例、操作示例或练习任务支撑。
 7. 检查展示质量：标题层级、加粗/高亮闭合、callout、表格、公式、代码块、Mermaid 是否可渲染。例题/练习 callout 中的“题目/任务、解析/判定依据、答案/结论、易错点”必须分段或列表展示，不能挤在同一段。孤立三级标题属于层级过度切分，应要求合并成更具体的 `##` 或改成正文加粗小节。
-8. 检查知识图谱相关内容是否只使用 7 类学习节点与 8 类关系；关系方向明显错误时输出 `section_patch`。
+8. 检查知识图谱相关内容是否只使用系统标准学习节点与关系类型，中文类型如下：{taxonomy_text}；关系方向明显错误时输出 `section_patch`。
 9. 如果要求新增或改写小节，不要在 action 里给可直接复制的标题；只说明这个小节要解决什么学习问题，并要求修复模型按本章具体对象、方法、任务差异或场景命名。不要建议目录里看不出内容的泛标题、学习动作标题、内部检查标题或序号占位题型。
 10. 复核动作必须可执行，写清 `target_anchor`、`instruction`、`constraints`、`expected_effect`；只做复核判断，不输出修补后的正文。
 """.strip()
@@ -229,6 +334,9 @@ def build_chapter_review_messages(
             "chapter_task_keys": sorted(compact_task.keys()),
             "claim_count": compact_claim_ledger["claim_count"],
             "low_support_binding_count": len(compact_claim_evidence_map["low_support_bindings"]),
+            "guideline_term_count": len(compact_guideline["canonical_glossary"]),
+            "dispatch_source_slice_count": len(compact_dispatch["source_slices"]),
+            "evidence_item_count": len(compact_evidence_items),
         },
         output=messages,
     )

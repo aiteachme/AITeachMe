@@ -5,7 +5,6 @@ import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { getCourseIdFromPathname, isFullBleedCoursePath } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
-import { useSystemSettingsOverview } from "../../hooks/useSystemSettingsOverview";
 import { isElectronRuntime } from "../../lib/electronRuntime";
 
 const SettingsDialog = lazy(() =>
@@ -33,9 +32,7 @@ export function Layout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const settingsOverview = useSystemSettingsOverview();
-  const isCloudRuntime = settingsOverview?.mode === "cloud";
-  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && isCloudRuntime;
+  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"

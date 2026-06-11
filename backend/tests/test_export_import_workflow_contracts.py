@@ -134,7 +134,7 @@ def _seed_course_graph(session: Session) -> None:
             course_id=COURSE_ID,
             source_node_id=int(first.id or 0),
             target_node_id=int(second.id or 0),
-            edge_type="prerequisite",
+            edge_type="prerequisite_for",
             status="active",
             description="Matrices support determinants",
             confidence=0.8,

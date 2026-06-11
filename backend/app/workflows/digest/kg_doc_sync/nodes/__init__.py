@@ -8,9 +8,10 @@ Read these node files in graph order to understand the whole lane:
 4. ``extract`` fans out the published knowledge doc into section LLM extraction tasks.
 5. ``persist_units`` writes extracted knowledge_unit rows early for downstream lanes.
 6. ``stitch_relations`` adds conservative no-LLM relation edges between extracted units.
-7. ``persist`` merges extracted candidates into knowledge_unit / knowledge_edge tables.
-8. ``finalize`` returns the compact report consumed by build runtime.
-9. ``fail`` marks the sync run failed when an earlier node cannot continue.
+7. ``audit_graph`` records deterministic graph quality metrics before persistence.
+8. ``persist`` merges extracted candidates into knowledge_unit / knowledge_edge tables.
+9. ``finalize`` returns the compact report consumed by build runtime.
+10. ``fail`` marks the sync run failed when an earlier node cannot continue.
 
 Import node functions from their concrete modules to keep graph dependencies explicit.
 """

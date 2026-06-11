@@ -29,6 +29,7 @@ class DocGenModelStep(str, Enum):
     STATIC_HTML_FIGURE = "enhance_chapters.static_html_figure"
     INTERACTIVE_HTML = "enhance_chapters.interactive_html_sidecar"
     CHAPTER_REVIEW = "review_content.review_chapter"
+    DOCUMENT_REVIEW = "review_content.document_consistency_review"
     REPAIR_PATCH = "repair_or_route.surface_section_patch"
     COVER_IMAGE = "cover_sidecar"
 
@@ -205,6 +206,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         timeout_s=180,
         temperature=0.1,
         note="并行结构化审稿，优先速度与成本。",
+    ),
+    DocGenModelStep.DOCUMENT_REVIEW: DocGenModelPolicy(
+        step=DocGenModelStep.DOCUMENT_REVIEW,
+        call_type="structured",
+        model="reason",
+        max_tokens=4200,
+        timeout_s=180,
+        temperature=0.1,
+        note="整本文档一次性跨章一致性复核，只输出问题和可执行回流动作。",
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
         step=DocGenModelStep.REPAIR_PATCH,

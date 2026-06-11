@@ -8,6 +8,7 @@
 export interface UserProfileSummary {
   user_id: string;
   generated_at: string;
+  profile_text?: string;
   active_course_count?: number;
   active_course_ids?: string[];
   recent_course_ids?: string[];

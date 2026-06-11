@@ -30,23 +30,28 @@ _CHAPTER_LIST_FIELDS = (
     ("pitfall_targets", 8, 140),
 )
 _LEARNING_NODE_TYPES = {
-    "core_knowledge": "核心知识",
-    "method_demo": "方法示范",
-    "explanation_support": "解释辅助",
-    "principle_reasoning": "原理推理",
-    "practice_assessment": "练习评估",
-    "knowledge_organization": "知识组织",
-    "application_extension": "应用拓展",
+    "topic": "主题模块",
+    "concept": "概念术语",
+    "principle": "原理性质",
+    "formula_model": "公式模型",
+    "procedure": "方法步骤",
+    "skill": "解题技能",
+    "misconception": "易错辨析",
+    "application_case": "应用案例",
+    "resource": "学习资源",
 }
 _LEARNING_EDGE_TYPES = {
-    "prerequisite": "前置",
-    "contains": "包含",
-    "reasoning": "推理",
-    "application": "应用",
-    "explanation": "说明",
-    "training": "训练",
-    "contrast": "对比",
-    "similar": "相似",
+    "part_of": "归属",
+    "prerequisite_for": "前置",
+    "derives_to": "推导",
+    "applies_to": "应用",
+    "uses_method": "用方法",
+    "assesses": "考察",
+    "explains": "解释",
+    "remediates": "补救",
+    "confuses_with": "易混",
+    "similar_to": "相似",
+    "extends_to": "拓展",
 }
 
 
@@ -648,19 +653,19 @@ def _kg_candidate_hints_snapshot(
             if _clean_string_list(role_targets.get(role), limit=10, max_chars=120)
         ]
         existing_node_types = {str(item.get("node_type") or "") for item in candidate_nodes}
-        if concept_candidates and "core_knowledge" not in existing_node_types:
+        if concept_candidates and "concept" not in existing_node_types:
             candidate_nodes.append(
                 {
-                    "node_type": "core_knowledge",
-                    "label": _LEARNING_NODE_TYPES["core_knowledge"],
+                    "node_type": "concept",
+                    "label": _LEARNING_NODE_TYPES["concept"],
                     "names": _clean_string_list(concept_candidates, limit=10, max_chars=120),
                 }
             )
-        if task_candidates and "method_demo" not in existing_node_types:
+        if task_candidates and "procedure" not in existing_node_types:
             candidate_nodes.append(
                 {
-                    "node_type": "method_demo",
-                    "label": _LEARNING_NODE_TYPES["method_demo"],
+                    "node_type": "procedure",
+                    "label": _LEARNING_NODE_TYPES["procedure"],
                     "names": _clean_string_list(task_candidates, limit=8, max_chars=120),
                 }
             )
@@ -674,8 +679,8 @@ def _kg_candidate_hints_snapshot(
             candidate_edges.append(
                 {
                     "source_hint": target,
-                    "edge_type": "training",
-                    "target_type": "practice_assessment",
+                    "edge_type": "assesses",
+                    "target_type": "skill",
                     "reason": "例题、练习或任务应训练并验证该知识点。",
                 }
             )

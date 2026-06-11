@@ -1,17 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   ChevronDown,
   CreditCard,
   Github,
   LogIn,
   LogOut,
-  MessageCircle,
   User,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { apiClient, getApiErrorMessage } from "../../api/client";
+import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
-import { FeedbackModal } from "../ui/FeedbackModal";
 import { Modal } from "../ui/Modal";
 
 type RuntimeUser = {
@@ -44,7 +44,7 @@ interface TopBarProps {
 
 function getDisplayName(user: RuntimeUser | null): string {
   if (!user?.is_authenticated) {
-    return "游客";
+    return "本地用户";
   }
 
   const email = user.email?.trim() || "";
@@ -61,15 +61,15 @@ function getIdentitySubtitle(user: RuntimeUser | null): string {
   }
 
   if (user?.user_id) {
-    return `访客身份 ${user.user_id.slice(-6)}`;
+    return `本地身份 ${user.user_id.slice(-6)}`;
   }
 
-  return "当前设备上的临时身份";
+  return "当前设备上的本地身份";
 }
 
 function getAvatarText(user: RuntimeUser | null): string {
   if (!user?.is_authenticated) {
-    return "游";
+    return "本";
   }
 
   const displayName = getDisplayName(user).trim();
@@ -77,6 +77,7 @@ function getAvatarText(user: RuntimeUser | null): string {
 }
 
 export function TopBar({ className }: TopBarProps) {
+  const location = useLocation();
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
   const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -93,7 +94,6 @@ export function TopBar({ className }: TopBarProps) {
   const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -103,6 +103,8 @@ export function TopBar({ className }: TopBarProps) {
   const displayName = getDisplayName(authUser);
   const identitySubtitle = getIdentitySubtitle(authUser);
   const avatarText = getAvatarText(authUser);
+  const currentCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
+  const profilePath = currentCourseId ? buildCoursePath(currentCourseId, "profile") : null;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -371,7 +373,7 @@ export function TopBar({ className }: TopBarProps) {
             <div className="hidden min-w-0 text-left lg:block">
               <div className="max-w-[120px] truncate font-medium text-slate-700 dark:text-slate-300">{displayName}</div>
               <div className="max-w-[120px] truncate text-[12px] text-slate-400 dark:text-slate-500">
-                {isLoggedIn ? "已登录" : "游客身份"}
+                {isLoggedIn ? "已登录" : "本地身份"}
               </div>
             </div>
             <ChevronDown
@@ -403,16 +405,19 @@ export function TopBar({ className }: TopBarProps) {
               </div>
 
               <div className="py-1">
+                {profilePath ? (
+                  <Link
+                    to={profilePath}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                    onClick={() => setIsDropdownOpen(false)}
+                  >
+                    <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                    <span>学习画像</span>
+                  </Link>
+                ) : null}
+
                 {isLoggedIn ? (
                   <>
-                    <button
-                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                      onClick={() => setIsDropdownOpen(false)}
-                    >
-                      <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                      <span>个人资料</span>
-                    </button>
-
                     <button
                       className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       onClick={() => setIsDropdownOpen(false)}
@@ -463,16 +468,6 @@ export function TopBar({ className }: TopBarProps) {
                   <Github className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <span>GitHub</span>
                 </a>
-                <button
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                  onClick={() => {
-                    setIsDropdownOpen(false);
-                    setIsFeedbackModalOpen(true);
-                  }}
-                >
-                  <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <span>反馈与联系</span>
-                </button>
               </div>
 
               {isLoggedIn && (
@@ -529,13 +524,19 @@ export function TopBar({ className }: TopBarProps) {
             </div>
 
             <div className="py-1">
+              {profilePath ? (
+                <Link
+                  to={profilePath}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                  <span>学习画像</span>
+                </Link>
+              ) : null}
+
               {isLoggedIn ? (
                 <>
-                  <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <User className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                    <span>个人资料</span>
-                  </button>
-
                   <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <CreditCard className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <div className="flex items-center justify-between flex-1">
@@ -584,17 +585,6 @@ export function TopBar({ className }: TopBarProps) {
                 <Github className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <span>GitHub</span>
               </a>
-
-              <button
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  setIsFeedbackModalOpen(true);
-                }}
-              >
-                <MessageCircle className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                <span>反馈与联系</span>
-              </button>
             </div>
 
             {isLoggedIn && (
@@ -622,7 +612,7 @@ export function TopBar({ className }: TopBarProps) {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {authMode === "login"
               ? "继续使用当前设备身份，并开启登录态同步。"
-              : "将当前访客身份升级为邮箱账号。"}
+              : "将当前本地身份升级为邮箱账号。"}
           </p>
 
           <div className="space-y-1.5">
@@ -731,8 +721,6 @@ export function TopBar({ className }: TopBarProps) {
           </div>
         </form>
       </Modal>
-
-      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </div>
   );
 }

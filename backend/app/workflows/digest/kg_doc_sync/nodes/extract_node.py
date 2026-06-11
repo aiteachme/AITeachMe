@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 import structlog
@@ -117,6 +118,17 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
             extraction_payload=payload,
             error=None,
         )
+    except asyncio.CancelledError:
+        elapsed_ms = int((perf_counter() - started_at) * 1000)
+        logger.warning(
+            "kg_doc_sync_extract_cancelled",
+            course_id=state.get("course_id"),
+            build_session_id=state.get("build_session_id"),
+            sync_run_id=run_context.sync_run_id,
+            elapsed_ms=elapsed_ms,
+            **graph_extraction_parallelism(),
+        )
+        raise
     except Exception as exc:
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         logger.warning(

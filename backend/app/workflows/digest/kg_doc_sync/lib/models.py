@@ -182,7 +182,7 @@ class KnowledgeSyncExtractionPayload:
 
     units: list[MarkdownKnowledgeUnit]
     extracted_edges: list[MarkdownExtractedEdge]
-    diagnostics_totals: dict[str, int]
+    diagnostics_totals: dict[str, int | float]
 
 
 __all__ = [

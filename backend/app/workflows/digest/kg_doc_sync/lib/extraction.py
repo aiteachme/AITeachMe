@@ -10,7 +10,7 @@ from time import perf_counter
 from pydantic import BaseModel, Field, field_validator
 import structlog
 
-from app.shared.infra.llm_support import acompletion_structured
+from app.shared.infra.llm_support import acompletion_structured, run_llm_tasks
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg_doc_sync.lib.model_policy import (
@@ -79,13 +79,15 @@ class CandidateNode(BaseModel):
     anchor_id: str = Field(default="", description="Markdown 中已有的 KnowledgeUnit anchor ID。")
     name: str = Field(description="知识单元名称，要求短、准、可展示；不超过 90 个字符。")
     knowledge_unit_type: Literal[
-        "core_knowledge",
-        "method_demo",
-        "explanation_support",
-        "principle_reasoning",
-        "practice_assessment",
-        "knowledge_organization",
-        "application_extension",
+        "topic",
+        "concept",
+        "principle",
+        "formula_model",
+        "procedure",
+        "skill",
+        "misconception",
+        "application_case",
+        "resource",
     ] = Field(
         description="允许的节点类型，必须使用枚举值本身。"
     )
@@ -119,21 +121,24 @@ class CandidateEdge(BaseModel):
     source_node_type: str | None = Field(default=None, description="源节点类型；不确定时可留空。")
     target_node_type: str | None = Field(default=None, description="目标节点类型；不确定时可留空。")
     edge_type: Literal[
-        "prerequisite",
-        "contains",
-        "reasoning",
-        "application",
-        "explanation",
-        "training",
-        "similar",
-        "contrast",
+        "part_of",
+        "prerequisite_for",
+        "derives_to",
+        "applies_to",
+        "uses_method",
+        "assesses",
+        "explains",
+        "remediates",
+        "confuses_with",
+        "similar_to",
+        "extends_to",
     ] = Field(description="允许的关系类型，必须使用枚举值本身。")
     description: str = Field(description="一句话说明这条关系在当前片段中的依据；不超过 140 个字符。")
 
     @field_validator("edge_type", mode="before")
     @classmethod
     def _normalize_edge_type(cls, value: object) -> str:
-        # Some providers occasionally echo a node type such as "explanation_support" as a relation.
+        # Some providers occasionally echo a node type such as "resource" as a relation.
         # Normalize before Literal validation so the section can still be salvaged.
         return normalize_relation_type(str(value or ""))
 
@@ -280,19 +285,23 @@ async def _repair_docs_extraction_after_empty(
             "role": USER,
             "content": (
                 "上一次抽取结果为空。请重新阅读片段：如果其中包含任何概念、定义、公式、方法、例题、"
-                "定理、推导、解释辅助、练习评估或应用任务，请返回非空图谱。若标题本身是一个真实主题，至少包含该核心知识。"
+                "定理、推导、方法步骤、解题技能、易错点或应用案例，请返回非空图谱。若标题本身是一个真实主题，至少包含该主题或概念。"
             ),
         }
     )
-    return await acompletion_structured(
-        response_model=ChunkExtractionResult,
-        messages=repair_messages,
-        **kg_doc_sync_completion_kwargs_with_metadata(
-            KGDocSyncModelStep.EMPTY_REPAIR,
-            chunk_title=chunk_title,
-            header_path=header_path,
-        ),
-    )
+    async def _run_empty_repair(_: object) -> ChunkExtractionResult:
+        return await acompletion_structured(
+            response_model=ChunkExtractionResult,
+            messages=repair_messages,
+            **kg_doc_sync_completion_kwargs_with_metadata(
+                KGDocSyncModelStep.EMPTY_REPAIR,
+                chunk_title=chunk_title,
+                header_path=header_path,
+            ),
+        )
+
+    (result,) = await run_llm_tasks([None], _run_empty_repair, max_concurrent=1)
+    return result
 
 
 def _should_retry_docs_extraction_after_empty(
@@ -343,11 +352,13 @@ def _sanitize_candidate_graph(
         node.name
         for node in result.nodes
         if normalize_knowledge_unit_type(node.knowledge_unit_type) in {
-            "core_knowledge",
-            "method_demo",
-            "principle_reasoning",
-            "knowledge_organization",
-            "application_extension",
+            "concept",
+            "principle",
+            "formula_model",
+            "procedure",
+            "skill",
+            "misconception",
+            "application_case",
         }
     ]
     semantic_topic_path = choose_semantic_topic_path(
@@ -380,16 +391,18 @@ def _sanitize_candidate_graph(
             node.name = _clip_text(_normalize_text(node.name), max_chars=_MAX_CANDIDATE_NAME_CHARS)
             node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
             if node.knowledge_unit_type in {
-                "core_knowledge",
-                "method_demo",
-                "principle_reasoning",
-                "knowledge_organization",
-                "application_extension",
+                "concept",
+                "principle",
+                "formula_model",
+                "procedure",
+                "skill",
+                "misconception",
+                "application_case",
             } and (
                 not node.taxonomy_hint or is_generic_semantic_title(node.taxonomy_hint)
             ):
                 node.taxonomy_hint = semantic_topic_name
-            if node.knowledge_unit_type in {"explanation_support", "practice_assessment"} and (
+            if node.knowledge_unit_type in {"resource"} and (
                 not node.parent_entity_name or is_generic_semantic_title(node.parent_entity_name)
             ):
                 node.parent_entity_name = semantic_topic_name
@@ -519,7 +532,7 @@ def _build_markdown_anchor_result(
         nodes.append(
             CandidateNode(
                 name=name,
-                knowledge_unit_type="core_knowledge",
+                knowledge_unit_type="concept",
                 type_source="manual",
                 type_confidence=0.9,
                 local_summary=f"Markdown 标记引用了概念：{name}。",
@@ -551,7 +564,7 @@ def _build_markdown_anchor_result(
                 CandidateEdge(
                     source_name=prerequisite,
                     target_name=unit.name,
-                edge_type="prerequisite",
+                    edge_type="prerequisite_for",
                     description=f"{prerequisite} 是学习 {unit.name} 前需要掌握的前置知识。",
                 )
             )
@@ -561,7 +574,7 @@ def _build_markdown_anchor_result(
                 CandidateEdge(
                     source_name=unit.name,
                     target_name=related,
-                edge_type="similar",
+                    edge_type="similar_to",
                     description=f"{unit.name} 与 {related} 存在相关关系。",
                 )
             )
@@ -644,23 +657,25 @@ async def _extract_candidates_internal(
 
     try:
         diagnostics.llm_attempted = True
-        llm_call = acompletion_structured(
-            response_model=ChunkExtractionResult,
-            messages=messages,
-            **kg_doc_sync_completion_kwargs_with_metadata(
-                KGDocSyncModelStep.SECTION_GRAPH,
-                chunk_title=chunk_title,
-                header_path=header_path,
-                doc_source_type=doc_source_type,
-                digest_mode=digest_mode,
-                chunk_chars=len(chunk_content),
-                llm_chunk_chars=len(llm_chunk_content),
-                course_context_chars=len(course_context or ""),
-                llm_course_context_chars=len(llm_course_context),
-                section_timeout_s=kg_doc_sync_section_llm_timeout_s(),
-            ),
-        )
-        result = await llm_call
+        async def _run_section_graph(_: object) -> ChunkExtractionResult:
+            return await acompletion_structured(
+                response_model=ChunkExtractionResult,
+                messages=messages,
+                **kg_doc_sync_completion_kwargs_with_metadata(
+                    KGDocSyncModelStep.SECTION_GRAPH,
+                    chunk_title=chunk_title,
+                    header_path=header_path,
+                    doc_source_type=doc_source_type,
+                    digest_mode=digest_mode,
+                    chunk_chars=len(chunk_content),
+                    llm_chunk_chars=len(llm_chunk_content),
+                    course_context_chars=len(course_context or ""),
+                    llm_course_context_chars=len(llm_course_context),
+                    section_timeout_s=kg_doc_sync_section_llm_timeout_s(),
+                ),
+            )
+
+        (result,) = await run_llm_tasks([None], _run_section_graph, max_concurrent=1)
     except Exception as exc:
         diagnostics.llm_error_count += 1
         logger.warning(

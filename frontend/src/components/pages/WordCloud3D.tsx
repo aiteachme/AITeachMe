@@ -31,23 +31,27 @@ interface LayoutWord {
 // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Color Palette 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 const TYPE_COLORS: Record<string, string> = {
-  core_knowledge: "#5dade2",
-  method_demo: "#ec7063",
-  explanation_support: "#7f8c8d",
-  principle_reasoning: "#48c9b0",
-  practice_assessment: "#e74c3c",
-  knowledge_organization: "#8e44ad",
-  application_extension: "#af7ac5",
+  topic: "#64748b",
+  concept: "#2563eb",
+  principle: "#0f766e",
+  formula_model: "#7c3aed",
+  procedure: "#ea580c",
+  skill: "#dc2626",
+  misconception: "#be123c",
+  application_case: "#0891b2",
+  resource: "#6b7280",
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  core_knowledge: "核心知识",
-  method_demo: "方法示范",
-  explanation_support: "解释辅助",
-  principle_reasoning: "原理推理",
-  practice_assessment: "练习评估",
-  knowledge_organization: "知识组织",
-  application_extension: "应用拓展",
+  topic: "主题模块",
+  concept: "概念术语",
+  principle: "原理性质",
+  formula_model: "公式模型",
+  procedure: "方法步骤",
+  skill: "解题技能",
+  misconception: "易错辨析",
+  application_case: "应用案例",
+  resource: "学习资源",
 };
 
 const DEFAULT_COLOR = "#94a3b8";

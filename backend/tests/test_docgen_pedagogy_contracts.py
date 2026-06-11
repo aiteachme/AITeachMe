@@ -5,6 +5,7 @@ from app.workflows.digest.common.contracts import (
     resolve_digest_retrieval_profile,
 )
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
+    _ensure_chapter_overview_mermaid,
     _ensure_requested_placeholders,
 )
 from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
@@ -13,6 +14,7 @@ from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, Enhanc
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
+from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
 from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_heading_repair_messages,
     build_docgen_writer_messages,
@@ -117,6 +119,34 @@ def test_mermaid_placeholder_not_added_when_writer_already_rendered_diagram() ->
     assert rendered == markdown
     assert rendered.count("```mermaid") == 1
     assert "ATM_DOCGEN_ASSET_REQUEST" not in rendered
+
+
+def test_chapter_overview_mermaid_added_when_chapter_has_no_diagram() -> None:
+    rendered = _ensure_chapter_overview_mermaid(
+        "# 函数图像\n\n## 一次函数\n正文。",
+        chapter_title="函数图像",
+        digest_mode="sprint",
+    )
+
+    assert "ATM_DOCGEN_ASSET_REQUEST" in rendered
+    assert "kind: mermaid" in rendered
+    assert "函数图像" in rendered
+
+
+def test_chapter_overview_mermaid_inserted_after_opening_table() -> None:
+    rendered = _ensure_chapter_overview_mermaid(
+        (
+            "# 绝对值\n\n"
+            "| 考点 | 重要程度 | 常见题型 |\n"
+            "| --- | --- | --- |\n"
+            "| 数轴距离 | 高 | 化简 |\n\n"
+            "## 1. 数轴距离\n正文。"
+        ),
+        chapter_title="绝对值",
+        digest_mode="sprint",
+    )
+
+    assert rendered.index("ATM_DOCGEN_ASSET_REQUEST") < rendered.index("## 1. 数轴距离")
 
 
 def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:
@@ -271,8 +301,8 @@ def test_textbook_heading_normalization_drops_duplicate_headings_without_local_t
         focus_items=["CPU、运算器、控制器与内存储器的构成关系"],
     )
 
-    assert normalized.count("## CPU 与内存协作") == 1
-    assert "\n## 指令执行路径" in normalized
+    assert normalized.count("## 1. CPU 与内存协作") == 1
+    assert "\n## 2. 指令执行路径" in normalized
 
 
 def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywords() -> None:
@@ -418,6 +448,54 @@ def test_sprint_rule_review_does_not_keyword_reject_unanswered_practice() -> Non
     assert report.passed is False
 
 
+def test_rule_review_requires_fixed_unit_test_as_final_h2() -> None:
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="函数图像",
+        required_elements=[],
+    )
+    missing_draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="函数图像",
+        markdown="# 函数图像\n\n## 图像性质\n\n函数图像可以帮助判断增减性。\n",
+    )
+    misplaced_draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="函数图像",
+        markdown=(
+            "# 函数图像\n\n"
+            "## 图像性质\n\n函数图像可以帮助判断增减性。\n\n"
+            "## 单元测试\n\n> [!PRACTICE]\n> **题目/任务**：判断一次函数的增减性。\n>\n> **答案/结论**：斜率为正时递增。\n\n"
+            "## 本章小结\n\n看斜率和截距。\n"
+        ),
+    )
+
+    _reviewed, _report, missing_actions = _rule_review_chapter(
+        draft=missing_draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="systematic",
+    )
+    _reviewed, _report, misplaced_actions = _rule_review_chapter(
+        draft=misplaced_draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="systematic",
+    )
+
+    missing_unit_actions = [action for action in missing_actions if action.action_id.endswith("_unit_test")]
+    misplaced_unit_actions = [action for action in misplaced_actions if action.action_id.endswith("_unit_test")]
+    assert len(missing_unit_actions) == 1
+    assert len(misplaced_unit_actions) == 1
+    assert "缺少固定的章末 `## 单元测试` 模块" in missing_unit_actions[0].reason
+    assert "`## 单元测试` 必须是本章最后一个二级标题" in misplaced_unit_actions[0].reason
+    assert "本章末尾补齐固定二级标题 `## 单元测试`" in missing_unit_actions[0].instruction
+
+
 def test_rule_review_short_chapter_requests_section_expansion() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
@@ -468,14 +546,24 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "答案或结论" in prompt
     assert "> [!IMPORTANT]" in prompt
     assert "> [!WARNING]" in prompt
-    assert "> [!EXAMPLE]" in prompt
-    assert "> [!PRACTICE]" in prompt
+    assert "完整例题、案例和章末单元测试不要放进大块 callout" in prompt
+    assert "不要使用 `> [!EXAMPLE]` / `> [!PRACTICE]`" in prompt
     assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
     assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
-    assert "每个主要 `##` 都要形成" in prompt
+    assert "蜂考式讲义结构" in prompt
+    assert "考点/任务导航表" in prompt
+    assert "`## 1. 具体知识点名`" in prompt
+    assert "每个编号知识点" in prompt
+    assert "**知识点**、**例题/任务**、**解析**、**答案/结论**、**易错点/检查点**" in prompt
+    assert "一级标题后必须先给 3-5 行考点/任务导航表" in prompt
+    assert "每章至少要有一处图示化整理" in prompt
+    assert "图片 OCR、图注、图片上下文或显式占位说明" in prompt
+    assert "不要臆造未解析图片内容" in prompt
+    assert "不要用大片连续色块包裹长解释" in prompt
     assert "可独立学习的小单元" in prompt
     assert "学生不看原教材也应能知道" in prompt
-    assert "章末保留一个短练习收束块" in prompt
+    assert "章末必须保留固定的 `## 单元测试`" in prompt
+    assert "必须是最后一个二级标题" in prompt
     assert "学习活动总量约 10 个" in prompt
     assert "章末练习 6-8 个" in prompt
     assert "训练型章节至少 10 个学习活动" in prompt
@@ -483,12 +571,10 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     assert "题型/任务导航表" in prompt
     assert "考什么、条件信号、做法和易错点" in prompt
     assert "各自独立成段或列表项" in prompt
-    assert "不要复用章节标题" in prompt
     assert "必须给出参考答案" in prompt
     assert "带答案的理解检查活动" in prompt
     assert "学习动作、检查动作或配额标签复制成目录标题" in prompt
     assert "泛化目录标题、学习动作标题、内部检查标题、序号占位题型" in prompt
-    assert "固定词表、关键词抽取或字符串拼接" in prompt
     assert "本章边界外主题" in prompt
     assert "接口权限的判断题" not in prompt
     assert "孤立三级标题" in prompt
@@ -525,6 +611,17 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
         claim_evidence_map={},
         conflict_report={},
         rule_review={},
+        guideline_summary={
+            "writing_rules": ["先定义再举例"],
+            "canonical_glossary": [{"term": "矩阵乘法", "definition": "按行列配对求和", "target_chapters": [1]}],
+        },
+        dispatch_item={
+            "chapter_index": 1,
+            "source_slices": [{"section_ref": "s1", "section_title": "矩阵分解讲义"}],
+        },
+        chapter_contract={"chapter_index": 1, "evidence_ids": ["e1"], "teaching_outline": ["先讲定义"]},
+        evidence_items=[{"evidence_id": "e1", "text": "奇异值分解可用于低秩近似", "source_ref": "local://file/f1/section/s1"}],
+        learner_profile_text="学习者容易把分解步骤背成模板。",
     )
     prompt = messages[-1]["content"]
 
@@ -533,7 +630,8 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "完整例题" in prompt
     assert "固定口号或本地模板" in prompt
     assert "完整学习单元" in prompt
-    assert "每章末尾应有一个短练习收束块" in prompt
+    assert "每章最后一个二级标题必须固定为 `## 单元测试`" in prompt
+    assert "位置不是最后" in prompt
     assert "快速复习通常 6-8 个短题/任务" in prompt
     assert "不能挤在同一段" in prompt
     assert "不要在 action 里给可直接复制的标题" in prompt
@@ -541,5 +639,51 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "序号占位题型" in prompt
     assert "参考答案" in prompt
     assert "孤立三级标题属于层级过度切分" in prompt
+    assert "DocGen 全局一致性上下文" in prompt
+    assert "矩阵乘法" in prompt
+    assert "矩阵分解讲义" in prompt
+    assert "奇异值分解可用于低秩近似" in prompt
+    assert "学习者容易把分解步骤背成模板" in prompt
+    assert "主题模块" in prompt
+    assert "概念术语" in prompt
+    assert "前置" in prompt
+    assert "补救" in prompt
+    assert "7 类学习节点与 8 类关系" not in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt
+
+
+def test_document_review_prompt_focuses_on_cross_chapter_quality_not_style_polish() -> None:
+    messages = build_document_review_messages(
+        digest_mode="systematic",
+        reviewed_chapters=[
+            {
+                "chapter_index": 1,
+                "title": "函数极限",
+                "markdown": "# 函数极限\n\n## 极限定义\n\n用 epsilon-delta 描述趋近。",
+                "source_details": [{"url": "local://file/f1/section/s1"}],
+            },
+            {
+                "chapter_index": 2,
+                "title": "连续性",
+                "markdown": "# 连续性\n\n## 连续定义\n\n连续需要函数值等于极限。",
+                "source_details": [{"url": "local://file/f1/section/s2"}],
+            },
+        ],
+        rule_report={"passed": True, "issues": [], "source_summary": {"chapter_count": 2}},
+        guideline={
+            "canonical_glossary": [{"term": "极限", "definition": "函数趋近的稳定值", "target_chapters": [1, 2]}],
+            "notation_rules": [{"symbol": "lim", "meaning": "极限", "target_chapters": [1, 2]}],
+        },
+        dispatch_table={"items": [{"chapter_index": 1, "source_section_refs": ["s1"]}]},
+        learner_profile_text="学习者容易把连续和可导混在一起。",
+    )
+    prompt = messages[-1]["content"]
+
+    assert "跨章术语、符号、定义、前置关系" in prompt
+    assert "examine/profile" in prompt
+    assert "只输出真实问题" in prompt
+    assert "不要因为想更优雅" in prompt
+    assert "不要在 instruction 里直接写可复制的新标题或完整正文" in prompt
+    assert "函数极限" in prompt
+    assert "学习者容易把连续和可导混在一起" in prompt

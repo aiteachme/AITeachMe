@@ -15,6 +15,7 @@ from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncReport
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
+from app.workflows.digest.kg_doc_sync.nodes.audit_node import audit_node
 from app.workflows.digest.kg_doc_sync.nodes.extract_node import extract_node
 from app.workflows.digest.kg_doc_sync.nodes.fail_node import fail_node
 from app.workflows.digest.kg_doc_sync.nodes.finalize_node import finalize_node
@@ -26,7 +27,7 @@ from app.workflows.digest.kg_doc_sync.nodes.prepare_node import prepare_node
 from app.workflows.digest.kg_doc_sync.nodes.stitch_node import stitch_node
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
-RUN_NAME_KG_DOC_SYNC = "知识图谱同步：根据知识文档更新图谱"
+RUN_NAME_KG_DOC_SYNC = "织网引擎：同步课程知识图谱（DocGen 后置）"
 
 NODE_PREPARE = "prepare"
 NODE_INIT_RUN = "init_run"
@@ -34,20 +35,22 @@ NODE_PERSIST_SEED_UNITS = "persist_seed_units"
 NODE_EXTRACT = "extract"
 NODE_PERSIST_UNITS = "persist_units"
 NODE_STITCH_RELATIONS = "stitch_relations"
+NODE_AUDIT_GRAPH = "audit_graph"
 NODE_PERSIST = "persist"
 NODE_FINALIZE = "finalize"
 NODE_FAIL = "fail"
 
 NODE_DISPLAY_NAMES = {
-    NODE_PREPARE: "校验同步输入",
-    NODE_INIT_RUN: "初始化同步批次",
-    NODE_PERSIST_SEED_UNITS: "写入种子知识点",
-    NODE_EXTRACT: "抽取图谱候选",
-    NODE_PERSIST_UNITS: "提前写入知识点",
-    NODE_STITCH_RELATIONS: "缝合图谱关系",
-    NODE_PERSIST: "写入图谱变更",
-    NODE_FINALIZE: "收口同步结果",
-    NODE_FAIL: "记录同步失败",
+    NODE_PREPARE: "图谱同步：校验知识文档",
+    NODE_INIT_RUN: "图谱同步：创建同步批次",
+    NODE_PERSIST_SEED_UNITS: "图谱同步：写入 DocGen 种子知识点",
+    NODE_EXTRACT: "图谱同步：并发抽取知识点与关系",
+    NODE_PERSIST_UNITS: "图谱同步：提前写入可用知识点",
+    NODE_STITCH_RELATIONS: "图谱同步：补全课程关系",
+    NODE_AUDIT_GRAPH: "图谱同步：复核图谱质量",
+    NODE_PERSIST: "图谱同步：持久化图谱变更",
+    NODE_FINALIZE: "图谱同步：完成同步报告",
+    NODE_FAIL: "图谱同步：记录同步失败",
 }
 
 NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
@@ -80,9 +83,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_PERSIST_SEED_UNITS: {
         "description": (
-            "在正式 section 抽取前，只把 DocGen LLM 预抽取中已和最终文档匹配的 KnowledgeUnit 写入；"
-            "如果没有可用预抽取，则不写非 LLM 种子节点。"
-            "这样考卷生成可以早于图谱正式抽取完成启动。"
+            "在正式 section 抽取前，先写入 DocGen 已有的 KnowledgeUnit 种子。"
+            "优先复用已匹配最终文档的 LLM 预抽取；如果预抽取尚未产出，则退到 DocGen preliminary_kg/backbone 规则种子。"
+            "这样后置抽取被取消时也不会让课程图谱完全为空。"
         ),
         "reads": ["markdown", "structured_context", "prefetched_sections", "sync_run_context", "knowledge_unit"],
         "writes": ["knowledge_unit", "node_metrics.persist_seed_units"],
@@ -100,7 +103,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "writes": ["extraction_payload", "course_context", "node_metrics.extract", "error"],
         "input_keys": ["course_id", "markdown", "course_context", "sync_run_context"],
         "output_keys": ["extraction_payload", "course_context", "node_metrics", "error"],
-        "fanout": "节点内部按章节/子章节构造抽取任务，async gather + semaphore 并发执行，完成后 fan-in 为 extraction_payload。",
+        "fanout": "节点内部按章节/子章节构造抽取任务，通过 run_llm_tasks 使用统一 LLM 并发上限执行，完成后 fan-in 为 extraction_payload。",
     },
     NODE_PERSIST_UNITS: {
         "description": (
@@ -123,6 +126,17 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "reads": ["extraction_payload"],
         "writes": ["extraction_payload", "node_metrics.stitch_relations", "error"],
         "input_keys": ["extraction_payload"],
+        "output_keys": ["extraction_payload", "node_metrics", "error"],
+    },
+    NODE_AUDIT_GRAPH: {
+        "description": (
+            "在写库前做确定性图谱质量复核：检查节点/关系类型是否为标准 taxonomy、边端点是否存在、"
+            "关系方向是否符合类型约束、章节覆盖是否足够，以及是否存在可供 examine/profile 使用的核心学习节点。"
+            "本节点不调用 LLM、不改写图谱，只把质量指标写入 diagnostics 和 LangSmith node_metrics。"
+        ),
+        "reads": ["extraction_payload", "structured_context"],
+        "writes": ["extraction_payload", "node_metrics.audit_graph", "error"],
+        "input_keys": ["extraction_payload", "structured_context"],
         "output_keys": ["extraction_payload", "node_metrics", "error"],
     },
     NODE_PERSIST: {
@@ -189,6 +203,10 @@ def route_after_persist_units(state: DocsSyncState) -> str:
 
 
 def route_after_stitch(state: DocsSyncState) -> str:
+    return "audit_graph" if not state.get("error") else "fail"
+
+
+def route_after_audit(state: DocsSyncState) -> str:
     return "persist" if not state.get("error") else "fail"
 
 
@@ -206,6 +224,7 @@ route_after_persist_seed_units_for_trace = named_route(route_after_persist_seed_
 route_after_extract_for_trace = named_route(route_after_extract, "检查图谱候选是否抽取成功")
 route_after_persist_units_for_trace = named_route(route_after_persist_units, "检查知识点是否可提前使用")
 route_after_stitch_for_trace = named_route(route_after_stitch, "检查图谱关系缝合是否成功")
+route_after_audit_for_trace = named_route(route_after_audit, "检查图谱复核是否成功")
 route_after_persist_for_trace = named_route(route_after_persist, "检查图谱写入是否成功")
 route_after_finalize_for_trace = named_route(route_after_finalize, "检查是否完成")
 
@@ -263,6 +282,11 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_STITCH_RELATIONS),
     )
     workflow.add_node(
+        NODE_AUDIT_GRAPH,
+        _trace_docs_sync_node(trace, NODE_AUDIT_GRAPH, audit_node),
+        metadata=_langgraph_node_metadata(NODE_AUDIT_GRAPH),
+    )
+    workflow.add_node(
         NODE_PERSIST,
         _trace_docs_sync_node(trace, NODE_PERSIST, persist_node),
         metadata=_langgraph_node_metadata(NODE_PERSIST),
@@ -307,6 +331,11 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_STITCH_RELATIONS,
         route_after_stitch_for_trace,
+        {"audit_graph": NODE_AUDIT_GRAPH, "fail": NODE_FAIL},
+    )
+    workflow.add_conditional_edges(
+        NODE_AUDIT_GRAPH,
+        route_after_audit_for_trace,
         {"persist": NODE_PERSIST, "fail": NODE_FAIL},
     )
     workflow.add_conditional_edges(
@@ -373,6 +402,7 @@ async def run_graph_docs_sync_workflow(
     prefetched_sections: list[SectionExtractionRecord] | None = None,
     early_units_callback: object | None = None,
     trace_metadata: dict[str, object] | None = None,
+    embedded_in_parent_trace: bool = False,
 ) -> WorkflowResult[KnowledgeSyncReport]:
     error_course_id = str(course_id or "").strip()
     try:
@@ -387,6 +417,7 @@ async def run_graph_docs_sync_workflow(
             "lane": "kg_doc_sync",
             "langsmith_run_name": RUN_NAME_KG_DOC_SYNC,
             "build_revision_no": normalized_revision,
+            "workflow_trace_kind": "embedded_langgraph_subgraph" if embedded_in_parent_trace else "compact_langgraph_root",
         }
         for key, value in dict(trace_metadata or {}).items():
             if value is not None and key not in context_metadata:
@@ -410,6 +441,7 @@ async def run_graph_docs_sync_workflow(
                 early_units_callback=early_units_callback,
             ),
             context=context,
+            trace_as_root=not embedded_in_parent_trace,
         )
         if result.failed:
             return err_result(

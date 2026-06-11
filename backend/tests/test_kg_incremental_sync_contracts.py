@@ -47,7 +47,7 @@ def _unit(anchor: str, name: str, *, chapter_index: int = 1, source_kind: str = 
         name=name,
         summary=f"{name} summary",
         body_markdown=f"## {name}\n{name} body",
-        knowledge_unit_type="core_knowledge",
+        knowledge_unit_type="concept",
         source_kind=source_kind,
         chapter_index=chapter_index,
     )
@@ -81,7 +81,7 @@ def _payload(
             section_index=unit.chapter_index,
             title=unit.name,
             header_path=f"Parent > {unit.name}" if unit.name == "Child" else unit.name,
-            body_markdown=f"{unit.name} uses Parent for application",
+            body_markdown=f"{unit.name} belongs to Parent",
             primary_anchor=unit.anchor if primary else None,
             primary_name=unit.name if primary else "",
             primary_type=unit.knowledge_unit_type,
@@ -127,7 +127,23 @@ def test_context_payloads_build_chapter_hints_and_backbone() -> None:
             },
         },
         "docgen_manifest": {
-            "chapter_task_seeds": [{"chapter_index": 1, "required_elements": ["Derivative"]}],
+            "intent_enhanced": {
+                "learning_goal_text": "系统复习极限",
+                "content_strategy_text": "先统一符号，再训练极限计算。",
+            },
+            "summary_enhanced": {
+                "concepts": ["Derivative"],
+                "chapter_source_affinity": [{"chapter_index": 1, "file_ids": ["file-c"]}],
+            },
+            "chapters_enhanced": [{"chapter_index": 1, "required_elements": ["Derivative"]}],
+            "dispatch_table": {"items": [{"chapter_index": 1, "source_file_ids": ["file-b"]}]},
+            "chapter_task_seeds": [{"chapter_index": 1, "required_elements": ["Continuity"]}],
+            "guideline": {
+                "canonical_glossary": [{"term": "GuidelineLimit", "definition": "统一使用极限记号", "target_chapters": [1]}],
+                "dependency_edges": [
+                    {"from": "GuidelineLimit", "to": "Continuity", "relation": "chapter_order", "reason": "先理解极限"}
+                ],
+            },
         },
     }
 
@@ -137,11 +153,51 @@ def test_context_payloads_build_chapter_hints_and_backbone() -> None:
     backbone = sync._document_backbone_payload(structured_context)
 
     assert digest_mode == "sprint"
-    assert any("Limit" in hint and "Continuity" in hint for hint in hints)
+    assert any("Limit" in hint and "Derivative" in hint and "Continuity" in hint for hint in hints)
+    assert any("统一符号" in hint for hint in hints)
     assert contexts[1].knowledge_document_id == 101
-    assert contexts[1].source_file_ids == ["file-a"]
+    assert contexts[1].source_file_ids == ["file-a", "file-b", "file-c"]
     assert sync._chapter_context_for_index(contexts, 99).chapter_index == 99
-    assert backbone["canonical_glossary"][0]["term"] == "Limit"
+    assert backbone["canonical_glossary"][0]["term"] == "GuidelineLimit"
+    assert backbone["concept_dependency_graph"][0]["from"] == "GuidelineLimit"
+
+
+def test_guideline_backbone_creates_missing_skeleton_units_and_edges() -> None:
+    structured_context = {
+        "docgen_manifest": {
+            "guideline": {
+                "canonical_glossary": [
+                    {
+                        "term": "动量",
+                        "definition": "物体运动状态的量化描述。",
+                        "target_chapters": [1],
+                        "knowledge_unit_type": "principle",
+                    },
+                    {
+                        "term": "冲量",
+                        "definition": "力对时间的累积效果。",
+                        "target_chapters": [1],
+                        "knowledge_unit_type": "concept",
+                    },
+                ],
+                "dependency_edges": [
+                    {"from": "动量", "to": "冲量", "relation": "prerequisite_for", "reason": "先理解运动状态再理解改变。"}
+                ],
+            }
+        }
+    }
+
+    units, edges = sync._build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts={1: ChapterSourceContext(knowledge_document_id=88, chapter_index=1, source_file_ids=["file-x"])},
+        existing_normalized_names=set(),
+    )
+
+    assert {unit.name for unit in units} == {"动量", "冲量"}
+    assert {unit.knowledge_unit_type for unit in units} == {"principle", "concept"}
+    assert all(unit.source_kind == "docgen_backbone" for unit in units)
+    assert all(unit.source_file_ids == ["file-x"] for unit in units)
+    assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in edges] == [("动量", "冲量", "prerequisite_for")]
 
 
 def test_extraction_task_planning_splits_large_chapters_and_hashes_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,8 +252,8 @@ def test_section_payload_context_uniqueness_namespace_and_combination() -> None:
         target_candidate_id=None,
         source_name="Child",
         target_name="Parent",
-        edge_type="application",
-        description="Child applies Parent",
+        edge_type="part_of",
+        description="Child belongs to Parent",
     )
     parent_payload = _payload(unit=parent, candidate_id="parent")
     child_payload = _payload(unit=child, candidate_id="child", pending_edges=[child_edge])
@@ -254,7 +310,7 @@ def test_section_payload_context_uniqueness_namespace_and_combination() -> None:
     assert unique.candidate_id_to_anchor["dup"] == unique.units[0].anchor
     assert namespaced.candidate_id_to_anchor == {"s1:child": "ku_child"}
     assert {unit.name for unit in units} == {"Parent", "Child"}
-    assert {"application", "contains", "prerequisite"} <= {edge.edge_type for edge in edges}
+    assert {"part_of", "prerequisite_for"} <= {edge.edge_type for edge in edges}
     assert diagnostics["successful_section_count"] == 2
     assert diagnostics["planned_task_count"] == 2
 
@@ -281,6 +337,41 @@ def test_prefetched_units_payload_reuses_matching_sections_and_reports_stale(mon
     assert result.diagnostics_totals["prefetch_reused_section_count"] == 1
     assert result.diagnostics_totals["prefetch_failed_section_count"] == 1
     assert result.diagnostics_totals["prefetch_early_unit_count"] == 1
+
+
+def test_prefetched_units_payload_uses_docgen_seed_when_prefetch_empty() -> None:
+    markdown = "# 矩阵基础\n\n## 矩阵乘法\n正文"
+    result = sync.build_prefetched_knowledge_graph_units_payload(
+        markdown=markdown,
+        structured_context={
+            "chapters": [
+                {
+                    "chapter_index": 1,
+                    "knowledge_document_id": 10,
+                    "source_file_ids": ["file-a"],
+                }
+            ],
+            "docgen_manifest": {
+                "preliminary_kg": {
+                    "nodes": [
+                        {
+                            "name": "矩阵乘法",
+                            "knowledge_unit_type": "concept",
+                            "chapter_index": 1,
+                            "summary": "按行列配对求和。",
+                        }
+                    ]
+                }
+            },
+        },
+        prefetched_records=[],
+    )
+
+    assert [unit.name for unit in result.units] == ["矩阵乘法"]
+    assert result.units[0].source_kind == "docgen_preliminary_kg"
+    assert result.units[0].knowledge_document_id == 10
+    assert result.diagnostics_totals["docgen_seed_unit_count"] == 1
+    assert result.diagnostics_totals["early_unit_count"] == 1
 
 
 def test_async_section_record_extraction_captures_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -332,7 +423,7 @@ def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytes
                 target_candidate_id=None,
                 source_name="Child",
                 target_name="Parent",
-                edge_type="application",
+                edge_type="part_of",
                 description="Child uses Parent",
             )
         ],
@@ -351,7 +442,7 @@ def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytes
     )
 
     assert {unit.name for unit in units} == {"Parent", "Child"}
-    assert any(edge.edge_type == "application" for edge in edges)
+    assert any(edge.edge_type == "part_of" for edge in edges)
     assert diagnostics["prefetch_reused_section_count"] == 2
     assert diagnostics["prefetch_catchup_section_count"] == 0
     assert diagnostics["total_extracted_node_count"] == 2
@@ -419,7 +510,7 @@ def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None
         session,
         course_id=COURSE_ID,
         item=parent_item,
-        knowledge_unit_type="core_knowledge",
+        knowledge_unit_type="concept",
     ).id == parent.id
     assert sync._resolve_edge_anchor(
         candidate_id="parent",
@@ -449,7 +540,7 @@ def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None
         course_id=COURSE_ID,
         source_node_id=int(parent.id or 0),
         target_node_id=int(child.id or 0),
-        edge_type="prerequisite",
+        edge_type="prerequisite_for",
         description="Matrix comes before Rank",
         build_revision_no=2,
         lookup_cache=edge_cache,
@@ -459,7 +550,7 @@ def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None
         course_id=COURSE_ID,
         source_node_id=int(parent.id or 0),
         target_node_id=int(child.id or 0),
-        edge_type="prerequisite",
+        edge_type="prerequisite_for",
         description="Updated edge",
         build_revision_no=3,
         lookup_cache=edge_cache,
@@ -472,7 +563,7 @@ def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None
     assert updated_edge.description.endswith("Updated edge")
     assert updated_edge.confidence >= 0.95
     assert sync._build_edge_lookup_cache(session, course_id=COURSE_ID).by_key[
-        (parent.id, child.id, "prerequisite")
+        (parent.id, child.id, "prerequisite_for")
     ].id == edge.id
 
     deprecated_units = sync._deprecate_removed_anchor_units(
@@ -519,17 +610,17 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
         anchors_by_normalized_name=anchors_by_normalized_name,
     )
     node_contexts = {
-        "ku_parent": {"name": "Parent", "knowledge_unit_type": "core_knowledge", "section_index": 1},
+        "ku_parent": {"name": "Parent", "knowledge_unit_type": "concept", "section_index": 1},
         "ku_child": {
             "name": "Child",
-            "knowledge_unit_type": "core_knowledge",
+            "knowledge_unit_type": "concept",
             "parent_entity_name": "Parent",
             "section_index": 2,
             "knowledge_document_id": 20,
             "source_file_ids": ["file-a"],
         },
-        "ku_practice": {"name": "Practice", "knowledge_unit_type": "practice_assessment", "section_index": 3},
-        "ku_contrast": {"name": "Contrast", "knowledge_unit_type": "core_knowledge", "section_index": 4},
+        "ku_practice": {"name": "Practice", "knowledge_unit_type": "skill", "section_index": 3},
+        "ku_contrast": {"name": "Contrast", "knowledge_unit_type": "concept", "section_index": 4},
     }
     section_contexts = [
         SectionExtractionContext(
@@ -539,7 +630,7 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
             body_markdown="Parent body",
             primary_anchor="ku_parent",
             primary_name="Parent",
-            primary_type="core_knowledge",
+            primary_type="concept",
             knowledge_document_id=20,
             source_file_ids=["file-a"],
         ),
@@ -550,7 +641,7 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
             body_markdown="利用 Parent 完成训练",
             primary_anchor="ku_practice",
             primary_name="Practice",
-            primary_type="practice_assessment",
+            primary_type="skill",
             knowledge_document_id=20,
             source_file_ids=["file-a"],
         ),
@@ -561,7 +652,7 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
             body_markdown="对比 Parent 的不同之处",
             primary_anchor="ku_contrast",
             primary_name="Contrast",
-            primary_type="core_knowledge",
+            primary_type="concept",
             knowledge_document_id=20,
             source_file_ids=["file-a"],
         ),
@@ -574,17 +665,17 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
     )
 
     assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in structural_edges] == [
-        ("Parent", "Child", "contains")
+        ("Child", "Parent", "part_of")
     ]
-    assert sync._infer_relation_from_section_text(body_markdown="", primary_type="core_knowledge") is None
-    assert sync._infer_relation_from_section_text(body_markdown="需要先掌握 Parent", primary_type="core_knowledge") == "prerequisite"
-    assert sync._infer_relation_from_section_text(body_markdown="由 Parent 推出", primary_type="core_knowledge") == "reasoning"
-    assert sync._infer_relation_from_section_text(body_markdown="类似 Parent", primary_type="core_knowledge") == "similar"
+    assert sync._infer_relation_from_section_text(body_markdown="", primary_type="concept") is None
+    assert sync._infer_relation_from_section_text(body_markdown="需要先掌握 Parent", primary_type="concept") == "prerequisite_for"
+    assert sync._infer_relation_from_section_text(body_markdown="由 Parent 推出", primary_type="concept") == "derives_to"
+    assert sync._infer_relation_from_section_text(body_markdown="类似 Parent", primary_type="concept") == "similar_to"
     assert {
         (edge.source_name, edge.target_name, edge.edge_type)
         for edge in semantic_edges
     } >= {
-        ("Parent", "Child", "contains"),
-        ("Parent", "Practice", "training"),
-        ("Contrast", "Parent", "contrast"),
+        ("Child", "Parent", "part_of"),
+        ("Practice", "Parent", "assesses"),
+        ("Contrast", "Parent", "confuses_with"),
     }

@@ -15,7 +15,10 @@ import re
 
 _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
-_CALLOUT_MARKER_RE = re.compile(r"^\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\]", re.IGNORECASE)
+_CALLOUT_MARKER_RE = re.compile(
+    r"^\s*\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\]",
+    re.IGNORECASE,
+)
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
 _KU_ANCHOR_RE = re.compile(r"\{#ku_[\w-]+\}|<!--\s*ATM_KU:\s*ku_[\w-]+\s*-->")
 _TAG_RE = re.compile(r"\[(?:type|prerequisite|related):[^\]]+\]", re.IGNORECASE)
@@ -67,6 +70,16 @@ _CALLOUT_LEADING_ICON_RE = re.compile(
 _ANSWER_FIELD_LABEL_RE = re.compile(
     r"^(?:\*\*)?\s*(?:参考|标准|正确)?答案(?:\s*[/／]\s*结论)?\s*(?:\*\*)?\s*[:：]"
 )
+_LONG_CALLOUT_VISIBLE_CHAR_LIMIT = 260
+_PLAIN_CALLOUT_TITLES = {
+    "NOTE": "补充",
+    "TIP": "提示",
+    "IMPORTANT": "重点",
+    "WARNING": "易错提醒",
+    "CAUTION": "注意",
+    "EXAMPLE": "例题",
+    "PRACTICE": "练习",
+}
 _GENERIC_VISIBLE_FOCUS_TITLES = {
     "未命名章节",
     "未命名",
@@ -75,6 +88,48 @@ _GENERIC_VISIBLE_FOCUS_TITLES = {
     "当前章节",
     "Untitled Chapter",
 }
+_GENERIC_TEXTBOOK_HEADING_LABELS = {
+    "学习目标": "本章目标",
+    "目标": "本章目标",
+    "核心概念": "知识点速览",
+    "知识点": "知识点速览",
+    "学习目标与核心概念": "本章目标与知识点",
+    "核心概念与学习目标": "本章目标与知识点",
+    "典型例题": "例题",
+    "典型例题回顾": "例题回顾",
+    "典型方法与例题": "方法与例题",
+    "典型题的完整思路": "典型题思路",
+    "典型题型与解题主线": "题型主线",
+    "例题": "例题",
+    "课后练习": "练习",
+    "章末练习": "练习",
+    "章末测试": "练习",
+    "课后练习与自测": "练习",
+    "章末练习与自测": "练习",
+    "练习": "练习",
+    "学习大纲": "学习大纲",
+    "快速检查这章是否学会了": "自查",
+    "常见错因与修正方法": "错因修正",
+    "易错点整理": "易错点",
+    "核心概念与复习主线": "复习主线",
+    "本章高频规则清单": "高频规则",
+    "高频规则清单": "高频规则",
+    "本章小结": "小结",
+    "章末小结": "小结",
+    "小结": "小结",
+    "常见任务": "常见任务",
+    "易错点": "易错点",
+    "易错提醒": "易错点",
+    "最容易错在哪里": "易错点",
+}
+_GENERIC_TEXTBOOK_HEADING_PREFIX_RE = re.compile(
+    r"^\s*(?P<label>学习目标与核心概念|核心概念与学习目标|学习目标|目标|核心概念|知识点|"
+    r"典型例题回顾|典型例题|典型方法与例题|典型题的完整思路|典型题型与解题主线|"
+    r"例题|课后练习与自测|章末练习与自测|课后练习|章末练习|章末测试|练习|学习大纲|"
+    r"快速检查这章是否学会了|常见错因与修正方法|易错点整理|核心概念与复习主线|"
+    r"本章高频规则清单|高频规则清单|本章小结|章末小结|小结|常见任务|易错点|易错提醒|"
+    r"最容易错在哪里)\s*[:：]\s*(?P<rest>.+)$"
+)
 
 
 def clean_heading_focus(value: str, *, max_chars: int = 18) -> str:
@@ -125,6 +180,11 @@ def _strip_generic_visible_heading_prefix(value: str) -> str:
     if match is not None:
         return match.group(1).strip(" ：:，,。；;|-")
     return cleaned
+
+
+def _demote_generic_textbook_heading(value: str) -> str:
+    cleaned = re.sub(r"\s+", "", str(value or "").strip(" ：:，,。；;|-"))
+    return _GENERIC_TEXTBOOK_HEADING_LABELS.get(cleaned, "")
 
 
 def strip_heading_number_prefix(value: str) -> str:
@@ -185,6 +245,18 @@ def rewrite_textbook_heading_line(
             return f"{match.group('prefix')} {fallback}" if fallback else line
         return line
 
+    demoted = _demote_generic_textbook_heading(numberless_title)
+    if demoted:
+        return f"**{demoted}**"
+
+    prefix_match = _GENERIC_TEXTBOOK_HEADING_PREFIX_RE.match(numberless_title)
+    if prefix_match is not None:
+        rest = clean_heading_focus(prefix_match.group("rest"), max_chars=36)
+        if rest:
+            return f"{match.group('prefix')} {rest}"
+        label = _GENERIC_TEXTBOOK_HEADING_LABELS.get(prefix_match.group("label"), "")
+        return f"**{label}**" if label else ""
+
     heading_title = _strip_generic_visible_heading_prefix(clean_heading_focus(numberless_title, max_chars=80))
     if not heading_title:
         return "" if numberless_title != raw_title else line
@@ -211,6 +283,43 @@ def _drop_repeated_visible_heading_line(line: str, seen_titles: set[str]) -> str
     return line
 
 
+def _clamp_heading_level_jump(line: str, *, previous_level: int | None) -> str:
+    match = _HEADING_LINE_RE.match(str(line or "").strip())
+    if match is None or previous_level is None:
+        return line
+    level = match.group("prefix").count("#")
+    if level <= previous_level + 1:
+        return line
+    return f"{'#' * (previous_level + 1)} {match.group('title').strip()}"
+
+
+def _number_content_h2_headings(lines: list[str]) -> list[str]:
+    """Normalize visible H2 sections into numbered knowledge-point entries."""
+
+    numbered_lines: list[str] = []
+    h2_index = 0
+    in_code_fence = False
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            in_code_fence = not in_code_fence
+            numbered_lines.append(line)
+            continue
+        if in_code_fence:
+            numbered_lines.append(line)
+            continue
+        match = _HEADING_LINE_RE.match(str(line or "").strip())
+        if match is None or match.group("prefix") != "##":
+            numbered_lines.append(line)
+            continue
+        title = strip_heading_number_prefix(match.group("title").strip())
+        if title == "单元测试":
+            numbered_lines.append("## 单元测试")
+            continue
+        h2_index += 1
+        numbered_lines.append(f"## {h2_index}. {title}")
+    return numbered_lines
+
+
 def normalize_textbook_headings(
     markdown: str,
     *,
@@ -223,6 +332,7 @@ def normalize_textbook_headings(
     lines: list[str] = []
     in_code_fence = False
     seen_visible_headings: set[str] = set()
+    previous_heading_level: int | None = None
     for line in str(markdown or "").splitlines():
         if line.lstrip().startswith("```"):
             in_code_fence = not in_code_fence
@@ -237,8 +347,13 @@ def normalize_textbook_headings(
             fallback_title=fallback_title,
             focus_items=focus_items,
         )
-        lines.append(_drop_repeated_visible_heading_line(rewritten, seen_visible_headings))
-    return "\n".join(lines)
+        rewritten = _drop_repeated_visible_heading_line(rewritten, seen_visible_headings)
+        rewritten = _clamp_heading_level_jump(rewritten, previous_level=previous_heading_level)
+        match = _HEADING_LINE_RE.match(str(rewritten or "").strip())
+        if match is not None:
+            previous_heading_level = match.group("prefix").count("#")
+        lines.append(rewritten)
+    return "\n".join(_number_content_h2_headings(lines))
 
 
 def _infer_callout_kind(body_lines: Iterable[str]) -> str:
@@ -269,6 +384,41 @@ def _strip_first_callout_body_icon(body_lines: list[str]) -> list[str]:
     return normalized
 
 
+def _callout_content_lines(body_lines: list[str]) -> list[str]:
+    content: list[str] = []
+    marker_skipped = False
+    for line in body_lines:
+        if not marker_skipped and _CALLOUT_MARKER_RE.match(line.strip()):
+            marker_skipped = True
+            continue
+        content.append(line.rstrip())
+    while content and not content[0].strip():
+        content.pop(0)
+    while content and not content[-1].strip():
+        content.pop()
+    return _strip_first_callout_body_icon(content)
+
+
+def _visible_callout_char_count(content_lines: Iterable[str]) -> int:
+    visible = " ".join(str(line or "").strip() for line in content_lines if str(line or "").strip())
+    visible = _MARKDOWN_DECORATION_RE.sub("", visible)
+    return len(re.sub(r"\s+", "", visible))
+
+
+def _should_flatten_callout(kind: str, content_lines: list[str]) -> bool:
+    normalized_kind = kind.strip().upper()
+    return normalized_kind in {"EXAMPLE", "PRACTICE"} or (
+        _visible_callout_char_count(content_lines) > _LONG_CALLOUT_VISIBLE_CHAR_LIMIT
+    )
+
+
+def _flatten_callout(kind: str, content_lines: list[str]) -> list[str]:
+    title = _PLAIN_CALLOUT_TITLES.get(kind.strip().upper(), "提示")
+    if not content_lines:
+        return [f"**{title}**"]
+    return [f"**{title}**", "", *content_lines]
+
+
 def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
     body_lines: list[str] = []
     for line in block_lines:
@@ -280,7 +430,12 @@ def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
     first_nonempty = next((line.strip() for line in body_lines if line.strip()), "")
     if not first_nonempty:
         return block_lines
-    if _CALLOUT_MARKER_RE.match(first_nonempty):
+    marker_match = _CALLOUT_MARKER_RE.match(first_nonempty)
+    if marker_match is not None:
+        kind = marker_match.group("kind").upper()
+        content_lines = _callout_content_lines(body_lines)
+        if _should_flatten_callout(kind, content_lines):
+            return _flatten_callout(kind, content_lines)
         stripped_body = _strip_first_callout_body_icon(body_lines)
         if stripped_body == body_lines:
             return block_lines
@@ -291,6 +446,8 @@ def _normalize_blockquote_callout(block_lines: list[str]) -> list[str]:
         return block_lines
 
     body_lines = _strip_first_callout_body_icon(body_lines)
+    if _should_flatten_callout(kind, body_lines):
+        return _flatten_callout(kind, body_lines)
     normalized = [f"> [!{kind}]", ">"]
     normalized.extend(f"> {line}" if line.strip() else ">" for line in body_lines)
     return normalized

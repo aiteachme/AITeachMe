@@ -125,48 +125,56 @@ export type GraphInsightModel = {
 
 export const LEARNING_LAYERS = [
   { label: "组织", description: "目标 / 框架 / 路径", color: "#6366f1" },
-  { label: "知识", description: "概念 / 规则 / 事实", color: "#2563eb" },
+  { label: "知识", description: "概念 / 公式 / 事实", color: "#2563eb" },
   { label: "原理", description: "推理 / 机制 / 条件", color: "#0f766e" },
-  { label: "方法", description: "例题 / 步骤 / 操作", color: "#f59e0b" },
-  { label: "训练", description: "练习 / 应用 / 拓展", color: "#f43f5e" },
+  { label: "方法", description: "步骤 / 技能 / 纠错", color: "#f59e0b" },
+  { label: "应用", description: "案例 / 迁移 / 资源", color: "#f43f5e" },
 ] as const;
 
 export const TYPE_LABELS: Record<string, string> = {
-  core_knowledge: "核心知识",
-  method_demo: "方法示范",
-  explanation_support: "解释辅助",
-  principle_reasoning: "原理推理",
-  practice_assessment: "练习评估",
-  knowledge_organization: "知识组织",
-  application_extension: "应用拓展",
+  topic: "主题模块",
+  concept: "概念术语",
+  principle: "原理性质",
+  formula_model: "公式模型",
+  procedure: "方法步骤",
+  skill: "解题技能",
+  misconception: "易错辨析",
+  application_case: "应用案例",
+  resource: "学习资源",
 };
 
 export const RELATION_LABELS: Record<string, string> = {
-  prerequisite: "前置",
-  contains: "包含",
-  reasoning: "推理",
-  application: "应用",
-  explanation: "说明",
-  training: "训练",
-  contrast: "对比",
-  similar: "相似",
+  part_of: "归属",
+  prerequisite_for: "前置",
+  derives_to: "推导",
+  applies_to: "应用",
+  uses_method: "用方法",
+  assesses: "考察",
+  explains: "解释",
+  remediates: "补救",
+  confuses_with: "易混",
+  similar_to: "相似",
+  extends_to: "拓展",
 };
 
 export const RELATION_PURPOSES: Record<string, string> = {
-  prerequisite: "决定先学什么，是学习路径的主干。",
-  contains: "表达模块归属，决定课程结构是否清楚。",
-  reasoning: "连接为什么成立，发现推导链是否完整。",
-  application: "连接概念与用法，判断能否迁移到例题。",
-  explanation: "补充直观解释和易错点，降低理解门槛。",
-  training: "连接练习与考点，决定能不能形成做题闭环。",
-  contrast: "帮助区分相似概念，防止混淆。",
-  similar: "聚合同类知识，扩展复习入口。",
+  part_of: "表达知识归属，决定课程结构是否清楚。",
+  prerequisite_for: "决定先学什么，是学习路径的主干。",
+  derives_to: "连接为什么成立，发现推导链是否完整。",
+  applies_to: "连接概念与用法，判断能否迁移到例题。",
+  uses_method: "连接任务与方法，帮助形成可执行步骤。",
+  assesses: "连接技能与考点，决定能不能形成做题闭环。",
+  explains: "补充直观解释和证据，降低理解门槛。",
+  remediates: "连接易错点与补救路径，帮助定位薄弱处。",
+  confuses_with: "帮助区分相似概念，防止混淆。",
+  similar_to: "聚合同类知识，扩展复习入口。",
+  extends_to: "指向迁移和综合应用。",
 };
 
-const ASSESSMENT_SOURCE_TYPES = new Set(["core_knowledge", "method_demo", "principle_reasoning", "application_extension"]);
-const PATH_RELATIONS = new Set(["prerequisite", "contains", "reasoning", "application", "training"]);
-const METHOD_RELATIONS = new Set(["contains", "reasoning", "application"]);
-const PRACTICE_RELATIONS = new Set(["application", "training", "contains"]);
+const ASSESSMENT_SOURCE_TYPES = new Set(["concept", "principle", "formula_model", "procedure", "skill", "misconception", "application_case"]);
+const PATH_RELATIONS = new Set(["prerequisite_for", "part_of", "derives_to", "applies_to", "uses_method", "assesses"]);
+const METHOD_RELATIONS = new Set(["part_of", "derives_to", "applies_to", "uses_method"]);
+const PRACTICE_RELATIONS = new Set(["applies_to", "uses_method", "assesses", "part_of"]);
 
 export function ratio(count: number, total: number): number {
   if (!total) return 0;
@@ -335,30 +343,30 @@ export function buildInsightModel(payload: FullGraphResponse | null | undefined)
     const nodeInDegree = inDegree.get(node.id) ?? 0;
     const nodeOutDegree = outDegree.get(node.id) ?? 0;
     const methodReachable =
-      type === "method_demo" ||
-      reachable(node.id, (target) => target.knowledge_unit_type === "method_demo", 2, METHOD_RELATIONS);
+      type === "procedure" ||
+      reachable(node.id, (target) => target.knowledge_unit_type === "procedure", 2, METHOD_RELATIONS);
     const practiceReachable =
-      type === "practice_assessment" ||
-      reachable(node.id, (target) => target.knowledge_unit_type === "practice_assessment", 2, PRACTICE_RELATIONS);
+      type === "skill" ||
+      reachable(node.id, (target) => target.knowledge_unit_type === "skill", 2, PRACTICE_RELATIONS);
     const principleReachable =
-      type === "principle_reasoning" ||
-      reachable(node.id, (target) => target.knowledge_unit_type === "principle_reasoning", 2, PATH_RELATIONS);
+      type === "principle" ||
+      reachable(node.id, (target) => target.knowledge_unit_type === "principle", 2, PATH_RELATIONS);
     const issueReasons: string[] = [];
     if (nodeDegree === 0) issueReasons.push("孤立");
-    if (type === "core_knowledge" && !methodReachable) issueReasons.push("缺方法");
+    if (type === "concept" && !methodReachable) issueReasons.push("缺方法");
     if (ASSESSMENT_SOURCE_TYPES.has(type) && !practiceReachable) issueReasons.push("缺练习");
     if (Number(node.confidence || 0) < 0.72) issueReasons.push("低置信");
     const issueScore =
       (nodeDegree === 0 ? 5 : 0) +
-      (type === "core_knowledge" && !methodReachable ? 2.2 : 0) +
+      (type === "concept" && !methodReachable ? 2.2 : 0) +
       (ASSESSMENT_SOURCE_TYPES.has(type) && !practiceReachable ? 2.8 : 0) +
       (Number(node.confidence || 0) < 0.72 ? 1.2 : 0);
     const impactScore =
       nodeDegree * 1.35 +
       nodeOutDegree * 0.6 +
       nodeInDegree * 0.25 +
-      (type === "core_knowledge" ? 2.2 : 0) +
-      (type === "method_demo" || type === "principle_reasoning" ? 1.2 : 0) +
+      (type === "concept" ? 2.2 : 0) +
+      (type === "procedure" || type === "principle" ? 1.2 : 0) +
       Math.max(0, Math.min(1, Number(node.confidence || 0))) * 0.8;
     const componentId = componentByNode.get(node.id) ?? 0;
     return {
@@ -392,7 +400,7 @@ export function buildInsightModel(payload: FullGraphResponse | null | undefined)
   const avgDegree = nodeCount ? (edgeCount * 2) / nodeCount : 0;
   const densityPct = nodeCount > 1 ? (edgeCount / (nodeCount * (nodeCount - 1))) * 100 : 0;
 
-  const coreNodes = nodes.filter((node) => node.knowledge_unit_type === "core_knowledge");
+  const coreNodes = nodes.filter((node) => node.knowledge_unit_type === "concept");
   const assessmentSourceNodes = nodes.filter((node) => ASSESSMENT_SOURCE_TYPES.has(String(node.knowledge_unit_type || "")));
   const methodCoverageCount = coreNodes.filter((node) => node.methodReachable).length;
   const principleCoverageCount = coreNodes.filter((node) => node.principleReachable).length;

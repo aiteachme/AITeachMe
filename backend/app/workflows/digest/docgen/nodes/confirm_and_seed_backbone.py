@@ -15,6 +15,7 @@ from app.workflows.digest.docgen.lib.models import (
     LockedChapterTitle,
     SourceAffinityByChapter,
 )
+from app.workflows.digest.docgen.lib.pipeline_artifacts import build_chapters_enhanced
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -91,6 +92,10 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
             "locked_titles": [item.model_dump(mode="json") for item in locked_titles],
             "chapter_generation_plan_seed": plan_seed.model_dump(mode="json"),
             "chapter_task_seeds": [item.model_dump(mode="json") for item in task_seeds],
+            "chapters_enhanced": build_chapters_enhanced(
+                task_seeds=task_seeds,
+                summary_enhanced=dict(state.get("summary_enhanced") or {}),
+            ),
             "backbone_research_agenda": backbone_agenda.model_dump(mode="json"),
             "seed_backbone_ms": elapsed_ms,
             "llm_calls_total": 0,

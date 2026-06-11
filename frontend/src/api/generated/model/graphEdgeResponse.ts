@@ -13,6 +13,7 @@ export interface GraphEdgeResponse {
   source_node_id: number;
   target_node_id: number;
   edge_type: string;
+  edge_type_label?: string;
   weight: number;
   confidence: number;
 }
