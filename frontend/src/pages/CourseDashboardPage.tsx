@@ -34,6 +34,7 @@ import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { cn } from "../lib/utils";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
+import { buildExamTitle, formatModeLabel } from "../components/exams/examDisplay";
 
 const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12 pt-8";
 const alertClass = "rounded-xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
@@ -90,7 +91,7 @@ function NavTile({
     <div
       onClick={(!disabled && !isGenerating) ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-8 min-h-[160px] text-left border transition-all duration-300 ease-out",
+        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-6 min-h-[220px] text-left border transition-all duration-300 ease-out",
         disabled
           ? "opacity-60 grayscale bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
@@ -101,119 +102,141 @@ function NavTile({
       {!isGenerating && !disabled && (
         <div className={cn("absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none", themeStyles.gradient)} />
       )}
-      
-      <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between w-full">
-        {/* Left Part: Icon & Details */}
-        <div className="flex-1 flex gap-5 items-start">
-          <span className={cn(
-            "flex h-14 w-14 shrink-0 items-center justify-center rounded-xl transition-all duration-500 ring-1",
-            isGenerating
-              ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
-              : disabled
-                ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 ring-slate-200/50 dark:ring-slate-800/50"
-                : themeStyles.iconContainer
-          )}>
-            {isGenerating ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : disabled ? (
-              <Lock className="h-5 w-5" strokeWidth={1.5} />
-            ) : (
-              <Icon className="h-6 w-6 transition-all duration-350 ease-out group-hover:scale-105 group-hover:rotate-3" strokeWidth={1.3} />
-            )}
-          </span>
-          <div className="space-y-1.5 pt-0.5">
-            <div className="flex items-center flex-wrap gap-2.5">
-              <h2 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 transition-colors duration-250">{title}</h2>
-              {isGenerating && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50/80 px-2.5 py-0.5 text-[11px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25 animate-pulse">
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                  生成中
-                </span>
-              )}
-              {disabled && disabledReason && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50/80 dark:bg-amber-950/20 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/10 dark:ring-amber-500/20">
-                  {disabledReason}
-                </span>
-              )}
-            </div>
-            <p className="text-[14px] leading-relaxed text-slate-500 dark:text-slate-400 font-light max-w-3xl">{description}</p>
-          </div>
-        </div>
 
-        {/* Right Part: Action Button */}
-        <div className="flex items-center gap-5 shrink-0 mt-3 sm:mt-0 pl-19 sm:pl-0 self-stretch sm:self-center justify-between sm:justify-end">
-          {extra && (
-            <div className="text-left sm:text-right shrink-0">
-              {extra}
-            </div>
+      {/* Top Part: Icon & Title & Description */}
+      <div className="flex flex-col gap-4 relative z-10">
+        <span className={cn(
+          "flex h-12 w-12 items-center justify-center rounded-xl transition-all duration-500 ring-1",
+          isGenerating
+            ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
+            : disabled
+              ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 ring-slate-200/50 dark:ring-slate-800/50"
+              : themeStyles.iconContainer
+        )}>
+          {isGenerating ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : disabled ? (
+            <Lock className="h-5 w-5" strokeWidth={1.5} />
+          ) : (
+            <Icon className="h-5 w-5 transition-all duration-350 ease-out group-hover:scale-105 group-hover:rotate-3" strokeWidth={1.3} />
           )}
-          {!disabled && !isGenerating && (
-            <Button
-              type="button"
-              className={cn("h-9 rounded-xl px-4 text-xs font-semibold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonBg)}
-              onClick={(e) => {
-                e.stopPropagation();
-                onClick();
-              }}
-            >
-              进入
-              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 ease-out group-hover:translate-x-1" />
-            </Button>
-          )}
+        </span>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center flex-wrap gap-2">
+            <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 transition-colors duration-250">{title}</h2>
+            {isGenerating && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50/80 px-2 py-0.5 text-[10px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25 animate-pulse">
+                生成中
+              </span>
+            )}
+            {disabled && disabledReason && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50/80 dark:bg-amber-950/20 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/10 dark:ring-amber-500/20">
+                {disabledReason}
+              </span>
+            )}
+          </div>
+          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 font-light">{description}</p>
         </div>
+      </div>
+
+      {/* Bottom Part: Extra Info & Action Button */}
+      <div className="mt-6 pt-4 border-t border-slate-100/50 dark:border-slate-800/50 flex items-center justify-between relative z-10">
+        <div className="min-w-0 flex-1">
+          {extra}
+        </div>
+        {!disabled && !isGenerating && (
+          <Button
+            type="button"
+            className={cn("h-8 rounded-lg px-3 text-xs font-semibold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonBg)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+          >
+            进入
+            <ArrowRight className="h-3 w-3 transition-transform duration-300 ease-out group-hover:translate-x-0.5" />
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function AICompanionWidget({
-  dueReviewCount,
-  activePaperCount,
+function RecentExamsWidget({
+  items,
   courseId,
 }: {
-  dueReviewCount: number;
-  activePaperCount: number;
+  items: ExamHistoryItem[];
   courseId: string;
 }) {
   const navigate = useNavigate();
-
-  const companionText = useMemo(() => {
-    if (dueReviewCount > 0) {
-      return `您目前有 ${dueReviewCount} 个知识点临近遗忘期。建议您今天优先进行“艾宾浩斯复习闯关”，以巩固记忆基础。`;
-    }
-    if (activePaperCount > 0) {
-      return `您有 ${activePaperCount} 份未完成的测试。趁热打铁，抽空前往考试中心完成它们吧！`;
-    }
-    return "目前您的学习进度与掌握情况良好，继续保持！如果准备好了，可以前往考试中心开启一次新挑战。";
-  }, [dueReviewCount, activePaperCount]);
+  const latestPapers = useMemo(
+    () => items.slice(0, 4),
+    [items]
+  );
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 hover:shadow-[0_8px_24px_rgba(99,102,241,0.04)]">
-      <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-indigo-500/80 to-violet-500/80" />
-      <div className="flex gap-4">
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 ring-1 ring-indigo-100/30 dark:ring-indigo-900/20">
-          <Sparkles className="h-5 w-5 animate-[pulse_2s_infinite]" />
-          <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
-        </div>
-        <div className="space-y-2 flex-1">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200">AI 学习助手</h3>
-            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full font-medium">在线</span>
-          </div>
-          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 font-light pr-1">
-            {companionText}
-          </p>
-        </div>
-      </div>
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/40 flex justify-end">
+    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300">
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800/50">
+        <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200">最近测验记录</h3>
         <button
-          onClick={() => navigate(buildCoursePath(courseId, "profile"))}
-          className="text-[12px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
+          onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
         >
-          查看分析建议
-          <ArrowRight className="h-3 w-3" />
+          查看全部
         </button>
       </div>
+
+      {latestPapers.length === 0 ? (
+        <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500 font-light">
+          暂无测验记录，您可以点击“直接闯关”开始第一次测验。
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100/60 dark:divide-slate-800/20">
+          {latestPapers.map((item) => {
+            const scoreText =
+              item.status === "graded" && item.score_obtained != null && item.total_score != null
+                ? `${item.score_obtained}/${item.total_score} 分`
+                : `${item.total_items} 题`;
+
+            const dotColor =
+              item.status === "graded"
+                ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]"
+                : item.status === "generating"
+                  ? "bg-indigo-500 animate-pulse shadow-[0_0_6px_rgba(99,102,241,0.4)]"
+                  : item.status === "failed"
+                    ? "bg-rose-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]"
+                    : "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.4)]";
+
+            return (
+              <div key={item.id} className="group flex items-center justify-between py-3.5 transition-colors duration-200">
+                <div className="min-w-0 flex-1 flex items-center gap-3">
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotColor)} />
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-medium text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-200">
+                      {buildExamTitle(item)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-550 font-light">
+                      {formatModeLabel(item.exam_mode)} · {scoreText}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", String(item.id)))}
+                  className="h-8 shrink-0 px-3 text-xs font-semibold text-slate-500 group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-400 hover:bg-transparent"
+                >
+                  进入
+                  <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -419,76 +442,76 @@ export function CourseDashboardPage() {
           </div>
         </section>
 
-        {/* Two-Column Grid Layout */}
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-          {/* Left Column: Main Tiles (Col-span 8) */}
-          <div className="flex flex-col gap-5 lg:col-span-8">
-            <NavTile
-              icon={BookOpen}
-              title="知识库"
-              description="查阅课程文档、深度讲义以及全局知识图谱。"
-              theme="indigo"
-              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-              isGenerating={isDocGenerating}
-              extra={
-                <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400 dark:text-slate-500 font-medium">
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                  <span>{states.length} 个画像知识点已生成</span>
-                </div>
-              }
-            />
-            <NavTile
-              icon={FileText}
-              title="考试中心"
-              description="查看全部试卷，进行专项练习与题库测试。"
-              theme="violet"
-              disabled={isDocGenerating}
-              disabledReason={isDocGenerating ? "知识库构建中，完成后解锁" : undefined}
-              onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-              extra={
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/10 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-700">
-                    {historyItems.length} 份已练试卷
+        {/* Three-Column Nav Tiles Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <NavTile
+            icon={BookOpen}
+            title="知识库"
+            description="查阅课程文档、深度讲义以及全局知识图谱。"
+            theme="indigo"
+            onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+            isGenerating={isDocGenerating}
+            extra={
+              <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400 dark:text-slate-500 font-medium">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                <span>{states.length} 个画像知识点已生成</span>
+              </div>
+            }
+          />
+          <NavTile
+            icon={FileText}
+            title="考试中心"
+            description="查看全部试卷，进行专项练习与题库测试。"
+            theme="violet"
+            disabled={isDocGenerating}
+            disabledReason={isDocGenerating ? "知识库构建中，完成后解锁" : undefined}
+            onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+            extra={
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/10 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-700">
+                  {historyItems.length} 份已练试卷
+                </span>
+                {activePaperCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    {activePaperCount} 份正在进行中
                   </span>
-                  {activePaperCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      {activePaperCount} 份正在进行中
-                    </span>
-                  )}
-                </div>
-              }
-            />
-            <NavTile
-              icon={BarChart3}
-              title="学习画像"
-              description="基于测验数据、复习进度与艾宾浩斯记忆模型实时生成的深度诊断报告与今日学习计划。"
-              theme="teal"
-              disabled={isDocGenerating}
-              disabledReason={isDocGenerating ? "知识库构建中，完成后解锁" : undefined}
-              onClick={() => navigate(buildCoursePath(courseId, "profile"))}
-              extra={
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/10 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-700">
-                    平均掌握度 {formatPercent(courseProfile?.avg_mastery)}
+                )}
+              </div>
+            }
+          />
+          <NavTile
+            icon={BarChart3}
+            title="学习画像"
+            description="基于测验数据、复习进度与艾宾浩斯记忆模型实时生成的深度诊断报告与今日学习计划。"
+            theme="teal"
+            disabled={isDocGenerating}
+            disabledReason={isDocGenerating ? "知识库构建中，完成后解锁" : undefined}
+            onClick={() => navigate(buildCoursePath(courseId, "profile"))}
+            extra={
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/10 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-700">
+                  平均掌握度 {formatPercent(courseProfile?.avg_mastery)}
+                </span>
+                {dueReviewCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-350 dark:ring-rose-500/20">
+                    {dueReviewCount} 个待复习
                   </span>
-                  {dueReviewCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-350 dark:ring-rose-500/20">
-                      {dueReviewCount} 个待复习
-                    </span>
-                  )}
-                </div>
-              }
-            />
+                )}
+              </div>
+            }
+          />
+        </div>
+
+        {/* Bottom Section: Recent Exams & Mastery Distribution */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-2">
+          {/* Left Side: Recent Exams (Col-span 8) */}
+          <div className="lg:col-span-8">
+            <RecentExamsWidget items={historyItems} courseId={courseId} />
           </div>
 
-          {/* Right Column: Interactive Widgets (Col-span 4) */}
-          <div className="flex flex-col gap-6 lg:col-span-4">
-            <AICompanionWidget
-              dueReviewCount={dueReviewCount}
-              activePaperCount={activePaperCount}
-              courseId={courseId}
-            />
+          {/* Right Side: Mastery Distribution (Col-span 4) */}
+          <div className="lg:col-span-4">
             <MiniStatsWidget
               masteredCount={masteredCount}
               goodCount={goodCount}
