@@ -61,26 +61,26 @@ function NavTile({
 }) {
   const themeStyles = {
     indigo: {
-      border: "border-slate-200/50 dark:border-slate-800/40 hover:border-indigo-400/50 dark:hover:border-indigo-500/40",
-      shadow: "hover:shadow-[0_20px_40px_rgba(99,102,241,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
-      iconContainer: "bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/30 dark:ring-indigo-900/20",
-      gradient: "from-indigo-500/[0.015] to-indigo-500/[0.06] dark:from-indigo-500/[0.005] dark:to-indigo-500/[0.02]",
+      border: "border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-800/50",
+      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(99,102,241,0.04)]",
+      iconContainer: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/35 dark:ring-indigo-900/20",
+      gradient: "from-indigo-500/[0.01] to-indigo-500/[0.03] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.01]",
       textHover: "group-hover:text-indigo-600 dark:group-hover:text-indigo-400",
       buttonBg: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800",
     },
     violet: {
-      border: "border-slate-200/50 dark:border-slate-800/40 hover:border-violet-400/50 dark:hover:border-violet-500/40",
-      shadow: "hover:shadow-[0_20px_40px_rgba(139,92,246,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
-      iconContainer: "bg-violet-50/50 text-violet-650 dark:bg-violet-950/45 dark:text-violet-400 ring-violet-100/30 dark:ring-violet-900/20",
-      gradient: "from-violet-500/[0.015] to-violet-500/[0.06] dark:from-violet-500/[0.005] dark:to-violet-500/[0.02]",
+      border: "border-slate-100 dark:border-slate-800/60 hover:border-violet-200 dark:hover:border-violet-800/50",
+      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(139,92,246,0.04)]",
+      iconContainer: "bg-violet-50 text-violet-650 dark:bg-violet-950/45 dark:text-violet-400 ring-violet-100/35 dark:ring-violet-900/20",
+      gradient: "from-violet-500/[0.01] to-violet-500/[0.03] dark:from-violet-500/[0.002] dark:to-violet-500/[0.01]",
       textHover: "group-hover:text-violet-600 dark:group-hover:text-violet-400",
       buttonBg: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-700 dark:hover:bg-violet-800",
     },
     teal: {
-      border: "border-slate-200/50 dark:border-slate-800/40 hover:border-teal-400/50 dark:hover:border-teal-500/40",
-      shadow: "hover:shadow-[0_20px_40px_rgba(20,184,166,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
-      iconContainer: "bg-teal-50/50 text-teal-600 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/30 dark:ring-teal-900/20",
-      gradient: "from-teal-500/[0.015] to-teal-500/[0.06] dark:from-teal-500/[0.005] dark:to-teal-500/[0.02]",
+      border: "border-slate-100 dark:border-slate-800/60 hover:border-teal-200 dark:hover:border-teal-800/50",
+      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(20,184,166,0.04)]",
+      iconContainer: "bg-teal-50 text-teal-600 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/35 dark:ring-teal-900/20",
+      gradient: "from-teal-500/[0.01] to-teal-500/[0.03] dark:from-teal-500/[0.002] dark:to-teal-500/[0.01]",
       textHover: "group-hover:text-teal-600 dark:group-hover:text-teal-400",
       buttonBg: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-800",
     },
@@ -90,12 +90,12 @@ function NavTile({
     <div
       onClick={(!disabled && !isGenerating) ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-8 min-h-[160px] text-left border transition-all duration-300 ease-out",
+        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-8 min-h-[160px] text-left border transition-all duration-300 ease-out",
         disabled
-          ? "opacity-60 grayscale bg-slate-50/30 dark:bg-slate-900/20 border-slate-200/50 dark:border-slate-800/40 cursor-not-allowed"
+          ? "opacity-60 grayscale bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
-            ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/[0.02] dark:bg-indigo-950/[0.02] shadow-[0_0_20px_rgba(99,102,241,0.06)] animate-pulse"
-            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 dark:hover:bg-[#0f1422]/40 cursor-pointer")
+            ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_0_20px_rgba(99,102,241,0.04)] animate-pulse"
+            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 dark:hover:bg-[#0f1422]/20 cursor-pointer")
       )}
     >
       {!isGenerating && !disabled && (
@@ -188,8 +188,8 @@ function AICompanionWidget({
   }, [dueReviewCount, activePaperCount]);
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_15px_30px_rgba(99,102,241,0.04)]">
-      <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-indigo-500 to-violet-500" />
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 hover:shadow-[0_8px_24px_rgba(99,102,241,0.04)]">
+      <div className="absolute top-0 inset-x-0 h-[2.5px] bg-gradient-to-r from-indigo-500/80 to-violet-500/80" />
       <div className="flex gap-4">
         <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 ring-1 ring-indigo-100/30 dark:ring-indigo-900/20">
           <Sparkles className="h-5 w-5 animate-[pulse_2s_infinite]" />
@@ -218,135 +218,6 @@ function AICompanionWidget({
   );
 }
 
-function StudyActivityDashboard({
-  activePaperCount,
-  masteredCount,
-  totalCount,
-}: {
-  activePaperCount: number;
-  masteredCount: number;
-  totalCount: number;
-}) {
-  // Generate 24 weeks * 7 days = 168 data points
-  // Seed with realistic level values (0 to 4)
-  const activityData = useMemo(() => {
-    const values = [
-      0, 1, 0, 0, 2, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0,
-      0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1,
-      2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1,
-      0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0,
-      0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0,
-      0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2,
-      0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 2
-    ];
-    
-    return values.map((level, index) => {
-      // 蓝紫色系: gray -> light violet -> violet -> indigo -> deep indigo
-      let colorClass = "bg-slate-100 dark:bg-slate-800/40";
-      if (level === 1) colorClass = "bg-violet-100/70 dark:bg-violet-950/20";
-      if (level === 2) colorClass = "bg-violet-350/80 dark:bg-violet-850/30";
-      if (level === 3) colorClass = "bg-indigo-400/80 dark:bg-indigo-700/50";
-      if (level === 4) colorClass = "bg-indigo-600 dark:bg-indigo-500";
-      
-      const day = index + 1;
-      return {
-        level,
-        colorClass,
-        title: `第 ${day} 天，学习强度: ${level === 0 ? "未学习" : level === 1 ? "轻度" : level === 2 ? "中度" : level === 3 ? "深度" : "高频"}`
-      };
-    });
-  }, []);
-
-  const totalHours = 14.5;
-  const targetCompleted = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
-  
-  return (
-    <div className="rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_20px_40px_rgba(99,102,241,0.04)]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-5">
-        <div>
-          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-200">学习活跃度与统计</h3>
-          <p className="text-[12px] text-slate-400 dark:text-slate-500 font-light mt-0.5">记录您在本课程下的每一次学习与测试提交</p>
-        </div>
-        
-        {/* Color legend */}
-        <div className="flex items-center gap-4 text-[11px] font-light text-slate-400 dark:text-slate-500 select-none">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm bg-slate-100 dark:bg-slate-800/40" />
-            <span>无活动</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="h-2.5 w-2.5 rounded-sm bg-violet-100/70 dark:bg-violet-950/20" />
-            <span className="h-2.5 w-2.5 rounded-sm bg-violet-350/80 dark:bg-violet-850/30" />
-            <span className="h-2.5 w-2.5 rounded-sm bg-indigo-400/80 dark:bg-indigo-700/50" />
-            <span className="h-2.5 w-2.5 rounded-sm bg-indigo-600 dark:bg-indigo-500" />
-          </div>
-          <span>高频学习</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-        {/* GitHub style heat map (Col-span 8) */}
-        <div className="lg:col-span-8 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800">
-          <div className="min-w-[520px] flex flex-col gap-1">
-            {/* Days labels */}
-            <div className="flex gap-1">
-              <div className="grid grid-flow-col grid-rows-7 gap-1.5">
-                {activityData.map((data, i) => (
-                  <div
-                    key={i}
-                    className={cn("h-2.5 w-2.5 rounded-sm transition-all duration-200 hover:scale-125 cursor-pointer", data.colorClass)}
-                    title={data.title}
-                  />
-                ))}
-              </div>
-            </div>
-            
-            {/* Months labels */}
-            <div className="flex justify-between text-[10px] text-slate-400 font-light mt-1.5 px-1 max-w-[500px]">
-              <span>半年前</span>
-              <span>12周前</span>
-              <span>8周前</span>
-              <span>4周前</span>
-              <span>本周</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Minimal Stats Panel (Col-span 4) */}
-        <div className="lg:col-span-4 grid grid-cols-2 gap-4 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800/40 pt-4 lg:pt-0 lg:pl-6">
-          <div>
-            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">累计学时</div>
-            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
-              {totalHours} <span className="text-[12px] font-normal text-slate-400">小时</span>
-            </div>
-          </div>
-          
-          <div>
-            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">知识熟练率</div>
-            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
-              {targetCompleted}%
-            </div>
-          </div>
-
-          <div>
-            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">本周活跃</div>
-            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
-              5 <span className="text-[12px] font-normal text-slate-400">天</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">进行中测试</div>
-            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
-              {activePaperCount} <span className="text-[12px] font-normal text-slate-400">份</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function MiniStatsWidget({
   masteredCount,
   goodCount,
@@ -362,7 +233,7 @@ function MiniStatsWidget({
   const percentGood = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 0;
   
   return (
-    <div className="rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_15px_30px_rgba(99,102,241,0.04)]">
+    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 hover:shadow-[0_8px_24px_rgba(99,102,241,0.04)]">
       <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200 mb-4">掌握分布</h3>
       
       <div className="space-y-4">
@@ -627,12 +498,7 @@ export function CourseDashboardPage() {
           </div>
         </div>
 
-        {/* Bottom Section: GitHub Style Activity Grid */}
-        <StudyActivityDashboard
-          activePaperCount={activePaperCount}
-          masteredCount={masteredCount}
-          totalCount={states.length}
-        />
+
 
         {(historyQuery.error || masteryQuery.error || reviewsQuery.error) ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
