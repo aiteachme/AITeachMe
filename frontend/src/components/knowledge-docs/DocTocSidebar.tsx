@@ -84,7 +84,7 @@ function TocNodes({
               className={cn(
                 "group flex items-center rounded-md transition-colors relative",
                 isActive
-                  ? "bg-blue-50 text-blue-700 font-medium"
+                  ? "bg-indigo-50 text-indigo-700 font-medium dark:bg-indigo-950/40 dark:text-indigo-400"
                   : "text-[#646A73] hover:bg-[#F0F2F5] hover:text-[#1F2329]",
               )}
               style={{ paddingLeft: indent + 4 }}
@@ -93,7 +93,7 @@ function TocNodes({
               {isActive && (
                 <motion.span
                   layoutId="toc-indicator"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-full bg-blue-600"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-full bg-indigo-600 dark:bg-indigo-400"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
@@ -109,7 +109,7 @@ function TocNodes({
                   className={cn(
                     "w-5 h-5 auto shrink-0 flex items-center justify-center rounded transition-colors mr-0.5",
                     isActive
-                      ? "text-blue-700 hover:bg-blue-100"
+                      ? "text-indigo-700 hover:bg-indigo-100 dark:text-indigo-400 dark:hover:bg-indigo-950/60"
                       : "text-[#8F959E] hover:text-[#646A73] hover:bg-[#DEE0E3]",
                   )}
                 >

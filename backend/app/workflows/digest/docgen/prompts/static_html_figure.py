@@ -16,42 +16,22 @@ def build_static_html_figure_messages(
 ) -> list[dict[str, str]]:
     mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
-你是 AITeachMe 的讲义图示规划器。
-你只输出结构化 JSON FigureSpec，由后端渲染器统一画成考试讲义式辅助图。
-严禁输出 HTML、SVG、Markdown、解释文字或代码块。
+你是通用教学图示规划器。只输出 JSON FigureSpec，后端会把它渲染成单张 SVG。
+type 固定为 problem_diagram；输出内容只包含 JSON 对象。
+图必须来自章节片段，source_refs 摘录原文短语；图内只放必要短标签。
+用同一套图元表达几何、坐标、受力、结构、路径、区域、网络等可视关系；不套固定学科模板。
+片段不适合画图时，返回 elements: []。
 
-硬性边界：
-- 只描述图示意图和元素，不设计网页样式。
-- 图和文必须严格对应；不要新增章节片段没有支持的事实、变量、点名、结论。
-- `source_refs` 必须摘录章节片段中的原句或短语，用于证明图中内容来自正文。
-- 标题、标签、公式、表格项必须短，像讲义题图，不像海报或网页组件。
-- 若不能确定复杂图形，选择更保守的流程、对比或公式关系图。
-
-教学质量标准：
-- 只规划一个关键图，不做资料页，不堆多个无关图。
-- 数学、物理、工程、地理、经济等题图优先用 `problem_diagram`，使用点、线、向量、坐标、区域、标签等元素。
-- 归纳类内容用 `comparison_table`，步骤类用 `process_steps`，公式关系用 `formula_derivation`。
-- 易错点用 `mistake_card`，概念关系用 `concept_map`。
-- 图形元素只使用受控 primitive：point、line、vector、shape、label、step、formula、table_row、relation、callout。
-
-FigureSpec 字段：
-- type: concept_map | process_steps | comparison_table | formula_derivation | problem_diagram | mistake_card
-- title: 图示标题
-- summary: 图前一句简短说明
-- elements: 受控元素数组
-- annotations: 图注或必要说明
-- emphasis: 需要放入灰底提示框的记忆点，最多 2 条
-- source_refs: 章节片段原文摘录，最多 3 条
-
-problem_diagram 元素说明：
-- point: 需要 id/label/x/y，坐标为 0-100 的相对位置。
-- line/vector: 使用 from_id/to_id 连接已有 point；vector 表示带箭头的力、方向或位移。
-- label/callout: 使用 text/x/y 标注。
-- style 可用 solid/dashed/highlight/muted。
+可用图元：
+- axis/curve/point/line/vector/shape/label/callout
+- 坐标字段 x/y/x2/y2 均为 0-100
+- shape_type: ellipse/circle/rectangle/triangle/polygon/angle/arc/region
+- polygon/triangle/region 用 points: [[x,y],...]
+- ellipse 用 rx/ry；angle/arc 用 start_angle/end_angle
 """.strip()
 
     prompt = f"""
-请为下面章节片段规划一张讲义辅助图，只输出 JSON FigureSpec。
+请为下面章节片段规划一张教学辅助图，只输出 JSON FigureSpec。
 
 图示标题：{figure_title}
 图示目标：{figure_goal or "把需要借助图形才能看清的关系画出来。"}
@@ -61,14 +41,12 @@ problem_diagram 元素说明：
 章节片段：
 {section_context}
 
-生成策略：
-1. 先从章节片段里抽取 2-3 条能直接支撑图示的 source_refs。
-2. 再确定 type；若建议图类型不合适，可以改成更保守的类型。
-3. 只规划一个关键图，图中文字必须短，避免长段解释。
-4. 若生成 problem_diagram，请给点、线、向量的相对坐标和标签。
-5. 若生成 comparison_table，请用 table_row 的 cells 表达每一行。
-6. 若生成 formula_derivation，请用 formula/step 元素表达推导顺序。
-7. 输出必须是一个 JSON 对象，不能包含代码块。
+生成要求：
+1. 只画一个关键图，type 固定为 problem_diagram。
+2. 用几何图元表达关系，图内只保留点名、轴名、变量、方向和短关系标签。
+3. 标签短到能放进图里；讲解留给正文。
+4. 画不出来就返回空 elements。
+5. 输出为一个 JSON 对象。
 """.strip()
 
     messages = [

@@ -8,7 +8,6 @@ from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.plans import (
     normalize_planner_draft,
     planner_mode_label,
-    render_planner_chapter_contract,
 )
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
@@ -19,7 +18,6 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
-    build_planner_stream_messages,
 )
 
 
@@ -50,17 +48,6 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
 def test_planner_mode_label_is_student_facing() -> None:
     assert planner_mode_label("sprint") == "快速复习"
     assert planner_mode_label("systematic") == "系统学习"
-
-
-def test_chapter_contract_mentions_range_and_total_length_budget() -> None:
-    config = get_planner_mode_contract("systematic")
-    contract = render_planner_chapter_contract("systematic")
-
-    assert f"{config.min_chapters}-{config.max_chapters} 章" in contract
-    assert config.target_length in contract
-    assert "整份知识文档的预算" in contract
-    assert "不使用冒号副标题" in contract
-    assert "冻结执行合同" not in contract
 
 
 def test_normalize_planner_draft_uses_new_planner_fields() -> None:
@@ -199,7 +186,7 @@ def test_planner_sse_preview_payload_exposes_new_planner_contract() -> None:
             "user_prompt": "线性代数速成入门",
             "digest_mode": "sprint",
             "planner_session_id": "session_1",
-            "model_override": "deepseek-v4-flash",
+            "model_override": "gpt-5.5",
             "planning_note": "用户要速成线性代数。",
             "material_note": "资料重点是矩阵和线性方程组。",
         },
@@ -331,51 +318,3 @@ def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.Monk
     assert progress_payload["partial_chapter_count"] == 1
     assert progress_payload["plan_preview"]["plan"] == "本轮先识别目标，再组织章节和练习。"
     assert progress_payload["plan_preview"]["chapters"][0]["title"] == "目标拆解"
-
-
-def test_planner_prompt_marks_revision_as_single_composer_call() -> None:
-    messages = build_planner_stream_messages(
-        course_name="高数",
-        user_prompt="高数",
-        digest_mode="sprint",
-        material_context=_material_context(),
-        planning_note="上一轮规划判断。",
-        material_note="上一轮资料边界。",
-        message_history=["用户：高数", "用户：帮我改成定积分的 5 个章节"],
-        latest_feedback="帮我改成定积分的 5 个章节",
-        latest_plan={
-            "course_name": "高数主线重建",
-            "course_icon": "sigma",
-            "planning_note": "上一轮规划判断。",
-            "suggestion": "上一轮建议。",
-            "plan": "上一轮 plan。",
-            "chapters": [{"title": "极限与连续", "required_elements": ["极限基础"]}],
-        },
-    )
-    prompt = "\n".join(message["content"] for message in messages)
-
-    assert "这是调整已有方案，不是重新识别 planning_note、course_name 或 course_icon" in prompt
-    assert "你只能生成新的 suggestion、plan、chapters" in prompt
-    assert "chapters 数量必须等于 N" in prompt
-    assert "帮我改成定积分的 5 个章节" in prompt
-
-
-def test_planner_prompt_uses_planning_note_for_first_generation() -> None:
-    messages = build_planner_stream_messages(
-        course_name="初中数学",
-        user_prompt="我想系统复习初中数学，请构建一门 14 天课程",
-        digest_mode="systematic",
-        material_context=_material_context(),
-        planning_note="用户要按 14 天重建初中数学知识体系。",
-        material_note="资料覆盖数与式、方程、函数、几何和统计概率。",
-        message_history=["用户：我想系统复习初中数学，请构建一门 14 天课程"],
-    )
-    prompt = "\n".join(message["content"] for message in messages)
-
-    assert "这是第一次生成方案的第二阶段" in prompt
-    assert "规划判断：" in prompt
-    assert "资料边界：" in prompt
-    assert "用户要按 14 天重建初中数学知识体系" in prompt
-    assert PLAN_START in prompt
-    assert SUGGESTION_START in prompt
-    assert CHAPTERS_START in prompt

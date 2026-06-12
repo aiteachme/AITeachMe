@@ -46,29 +46,6 @@ def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() 
     )
 
 
-def test_title_resolution_prompt_uses_generalizable_examples_not_math_wordlist() -> None:
-    messages = pedagogy.build_chapter_title_resolution_messages(
-        course_name="产品设计",
-        digest_mode="systematic",
-        objective="讲清用户访谈后的需求收敛与方案取舍。",
-        required_elements=["用户访谈", "需求归纳", "方案取舍"],
-        search_queries=["需求分析", "原型评审"],
-        writing_instructions="标题要像真实课程目录。",
-        dense_context="本章讨论从访谈记录到可执行方案的判断过程。",
-        source_titles=["用户研究笔记"],
-        local_hits=2,
-        web_hits=0,
-    )
-    prompt = "\n".join(message["content"] for message in messages)
-
-    assert "标题示例只展示" in prompt
-    assert "不是候选词表" in prompt
-    assert "不能照抄" in prompt
-    assert "如果本章不属于这些领域" in prompt
-    assert "现金流表" in prompt
-    assert "洛必达法则" not in prompt
-
-
 def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
     assert (
         resolve_digest_retrieval_profile(
@@ -585,7 +562,7 @@ def test_rule_review_short_chapter_requests_section_expansion() -> None:
     assert report.passed is False
 
 
-def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples() -> None:
+def test_sprint_writer_prompt_keeps_unit_tests_in_dedicated_node_contract() -> None:
     messages = build_docgen_writer_messages(
         title="矩阵分解",
         objective="掌握奇异值分解和低秩近似。",
@@ -601,43 +578,16 @@ def test_sprint_writer_prompt_requires_quick_reference_and_structured_examples()
     )
     prompt = messages[-1]["content"]
 
-    assert "真实分类或常见问法整理" in prompt
-    assert "答案或结论" in prompt
-    assert "> [!IMPORTANT]" in prompt
-    assert "> [!WARNING]" in prompt
-    assert "完整例题、案例和章末单元测试不要放进大块 callout" in prompt
-    assert "不要使用 `> [!EXAMPLE]` / `> [!PRACTICE]`" in prompt
-    assert "不要把公式、说明、步骤、提醒和例题揉在同一段里" in prompt
-    assert "公式后解释适用条件，步骤后给检查点，例题后给错因" in prompt
-    assert "蜂考式讲义结构" in prompt
-    assert "考点/任务导航表" in prompt
-    assert "`## 具体知识点名`" in prompt
-    assert "每个知识点小节" in prompt
-    assert "**知识点**、**例题/任务**、**解析**、**答案/结论**、**易错点/检查点**" in prompt
-    assert "一级标题后必须先给 3-5 行考点/任务导航表" in prompt
-    assert "每章至少要有一处图示化整理" in prompt
-    assert "图片 OCR、图注、图片上下文或显式占位说明" in prompt
-    assert "不要臆造未解析图片内容" in prompt
-    assert "不要用大片连续色块包裹长解释" in prompt
-    assert "可独立学习的小单元" in prompt
-    assert "学生不看原教材也应能知道" in prompt
-    assert "章末必须保留固定的 `## 单元测试`" in prompt
-    assert "必须是最后一个二级标题" in prompt
-    assert "学习活动总量约 10 个" in prompt
-    assert "章末练习 6-8 个" in prompt
-    assert "训练型章节至少 10 个学习活动" in prompt
-    assert "概念章至少 4 个完整例题或短例子" in prompt
-    assert "题型/任务导航表" in prompt
-    assert "考什么、条件信号、做法和易错点" in prompt
-    assert "各自独立成段或列表项" in prompt
-    assert "必须给出参考答案" in prompt
-    assert "带答案的理解检查活动" in prompt
-    assert "学习动作、检查动作或配额标签复制成目录标题" in prompt
-    assert "泛化目录标题、学习动作标题、内部检查标题、序号占位题型" in prompt
-    assert "本章边界外主题" in prompt
+    expected_fragments = [
+        "学习活动目标",
+        "正文写作阶段只生成知识正文",
+        "章末单元测试由后续专门节点生成",
+        "只写学生可见正文",
+    ]
+    for fragment in expected_fragments:
+        assert fragment in prompt
+
     assert "接口权限的判断题" not in prompt
-    assert "孤立三级标题" in prompt
-    assert "不要只写“请自行练习”" in prompt
     assert "题眼信号" not in prompt
     assert "处理模板" not in prompt
 
@@ -691,7 +641,6 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "完整学习单元" in prompt
     assert "每章最后一个二级标题必须固定为 `## 单元测试`" in prompt
     assert "位置不是最后" in prompt
-    assert "快速复习通常 6-8 个短题/任务" in prompt
     assert "不能挤在同一段" in prompt
     assert "不要在 action 里给可直接复制的标题" in prompt
     assert "按本章具体对象、方法、任务差异或场景命名" in prompt

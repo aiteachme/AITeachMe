@@ -422,7 +422,7 @@ fan-in 后 reducer 汇总：
 每章增强做：
 
 - Mermaid 占位生成或修复。
-- 静态讲义图 sidecar 生成：按章节片段先规划 `FigureSpec`，再由代码渲染为考试讲义式 HTML/SVG。
+- 静态讲义图 sidecar 生成：按章节片段先规划跨学科 `FigureSpec` 图元，再由代码渲染为考试讲义式 HTML/SVG。
 - 交互 HTML sidecar 生成。
 - 公式、Markdown 结构和残留占位清理。
 - 章节预览和章节进度更新。
@@ -445,8 +445,11 @@ fan-in 后 reducer 汇总：
 
 - 本质仍是 HTML sidecar，Markdown 中只插入预览链接，前端用 sandbox iframe 展示。
 - 模型只输出 `FigureSpec` 结构，不直接生成 HTML/SVG；最终图形由 renderer 统一画出。
+- 静态图只生成 `problem_diagram`：点、线、向量、坐标轴、曲线、圆、椭圆、三角形、多边形、角标、区域和短标签等受控图元。
+- 不生成流程卡片、概念总结图、对照表或正文摘要；这些内容留在 Markdown 正文或 Mermaid/interactive sidecar。
 - 默认风格接近考试讲义：白底、黑白细线、少量青色重点条、灰底提示框，不做卡片式 UI。
 - `source_refs` 必须回指当前章节片段；校验失败时会替换为正文摘录，避免图和文脱节。
+- 不按关键词生成学科模板；模型不给出可渲染图元时直接跳过，不用后端假图兜底。
 - 每章最多自动插入一张，评分不足时不生成，避免文档被装饰图打散。
 
 如果开启：

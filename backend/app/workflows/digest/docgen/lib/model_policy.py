@@ -23,6 +23,7 @@ class DocGenModelStep(str, Enum):
     QUERY_PLANNING = "generate_chapters.query_planning"
     RESEARCH_PURIFY = "generate_chapters.research_purify"
     WRITER = "generate_chapters.writer"
+    UNIT_TESTS = "generate_unit_tests.chapter_unit_tests"
     HEADING_REPAIR = "generate_chapters.heading_repair"
     CHAPTER_REWRITE = "generate_chapters.rewrite"
     MERMAID_PLACEHOLDER = "enhance_chapters.mermaid_placeholder"
@@ -141,6 +142,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         model="light",
         max_tokens=6000,
         timeout_s=180,
+        max_retries=5,
         temperature=0.1,
         note="清洗 dense context，不做重推理。",
     ),
@@ -150,8 +152,19 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         model="reason",
         max_tokens=12000,
         timeout_s=360,
+        max_retries=5,
         temperature=0.5,
         note="实际 model slot 由 digest mode profile 决定。",
+    ),
+    DocGenModelStep.UNIT_TESTS: DocGenModelPolicy(
+        step=DocGenModelStep.UNIT_TESTS,
+        call_type="structured",
+        model="light",
+        max_tokens=2200,
+        timeout_s=120,
+        max_retries=4,
+        temperature=0.2,
+        note="根据已生成正文单独生成章末单元测试，避免 writer 混写正文和测试。",
     ),
     DocGenModelStep.HEADING_REPAIR: DocGenModelPolicy(
         step=DocGenModelStep.HEADING_REPAIR,

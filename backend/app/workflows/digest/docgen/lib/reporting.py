@@ -287,6 +287,7 @@ def build_docgen_lane_summary(
         "assemble_tasks_ms": int(state.get("assemble_tasks_ms", 0)),
         "research_ms": int(state.get("research_ms", 0)),
         "draft_ms": int(state.get("draft_ms", 0)),
+        "unit_test_ms": int(state.get("unit_test_ms", 0)),
         "enhance_ms": int(state.get("enhance_ms", 0)),
         "review_ms": int(state.get("review_ms", 0)),
         "repair_ms": int(state.get("repair_ms", 0)),
@@ -304,7 +305,7 @@ def build_docgen_lane_summary(
             + raw_timing_ms["chapter_prepare_ms"]
             + raw_timing_ms["assemble_tasks_ms"]
         ),
-        "generation_ms": raw_timing_ms["research_ms"] + raw_timing_ms["draft_ms"],
+        "generation_ms": raw_timing_ms["research_ms"] + raw_timing_ms["draft_ms"] + raw_timing_ms["unit_test_ms"],
         "enhance_ms": raw_timing_ms["enhance_ms"],
         "review_repair_ms": raw_timing_ms["review_ms"] + raw_timing_ms["repair_ms"] + raw_timing_ms["merge_review_ms"],
         "publish_ms": raw_timing_ms["finalize_ms"],

@@ -2,14 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
-  BarChart3,
-  BookOpen,
   ChevronRight,
   Download,
   Edit3,
-  FileText,
   FolderOpen,
-  Compass,
   Loader2,
   Menu,
   MoreVertical,
@@ -17,10 +13,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  Sparkles,
   Trash2,
   MessageCircle,
-  type LucideIcon,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -32,11 +26,11 @@ import type { CourseDeletePreviewData, CourseItem } from "../../api/generated/mo
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { resolveCourseIcon, resolveCourseTone } from "../../lib/courseIcons";
-import { COURSES_IMPORTED_EVENT, type CoursesImportedDetail } from "../../lib/courseEvents";
+import { COURSES_IMPORTED_EVENT } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
-import { buildCoursePath, getCourseIdFromPathname, isCourseRouteActive, type CourseRouteId } from "../../lib/courseNavigation";
-import { useIsFrontendDevelopmentMode } from "../providers/FrontendModeProvider";
+import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
+
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseOperationModal } from "../course/CourseOperationModal";
@@ -47,18 +41,7 @@ import { useAiInteraction, type AiConversationScope } from "../interaction";
 
 import { Button } from "../ui/Button";
 
-const MODULES: ReadonlyArray<{
-  id: CourseRouteId;
-  name: string;
-  icon: LucideIcon;
-  devOnly?: boolean;
-}> = [
-  { id: "nav", name: "导航", icon: Compass, devOnly: true },
-  { id: "build", name: "构建", icon: Sparkles },
-  { id: "knowledge-docs", name: "知识库", icon: BookOpen },
-  { id: "exams", name: "考试", icon: FileText },
-  { id: "profile", name: "学习画像", icon: BarChart3 },
-];
+
 
 const LOGO_SRC = publicAssetPath("logo.svg");
 const COURSE_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.sidebar.coursesExpanded";
@@ -85,20 +68,6 @@ const sidebarItemMotion: Variants = {
     x: -8,
     scale: 0.98,
     transition: { duration: 0.14, ease: "easeOut" },
-  },
-};
-
-const sidebarChildItemMotion: Variants = {
-  hidden: { opacity: 0, y: -4 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: "spring", stiffness: 420, damping: 32 },
-  },
-  exit: {
-    opacity: 0,
-    y: -4,
-    transition: { duration: 0.12, ease: "easeOut" },
   },
 };
 
@@ -224,7 +193,7 @@ export function Sidebar({
   onOpenSettings?: () => void;
   onMobileOpenChange?: (isOpen: boolean) => void;
 }) {
-  const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
+
   const [isCourseSectionExpanded, setIsCourseSectionExpanded] = useState(readCourseSectionExpanded);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -242,7 +211,7 @@ export function Sidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isDevelopmentMode = useIsFrontendDevelopmentMode();
+
   const {
     activeScope,
     fullscreenScope,
@@ -328,13 +297,9 @@ export function Sidebar({
   }, [openMenuId]);
 
   useEffect(() => {
-    const handleCoursesImported = (event: Event) => {
-      const detail = (event as CustomEvent<CoursesImportedDetail>).detail;
+    const handleCoursesImported = () => {
       updateCourseSectionExpanded(true);
       setIsCollapsed(false);
-      if (detail?.courseId) {
-        setExpandedCourses((prev) => new Set([...prev, detail.courseId as string]));
-      }
     };
     window.addEventListener(COURSES_IMPORTED_EVENT, handleCoursesImported);
     return () => window.removeEventListener(COURSES_IMPORTED_EVENT, handleCoursesImported);
@@ -344,7 +309,6 @@ export function Sidebar({
     if (!routeCourseId) {
       return;
     }
-    setExpandedCourses((prev) => new Set([...prev, routeCourseId]));
     updateCourseSectionExpanded(true);
     setIsCollapsed(false);
   }, [routeCourseId, updateCourseSectionExpanded]);
@@ -403,10 +367,6 @@ export function Sidebar({
   });
 
   const groupedCourses = useMemo(() => courses as CourseItem[], [courses]);
-  const visibleModules = useMemo(
-    () => MODULES.filter((moduleItem) => !moduleItem.devOnly || isDevelopmentMode),
-    [isDevelopmentMode],
-  );
   const shouldAnimateCourseItems = groupedCourses.length <= 24;
   const shouldShowCourseList = effectiveCollapsed || isCourseSectionExpanded;
   const expandNavigationSidebar = useCallback(() => {
@@ -423,22 +383,6 @@ export function Sidebar({
       state: { newEntryAt: Date.now() },
     });
   }, [navigate]);
-
-  const toggleCourse = (courseId: string) => {
-    if (effectiveCollapsed) {
-      setIsCollapsed(false);
-      return;
-    }
-    setExpandedCourses((prev) => {
-      const next = new Set(prev);
-      if (next.has(courseId)) {
-        next.delete(courseId);
-      } else {
-        next.add(courseId);
-      }
-      return next;
-    });
-  };
 
   const openDeleteModal = (course: CourseItem) => {
     setDeleteTarget(course);
@@ -474,7 +418,7 @@ export function Sidebar({
       <aside
         data-app-sidebar="true"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/80 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/70 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] ring-1 ring-slate-900/5 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/50 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/40 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] lg:shadow-none dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] lg:dark:shadow-none ring-1 ring-slate-900/5 lg:ring-0 dark:ring-white/5 lg:dark:ring-0 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
           "rounded-none",
           isMobileOpen ? "w-[80vw] lg:w-[240px]" : effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
@@ -482,7 +426,7 @@ export function Sidebar({
       >
         <div
           className={cn(
-            "flex shrink-0 items-center border-b border-slate-100 dark:border-slate-800/50",
+            "flex shrink-0 items-center",
             isMobileOpen ? "h-14" : "h-12",
             effectiveCollapsed ? "justify-center px-0" : isMobileOpen ? "justify-between px-4" : "justify-between px-3",
           )}
@@ -546,11 +490,11 @@ export function Sidebar({
                   className={cn(
                     "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                     isCreateCourseActive
-                      ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                      : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                      ? "bg-slate-100 text-slate-850 dark:bg-slate-800 dark:text-slate-100"
+                      : "text-slate-400 hover:bg-slate-50 hover:text-slate-750 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300",
                   )}
                 >
-                  <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+                  <Edit3 className="h-4 w-4 shrink-0" strokeWidth={2.0} />
                 </button>
 
               <button
@@ -566,11 +510,11 @@ export function Sidebar({
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                   isLibraryActive
-                    ? "bg-[#eef2f6] text-[#243246] ring-1 ring-[#d9e1ea] hover:bg-[#e4ebf3] hover:text-[#182437] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700/70 dark:hover:text-slate-50"
-                    : "text-slate-500 hover:bg-[#eef3f8] hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                    ? "bg-slate-100 text-slate-850 dark:bg-slate-800 dark:text-slate-100"
+                    : "text-slate-400 hover:bg-slate-50 hover:text-slate-750 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300",
                 )}
               >
-                <FolderOpen className="h-4 w-4 shrink-0" strokeWidth={2.2} />
+                <FolderOpen className="h-4 w-4 shrink-0" strokeWidth={2.0} />
               </button>
             </div>
           ) : (
@@ -581,8 +525,8 @@ export function Sidebar({
                   "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isMobileOpen ? "h-10" : "h-8",
                   isCreateCourseActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
+                    ? "bg-slate-100 text-slate-900 dark:bg-slate-800/70 dark:text-slate-100"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/40",
                 )}
                 onClick={openCreateCoursePage}
               >
@@ -591,18 +535,18 @@ export function Sidebar({
                     "shrink-0 transition-colors",
                     isMobileOpen ? "h-5 w-5" : "h-4 w-4",
                     isCreateCourseActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                      ? "text-slate-700 dark:text-slate-300"
+                      : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
                   )}
-                  strokeWidth={2.2}
+                  strokeWidth={2.0}
                 />
                 <span
                   className={cn(
                     "whitespace-nowrap",
                     isMobileOpen ? "text-sm" : "text-xs",
                     isCreateCourseActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                      ? "font-medium text-slate-900 dark:text-slate-100"
+                      : "font-normal text-slate-600 group-hover:text-slate-900 dark:text-slate-400 dark:group-hover:text-slate-200",
                   )}
                 >
                   新建课程
@@ -615,8 +559,8 @@ export function Sidebar({
                   "group flex w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
                   isMobileOpen ? "h-10" : "h-8",
                   isLibraryActive
-                    ? "bg-[#f3f6f9] text-slate-950 ring-1 ring-[#dbe3ec] hover:bg-[#e8eef5] dark:bg-slate-800/80 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700/70"
-                    : "text-slate-900 hover:bg-[#eef3f8] dark:text-slate-300 dark:hover:bg-slate-800/60",
+                    ? "bg-slate-100 text-slate-900 dark:bg-slate-800/70 dark:text-slate-100"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/40",
                 )}
                 onClick={() => {
                   setCourseActionError(undefined);
@@ -630,18 +574,18 @@ export function Sidebar({
                     "shrink-0 transition-colors",
                     isMobileOpen ? "h-5 w-5" : "h-4 w-4",
                     isLibraryActive
-                      ? "text-[#4b607b] group-hover:text-[#324761] dark:text-slate-300 dark:group-hover:text-slate-100"
-                      : "text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200",
+                      ? "text-slate-700 dark:text-slate-300"
+                      : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300",
                   )}
-                  strokeWidth={2.2}
+                  strokeWidth={2.0}
                 />
                 <span
                   className={cn(
                     "whitespace-nowrap",
                     isMobileOpen ? "text-sm" : "text-xs",
                     isLibraryActive
-                      ? "font-semibold text-[#1f2937] group-hover:text-[#172033] dark:text-slate-100 dark:group-hover:text-white"
-                      : "font-normal text-slate-900 group-hover:text-slate-950 dark:text-slate-300 dark:group-hover:text-slate-100",
+                      ? "font-medium text-slate-900 dark:text-slate-100"
+                      : "font-normal text-slate-600 group-hover:text-slate-900 dark:text-slate-400 dark:group-hover:text-slate-200",
                   )}
                 >
                   我的资料库
@@ -666,7 +610,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={() => updateCourseSectionExpanded((value) => !value)}
-                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[13px] font-medium text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                className="group flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200"
                 aria-expanded={isCourseSectionExpanded}
               >
                 <span className="truncate">课程</span>
@@ -686,19 +630,19 @@ export function Sidebar({
                   setIsImportModalOpen(true);
                 }}
                 className={cn(
-                  "flex shrink-0 items-center justify-center gap-1 rounded-md font-medium text-slate-500 transition hover:bg-[#eef3f8] hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
+                  "flex shrink-0 items-center justify-center gap-1 rounded-md font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-850 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/70 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700",
                   isMobileOpen ? "h-8 px-2 text-sm" : "h-7 px-1.5 text-[13px]",
                 )}
                 title="导入课程包"
                 aria-label="导入课程包"
               >
-                <PackagePlus className={cn("shrink-0", isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.1} />
+                <PackagePlus className={cn("shrink-0", isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.0} />
                 <span>导入课程</span>
               </button>
             </div>
           ) : (
             <div className="flex h-6 items-center px-1">
-              <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+              <div className="h-px w-full bg-slate-100 dark:bg-slate-800/50" />
             </div>
           )}
 
@@ -717,17 +661,18 @@ export function Sidebar({
                 className="min-h-0 overflow-hidden"
               >
                 <motion.div
-                  className="space-y-0.5 overflow-x-hidden pr-1"
+                  className="space-y-0.5 overflow-x-hidden overflow-y-auto pr-1 max-h-[260px] xl:max-h-[300px] scrollbar-thin scrollbar-webkit"
                   variants={shouldAnimateCourseItems ? sidebarListContainerMotion : undefined}
                   initial={shouldAnimateCourseItems ? "hidden" : false}
                   animate={shouldAnimateCourseItems ? "visible" : undefined}
                 >
                   <AnimatePresence initial={false}>
               {groupedCourses.map((course) => {
-                const expanded = expandedCourses.has(course.course_id);
+
                 const displayName = displayCourseName(course);
                 const CourseIcon = resolveCourseIcon((course as CourseWithIcon).icon_key);
                 const toneClass = resolveCourseTone(displayName);
+                const isActive = getCourseIdFromPathname(location.pathname) === course.course_id;
 
                 return (
                   <motion.div
@@ -741,9 +686,11 @@ export function Sidebar({
                   >
                 <div
                   className={cn(
-                    "group flex items-center gap-1 rounded-md transition-colors",
+                    "group relative flex items-center rounded-md transition-all duration-205",
                     isMobileOpen ? "h-10" : "h-8",
-                    !effectiveCollapsed ? "hover:bg-[#eef3f8] dark:hover:bg-slate-800/60" : "",
+                    isActive
+                      ? "bg-slate-100 dark:bg-slate-800"
+                      : !effectiveCollapsed ? "hover:bg-slate-50 dark:hover:bg-slate-800/40" : "",
                   )}
                 >
                   <button
@@ -751,20 +698,19 @@ export function Sidebar({
                     onClick={() => {
                       if (effectiveCollapsed) {
                         setIsCollapsed(false);
-                        if (!expanded) {
-                          toggleCourse(course.course_id);
-                        }
-                      } else {
-                        toggleCourse(course.course_id);
                       }
+                      if (isMobileOpen) {
+                        setIsMobileOpen(false);
+                      }
+                      navigate(buildCoursePath(course.course_id, "nav"));
                     }}
                     className={cn(
-                      "flex items-center transition-colors",
+                      "flex items-center transition-colors min-w-0 w-full",
                       effectiveCollapsed
-                        ? "h-8 w-full justify-center rounded-md px-0 hover:bg-[#eef3f8] dark:hover:bg-slate-800/60"
+                        ? "h-8 justify-center rounded-md px-0"
                         : isMobileOpen
-                        ? "h-10 flex-1 rounded-md px-2"
-                        : "h-8 flex-1 rounded-md px-2",
+                        ? "h-10 rounded-md px-2"
+                        : "h-8 rounded-md px-2",
                     )}
                     title={effectiveCollapsed ? displayName : undefined}
                   >
@@ -777,18 +723,19 @@ export function Sidebar({
                     >
                       <CourseIcon className={cn(isMobileOpen ? "h-4 w-4" : "h-3.5 w-3.5")} strokeWidth={2.2} />
                     </div>
-                    {!effectiveCollapsed ? <span className={cn("ml-2 truncate font-medium text-slate-700 dark:text-slate-300", isMobileOpen ? "text-sm" : "text-xs")}>{displayName}</span> : null}
+                    {!effectiveCollapsed ? <span className={cn("ml-2 truncate pr-4 font-medium text-slate-700 dark:text-slate-300", isMobileOpen ? "text-sm" : "text-xs")}>{displayName}</span> : null}
                   </button>
 
                   {!effectiveCollapsed ? (
                     <>
-                      <div className="relative">
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
                         <button
                           type="button"
                           onClick={() => setOpenMenuId((prev) => (prev === course.course_id ? null : course.course_id))}
                           className={cn(
-                            "flex shrink-0 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100",
-                            isMobileOpen ? "h-10 w-10" : "h-8 w-8",
+                            "flex shrink-0 items-center justify-center rounded text-slate-400 opacity-100 transition-all hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 sm:opacity-0 sm:group-hover:opacity-100",
+                            isActive ? "bg-[#e2eaf2] dark:bg-slate-800" : "bg-[#eef3f8] dark:bg-slate-800/60",
+                            isMobileOpen ? "h-8 w-8" : "h-6 w-6",
                           )}
                           title="更多操作"
                         >
@@ -847,54 +794,7 @@ export function Sidebar({
                   </div>
                 ) : null}
 
-                <AnimatePresence initial={false}>
-                  {!effectiveCollapsed && expanded ? (
-                    <motion.div
-                      key="modules"
-                      initial={{ gridTemplateRows: "0fr", opacity: 0 }}
-                      animate={{ gridTemplateRows: "1fr", opacity: 1 }}
-                      exit={{ gridTemplateRows: "0fr", opacity: 0 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                      className="grid"
-                    >
-                      <div className="min-h-0 overflow-hidden">
-                        <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
-                          <AnimatePresence initial={false}>
-                            {visibleModules.map((moduleItem) => {
-                              const path = buildCoursePath(course.course_id, moduleItem.id);
-                              const isActive = isCourseRouteActive(location.pathname, course.course_id, moduleItem.id);
-                              const Icon = moduleItem.icon;
-                              return (
-                                <motion.div
-                                  key={moduleItem.id}
-                                  variants={sidebarChildItemMotion}
-                                  initial="hidden"
-                                  animate="visible"
-                                  exit="exit"
-                                  whileTap={{ scale: 0.985 }}
-                                >
-                                  <Link
-                                    to={path}
-                                    onClick={() => setIsMobileOpen(false)}
-                                    className={cn(
-                                      "flex h-8 items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-xs transition-colors",
-                                      isActive
-                                        ? "bg-[#edf3f8] font-medium text-[#243246] dark:bg-slate-800 dark:text-slate-200"
-                                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-slate-200",
-                                    )}
-                                  >
-                                    <Icon className={cn("mr-2 h-3.5 w-3.5", isActive ? "text-[#556b86] dark:text-slate-300" : undefined)} />
-                                    {moduleItem.name}
-                                  </Link>
-                                </motion.div>
-                              );
-                            })}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
+
                   </motion.div>
                 );
               })}

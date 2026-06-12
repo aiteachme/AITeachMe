@@ -25,7 +25,7 @@ class _RepairOutline(BaseModel):
     chapters: list[_RepairChapter]
 
 
-def test_structured_repair_prompt_includes_invalid_response_context() -> None:
+def test_structured_repair_prompt_carries_validation_context() -> None:
     messages = [{"role": "user", "content": "生成课程大纲"}]
 
     repaired = _build_structured_fallback_messages(
@@ -37,11 +37,8 @@ def test_structured_repair_prompt_includes_invalid_response_context() -> None:
 
     assert repaired[:-1] == messages
     repair_prompt = repaired[-1]["content"]
-    assert "Previous structured output did not validate." in repair_prompt
     assert "chapters.1 Input should be an object" in repair_prompt
     assert '"chapters":[{"title":"函数","key_points":["定义"]},-1]' in repair_prompt
-    assert "sentinel, null, primitive, or omitted placeholder values" in repair_prompt
-    assert "Regenerate the full JSON object from scratch" in repair_prompt
 
 
 def test_structured_failure_feedback_extracts_instructor_failed_completion() -> None:

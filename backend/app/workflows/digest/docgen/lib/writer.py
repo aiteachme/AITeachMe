@@ -102,6 +102,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
             extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
         )
         markdown = ""
+        scaffold_fallback_applied = False
+        writer_fallback_reason = ""
         if on_stream_update is not None and self.context.llm_caller is None:
             streamed_chars = 0
 
@@ -145,7 +147,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
             async def _run_writer_completion(_: object) -> str:
                 return str(await llm(messages, **writer_model_kwargs) or "")
 
-            (markdown,) = await run_llm_tasks([None], _run_writer_completion, max_concurrent=1)
+            try:
+                (markdown,) = await run_llm_tasks([None], _run_writer_completion, max_concurrent=1)
+            except Exception as exc:
+                writer_fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+                self.logger.warning(
+                    "docgen_writer_completion_failed_using_scaffold",
+                    chapter_index=chapter_index,
+                    error=str(exc),
+                )
+                markdown = self._build_scaffold_fallback(
+                    title=title,
+                    objective=objective,
+                    required_elements=required_elements,
+                    writing_instructions=writing_instructions,
+                    dense_context=dense_context,
+                )
+                scaffold_fallback_applied = True
 
         markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
@@ -173,8 +191,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                     markdown,
                     digest_mode=digest_mode,
                 )
-
-        scaffold_fallback_applied = False
 
         markdown = self._ensure_media_placeholders(
             markdown,
@@ -207,9 +223,81 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "quality_summary": quality_summary,
                 "heading_repair_applied": heading_repair_applied,
                 "scaffold_fallback_applied": scaffold_fallback_applied,
+                "writer_fallback_reason": writer_fallback_reason,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
             },
         )
+
+    def _build_scaffold_fallback(
+        self,
+        *,
+        title: str,
+        objective: str,
+        required_elements: list[str],
+        writing_instructions: str,
+        dense_context: str,
+    ) -> str:
+        focus_items = [item for item in required_elements if item.strip()]
+        if not focus_items and objective.strip():
+            focus_items = [objective.strip()]
+        if not focus_items:
+            focus_items = ["理解本章核心概念、基本方法和典型题型。"]
+        context_points = self._fallback_context_points(dense_context)
+
+        lines = [
+            f"# {title}",
+            "",
+            "## 学习目标",
+            "",
+            *[f"- {item}" for item in focus_items[:6]],
+            "",
+            "## 核心框架",
+            "",
+            "本章可以按“概念辨析 -> 方法步骤 -> 例题应用 -> 易错检查”的顺序学习。先确认每个概念的定义域、适用条件和常见变形，再把计算或证明过程拆成可复用步骤。",
+            "",
+            "## 重点突破",
+            "",
+        ]
+        if context_points:
+            lines.extend(f"- {item}" for item in context_points[:6])
+        else:
+            lines.extend(f"- {item}" for item in focus_items[:6])
+        if writing_instructions.strip():
+            lines.extend(["", "## 学习提示", "", writing_instructions.strip()])
+        lines.extend(
+            [
+                "",
+                "## 例题与检查点",
+                "",
+                "### 例题",
+                "",
+                f"围绕“{focus_items[0]}”设计一道基础题：先写出已知条件，再列出需要使用的定义、公式或定理，最后检查答案是否满足题目限制。",
+                "",
+                "### 检查点",
+                "",
+                "1. 用自己的话复述本章最重要的定义或定理。",
+                "2. 写出一个典型题目的完整解题步骤。",
+                "3. 标出最容易出错的条件，并说明为什么不能省略。",
+                "",
+                "## 小结",
+                "",
+                "学完本章后，应能把核心概念、常用方法和典型题型串成一条清晰的学习路径，并能独立完成基础题与变式题。",
+            ]
+        )
+        return "\n".join(lines).strip() + "\n"
+
+    def _fallback_context_points(self, dense_context: str, *, limit: int = 6) -> list[str]:
+        points: list[str] = []
+        for raw_line in str(dense_context or "").replace("\r", "\n").split("\n"):
+            line = raw_line.strip(" \t-#>*`")
+            if len(line) < 8:
+                continue
+            if line in points:
+                continue
+            points.append(line[:160])
+            if len(points) >= limit:
+                break
+        return points
 
     async def _safe_stream_update(
         self,

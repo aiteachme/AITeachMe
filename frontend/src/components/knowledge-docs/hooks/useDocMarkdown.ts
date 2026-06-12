@@ -129,6 +129,7 @@ export function useDocMarkdown(): DocMarkdownState {
       return response.data;
     },
     enabled: Boolean(courseId),
+    staleTime: 30000,
     refetchInterval: (query) => {
       const data = query.state.data;
       const build = data?.build;

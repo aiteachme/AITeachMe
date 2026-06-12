@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
 
 import structlog
 
@@ -17,7 +16,7 @@ from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.figure_spec import (
     FigureSpec,
     FigureType,
-    build_fallback_figure_spec,
+    is_renderable_problem_diagram,
     normalize_figure_spec,
     render_figure_spec_html,
 )
@@ -85,53 +84,37 @@ def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, Fig
     text = f"{title}\n{context}".lower()
     score = 0
     reasons: list[str] = []
-    figure_type: FigureType = "concept_map"
+    figure_type: FigureType = "problem_diagram"
 
-    def add(points: int, reason: str, kind: FigureType) -> None:
+    def add(points: int, reason: str) -> None:
         nonlocal score, figure_type
         score += points
         reasons.append(reason)
-        if points >= 3 or figure_type == "concept_map":
-            figure_type = kind
+        figure_type = "problem_diagram"
 
     has_problem_signal = bool(
         re.search(
-            r"图示|如下图|如图|画出|示意图|题图|坐标|函数|几何|三角|圆|斜面|地图|曲线|图像|图象|结构|模型|区域|轴|路径|方向|向量|矢量",
+            r"图示|如下图|如图|画出|示意|题图|坐标|曲线|图像|图象|抛物线|几何|三角|圆|椭圆|斜面|地图|结构|模型|装置|区域|轴|路径|方向|向量|矢量|电路|受力|力图|示波|流程图|树状图|网络图",
             text,
         )
     )
     has_quantitative_signal = bool(
-        re.search(r"力|合力|分力|力矩|力偶|约束|速度|加速度|电场|磁场|函数|坐标|概率|统计|供给|需求|曲线|成本|收益|面积|体积|角度|距离", text)
+        re.search(r"力|合力|分力|力矩|力偶|约束|速度|加速度|电场|磁场|函数|坐标|概率|统计|供给|需求|曲线|成本|收益|面积|体积|角度|距离|半径|焦点|边长|高度|电压|电流", text)
     )
     if has_problem_signal:
-        add(4, "包含题图、坐标、结构或空间关系", "problem_diagram")
+        add(4, "包含题图、坐标、结构或空间关系")
     if has_problem_signal and has_quantitative_signal:
-        add(2, "图示与变量或数量关系需要对应标注", "problem_diagram")
-    has_process_signal = bool(re.search(r"步骤|流程|顺序|阶段|时期|时间线|先.*再|首先|然后|最后|第一|第二|第三|①|②|③|1[).、]|2[).、]|3[).、]", text))
-    has_comparison_signal = bool(re.search(r"比较|区别|对比|分类|适用范围|优缺点|表格|类型|性质|相同|不同|异同", text))
-    if has_process_signal:
-        add(4, "包含步骤、阶段或过程关系", "process_steps")
-        if len(re.findall(r"阶段|时期|首先|然后|最后|第一|第二|第三|①|②|③", text)) >= 2:
-            add(2, "多个阶段适合画成顺序图", "process_steps")
-    if has_comparison_signal:
-        add(4, "适合整理为对比表或归纳表", "comparison_table")
-        if len(re.findall(r"、|，|,|；|;", context)) >= 3:
-            add(1, "包含多项维度可归纳", "comparison_table")
-    if re.search(r"=|\\frac|\\sum|\\sqrt|公式|推导|表达式|代入|化简|因此|所以|⇒|->|→", text):
-        add(3, "包含公式、推导或等量关系", "formula_derivation")
-    if re.search(r"易错|注意|误区|错误|判断|陷阱|常见", text):
-        add(2, "包含易错点或判断提示", "mistake_card")
-    if re.search(r"定义|概念|含义|本质|特点|作用|关系", text):
-        add(1, "包含概念关系", "concept_map")
+        add(2, "图示与变量或数量关系需要对应标注")
+    if has_problem_signal and re.search(r"=|\\frac|\\sum|\\sqrt|表达式|方程|函数|导数|切线|斜率|曲线|坐标|图像|图象|抛物线", text):
+        add(2, "表达式或函数关系可落到坐标、曲线或标注图")
 
     if len(context) < 180 and not (
         (has_problem_signal and has_quantitative_signal)
-        or has_process_signal
-        or has_comparison_signal
+        or has_problem_signal
     ):
         score -= 2
     if len(re.findall(r"[-*]\s+|^\s*\d+[).、]", context, flags=re.MULTILINE)) >= 3:
-        score += 1
+        score += 1 if has_problem_signal else 0
     score = max(0, min(10, score))
     if score < 6:
         return score, "", figure_type
@@ -268,7 +251,18 @@ async def generate_static_html_figure_assets(
                 spec,
                 fallback_title=figure_title,
                 context=context,
+                allow_fallback_elements=False,
             )
+            if not is_renderable_problem_diagram(spec):
+                logger.warning(
+                    "docgen_static_html_figure_skipped_after_nonvisual_spec",
+                    chapter_index=draft.chapter_index,
+                    chapter_title=draft.title,
+                    section_title=candidate.title,
+                    figure_type=spec.type,
+                    element_kinds=[item.kind for item in spec.elements[:8]],
+                )
+                return None
             html = render_figure_spec_html(spec, title=figure_title)
             cleaned_html = _sanitize_static_html(str(html), title=figure_title)
             validation_issues = validate_single_file_html(cleaned_html)
@@ -324,56 +318,7 @@ async def generate_static_html_figure_assets(
                 section_title=candidate.title,
                 error=str(exc)[:240],
             )
-            try:
-                spec = build_fallback_figure_spec(
-                    title=figure_title,
-                    figure_type=cast(FigureType, candidate.figure_type),
-                    context=context,
-                    goal=candidate.goal,
-                )
-                cleaned_html = _sanitize_static_html(
-                    render_figure_spec_html(spec, title=figure_title),
-                    title=figure_title,
-                )
-                validation_issues = validate_single_file_html(cleaned_html)
-                if validation_issues:
-                    return None
-                cs = get_content_store()
-                course_scope = resolve_course_storage_scope(traced_context.course_id)
-                filename = (
-                    f"docgen_figure_{traced_context.build_session_id}_ch{draft.chapter_index:02d}"
-                    f"_s{candidate.index:02d}_{sanitize_doc_title(candidate.title)}.html"
-                )
-                storage_key = f"{course_scope.namespace}/assets/docgen/figures/{filename}"
-                asset_path = f"docgen/figures/{filename}"
-                await cs.write_text(storage_key, cleaned_html)
-                preview_url = _build_preview_url(
-                    course_id=traced_context.course_id,
-                    asset_path=asset_path,
-                    title=figure_title,
-                )
-                return {
-                    "asset_id": f"ch{draft.chapter_index:02d}_figure_{candidate.index:02d}",
-                    "chapter_index": draft.chapter_index,
-                    "kind": "static_html_figure",
-                    "title": figure_title,
-                    "anchor_heading": candidate.title,
-                    "anchor_heading_id": candidate.heading_id,
-                    "anchor_heading_level": candidate.level,
-                    "insert_at": candidate.insert_at,
-                    "storage_key": storage_key,
-                    "asset_path": asset_path,
-                    "asset_url": f"/api/v1/courses/{traced_context.course_id}/files/assets/{asset_path}",
-                    "preview_url": preview_url,
-                    "open_mode": "inline_static",
-                    "link_markdown": f"[图示：{candidate.title}]({preview_url})",
-                    "validation_issues": validation_issues,
-                    "figure_type": spec.type,
-                    "figure_spec": spec.model_dump(mode="json"),
-                    "validation_report": {"fallback_after_error": str(exc)[:160]},
-                }
-            except Exception:
-                return None
+            return None
 
     results = await run_llm_tasks(
         candidates,

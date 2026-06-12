@@ -7,6 +7,7 @@ from app.workflows.digest.kg_doc_sync.lib.ontology import (
     format_ontology_unit_type_bullets,
     relation_endpoint_type_preferences,
 )
+from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 from app.models.knowledge_taxonomy import (
     PARENT_KNOWLEDGE_UNIT_TYPES,
     PRIMARY_KNOWLEDGE_UNIT_TYPES,
@@ -19,7 +20,6 @@ from app.models.knowledge_taxonomy import (
     relation_type_label,
     validate_relation_direction,
 )
-from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
 
 def test_learning_graph_ontology_matches_enum_values():

@@ -2610,233 +2610,257 @@ export function MarkdownViewer({
     }
   }, [controlledCollapsedHeadingIds, onHeadingCollapseChange]);
 
-  const makeHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
-    const Tag = `h${level}` as const;
-    return ({
-      children,
-      id: incomingId,
-      ...props
-    }: MarkdownHeadingComponentProps) => {
-      const text = extractText(children);
-      const dataHeadingId = readStringProp(props, "data-heading-id");
-      const headingNumber = readStringProp(props, "data-heading-number");
-      const id = incomingId || dataHeadingId || (headingAnchors ? nextHeadingId(text) : undefined);
-      const headingId = dataHeadingId || id;
-      const isCollapsible = Boolean(headingId) && collapsibleHeadingLevels.has(level);
-      const isCollapsed = headingId ? collapsedHeadingIds.has(headingId) : false;
-      return (
-        <Tag
-          id={id}
-          data-heading-id={headingId}
-          data-collapsible-heading={isCollapsible ? "true" : undefined}
-          data-heading-collapsed={isCollapsible && isCollapsed ? "true" : undefined}
-          className={cn(styles.heading[level], isCollapsible && "group/heading relative scroll-mt-24")}
-        >
-          {isCollapsible && headingId ? (
-            <button
-              type="button"
-              data-heading-toggle="true"
-              aria-label={isCollapsed ? "展开标题内容" : "折叠标题内容"}
-              aria-expanded={!isCollapsed}
-              title={isCollapsed ? "展开标题内容" : "折叠标题内容"}
-              className={cn(
-                "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
-                isCollapsed && "text-blue-600",
-              )}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleHeadingCollapse(headingId, event.currentTarget);
-              }}
-            >
-              <ChevronRight
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, remarkMath, remarkBlankTokens, remarkSafeHighlights, remarkCallouts, headingStructurePlugin] as any[],
+    [headingStructurePlugin],
+  );
+
+  const rehypePlugins = useMemo(
+    () => [
+      [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
+      rehypeHighlight,
+    ] as any[],
+    [],
+  );
+
+  const components = useMemo(() => {
+    const makeHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
+      const Tag = `h${level}` as const;
+      return ({
+        children,
+        id: incomingId,
+        ...props
+      }: MarkdownHeadingComponentProps) => {
+        const text = extractText(children);
+        const dataHeadingId = readStringProp(props, "data-heading-id");
+        const headingNumber = readStringProp(props, "data-heading-number");
+        const id = incomingId || dataHeadingId || (headingAnchors ? nextHeadingId(text) : undefined);
+        const headingId = dataHeadingId || id;
+        const isCollapsible = Boolean(headingId) && collapsibleHeadingLevels.has(level);
+        const isCollapsed = headingId ? collapsedHeadingIds.has(headingId) : false;
+        return (
+          <Tag
+            id={id}
+            data-heading-id={headingId}
+            data-collapsible-heading={isCollapsible ? "true" : undefined}
+            data-heading-collapsed={isCollapsible && isCollapsed ? "true" : undefined}
+            className={cn(styles.heading[level], isCollapsible && "group/heading relative scroll-mt-24")}
+          >
+            {isCollapsible && headingId ? (
+              <button
+                type="button"
+                data-heading-toggle="true"
+                aria-label={isCollapsed ? "展开标题内容" : "折叠标题内容"}
+                aria-expanded={!isCollapsed}
+                title={isCollapsed ? "展开标题内容" : "折叠标题内容"}
+                className={cn(
+                  "mr-1 inline-flex h-6 w-6 -ml-1 align-middle items-center justify-center rounded-md text-[#8F959E] transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 sm:absolute sm:right-full sm:top-[0.16em] sm:mr-1.5 sm:ml-0",
+                  isCollapsed && "text-blue-600",
+                )}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleHeadingCollapse(headingId, event.currentTarget);
+                }}
+              >
+                <ChevronRight
+                  aria-hidden="true"
+                  className="h-4 w-4 transition-transform duration-200"
+                />
+              </button>
+            ) : null}
+            {headingNumber ? (
+              <span
                 aria-hidden="true"
-                className="h-4 w-4 transition-transform duration-200"
-              />
-            </button>
-          ) : null}
-          {headingNumber ? (
-            <span
-              aria-hidden="true"
-              data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#2563EB] [-webkit-user-select:none] dark:text-blue-300"
-            >
-              {headingNumber}&nbsp;
-            </span>
-          ) : null}
-          <span>{children}</span>
-        </Tag>
-      );
+                data-heading-number={headingNumber}
+                className="mr-1.5 inline-block select-none whitespace-nowrap text-indigo-600 [-webkit-user-select:none] dark:text-indigo-400"
+              >
+                {headingNumber}&nbsp;
+              </span>
+            ) : null}
+            <span>{children}</span>
+          </Tag>
+        );
+      };
     };
-  };
+
+    return {
+      h1: makeHeading(1),
+      h2: makeHeading(2),
+      h3: makeHeading(3),
+      h4: makeHeading(4),
+      h5: makeHeading(5),
+      h6: makeHeading(6),
+      section: ({ children, className, ...props }: MarkdownSectionComponentProps) => {
+        const sectionId = readStringProp(props, "data-heading-section-id");
+        const sectionLevel = readStringProp(props, "data-heading-section-level");
+        const isHeadingSection = readStringProp(props, "data-heading-section") === "true";
+        const isCollapsibleSection = readStringProp(props, "data-collapsible-section") === "true";
+        const isCollapsed = sectionId ? collapsedHeadingIds.has(sectionId) : false;
+        const sectionChildren = isCollapsibleSection ? Children.toArray(children) : [];
+        return (
+          <section
+            data-heading-section={isHeadingSection ? "true" : undefined}
+            data-heading-section-level={sectionLevel}
+            data-heading-section-id={sectionId}
+            data-collapsible-section={isCollapsibleSection ? "true" : undefined}
+            data-collapsed={isCollapsibleSection && isCollapsed ? "true" : undefined}
+            className={cn(isCollapsibleSection && "markdown-collapsible-section", className)}
+          >
+            {isCollapsibleSection ? (
+              <>
+                {sectionChildren[0] ?? null}
+                {sectionChildren.length > 1 ? (
+                  <div data-heading-section-body="true" className="contents">
+                    {sectionChildren.slice(1)}
+                  </div>
+                ) : null}
+              </>
+            ) : children}
+          </section>
+        );
+      },
+      p: ({ children }: ComponentPropsWithoutRef<"p">) => (
+        containsInteractiveEmbed(children, assetCourse)
+          ? <div className="my-4">{children}</div>
+          : <p className={styles.paragraph}>{children}</p>
+      ),
+      ul: ({ children }: ComponentPropsWithoutRef<"ul">) => <ul className={styles.list}>{children}</ul>,
+      ol: ({ children }: ComponentPropsWithoutRef<"ol">) => <ol className={styles.orderedList}>{children}</ol>,
+      li: ({ children }: ComponentPropsWithoutRef<"li">) => <li className={styles.listItem}>{children}</li>,
+      blockquote: ({ children, ...props }: MarkdownBlockquoteComponentProps) => {
+        const propKind = normalizeCalloutKind(readStringProp(props, "data-callout-kind"));
+        const callout = propKind
+          ? { kind: propKind, body: Children.toArray(children).filter((item) => item !== "\n") }
+          : parseCallout(children);
+        if (!callout) {
+          return <blockquote className={styles.blockquote}>{children}</blockquote>;
+        }
+        if (containsInteractiveEmbed(callout.body, assetCourse)) {
+          return <div className="my-4">{callout.body}</div>;
+        }
+
+        const tone = CALLOUT_STYLES[variant][callout.kind];
+        const calloutMeta = CALLOUT_META[callout.kind];
+        const CalloutIcon = calloutMeta.Icon;
+        const isDocumentCallout = variant === "document";
+        return (
+          <aside className={tone.shell}>
+            <div className={cn("flex items-center gap-2", isDocumentCallout ? "mb-2" : "mb-3")}>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 font-semibold",
+                  isDocumentCallout
+                    ? "text-[13px] leading-5"
+                    : "rounded-full px-2.5 py-1 text-[11px] tracking-[0.08em]",
+                  tone.badge,
+                )}
+              >
+                <CalloutIcon className="h-3.5 w-3.5" />
+                {calloutMeta.label}
+              </span>
+            </div>
+            <div
+              className={cn(
+                "[&>*:last-child]:mb-0",
+                variant === "document" && "[&_ol]:my-3 [&_ul]:my-3 [&_p]:mb-3 [&_strong]:text-current",
+              )}
+            >
+              {callout.body}
+            </div>
+          </aside>
+        );
+      },
+      code: ({ className, children }: ComponentPropsWithoutRef<"code">) => {
+        const codeText = extractText(children).replace(/\n$/, "");
+        const language =
+          className?.match(/\blanguage-([A-Za-z0-9_-]+)/)?.[1]?.trim().toLowerCase() ??
+          className?.trim().toLowerCase().replace(/^language-/, "") ??
+          "";
+        const isBlock = Boolean(className) || codeText.includes("\n");
+        const normalizedCodeText = codeText.trim().replace(/^(maymaid|mermaind|mermaide)\b/i, "mermaid");
+        const looksLikeMermaid = /^(mermaid|mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(normalizedCodeText);
+
+        if (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid)) {
+          const mermaidChart = normalizedCodeText.replace(/^mermaid\s*/i, "").trimStart() || codeText;
+          return <MermaidBlock chart={mermaidChart} variant={variant === "planner" ? "default" : variant} />;
+        }
+
+        if (isBlock) {
+          const shouldRenderConflictBlock = looksLikeGitConflictBlock(codeText);
+
+          return (
+            <div className={styles.codeShell}>
+              {language ? (
+                <div className={styles.codeLanguageBadge}>{language}</div>
+              ) : null}
+              <pre className={cn(styles.codePre, shouldRenderConflictBlock ? "px-0 py-3" : "")}>
+                <code className={cn("font-mono", className)}>
+                  {shouldRenderConflictBlock ? renderGitConflictLines(codeText) : children}
+                </code>
+              </pre>
+            </div>
+          );
+        }
+
+        return <code className={cn(styles.codeInline, className)}>{children}</code>;
+      },
+      pre: ({ children }: ComponentPropsWithoutRef<"pre">) => <>{children}</>,
+      table: ({ children }: ComponentPropsWithoutRef<"table">) => (
+        <div className={styles.tableShell}>
+          <table className={styles.table}>{children}</table>
+        </div>
+      ),
+      thead: ({ children }: ComponentPropsWithoutRef<"thead">) => <thead className={styles.thead}>{children}</thead>,
+      th: ({ children }: ComponentPropsWithoutRef<"th">) => <th className={styles.th}>{children}</th>,
+      td: ({ children }: ComponentPropsWithoutRef<"td">) => <td className={styles.td}>{children}</td>,
+      hr: () => <hr className={styles.hr} />,
+      a: ({ href, children }: ComponentPropsWithoutRef<"a">) => {
+        const preview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
+        if (preview) {
+          return <InteractiveHtmlEmbed preview={preview} label={children} />;
+        }
+        return (
+          <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        );
+      },
+      strong: ({ children }: ComponentPropsWithoutRef<"strong">) => <strong className={styles.strong}>{children}</strong>,
+      em: ({ children }: ComponentPropsWithoutRef<"em">) => <em className={styles.em}>{children}</em>,
+      mark: ({ children }: ComponentPropsWithoutRef<"mark">) => <mark className={styles.highlight}>{children}</mark>,
+      img: ({ src, alt }: ComponentPropsWithoutRef<"img">) => {
+        const resolvedSrc = resolveMarkdownImageSrc(src, {
+          assetBaseUrl,
+          assetCourse,
+        });
+
+        return (
+          <MarkdownImage
+            src={resolvedSrc}
+            alt={alt}
+            styles={styles}
+          />
+        );
+      },
+    };
+  }, [
+    styles,
+    variant,
+    headingAnchors,
+    collapsibleHeadingLevels,
+    collapsedHeadingIds,
+    toggleHeadingCollapse,
+    assetCourse,
+    assetBaseUrl,
+    nextHeadingId,
+  ]);
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBlankTokens, remarkSafeHighlights, remarkCallouts, headingStructurePlugin]}
-      rehypePlugins={[
-        [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
-        rehypeHighlight,
-      ]}
-      components={{
-        h1: makeHeading(1),
-        h2: makeHeading(2),
-        h3: makeHeading(3),
-        h4: makeHeading(4),
-        h5: makeHeading(5),
-        h6: makeHeading(6),
-        section: ({ children, className, ...props }: MarkdownSectionComponentProps) => {
-          const sectionId = readStringProp(props, "data-heading-section-id");
-          const sectionLevel = readStringProp(props, "data-heading-section-level");
-          const isHeadingSection = readStringProp(props, "data-heading-section") === "true";
-          const isCollapsibleSection = readStringProp(props, "data-collapsible-section") === "true";
-          const isCollapsed = sectionId ? collapsedHeadingIds.has(sectionId) : false;
-          const sectionChildren = isCollapsibleSection ? Children.toArray(children) : [];
-          return (
-            <section
-              data-heading-section={isHeadingSection ? "true" : undefined}
-              data-heading-section-level={sectionLevel}
-              data-heading-section-id={sectionId}
-              data-collapsible-section={isCollapsibleSection ? "true" : undefined}
-              data-collapsed={isCollapsibleSection && isCollapsed ? "true" : undefined}
-              className={cn(isCollapsibleSection && "markdown-collapsible-section", className)}
-            >
-              {isCollapsibleSection ? (
-                <>
-                  {sectionChildren[0] ?? null}
-                  {sectionChildren.length > 1 ? (
-                    <div data-heading-section-body="true" className="contents">
-                      {sectionChildren.slice(1)}
-                    </div>
-                  ) : null}
-                </>
-              ) : children}
-            </section>
-          );
-        },
-        p: ({ children }) => (
-          containsInteractiveEmbed(children, assetCourse)
-            ? <div className="my-4">{children}</div>
-            : <p className={styles.paragraph}>{children}</p>
-        ),
-        ul: ({ children }) => <ul className={styles.list}>{children}</ul>,
-        ol: ({ children }) => <ol className={styles.orderedList}>{children}</ol>,
-        li: ({ children }) => <li className={styles.listItem}>{children}</li>,
-        blockquote: ({ children, ...props }: MarkdownBlockquoteComponentProps) => {
-          const propKind = normalizeCalloutKind(readStringProp(props, "data-callout-kind"));
-          const callout = propKind
-            ? { kind: propKind, body: Children.toArray(children).filter((item) => item !== "\n") }
-            : parseCallout(children);
-          if (!callout) {
-            return <blockquote className={styles.blockquote}>{children}</blockquote>;
-          }
-          if (containsInteractiveEmbed(callout.body, assetCourse)) {
-            return <div className="my-4">{callout.body}</div>;
-          }
-
-          const tone = CALLOUT_STYLES[variant][callout.kind];
-          const calloutMeta = CALLOUT_META[callout.kind];
-          const CalloutIcon = calloutMeta.Icon;
-          const isDocumentCallout = variant === "document";
-          return (
-            <aside className={tone.shell}>
-              <div className={cn("flex items-center gap-2", isDocumentCallout ? "mb-2" : "mb-3")}>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 font-semibold",
-                    isDocumentCallout
-                      ? "text-[13px] leading-5"
-                      : "rounded-full px-2.5 py-1 text-[11px] tracking-[0.08em]",
-                    tone.badge,
-                  )}
-                >
-                  <CalloutIcon className="h-3.5 w-3.5" />
-                  {calloutMeta.label}
-                </span>
-              </div>
-              <div
-                className={cn(
-                  "[&>*:last-child]:mb-0",
-                  variant === "document" && "[&_ol]:my-3 [&_ul]:my-3 [&_p]:mb-3 [&_strong]:text-current",
-                )}
-              >
-                {callout.body}
-              </div>
-            </aside>
-          );
-        },
-        code: ({ className, children }) => {
-          const codeText = extractText(children).replace(/\n$/, "");
-          const language =
-            className?.match(/\blanguage-([A-Za-z0-9_-]+)/)?.[1]?.trim().toLowerCase() ??
-            className?.trim().toLowerCase().replace(/^language-/, "") ??
-            "";
-          const isBlock = Boolean(className) || codeText.includes("\n");
-          const normalizedCodeText = codeText.trim().replace(/^(maymaid|mermaind|mermaide)\b/i, "mermaid");
-          const looksLikeMermaid = /^(mermaid|mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(normalizedCodeText);
-
-          if (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid)) {
-            const mermaidChart = normalizedCodeText.replace(/^mermaid\s*/i, "").trimStart() || codeText;
-            return <MermaidBlock chart={mermaidChart} variant={variant === "planner" ? "default" : variant} />;
-          }
-
-          if (isBlock) {
-            const shouldRenderConflictBlock = looksLikeGitConflictBlock(codeText);
-
-            return (
-              <div className={styles.codeShell}>
-                {language ? (
-                  <div className={styles.codeLanguageBadge}>{language}</div>
-                ) : null}
-                <pre className={cn(styles.codePre, shouldRenderConflictBlock ? "px-0 py-3" : "")}>
-                  <code className={cn("font-mono", className)}>
-                    {shouldRenderConflictBlock ? renderGitConflictLines(codeText) : children}
-                  </code>
-                </pre>
-              </div>
-            );
-          }
-
-          return <code className={cn(styles.codeInline, className)}>{children}</code>;
-        },
-        pre: ({ children }) => <>{children}</>,
-        table: ({ children }) => (
-          <div className={styles.tableShell}>
-            <table className={styles.table}>{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => <thead className={styles.thead}>{children}</thead>,
-        th: ({ children }) => <th className={styles.th}>{children}</th>,
-        td: ({ children }) => <td className={styles.td}>{children}</td>,
-        hr: () => <hr className={styles.hr} />,
-        a: ({ href, children }) => {
-          const preview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
-          if (preview) {
-            return <InteractiveHtmlEmbed preview={preview} label={children} />;
-          }
-          return (
-            <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          );
-        },
-        strong: ({ children }) => <strong className={styles.strong}>{children}</strong>,
-        em: ({ children }) => <em className={styles.em}>{children}</em>,
-        mark: ({ children }) => <mark className={styles.highlight}>{children}</mark>,
-        img: ({ src, alt }) => {
-          const resolvedSrc = resolveMarkdownImageSrc(src, {
-            assetBaseUrl,
-            assetCourse,
-          });
-
-          return (
-            <MarkdownImage
-              src={resolvedSrc}
-              alt={alt}
-              styles={styles}
-            />
-          );
-        },
-      }}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
+      components={components}
     >
       {processedContent}
     </ReactMarkdown>

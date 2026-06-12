@@ -41,6 +41,7 @@ import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNo
 import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
+import { buildCoursePath } from "../lib/courseNavigation";
 import type { KnowledgeGraphSourceRefNavigationTarget } from "../components/knowledge-graph/KnowledgeGraphNodeDetailPanel";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -2157,6 +2158,9 @@ export function KnowledgeDocsPage() {
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
   const collapsedDocHeadingIdsRef = useRef<Set<string>>(new Set());
   const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
+  const scrollingToHeadingTargetRef = useRef<string | null>(null);
+  const scrollspyIgnoreTimerRef = useRef<number | null>(null);
+  const scrollRestorationTimerRef = useRef<number | null>(null);
   const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
@@ -2456,35 +2460,36 @@ export function KnowledgeDocsPage() {
     [toc, visibleActiveHeading]
   );
 
-  const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "auto") => {
+  const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (!visibleActiveHeading || !isTocVisible) return;
     const nav = tocNavRef.current;
     if (!nav) return;
 
-    const activeNode = nav.querySelector(`[data-toc-id="${visibleActiveHeading}"]`) as HTMLElement | null;
+    const escapedId = CSS.escape(visibleActiveHeading);
+    const activeNode = nav.querySelector(`[data-toc-id="${escapedId}"]`) as HTMLElement | null;
     if (!activeNode) return;
 
-    const activeTop = activeNode.offsetTop;
-    const activeBottom = activeTop + activeNode.offsetHeight;
-    const edgeGuard = Math.min(34, Math.max(16, nav.clientHeight * 0.08));
-    const visibleTop = nav.scrollTop + edgeGuard;
-    const visibleBottom = Math.max(
-      visibleTop + activeNode.offsetHeight,
-      nav.scrollTop + nav.clientHeight - edgeGuard,
-    );
+    const navRect = nav.getBoundingClientRect();
+    const activeRect = activeNode.getBoundingClientRect();
 
-    let nextScrollTop = nav.scrollTop;
-    if (activeBottom > visibleBottom) {
-      nextScrollTop = activeBottom - nav.clientHeight + edgeGuard;
-    } else if (activeTop < visibleTop) {
-      nextScrollTop = activeTop - edgeGuard;
-    } else {
-      return;
-    }
+    // Check if the active node is already comfortably visible in the viewport
+    // (e.g., within the middle 60% of the container's height)
+    const threshold = nav.clientHeight * 0.2;
+    const isComfortablyVisible =
+      (activeRect.top >= navRect.top + threshold) &&
+      (activeRect.bottom <= navRect.bottom - threshold);
+
+    if (isComfortablyVisible) return;
+
+    // Calculate center positions safely using getBoundingClientRect
+    const activeRelativeCenter = (activeRect.top - navRect.top) + (activeRect.height / 2);
+    const targetRelativeCenter = nav.clientHeight / 2;
+    let nextScrollTop = nav.scrollTop + (activeRelativeCenter - targetRelativeCenter);
 
     const maxScrollTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
     nextScrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
-    if (Math.abs(nextScrollTop - nav.scrollTop) < 1) return;
+
+    if (Math.abs(nextScrollTop - nav.scrollTop) < 10) return;
 
     markTocAutoScrolling();
     if (behavior === "smooth") {
@@ -2623,6 +2628,12 @@ export function KnowledgeDocsPage() {
       }
       if (readingPositionSaveTimerRef.current !== null) {
         window.clearTimeout(readingPositionSaveTimerRef.current);
+      }
+      if (scrollspyIgnoreTimerRef.current !== null) {
+        window.clearTimeout(scrollspyIgnoreTimerRef.current);
+      }
+      if (scrollRestorationTimerRef.current !== null) {
+        window.clearTimeout(scrollRestorationTimerRef.current);
       }
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
@@ -2768,30 +2779,66 @@ export function KnowledgeDocsPage() {
       return;
     }
 
-    const rafId = window.requestAnimationFrame(() => {
+    const restorePosition = () => {
       const container = scrollRef.current;
-      if (!container) {
-        return;
-      }
+      if (!container) return false;
+
       const targetHeading = saved.headingId
         ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
         : null;
+
+      let nextScrollTop = saved.scrollTop;
+      if (saved.headingId && !targetHeading) {
+        // Heading is specified but not yet in the DOM, we should wait and retry
+        // (the Markdown rendering is in progress)
+        return false;
+      }
+
+      if (targetHeading) {
+        const containerRect = container.getBoundingClientRect();
+        const headingRect = targetHeading.getBoundingClientRect();
+        nextScrollTop = container.scrollTop + (headingRect.top - containerRect.top) - 28;
+      }
+
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const nextScrollTop = targetHeading
-        ? Math.max(0, targetHeading.offsetTop - 28)
-        : Math.max(0, Math.min(maxScrollTop, saved.scrollTop));
+
+      // If the container's scrollHeight is still loading and cannot support the scroll top yet,
+      // and we are not at the very top, we should wait and retry
+      if (nextScrollTop > 0 && maxScrollTop < nextScrollTop && container.scrollHeight < 500) {
+        return false;
+      }
+
       const previousScrollBehavior = container.style.scrollBehavior;
       container.style.scrollBehavior = "auto";
-      container.scrollTop = Math.min(maxScrollTop, nextScrollTop);
+      container.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
       if (previousScrollBehavior) {
         container.style.scrollBehavior = previousScrollBehavior;
       } else {
         container.style.removeProperty("scroll-behavior");
       }
       container.dispatchEvent(new Event("scroll"));
-    });
+      return true;
+    };
 
-    return () => window.cancelAnimationFrame(rafId);
+    let attempts = 0;
+    const maxAttempts = 15;
+    const tryRestore = () => {
+      if (restorePosition()) {
+        return;
+      }
+      attempts++;
+      if (attempts < maxAttempts) {
+        scrollRestorationTimerRef.current = window.setTimeout(tryRestore, 50);
+      }
+    };
+    tryRestore();
+
+    return () => {
+      if (scrollRestorationTimerRef.current !== null) {
+        window.clearTimeout(scrollRestorationTimerRef.current);
+        scrollRestorationTimerRef.current = null;
+      }
+    };
   }, [courseId, renderedMarkdown]);
 
   useEffect(() => {
@@ -2837,6 +2884,7 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
+    const scrollParent = container;
 
     const headingRoot = contentAreaRef.current;
     const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"))
@@ -2849,8 +2897,17 @@ export function KnowledgeDocsPage() {
     let rafId = 0;
 
     const findActiveHeadingId = () => {
-      const containerRect = container.getBoundingClientRect();
-      const activationTop = containerRect.top + getHeadingActivationOffset(container);
+      const isScrollable = scrollParent.scrollHeight > scrollParent.clientHeight;
+      const isAtBottom = isScrollable && (scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 15);
+      if (isAtBottom) {
+        const visibleHeadings = headings.filter(isVisibleHeading);
+        if (visibleHeadings.length > 0) {
+          return visibleHeadings[visibleHeadings.length - 1].getAttribute("data-heading-id") ?? "";
+        }
+      }
+
+      const scrollParentRect = scrollParent.getBoundingClientRect();
+      const activationTop = scrollParentRect.top + getHeadingActivationOffset(scrollParent);
       let current = headings.find(isVisibleHeading)?.getAttribute("data-heading-id") ?? "";
       for (const heading of headings) {
         if (!isVisibleHeading(heading)) {
@@ -2869,6 +2926,11 @@ export function KnowledgeDocsPage() {
     };
 
     const syncActiveHeading = () => {
+      if (scrollingToHeadingTargetRef.current !== null) {
+        const targetId = scrollingToHeadingTargetRef.current;
+        setActiveHeading((prev) => (prev === targetId ? prev : targetId));
+        return;
+      }
       window.cancelAnimationFrame(rafId);
       rafId = window.requestAnimationFrame(() => {
         const nextId = findActiveHeadingId();
@@ -2879,38 +2941,38 @@ export function KnowledgeDocsPage() {
     const handleScroll = () => {
       syncActiveHeading();
     };
-    container.addEventListener("scroll", handleScroll, { passive: true });
+
+    const handleScrollEnd = () => {
+      scrollingToHeadingTargetRef.current = null;
+      if (scrollspyIgnoreTimerRef.current !== null) {
+        window.clearTimeout(scrollspyIgnoreTimerRef.current);
+        scrollspyIgnoreTimerRef.current = null;
+      }
+      syncActiveHeading();
+    };
+
+    scrollParent.addEventListener("scroll", handleScroll, { passive: true });
+    scrollParent.addEventListener("scrollend", handleScrollEnd, { passive: true });
     window.addEventListener("resize", handleScroll);
     syncActiveHeading();
 
     return () => {
       window.cancelAnimationFrame(rafId);
-      container.removeEventListener("scroll", handleScroll);
+      scrollParent.removeEventListener("scroll", handleScroll);
+      scrollParent.removeEventListener("scrollend", handleScrollEnd);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [renderedMarkdown]);
+  }, [renderedMarkdown, toc]);
 
+  // Keep the active TOC item aligned when layout changes or window resizes
   useEffect(() => {
     if (!isTocVisible) return;
-    const container = scrollRef.current;
-    if (!container) return;
-
-    let rafId = 0;
-    const syncTocPosition = () => {
-      window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(() => {
-        alignActiveTocItem();
-      });
+    const handleResize = () => {
+      alignActiveTocItem();
     };
-
-    container.addEventListener("scroll", syncTocPosition, { passive: true });
-    window.addEventListener("resize", syncTocPosition);
-    syncTocPosition();
-
+    window.addEventListener("resize", handleResize);
     return () => {
-      window.cancelAnimationFrame(rafId);
-      container.removeEventListener("scroll", syncTocPosition);
-      window.removeEventListener("resize", syncTocPosition);
+      window.removeEventListener("resize", handleResize);
     };
   }, [alignActiveTocItem, isTocVisible]);
 
@@ -2931,28 +2993,42 @@ export function KnowledgeDocsPage() {
   }, []);
 
   const scrollToHeading = useCallback((id: string, options: { retryingAfterExpand?: boolean } = {}) => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const headingRoot = contentAreaRef.current;
-    const el = findHeadingById(headingRoot ?? container, id);
-    if (!el) return;
+    const scroll = (headingId: string, opts: { retryingAfterExpand?: boolean }) => {
+      const container = scrollRef.current;
+      if (!container) return;
+      const headingRoot = contentAreaRef.current;
+      const el = findHeadingById(headingRoot ?? container, headingId);
+      if (!el) return;
 
-    if (!options.retryingAfterExpand && expandCollapsedDocHeadingSections(el)) {
-      window.requestAnimationFrame(() => {
-        scrollToHeading(id, { ...options, retryingAfterExpand: true });
-      });
-      return;
-    }
+      if (!opts.retryingAfterExpand && expandCollapsedDocHeadingSections(el)) {
+        window.requestAnimationFrame(() => {
+          scroll(headingId, { ...opts, retryingAfterExpand: true });
+        });
+        return;
+      }
 
-    setActiveHeading((prev) => (prev === id ? prev : id));
+      setActiveHeading((prev) => (prev === headingId ? prev : headingId));
 
-    const containerRect = container.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const headingTop = container.scrollTop + (elRect.top - containerRect.top);
-    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
-    container.scrollTo({ top: targetTop, behavior: "smooth" });
-    flashHeading(el);
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const headingTop = container.scrollTop + (elRect.top - containerRect.top);
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
+
+      scrollingToHeadingTargetRef.current = headingId;
+      if (scrollspyIgnoreTimerRef.current !== null) {
+        window.clearTimeout(scrollspyIgnoreTimerRef.current);
+      }
+      scrollspyIgnoreTimerRef.current = window.setTimeout(() => {
+        scrollingToHeadingTargetRef.current = null;
+        scrollspyIgnoreTimerRef.current = null;
+      }, 1000);
+
+      container.scrollTo({ top: targetTop, behavior: "smooth" });
+      flashHeading(el);
+    };
+
+    scroll(id, options);
   }, [expandCollapsedDocHeadingSections, flashHeading]);
 
   const scrollElementIntoDocView = useCallback((element: HTMLElement, behavior: ScrollBehavior = "smooth") => {
@@ -5277,13 +5353,21 @@ export function KnowledgeDocsPage() {
           <div
             data-toc-id={item.id}
             className={cn(
-              "group relative flex items-center rounded-md transition-colors duration-150",
+              "group relative flex items-center rounded-md transition-colors duration-150 overflow-hidden",
               isActive
-                ? "bg-slate-100/80 text-slate-900 dark:bg-slate-800/80 dark:text-slate-100"
-                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
+                ? "bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300"
+                : "text-slate-600 hover:bg-slate-100/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100"
             )}
-            style={{ paddingLeft: indent + 2 }}
+            style={{ paddingLeft: indent + 8 }}
           >
+            {/* Active indicator bar */}
+            {isActive && (
+              <span
+                className="absolute top-1/2 -translate-y-1/2 w-[3px] h-4 bg-indigo-600 dark:bg-indigo-400 rounded-r-full"
+                style={{ left: indent + 2 }}
+              />
+            )}
+
             {/* Expand/collapse arrow */}
             {hasChildren ? (
               <button
@@ -5295,7 +5379,7 @@ export function KnowledgeDocsPage() {
                 className={cn(
                   "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
                   isActive
-                    ? "text-blue-500 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                    ? "text-indigo-500 hover:bg-indigo-100/50 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
                     : "text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 )}
                 title={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
@@ -5321,7 +5405,7 @@ export function KnowledgeDocsPage() {
               className={cn(
                 "flex-1 min-w-0 text-left py-1.5 pr-1 text-[14px] leading-5 truncate transition-colors",
                 isActive
-                  ? "font-semibold text-slate-900 dark:text-slate-100"
+                  ? "font-semibold text-indigo-700 dark:text-indigo-300"
                   : item.level === 1
                     ? "font-semibold text-slate-800 dark:text-slate-100"
                     : "font-normal text-slate-700 dark:text-slate-300",
@@ -5331,10 +5415,7 @@ export function KnowledgeDocsPage() {
             >
               {displayText.number ? (
                 <span
-                  className={cn(
-                    "mr-1.5 select-none font-semibold",
-                    "text-blue-600 dark:text-blue-300"
-                  )}
+                  className="mr-1.5 select-none font-semibold text-indigo-600 dark:text-indigo-400"
                 >
                   {displayText.number}
                 </span>
@@ -5753,21 +5834,79 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-white dark:bg-slate-950">
-        <BuildView
-          className="h-full"
-          isFetching={docMarkdownQuery.isFetching}
-          progress={buildProgress}
-          statusText={buildStatusText}
-          buildPreview={buildPreview}
-          buildMetrics={buildMetrics}
-          sourceFiles={sourceFiles}
-          sourceFilesFetching={sourceFilesFetching}
-          buildStage={buildMeta?.stage}
-          buildStatus={buildStatus}
-          isDocumentReady={isRequestedBuildReady}
-          courseId={courseId}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+          <BuildView
+            className="h-full"
+            isFetching={docMarkdownQuery.isFetching}
+            progress={buildProgress}
+            statusText={buildStatusText}
+            buildPreview={buildPreview}
+            buildMetrics={buildMetrics}
+            sourceFiles={sourceFiles}
+            sourceFilesFetching={sourceFilesFetching}
+            buildStage={buildMeta?.stage}
+            buildStatus={buildStatus}
+            isDocumentReady={isRequestedBuildReady}
+            courseId={courseId}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocLoadingState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
+        />
+        <div className="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadingState />
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocBuildFailureState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={buildStatusText}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocEmptyState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocEmptyState />
       </div>
     );
   }
@@ -5978,7 +6117,14 @@ export function KnowledgeDocsPage() {
         <CoursePagePillTitle
           icon={BookOpen}
           label="知识库"
-          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
+          innerClassName={cn(
+            "transition-all duration-300 ease-in-out",
+            (!isCompactToc && viewPrefs.showToc) && (
+              !isTocCollapsed ? "-translate-x-[clamp(7rem,8vw,9rem)]" : "-translate-x-[28px]"
+            )
+          )}
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
 
         <div

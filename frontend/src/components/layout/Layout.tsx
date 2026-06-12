@@ -3,7 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
-import { getCourseIdFromPathname, isFullBleedCoursePath } from "../../lib/courseNavigation";
+import { getCourseIdFromPathname, isFullBleedCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
 import { isElectronRuntime } from "../../lib/electronRuntime";
 
@@ -19,6 +19,8 @@ export function Layout() {
   const isAssistantPage = pathname === "/assistant";
   const isHomePage = pathname === "/";
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
+  const routeSegment = getCourseRouteSegmentFromPathname(pathname);
+  const isCourseDashboardOrBuild = !!courseId && (routeSegment === "nav" || routeSegment === "build" || routeSegment === null);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (isAssistantPage) {
       return { type: "global" };
@@ -88,7 +90,7 @@ export function Layout() {
               )}
             </main>
           </div>
-          <AiInteractionWindow suppressFloatingTrigger={(isMobileSidebarOpen && !isExamFocusPage) || isHomePage} />
+          <AiInteractionWindow suppressFloatingTrigger={(isMobileSidebarOpen && !isExamFocusPage) || isHomePage || isCourseDashboardOrBuild} />
         </div>
       </AiInteractionProvider>
 

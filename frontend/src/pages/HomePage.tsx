@@ -994,7 +994,7 @@ export function HomePage() {
               disabled={isCreatingDraftCourse}
             />
 
-            <div className="flex flex-col gap-2 border-t border-slate-100 px-4 pb-3 pt-2 dark:border-slate-800 sm:px-5">
+            <div className="flex flex-col gap-2 px-4 pb-3 pt-2 sm:px-5">
               {(hasEntryFiles || isUploadingFiles) && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">

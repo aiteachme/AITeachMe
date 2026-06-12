@@ -1418,7 +1418,25 @@ def _upsert_generated_template(
     refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0}]
     selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
     existing = exams_repo.find_template_by_stem_hash(session, course_id, int(unit.id or 0), stem_hash)
+    if existing is None:
+        existing = exams_repo.find_template_by_course_stem_hash(session, course_id, stem_hash)
     if existing is not None:
+        existing_refs = exams_repo.find_knowledge_unit_links_by_template(session, int(existing.id or 0))
+        refs_by_unit_id: dict[int, dict[str, object]] = {}
+        for ref in [*existing_refs, *refs]:
+            unit_id = _positive_int(ref.get("knowledge_unit_id") if isinstance(ref, dict) else None)
+            if unit_id <= 0:
+                continue
+            try:
+                weight = float(ref.get("coverage_weight", 1.0) if isinstance(ref, dict) else 1.0)
+            except (TypeError, ValueError):
+                weight = 1.0
+            current = refs_by_unit_id.get(unit_id)
+            if current is None or weight > float(current.get("coverage_weight", 0.0) or 0.0):
+                refs_by_unit_id[unit_id] = {
+                    "knowledge_unit_id": unit_id,
+                    "coverage_weight": max(0.0, min(weight, 1.0)),
+                }
         existing.question_type = question_type
         existing.difficulty = difficulty
         existing.stem = stem
@@ -1433,7 +1451,12 @@ def _upsert_generated_template(
         session.add(existing)
         session.commit()
         session.refresh(existing)
-        exams_repo.replace_question_template_links(session, template_id=int(existing.id or 0), refs=refs)
+        merged_refs = sorted(
+            refs_by_unit_id.values(),
+            key=lambda item: float(item.get("coverage_weight", 0.0) or 0.0),
+            reverse=True,
+        )
+        exams_repo.replace_question_template_links(session, template_id=int(existing.id or 0), refs=merged_refs)
         return existing
 
     template = QuestionTemplate(

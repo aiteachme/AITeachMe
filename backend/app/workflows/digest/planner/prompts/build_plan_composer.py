@@ -43,12 +43,12 @@ def build_planner_stream_messages(
     plan_fields = _render_previous_planner(latest_plan)
     revision_rules = (
         """
-这是调整已有方案，不是重新识别 planning_note、course_name 或 course_icon。
-你只能生成新的 suggestion、plan、chapters：
-- 必须参考最近对话、用户本轮修改意见和上一版 planner。
-- 未被用户修改的核心边界应保持稳定。
-- 如果用户要求改范围、改章数、增删重点，chapters 必须可见地体现变化。
-- 不要重新输出 planning_note、course_name 或 course_icon。
+这是调整已有方案。
+沿用上一版 planning_note、course_name 和 course_icon。
+生成新的 suggestion、plan、chapters：
+- 参考最近对话、用户本轮修改意见和上一版 planner。
+- 保持用户未修改的核心边界稳定。
+- 用户要求改范围、改章数、增删重点时，chapters 可见地体现变化。
 """.strip()
         if is_revision
         else """
@@ -58,10 +58,15 @@ def build_planner_stream_messages(
     )
     system_prompt = f"""
 你是 AITeachMe 的课程规划输出器。
-你必须严格按照三个标签输出，不能输出额外标签、Markdown 标题、代码块或解释。
+高优先级规划规则：
+- 用户给出 A/B/C 列表时，A/B/C 是唯一一级章节路径。
+- 用户同时给出学习天数时，天数只分配到 A/B/C 内，最后一天仍属于最后一个列表项。
+- 最后一个列表项的章节任务只围绕该列表项自身的核心概念、例题、小测和纠错。
+
+输出内容由三个标签组成。
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
 {SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写用户后续可以继续怎么改。
-{CHAPTERS_START} 到 {CHAPTERS_END} 之间只能放合法 JSON 数组，数组元素只能包含 title 和 key_points。
+{CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points。
 """.strip()
     prompt = f"""
 请生成方案的 suggestion、plan、chapters。
@@ -100,12 +105,15 @@ def build_planner_stream_messages(
 {render_planner_chapter_contract(digest_mode)}
 
 输出内容要求：
-1. plan：180-420 字，必须讲清学习范围、拆分逻辑、先后顺序、练习/易错/应用如何安排；不要写成空泛介绍。
-2. suggestion：2-4 句，写成用户可以继续修改的方向，例如偏考试、延长周期、增加例题密度、减少拓展、改章节数；不要问一堆问题。
-3. chapters：输出完整章节列表，不是差异列表。每章 title 要像真实课程目录：自然、具体、能说明本章学习任务；可以保留必要限定词、方法词或场景词，不要为了追求短而压成泛词。key_points 2-4 条，用来承接细节和枚举。
-4. chapters 不要出现“第几天”“文件名”“来源”“已读取材料”等字样，除非用户明确要求。
-5. 没有资料时只能按用户目标和通用课程常识规划，不能声称已读过文件。
-6. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内。
+1. plan：180-360 字，讲清学习范围、模块拆分和先后顺序；用户给出 A/B/C 列表时，按 A/B/C 的名称逐项展开，全段优先使用具体模块名和具体学习任务，最后阶段写成最后一个列表项 E 的核心概念、典型例题、小测与纠错。
+2. suggestion：2-4 句，给出用户可继续调整的方向，例如偏考试、延长周期、增加例题密度、减少拓展、改章节数。
+3. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，聚焦一个核心知识对象、方法任务、题型技能或应用场景；key_points 2-4 条承接细节、例题、练习或测验。
+4. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数等元信息只放上下文，不进标题。
+5. 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单；chapters 与 A/B/C 逐项对应：第 i 个 chapter 负责第 i 个列表项，数组长度等于列表项数量，标题沿用或自然概括该列表项。
+6. 练习、检测、纠错、巩固进入对应内容模块的 key_points；用户列出的额外学习活动也按其所在列表位置处理。
+7. plan 的先后顺序以用户给出的列表项为完整路径，各模块内部再安排练习、纠错和小测；用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算，末尾时间仍属于最后一个列表项。
+8. 没有资料时按用户目标和通用课程常识规划。
+9. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内。
 
 严格按以下格式输出：
 {PLAN_START}
@@ -115,7 +123,7 @@ plan 字段正文
 suggestion 字段正文
 {SUGGESTION_END}
 {CHAPTERS_START}
-[{{"title":"章节标题","key_points":["关键词或任务1","关键词或任务2"]}}]
+[{{"title":"章节标题","key_points":["要点或任务1","要点或任务2"]}}]
 {CHAPTERS_END}
 """.strip()
     messages = [
@@ -146,7 +154,7 @@ def build_planner_repair_messages(
     error: str,
 ) -> list[dict[str, str]]:
     repair_prompt = f"""
-上一次输出不符合 planner 标签协议，不能保存。
+上一次输出需要按 planner 标签协议修复。
 错误：{error}
 
 请基于同一上下文重新输出完整结果。

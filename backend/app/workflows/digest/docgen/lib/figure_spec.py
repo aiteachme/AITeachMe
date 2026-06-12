@@ -18,7 +18,20 @@ FigureType = Literal[
     "mistake_card",
 ]
 
+ShapeType = Literal[
+    "ellipse",
+    "circle",
+    "rectangle",
+    "triangle",
+    "polygon",
+    "angle",
+    "arc",
+    "region",
+]
+
 ElementKind = Literal[
+    "axis",
+    "curve",
     "point",
     "line",
     "vector",
@@ -73,8 +86,37 @@ def _positive_number(value: Any, *, default: float = 8.0, max_value: float = 80.
     return max(0.0, min(max_value, parsed))
 
 
+def _angle_degrees(value: Any, *, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(-360.0, min(360.0, parsed))
+
+
+def _point_list(value: Any, *, limit: int = 8) -> list[list[float]]:
+    if not isinstance(value, list):
+        return []
+    points: list[list[float]] = []
+    for item in value[:limit]:
+        if isinstance(item, dict):
+            x = _unit_coord(item.get("x"))
+            y = _unit_coord(item.get("y"))
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            x = _unit_coord(item[0])
+            y = _unit_coord(item[1])
+        else:
+            continue
+        points.append([x, y])
+    return points
+
+
 def _svg_escape(value: Any) -> str:
     return html.escape(_clean_text(value, limit=80), quote=True)
+
+
+def _svg_escape_short(value: Any, *, limit: int = 54) -> str:
+    return html.escape(_clean_text(value, limit=limit), quote=True)
 
 
 def _html_escape(value: Any, *, limit: int = 240) -> str:
@@ -97,6 +139,12 @@ class FigureElement(BaseModel):
     x2: float = 50
     y2: float = 50
     r: float = 8
+    rx: float = 0
+    ry: float = 0
+    shape_type: ShapeType = "ellipse"
+    points: list[list[float]] = Field(default_factory=list)
+    start_angle: float = 0
+    end_angle: float = 90
     cells: list[str] = Field(default_factory=list)
     items: list[str] = Field(default_factory=list)
     style: Literal["solid", "dashed", "highlight", "muted"] = "solid"
@@ -111,10 +159,20 @@ class FigureElement(BaseModel):
     def _coords(cls, value: Any) -> float:
         return _unit_coord(value)
 
-    @field_validator("r", mode="before")
+    @field_validator("r", "rx", "ry", mode="before")
     @classmethod
     def _radius(cls, value: Any) -> float:
         return _positive_number(value)
+
+    @field_validator("start_angle", "end_angle", mode="before")
+    @classmethod
+    def _angles(cls, value: Any) -> float:
+        return _angle_degrees(value)
+
+    @field_validator("points", mode="before")
+    @classmethod
+    def _points(cls, value: Any) -> list[list[float]]:
+        return _point_list(value)
 
     @field_validator("cells", "items", mode="before")
     @classmethod
@@ -188,16 +246,37 @@ def _plain_context_lines(context: str, *, limit: int = 4) -> list[str]:
     return lines[:limit]
 
 
+def _has_problem_diagram_geometry(elements: list[FigureElement]) -> bool:
+    kinds = {item.kind for item in elements}
+    return bool(
+        {"axis", "curve"} & kinds
+        or "shape" in kinds
+        or ("point" in kinds and ({"line", "vector"} & kinds))
+    )
+
+
+def is_renderable_problem_diagram(spec: FigureSpec) -> bool:
+    """Return whether a spec contains actual visual geometry."""
+
+    return spec.type == "problem_diagram" and _has_problem_diagram_geometry(spec.elements)
+
+
 def normalize_figure_spec(
     spec: FigureSpec,
     *,
     fallback_title: str,
     context: str,
+    allow_fallback_elements: bool = False,
 ) -> tuple[FigureSpec, dict[str, Any]]:
     """Constrain a model spec to facts traceable to the current section."""
 
     report: dict[str, Any] = {"source_ref_replacements": 0, "warnings": []}
     title = spec.title or fallback_title
+    figure_type = "concept_map" if spec.type == "comparison_table" else spec.type
+    elements = spec.elements[:18]
+    if spec.type == "comparison_table":
+        elements = _comparison_table_visual_elements(elements)
+        report["warnings"].append("comparison_table_coerced_to_concept_map")
     source_refs = [
         ref for ref in spec.source_refs
         if ref and _compact(ref) in _compact(context)
@@ -211,14 +290,15 @@ def normalize_figure_spec(
     normalized = spec.model_copy(
         update={
             "title": _clean_text(title, limit=120),
+            "type": figure_type,
             "summary": spec.summary or (source_refs[0] if source_refs else ""),
             "source_refs": source_refs,
             "annotations": spec.annotations[:6],
             "emphasis": spec.emphasis[:4],
-            "elements": spec.elements[:18],
+            "elements": elements,
         }
     )
-    if not normalized.elements:
+    if allow_fallback_elements and not normalized.elements:
         normalized = build_fallback_figure_spec(
             title=normalized.title or fallback_title,
             figure_type=normalized.type,
@@ -239,10 +319,10 @@ def build_fallback_figure_spec(
     lines = _plain_context_lines(context, limit=5)
     if figure_type == "comparison_table":
         rows = [
-            FigureElement(kind="table_row", cells=[f"要点 {index}", line])
+            FigureElement(kind="relation", label=f"要点 {index}", text=line)
             for index, line in enumerate(lines[:4], start=1)
         ]
-        return FigureSpec(type=figure_type, title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
+        return FigureSpec(type="concept_map", title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
     if figure_type == "formula_derivation":
         rows = [FigureElement(kind="formula", label=f"({index})", text=line) for index, line in enumerate(lines[:4], start=1)]
         return FigureSpec(type=figure_type, title=title, summary=goal or "按步骤理解公式关系。", elements=rows, source_refs=lines[:3])
@@ -251,14 +331,7 @@ def build_fallback_figure_spec(
             type=figure_type,
             title=title,
             summary=goal or (lines[0] if lines else ""),
-            elements=[
-                FigureElement(kind="point", id="start", label="条件", x=18, y=72),
-                FigureElement(kind="point", id="middle", label="关系", x=48, y=40),
-                FigureElement(kind="point", id="end", label="结论", x=78, y=72),
-                FigureElement(kind="line", from_id="start", to_id="middle"),
-                FigureElement(kind="line", from_id="middle", to_id="end"),
-                FigureElement(kind="vector", from_id="start", to_id="end", label="推得"),
-            ],
+            elements=[],
             annotations=lines[:2],
             source_refs=lines[:3],
         )
@@ -270,13 +343,38 @@ def _compact(value: str) -> str:
     return re.sub(r"\s+", "", str(value or "")).casefold()
 
 
+def _comparison_table_visual_elements(elements: list[FigureElement]) -> list[FigureElement]:
+    visual: list[FigureElement] = []
+    for index, item in enumerate(elements[:6], start=1):
+        if item.kind == "table_row" and item.cells:
+            label = item.cells[0] or f"要点 {index}"
+            text = "；".join(cell for cell in item.cells[1:3] if cell)
+            visual.append(FigureElement(kind="relation", label=label, text=text or label))
+            continue
+        if item.text or item.label:
+            visual.append(
+                FigureElement(
+                    kind="relation",
+                    label=item.label or f"要点 {index}",
+                    text=item.text or item.label,
+                )
+            )
+    return visual
+
+
+def _comparison_table_as_concept_map(spec: FigureSpec) -> FigureSpec:
+    return spec.model_copy(update={"type": "concept_map", "elements": _comparison_table_visual_elements(spec.elements)})
+
+
 def render_figure_spec_html(spec: FigureSpec, *, title: str) -> str:
-    """Render a spec as a single-file HTML lecture-note figure."""
+    """Render a spec as a single-file HTML/SVG figure.
+
+    The generated asset is a figure only. Explanatory prose belongs to the
+    Markdown document, not to the image sidecar.
+    """
 
     figure_title = spec.title or title
     body = _render_body(spec)
-    source_line = _render_source_line(spec)
-    emphasis = _render_emphasis(spec)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -293,73 +391,21 @@ def render_figure_spec_html(spec: FigureSpec, *, title: str) -> str:
       line-height: 1.58;
     }}
     .atm-figure {{
-      width: min(760px, calc(100vw - 20px));
-      margin: 14px auto;
-      padding: 8px 2px 16px;
+      width: min(760px, 100vw);
+      margin: 0 auto;
+      padding: 0;
       background: #fff;
     }}
-    .atm-topic {{
-      display: inline;
-      padding: 2px 4px;
-      background: #18d8d4;
-      color: #000;
-      font-size: 20px;
-      line-height: 1.75;
-    }}
-    .atm-summary {{
-      margin: 16px 0 10px;
-      font-size: 19px;
-    }}
     .atm-figure-main {{
-      margin: 8px auto 4px;
-      width: min(640px, 100%);
+      margin: 0 auto;
+      width: min(700px, 100%);
     }}
-    .atm-caption {{
-      margin: 6px 0 12px;
-      text-align: center;
-      font-size: 18px;
-    }}
-    .atm-note {{
-      width: min(620px, 100%);
-      margin: 10px auto 0;
-      border: 1px solid #222;
-      background: #eee;
-      padding: 8px 12px;
-      font-size: 18px;
-    }}
-    .atm-source {{
-      width: min(620px, 100%);
-      margin: 8px auto 0;
-      color: #444;
-      font-size: 15px;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      margin: 10px auto;
-      font-size: 18px;
-    }}
-    th, td {{
-      border: 1px solid #222;
-      padding: 7px 9px;
-      vertical-align: top;
-      text-align: left;
-    }}
-    th {{ background: #eee; font-weight: 700; }}
     svg {{ display: block; width: 100%; height: auto; }}
-    @media (max-width: 520px) {{
-      .atm-topic, .atm-summary, .atm-caption, .atm-note, table {{ font-size: 16px; }}
-      .atm-source {{ font-size: 13px; }}
-    }}
   </style>
 </head>
 <body>
   <main class="atm-figure">
-    <p><span class="atm-topic">{_html_escape(figure_title)}</span></p>
-    {_render_summary(spec)}
     <div class="atm-figure-main">{body}</div>
-    {emphasis}
-    {source_line}
   </main>
 </body>
 </html>
@@ -389,7 +435,7 @@ def _render_source_line(spec: FigureSpec) -> str:
 
 def _render_body(spec: FigureSpec) -> str:
     if spec.type == "comparison_table":
-        return _render_comparison_table(spec)
+        return _render_concept_map(_comparison_table_as_concept_map(spec))
     if spec.type == "formula_derivation":
         return _render_formula_derivation(spec)
     if spec.type == "problem_diagram":
@@ -419,22 +465,22 @@ def _render_formula_derivation(spec: FigureSpec) -> str:
     rows = [item for item in spec.elements if item.kind in {"formula", "step", "relation", "label"} and (item.text or item.label)]
     if not rows:
         return _render_process_steps(spec)
-    items = "".join(
-        f"<tr><td>{_html_escape(item.label or str(index))}</td><td>{_html_escape(item.text or item.label, limit=220)}</td></tr>"
-        for index, item in enumerate(rows[:8], start=1)
+    return _render_vertical_flow_svg(
+        rows[:5],
+        caption=spec.annotations[0] if spec.annotations else "公式关系图",
+        label_prefix="式",
     )
-    return f"<table><tbody>{items}</tbody></table>"
 
 
 def _render_process_steps(spec: FigureSpec) -> str:
     rows = [item for item in spec.elements if item.kind in {"step", "formula", "label", "callout"} and (item.text or item.label)]
     if not rows:
         rows = [FigureElement(kind="step", label=str(index), text=text) for index, text in enumerate(spec.annotations[:5], start=1)]
-    items = "".join(
-        f"<tr><td>{index}</td><td>{_html_escape(item.text or item.label, limit=220)}</td></tr>"
-        for index, item in enumerate(rows[:7], start=1)
+    return _render_vertical_flow_svg(
+        rows[:5],
+        caption=spec.annotations[0] if spec.annotations else "流程示意图",
+        label_prefix="步",
     )
-    return f"<table><tbody>{items}</tbody></table>"
 
 
 def _render_mistake_card(spec: FigureSpec) -> str:
@@ -443,8 +489,50 @@ def _render_mistake_card(spec: FigureSpec) -> str:
     rows = _clean_list(rows, limit=5, item_limit=180)
     if not rows:
         return ""
-    content = "<br/>".join(f"{index}. {_html_escape(text, limit=180)}" for index, text in enumerate(rows, start=1))
-    return f'<div class="atm-note">{content}</div>'
+    elements = [
+        FigureElement(kind="step", label=f"{index}", text=text)
+        for index, text in enumerate(rows, start=1)
+    ]
+    return _render_vertical_flow_svg(elements, caption="易错辨析图", label_prefix="点")
+
+
+def _render_vertical_flow_svg(
+    elements: list[FigureElement],
+    *,
+    caption: str,
+    label_prefix: str,
+) -> str:
+    items = [item for item in elements if item.text or item.label]
+    if not items:
+        return ""
+    top = 34
+    row_gap = 56
+    box_height = 36
+    markup: list[str] = []
+    for index, item in enumerate(items[:5], start=1):
+        y = top + (index - 1) * row_gap
+        label = item.label or f"{label_prefix}{index}"
+        text = item.text or item.label
+        markup.append(
+            f'<rect x="58" y="{y}" width="504" height="{box_height}" rx="4" fill="#fff" stroke="#111" stroke-width="1.8"/>'
+        )
+        markup.append(
+            f'<rect x="76" y="{y + 6}" width="96" height="24" rx="12" fill="#eee" stroke="#111" stroke-width="1.4"/>'
+        )
+        markup.append(
+            f'<text x="124" y="{y + box_height / 2 + 5:.1f}" text-anchor="middle" font-size="14">{_svg_escape_short(label, limit=6)}</text>'
+        )
+        markup.append(
+            f'<text x="188" y="{y + box_height / 2 + 6:.1f}" font-size="17">{_svg_escape_short(text, limit=34)}</text>'
+        )
+        if index < min(len(items), 5):
+            x = 310
+            y1 = y + box_height + 5
+            y2 = y + row_gap - 8
+            markup.append(
+                f'<line x1="{x}" y1="{y1:.1f}" x2="{x}" y2="{y2:.1f}" stroke="#111" stroke-width="1.7" marker-end="url(#arrow)"/>'
+            )
+    return _svg_shell("".join(markup), caption=caption)
 
 
 def _render_concept_map(spec: FigureSpec) -> str:
@@ -478,13 +566,30 @@ def _render_concept_map(spec: FigureSpec) -> str:
 def _render_problem_diagram(spec: FigureSpec) -> str:
     points = [item for item in spec.elements if item.kind == "point" and (item.id or item.label)]
     point_by_id = {item.id or item.label: item for item in points}
-    primitives = [item for item in spec.elements if item.kind in {"line", "vector", "shape", "label", "callout"}]
-    if not points or not any(item.kind in {"line", "vector", "shape"} for item in primitives):
+    primitives = [item for item in spec.elements if item.kind in {"axis", "curve", "line", "vector", "shape", "label", "callout"}]
+    if not _has_problem_diagram_geometry(spec.elements):
         return _render_concept_map(spec)
 
     markup: list[str] = []
     for item in primitives:
-        if item.kind in {"line", "vector"}:
+        if item.kind == "axis":
+            x1, y1 = _map_point(item.x, item.y)
+            x2, y2 = _map_point(item.x2, item.y2)
+            markup.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#111" stroke-width="1.8" marker-end="url(#arrow)"/>')
+            if item.label:
+                markup.append(f'<text x="{x2 + 8:.1f}" y="{y2 + 5:.1f}" font-size="18" font-style="italic">{_svg_escape(item.label)}</text>')
+        elif item.kind == "curve":
+            x1, y1 = _map_point(item.x, item.y)
+            x2, y2 = _map_point(item.x2, item.y2)
+            c1x = x1 + (x2 - x1) * 0.28
+            c2x = x1 + (x2 - x1) * 0.68
+            c1y = y1 + 18
+            c2y = y2 - 52
+            stroke = "#111" if item.style != "muted" else "#777"
+            markup.append(f'<path d="M{x1:.1f},{y1:.1f} C{c1x:.1f},{c1y:.1f} {c2x:.1f},{c2y:.1f} {x2:.1f},{y2:.1f}" fill="none" stroke="{stroke}" stroke-width="2.4"/>')
+            if item.label:
+                markup.append(f'<text x="{x2 - 32:.1f}" y="{y2 - 8:.1f}" font-size="18" font-style="italic">{_svg_escape(item.label)}</text>')
+        elif item.kind in {"line", "vector"}:
             start = point_by_id.get(item.from_id)
             end = point_by_id.get(item.to_id)
             x1, y1 = _map_point(start.x, start.y) if start else _map_point(item.x, item.y)
@@ -498,9 +603,7 @@ def _render_problem_diagram(spec: FigureSpec) -> str:
                 lx, ly = (x1 + x2) / 2 + 6, (y1 + y2) / 2 - 6
                 markup.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="20" font-style="italic">{_svg_escape(label)}</text>')
         elif item.kind == "shape":
-            x, y = _map_point(item.x, item.y)
-            r = max(8.0, item.r * 2.2)
-            markup.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="none" stroke="#111" stroke-width="1.8"/>')
+            markup.append(_render_shape_primitive(item))
         elif item.kind in {"label", "callout"} and (item.text or item.label):
             x, y = _map_point(item.x, item.y)
             markup.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="19">{_svg_escape(item.text or item.label)}</text>')
@@ -511,6 +614,114 @@ def _render_problem_diagram(spec: FigureSpec) -> str:
         markup.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.8" fill="#111"/>')
         markup.append(f'<text x="{x+8:.1f}" y="{y-8:.1f}" font-size="21" font-style="italic">{_svg_escape(label)}</text>')
     return _svg_shell("".join(markup), caption=spec.annotations[0] if spec.annotations else "题图示意")
+
+
+def _render_shape_primitive(item: FigureElement) -> str:
+    x, y = _map_point(item.x, item.y)
+    stroke = "#777" if item.style in {"dashed", "muted"} else "#111"
+    dash = ' stroke-dasharray="6 5"' if item.style in {"dashed", "muted"} else ""
+    fill = "#f4f4f4" if item.shape_type == "region" or item.style == "highlight" else "none"
+    fill_opacity = ' fill-opacity="0.45"' if fill != "none" else ""
+
+    label_markup = ""
+    if item.label and item.shape_type not in {"angle", "arc"}:
+        label_markup = f'<text x="{x:.1f}" y="{y - _shape_label_offset(item):.1f}" text-anchor="middle" font-size="18">{_svg_escape(item.label)}</text>'
+
+    if item.shape_type == "circle":
+        r = _shape_radius(item)
+        return (
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{fill}"{fill_opacity} '
+            f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type == "rectangle":
+        rx = _shape_rx(item)
+        ry = _shape_ry(item)
+        return (
+            f'<rect x="{x-rx:.1f}" y="{y-ry:.1f}" width="{rx*2:.1f}" height="{ry*2:.1f}" '
+            f'fill="{fill}"{fill_opacity} stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type in {"triangle", "polygon", "region"}:
+        points = _shape_points(item)
+        if len(points) < 3:
+            points = _default_triangle_points(item)
+        mapped = " ".join(f"{px:.1f},{py:.1f}" for px, py in (_map_point(px, py) for px, py in points[:8]))
+        return (
+            f'<polygon points="{mapped}" fill="{fill}"{fill_opacity} '
+            f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type in {"angle", "arc"}:
+        return _render_arc_shape(item)
+
+    rx = _shape_rx(item)
+    ry = _shape_ry(item)
+    return (
+        f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" fill="{fill}"{fill_opacity} '
+        f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+    )
+
+
+def _shape_points(item: FigureElement) -> list[list[float]]:
+    return item.points[:8]
+
+
+def _default_triangle_points(item: FigureElement) -> list[list[float]]:
+    radius = max(8.0, item.r)
+    return [
+        [_unit_coord(item.x), _unit_coord(item.y - radius)],
+        [_unit_coord(item.x - radius * 1.15), _unit_coord(item.y + radius * 0.85)],
+        [_unit_coord(item.x + radius * 1.15), _unit_coord(item.y + radius * 0.85)],
+    ]
+
+
+def _shape_radius(item: FigureElement) -> float:
+    return max(8.0, (item.r or 8.0) * 2.2)
+
+
+def _shape_rx(item: FigureElement) -> float:
+    if item.rx:
+        return max(8.0, item.rx * 5.16)
+    return max(14.0, (item.r or 8.0) * 2.8)
+
+
+def _shape_ry(item: FigureElement) -> float:
+    if item.ry:
+        return max(8.0, item.ry * 2.46)
+    return max(10.0, (item.r or 8.0) * 1.8)
+
+
+def _shape_label_offset(item: FigureElement) -> float:
+    if item.shape_type in {"triangle", "polygon", "region"}:
+        return _shape_ry(item) + 12
+    if item.shape_type == "circle":
+        return _shape_radius(item) + 10
+    return _shape_ry(item) + 10
+
+
+def _render_arc_shape(item: FigureElement) -> str:
+    center_x, center_y = _map_point(item.x, item.y)
+    radius = max(10.0, (item.r or 8.0) * 2.0)
+    start = math.radians(item.start_angle)
+    end = math.radians(item.end_angle)
+    x1 = center_x + math.cos(start) * radius
+    y1 = center_y - math.sin(start) * radius
+    x2 = center_x + math.cos(end) * radius
+    y2 = center_y - math.sin(end) * radius
+    delta = abs((item.end_angle - item.start_angle) % 360)
+    large_arc = 1 if delta > 180 else 0
+    sweep = 0 if item.end_angle < item.start_angle else 1
+    stroke = "#777" if item.style in {"dashed", "muted"} else "#111"
+    dash = ' stroke-dasharray="5 4"' if item.style in {"dashed", "muted"} else ""
+    label = item.label or item.text
+    label_markup = ""
+    if label:
+        mid = math.radians((item.start_angle + item.end_angle) / 2)
+        lx = center_x + math.cos(mid) * (radius + 14)
+        ly = center_y - math.sin(mid) * (radius + 14)
+        label_markup = f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="18" text-anchor="middle">{_svg_escape(label)}</text>'
+    return (
+        f'<path d="M{x1:.1f},{y1:.1f} A{radius:.1f},{radius:.1f} 0 {large_arc} {sweep} {x2:.1f},{y2:.1f}" '
+        f'fill="none" stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+    )
 
 
 def _map_point(x: float, y: float) -> tuple[float, float]:
@@ -528,7 +739,6 @@ def _svg_shell(inner: str, *, caption: str) -> str:
   <rect x="8" y="8" width="604" height="314" fill="#fff"/>
   {inner}
 </svg>
-<p class="atm-caption">{_html_escape(caption, limit=120)}</p>
 """
 
 

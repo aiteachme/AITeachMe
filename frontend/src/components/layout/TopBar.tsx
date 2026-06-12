@@ -76,6 +76,78 @@ function getAvatarText(user: RuntimeUser | null): string {
   return displayName.slice(0, 1).toUpperCase() || "U";
 }
 
+function UserActivityPanel() {
+  const userActivityData = useMemo(() => {
+    // 18 weeks * 7 days = 126 elements
+    const values = [
+      0, 1, 0, 2, 0, 0, 0,  1, 2, 0, 0, 3, 0, 0,  0, 0, 1, 2, 0, 4, 0,
+      1, 0, 0, 2, 0, 0, 3,  0, 1, 2, 0, 0, 0, 1,  0, 4, 2, 0, 0, 0, 1,
+      2, 0, 0, 0, 3, 0, 1,  2, 0, 0, 0, 1, 0, 4,  2, 0, 0, 0, 1, 2, 0,
+      0, 0, 3, 0, 1, 2, 0,  0, 0, 1, 0, 4, 2, 0,  0, 0, 1, 2, 0, 0, 0,
+      3, 0, 1, 2, 0, 0, 0,  1, 0, 4, 2, 0, 0, 0,  1, 2, 0, 0, 0, 3, 0,
+      1, 2, 0, 0, 0, 1, 0,  4, 2, 0, 0, 0, 1, 2,  0, 0, 0, 3, 0, 1, 2
+    ];
+    return values.map((level) => {
+      let colorClass = "bg-slate-100 dark:bg-slate-800/60";
+      if (level === 1) colorClass = "bg-violet-100/70 dark:bg-violet-950/20";
+      if (level === 2) colorClass = "bg-violet-300/80 dark:bg-violet-850/35";
+      if (level === 3) colorClass = "bg-indigo-400/80 dark:bg-indigo-700/50";
+      if (level === 4) colorClass = "bg-indigo-600 dark:bg-indigo-500";
+      return { level, colorClass };
+    });
+  }, []);
+
+  return (
+    <div className="px-4 py-3.5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/[0.15] dark:bg-slate-950/15">
+      <div className="flex items-center justify-between mb-2.5 select-none">
+        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">学习活跃度</span>
+        <div className="flex items-center gap-0.5 text-[9px] text-slate-400 dark:text-slate-500">
+          <span>少</span>
+          <span className="h-1.5 w-1.5 rounded-sm bg-slate-100 dark:bg-slate-800/60" />
+          <span className="h-1.5 w-1.5 rounded-sm bg-violet-100/70 dark:bg-violet-950/20" />
+          <span className="h-1.5 w-1.5 rounded-sm bg-violet-300/80 dark:bg-violet-850/35" />
+          <span className="h-1.5 w-1.5 rounded-sm bg-indigo-400/80 dark:bg-indigo-700/50" />
+          <span className="h-1.5 w-1.5 rounded-sm bg-indigo-600 dark:bg-indigo-500" />
+          <span>多</span>
+        </div>
+      </div>
+
+      <div className="flex justify-center py-0.5">
+        <div className="grid grid-flow-col grid-rows-7 gap-[2px]">
+          {userActivityData.map((data, i) => (
+            <div
+              key={i}
+              className={cn("h-2.5 w-2.5 rounded-[1.5px] transition-transform duration-150 hover:scale-125 cursor-pointer", data.colorClass)}
+              title={`第 ${i + 1} 天学习强度: ${data.level === 0 ? "无" : data.level === 1 ? "轻度" : data.level === 2 ? "中度" : data.level === 3 ? "深度" : "高频"}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1 mt-3 pt-2.5 border-t border-slate-100/60 dark:border-slate-800/50 text-center">
+        <div>
+          <div className="text-[10px] text-slate-450 dark:text-slate-500 font-light">累计学时</div>
+          <div className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
+            28.5 <span className="text-[9px] font-normal text-slate-400">h</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-450 dark:text-slate-500 font-light">本周活跃</div>
+          <div className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
+            5 <span className="text-[9px] font-normal text-slate-400">天</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-450 dark:text-slate-500 font-light">已学天数</div>
+          <div className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 mt-0.5">
+            42 <span className="text-[9px] font-normal text-slate-400">天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TopBar({ className }: TopBarProps) {
   const location = useLocation();
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
@@ -387,22 +459,24 @@ export function TopBar({ className }: TopBarProps) {
           {isDropdownOpen && (
             <div className="absolute right-0 top-full pt-2 z-50">
               <div
-                className="w-64 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-1"
+                className="w-[310px] bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-150 dark:border-slate-800 py-1"
                 style={{
                   animation: "fadeIn 0.15s ease-out",
                 }}
               >
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
-                    {avatarText}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{displayName}</p>
-                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">{identitySubtitle}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-sm font-semibold text-white">
+                      {avatarText}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{displayName}</p>
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">{identitySubtitle}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+
+                <UserActivityPanel />
 
               <div className="py-1">
                 {profilePath ? (
@@ -506,7 +580,7 @@ export function TopBar({ className }: TopBarProps) {
 
         {isMobileMenuOpen && (
           <div
-            className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-2 z-50"
+            className="absolute right-0 mt-2 w-[310px] bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-150 dark:border-slate-800 py-2 z-50"
             style={{
               animation: "fadeIn 0.15s ease-out",
             }}
@@ -522,6 +596,8 @@ export function TopBar({ className }: TopBarProps) {
                 </div>
               </div>
             </div>
+
+            <UserActivityPanel />
 
             <div className="py-1">
               {profilePath ? (

@@ -698,7 +698,7 @@ function PlannerStreamingBubble({ preview, statusText, plan }: PlannerStreamingB
       </div>
 
       {trimmedPreview ? (
-        <div className="relative mt-3 max-h-56 overflow-hidden text-sm leading-7 text-zinc-600 dark:text-slate-300">
+        <div className="relative mt-3 text-sm leading-7 text-zinc-600 dark:text-slate-300">
           <div className="planner-stream-preview">
             <PlannerPreviewMarkdown markdown={trimmedPreview} />
           </div>
@@ -2017,7 +2017,8 @@ export function BuildPlanPage() {
 
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
-      const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
+      const persistedContent = pickAssistantReply(response, "");
+      const resolvedContent = persistedContent || contentOverride?.trim() || fallbackContent;
       const latestPlan = usablePlannerPlan(response.latest_plan);
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
@@ -2439,7 +2440,7 @@ export function BuildPlanPage() {
 
       <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
-          <CoursePagePillTitle icon={Sparkles} label="方案规划" />
+          <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">
