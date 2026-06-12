@@ -177,8 +177,8 @@ function RecentExamsWidget({
   );
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300">
-      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800/50">
+    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 min-h-[340px] flex flex-col">
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800/50 shrink-0">
         <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200">最近测验记录</h3>
         <button
           onClick={() => navigate(buildCoursePath(courseId, "exams"))}
@@ -189,11 +189,11 @@ function RecentExamsWidget({
       </div>
 
       {latestPapers.length === 0 ? (
-        <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500 font-light">
+        <div className="flex-1 flex items-center justify-center text-sm text-slate-400 dark:text-slate-500 font-light py-8">
           暂无测验记录，您可以点击“直接闯关”开始第一次测验。
         </div>
       ) : (
-        <div className="divide-y divide-slate-100/60 dark:divide-slate-800/20">
+        <div className="divide-y divide-slate-100/60 dark:divide-slate-800/20 flex-1">
           {latestPapers.map((item) => {
             const scoreText =
               item.status === "graded" && item.score_obtained != null && item.total_score != null
@@ -256,10 +256,10 @@ function MiniStatsWidget({
   const percentGood = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 0;
   
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 hover:shadow-[0_8px_24px_rgba(99,102,241,0.04)]">
-      <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200 mb-4">掌握分布</h3>
+    <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 min-h-[340px] flex flex-col">
+      <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200 mb-4 shrink-0">掌握分布</h3>
       
-      <div className="space-y-4">
+      <div className="flex-1 flex flex-col justify-center space-y-6">
         <div>
           <div className="flex items-center justify-between text-[12px] mb-1.5 font-medium text-slate-600 dark:text-slate-400">
             <span className="flex items-center gap-1.5">
@@ -287,7 +287,7 @@ function MiniStatsWidget({
         </div>
 
         {dueReviewCount > 0 && (
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-500/[0.03] border border-rose-500/10 dark:bg-rose-500/[0.01] mt-2">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-500/[0.03] border border-rose-500/10 dark:bg-rose-500/[0.01] mt-2 shrink-0">
             <div className="text-[12px] text-rose-605 dark:text-rose-400 font-semibold flex items-center gap-1.5">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
