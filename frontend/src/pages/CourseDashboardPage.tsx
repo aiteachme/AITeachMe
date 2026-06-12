@@ -485,8 +485,8 @@ export function CourseDashboardPage() {
   const states = mastery?.knowledge_unit_states ?? [];
 
   const isBuilt = useMemo(() => {
-    return Boolean(courseProfile?.generated_at);
-  }, [courseProfile]);
+    return Boolean(docMarkdownQuery.data?.exists);
+  }, [docMarkdownQuery.data?.exists]);
 
   // Extract chapters from pre-loaded markdown content for rendering the syllabus preview inside the card
   const chapters = useMemo(() => {
@@ -567,8 +567,8 @@ export function CourseDashboardPage() {
     };
   }, [courseId, queryClient]);
 
-  // Redirect to Build Plan if course profile is empty/unbuilt
-  if (masteryQuery.isSuccess && !masteryQuery.isLoading && !courseProfile?.generated_at && !masteryQuery.isError) {
+  // Redirect to Build Plan if no published knowledge docs exist yet.
+  if (docMarkdownQuery.isSuccess && !docMarkdownQuery.isLoading && !isDocGenerating && !isBuilt) {
     return <Navigate to={buildCoursePath(courseId!, "build")} replace />;
   }
 

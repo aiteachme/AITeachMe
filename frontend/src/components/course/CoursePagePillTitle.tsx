@@ -15,7 +15,6 @@ import {
 import { cn } from "../../lib/utils";
 import { buildCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet } from "../../api/generated/profile";
 import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
@@ -83,18 +82,11 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
     return status === "accepted" || status === "running" || status === "publishing";
   }, [docMarkdownQuery.data]);
 
-  // 2. Query Mastery Overview
-  const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(
-    courseId ?? "",
-    { query: { enabled: Boolean(courseId) } }
-  );
-
   const isBuilt = useMemo(() => {
-    const masteryData = unwrapOrvalResponse<any>(masteryQuery.data);
-    return Boolean(masteryData?.course_profile?.generated_at);
-  }, [masteryQuery.data]);
+    return Boolean(docMarkdownQuery.data?.exists);
+  }, [docMarkdownQuery.data?.exists]);
 
-  // 3. Query Exam History
+  // 2. Query Exam History
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
     courseId ?? "",
     { page: 1, size: 24 },
