@@ -60,6 +60,8 @@ def test_chapter_contract_mentions_range_and_total_length_budget() -> None:
     assert config.target_length in contract
     assert "整份知识文档的预算" in contract
     assert "不使用冒号副标题" in contract
+    assert "锚定具体知识对象" in contract
+    assert "不要只写学习动作" in contract
     assert "冻结执行合同" not in contract
 
 

@@ -108,15 +108,10 @@ def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, Fig
     if has_problem_signal and has_quantitative_signal:
         add(2, "图示与变量或数量关系需要对应标注", "problem_diagram")
     has_process_signal = bool(re.search(r"步骤|流程|顺序|阶段|时期|时间线|先.*再|首先|然后|最后|第一|第二|第三|①|②|③|1[).、]|2[).、]|3[).、]", text))
-    has_comparison_signal = bool(re.search(r"比较|区别|对比|分类|适用范围|优缺点|表格|类型|性质|相同|不同|异同", text))
     if has_process_signal:
         add(4, "包含步骤、阶段或过程关系", "process_steps")
         if len(re.findall(r"阶段|时期|首先|然后|最后|第一|第二|第三|①|②|③", text)) >= 2:
             add(2, "多个阶段适合画成顺序图", "process_steps")
-    if has_comparison_signal:
-        add(4, "适合整理为对比表或归纳表", "comparison_table")
-        if len(re.findall(r"、|，|,|；|;", context)) >= 3:
-            add(1, "包含多项维度可归纳", "comparison_table")
     if re.search(r"=|\\frac|\\sum|\\sqrt|公式|推导|表达式|代入|化简|因此|所以|⇒|->|→", text):
         add(3, "包含公式、推导或等量关系", "formula_derivation")
     if re.search(r"易错|注意|误区|错误|判断|陷阱|常见", text):
@@ -127,7 +122,6 @@ def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, Fig
     if len(context) < 180 and not (
         (has_problem_signal and has_quantitative_signal)
         or has_process_signal
-        or has_comparison_signal
     ):
         score -= 2
     if len(re.findall(r"[-*]\s+|^\s*\d+[).、]", context, flags=re.MULTILINE)) >= 3:

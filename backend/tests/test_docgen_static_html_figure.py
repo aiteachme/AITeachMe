@@ -30,14 +30,14 @@ def test_static_figure_scoring_is_not_mechanics_only() -> None:
     assert "步骤" in goal or "过程" in goal
 
 
-def test_static_figure_scoring_supports_general_comparison_tables() -> None:
+def test_static_figure_scoring_does_not_promote_plain_comparison_tables() -> None:
     score, _goal, figure_type = _score_static_figure_signal(
         "细胞有丝分裂与减数分裂比较",
         "比较两类分裂的发生位置、染色体行为、子细胞数量和遗传物质变化，注意同源染色体联会这一易错点。",
     )
 
-    assert score >= 6
-    assert figure_type == "comparison_table"
+    assert score < 6
+    assert figure_type != "comparison_table"
 
 
 def test_rendered_figure_is_single_file_static_html() -> None:
@@ -66,6 +66,46 @@ def test_rendered_figure_is_single_file_static_html() -> None:
     assert validate_single_file_html(html) == []
 
 
+def test_process_figure_renders_as_svg_not_table() -> None:
+    spec = FigureSpec(
+        type="process_steps",
+        title="辛亥革命的历史进程",
+        summary="把历史进程画成阶段推进关系。",
+        elements=[
+            FigureElement(kind="step", label="阶段一", text="思想传播"),
+            FigureElement(kind="step", label="阶段二", text="组织动员"),
+            FigureElement(kind="step", label="阶段三", text="武昌起义"),
+        ],
+        source_refs=["第一阶段是思想传播，第二阶段是组织动员"],
+    )
+
+    html = render_figure_spec_html(spec, title="辛亥革命的历史进程")
+
+    assert "<svg" in html
+    assert "<table" not in html.lower()
+    assert validate_single_file_html(html) == []
+
+
+def test_formula_figure_renders_as_svg_not_table() -> None:
+    spec = FigureSpec(
+        type="formula_derivation",
+        title="导数定义到切线斜率",
+        summary="把平均变化率到瞬时变化率的极限关系画出来。",
+        elements=[
+            FigureElement(kind="formula", label="平均变化率", text="Δy / Δx"),
+            FigureElement(kind="formula", label="取极限", text="Δx -> 0"),
+            FigureElement(kind="formula", label="导数", text="f'(x)"),
+        ],
+        source_refs=["导数表示函数在某点的瞬时变化率"],
+    )
+
+    html = render_figure_spec_html(spec, title="导数定义到切线斜率")
+
+    assert "<svg" in html
+    assert "<table" not in html.lower()
+    assert validate_single_file_html(html) == []
+
+
 def test_normalize_figure_spec_replaces_untraceable_source_refs() -> None:
     context = "平面汇交力系：所有力都汇交于一点。力的三角形法则用于求合力。"
     spec = FigureSpec(
@@ -84,3 +124,28 @@ def test_normalize_figure_spec_replaces_untraceable_source_refs() -> None:
     assert normalized.source_refs
     assert normalized.source_refs[0] in context
     assert report["source_ref_replacements"] == 1
+
+
+def test_normalize_figure_spec_coerces_model_table_to_visual_map() -> None:
+    context = "导数的几何意义是切线斜率，物理意义是瞬时速度。"
+    spec = FigureSpec(
+        type="comparison_table",
+        title="导数意义图示",
+        elements=[
+            FigureElement(kind="table_row", cells=["几何意义", "切线斜率"]),
+            FigureElement(kind="table_row", cells=["物理意义", "瞬时速度"]),
+        ],
+        source_refs=["导数的几何意义是切线斜率"],
+    )
+
+    normalized, report = normalize_figure_spec(
+        spec,
+        fallback_title="导数意义图示",
+        context=context,
+    )
+    html = render_figure_spec_html(normalized, title="导数意义图示")
+
+    assert normalized.type == "concept_map"
+    assert "comparison_table_coerced_to_concept_map" in report["warnings"]
+    assert "<svg" in html
+    assert "<table" not in html.lower()

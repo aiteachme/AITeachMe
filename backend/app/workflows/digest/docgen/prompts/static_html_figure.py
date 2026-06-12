@@ -24,18 +24,20 @@ def build_static_html_figure_messages(
 - 只描述图示意图和元素，不设计网页样式。
 - 图和文必须严格对应；不要新增章节片段没有支持的事实、变量、点名、结论。
 - `source_refs` 必须摘录章节片段中的原句或短语，用于证明图中内容来自正文。
-- 标题、标签、公式、表格项必须短，像讲义题图，不像海报或网页组件。
-- 若不能确定复杂图形，选择更保守的流程、对比或公式关系图。
+- 标题、标签、公式和图注必须短，像讲义题图，不像海报或网页组件。
+- 若不能确定复杂图形，选择更保守的流程、概念或公式关系图。
+- 本流程生成的是图示，不是归纳表或编号清单；不要把纯表格、目录列表、对照表伪装成图示。
 
 教学质量标准：
 - 只规划一个关键图，不做资料页，不堆多个无关图。
 - 数学、物理、工程、地理、经济等题图优先用 `problem_diagram`，使用点、线、向量、坐标、区域、标签等元素。
-- 归纳类内容用 `comparison_table`，步骤类用 `process_steps`，公式关系用 `formula_derivation`。
+- 对比归纳类内容若确实适合图示，用 `concept_map` 或 `problem_diagram` 表达关系；若只适合做表格，则不要把它规划成静态图示。
+- 步骤类用 `process_steps`，公式关系用 `formula_derivation`。
 - 易错点用 `mistake_card`，概念关系用 `concept_map`。
-- 图形元素只使用受控 primitive：point、line、vector、shape、label、step、formula、table_row、relation、callout。
+- 图形元素只使用受控 primitive：point、line、vector、shape、label、step、formula、relation、callout。
 
 FigureSpec 字段：
-- type: concept_map | process_steps | comparison_table | formula_derivation | problem_diagram | mistake_card
+- type: concept_map | process_steps | formula_derivation | problem_diagram | mistake_card
 - title: 图示标题
 - summary: 图前一句简短说明
 - elements: 受控元素数组
@@ -66,7 +68,7 @@ problem_diagram 元素说明：
 2. 再确定 type；若建议图类型不合适，可以改成更保守的类型。
 3. 只规划一个关键图，图中文字必须短，避免长段解释。
 4. 若生成 problem_diagram，请给点、线、向量的相对坐标和标签。
-5. 若生成 comparison_table，请用 table_row 的 cells 表达每一行。
+5. 不要生成 comparison_table 或 table_row；表格整理应留在正文 Markdown，不作为图示 sidecar。
 6. 若生成 formula_derivation，请用 formula/step 元素表达推导顺序。
 7. 输出必须是一个 JSON 对象，不能包含代码块。
 """.strip()

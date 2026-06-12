@@ -77,6 +77,10 @@ def _svg_escape(value: Any) -> str:
     return html.escape(_clean_text(value, limit=80), quote=True)
 
 
+def _svg_escape_short(value: Any, *, limit: int = 54) -> str:
+    return html.escape(_clean_text(value, limit=limit), quote=True)
+
+
 def _html_escape(value: Any, *, limit: int = 240) -> str:
     return html.escape(_clean_text(value, limit=limit), quote=True)
 
@@ -198,6 +202,11 @@ def normalize_figure_spec(
 
     report: dict[str, Any] = {"source_ref_replacements": 0, "warnings": []}
     title = spec.title or fallback_title
+    figure_type = "concept_map" if spec.type == "comparison_table" else spec.type
+    elements = spec.elements[:18]
+    if spec.type == "comparison_table":
+        elements = _comparison_table_visual_elements(elements)
+        report["warnings"].append("comparison_table_coerced_to_concept_map")
     source_refs = [
         ref for ref in spec.source_refs
         if ref and _compact(ref) in _compact(context)
@@ -211,11 +220,12 @@ def normalize_figure_spec(
     normalized = spec.model_copy(
         update={
             "title": _clean_text(title, limit=120),
+            "type": figure_type,
             "summary": spec.summary or (source_refs[0] if source_refs else ""),
             "source_refs": source_refs,
             "annotations": spec.annotations[:6],
             "emphasis": spec.emphasis[:4],
-            "elements": spec.elements[:18],
+            "elements": elements,
         }
     )
     if not normalized.elements:
@@ -239,10 +249,10 @@ def build_fallback_figure_spec(
     lines = _plain_context_lines(context, limit=5)
     if figure_type == "comparison_table":
         rows = [
-            FigureElement(kind="table_row", cells=[f"要点 {index}", line])
+            FigureElement(kind="relation", label=f"要点 {index}", text=line)
             for index, line in enumerate(lines[:4], start=1)
         ]
-        return FigureSpec(type=figure_type, title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
+        return FigureSpec(type="concept_map", title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
     if figure_type == "formula_derivation":
         rows = [FigureElement(kind="formula", label=f"({index})", text=line) for index, line in enumerate(lines[:4], start=1)]
         return FigureSpec(type=figure_type, title=title, summary=goal or "按步骤理解公式关系。", elements=rows, source_refs=lines[:3])
@@ -268,6 +278,29 @@ def build_fallback_figure_spec(
 
 def _compact(value: str) -> str:
     return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
+def _comparison_table_visual_elements(elements: list[FigureElement]) -> list[FigureElement]:
+    visual: list[FigureElement] = []
+    for index, item in enumerate(elements[:6], start=1):
+        if item.kind == "table_row" and item.cells:
+            label = item.cells[0] or f"要点 {index}"
+            text = "；".join(cell for cell in item.cells[1:3] if cell)
+            visual.append(FigureElement(kind="relation", label=label, text=text or label))
+            continue
+        if item.text or item.label:
+            visual.append(
+                FigureElement(
+                    kind="relation",
+                    label=item.label or f"要点 {index}",
+                    text=item.text or item.label,
+                )
+            )
+    return visual
+
+
+def _comparison_table_as_concept_map(spec: FigureSpec) -> FigureSpec:
+    return spec.model_copy(update={"type": "concept_map", "elements": _comparison_table_visual_elements(spec.elements)})
 
 
 def render_figure_spec_html(spec: FigureSpec, *, title: str) -> str:
@@ -389,7 +422,7 @@ def _render_source_line(spec: FigureSpec) -> str:
 
 def _render_body(spec: FigureSpec) -> str:
     if spec.type == "comparison_table":
-        return _render_comparison_table(spec)
+        return _render_concept_map(_comparison_table_as_concept_map(spec))
     if spec.type == "formula_derivation":
         return _render_formula_derivation(spec)
     if spec.type == "problem_diagram":
@@ -419,22 +452,22 @@ def _render_formula_derivation(spec: FigureSpec) -> str:
     rows = [item for item in spec.elements if item.kind in {"formula", "step", "relation", "label"} and (item.text or item.label)]
     if not rows:
         return _render_process_steps(spec)
-    items = "".join(
-        f"<tr><td>{_html_escape(item.label or str(index))}</td><td>{_html_escape(item.text or item.label, limit=220)}</td></tr>"
-        for index, item in enumerate(rows[:8], start=1)
+    return _render_vertical_flow_svg(
+        rows[:5],
+        caption=spec.annotations[0] if spec.annotations else "公式关系图",
+        label_prefix="式",
     )
-    return f"<table><tbody>{items}</tbody></table>"
 
 
 def _render_process_steps(spec: FigureSpec) -> str:
     rows = [item for item in spec.elements if item.kind in {"step", "formula", "label", "callout"} and (item.text or item.label)]
     if not rows:
         rows = [FigureElement(kind="step", label=str(index), text=text) for index, text in enumerate(spec.annotations[:5], start=1)]
-    items = "".join(
-        f"<tr><td>{index}</td><td>{_html_escape(item.text or item.label, limit=220)}</td></tr>"
-        for index, item in enumerate(rows[:7], start=1)
+    return _render_vertical_flow_svg(
+        rows[:5],
+        caption=spec.annotations[0] if spec.annotations else "流程示意图",
+        label_prefix="步",
     )
-    return f"<table><tbody>{items}</tbody></table>"
 
 
 def _render_mistake_card(spec: FigureSpec) -> str:
@@ -445,6 +478,45 @@ def _render_mistake_card(spec: FigureSpec) -> str:
         return ""
     content = "<br/>".join(f"{index}. {_html_escape(text, limit=180)}" for index, text in enumerate(rows, start=1))
     return f'<div class="atm-note">{content}</div>'
+
+
+def _render_vertical_flow_svg(
+    elements: list[FigureElement],
+    *,
+    caption: str,
+    label_prefix: str,
+) -> str:
+    items = [item for item in elements if item.text or item.label]
+    if not items:
+        return ""
+    top = 34
+    row_gap = 56
+    box_height = 36
+    markup: list[str] = []
+    for index, item in enumerate(items[:5], start=1):
+        y = top + (index - 1) * row_gap
+        label = item.label or f"{label_prefix}{index}"
+        text = item.text or item.label
+        markup.append(
+            f'<rect x="58" y="{y}" width="504" height="{box_height}" rx="4" fill="#fff" stroke="#111" stroke-width="1.8"/>'
+        )
+        markup.append(
+            f'<rect x="76" y="{y + 6}" width="96" height="24" rx="12" fill="#eee" stroke="#111" stroke-width="1.4"/>'
+        )
+        markup.append(
+            f'<text x="124" y="{y + box_height / 2 + 5:.1f}" text-anchor="middle" font-size="14">{_svg_escape_short(label, limit=6)}</text>'
+        )
+        markup.append(
+            f'<text x="188" y="{y + box_height / 2 + 6:.1f}" font-size="17">{_svg_escape_short(text, limit=34)}</text>'
+        )
+        if index < min(len(items), 5):
+            x = 310
+            y1 = y + box_height + 5
+            y2 = y + row_gap - 8
+            markup.append(
+                f'<line x1="{x}" y1="{y1:.1f}" x2="{x}" y2="{y2:.1f}" stroke="#111" stroke-width="1.7" marker-end="url(#arrow)"/>'
+            )
+    return _svg_shell("".join(markup), caption=caption)
 
 
 def _render_concept_map(spec: FigureSpec) -> str:

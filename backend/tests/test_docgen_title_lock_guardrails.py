@@ -257,3 +257,5 @@ def test_title_lock_prompt_discourages_repeated_abstract_sprint_titles() -> None
     assert "不能照抄" in prompt
     assert "如果本章领域与示例不同" in prompt
     assert "现金流表" in prompt
+    assert "锚定具体知识对象" in prompt
+    assert "不要只写学习动作" in prompt
