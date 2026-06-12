@@ -661,7 +661,7 @@ export function Sidebar({
                 className="min-h-0 overflow-hidden"
               >
                 <motion.div
-                  className="space-y-0.5 overflow-x-hidden pr-1"
+                  className="space-y-0.5 overflow-x-hidden overflow-y-auto pr-1 max-h-[260px] xl:max-h-[300px] scrollbar-thin scrollbar-webkit"
                   variants={shouldAnimateCourseItems ? sidebarListContainerMotion : undefined}
                   initial={shouldAnimateCourseItems ? "hidden" : false}
                   animate={shouldAnimateCourseItems ? "visible" : undefined}
