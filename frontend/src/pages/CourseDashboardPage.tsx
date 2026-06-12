@@ -218,51 +218,128 @@ function AICompanionWidget({
   );
 }
 
-function StreakActivityWidget() {
+function StudyActivityDashboard({
+  activePaperCount,
+  masteredCount,
+  totalCount,
+}: {
+  activePaperCount: number;
+  masteredCount: number;
+  totalCount: number;
+}) {
+  // Generate 24 weeks * 7 days = 168 data points
+  // Seed with realistic level values (0 to 4)
   const activityData = useMemo(() => {
-    const values = [2, 0, 4, 1, 3, 2, 0, 1, 0, 2, 4, 3, 1, 2, 2, 0, 3, 4, 2, 3, 4];
-    return values.map((level) => {
-      let colorClass = "bg-slate-100 dark:bg-slate-800/50";
-      if (level === 1) colorClass = "bg-indigo-100/40 dark:bg-indigo-950/20";
-      if (level === 2) colorClass = "bg-indigo-300/60 dark:bg-indigo-800/20";
-      if (level === 3) colorClass = "bg-indigo-500/70 dark:bg-indigo-600/50";
-      if (level === 4) colorClass = "bg-indigo-650 dark:bg-indigo-500";
-      return { level, colorClass };
+    const values = [
+      0, 1, 0, 0, 2, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0,
+      0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1,
+      2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1,
+      0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0,
+      0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0,
+      0, 3, 0, 1, 2, 0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2,
+      0, 0, 0, 1, 0, 4, 2, 0, 0, 0, 1, 2, 0, 0, 0, 3, 0, 1, 2, 0, 0, 0, 1, 2
+    ];
+    
+    return values.map((level, index) => {
+      // 蓝紫色系: gray -> light violet -> violet -> indigo -> deep indigo
+      let colorClass = "bg-slate-100 dark:bg-slate-800/40";
+      if (level === 1) colorClass = "bg-violet-100/70 dark:bg-violet-950/20";
+      if (level === 2) colorClass = "bg-violet-350/80 dark:bg-violet-850/30";
+      if (level === 3) colorClass = "bg-indigo-400/80 dark:bg-indigo-700/50";
+      if (level === 4) colorClass = "bg-indigo-600 dark:bg-indigo-500";
+      
+      const day = index + 1;
+      return {
+        level,
+        colorClass,
+        title: `第 ${day} 天，学习强度: ${level === 0 ? "未学习" : level === 1 ? "轻度" : level === 2 ? "中度" : level === 3 ? "深度" : "高频"}`
+      };
     });
   }, []);
 
+  const totalHours = 14.5;
+  const targetCompleted = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
+  
   return (
-    <div className="rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_15px_30px_rgba(99,102,241,0.04)]">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-          <span>学习打卡</span>
-        </h3>
-        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-light">最近 3 周活跃度</span>
+    <div className="rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_20px_40px_rgba(99,102,241,0.04)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-5">
+        <div>
+          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-200">学习活跃度与统计</h3>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500 font-light mt-0.5">记录您在本课程下的每一次学习与测试提交</p>
+        </div>
+        
+        {/* Color legend */}
+        <div className="flex items-center gap-4 text-[11px] font-light text-slate-400 dark:text-slate-500 select-none">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-slate-100 dark:bg-slate-800/40" />
+            <span>无活动</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded-sm bg-violet-100/70 dark:bg-violet-950/20" />
+            <span className="h-2.5 w-2.5 rounded-sm bg-violet-350/80 dark:bg-violet-850/30" />
+            <span className="h-2.5 w-2.5 rounded-sm bg-indigo-400/80 dark:bg-indigo-700/50" />
+            <span className="h-2.5 w-2.5 rounded-sm bg-indigo-600 dark:bg-indigo-500" />
+          </div>
+          <span>高频学习</span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="grid grid-flow-col grid-rows-7 gap-1.5 shrink-0">
-          {activityData.map((data, i) => (
-            <div
-              key={i}
-              className={cn("h-2.5 w-2.5 rounded-sm transition-all duration-300 hover:scale-110", data.colorClass)}
-              title={`活跃度: ${data.level}`}
-            />
-          ))}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        {/* GitHub style heat map (Col-span 8) */}
+        <div className="lg:col-span-8 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800">
+          <div className="min-w-[520px] flex flex-col gap-1">
+            {/* Days labels */}
+            <div className="flex gap-1">
+              <div className="grid grid-flow-col grid-rows-7 gap-1.5">
+                {activityData.map((data, i) => (
+                  <div
+                    key={i}
+                    className={cn("h-2.5 w-2.5 rounded-sm transition-all duration-200 hover:scale-125 cursor-pointer", data.colorClass)}
+                    title={data.title}
+                  />
+                ))}
+              </div>
+            </div>
+            
+            {/* Months labels */}
+            <div className="flex justify-between text-[10px] text-slate-400 font-light mt-1.5 px-1 max-w-[500px]">
+              <span>半年前</span>
+              <span>12周前</span>
+              <span>8周前</span>
+              <span>4周前</span>
+              <span>本周</span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center pl-4 border-l border-slate-100 dark:border-slate-800/40 space-y-2">
+        {/* Minimal Stats Panel (Col-span 4) */}
+        <div className="lg:col-span-4 grid grid-cols-2 gap-4 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800/40 pt-4 lg:pt-0 lg:pl-6">
           <div>
-            <div className="text-[20px] font-bold text-slate-850 dark:text-slate-100 tracking-tight leading-none">
+            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">累计学时</div>
+            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
+              {totalHours} <span className="text-[12px] font-normal text-slate-400">小时</span>
+            </div>
+          </div>
+          
+          <div>
+            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">知识熟练率</div>
+            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
+              {targetCompleted}%
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">本周活跃</div>
+            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
               5 <span className="text-[12px] font-normal text-slate-400">天</span>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-light mt-1">连续学习天数</div>
           </div>
+
           <div>
-            <div className="text-[20px] font-bold text-slate-850 dark:text-slate-100 tracking-tight leading-none">
-              28 <span className="text-[12px] font-normal text-slate-400">分钟</span>
+            <div className="text-[12px] text-slate-400 dark:text-slate-500 font-light">进行中测试</div>
+            <div className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight mt-0.5 leading-none">
+              {activePaperCount} <span className="text-[12px] font-normal text-slate-400">份</span>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-light mt-1">今日在线时长</div>
           </div>
         </div>
       </div>
@@ -541,7 +618,6 @@ export function CourseDashboardPage() {
               activePaperCount={activePaperCount}
               courseId={courseId}
             />
-            <StreakActivityWidget />
             <MiniStatsWidget
               masteredCount={masteredCount}
               goodCount={goodCount}
@@ -550,6 +626,13 @@ export function CourseDashboardPage() {
             />
           </div>
         </div>
+
+        {/* Bottom Section: GitHub Style Activity Grid */}
+        <StudyActivityDashboard
+          activePaperCount={activePaperCount}
+          masteredCount={masteredCount}
+          totalCount={states.length}
+        />
 
         {(historyQuery.error || masteryQuery.error || reviewsQuery.error) ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
