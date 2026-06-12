@@ -63,26 +63,26 @@ function NavTile({
     indigo: {
       border: "border-slate-200/50 dark:border-slate-800/40 hover:border-indigo-400/50 dark:hover:border-indigo-500/40",
       shadow: "hover:shadow-[0_20px_40px_rgba(99,102,241,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
-      iconContainer: "bg-indigo-50/50 text-indigo-650 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/30 dark:ring-indigo-900/20",
+      iconContainer: "bg-indigo-50/50 text-indigo-600 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/30 dark:ring-indigo-900/20",
       gradient: "from-indigo-500/[0.015] to-indigo-500/[0.06] dark:from-indigo-500/[0.005] dark:to-indigo-500/[0.02]",
-      textHover: "group-hover:text-indigo-650 dark:group-hover:text-indigo-400",
-      buttonBg: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-650 dark:hover:bg-indigo-700",
+      textHover: "group-hover:text-indigo-600 dark:group-hover:text-indigo-400",
+      buttonBg: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800",
     },
     violet: {
       border: "border-slate-200/50 dark:border-slate-800/40 hover:border-violet-400/50 dark:hover:border-violet-500/40",
       shadow: "hover:shadow-[0_20px_40px_rgba(139,92,246,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
       iconContainer: "bg-violet-50/50 text-violet-650 dark:bg-violet-950/45 dark:text-violet-400 ring-violet-100/30 dark:ring-violet-900/20",
       gradient: "from-violet-500/[0.015] to-violet-500/[0.06] dark:from-violet-500/[0.005] dark:to-violet-500/[0.02]",
-      textHover: "group-hover:text-violet-650 dark:group-hover:text-violet-400",
-      buttonBg: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-650 dark:hover:bg-violet-700",
+      textHover: "group-hover:text-violet-600 dark:group-hover:text-violet-400",
+      buttonBg: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-700 dark:hover:bg-violet-800",
     },
     teal: {
       border: "border-slate-200/50 dark:border-slate-800/40 hover:border-teal-400/50 dark:hover:border-teal-500/40",
       shadow: "hover:shadow-[0_20px_40px_rgba(20,184,166,0.06)] dark:hover:shadow-[0_24px_50px_rgba(0,0,0,0.3)]",
-      iconContainer: "bg-teal-50/50 text-teal-650 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/30 dark:ring-teal-900/20",
+      iconContainer: "bg-teal-50/50 text-teal-600 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/30 dark:ring-teal-900/20",
       gradient: "from-teal-500/[0.015] to-teal-500/[0.06] dark:from-teal-500/[0.005] dark:to-teal-500/[0.02]",
-      textHover: "group-hover:text-teal-655 dark:group-hover:text-teal-400",
-      buttonBg: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-650 dark:hover:bg-teal-700",
+      textHover: "group-hover:text-teal-600 dark:group-hover:text-teal-400",
+      buttonBg: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-800",
     },
   }[theme];
 
@@ -108,7 +108,7 @@ function NavTile({
           <span className={cn(
             "flex h-14 w-14 shrink-0 items-center justify-center rounded-xl transition-all duration-500 ring-1",
             isGenerating
-              ? "bg-indigo-50 text-indigo-650 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
+              ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
               : disabled
                 ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 ring-slate-200/50 dark:ring-slate-800/50"
                 : themeStyles.iconContainer
@@ -125,7 +125,7 @@ function NavTile({
             <div className="flex items-center flex-wrap gap-2.5">
               <h2 className="text-[17px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 transition-colors duration-250">{title}</h2>
               {isGenerating && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50/80 px-2.5 py-0.5 text-[11px] font-medium text-indigo-650 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25 animate-pulse">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50/80 px-2.5 py-0.5 text-[11px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25 animate-pulse">
                   <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                   生成中
                 </span>
@@ -191,14 +191,14 @@ function AICompanionWidget({
     <div className="group relative overflow-hidden rounded-2xl border border-slate-200/50 bg-white/50 dark:border-slate-800/40 dark:bg-slate-900/40 p-6 backdrop-blur-md transition-all duration-300 hover:shadow-[0_15px_30px_rgba(99,102,241,0.04)]">
       <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-indigo-500 to-violet-500" />
       <div className="flex gap-4">
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-650 dark:bg-indigo-950/50 dark:text-indigo-400 ring-1 ring-indigo-100/30 dark:ring-indigo-900/20">
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 ring-1 ring-indigo-100/30 dark:ring-indigo-900/20">
           <Sparkles className="h-5 w-5 animate-[pulse_2s_infinite]" />
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
         </div>
         <div className="space-y-2 flex-1">
           <div className="flex items-center justify-between">
             <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200">AI 学习助手</h3>
-            <span className="text-[11px] text-indigo-650 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full font-medium">在线</span>
+            <span className="text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full font-medium">在线</span>
           </div>
           <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 font-light pr-1">
             {companionText}
@@ -208,7 +208,7 @@ function AICompanionWidget({
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/40 flex justify-end">
         <button
           onClick={() => navigate(buildCoursePath(courseId, "profile"))}
-          className="text-[12px] font-semibold text-indigo-650 hover:text-indigo-705 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
+          className="text-[12px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
         >
           查看分析建议
           <ArrowRight className="h-3 w-3" />
