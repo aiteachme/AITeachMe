@@ -40,7 +40,7 @@ _FOCUS_ACTION_CLAUSE_RE = re.compile(
     r"学会|明确|减少|进入|形成|覆盖|整理|把|用|帮助|让|能够).*$"
 )
 _TRAILING_ACTION_CONNECTOR_RE = re.compile(
-    r"(?:[，,、\s]*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用))+$"
+    r"(?:[，,、\s]+(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用))+$"
 )
 _MALFORMED_HEADING_CONNECTOR_RE = re.compile(
     r"[，,]\s*(?:先|再|并|同时|然后|从而|因此|以便|便于|通过|围绕|把|用)\s*的"

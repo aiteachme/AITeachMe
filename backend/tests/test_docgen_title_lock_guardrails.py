@@ -7,7 +7,7 @@ from app.workflows.digest.docgen.lib.title_lock import (
     lock_title_for_chapter,
     prefer_confirmed_catalog_title,
 )
-from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
+from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown, build_merged_markdown
 from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
 
 
@@ -150,6 +150,21 @@ def test_publish_markdown_uses_locked_title_over_existing_h1() -> None:
     )
 
     assert markdown.splitlines()[0] == "# 导数应用"
+
+
+def test_merged_markdown_keeps_application_title_suffix() -> None:
+    markdown = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "读图解题与实际应用",
+                "resolved_title": "读图解题与实际应用",
+                "markdown": "# 读图解题与实际应用\n\n用图像读懂实际问题。",
+            }
+        ],
+    )
+
+    assert markdown.splitlines()[0] == "# 读图解题与实际应用"
 
 
 @pytest.mark.anyio
