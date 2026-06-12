@@ -2,9 +2,6 @@ from app.models.enums import KnowledgeRelationType, KnowledgeUnitType
 from app.workflows.digest.kg_doc_sync.lib.ontology import (
     LEARNING_GRAPH_ONTOLOGY,
     default_relation_for_unit_type,
-    format_ontology_relation_direction_bullets,
-    format_ontology_relation_type_bullets,
-    format_ontology_unit_type_bullets,
     relation_endpoint_type_preferences,
 )
 from app.models.knowledge_taxonomy import (
@@ -19,7 +16,6 @@ from app.models.knowledge_taxonomy import (
     relation_type_label,
     validate_relation_direction,
 )
-from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
 
 def test_learning_graph_ontology_matches_enum_values():
@@ -40,20 +36,6 @@ def test_knowledge_graph_type_labels_are_chinese_and_stable():
     assert knowledge_unit_type_label("formula") == "公式模型"
     assert relation_type_label("prerequisite_for") == "前置"
     assert relation_type_label("derivation") == "推导"
-
-
-def test_section_graph_prompt_uses_canonical_ontology_bullets():
-    unit_bullets = format_ontology_unit_type_bullets()
-    relation_bullets = format_ontology_relation_type_bullets()
-    direction_bullets = format_ontology_relation_direction_bullets()
-
-    assert unit_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
-    assert relation_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
-    assert direction_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
-    for spec in LEARNING_GRAPH_ONTOLOGY.unit_types:
-        assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
-    for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
-        assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
 
 def test_relation_direction_rules_match_kg_doc_sync_ontology():

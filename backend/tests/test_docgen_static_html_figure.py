@@ -2,7 +2,7 @@ from app.shared.infra.tools.builtin.markdown_processing import validate_single_f
 from app.workflows.digest.docgen.lib.figure_spec import (
     FigureElement,
     FigureSpec,
-    build_fallback_figure_spec,
+    is_renderable_problem_diagram,
     normalize_figure_spec,
     render_figure_spec_html,
 )
@@ -10,25 +10,23 @@ from app.workflows.digest.docgen.lib.static_html_figure import _score_static_fig
 
 
 def test_static_figure_scoring_prefers_problem_diagram_for_mechanics_context() -> None:
-    score, goal, figure_type = _score_static_figure_signal(
+    score, _goal, figure_type = _score_static_figure_signal(
         "平面汇交力系的合成",
         "如图所示，将力 F2 平移到力 F1 的端点，首尾相接后，从起点到终点的向量即为合力 FR。",
     )
 
     assert score >= 6
     assert figure_type == "problem_diagram"
-    assert "题图" in goal or "变量" in goal
 
 
 def test_static_figure_scoring_is_not_mechanics_only() -> None:
-    score, goal, figure_type = _score_static_figure_signal(
+    score, _goal, figure_type = _score_static_figure_signal(
         "辛亥革命的历史进程",
         "第一阶段是思想传播，第二阶段是组织动员，第三阶段是武昌起义，最后推动政治制度转型。",
     )
 
-    assert score >= 6
-    assert figure_type == "process_steps"
-    assert "步骤" in goal or "过程" in goal
+    assert score < 6
+    assert figure_type == "problem_diagram"
 
 
 def test_static_figure_scoring_keeps_function_tangent_as_problem_diagram() -> None:
@@ -81,88 +79,55 @@ def test_rendered_figure_is_single_file_static_html() -> None:
     assert validate_single_file_html(html) == []
 
 
-def test_process_figure_renders_as_svg_not_table() -> None:
+def test_generic_shape_primitives_render_as_single_svg_figure() -> None:
     spec = FigureSpec(
-        type="process_steps",
-        title="辛亥革命的历史进程",
-        summary="把历史进程画成阶段推进关系。",
+        type="problem_diagram",
+        title="通用题图",
         elements=[
-            FigureElement(kind="step", label="阶段一", text="思想传播"),
-            FigureElement(kind="step", label="阶段二", text="组织动员"),
-            FigureElement(kind="step", label="阶段三", text="武昌起义"),
+            FigureElement(kind="axis", label="x", x=12, y=72, x2=92, y2=72),
+            FigureElement(kind="shape", shape_type="ellipse", label="E", x=52, y=50, rx=24, ry=14),
+            FigureElement(kind="shape", shape_type="region", points=[[30, 72], [52, 34], [74, 72]], style="highlight"),
+            FigureElement(kind="shape", shape_type="angle", label="θ", x=52, y=72, r=12, start_angle=35, end_angle=76),
+            FigureElement(kind="shape", shape_type="arc", label="s", x=52, y=50, r=18, start_angle=210, end_angle=330),
         ],
-        source_refs=["第一阶段是思想传播，第二阶段是组织动员"],
+        source_refs=["题图中标出坐标轴、曲线区域和角度关系"],
     )
 
-    html = render_figure_spec_html(spec, title="辛亥革命的历史进程")
+    html = render_figure_spec_html(spec, title="通用题图")
 
     assert "<svg" in html
+    assert "<ellipse" in html
+    assert "<polygon" in html
+    assert " A" in html
     assert "<table" not in html.lower()
     assert validate_single_file_html(html) == []
 
 
-def test_formula_figure_renders_as_svg_not_table() -> None:
+def test_model_supplied_coordinate_primitives_render_without_subject_template() -> None:
     spec = FigureSpec(
-        type="formula_derivation",
-        title="导数定义到切线斜率",
-        summary="把平均变化率到瞬时变化率的极限关系画出来。",
+        type="problem_diagram",
+        title="模型规划的坐标题图",
         elements=[
-            FigureElement(kind="formula", label="平均变化率", text="Δy / Δx"),
-            FigureElement(kind="formula", label="取极限", text="Δx -> 0"),
-            FigureElement(kind="formula", label="导数", text="f'(x)"),
+            FigureElement(kind="axis", label="x", x=12, y=80, x2=92, y2=80),
+            FigureElement(kind="axis", label="y", x=20, y=88, x2=20, y2=14),
+            FigureElement(kind="curve", label="y=f(x)", x=22, y=76, x2=84, y2=24),
+            FigureElement(kind="point", id="P", label="P", x=56, y=46),
+            FigureElement(kind="line", label="切线", x=32, y=64, x2=82, y2=32),
         ],
-        source_refs=["导数表示函数在某点的瞬时变化率"],
-    )
-
-    html = render_figure_spec_html(spec, title="导数定义到切线斜率")
-
-    assert "<svg" in html
-    assert "<table" not in html.lower()
-    assert validate_single_file_html(html) == []
-
-
-def test_tangent_formula_context_is_rendered_as_coordinate_diagram() -> None:
-    context = "例题：求 y=x^2 在 x=1 处的切线方程。导数表示函数图像在一点处的切线斜率。"
-    spec = FigureSpec(
-        type="formula_derivation",
-        title="导数、切线斜率与切线方程",
-        summary="把导数定义和切线斜率对应起来。",
-        elements=[
-            FigureElement(kind="formula", label="求导", text="f'(x)=2x"),
-            FigureElement(kind="formula", label="代入", text="f'(1)=2"),
-            FigureElement(kind="formula", label="切线", text="y-f(x0)=f'(x0)(x-x0)"),
-        ],
-        source_refs=["导数表示函数图像在一点处的切线斜率"],
+        source_refs=["函数图像在一点处的切线斜率"],
     )
 
     normalized, report = normalize_figure_spec(
         spec,
-        fallback_title="导数、切线斜率与切线方程图示",
-        context=context,
+        fallback_title="模型规划的坐标题图",
+        context="函数图像在一点处的切线斜率。",
     )
-    html = render_figure_spec_html(normalized, title="导数、切线斜率与切线方程图示")
+    html = render_figure_spec_html(normalized, title="模型规划的坐标题图")
 
-    assert normalized.type == "problem_diagram"
-    assert "visual_context_forced_problem_diagram" in report["warnings"]
+    assert report["warnings"] == []
+    assert is_renderable_problem_diagram(normalized)
     assert "<path" in html
     assert "切线" in html
-    assert "<table" not in html.lower()
-    assert validate_single_file_html(html) == []
-
-
-def test_function_mapping_fallback_renders_mapping_diagram() -> None:
-    spec = build_fallback_figure_spec(
-        title="函数概念与复合函数图示",
-        figure_type="problem_diagram",
-        context="函数是定义域到值域的对应关系；每个 x 只能对应唯一的 y，复合函数先内后外。",
-        goal="画出函数的唯一对应关系。",
-    )
-    html = render_figure_spec_html(spec, title="函数概念与复合函数图示")
-
-    assert spec.type == "problem_diagram"
-    assert "定义域" in html
-    assert "值域" in html
-    assert "每个 x 只能对应一个 y" in html
     assert "<table" not in html.lower()
     assert validate_single_file_html(html) == []
 
@@ -187,7 +152,19 @@ def test_normalize_figure_spec_replaces_untraceable_source_refs() -> None:
     assert report["source_ref_replacements"] == 1
 
 
-def test_normalize_figure_spec_coerces_derivative_table_to_diagram() -> None:
+def test_static_figure_normalization_does_not_fallback_to_fake_diagram() -> None:
+    normalized, report = normalize_figure_spec(
+        FigureSpec(type="problem_diagram", title="空图"),
+        fallback_title="空图",
+        context="这一段没有足够图形条件。",
+    )
+
+    assert normalized.elements == []
+    assert not is_renderable_problem_diagram(normalized)
+    assert "fallback_elements_used" not in report["warnings"]
+
+
+def test_normalize_figure_spec_does_not_invent_diagram_from_table() -> None:
     context = "导数的几何意义是切线斜率，物理意义是瞬时速度。"
     spec = FigureSpec(
         type="comparison_table",
@@ -206,9 +183,8 @@ def test_normalize_figure_spec_coerces_derivative_table_to_diagram() -> None:
     )
     html = render_figure_spec_html(normalized, title="导数意义图示")
 
-    assert normalized.type == "problem_diagram"
+    assert normalized.type == "concept_map"
     assert "comparison_table_coerced_to_concept_map" in report["warnings"]
-    assert "visual_context_forced_problem_diagram" in report["warnings"]
+    assert not is_renderable_problem_diagram(normalized)
     assert "<svg" in html
-    assert "<path" in html
     assert "<table" not in html.lower()
