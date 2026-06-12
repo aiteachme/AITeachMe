@@ -32,6 +32,10 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * 向邮箱发送 6 位验证码，用于注册前校验。
+ * @summary 发送注册邮箱验证码
+ */
 export type sendEmailCodeApiV1AuthEmailSendCodePostResponse200 = {
   data: ApiResponseSendEmailCodeData
   status: 200
@@ -84,10 +88,6 @@ export const getSendEmailCodeApiV1AuthEmailSendCodePostUrl = () => {
   return `/api/v1/auth/email/send-code`
 }
 
-/**
- * 向邮箱发送 6 位验证码，用于注册前校验。
- * @summary 发送注册邮箱验证码
- */
 export const sendEmailCodeApiV1AuthEmailSendCodePost = async (sendEmailCodeRequest: SendEmailCodeRequest, options?: RequestInit): Promise<sendEmailCodeApiV1AuthEmailSendCodePostResponse> => {
 
   return orvalApiClient<sendEmailCodeApiV1AuthEmailSendCodePostResponse>(getSendEmailCodeApiV1AuthEmailSendCodePostUrl(),
@@ -95,7 +95,8 @@ export const sendEmailCodeApiV1AuthEmailSendCodePost = async (sendEmailCodeReque
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(sendEmailCodeRequest)
+    body: JSON.stringify(
+      sendEmailCodeRequest,)
   }
 );}
 
@@ -146,7 +147,11 @@ export const useSendEmailCodeApiV1AuthEmailSendCodePost = <TError = ErrorRespons
       > => {
       return useMutation(getSendEmailCodeApiV1AuthEmailSendCodePostMutationOptions(options), queryClient);
     }
-    export type registerApiV1AuthRegisterPostResponse200 = {
+    /**
+ * 基于 device_key 的匿名身份升级为邮箱账号。
+ * @summary 注册
+ */
+export type registerApiV1AuthRegisterPostResponse200 = {
   data: ApiResponseAuthSessionData
   status: 200
 }
@@ -193,10 +198,6 @@ export const getRegisterApiV1AuthRegisterPostUrl = () => {
   return `/api/v1/auth/register`
 }
 
-/**
- * 基于 device_key 的匿名身份升级为邮箱账号。
- * @summary 注册
- */
 export const registerApiV1AuthRegisterPost = async (registerRequest: RegisterRequest, options?: RequestInit): Promise<registerApiV1AuthRegisterPostResponse> => {
 
   return orvalApiClient<registerApiV1AuthRegisterPostResponse>(getRegisterApiV1AuthRegisterPostUrl(),
@@ -204,7 +205,8 @@ export const registerApiV1AuthRegisterPost = async (registerRequest: RegisterReq
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(registerRequest)
+    body: JSON.stringify(
+      registerRequest,)
   }
 );}
 
@@ -255,7 +257,11 @@ export const useRegisterApiV1AuthRegisterPost = <TError = ErrorResponse,
       > => {
       return useMutation(getRegisterApiV1AuthRegisterPostMutationOptions(options), queryClient);
     }
-    export type loginApiV1AuthLoginPostResponse200 = {
+    /**
+ * 邮箱密码登录，并绑定当前 device_key。
+ * @summary 登录
+ */
+export type loginApiV1AuthLoginPostResponse200 = {
   data: ApiResponseAuthSessionData
   status: 200
 }
@@ -297,10 +303,6 @@ export const getLoginApiV1AuthLoginPostUrl = () => {
   return `/api/v1/auth/login`
 }
 
-/**
- * 邮箱密码登录，并绑定当前 device_key。
- * @summary 登录
- */
 export const loginApiV1AuthLoginPost = async (loginRequest: LoginRequest, options?: RequestInit): Promise<loginApiV1AuthLoginPostResponse> => {
 
   return orvalApiClient<loginApiV1AuthLoginPostResponse>(getLoginApiV1AuthLoginPostUrl(),
@@ -308,7 +310,8 @@ export const loginApiV1AuthLoginPost = async (loginRequest: LoginRequest, option
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(loginRequest)
+    body: JSON.stringify(
+      loginRequest,)
   }
 );}
 
@@ -359,7 +362,11 @@ export const useLoginApiV1AuthLoginPost = <TError = ErrorResponse,
       > => {
       return useMutation(getLoginApiV1AuthLoginPostMutationOptions(options), queryClient);
     }
-    export type logoutApiV1AuthLogoutPostResponse200 = {
+    /**
+ * 清除登录态后回到 device_key 匿名身份。
+ * @summary 登出
+ */
+export type logoutApiV1AuthLogoutPostResponse200 = {
   data: ApiResponseAuthSessionData
   status: 200
 }
@@ -391,18 +398,15 @@ export const getLogoutApiV1AuthLogoutPostUrl = () => {
   return `/api/v1/auth/logout`
 }
 
-/**
- * 清除登录态后回到 device_key 匿名身份。
- * @summary 登出
- */
-export const logoutApiV1AuthLogoutPost = async (logoutRequest?: LogoutRequest, options?: RequestInit): Promise<logoutApiV1AuthLogoutPostResponse> => {
+export const logoutApiV1AuthLogoutPost = async (logoutRequest: LogoutRequest, options?: RequestInit): Promise<logoutApiV1AuthLogoutPostResponse> => {
 
   return orvalApiClient<logoutApiV1AuthLogoutPostResponse>(getLogoutApiV1AuthLogoutPostUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(logoutRequest)
+    body: JSON.stringify(
+      logoutRequest,)
   }
 );}
 
@@ -410,8 +414,8 @@ export const logoutApiV1AuthLogoutPost = async (logoutRequest?: LogoutRequest, o
 
 
 export const getLogoutApiV1AuthLogoutPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data?: LogoutRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data: LogoutRequest}, TContext> => {
 
 const mutationKey = ['logoutApiV1AuthLogoutPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -423,7 +427,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, {data?: LogoutRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, {data: LogoutRequest}> = (props) => {
           const {data} = props ?? {};
 
           return  logoutApiV1AuthLogoutPost(data,requestOptions)
@@ -437,23 +441,27 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type LogoutApiV1AuthLogoutPostMutationResult = NonNullable<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>>
-    export type LogoutApiV1AuthLogoutPostMutationBody = LogoutRequest | undefined
+    export type LogoutApiV1AuthLogoutPostMutationBody = LogoutRequest
     export type LogoutApiV1AuthLogoutPostMutationError = ErrorResponse
 
     /**
  * @summary 登出
  */
 export const useLogoutApiV1AuthLogoutPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>, TError,{data: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof logoutApiV1AuthLogoutPost>>,
         TError,
-        {data?: LogoutRequest},
+        {data: LogoutRequest},
         TContext
       > => {
       return useMutation(getLogoutApiV1AuthLogoutPostMutationOptions(options), queryClient);
     }
-    export type userApiV1AuthUserPostResponse200 = {
+    /**
+ * 读取当前 token/device_key 对应的用户会话信息。
+ * @summary 当前用户
+ */
+export type userApiV1AuthUserPostResponse200 = {
   data: ApiResponseAuthSessionData
   status: 200
 }
@@ -490,18 +498,15 @@ export const getUserApiV1AuthUserPostUrl = () => {
   return `/api/v1/auth/user`
 }
 
-/**
- * 读取当前 token/device_key 对应的用户会话信息。
- * @summary 当前用户
- */
-export const userApiV1AuthUserPost = async (logoutRequest?: LogoutRequest, options?: RequestInit): Promise<userApiV1AuthUserPostResponse> => {
+export const userApiV1AuthUserPost = async (logoutRequest: LogoutRequest, options?: RequestInit): Promise<userApiV1AuthUserPostResponse> => {
 
   return orvalApiClient<userApiV1AuthUserPostResponse>(getUserApiV1AuthUserPostUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(logoutRequest)
+    body: JSON.stringify(
+      logoutRequest,)
   }
 );}
 
@@ -509,8 +514,8 @@ export const userApiV1AuthUserPost = async (logoutRequest?: LogoutRequest, optio
 
 
 export const getUserApiV1AuthUserPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data: LogoutRequest}, TContext> => {
 
 const mutationKey = ['userApiV1AuthUserPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -522,7 +527,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, {data?: LogoutRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, {data: LogoutRequest}> = (props) => {
           const {data} = props ?? {};
 
           return  userApiV1AuthUserPost(data,requestOptions)
@@ -536,18 +541,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type UserApiV1AuthUserPostMutationResult = NonNullable<Awaited<ReturnType<typeof userApiV1AuthUserPost>>>
-    export type UserApiV1AuthUserPostMutationBody = LogoutRequest | undefined
+    export type UserApiV1AuthUserPostMutationBody = LogoutRequest
     export type UserApiV1AuthUserPostMutationError = ErrorResponse
 
     /**
  * @summary 当前用户
  */
 export const useUserApiV1AuthUserPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof userApiV1AuthUserPost>>,
         TError,
-        {data?: LogoutRequest},
+        {data: LogoutRequest},
         TContext
       > => {
       return useMutation(getUserApiV1AuthUserPostMutationOptions(options), queryClient);

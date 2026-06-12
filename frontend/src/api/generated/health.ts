@@ -32,6 +32,10 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * 返回后端服务的健康状态。
+ * @summary 健康检查
+ */
 export type healthCheckApiHealthGetResponse200 = {
   data: ApiResponseHealthData
   status: 200
@@ -59,10 +63,6 @@ export const getHealthCheckApiHealthGetUrl = () => {
   return `/api/health`
 }
 
-/**
- * 返回后端服务的健康状态。
- * @summary 健康检查
- */
 export const healthCheckApiHealthGet = async ( options?: RequestInit): Promise<healthCheckApiHealthGetResponse> => {
 
   return orvalApiClient<healthCheckApiHealthGetResponse>(getHealthCheckApiHealthGetUrl(),

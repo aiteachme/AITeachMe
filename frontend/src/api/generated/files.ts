@@ -44,6 +44,9 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * @summary Upload files to the user library and start parsing immediately
+ */
 export type uploadUserFilesApiV1FilesUploadPostResponse200 = {
   data: ApiResponseFilesUploadData
   status: 200
@@ -86,9 +89,6 @@ export const getUploadUserFilesApiV1FilesUploadPostUrl = () => {
   return `/api/v1/files/upload`
 }
 
-/**
- * @summary Upload files to the user library and start parsing immediately
- */
 export const uploadUserFilesApiV1FilesUploadPost = async (bodyUploadUserFilesApiV1FilesUploadPost: BodyUploadUserFilesApiV1FilesUploadPost, options?: RequestInit): Promise<uploadUserFilesApiV1FilesUploadPostResponse> => {
     const formData = new FormData();
 bodyUploadUserFilesApiV1FilesUploadPost.files.forEach(value => formData.append(`files`, value));
@@ -119,7 +119,8 @@ if(bodyUploadUserFilesApiV1FilesUploadPost.mineru_is_ocr !== undefined && bodyUp
     ...options,
     method: 'POST'
     ,
-    body: formData
+    body:
+      formData,
   }
 );}
 
@@ -170,7 +171,10 @@ export const useUploadUserFilesApiV1FilesUploadPost = <TError = ErrorResponse,
       > => {
       return useMutation(getUploadUserFilesApiV1FilesUploadPostMutationOptions(options), queryClient);
     }
-    export type listUserFilesApiApiV1FilesGetResponse200 = {
+    /**
+ * @summary Get user library files with full data
+ */
+export type listUserFilesApiApiV1FilesGetResponse200 = {
   data: ApiResponseFilesData
   status: 200
 }
@@ -214,9 +218,6 @@ export const getListUserFilesApiApiV1FilesGetUrl = (params?: ListUserFilesApiApi
   return stringifiedParams.length > 0 ? `/api/v1/files?${stringifiedParams}` : `/api/v1/files`
 }
 
-/**
- * @summary Get user library files with full data
- */
 export const listUserFilesApiApiV1FilesGet = async (params?: ListUserFilesApiApiV1FilesGetParams, options?: RequestInit): Promise<listUserFilesApiApiV1FilesGetResponse> => {
 
   return orvalApiClient<listUserFilesApiApiV1FilesGetResponse>(getListUserFilesApiApiV1FilesGetUrl(params),
@@ -306,6 +307,9 @@ export function useListUserFilesApiApiV1FilesGet<TData = Awaited<ReturnType<type
 
 
 
+/**
+ * @summary Delete files from the user library
+ */
 export type deleteUserFilesApiApiV1FilesDeletePostResponse200 = {
   data: ApiResponseFileDeleteData
   status: 200
@@ -353,9 +357,6 @@ export const getDeleteUserFilesApiApiV1FilesDeletePostUrl = () => {
   return `/api/v1/files/delete`
 }
 
-/**
- * @summary Delete files from the user library
- */
 export const deleteUserFilesApiApiV1FilesDeletePost = async (fileDeleteRequest: FileDeleteRequest, options?: RequestInit): Promise<deleteUserFilesApiApiV1FilesDeletePostResponse> => {
 
   return orvalApiClient<deleteUserFilesApiApiV1FilesDeletePostResponse>(getDeleteUserFilesApiApiV1FilesDeletePostUrl(),
@@ -363,7 +364,8 @@ export const deleteUserFilesApiApiV1FilesDeletePost = async (fileDeleteRequest: 
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(fileDeleteRequest)
+    body: JSON.stringify(
+      fileDeleteRequest,)
   }
 );}
 
@@ -414,7 +416,10 @@ export const useDeleteUserFilesApiApiV1FilesDeletePost = <TError = ErrorResponse
       > => {
       return useMutation(getDeleteUserFilesApiApiV1FilesDeletePostMutationOptions(options), queryClient);
     }
-    export type downloadUserFileApiV1FilesFileIdDownloadGetResponse200 = {
+    /**
+ * @summary Download parsed markdown file
+ */
+export type downloadUserFileApiV1FilesFileIdDownloadGetResponse200 = {
   data: unknown
   status: 200
 }
@@ -451,9 +456,6 @@ export const getDownloadUserFileApiV1FilesFileIdDownloadGetUrl = (fileId: string
   return `/api/v1/files/${fileId}/download`
 }
 
-/**
- * @summary Download parsed markdown file
- */
 export const downloadUserFileApiV1FilesFileIdDownloadGet = async (fileId: string, options?: RequestInit): Promise<downloadUserFileApiV1FilesFileIdDownloadGetResponse> => {
 
   return orvalApiClient<downloadUserFileApiV1FilesFileIdDownloadGetResponse>(getDownloadUserFileApiV1FilesFileIdDownloadGetUrl(fileId),
@@ -491,7 +493,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(fileId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type DownloadUserFileApiV1FilesFileIdDownloadGetQueryResult = NonNullable<Awaited<ReturnType<typeof downloadUserFileApiV1FilesFileIdDownloadGet>>>
@@ -543,6 +545,9 @@ export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<R
 
 
 
+/**
+ * @summary Serve a parsed asset for a user-library file
+ */
 export type serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGetResponse200 = {
   data: unknown
   status: 200
@@ -581,9 +586,6 @@ export const getServeUserFileAssetApiV1FilesAssetsFileIdAssetPathGetUrl = (fileI
   return `/api/v1/files/assets/${fileId}/${assetPath}`
 }
 
-/**
- * @summary Serve a parsed asset for a user-library file
- */
 export const serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGet = async (fileId: string,
     assetPath: string, options?: RequestInit): Promise<serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGetResponse> => {
 
@@ -624,7 +626,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: fileId !== null && fileId !== undefined && assetPath !== null && assetPath !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(fileId && assetPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ServeUserFileAssetApiV1FilesAssetsFileIdAssetPathGetQueryResult = NonNullable<Awaited<ReturnType<typeof serveUserFileAssetApiV1FilesAssetsFileIdAssetPathGet>>>
@@ -680,6 +682,9 @@ export function useServeUserFileAssetApiV1FilesAssetsFileIdAssetPathGet<TData = 
 
 
 
+/**
+ * @summary Upload files and start parsing immediately
+ */
 export type uploadFilesApiV1CoursesCourseIdFilesUploadPostResponse200 = {
   data: ApiResponseFilesUploadData
   status: 200
@@ -727,9 +732,6 @@ export const getUploadFilesApiV1CoursesCourseIdFilesUploadPostUrl = (courseId: s
   return `/api/v1/courses/${courseId}/files/upload`
 }
 
-/**
- * @summary Upload files and start parsing immediately
- */
 export const uploadFilesApiV1CoursesCourseIdFilesUploadPost = async (courseId: string,
     bodyUploadFilesApiV1CoursesCourseIdFilesUploadPost: BodyUploadFilesApiV1CoursesCourseIdFilesUploadPost, options?: RequestInit): Promise<uploadFilesApiV1CoursesCourseIdFilesUploadPostResponse> => {
     const formData = new FormData();
@@ -761,7 +763,8 @@ if(bodyUploadFilesApiV1CoursesCourseIdFilesUploadPost.mineru_is_ocr !== undefine
     ...options,
     method: 'POST'
     ,
-    body: formData
+    body:
+      formData,
   }
 );}
 
@@ -812,7 +815,10 @@ export const useUploadFilesApiV1CoursesCourseIdFilesUploadPost = <TError = Error
       > => {
       return useMutation(getUploadFilesApiV1CoursesCourseIdFilesUploadPostMutationOptions(options), queryClient);
     }
-    export type listFilesApiApiV1CoursesCourseIdFilesGetResponse200 = {
+    /**
+ * @summary Get all course files with full data
+ */
+export type listFilesApiApiV1CoursesCourseIdFilesGetResponse200 = {
   data: ApiResponseFilesData
   status: 200
 }
@@ -854,9 +860,6 @@ export const getListFilesApiApiV1CoursesCourseIdFilesGetUrl = (courseId: string,
   return `/api/v1/courses/${courseId}/files`
 }
 
-/**
- * @summary Get all course files with full data
- */
 export const listFilesApiApiV1CoursesCourseIdFilesGet = async (courseId: string, options?: RequestInit): Promise<listFilesApiApiV1CoursesCourseIdFilesGetResponse> => {
 
   return orvalApiClient<listFilesApiApiV1CoursesCourseIdFilesGetResponse>(getListFilesApiApiV1CoursesCourseIdFilesGetUrl(courseId),
@@ -894,7 +897,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFilesApiApiV1CoursesCourseIdFilesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFilesApiApiV1CoursesCourseIdFilesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ListFilesApiApiV1CoursesCourseIdFilesGetQueryResult = NonNullable<Awaited<ReturnType<typeof listFilesApiApiV1CoursesCourseIdFilesGet>>>
@@ -946,6 +949,9 @@ export function useListFilesApiApiV1CoursesCourseIdFilesGet<TData = Awaited<Retu
 
 
 
+/**
+ * @summary Link existing user files to a course
+ */
 export type linkFilesApiApiV1CoursesCourseIdFilesLinkPostResponse200 = {
   data: ApiResponseFilesData
   status: 200
@@ -988,9 +994,6 @@ export const getLinkFilesApiApiV1CoursesCourseIdFilesLinkPostUrl = (courseId: st
   return `/api/v1/courses/${courseId}/files/link`
 }
 
-/**
- * @summary Link existing user files to a course
- */
 export const linkFilesApiApiV1CoursesCourseIdFilesLinkPost = async (courseId: string,
     fileLinkRequest: FileLinkRequest, options?: RequestInit): Promise<linkFilesApiApiV1CoursesCourseIdFilesLinkPostResponse> => {
 
@@ -999,7 +1002,8 @@ export const linkFilesApiApiV1CoursesCourseIdFilesLinkPost = async (courseId: st
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(fileLinkRequest)
+    body: JSON.stringify(
+      fileLinkRequest,)
   }
 );}
 
@@ -1050,7 +1054,10 @@ export const useLinkFilesApiApiV1CoursesCourseIdFilesLinkPost = <TError = ErrorR
       > => {
       return useMutation(getLinkFilesApiApiV1CoursesCourseIdFilesLinkPostMutationOptions(options), queryClient);
     }
-    export type deleteFilesApiApiV1CoursesCourseIdFilesDeletePostResponse200 = {
+    /**
+ * @summary Delete files
+ */
+export type deleteFilesApiApiV1CoursesCourseIdFilesDeletePostResponse200 = {
   data: ApiResponseFileDeleteData
   status: 200
 }
@@ -1097,9 +1104,6 @@ export const getDeleteFilesApiApiV1CoursesCourseIdFilesDeletePostUrl = (courseId
   return `/api/v1/courses/${courseId}/files/delete`
 }
 
-/**
- * @summary Delete files
- */
 export const deleteFilesApiApiV1CoursesCourseIdFilesDeletePost = async (courseId: string,
     fileDeleteRequest: FileDeleteRequest, options?: RequestInit): Promise<deleteFilesApiApiV1CoursesCourseIdFilesDeletePostResponse> => {
 
@@ -1108,7 +1112,8 @@ export const deleteFilesApiApiV1CoursesCourseIdFilesDeletePost = async (courseId
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(fileDeleteRequest)
+    body: JSON.stringify(
+      fileDeleteRequest,)
   }
 );}
 
@@ -1159,7 +1164,13 @@ export const useDeleteFilesApiApiV1CoursesCourseIdFilesDeletePost = <TError = Er
       > => {
       return useMutation(getDeleteFilesApiApiV1CoursesCourseIdFilesDeletePostMutationOptions(options), queryClient);
     }
-    export type serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetResponse200 = {
+    /**
+ * 代理访问文件资产。
+
+通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
+ * @summary Serve file asset (images, etc.)
+ */
+export type serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetResponse200 = {
   data: unknown
   status: 200
 }
@@ -1197,12 +1208,6 @@ export const getServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetUrl = (
   return `/api/v1/courses/${courseId}/files/assets/${assetPath}`
 }
 
-/**
- * 代理访问文件资产。
-
-通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
- * @summary Serve file asset (images, etc.)
- */
 export const serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet = async (courseId: string,
     assetPath: string, options?: RequestInit): Promise<serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetResponse> => {
 
@@ -1243,7 +1248,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && assetPath !== null && assetPath !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(courseId && assetPath), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetQueryResult = NonNullable<Awaited<ReturnType<typeof serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet>>>

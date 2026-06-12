@@ -42,6 +42,10 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * 返回前端初始化所需的运行时信息。
+ * @summary 初始化系统信息
+ */
 export type initSystemApiV1SystemInitPostResponse200 = {
   data: ApiResponseInitData
   status: 200
@@ -74,18 +78,15 @@ export const getInitSystemApiV1SystemInitPostUrl = () => {
   return `/api/v1/system/init`
 }
 
-/**
- * 返回前端初始化所需的运行时信息。
- * @summary 初始化系统信息
- */
-export const initSystemApiV1SystemInitPost = async (initRequest?: InitRequest, options?: RequestInit): Promise<initSystemApiV1SystemInitPostResponse> => {
+export const initSystemApiV1SystemInitPost = async (initRequest: InitRequest, options?: RequestInit): Promise<initSystemApiV1SystemInitPostResponse> => {
 
   return orvalApiClient<initSystemApiV1SystemInitPostResponse>(getInitSystemApiV1SystemInitPostUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(initRequest)
+    body: JSON.stringify(
+      initRequest,)
   }
 );}
 
@@ -93,8 +94,8 @@ export const initSystemApiV1SystemInitPost = async (initRequest?: InitRequest, o
 
 
 export const getInitSystemApiV1SystemInitPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data?: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data?: InitRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data: InitRequest}, TContext> => {
 
 const mutationKey = ['initSystemApiV1SystemInitPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -106,7 +107,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, {data?: InitRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, {data: InitRequest}> = (props) => {
           const {data} = props ?? {};
 
           return  initSystemApiV1SystemInitPost(data,requestOptions)
@@ -120,23 +121,27 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type InitSystemApiV1SystemInitPostMutationResult = NonNullable<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>>
-    export type InitSystemApiV1SystemInitPostMutationBody = InitRequest | undefined
+    export type InitSystemApiV1SystemInitPostMutationBody = InitRequest
     export type InitSystemApiV1SystemInitPostMutationError = HTTPValidationError | ErrorResponse
 
     /**
  * @summary 初始化系统信息
  */
 export const useInitSystemApiV1SystemInitPost = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data?: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof initSystemApiV1SystemInitPost>>,
         TError,
-        {data?: InitRequest},
+        {data: InitRequest},
         TContext
       > => {
       return useMutation(getInitSystemApiV1SystemInitPostMutationOptions(options), queryClient);
     }
-    export type getCommunityWechatQrApiV1SystemCommunityWechatQrGetResponse200 = {
+    /**
+ * 从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。
+ * @summary 读取社区微信二维码
+ */
+export type getCommunityWechatQrApiV1SystemCommunityWechatQrGetResponse200 = {
   data: unknown
   status: 200
 }
@@ -168,10 +173,6 @@ export const getGetCommunityWechatQrApiV1SystemCommunityWechatQrGetUrl = () => {
   return `/api/v1/system/community/wechat-qr`
 }
 
-/**
- * 从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。
- * @summary 读取社区微信二维码
- */
 export const getCommunityWechatQrApiV1SystemCommunityWechatQrGet = async ( options?: RequestInit): Promise<getCommunityWechatQrApiV1SystemCommunityWechatQrGetResponse> => {
 
   return orvalApiClient<getCommunityWechatQrApiV1SystemCommunityWechatQrGetResponse>(getGetCommunityWechatQrApiV1SystemCommunityWechatQrGetUrl(),
@@ -261,6 +262,10 @@ export function useGetCommunityWechatQrApiV1SystemCommunityWechatQrGet<TData = A
 
 
 
+/**
+ * 返回环境变量、代码默认值与可选项目 settings override 合并后的只读设置概览。
+ * @summary 读取后端设置总览
+ */
 export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {
   data: ApiResponseSettingsOverviewData
   status: 200
@@ -293,18 +298,15 @@ export const getGetSystemSettingsApiV1SystemSettingsPostUrl = () => {
   return `/api/v1/system/settings`
 }
 
-/**
- * 返回环境变量、代码默认值与可选项目 settings override 合并后的只读设置概览。
- * @summary 读取后端设置总览
- */
-export const getSystemSettingsApiV1SystemSettingsPost = async (initRequest?: InitRequest, options?: RequestInit): Promise<getSystemSettingsApiV1SystemSettingsPostResponse> => {
+export const getSystemSettingsApiV1SystemSettingsPost = async (initRequest: InitRequest, options?: RequestInit): Promise<getSystemSettingsApiV1SystemSettingsPostResponse> => {
 
   return orvalApiClient<getSystemSettingsApiV1SystemSettingsPostResponse>(getGetSystemSettingsApiV1SystemSettingsPostUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(initRequest)
+    body: JSON.stringify(
+      initRequest,)
   }
 );}
 
@@ -312,8 +314,8 @@ export const getSystemSettingsApiV1SystemSettingsPost = async (initRequest?: Ini
 
 
 export const getGetSystemSettingsApiV1SystemSettingsPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data?: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data?: InitRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext> => {
 
 const mutationKey = ['getSystemSettingsApiV1SystemSettingsPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -325,7 +327,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, {data?: InitRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, {data: InitRequest}> = (props) => {
           const {data} = props ?? {};
 
           return  getSystemSettingsApiV1SystemSettingsPost(data,requestOptions)
@@ -339,23 +341,27 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type GetSystemSettingsApiV1SystemSettingsPostMutationResult = NonNullable<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>>
-    export type GetSystemSettingsApiV1SystemSettingsPostMutationBody = InitRequest | undefined
+    export type GetSystemSettingsApiV1SystemSettingsPostMutationBody = InitRequest
     export type GetSystemSettingsApiV1SystemSettingsPostMutationError = HTTPValidationError | ErrorResponse
 
     /**
  * @summary 读取后端设置总览
  */
 export const useGetSystemSettingsApiV1SystemSettingsPost = <TError = HTTPValidationError | ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data?: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>, TError,{data: InitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof getSystemSettingsApiV1SystemSettingsPost>>,
         TError,
-        {data?: InitRequest},
+        {data: InitRequest},
         TContext
       > => {
       return useMutation(getGetSystemSettingsApiV1SystemSettingsPostMutationOptions(options), queryClient);
     }
-    export type updateSystemSettingsApiV1SystemSettingsPatchResponse200 = {
+    /**
+ * 本地模式下保存非敏感系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。
+ * @summary 更新本地模式服务端设置
+ */
+export type updateSystemSettingsApiV1SystemSettingsPatchResponse200 = {
   data: ApiResponseSettingsOverviewData
   status: 200
 }
@@ -387,10 +393,6 @@ export const getUpdateSystemSettingsApiV1SystemSettingsPatchUrl = () => {
   return `/api/v1/system/settings`
 }
 
-/**
- * 本地模式下保存非敏感系统设置覆盖，并可写回本地 .env；云端普通用户无写权限。
- * @summary 更新本地模式服务端设置
- */
 export const updateSystemSettingsApiV1SystemSettingsPatch = async (updateUserSettingsRequest: UpdateUserSettingsRequest, options?: RequestInit): Promise<updateSystemSettingsApiV1SystemSettingsPatchResponse> => {
 
   return orvalApiClient<updateSystemSettingsApiV1SystemSettingsPatchResponse>(getUpdateSystemSettingsApiV1SystemSettingsPatchUrl(),
@@ -398,7 +400,8 @@ export const updateSystemSettingsApiV1SystemSettingsPatch = async (updateUserSet
     ...options,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(updateUserSettingsRequest)
+    body: JSON.stringify(
+      updateUserSettingsRequest,)
   }
 );}
 
@@ -449,7 +452,11 @@ export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorRe
       > => {
       return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
     }
-    export type submitFeedbackApiV1SystemFeedbackPostResponse200 = {
+    /**
+ * 接收用户的意见反馈及可选截图。
+ * @summary 提交意见反馈
+ */
+export type submitFeedbackApiV1SystemFeedbackPostResponse200 = {
   data: ApiResponseBool
   status: 200
 }
@@ -481,10 +488,6 @@ export const getSubmitFeedbackApiV1SystemFeedbackPostUrl = () => {
   return `/api/v1/system/feedback`
 }
 
-/**
- * 接收用户的意见反馈及可选截图。
- * @summary 提交意见反馈
- */
 export const submitFeedbackApiV1SystemFeedbackPost = async (feedbackRequest: FeedbackRequest, options?: RequestInit): Promise<submitFeedbackApiV1SystemFeedbackPostResponse> => {
 
   return orvalApiClient<submitFeedbackApiV1SystemFeedbackPostResponse>(getSubmitFeedbackApiV1SystemFeedbackPostUrl(),
@@ -492,7 +495,8 @@ export const submitFeedbackApiV1SystemFeedbackPost = async (feedbackRequest: Fee
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(feedbackRequest)
+    body: JSON.stringify(
+      feedbackRequest,)
   }
 );}
 

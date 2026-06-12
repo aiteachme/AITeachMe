@@ -40,6 +40,9 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * @summary Fetch mastery overview
+ */
 export type masteryOverviewApiV1CoursesCourseIdProfileMasteryGetResponse200 = {
   data: ApiResponseMasteryOverviewResponse
   status: 200
@@ -82,9 +85,6 @@ export const getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetUrl = (cours
   return `/api/v1/courses/${courseId}/profile/mastery`
 }
 
-/**
- * @summary Fetch mastery overview
- */
 export const masteryOverviewApiV1CoursesCourseIdProfileMasteryGet = async (courseId: string, options?: RequestInit): Promise<masteryOverviewApiV1CoursesCourseIdProfileMasteryGetResponse> => {
 
   return orvalApiClient<masteryOverviewApiV1CoursesCourseIdProfileMasteryGetResponse>(getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetUrl(courseId),
@@ -122,7 +122,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1CoursesCourseIdProfileMasteryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof masteryOverviewApiV1CoursesCourseIdProfileMasteryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type MasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryResult = NonNullable<Awaited<ReturnType<typeof masteryOverviewApiV1CoursesCourseIdProfileMasteryGet>>>
@@ -174,6 +174,9 @@ export function useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet<TData = 
 
 
 
+/**
+ * @summary Generate current study plan
+ */
 export type studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse200 = {
   data: ApiResponseListStudyPlanStepResponse
   status: 200
@@ -216,9 +219,6 @@ export const getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetUrl = (courseId:
   return `/api/v1/courses/${courseId}/profile/study-plan`
 }
 
-/**
- * @summary Generate current study plan
- */
 export const studyPlanApiV1CoursesCourseIdProfileStudyPlanGet = async (courseId: string, options?: RequestInit): Promise<studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse> => {
 
   return orvalApiClient<studyPlanApiV1CoursesCourseIdProfileStudyPlanGetResponse>(getStudyPlanApiV1CoursesCourseIdProfileStudyPlanGetUrl(courseId),
@@ -256,7 +256,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type StudyPlanApiV1CoursesCourseIdProfileStudyPlanGetQueryResult = NonNullable<Awaited<ReturnType<typeof studyPlanApiV1CoursesCourseIdProfileStudyPlanGet>>>
@@ -308,6 +308,9 @@ export function useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet<TData = Awai
 
 
 
+/**
+ * @summary Fetch pending review tasks
+ */
 export type reviewTasksApiV1CoursesCourseIdProfileReviewsGetResponse200 = {
   data: ApiResponseListReviewTaskResponse
   status: 200
@@ -350,9 +353,6 @@ export const getReviewTasksApiV1CoursesCourseIdProfileReviewsGetUrl = (courseId:
   return `/api/v1/courses/${courseId}/profile/reviews`
 }
 
-/**
- * @summary Fetch pending review tasks
- */
 export const reviewTasksApiV1CoursesCourseIdProfileReviewsGet = async (courseId: string, options?: RequestInit): Promise<reviewTasksApiV1CoursesCourseIdProfileReviewsGetResponse> => {
 
   return orvalApiClient<reviewTasksApiV1CoursesCourseIdProfileReviewsGetResponse>(getReviewTasksApiV1CoursesCourseIdProfileReviewsGetUrl(courseId),
@@ -390,7 +390,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1CoursesCourseIdProfileReviewsGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof reviewTasksApiV1CoursesCourseIdProfileReviewsGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ReviewTasksApiV1CoursesCourseIdProfileReviewsGetQueryResult = NonNullable<Awaited<ReturnType<typeof reviewTasksApiV1CoursesCourseIdProfileReviewsGet>>>
@@ -442,6 +442,9 @@ export function useReviewTasksApiV1CoursesCourseIdProfileReviewsGet<TData = Awai
 
 
 
+/**
+ * @summary Mark one review task as completed
+ */
 export type completeReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePostResponse200 = {
   data: ApiResponseReviewTaskResponse
   status: 200
@@ -485,9 +488,6 @@ export const getCompleteReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePo
   return `/api/v1/courses/${courseId}/profile/reviews/${taskId}/complete`
 }
 
-/**
- * @summary Mark one review task as completed
- */
 export const completeReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePost = async (courseId: string,
     taskId: number, options?: RequestInit): Promise<completeReviewApiV1CoursesCourseIdProfileReviewsTaskIdCompletePostResponse> => {
 

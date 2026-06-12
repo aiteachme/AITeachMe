@@ -42,6 +42,10 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
+/**
+ * 获取课程导出内容摘要。
+ * @summary 导出预览
+ */
 export type exportPreviewApiApiV1CoursesCourseIdExportPreviewPostResponse200 = {
   data: ApiResponseExportPreviewData
   status: 200
@@ -79,19 +83,16 @@ export const getExportPreviewApiApiV1CoursesCourseIdExportPreviewPostUrl = (cour
   return `/api/v1/courses/${courseId}/export/preview`
 }
 
-/**
- * 获取课程导出内容摘要。
- * @summary 导出预览
- */
 export const exportPreviewApiApiV1CoursesCourseIdExportPreviewPost = async (courseId: string,
-    exportOptions?: ExportOptions, options?: RequestInit): Promise<exportPreviewApiApiV1CoursesCourseIdExportPreviewPostResponse> => {
+    exportOptions: ExportOptions, options?: RequestInit): Promise<exportPreviewApiApiV1CoursesCourseIdExportPreviewPostResponse> => {
 
   return orvalApiClient<exportPreviewApiApiV1CoursesCourseIdExportPreviewPostResponse>(getExportPreviewApiApiV1CoursesCourseIdExportPreviewPostUrl(courseId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(exportOptions)
+    body: JSON.stringify(
+      exportOptions,)
   }
 );}
 
@@ -99,8 +100,8 @@ export const exportPreviewApiApiV1CoursesCourseIdExportPreviewPost = async (cour
 
 
 export const getExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data?: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data?: ExportOptions}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data: ExportOptions}, TContext> => {
 
 const mutationKey = ['exportPreviewApiApiV1CoursesCourseIdExportPreviewPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -112,7 +113,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, {courseId: string;data?: ExportOptions}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, {courseId: string;data: ExportOptions}> = (props) => {
           const {courseId,data} = props ?? {};
 
           return  exportPreviewApiApiV1CoursesCourseIdExportPreviewPost(courseId,data,requestOptions)
@@ -126,23 +127,27 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>>
-    export type ExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationBody = ExportOptions | undefined
+    export type ExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationBody = ExportOptions
     export type ExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 导出预览
  */
 export const useExportPreviewApiApiV1CoursesCourseIdExportPreviewPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data?: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>, TError,{courseId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof exportPreviewApiApiV1CoursesCourseIdExportPreviewPost>>,
         TError,
-        {courseId: string;data?: ExportOptions},
+        {courseId: string;data: ExportOptions},
         TContext
       > => {
       return useMutation(getExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationOptions(options), queryClient);
     }
-    export type exportCourseApiApiV1CoursesCourseIdExportPostResponse200 = {
+    /**
+ * 将课程全部产物打包为 .atmx 文件下载。
+ * @summary 导出课程
+ */
+export type exportCourseApiApiV1CoursesCourseIdExportPostResponse200 = {
   data: unknown
   status: 200
 }
@@ -179,19 +184,16 @@ export const getExportCourseApiApiV1CoursesCourseIdExportPostUrl = (courseId: st
   return `/api/v1/courses/${courseId}/export`
 }
 
-/**
- * 将课程全部产物打包为 .atmx 文件下载。
- * @summary 导出课程
- */
 export const exportCourseApiApiV1CoursesCourseIdExportPost = async (courseId: string,
-    exportOptions?: ExportOptions, options?: RequestInit): Promise<exportCourseApiApiV1CoursesCourseIdExportPostResponse> => {
+    exportOptions: ExportOptions, options?: RequestInit): Promise<exportCourseApiApiV1CoursesCourseIdExportPostResponse> => {
 
   return orvalApiClient<exportCourseApiApiV1CoursesCourseIdExportPostResponse>(getExportCourseApiApiV1CoursesCourseIdExportPostUrl(courseId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(exportOptions)
+    body: JSON.stringify(
+      exportOptions,)
   }
 );}
 
@@ -199,8 +201,8 @@ export const exportCourseApiApiV1CoursesCourseIdExportPost = async (courseId: st
 
 
 export const getExportCourseApiApiV1CoursesCourseIdExportPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data?: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data?: ExportOptions}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data: ExportOptions}, TContext> => {
 
 const mutationKey = ['exportCourseApiApiV1CoursesCourseIdExportPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -212,7 +214,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, {courseId: string;data?: ExportOptions}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, {courseId: string;data: ExportOptions}> = (props) => {
           const {courseId,data} = props ?? {};
 
           return  exportCourseApiApiV1CoursesCourseIdExportPost(courseId,data,requestOptions)
@@ -226,23 +228,27 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ExportCourseApiApiV1CoursesCourseIdExportPostMutationResult = NonNullable<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>>
-    export type ExportCourseApiApiV1CoursesCourseIdExportPostMutationBody = ExportOptions | undefined
+    export type ExportCourseApiApiV1CoursesCourseIdExportPostMutationBody = ExportOptions
     export type ExportCourseApiApiV1CoursesCourseIdExportPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 导出课程
  */
 export const useExportCourseApiApiV1CoursesCourseIdExportPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data?: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>, TError,{courseId: string;data: ExportOptions}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof exportCourseApiApiV1CoursesCourseIdExportPost>>,
         TError,
-        {courseId: string;data?: ExportOptions},
+        {courseId: string;data: ExportOptions},
         TContext
       > => {
       return useMutation(getExportCourseApiApiV1CoursesCourseIdExportPostMutationOptions(options), queryClient);
     }
-    export type importUploadedCourseApiApiV1CoursesImportPostResponse200 = {
+    /**
+ * 从上传的 .atmx 文件导入课程。
+ * @summary 导入课程（上传）
+ */
+export type importUploadedCourseApiApiV1CoursesImportPostResponse200 = {
   data: ApiResponseImportResultData
   status: 200
 }
@@ -289,10 +295,6 @@ export const getImportUploadedCourseApiApiV1CoursesImportPostUrl = () => {
   return `/api/v1/courses/import`
 }
 
-/**
- * 从上传的 .atmx 文件导入课程。
- * @summary 导入课程（上传）
- */
 export const importUploadedCourseApiApiV1CoursesImportPost = async (bodyImportUploadedCourseApiApiV1CoursesImportPost: BodyImportUploadedCourseApiApiV1CoursesImportPost, options?: RequestInit): Promise<importUploadedCourseApiApiV1CoursesImportPostResponse> => {
     const formData = new FormData();
 formData.append(`file`, bodyImportUploadedCourseApiApiV1CoursesImportPost.file);
@@ -305,7 +307,8 @@ if(bodyImportUploadedCourseApiApiV1CoursesImportPost.new_course_name !== undefin
     ...options,
     method: 'POST'
     ,
-    body: formData
+    body:
+      formData,
   }
 );}
 
@@ -356,7 +359,11 @@ export const useImportUploadedCourseApiApiV1CoursesImportPost = <TError = ErrorR
       > => {
       return useMutation(getImportUploadedCourseApiApiV1CoursesImportPostMutationOptions(options), queryClient);
     }
-    export type listDemoCoursesApiApiV1DemoCoursesGetResponse200 = {
+    /**
+ * 列出线上演示课程目录中的课程包。
+ * @summary 列出演示课程
+ */
+export type listDemoCoursesApiApiV1DemoCoursesGetResponse200 = {
   data: ApiResponseListCoursePackageItem
   status: 200
 }
@@ -388,10 +395,6 @@ export const getListDemoCoursesApiApiV1DemoCoursesGetUrl = () => {
   return `/api/v1/demo-courses`
 }
 
-/**
- * 列出线上演示课程目录中的课程包。
- * @summary 列出演示课程
- */
 export const listDemoCoursesApiApiV1DemoCoursesGet = async ( options?: RequestInit): Promise<listDemoCoursesApiApiV1DemoCoursesGetResponse> => {
 
   return orvalApiClient<listDemoCoursesApiApiV1DemoCoursesGetResponse>(getListDemoCoursesApiApiV1DemoCoursesGetUrl(),
@@ -481,6 +484,10 @@ export function useListDemoCoursesApiApiV1DemoCoursesGet<TData = Awaited<ReturnT
 
 
 
+/**
+ * 从线上演示课程目录下载 `.atmx` 后导入。
+ * @summary 从演示课程导入
+ */
 export type importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse200 = {
   data: ApiResponseImportResultData
   status: 200
@@ -528,19 +535,16 @@ export const getImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostUrl = (id
   return `/api/v1/demo-courses/${identifier}/import`
 }
 
-/**
- * 从线上演示课程目录下载 `.atmx` 后导入。
- * @summary 从演示课程导入
- */
 export const importDemoCourseApiApiV1DemoCoursesIdentifierImportPost = async (identifier: string,
-    bodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost, options?: RequestInit): Promise<importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse> => {
+    bodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost, options?: RequestInit): Promise<importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse> => {
 
   return orvalApiClient<importDemoCourseApiApiV1DemoCoursesIdentifierImportPostResponse>(getImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostUrl(identifier),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(bodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost)
+    body: JSON.stringify(
+      bodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost,)
   }
 );}
 
@@ -548,8 +552,8 @@ export const importDemoCourseApiApiV1DemoCoursesIdentifierImportPost = async (id
 
 
 export const getImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext> => {
 
 const mutationKey = ['importDemoCourseApiApiV1DemoCoursesIdentifierImportPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -561,7 +565,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, {identifier: string;data?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, {identifier: string;data: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}> = (props) => {
           const {identifier,data} = props ?? {};
 
           return  importDemoCourseApiApiV1DemoCoursesIdentifierImportPost(identifier,data,requestOptions)
@@ -575,18 +579,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationResult = NonNullable<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>>
-    export type ImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationBody = BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost | undefined
+    export type ImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationBody = BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost
     export type ImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationError = ErrorResponse
 
     /**
  * @summary 从演示课程导入
  */
 export const useImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>, TError,{identifier: string;data: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof importDemoCourseApiApiV1DemoCoursesIdentifierImportPost>>,
         TError,
-        {identifier: string;data?: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost},
+        {identifier: string;data: BodyImportDemoCourseApiApiV1DemoCoursesIdentifierImportPost},
         TContext
       > => {
       return useMutation(getImportDemoCourseApiApiV1DemoCoursesIdentifierImportPostMutationOptions(options), queryClient);
