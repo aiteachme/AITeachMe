@@ -704,68 +704,54 @@ export function CourseDashboardPage() {
               (!isBuilt || isDocGenerating) ? (
                 <>
                   {/* Desktop Connector - Disabled */}
-                  <div
-                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-0 pointer-events-auto cursor-not-allowed hidden md:flex items-center justify-center w-[56px]"
-                    title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
-                  >
-                    {/* Background Track */}
-                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] border-t-2 border-dashed border-slate-200 dark:border-slate-800 w-full" />
-                    {/* Circle Node */}
-                    <div className="relative w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
-                      <ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600 stroke-[3]" />
+                  <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-10 pointer-events-none hidden md:flex">
+                    <div className="absolute w-full h-[2px] bg-slate-200 dark:bg-slate-800/60" />
+                    <div 
+                      className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
+                      title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
+                    >
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
+                      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 stroke-[3]" />
                     </div>
                   </div>
                   {/* Mobile Connector - Disabled */}
-                  <div
-                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-0 pointer-events-auto cursor-not-allowed block md:hidden h-[24px] flex items-center justify-center"
-                    title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
-                  >
-                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] border-l-2 border-dashed border-slate-200 dark:border-slate-800 h-full" />
-                    <div className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
-                      <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
+                  <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-10 pointer-events-none block md:hidden">
+                    <div className="absolute h-full w-[2px] bg-slate-200 dark:bg-slate-800/60" />
+                    <div 
+                      className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
+                      title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
+                    >
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   {/* Desktop Connector */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(buildCoursePath(courseId, "exams"));
-                    }}
-                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hidden md:flex items-center justify-center w-[56px] group/arrow"
-                    title="进入 训练中心"
-                  >
-                    {/* Background Track (Animated Dashed Line) */}
-                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] w-full overflow-hidden">
-                      <div className="w-[200%] h-full border-t-2 border-dashed border-indigo-300/60 dark:border-indigo-600/60 animate-[dash-scroll_3s_linear_infinite]" />
-                    </div>
-                    {/* Circle Node */}
-                    <div className="relative">
-                      <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 opacity-[0.25] blur-md animate-pulse" />
-                      <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-xl shadow-indigo-500/40 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow:scale-110 group-active/arrow:scale-95 transition-all duration-300">
-                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] group-hover/arrow:translate-x-0.5 transition-transform duration-300" />
-                      </div>
+                  <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-20 pointer-events-none hidden md:flex group/arrow">
+                    <div className="absolute w-full h-[2px] bg-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.3)] transition-colors" />
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "exams")); }}
+                      className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
+                      title="进入 训练中心"
+                    >
+                      <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-indigo-400/40 animate-ping opacity-50 duration-1000" />
+                      <div className="absolute inset-0 rounded-full border-[2px] border-indigo-500/30 group-hover/arrow:border-indigo-500/80 transition-colors duration-300" />
+                      <ChevronRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400 stroke-[3] group-hover/arrow:translate-x-[2px] transition-transform duration-300" />
                     </div>
                   </div>
                   {/* Mobile Connector */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(buildCoursePath(courseId, "exams"));
-                    }}
-                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer block md:hidden h-[24px] flex items-center justify-center group/arrow-v"
-                    title="进入 训练中心"
-                  >
-                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] h-full overflow-hidden">
-                      <div className="h-[200%] w-full border-l-2 border-dashed border-indigo-300/60 dark:border-indigo-600/60 animate-[dash-scroll-v_3s_linear_infinite]" />
-                    </div>
-                    <div className="relative">
-                      <div className="absolute inset-[-4px] rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 opacity-[0.25] blur-md animate-pulse" />
-                      <div className="relative w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-lg shadow-indigo-500/30 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-v:scale-110 transition-all duration-300">
-                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] rotate-90 group-hover/arrow-v:translate-y-0.5 transition-transform duration-300" />
-                      </div>
+                  <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-20 pointer-events-none block md:hidden group/arrow-v">
+                    <div className="absolute h-full w-[2px] bg-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.3)] transition-colors" />
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "exams")); }}
+                      className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
+                      title="进入 训练中心"
+                    >
+                      <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-indigo-400/40 animate-ping opacity-50 duration-1000" />
+                      <div className="absolute inset-0 rounded-full border-[2px] border-indigo-500/30 group-hover/arrow-v:border-indigo-500/80 transition-colors duration-300" />
+                      <ChevronRight className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[3] rotate-90 group-hover/arrow-v:translate-y-[2px] transition-transform duration-300" />
                     </div>
                   </div>
                 </>
@@ -828,64 +814,54 @@ export function CourseDashboardPage() {
               (!isBuilt || isDocGenerating || historyItems.length === 0) ? (
                 <>
                   {/* Desktop Connector - Disabled */}
-                  <div
-                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-0 pointer-events-auto cursor-not-allowed hidden md:flex items-center justify-center w-[56px]"
-                    title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
-                  >
-                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] border-t-2 border-dashed border-slate-200 dark:border-slate-800 w-full" />
-                    <div className="relative w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
-                      <ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600 stroke-[3]" />
+                  <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-10 pointer-events-none hidden md:flex">
+                    <div className="absolute w-full h-[2px] bg-slate-200 dark:bg-slate-800/60" />
+                    <div 
+                      className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
+                      title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                    >
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
+                      <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 stroke-[3]" />
                     </div>
                   </div>
                   {/* Mobile Connector - Disabled */}
-                  <div
-                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-0 pointer-events-auto cursor-not-allowed block md:hidden h-[24px] flex items-center justify-center"
-                    title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
-                  >
-                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] border-l-2 border-dashed border-slate-200 dark:border-slate-800 h-full" />
-                    <div className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
-                      <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
+                  <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-10 pointer-events-none block md:hidden">
+                    <div className="absolute h-full w-[2px] bg-slate-200 dark:bg-slate-800/60" />
+                    <div 
+                      className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
+                      title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                    >
+                      <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   {/* Desktop Connector */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(buildCoursePath(courseId, "profile"));
-                    }}
-                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hidden md:flex items-center justify-center w-[56px] group/arrow-2"
-                    title="进入 学习画像"
-                  >
-                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] w-full overflow-hidden">
-                      <div className="w-[200%] h-full border-t-2 border-dashed border-teal-300/60 dark:border-teal-600/60 animate-[dash-scroll_3s_linear_infinite]" />
-                    </div>
-                    <div className="relative">
-                      <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-violet-400 to-teal-400 opacity-[0.25] blur-md animate-pulse" />
-                      <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-teal-500 shadow-xl shadow-teal-500/40 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-2:scale-110 group-active/arrow-2:scale-95 transition-all duration-300">
-                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] group-hover/arrow-2:translate-x-0.5 transition-transform duration-300" />
-                      </div>
+                  <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-20 pointer-events-none hidden md:flex group/arrow-2">
+                    <div className="absolute w-full h-[2px] bg-teal-500/40 shadow-[0_0_10px_rgba(20,184,166,0.3)] transition-colors" />
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
+                      className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
+                      title="进入 学习画像"
+                    >
+                      <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-teal-400/40 animate-ping opacity-50 duration-1000" />
+                      <div className="absolute inset-0 rounded-full border-[2px] border-teal-500/30 group-hover/arrow-2:border-teal-500/80 transition-colors duration-300" />
+                      <ChevronRight className="w-4 h-4 text-teal-600 dark:text-teal-400 stroke-[3] group-hover/arrow-2:translate-x-[2px] transition-transform duration-300" />
                     </div>
                   </div>
                   {/* Mobile Connector */}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(buildCoursePath(courseId, "profile"));
-                    }}
-                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer block md:hidden h-[24px] flex items-center justify-center group/arrow-2-v"
-                    title="进入 学习画像"
-                  >
-                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] h-full overflow-hidden">
-                      <div className="h-[200%] w-full border-l-2 border-dashed border-teal-300/60 dark:border-teal-600/60 animate-[dash-scroll-v_3s_linear_infinite]" />
-                    </div>
-                    <div className="relative">
-                      <div className="absolute inset-[-4px] rounded-full bg-gradient-to-br from-violet-400 to-teal-400 opacity-[0.25] blur-md animate-pulse" />
-                      <div className="relative w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-teal-500 shadow-lg shadow-teal-500/30 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-2-v:scale-110 transition-all duration-300">
-                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] rotate-90 group-hover/arrow-2-v:translate-y-0.5 transition-transform duration-300" />
-                      </div>
+                  <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-20 pointer-events-none block md:hidden group/arrow-2-v">
+                    <div className="absolute h-full w-[2px] bg-teal-500/40 shadow-[0_0_10px_rgba(20,184,166,0.3)] transition-colors" />
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
+                      className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
+                      title="进入 学习画像"
+                    >
+                      <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-teal-400/40 animate-ping opacity-50 duration-1000" />
+                      <div className="absolute inset-0 rounded-full border-[2px] border-teal-500/30 group-hover/arrow-2-v:border-teal-500/80 transition-colors duration-300" />
+                      <ChevronRight className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 stroke-[3] rotate-90 group-hover/arrow-2-v:translate-y-[2px] transition-transform duration-300" />
                     </div>
                   </div>
                 </>
