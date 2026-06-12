@@ -91,6 +91,8 @@ function NavTile({
   previewContent,
   disabled = false,
   disabledReason,
+  badge,
+  connector,
 }: {
   icon: LucideIcon;
   title: string;
@@ -102,27 +104,29 @@ function NavTile({
   previewContent?: React.ReactNode;
   disabled?: boolean;
   disabledReason?: string;
+  badge?: React.ReactNode;
+  connector?: React.ReactNode;
 }) {
   const themeStyles = {
     indigo: {
-      border: "border-slate-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.06)]",
+      border: "border-slate-150/60 dark:border-slate-800 hover:border-indigo-305 dark:hover:border-indigo-900",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(99,102,241,0.04)]",
       iconContainer: "bg-indigo-500/10 text-indigo-655 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-500/10 dark:border-indigo-500/20 shadow-sm shadow-indigo-500/5",
-      gradient: "from-indigo-500/[0.01] via-transparent to-indigo-500/[0.03] dark:from-indigo-500/[0.005] dark:to-indigo-500/[0.01]",
+      gradient: "from-indigo-500/[0.005] via-transparent to-indigo-500/[0.02] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.006]",
       buttonClass: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800",
     },
     violet: {
-      border: "border-slate-100 dark:border-slate-800 hover:border-violet-305 dark:hover:border-violet-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_32px_rgba(139,92,246,0.06)]",
+      border: "border-slate-150/60 dark:border-slate-800 hover:border-violet-305 dark:hover:border-violet-900",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(139,92,246,0.04)]",
       iconContainer: "bg-violet-500/10 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400 border border-violet-500/10 dark:border-violet-500/20 shadow-sm shadow-violet-505/5",
-      gradient: "from-violet-500/[0.01] via-transparent to-violet-500/[0.03] dark:from-violet-500/[0.005] dark:to-violet-500/[0.01]",
+      gradient: "from-violet-500/[0.005] via-transparent to-violet-500/[0.02] dark:from-violet-500/[0.002] dark:to-violet-500/[0.006]",
       buttonClass: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-700 dark:hover:bg-violet-800",
     },
     teal: {
-      border: "border-slate-100 dark:border-slate-800 hover:border-teal-305 dark:hover:border-teal-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_32px_rgba(20,184,166,0.06)]",
+      border: "border-slate-150/60 dark:border-slate-800 hover:border-teal-305 dark:hover:border-teal-900",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(20,184,166,0.04)]",
       iconContainer: "bg-teal-500/10 text-teal-650 dark:bg-teal-950/50 dark:text-teal-400 border border-teal-500/10 dark:border-teal-500/20 shadow-sm shadow-teal-500/5",
-      gradient: "from-teal-500/[0.01] via-transparent to-teal-500/[0.03] dark:from-teal-500/[0.005] dark:to-teal-500/[0.01]",
+      gradient: "from-teal-500/[0.005] via-transparent to-teal-500/[0.02] dark:from-teal-500/[0.002] dark:to-teal-500/[0.006]",
       buttonClass: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-800",
     },
   }[theme];
@@ -131,12 +135,12 @@ function NavTile({
     <div
       onClick={!disabled ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between overflow-hidden rounded-3xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
+        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
         disabled
           ? "opacity-60 bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
-            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(99,102,241,0.08)] cursor-pointer"
-            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-1 hover:bg-white dark:hover:bg-slate-900 cursor-pointer")
+            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(99,102,241,0.06)] cursor-pointer"
+            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 hover:bg-white dark:hover:bg-slate-900 cursor-pointer")
       )}
     >
       {!disabled && (
@@ -146,39 +150,40 @@ function NavTile({
       {/* Top Part: Icon, Title, Description and Live Preview */}
       <div className="flex flex-col gap-4 relative z-10 w-full">
         <span className={cn(
-          "flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-500",
+          "flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-500",
           isGenerating
-            ? "bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/20 dark:text-indigo-300"
+            ? "bg-indigo-500/10 text-indigo-655 dark:bg-indigo-500/20 dark:text-indigo-300"
             : disabled
               ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
               : themeStyles.iconContainer
         )}>
           {isGenerating ? (
-            <Loader2 className="h-5.5 w-5.5 animate-spin" />
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : disabled ? (
-            <Lock className="h-5.5 w-5.5" strokeWidth={1.5} />
+            <Lock className="h-5 w-5" strokeWidth={1.5} />
           ) : (
-            <Icon className="h-5.5 w-5.5 transition-all duration-500 ease-out group-hover:scale-110 group-hover:rotate-3" strokeWidth={1.5} />
+            <Icon className="h-5 w-5 transition-all duration-500 ease-out group-hover:scale-105 group-hover:rotate-2" strokeWidth={1.5} />
           )}
         </span>
 
         <div className="space-y-2 w-full">
           <div className="flex items-center flex-wrap gap-2">
-            <h2 className="text-[17px] font-bold tracking-tight text-slate-850 dark:text-slate-100 transition-colors duration-300">
+            <h2 className="text-[16px] font-bold tracking-tight text-slate-850 dark:text-slate-100 transition-colors duration-300">
               {title}
             </h2>
+            {badge}
             {isGenerating && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-655 dark:bg-indigo-500/20 dark:text-indigo-300">
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 px-2 py-0.5 text-[9px] font-semibold text-indigo-655 dark:bg-indigo-500/20 dark:text-indigo-300">
                 正在构建
               </span>
             )}
             {disabled && disabledReason && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 dark:bg-amber-950/30 px-2.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 dark:bg-amber-950/30 px-2 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-400">
                 {disabledReason}
               </span>
             )}
           </div>
-          <p className="text-[13.5px] leading-relaxed text-slate-500 dark:text-slate-450 font-light">
+          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-450 font-light">
             {description}
           </p>
 
@@ -199,17 +204,18 @@ function NavTile({
         {!disabled && (
           <Button
             type="button"
-            className={cn("h-8 rounded-xl px-4 text-xs font-bold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonClass)}
+            className={cn("h-7.5 rounded-lg px-3.5 text-xs font-semibold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonClass)}
             onClick={(e) => {
               e.stopPropagation();
               onClick();
             }}
           >
             {isGenerating ? "查看进度" : "进入"}
-            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 ease-out group-hover:translate-x-1" />
+            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 ease-out group-hover:translate-x-0.5" />
           </Button>
         )}
       </div>
+      {connector}
     </div>
   );
 }
@@ -225,7 +231,7 @@ function RecentExamsWidget({
   const latestPapers = useMemo(() => items.slice(0, 4), [items]);
 
   return (
-    <div className="rounded-3xl border border-slate-100 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
+    <div className="rounded-2xl border border-slate-100 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
       <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100/50 dark:border-slate-800/40 shrink-0">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.5)]" />
@@ -324,7 +330,7 @@ function MiniStatsWidget({
   const percentGood = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 0;
 
   return (
-    <div className="rounded-3xl border border-slate-100/80 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
+    <div className="rounded-2xl border border-slate-100/80 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
       <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100/50 dark:border-slate-800/40 shrink-0">
         <span className="h-2 w-2 rounded-full bg-teal-500 shadow-[0_0_6px_rgba(20,184,166,0.5)]" />
         <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100">掌握分布</h3>
@@ -583,11 +589,11 @@ export function CourseDashboardPage() {
         
         {/* Active DocGen Progress Banner */}
         {isDocGenerating && (
-          <div className="relative overflow-hidden rounded-3xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/50 via-white/80 to-indigo-50/30 p-5 shadow-[0_4px_20px_rgba(99,102,241,0.04)] backdrop-blur-sm dark:border-indigo-950/80 dark:from-indigo-950/20 dark:via-slate-900/70 dark:to-indigo-950/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-300">
+          <div className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/50 via-white/80 to-indigo-50/30 p-5 shadow-[0_4px_20px_rgba(99,102,241,0.04)] backdrop-blur-sm dark:border-indigo-950/80 dark:from-indigo-950/20 dark:via-slate-900/70 dark:to-indigo-950/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-300">
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/[0.02] to-transparent pointer-events-none" />
             <div className="flex items-center gap-4 relative z-10">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/20 dark:text-indigo-405 border border-indigo-200/20 dark:border-indigo-800/35 shadow-inner">
-                <Loader2 className="h-5.5 w-5.5 animate-spin" />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/20 dark:text-indigo-405 border border-indigo-200/20 dark:border-indigo-800/35 shadow-inner">
+                <Loader2 className="h-5 w-5 animate-spin" />
               </span>
               <div>
                 <h4 className="text-[15px] font-bold text-slate-850 dark:text-slate-205">
@@ -636,7 +642,7 @@ export function CourseDashboardPage() {
               className="h-10 rounded-xl px-5 text-sm font-medium w-full sm:w-auto text-slate-605 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white/60 hover:bg-slate-55 dark:bg-slate-900/40 border border-slate-205 dark:border-slate-800 transition-all duration-300 hover:shadow-sm"
             >
               <RefreshCw className="h-4 w-4 mr-2 text-slate-550 dark:text-slate-400 transition-transform duration-505 hover:rotate-180" />
-              重新构建
+              构建
             </Button>
 
             <Button
@@ -662,6 +668,66 @@ export function CourseDashboardPage() {
             theme="indigo"
             onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
             isGenerating={isDocGenerating}
+            badge={
+              states.length > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/10 px-2 py-0.5 text-[9px] font-bold text-teal-600 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 dark:border-teal-900/30 animate-pulse">
+                  <RefreshCw className="h-2.5 w-2.5" />
+                  画像自适应精讲
+                </span>
+              ) : undefined
+            }
+            connector={
+              <>
+                {/* Desktop Connector (Horizontal) */}
+                <div className="absolute right-[-24px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
+                  <svg width="32" height="16" viewBox="0 0 32 16" fill="none" className="w-8 h-4 overflow-visible">
+                    <path
+                      d="M0 8H24"
+                      stroke="url(#indigo-violet)"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                    />
+                    <path
+                      d="M22 4L26 8L22 12"
+                      stroke="#8b5cf6"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <defs>
+                      <linearGradient id="indigo-violet" x1="0" y1="8" x2="26" y2="8" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#6366f1" />
+                        <stop offset="1" stopColor="#8b5cf6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+                {/* Mobile Connector (Vertical) */}
+                <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
+                  <svg width="16" height="32" viewBox="0 0 16 32" fill="none" className="w-4 h-8 overflow-visible">
+                    <path
+                      d="M8 0V24"
+                      stroke="url(#indigo-violet-v)"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                    />
+                    <path
+                      d="M4 22L8 26L12 22"
+                      stroke="#8b5cf6"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <defs>
+                      <linearGradient id="indigo-violet-v" x1="8" y1="0" x2="8" y2="26" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#6366f1" />
+                        <stop offset="1" stopColor="#8b5cf6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+              </>
+            }
             extra={
               <div className="flex items-center gap-1.5 text-[11.5px] text-slate-455 dark:text-slate-500 font-medium bg-slate-50/50 dark:bg-slate-800/30 px-3 py-1 rounded-full border border-slate-100/50 dark:border-slate-800/20 w-fit shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
                 <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500 shadow-[0_0_4px_rgba(99,102,241,0.4)]" />
@@ -706,6 +772,66 @@ export function CourseDashboardPage() {
             disabled={isDocGenerating}
             disabledReason={isDocGenerating ? "知识库构建中" : undefined}
             onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+            badge={
+              states.length > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/10 px-2 py-0.5 text-[9px] font-bold text-teal-600 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 dark:border-teal-900/30 animate-pulse">
+                  <RefreshCw className="h-2.5 w-2.5" />
+                  画像自适应出题
+                </span>
+              ) : undefined
+            }
+            connector={
+              <>
+                {/* Desktop Connector (Horizontal) */}
+                <div className="absolute right-[-24px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
+                  <svg width="32" height="16" viewBox="0 0 32 16" fill="none" className="w-8 h-4 overflow-visible">
+                    <path
+                      d="M0 8H24"
+                      stroke="url(#violet-teal)"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                    />
+                    <path
+                      d="M22 4L26 8L22 12"
+                      stroke="#14b8a6"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <defs>
+                      <linearGradient id="violet-teal" x1="0" y1="8" x2="26" y2="8" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#8b5cf6" />
+                        <stop offset="1" stopColor="#14b8a6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+                {/* Mobile Connector (Vertical) */}
+                <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
+                  <svg width="16" height="32" viewBox="0 0 16 32" fill="none" className="w-4 h-8 overflow-visible">
+                    <path
+                      d="M8 0V24"
+                      stroke="url(#violet-teal-v)"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                    />
+                    <path
+                      d="M4 22L8 26L12 22"
+                      stroke="#14b8a6"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <defs>
+                      <linearGradient id="violet-teal-v" x1="8" y1="0" x2="8" y2="26" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#8b5cf6" />
+                        <stop offset="1" stopColor="#14b8a6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+              </>
+            }
             extra={
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-full bg-slate-50/50 px-3 py-1 text-[11px] font-semibold text-slate-605 border border-slate-100/60 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-800/30 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
@@ -807,6 +933,34 @@ export function CourseDashboardPage() {
             }
           />
         </div>
+
+        {/* Feedback Loop Panel */}
+        {states.length > 0 && (
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-indigo-50/15 border border-indigo-100/35 dark:bg-slate-900/35 dark:border-slate-800/40 relative overflow-hidden animate-[fadeIn_0.5s_ease-out]">
+            <div className="absolute inset-0 bg-gradient-to-r from-teal-500/[0.02] via-transparent to-indigo-500/[0.02] pointer-events-none" />
+            <div className="flex items-center gap-3.5 relative z-10">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/10 text-teal-605 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 shadow-sm shadow-teal-500/5">
+                <RefreshCw className="h-4 w-4 animate-spin-slow" />
+              </span>
+              <div>
+                <h4 className="text-[13.5px] font-bold text-slate-850 dark:text-slate-205 flex items-center gap-2">
+                  画像自适应反馈闭环已激活
+                </h4>
+                <p className="text-[12px] text-slate-500 dark:text-slate-450 font-light mt-0.5 leading-relaxed">
+                  系统已根据学习画像中的诊断结果，自动调整知识库中的讲义重点，并为下一次考试智能倾斜出题。
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0 text-xs font-semibold text-slate-405 dark:text-slate-500 relative z-10 bg-slate-50/40 dark:bg-slate-900/50 px-3.5 py-1.5 rounded-xl border border-slate-150/30 dark:border-slate-800/40">
+              <span>掌握度画像</span>
+              <svg width="24" height="12" viewBox="0 0 24 12" fill="none" className="overflow-visible text-teal-500">
+                <path d="M24 6H4M4 6L8 2M4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
+              </svg>
+              <span className="text-teal-600 dark:text-teal-405 font-bold">闭环优化中</span>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Section: Recent Exams & Mastery Distribution */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-2 relative z-10">
