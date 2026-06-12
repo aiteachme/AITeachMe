@@ -66,7 +66,7 @@ import {
   masteryTone,
 } from "../components/profile";
 
-const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12 pt-8";
+const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12";
 
 
 
@@ -476,7 +476,7 @@ export function ProfilePage() {
 
   if (!courseId) {
     return (
-      <div className={pageShellClass}>
+      <div className={cn(pageShellClass, "pt-8")}>
         <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           缺少课程标识，暂时无法加载学习画像。
         </div>

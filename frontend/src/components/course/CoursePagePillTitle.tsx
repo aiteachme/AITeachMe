@@ -19,9 +19,10 @@ interface CoursePagePillTitleProps {
   label: string;
   href?: string;
   className?: string;
+  innerClassName?: string;
 }
 
-export function CoursePagePillTitle({ icon: Icon, label, href, className }: CoursePagePillTitleProps) {
+export function CoursePagePillTitle({ icon: Icon, label, href, className, innerClassName }: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
@@ -41,7 +42,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className }: Cour
 
   if (!courseId) {
     const inner = (
-      <div className="group inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-500 shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all dark:border-slate-800/80 dark:bg-slate-900 dark:text-slate-400">
+      <div className={cn("group inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-500 shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all dark:border-slate-800/80 dark:bg-slate-900 dark:text-slate-400", innerClassName)}>
         <Icon className="h-3 w-3 shrink-0" />
         <span>{label}</span>
       </div>
@@ -64,7 +65,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className }: Cour
 
   return (
     <div ref={dropdownRef} className={cn("flex flex-col items-center justify-center pb-2 pt-6 z-30 relative", className)}>
-      <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all dark:border-slate-800/80 dark:bg-slate-900">
+      <div className={cn("inline-flex items-center rounded-full border border-slate-200/80 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all dark:border-slate-800/80 dark:bg-slate-900", innerClassName)}>
         
         {/* Left Back Arrow: Directly links back to dashboard / main navigation page */}
         {href && (
