@@ -43,12 +43,12 @@ def build_planner_stream_messages(
     plan_fields = _render_previous_planner(latest_plan)
     revision_rules = (
         """
-这是调整已有方案，不是重新识别 planning_note、course_name 或 course_icon。
-你只能生成新的 suggestion、plan、chapters：
-- 必须参考最近对话、用户本轮修改意见和上一版 planner。
-- 未被用户修改的核心边界应保持稳定。
-- 如果用户要求改范围、改章数、增删重点，chapters 必须可见地体现变化。
-- 不要重新输出 planning_note、course_name 或 course_icon。
+这是调整已有方案。
+沿用上一版 planning_note、course_name 和 course_icon。
+生成新的 suggestion、plan、chapters：
+- 参考最近对话、用户本轮修改意见和上一版 planner。
+- 保持用户未修改的核心边界稳定。
+- 用户要求改范围、改章数、增删重点时，chapters 可见地体现变化。
 """.strip()
         if is_revision
         else """
@@ -58,10 +58,10 @@ def build_planner_stream_messages(
     )
     system_prompt = f"""
 你是 AITeachMe 的课程规划输出器。
-你必须严格按照三个标签输出，不能输出额外标签、Markdown 标题、代码块或解释。
+输出内容由三个标签组成。
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
 {SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写用户后续可以继续怎么改。
-{CHAPTERS_START} 到 {CHAPTERS_END} 之间只能放合法 JSON 数组，数组元素只能包含 title 和 key_points。
+{CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points。
 """.strip()
     prompt = f"""
 请生成方案的 suggestion、plan、chapters。
@@ -104,7 +104,7 @@ def build_planner_stream_messages(
 2. suggestion：2-4 句，给出用户可继续调整的方向，例如偏考试、延长周期、增加例题密度、减少拓展、改章节数。
 3. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，聚焦一个核心知识对象、方法任务、题型技能或应用场景；key_points 2-4 条承接细节、例题、练习或测验。
 4. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数等元信息只放上下文，不进标题。
-5. 用户已经列出的模块/知识点是 chapters 的主边界；章节名优先对齐这些边界。练习、检测、错因复盘进入对应模块的 key_points；用户明确要综合卷、跨模块训练或考前模拟时，再把综合训练单独列成章节。
+5. 用户已经列出的模块/知识点是 chapters 的主边界；章节名优先对齐这些边界。练习、检测、错因复盘进入对应模块的 key_points；用户提出综合卷、跨模块训练或考前模拟时，再把综合训练单独列成章节。
 6. 没有资料时按用户目标和通用课程常识规划。
 7. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内。
 
@@ -116,7 +116,7 @@ plan 字段正文
 suggestion 字段正文
 {SUGGESTION_END}
 {CHAPTERS_START}
-[{{"title":"章节标题","key_points":["关键词或任务1","关键词或任务2"]}}]
+[{{"title":"章节标题","key_points":["要点或任务1","要点或任务2"]}}]
 {CHAPTERS_END}
 """.strip()
     messages = [
@@ -147,7 +147,7 @@ def build_planner_repair_messages(
     error: str,
 ) -> list[dict[str, str]]:
     repair_prompt = f"""
-上一次输出不符合 planner 标签协议，不能保存。
+上一次输出需要按 planner 标签协议修复。
 错误：{error}
 
 请基于同一上下文重新输出完整结果。

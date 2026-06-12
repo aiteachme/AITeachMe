@@ -37,14 +37,14 @@ def build_course_identity_messages(
     mode_label = planner_mode_label(digest_mode)
     options_text = ", ".join(COURSE_ICON_OPTIONS)
     system_prompt = """
-你是 AITeachMe 的课程命名与图标选择器。你只输出合法 JSON，不输出解释、Markdown 或额外文本。
+你是 AITeachMe 的课程命名与图标选择器。输出合法 JSON。
 """.strip()
     prompt = f"""
 请根据用户学习目标、规划判断、资料线索和主题提示，生成课程展示身份。
 
 字段要求：
 - course_name：2 到 10 个汉字为佳，最多 16 个字符；像真实对话标题一样自然。
-- course_name 不要写“新课程”“学习资料”“未命名”，不要总是套“学习/课程/资料”后缀。
+- course_name 使用具体学科、主题、卡点或任务标题，适合显示在课程页。
 - course_icon：只能从候选图标 key 中选一个，必须是英文 key。
 - 优先概括“这门内容在学什么、解决什么卡点、服务什么任务”。
 
@@ -61,7 +61,7 @@ def build_course_identity_messages(
 参考示例：
 {_render_course_name_examples()}
 
-只输出 JSON：
+输出 JSON：
 {{"course_name":"短课程名","course_icon":"book-open"}}
 """.strip()
     messages = [
