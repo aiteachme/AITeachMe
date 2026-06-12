@@ -681,7 +681,7 @@ export function CourseDashboardPage() {
         </section>
 
         {/* Three-Column Nav Tiles Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-[56px] relative z-10">
           
           {/* Card 1: 知识库 */}
           <NavTile
@@ -705,25 +705,22 @@ export function CourseDashboardPage() {
                 <>
                   {/* Desktop Connector (Horizontal) - Disabled */}
                   <div
-                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
                     title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                   >
-                    <svg width="56" height="32" viewBox="0 0 56 32" fill="none" className="overflow-visible">
+                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible">
                       <path
-                        d="M4 16H44"
-                        stroke="#cbd5e1"
-                        className="dark:stroke-slate-800/60"
-                        strokeWidth="4"
+                        d="M6 26H48"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-700"
+                        strokeWidth="6"
                         strokeLinecap="round"
-                        strokeDasharray="6 5"
+                        strokeDasharray="8 6"
                       />
                       <path
-                        d="M40 10L48 16L40 22"
-                        fill="#cbd5e1"
-                        stroke="#cbd5e1"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        className="dark:fill-slate-800/60 dark:stroke-slate-800/60"
+                        d="M42 6L76 26L42 46Z"
+                        fill="#e2e8f0"
+                        className="dark:fill-slate-700"
                       />
                     </svg>
                   </div>
@@ -732,22 +729,19 @@ export function CourseDashboardPage() {
                     className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
                     title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                   >
-                    <svg width="32" height="56" viewBox="0 0 32 56" fill="none" className="overflow-visible">
+                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible">
                       <path
-                        d="M16 4V44"
-                        stroke="#cbd5e1"
-                        className="dark:stroke-slate-800/60"
-                        strokeWidth="4"
+                        d="M22 6V48"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-700"
+                        strokeWidth="6"
                         strokeLinecap="round"
-                        strokeDasharray="6 5"
+                        strokeDasharray="8 6"
                       />
                       <path
-                        d="M10 40L16 48L22 40"
-                        fill="#cbd5e1"
-                        stroke="#cbd5e1"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        className="dark:fill-slate-800/60 dark:stroke-slate-800/60"
+                        d="M6 42L22 68L38 42Z"
+                        fill="#e2e8f0"
+                        className="dark:fill-slate-700"
                       />
                     </svg>
                   </div>
@@ -760,41 +754,35 @@ export function CourseDashboardPage() {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "exams"));
                     }}
-                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow"
+                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow"
                     title="进入 训练中心"
                   >
-                    <svg width="56" height="32" viewBox="0 0 56 32" fill="none" className="overflow-visible">
-                      {/* Glow underlayer */}
+                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible drop-shadow-md">
+                      {/* Soft neon glow backdrop */}
+                      <ellipse cx="40" cy="26" rx="36" ry="22" fill="url(#indigo-violet)" opacity="0.06" className="blur-[6px]" />
+                      {/* Thick gradient track */}
                       <path
-                        d="M4 16H48"
+                        d="M6 26H48"
                         stroke="url(#indigo-violet)"
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        opacity="0.15"
-                        className="blur-[2px] group-hover/arrow:opacity-30 transition-opacity"
-                      />
-                      {/* Main connector line */}
-                      <path
-                        d="M4 16H44"
-                        stroke="url(#indigo-violet)"
-                        strokeWidth="4"
+                        strokeWidth="6"
                         strokeLinecap="round"
                       />
-                      {/* Flowing particle */}
-                      <circle r="4" fill="#a78bfa">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M4 16H42" />
+                      {/* Flowing particle - outer glow */}
+                      <circle r="7" fill="#a78bfa" opacity="0.35">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
                       </circle>
-                      {/* Large solid arrowhead */}
+                      {/* Flowing particle - bright core */}
+                      <circle r="4" fill="#ffffff">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
+                      </circle>
+                      {/* Massive solid arrowhead */}
                       <path
-                        d="M40 10L48 16L40 22"
-                        fill="#8b5cf6"
-                        stroke="#8b5cf6"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        className="group-hover/arrow:translate-x-0.5 transition-transform duration-200"
+                        d="M42 6L76 26L42 46Z"
+                        fill="url(#indigo-violet)"
+                        className="group-hover/arrow:translate-x-1 transition-transform duration-200"
                       />
                       <defs>
-                        <linearGradient id="indigo-violet" x1="6" y1="12" x2="47" y2="12" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="indigo-violet" x1="6" y1="26" x2="76" y2="26" gradientUnits="userSpaceOnUse">
                           <stop stopColor="#6366f1" />
                           <stop offset="1" stopColor="#8b5cf6" />
                         </linearGradient>
@@ -810,38 +798,27 @@ export function CourseDashboardPage() {
                     className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-v"
                     title="进入 训练中心"
                   >
-                    <svg width="32" height="56" viewBox="0 0 32 56" fill="none" className="overflow-visible">
-                      {/* Glow underlayer */}
+                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible drop-shadow-md">
+                      <ellipse cx="22" cy="36" rx="18" ry="32" fill="url(#indigo-violet-v)" opacity="0.06" className="blur-[6px]" />
                       <path
-                        d="M16 4V48"
+                        d="M22 6V48"
                         stroke="url(#indigo-violet-v)"
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        opacity="0.15"
-                        className="blur-[2px] group-hover/arrow-v:opacity-30 transition-opacity"
-                      />
-                      {/* Main connector line */}
-                      <path
-                        d="M16 4V44"
-                        stroke="url(#indigo-violet-v)"
-                        strokeWidth="4"
+                        strokeWidth="6"
                         strokeLinecap="round"
                       />
-                      {/* Flowing particle */}
-                      <circle r="4" fill="#a78bfa">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M16 4V42" />
+                      <circle r="7" fill="#a78bfa" opacity="0.35">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
                       </circle>
-                      {/* Large solid arrowhead */}
+                      <circle r="4" fill="#ffffff">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
+                      </circle>
                       <path
-                        d="M10 40L16 48L22 40"
-                        fill="#8b5cf6"
-                        stroke="#8b5cf6"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        className="group-hover/arrow-v:translate-y-0.5 transition-transform duration-200"
+                        d="M6 42L22 68L38 42Z"
+                        fill="url(#indigo-violet-v)"
+                        className="group-hover/arrow-v:translate-y-1 transition-transform duration-200"
                       />
                       <defs>
-                        <linearGradient id="indigo-violet-v" x1="12" y1="6" x2="12" y2="47" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="indigo-violet-v" x1="22" y1="6" x2="22" y2="68" gradientUnits="userSpaceOnUse">
                           <stop stopColor="#6366f1" />
                           <stop offset="1" stopColor="#8b5cf6" />
                         </linearGradient>
@@ -909,22 +886,22 @@ export function CourseDashboardPage() {
                 <>
                   {/* Desktop Connector (Horizontal) - Disabled */}
                   <div
-                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
                     title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                   >
-                    <svg width="56" height="32" viewBox="0 0 56 32" fill="none" className="overflow-visible">
+                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible">
                       <path
-                        d="M4 16H44"
-                        stroke="#cbd5e1"
-                        className="dark:stroke-slate-800/60"
-                        strokeWidth="4"
+                        d="M6 26H48"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-700"
+                        strokeWidth="6"
                         strokeLinecap="round"
-                        strokeDasharray="6 5"
+                        strokeDasharray="8 6"
                       />
                       <path
-                        d="M38 8L50 16L38 24Z"
-                        fill="#cbd5e1"
-                        className="dark:fill-slate-850"
+                        d="M42 6L76 26L42 46Z"
+                        fill="#e2e8f0"
+                        className="dark:fill-slate-700"
                       />
                     </svg>
                   </div>
@@ -933,19 +910,19 @@ export function CourseDashboardPage() {
                     className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
                     title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                   >
-                    <svg width="32" height="56" viewBox="0 0 32 56" fill="none" className="overflow-visible">
+                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible">
                       <path
-                        d="M16 4V44"
-                        stroke="#cbd5e1"
-                        className="dark:stroke-slate-800/60"
-                        strokeWidth="4"
+                        d="M22 6V48"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-700"
+                        strokeWidth="6"
                         strokeLinecap="round"
-                        strokeDasharray="6 5"
+                        strokeDasharray="8 6"
                       />
                       <path
-                        d="M8 38L16 50L24 38Z"
-                        fill="#cbd5e1"
-                        className="dark:fill-slate-850"
+                        d="M6 42L22 68L38 42Z"
+                        fill="#e2e8f0"
+                        className="dark:fill-slate-700"
                       />
                     </svg>
                   </div>
@@ -958,41 +935,35 @@ export function CourseDashboardPage() {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "profile"));
                     }}
-                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow-2"
+                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow-2"
                     title="进入 学习画像"
                   >
-                    <svg width="56" height="32" viewBox="0 0 56 32" fill="none" className="overflow-visible">
-                      {/* Glow underlayer */}
+                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible drop-shadow-md">
+                      {/* Soft neon glow backdrop */}
+                      <ellipse cx="40" cy="26" rx="36" ry="22" fill="url(#violet-teal)" opacity="0.06" className="blur-[6px]" />
+                      {/* Thick gradient track */}
                       <path
-                        d="M4 16H48"
+                        d="M6 26H48"
                         stroke="url(#violet-teal)"
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        opacity="0.15"
-                        className="blur-[2px] group-hover/arrow-2:opacity-30 transition-opacity"
-                      />
-                      {/* Main connector line */}
-                      <path
-                        d="M4 16H44"
-                        stroke="url(#violet-teal)"
-                        strokeWidth="4"
+                        strokeWidth="6"
                         strokeLinecap="round"
                       />
-                      {/* Flowing particle */}
-                      <circle r="6" fill="#2dd4bf" opacity="0.4">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M4 16H42" />
+                      {/* Flowing particle - outer glow */}
+                      <circle r="7" fill="#2dd4bf" opacity="0.35">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
                       </circle>
-                      <circle r="3.5" fill="#ffffff">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M4 16H42" />
+                      {/* Flowing particle - bright core */}
+                      <circle r="4" fill="#ffffff">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
                       </circle>
-                      {/* Large solid arrowhead */}
+                      {/* Massive solid arrowhead */}
                       <path
-                        d="M38 8L50 16L38 24Z"
-                        fill="#14b8a6"
+                        d="M42 6L76 26L42 46Z"
+                        fill="url(#violet-teal)"
                         className="group-hover/arrow-2:translate-x-1 transition-transform duration-200"
                       />
                       <defs>
-                        <linearGradient id="violet-teal" x1="6" y1="12" x2="47" y2="12" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="violet-teal" x1="6" y1="26" x2="76" y2="26" gradientUnits="userSpaceOnUse">
                           <stop stopColor="#8b5cf6" />
                           <stop offset="1" stopColor="#14b8a6" />
                         </linearGradient>
@@ -1008,38 +979,27 @@ export function CourseDashboardPage() {
                     className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-2-v"
                     title="进入 学习画像"
                   >
-                    <svg width="32" height="56" viewBox="0 0 32 56" fill="none" className="overflow-visible">
-                      {/* Glow underlayer */}
+                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible drop-shadow-md">
+                      <ellipse cx="22" cy="36" rx="18" ry="32" fill="url(#violet-teal-v)" opacity="0.06" className="blur-[6px]" />
                       <path
-                        d="M16 4V48"
+                        d="M22 6V48"
                         stroke="url(#violet-teal-v)"
-                        strokeWidth="10"
-                        strokeLinecap="round"
-                        opacity="0.15"
-                        className="blur-[2px] group-hover/arrow-2-v:opacity-30 transition-opacity"
-                      />
-                      {/* Main connector line */}
-                      <path
-                        d="M16 4V44"
-                        stroke="url(#violet-teal-v)"
-                        strokeWidth="4"
+                        strokeWidth="6"
                         strokeLinecap="round"
                       />
-                      {/* Flowing particle */}
-                      <circle r="6" fill="#2dd4bf" opacity="0.4">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M16 4V42" />
+                      <circle r="7" fill="#2dd4bf" opacity="0.35">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
                       </circle>
-                      <circle r="3.5" fill="#ffffff">
-                        <animateMotion dur="1.2s" repeatCount="indefinite" path="M16 4V42" />
+                      <circle r="4" fill="#ffffff">
+                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
                       </circle>
-                      {/* Large solid arrowhead */}
                       <path
-                        d="M8 38L16 50L24 38Z"
-                        fill="#14b8a6"
+                        d="M6 42L22 68L38 42Z"
+                        fill="url(#violet-teal-v)"
                         className="group-hover/arrow-2-v:translate-y-1 transition-transform duration-200"
                       />
                       <defs>
-                        <linearGradient id="violet-teal-v" x1="12" y1="6" x2="12" y2="47" gradientUnits="userSpaceOnUse">
+                        <linearGradient id="violet-teal-v" x1="22" y1="6" x2="22" y2="68" gradientUnits="userSpaceOnUse">
                           <stop stopColor="#8b5cf6" />
                           <stop offset="1" stopColor="#14b8a6" />
                         </linearGradient>
