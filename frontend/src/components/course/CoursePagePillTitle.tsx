@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Link, useParams, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   ChevronDown,
@@ -8,11 +9,18 @@ import {
   BookOpen,
   FileText,
   BarChart3,
+  Lock,
 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { buildCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet } from "../../api/generated/profile";
+import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
+import { apiClient } from "../../api/client";
+import type { ApiResponse } from "../../api/types";
+import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
 
 interface CoursePagePillTitleProps {
   icon: LucideIcon;
@@ -54,6 +62,50 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
     );
   }
 
+  // 1. Query Document Build Status
+  const docMarkdownQuery = useQuery({
+    queryKey: ["docgen-content", courseId, null],
+    queryFn: async (): Promise<DocGenGetResponse> => {
+      if (!courseId) throw new Error("缺少课程 ID");
+      const response = await apiClient<ApiResponse<DocGenGetResponse>>({
+        method: "POST",
+        url: `/api/v1/courses/${courseId}/knowledge/docs`,
+      });
+      if (!response.data) throw new Error("加载知识文档状态失败");
+      return response.data;
+    },
+    enabled: Boolean(courseId),
+    staleTime: 30000,
+  });
+
+  const isBuilding = useMemo(() => {
+    const status = (docMarkdownQuery.data?.build?.status ?? "").trim();
+    return status === "accepted" || status === "running" || status === "publishing";
+  }, [docMarkdownQuery.data]);
+
+  // 2. Query Mastery Overview
+  const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(
+    courseId ?? "",
+    { query: { enabled: Boolean(courseId) } }
+  );
+
+  const isBuilt = useMemo(() => {
+    const masteryData = unwrapOrvalResponse<any>(masteryQuery.data);
+    return Boolean(masteryData?.course_profile?.generated_at);
+  }, [masteryQuery.data]);
+
+  // 3. Query Exam History
+  const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
+    courseId ?? "",
+    { page: 1, size: 24 },
+    { query: { enabled: Boolean(courseId) } }
+  );
+
+  const hasExams = useMemo(() => {
+    const historyItems = unwrapOrvalResponse<{ items?: ExamHistoryItem[] }>(historyQuery.data)?.items ?? [];
+    return historyItems.length > 0;
+  }, [historyQuery.data]);
+
   const currentSegment = getCourseRouteSegmentFromPathname(pathname);
 
   const navItems = [
@@ -71,7 +123,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
         {href && (
           <Link
             to={href}
-            className="flex h-8 items-center pl-3 pr-2.5 rounded-l-full border-r border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-colors"
+            className="flex h-8 items-center pl-3 pr-2.5 rounded-l-full border-r border-slate-100 hover:bg-slate-55 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-405 hover:text-indigo-600 transition-colors"
             title="返回课程大盘"
           >
             <Compass className="h-4 w-4" />
@@ -83,11 +135,11 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            "flex h-8 items-center gap-1.5 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors rounded-r-full",
+            "flex h-8 items-center gap-1.5 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-650 dark:hover:text-indigo-400 transition-colors rounded-r-full",
             !href && "rounded-l-full"
           )}
         >
-          <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-indigo-500" />
+          <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-indigo-505" />
           <span>{label}</span>
           <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")} />
         </button>
@@ -105,6 +157,41 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
           >
             {navItems.map((item) => {
               const isActive = item.id === currentSegment || (item.id === "exams" && label === "训练中心");
+              
+              // Define disabled state and reason
+              let isDisabled = false;
+              let disabledReason = "";
+              if (item.id === "exams") {
+                if (!isBuilt || isBuilding) {
+                  isDisabled = true;
+                  disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
+                }
+              } else if (item.id === "profile") {
+                if (!isBuilt || isBuilding) {
+                  isDisabled = true;
+                  disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
+                } else if (!hasExams) {
+                  isDisabled = true;
+                  disabledReason = "需先完成测验";
+                }
+              }
+
+              if (isDisabled) {
+                return (
+                  <div
+                    key={item.id}
+                    title={disabledReason}
+                    className="flex items-center justify-between w-full px-3 py-2 text-[12px] font-semibold text-slate-400 dark:text-slate-600 cursor-not-allowed select-none"
+                  >
+                    <span className="flex items-center gap-2">
+                      <item.icon className="h-3.5 w-3.5 text-slate-300 dark:text-slate-700" />
+                      <span className="font-medium">{item.label}</span>
+                    </span>
+                    <Lock className="h-3.5 w-3.5 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
+                  </div>
+                );
+              }
+
               return (
                 <Link
                   key={item.id}
