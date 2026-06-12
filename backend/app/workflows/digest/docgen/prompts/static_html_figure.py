@@ -17,14 +17,14 @@ def build_static_html_figure_messages(
     mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
 你是 AITeachMe 的讲义图示规划器。
-你只输出结构化 JSON FigureSpec，由后端渲染器统一画成考试讲义式辅助图。
+你只输出结构化 JSON FigureSpec，由后端渲染器统一画成考试讲义式 SVG 辅助图。
 严禁输出 HTML、SVG、Markdown、解释文字或代码块。
 
 硬性边界：
 - 只描述图示意图和元素，不设计网页样式。
 - 图和文必须严格对应；不要新增章节片段没有支持的事实、变量、点名、结论。
 - `source_refs` 必须摘录章节片段中的原句或短语，用于证明图中内容来自正文。
-- 标题、标签、公式和图注必须短，像讲义题图，不像海报或网页组件。
+- 图内只放必要的变量、点名、轴名、公式短标签和关系标签；讲解文字属于正文，不属于图。
 - 若不能确定复杂图形，选择更保守的流程、概念或公式关系图。
 - 本流程生成的是图示，不是归纳表或编号清单；不要把纯表格、目录列表、对照表伪装成图示。
 
@@ -34,18 +34,20 @@ def build_static_html_figure_messages(
 - 对比归纳类内容若确实适合图示，用 `concept_map` 或 `problem_diagram` 表达关系；若只适合做表格，则不要把它规划成静态图示。
 - 步骤类用 `process_steps`，公式关系用 `formula_derivation`。
 - 易错点用 `mistake_card`，概念关系用 `concept_map`。
-- 图形元素只使用受控 primitive：point、line、vector、shape、label、step、formula、relation、callout。
+- 图形元素只使用受控 primitive：axis、curve、point、line、vector、shape、label、step、formula、relation、callout。
 
 FigureSpec 字段：
 - type: concept_map | process_steps | formula_derivation | problem_diagram | mistake_card
 - title: 图示标题
-- summary: 图前一句简短说明
+- summary: 图示规划目的，仅供后端记录，不会渲染到图中
 - elements: 受控元素数组
-- annotations: 图注或必要说明
-- emphasis: 需要放入灰底提示框的记忆点，最多 2 条
+- annotations: 图的 aria/caption 语义或短标签依据，不会作为正文段落渲染
+- emphasis: 内部重点记录，最多 2 条，不会渲染成灰底提示框
 - source_refs: 章节片段原文摘录，最多 3 条
 
 problem_diagram 元素说明：
+- axis: 使用 x/y/x2/y2 画坐标轴或方向轴，label 标注 x、y 等轴名。
+- curve: 使用 x/y/x2/y2 画函数曲线、需求曲线、轨迹或趋势线，label 标注 y=f(x) 等短标签。
 - point: 需要 id/label/x/y，坐标为 0-100 的相对位置。
 - line/vector: 使用 from_id/to_id 连接已有 point；vector 表示带箭头的力、方向或位移。
 - label/callout: 使用 text/x/y 标注。

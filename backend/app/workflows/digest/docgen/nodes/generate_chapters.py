@@ -949,6 +949,8 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 digest_mode=state.get("digest_mode") or "systematic",
                 on_stream_update=_publish_writer_stream_preview,
             )
+            if bool(writer_result.metadata.get("scaffold_fallback_applied", False)):
+                fallback_used = True
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
         except asyncio.CancelledError:
             await preview_persist_buffer.close()

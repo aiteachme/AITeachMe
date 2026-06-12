@@ -38,6 +38,7 @@ from app.workflows.digest.docgen.nodes.confirm_and_seed_backbone import build_co
 from app.workflows.digest.docgen.nodes.enhance_chapters import build_enhance_chapters_node
 from app.workflows.digest.docgen.nodes.generate_chapters import build_generate_chapters_node
 from app.workflows.digest.docgen.nodes.generate_cover import build_generate_cover_node
+from app.workflows.digest.docgen.nodes.generate_unit_tests import build_generate_unit_tests_node
 from app.workflows.digest.docgen.nodes.load_context import build_load_context_node
 from app.workflows.digest.docgen.nodes.lock_titles_for_chapters import build_lock_titles_for_chapters_node
 from app.workflows.digest.docgen.nodes.merge_review import build_merge_review_node
@@ -62,6 +63,7 @@ NODE_BUILD_BACKBONE = "build_document_backbone"
 NODE_BUILD_CHAPTER_BRIEFS = "build_chapter_execution_briefs"
 NODE_ASSEMBLE_CHAPTER_TASKS = "assemble_chapter_tasks"
 NODE_GENERATE_CHAPTERS = "generate_chapters"
+NODE_GENERATE_UNIT_TESTS = "generate_unit_tests"
 NODE_ENHANCE_CHAPTERS = "enhance_chapters"
 NODE_REVIEW_CHAPTERS = "review_chapters"
 NODE_DOCUMENT_CONSISTENCY_REVIEW = "document_consistency_review"
@@ -82,6 +84,7 @@ NODE_DISPLAY_NAMES = {
     NODE_BUILD_CHAPTER_BRIEFS: "生成章节执行简报",
     NODE_ASSEMBLE_CHAPTER_TASKS: "组装最终章节任务",
     NODE_GENERATE_CHAPTERS: "生成章节草稿",
+    NODE_GENERATE_UNIT_TESTS: "生成章末单元测试",
     NODE_ENHANCE_CHAPTERS: "增强章节内容",
     NODE_REVIEW_CHAPTERS: "复核章节内容",
     NODE_DOCUMENT_CONSISTENCY_REVIEW: "复核整本一致性",
@@ -251,7 +254,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_GENERATE_CHAPTERS: {
         "description": (
             "LangGraph Send fan-out 后的单章生成节点。每个分支独立执行本地/外部检索、上下文压缩、claim/evidence/conflict 账本构建、"
-            "章节正文写作、轻量 critique 和必要 rewrite；输出通过 reducer 汇总回整本 state。"
+            "章节正文写作、轻量 critique 和必要 rewrite；输出 body-only 章节草稿，通过 reducer 汇总回整本 state。"
         ),
         "reads": ["chapter_task", "shared_inputs", "document_context", "docgen_context", "document_backbone"],
         "writes": ["chapter_drafts", "research_traces", "claim_ledgers", "claim_evidence_maps", "evidence_ledgers", "conflict_reports"],
@@ -276,6 +279,18 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "error",
         ],
         "fanout": "langgraph_send_per_chapter",
+    },
+    NODE_GENERATE_UNIT_TESTS: {
+        "description": (
+            "在所有章节正文 fan-in 后，按章节并行生成固定的章末 `## 单元测试` 模块。"
+            "该节点读取 body-only 草稿和 chapter_end_practice_plan，输出统一表格样式的可判定短测题，"
+            "避免 writer 把测试和正文混写，也避免重复单元测试标题。"
+        ),
+        "reads": ["chapter_drafts", "chapter_tasks", "digest_mode"],
+        "writes": ["unit_test_chapter_drafts", "unit_test_items"],
+        "input_keys": ["chapter_drafts", "chapter_tasks", "digest_mode"],
+        "output_keys": ["unit_test_chapter_drafts", "unit_test_items", "unit_test_ms", "llm_calls_total", "error"],
+        "fanout": "internal_async_per_chapter",
     },
     NODE_ENHANCE_CHAPTERS: {
         "description": (
@@ -563,6 +578,16 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_GENERATE_CHAPTERS),
     )
     workflow.add_node(
+        NODE_GENERATE_UNIT_TESTS,
+        _trace_docgen_node(
+            trace,
+            NODE_GENERATE_UNIT_TESTS,
+            build_generate_unit_tests_node(context=context),
+            timing_field="unit_test_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_GENERATE_UNIT_TESTS),
+    )
+    workflow.add_node(
         NODE_ENHANCE_CHAPTERS,
         _trace_docgen_node(trace, NODE_ENHANCE_CHAPTERS, build_enhance_chapters_node(context=context)),
         metadata=_langgraph_node_metadata(NODE_ENHANCE_CHAPTERS),
@@ -674,7 +699,12 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         build_generation_sends_for_trace,
         {"fail": END},
     )
-    workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_ENHANCE_CHAPTERS)
+    workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_GENERATE_UNIT_TESTS)
+    workflow.add_conditional_edges(
+        NODE_GENERATE_UNIT_TESTS,
+        route_after_step_for_trace,
+        {"continue": NODE_ENHANCE_CHAPTERS, "fail": END},
+    )
     workflow.add_conditional_edges(
         NODE_ENHANCE_CHAPTERS,
         build_review_sends_for_trace,
@@ -762,6 +792,8 @@ def create_docgen_initial_state(
         "guideline": {},
         "dispatch_table": {},
         "preliminary_kg": {},
+        "unit_test_chapter_drafts": [],
+        "unit_test_items": [],
         "error": None,
     }
 

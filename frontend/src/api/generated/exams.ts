@@ -55,9 +55,6 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
-/**
- * @summary Generate an exam from KnowledgeUnits
- */
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse200 = {
   data: ApiResponseExamGenerateResponse
   status: 200
@@ -105,6 +102,9 @@ export const getGenerateExamApiV1CoursesCourseIdExamsGeneratePostUrl = (courseId
   return `/api/v1/courses/${courseId}/exams/generate`
 }
 
+/**
+ * @summary Generate an exam from KnowledgeUnits
+ */
 export const generateExamApiV1CoursesCourseIdExamsGeneratePost = async (courseId: string,
     examGenerateRequest: ExamGenerateRequest, options?: RequestInit): Promise<generateExamApiV1CoursesCourseIdExamsGeneratePostResponse> => {
 
@@ -113,8 +113,7 @@ export const generateExamApiV1CoursesCourseIdExamsGeneratePost = async (courseId
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      examGenerateRequest,)
+    body: JSON.stringify(examGenerateRequest)
   }
 );}
 
@@ -165,10 +164,7 @@ export const useGenerateExamApiV1CoursesCourseIdExamsGeneratePost = <TError = Er
       > => {
       return useMutation(getGenerateExamApiV1CoursesCourseIdExamsGeneratePostMutationOptions(options), queryClient);
     }
-    /**
- * @summary Get background-prepared exam status for the current generation options
- */
-export type examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetResponse200 = {
+    export type examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetResponse200 = {
   data: ApiResponseExamPrewarmStatusResponse
   status: 200
 }
@@ -218,6 +214,9 @@ export const getExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetUrl = 
   return stringifiedParams.length > 0 ? `/api/v1/courses/${courseId}/exams/prewarm-status?${stringifiedParams}` : `/api/v1/courses/${courseId}/exams/prewarm-status`
 }
 
+/**
+ * @summary Get background-prepared exam status for the current generation options
+ */
 export const examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGet = async (courseId: string,
     params?: ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetParams, options?: RequestInit): Promise<examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetResponse> => {
 
@@ -258,7 +257,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetQueryResult = NonNullable<Awaited<ReturnType<typeof examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGet>>>
@@ -314,9 +313,6 @@ export function useExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGet<TD
 
 
 
-/**
- * @summary List exam history
- */
 export type examHistoryApiV1CoursesCourseIdExamsHistoryGetResponse200 = {
   data: ApiResponsePaginatedDataExamHistoryItem
   status: 200
@@ -367,6 +363,9 @@ export const getExamHistoryApiV1CoursesCourseIdExamsHistoryGetUrl = (courseId: s
   return stringifiedParams.length > 0 ? `/api/v1/courses/${courseId}/exams/history?${stringifiedParams}` : `/api/v1/courses/${courseId}/exams/history`
 }
 
+/**
+ * @summary List exam history
+ */
 export const examHistoryApiV1CoursesCourseIdExamsHistoryGet = async (courseId: string,
     params?: ExamHistoryApiV1CoursesCourseIdExamsHistoryGetParams, options?: RequestInit): Promise<examHistoryApiV1CoursesCourseIdExamsHistoryGetResponse> => {
 
@@ -407,7 +406,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1CoursesCourseIdExamsHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examHistoryApiV1CoursesCourseIdExamsHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryResult = NonNullable<Awaited<ReturnType<typeof examHistoryApiV1CoursesCourseIdExamsHistoryGet>>>
@@ -463,9 +462,6 @@ export function useExamHistoryApiV1CoursesCourseIdExamsHistoryGet<TData = Awaite
 
 
 
-/**
- * @summary List question templates for the course
- */
 export type questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetResponse200 = {
   data: ApiResponseListQuestionTemplateItemResponse
   status: 200
@@ -508,6 +504,9 @@ export const getQuestionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetUr
   return `/api/v1/courses/${courseId}/exams/question-templates`
 }
 
+/**
+ * @summary List question templates for the course
+ */
 export const questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGet = async (courseId: string, options?: RequestInit): Promise<questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetResponse> => {
 
   return orvalApiClient<questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetResponse>(getQuestionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetUrl(courseId),
@@ -545,7 +544,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type QuestionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGet>>>
@@ -597,9 +596,6 @@ export function useQuestionTemplatesApiV1CoursesCourseIdExamsQuestionTemplatesGe
 
 
 
-/**
- * @summary List answer history for a question template
- */
 export type questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse200 = {
   data: ApiResponseListQuestionTemplateAnswerHistoryItem
   status: 200
@@ -651,6 +647,9 @@ export const getQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTe
   return stringifiedParams.length > 0 ? `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/answer-history?${stringifiedParams}` : `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/answer-history`
 }
 
+/**
+ * @summary List answer history for a question template
+ */
 export const questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet = async (courseId: string,
     questionTemplateId: number,
     params?: QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams, options?: RequestInit): Promise<questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetResponse> => {
@@ -694,7 +693,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId && questionTemplateId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && questionTemplateId !== null && questionTemplateId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGet>>>
@@ -754,9 +753,6 @@ export function useQuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestio
 
 
 
-/**
- * @summary Grade one answer against a question template
- */
 export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse200 = {
   data: ApiResponseQuestionTemplateGradeResponse
   status: 200
@@ -800,6 +796,9 @@ export const getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemp
   return `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/grade`
 }
 
+/**
+ * @summary Grade one answer against a question template
+ */
 export const gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePost = async (courseId: string,
     questionTemplateId: number,
     questionTemplateGradeRequest: QuestionTemplateGradeRequest, options?: RequestInit): Promise<gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse> => {
@@ -809,8 +808,7 @@ export const gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplat
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      questionTemplateGradeRequest,)
+    body: JSON.stringify(questionTemplateGradeRequest)
   }
 );}
 
@@ -861,10 +859,7 @@ export const useGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemp
       > => {
       return useMutation(getGradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostMutationOptions(options), queryClient);
     }
-    /**
- * @summary Mark or unmark a question template
- */
-export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
+    export type markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse200 = {
   data: ApiResponseQuestionTemplateMarkResponse
   status: 200
 }
@@ -907,6 +902,9 @@ export const getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQu
   return `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/mark`
 }
 
+/**
+ * @summary Mark or unmark a question template
+ */
 export const markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatch = async (courseId: string,
     questionTemplateId: number,
     questionTemplateMarkRequest: QuestionTemplateMarkRequest, options?: RequestInit): Promise<markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchResponse> => {
@@ -916,8 +914,7 @@ export const markQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuest
     ...options,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      questionTemplateMarkRequest,)
+    body: JSON.stringify(questionTemplateMarkRequest)
   }
 );}
 
@@ -968,10 +965,7 @@ export const useMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQu
       > => {
       return useMutation(getMarkQuestionTemplateApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdMarkPatchMutationOptions(options), queryClient);
     }
-    /**
- * @summary List global and course question types
- */
-export type questionTypesApiV1CoursesCourseIdExamsQuestionTypesGetResponse200 = {
+    export type questionTypesApiV1CoursesCourseIdExamsQuestionTypesGetResponse200 = {
   data: ApiResponseListQuestionTypeRegistryItemResponse
   status: 200
 }
@@ -1013,6 +1007,9 @@ export const getQuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGetUrl = (cou
   return `/api/v1/courses/${courseId}/exams/question-types`
 }
 
+/**
+ * @summary List global and course question types
+ */
 export const questionTypesApiV1CoursesCourseIdExamsQuestionTypesGet = async (courseId: string, options?: RequestInit): Promise<questionTypesApiV1CoursesCourseIdExamsQuestionTypesGetResponse> => {
 
   return orvalApiClient<questionTypesApiV1CoursesCourseIdExamsQuestionTypesGetResponse>(getQuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGetUrl(courseId),
@@ -1050,7 +1047,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1CoursesCourseIdExamsQuestionTypesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof questionTypesApiV1CoursesCourseIdExamsQuestionTypesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type QuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGetQueryResult = NonNullable<Awaited<ReturnType<typeof questionTypesApiV1CoursesCourseIdExamsQuestionTypesGet>>>
@@ -1102,9 +1099,6 @@ export function useQuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGet<TData 
 
 
 
-/**
- * @summary SSE stream for exam generation status
- */
 export type examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGetResponse200 = {
   data: unknown
   status: 200
@@ -1148,6 +1142,9 @@ export const getExamGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGe
   return `/api/v1/courses/${courseId}/exams/${examPaperId}/stream`
 }
 
+/**
+ * @summary SSE stream for exam generation status
+ */
 export const examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGet = async (courseId: string,
     examPaperId: number, options?: RequestInit): Promise<examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGetResponse> => {
 
@@ -1188,7 +1185,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && examPaperId !== null && examPaperId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ExamGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGetQueryResult = NonNullable<Awaited<ReturnType<typeof examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGet>>>
@@ -1244,9 +1241,6 @@ export function useExamGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStrea
 
 
 
-/**
- * @summary Fetch exam detail
- */
 export type examDetailApiV1CoursesCourseIdExamsExamPaperIdGetResponse200 = {
   data: ApiResponseExamPaperDetailResponse
   status: 200
@@ -1290,6 +1284,9 @@ export const getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetUrl = (courseId
   return `/api/v1/courses/${courseId}/exams/${examPaperId}`
 }
 
+/**
+ * @summary Fetch exam detail
+ */
 export const examDetailApiV1CoursesCourseIdExamsExamPaperIdGet = async (courseId: string,
     examPaperId: number, options?: RequestInit): Promise<examDetailApiV1CoursesCourseIdExamsExamPaperIdGetResponse> => {
 
@@ -1330,7 +1327,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1CoursesCourseIdExamsExamPaperIdGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && examPaperId !== null && examPaperId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examDetailApiV1CoursesCourseIdExamsExamPaperIdGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryResult = NonNullable<Awaited<ReturnType<typeof examDetailApiV1CoursesCourseIdExamsExamPaperIdGet>>>
@@ -1386,9 +1383,6 @@ export function useExamDetailApiV1CoursesCourseIdExamsExamPaperIdGet<TData = Awa
 
 
 
-/**
- * @summary Delete exam paper
- */
 export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse200 = {
   data: ApiResponseExamPaperDeleteResponse
   status: 200
@@ -1432,6 +1426,9 @@ export const getDeleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteUrl = (
   return `/api/v1/courses/${courseId}/exams/${examPaperId}`
 }
 
+/**
+ * @summary Delete exam paper
+ */
 export const deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDelete = async (courseId: string,
     examPaperId: number, options?: RequestInit): Promise<deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse> => {
 
@@ -1491,10 +1488,7 @@ export const useDeleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDelete = <TEr
       > => {
       return useMutation(getDeleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteMutationOptions(options), queryClient);
     }
-    /**
- * @summary Generate study guide from a graded exam
- */
-export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse200 = {
+    export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse200 = {
   data: ApiResponseExamStudyGuideResponse
   status: 200
 }
@@ -1542,6 +1536,9 @@ export const getExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetU
   return `/api/v1/courses/${courseId}/exams/${examPaperId}/study-guide`
 }
 
+/**
+ * @summary Generate study guide from a graded exam
+ */
 export const examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet = async (courseId: string,
     examPaperId: number, options?: RequestInit): Promise<examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse> => {
 
@@ -1582,7 +1579,7 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
 
 
-   return  { queryKey, queryFn, enabled: !!(courseId && examPaperId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && examPaperId !== null && examPaperId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type ExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetQueryResult = NonNullable<Awaited<ReturnType<typeof examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet>>>
@@ -1638,9 +1635,6 @@ export function useExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideG
 
 
 
-/**
- * @summary Submit answers and update KnowledgeUnit mastery
- */
 export type submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostResponse200 = {
   data: ApiResponseExamGradeResponse
   status: 200
@@ -1689,6 +1683,9 @@ export const getSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostUrl = (c
   return `/api/v1/courses/${courseId}/exams/${examPaperId}/submit`
 }
 
+/**
+ * @summary Submit answers and update KnowledgeUnit mastery
+ */
 export const submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost = async (courseId: string,
     examPaperId: number,
     examSubmitRequest: ExamSubmitRequest, options?: RequestInit): Promise<submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostResponse> => {
@@ -1698,8 +1695,7 @@ export const submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost = async (c
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      examSubmitRequest,)
+    body: JSON.stringify(examSubmitRequest)
   }
 );}
 

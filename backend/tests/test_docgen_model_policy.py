@@ -17,7 +17,7 @@ def test_docgen_model_policy_sets_step_timeouts() -> None:
     assert kwargs["timeout"] == 360
     assert kwargs["max_tokens"] == 12000
     assert kwargs["model"] == "reason"
-    assert kwargs["max_retries"] == 3
+    assert kwargs["max_retries"] == 5
     assert kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert "task_type" not in kwargs
 

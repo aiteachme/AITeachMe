@@ -98,7 +98,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         max_tokens=1800,
         timeout_s=120,
         max_retries=2,
-        temperature=0.1,
+        temperature=0.3,
         note="Planner material batch summary for uploaded section map-reduce.",
     ),
     PlannerModelStep.STREAM_PLANNING_NOTE: PlannerModelPolicy(
@@ -107,7 +107,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         model="light",
         max_tokens=2200,
         timeout_s=300,
-        temperature=0.2,
+        temperature=0.3,
         note="首轮流式生成规划判断。",
     ),
     PlannerModelStep.SUMMARIZE_MATERIALS: PlannerModelPolicy(
@@ -116,7 +116,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         model="light",
         max_tokens=1600,
         timeout_s=120,
-        temperature=0.1,
+        temperature=0.2,
         note="首轮摘要学习资料，形成内部资料边界供方案生成使用。",
     ),
     PlannerModelStep.DRAFT_PLAN: PlannerModelPolicy(
@@ -125,7 +125,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         model="light",
         max_tokens=5200,
         timeout_s=480,
-        temperature=0.1,
+        temperature=0.3,
         note="生成 suggestion、plan 和 chapters；plan 段落会流式展示。",
     ),
     PlannerModelStep.COURSE_IDENTITY: PlannerModelPolicy(
@@ -134,7 +134,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         model="light",
         max_tokens=240,
         timeout_s=300,
-        temperature=0.35,
+        temperature=0.7,
         note="一次结构化调用同时生成课程名和课程图标 key。",
     ),
 }
