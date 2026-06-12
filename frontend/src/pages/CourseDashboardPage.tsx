@@ -62,44 +62,44 @@ function NavTile({
 }) {
   const themeStyles = {
     indigo: {
-      border: "border-slate-100 dark:border-slate-800/60 hover:border-indigo-200 dark:hover:border-indigo-800/50",
-      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(99,102,241,0.04)]",
-      iconContainer: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/35 dark:ring-indigo-900/20",
+      border: "border-slate-100 dark:border-slate-850 hover:border-indigo-200 dark:hover:border-indigo-800/55",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_8px_24px_rgba(99,102,241,0.05)]",
+      iconContainer: "bg-indigo-50 text-indigo-650 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100/35 dark:ring-indigo-900/20",
       gradient: "from-indigo-500/[0.01] to-indigo-500/[0.03] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.01]",
-      textHover: "group-hover:text-indigo-600 dark:group-hover:text-indigo-400",
+      textHover: "group-hover:text-indigo-605 dark:group-hover:text-indigo-400",
       buttonBg: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800",
     },
     violet: {
-      border: "border-slate-100 dark:border-slate-800/60 hover:border-violet-200 dark:hover:border-violet-800/50",
-      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(139,92,246,0.04)]",
+      border: "border-slate-100 dark:border-slate-850 hover:border-violet-200 dark:hover:border-violet-800/55",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_8px_24px_rgba(139,92,246,0.05)]",
       iconContainer: "bg-violet-50 text-violet-650 dark:bg-violet-950/45 dark:text-violet-400 ring-violet-100/35 dark:ring-violet-900/20",
       gradient: "from-violet-500/[0.01] to-violet-500/[0.03] dark:from-violet-500/[0.002] dark:to-violet-500/[0.01]",
-      textHover: "group-hover:text-violet-600 dark:group-hover:text-violet-400",
+      textHover: "group-hover:text-violet-605 dark:group-hover:text-violet-400",
       buttonBg: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-700 dark:hover:bg-violet-800",
     },
     teal: {
-      border: "border-slate-100 dark:border-slate-800/60 hover:border-teal-200 dark:hover:border-teal-800/50",
-      shadow: "shadow-sm hover:shadow-[0_8px_20px_rgba(20,184,166,0.04)]",
-      iconContainer: "bg-teal-50 text-teal-600 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/35 dark:ring-teal-900/20",
+      border: "border-slate-100 dark:border-slate-850 hover:border-teal-200 dark:hover:border-teal-800/55",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_8px_24px_rgba(20,184,166,0.05)]",
+      iconContainer: "bg-teal-50 text-teal-650 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100/35 dark:ring-teal-900/20",
       gradient: "from-teal-500/[0.01] to-teal-500/[0.03] dark:from-teal-500/[0.002] dark:to-teal-500/[0.01]",
-      textHover: "group-hover:text-teal-600 dark:group-hover:text-teal-400",
+      textHover: "group-hover:text-teal-605 dark:group-hover:text-teal-400",
       buttonBg: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-800",
     },
   }[theme];
 
   return (
     <div
-      onClick={(!disabled && !isGenerating) ? onClick : undefined}
+      onClick={!disabled ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-6 min-h-[220px] text-left border transition-all duration-300 ease-out",
+        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white dark:bg-slate-900 p-6 min-h-[220px] text-left border transition-all duration-350 ease-out",
         disabled
           ? "opacity-60 grayscale bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
-            ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_0_20px_rgba(99,102,241,0.04)] animate-pulse"
-            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 dark:hover:bg-[#0f1422]/20 cursor-pointer")
+            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(99,102,241,0.08)] cursor-pointer"
+            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 dark:hover:bg-slate-900/40 cursor-pointer")
       )}
     >
-      {!isGenerating && !disabled && (
+      {!disabled && (
         <div className={cn("absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none", themeStyles.gradient)} />
       )}
 
@@ -126,8 +126,8 @@ function NavTile({
           <div className="flex items-center flex-wrap gap-2">
             <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 transition-colors duration-250">{title}</h2>
             {isGenerating && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50/80 px-2 py-0.5 text-[10px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25 animate-pulse">
-                生成中
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50/80 px-2 py-0.5 text-[10px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/25">
+                正在构建
               </span>
             )}
             {disabled && disabledReason && (
@@ -145,7 +145,7 @@ function NavTile({
         <div className="min-w-0 flex-1">
           {extra}
         </div>
-        {!disabled && !isGenerating && (
+        {!disabled && (
           <Button
             type="button"
             className={cn("h-8 rounded-lg px-3 text-xs font-semibold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonBg)}
@@ -154,7 +154,7 @@ function NavTile({
               onClick();
             }}
           >
-            进入
+            {isGenerating ? "查看进度" : "进入"}
             <ArrowRight className="h-3 w-3 transition-transform duration-300 ease-out group-hover:translate-x-0.5" />
           </Button>
         )}
@@ -178,19 +178,20 @@ function RecentExamsWidget({
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 min-h-[340px] flex flex-col">
-      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 dark:border-slate-800/50 shrink-0">
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100/80 dark:border-slate-800/50 shrink-0">
         <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200">最近测验记录</h3>
         <button
           onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+          className="text-xs text-indigo-650 dark:text-indigo-400 hover:underline font-medium transition-colors"
         >
           查看全部
         </button>
       </div>
 
       {latestPapers.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-slate-400 dark:text-slate-500 font-light py-8">
-          暂无测验记录，您可以点击“直接闯关”开始第一次测验。
+        <div className="flex-1 flex flex-col items-center justify-center text-sm text-slate-400 dark:text-slate-550 font-light py-8 text-center">
+          <FileText className="h-8 w-8 text-slate-300 dark:text-slate-700 mb-2.5" strokeWidth={1.5} />
+          <p className="max-w-[280px] leading-relaxed">暂无测验记录，您可以点击右上角“直接闯关”开始第一次测验。</p>
         </div>
       ) : (
         <div className="divide-y divide-slate-100/60 dark:divide-slate-800/20 flex-1">
@@ -210,14 +211,18 @@ function RecentExamsWidget({
                     : "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.4)]";
 
             return (
-              <div key={item.id} className="group flex items-center justify-between py-3.5 transition-colors duration-200">
+              <div
+                key={item.id}
+                onClick={() => navigate(buildCourseSubPath(courseId, "exams", String(item.id)))}
+                className="group -mx-2 flex items-center justify-between rounded-xl px-2 py-3 transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer"
+              >
                 <div className="min-w-0 flex-1 flex items-center gap-3">
                   <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotColor)} />
                   <div className="min-w-0">
-                    <p className="truncate text-[14px] font-medium text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-200">
+                    <p className="truncate text-[14px] font-semibold text-slate-700 dark:text-slate-300 group-hover:text-indigo-650 dark:group-hover:text-indigo-400 transition-colors duration-250">
                       {buildExamTitle(item)}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-550 font-light">
+                    <p className="mt-0.5 text-xs text-slate-405 dark:text-slate-500 font-light">
                       {formatModeLabel(item.exam_mode)} · {scoreText}
                     </p>
                   </div>
@@ -226,8 +231,7 @@ function RecentExamsWidget({
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => navigate(buildCourseSubPath(courseId, "exams", String(item.id)))}
-                  className="h-8 shrink-0 px-3 text-xs font-semibold text-slate-500 group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-400 hover:bg-transparent"
+                  className="h-8 shrink-0 px-3 text-xs font-semibold text-slate-500 group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-all duration-200"
                 >
                   进入
                   <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
@@ -259,45 +263,56 @@ function MiniStatsWidget({
     <div className="rounded-2xl border border-slate-100 bg-white dark:border-slate-800/60 dark:bg-slate-900 p-6 shadow-sm transition-all duration-300 min-h-[340px] flex flex-col">
       <h3 className="text-[14.5px] font-semibold text-slate-800 dark:text-slate-200 mb-4 shrink-0">掌握分布</h3>
       
-      <div className="flex-1 flex flex-col justify-center space-y-6">
-        <div>
-          <div className="flex items-center justify-between text-[12px] mb-1.5 font-medium text-slate-600 dark:text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              高熟练度 ({masteredCount} 个)
-            </span>
-            <span>{percentMastered}%</span>
+      {totalCount === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+          <div className="h-10 w-10 rounded-full bg-slate-50 dark:bg-slate-800/40 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-2.5">
+            <BarChart3 className="h-5 w-5" strokeWidth={1.5} />
           </div>
-          <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${percentMastered}%` }} />
-          </div>
+          <p className="text-[13px] text-slate-400 dark:text-slate-500 max-w-[200px] leading-relaxed font-light">
+            知识库构建完成后，将在此展示您的知识掌握度分布。
+          </p>
         </div>
-
-        <div>
-          <div className="flex items-center justify-between text-[12px] mb-1.5 font-medium text-slate-600 dark:text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-indigo-500" />
-              良好掌握 ({goodCount} 个)
-            </span>
-            <span>{percentGood}%</span>
-          </div>
-          <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${percentGood}%` }} />
-          </div>
-        </div>
-
-        {dueReviewCount > 0 && (
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-500/[0.03] border border-rose-500/10 dark:bg-rose-500/[0.01] mt-2 shrink-0">
-            <div className="text-[12px] text-rose-605 dark:text-rose-400 font-semibold flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center space-y-6">
+          <div>
+            <div className="flex items-center justify-between text-[12px] mb-1.5 font-medium text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                高熟练度 ({masteredCount} 个)
               </span>
-              有 {dueReviewCount} 个考点需要复习
+              <span>{percentMastered}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${percentMastered}%` }} />
             </div>
           </div>
-        )}
-      </div>
+
+          <div>
+            <div className="flex items-center justify-between text-[12px] mb-1.5 font-medium text-slate-600 dark:text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                良好掌握 ({goodCount} 个)
+              </span>
+              <span>{percentGood}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${percentGood}%` }} />
+            </div>
+          </div>
+
+          {dueReviewCount > 0 && (
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-500/[0.03] border border-rose-500/10 dark:bg-rose-500/[0.01] mt-2 shrink-0">
+              <div className="text-[12px] text-rose-605 dark:text-rose-400 font-semibold flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                </span>
+                有 {dueReviewCount} 个考点需要复习
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -403,6 +418,34 @@ export function CourseDashboardPage() {
     <div className={pageShellClass}>
       <div className="flex w-full flex-col gap-8">
         
+        {/* Active DocGen Progress Banner */}
+        {isDocGenerating && (
+          <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/40 via-white to-indigo-50/20 p-5 shadow-[0_2px_12px_rgba(99,102,241,0.02)] dark:border-indigo-950 dark:from-indigo-950/20 dark:via-slate-900/50 dark:to-indigo-950/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-100/30 dark:border-indigo-900/40">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </span>
+              <div>
+                <h4 className="text-[14px] font-semibold text-slate-800 dark:text-slate-200">
+                  知识库正在后台构建中...
+                </h4>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 font-light">
+                  系统正在智能解析资料、整理课程考点与深度讲义。您可以随时在此查看实时进度与日志。
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+              className="self-start sm:self-auto shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800 text-xs font-semibold px-4 h-8 rounded-lg shadow-sm flex items-center gap-1"
+            >
+              查看构建进度
+              <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+
         {/* Top Header & Version Switcher */}
         <section className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between pt-4">
           <div className="max-w-4xl">

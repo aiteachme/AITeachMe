@@ -5834,29 +5834,45 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-white dark:bg-slate-950">
-        <BuildView
-          className="h-full"
-          isFetching={docMarkdownQuery.isFetching}
-          progress={buildProgress}
-          statusText={buildStatusText}
-          buildPreview={buildPreview}
-          buildMetrics={buildMetrics}
-          sourceFiles={sourceFiles}
-          sourceFilesFetching={sourceFilesFetching}
-          buildStage={buildMeta?.stage}
-          buildStatus={buildStatus}
-          isDocumentReady={isRequestedBuildReady}
-          courseId={courseId}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+          <BuildView
+            className="h-full"
+            isFetching={docMarkdownQuery.isFetching}
+            progress={buildProgress}
+            statusText={buildStatusText}
+            buildPreview={buildPreview}
+            buildMetrics={buildMetrics}
+            sourceFiles={sourceFiles}
+            sourceFilesFetching={sourceFilesFetching}
+            buildStage={buildMeta?.stage}
+            buildStatus={buildStatus}
+            isDocumentReady={isRequestedBuildReady}
+            courseId={courseId}
+          />
+        </div>
       </div>
     );
   }
 
   if (!hasRenderedMarkdown && showDocLoadingState) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadingState />
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
+        />
+        <div className="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadingState />
+        </div>
       </div>
     );
   }
