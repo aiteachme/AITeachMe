@@ -185,7 +185,7 @@ async def test_home_intake_confirmation_runs_create_tool(monkeypatch: pytest.Mon
             "session_id": "session_1",
             "user_id": "user_1",
             "attached_file_ids": ["file_b"],
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
         },
     )
 
@@ -198,7 +198,7 @@ async def test_home_intake_confirmation_runs_create_tool(monkeypatch: pytest.Mon
                 "course_id": "course_abc",
                 "initial_prompt": "帮我构建线性代数学习计划",
                 "auto_start": True,
-                "model": "qwen-flash",
+                "model": "gpt-5.4-mini",
             },
         }
     ]

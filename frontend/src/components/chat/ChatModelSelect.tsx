@@ -14,7 +14,7 @@ import { Check, ChevronDown, Network } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-export const CHAT_MODEL_OPTIONS = ["settings", "gpt-5.5", "deepseek-v4-flash", "qwen-flash"] as const;
+export const CHAT_MODEL_OPTIONS = ["settings", "gpt-5.5", "gpt-5.4-mini", "gemini-3.1-flash-lite"] as const;
 
 export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 
@@ -32,32 +32,32 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
   title: string;
 }> = {
   settings: {
-    optionLabel: "设置",
-    triggerLabel: "设置",
-    menuLabel: "跟随设置模型",
+    optionLabel: "默认",
+    triggerLabel: "默认",
+    menuLabel: "默认",
     caption: "使用设置页的主文本模型",
     title: "使用设置页中配置的主文本模型",
   },
   "gpt-5.5": {
-    optionLabel: "gpt-5.5",
-    triggerLabel: "GPT-5.5",
-    menuLabel: "GPT-5.5",
-    caption: "Responses 路径 · 深度推理",
-    title: "切换到 gpt-5.5，适合复杂推理、规划和讲解",
+    optionLabel: "深度推理",
+    triggerLabel: "深度推理",
+    menuLabel: "深度推理",
+    caption: "复杂规划 · 深入讲解",
+    title: "适合复杂推理、规划和讲解",
   },
-  "deepseek-v4-flash": {
-    optionLabel: "deepseek-v4-flash",
-    triggerLabel: "DeepSeek",
-    menuLabel: "DeepSeek V4 Flash",
-    caption: "更强推理 · 讲解更稳",
-    title: "切换到 deepseek-v4-flash，适合更稳的推理和讲解",
+  "gpt-5.4-mini": {
+    optionLabel: "均衡",
+    triggerLabel: "均衡",
+    menuLabel: "均衡",
+    caption: "稳定生成 · 日常问答",
+    title: "适合快速规划、生成和问答",
   },
-  "qwen-flash": {
-    optionLabel: "qwen-flash",
-    triggerLabel: "Qwen",
-    menuLabel: "Qwen Flash",
-    caption: "更快响应 · 轻量问答",
-    title: "切换到 qwen-flash，适合最快响应和轻量问答",
+  "gemini-3.1-flash-lite": {
+    optionLabel: "快速响应",
+    triggerLabel: "快速响应",
+    menuLabel: "快速响应",
+    caption: "轻量问答 · 快速响应",
+    title: "适合轻量问答和快速响应",
   },
 };
 
@@ -326,7 +326,7 @@ export function ChatModelSelect({
     <>
       <div
         ref={rootRef}
-        title={`选择全局模型：${meta.title}`}
+        title={`选择生成模型：${meta.title}`}
         onKeyDown={handleKeyDown}
         className={cn(
           "relative inline-flex h-7 w-auto min-w-0 max-w-full",
@@ -343,7 +343,7 @@ export function ChatModelSelect({
           aria-expanded={open}
           aria-controls={listboxId}
           aria-describedby={descriptionId}
-          aria-label={`选择全局模型，当前为${meta.optionLabel}`}
+          aria-label={`选择生成模型，当前为${meta.optionLabel}`}
           onClick={() => {
             if (!disabled) {
               setOpen((current) => !current);

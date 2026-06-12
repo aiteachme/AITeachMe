@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 
 from app.shared.infra.llm_support.common import (
+    LLMEndpoint,
     LLMRuntimeSnapshot,
     get_llm_runtime_snapshot,
     use_llm_runtime_snapshot,
@@ -14,11 +16,12 @@ from app.shared.infra.llm_support.common import (
 MODEL_USE_SETTINGS = "settings"
 ALLOWED_RUNTIME_MODEL_OVERRIDES = frozenset(
     {
-        "deepseek-v4-flash",
+        "gemini-3.1-flash-lite",
+        "gpt-5.4-mini",
         "gpt-5.5",
-        "qwen-flash",
     }
 )
+_PRIMARY_ENDPOINT_MODEL_OVERRIDES = frozenset({"gpt-5.4-mini", "gpt-5.5"})
 
 
 def normalize_runtime_model_override(value: str | None) -> str | None:
@@ -32,6 +35,21 @@ def normalize_runtime_model_override(value: str | None) -> str | None:
     return model
 
 
+def _override_endpoint(endpoint: LLMEndpoint) -> LLMEndpoint:
+    return replace(endpoint, use_default_models=False)
+
+
+def _missing_fallback_endpoint(snapshot: LLMRuntimeSnapshot) -> LLMEndpoint:
+    return LLMEndpoint(
+        role="fallback",
+        base_url=None,
+        api_key=None,
+        provider="openai_compatible",
+        api_version=snapshot.api_version,
+        use_default_models=False,
+    )
+
+
 def build_runtime_model_override_snapshot(value: str | None) -> LLMRuntimeSnapshot | None:
     """Return a snapshot where reason/primary/light all point to the selected model."""
 
@@ -41,6 +59,14 @@ def build_runtime_model_override_snapshot(value: str | None) -> LLMRuntimeSnapsh
 
     snapshot = get_llm_runtime_snapshot()
     settings = snapshot.settings
+    route_via_fallback = model not in _PRIMARY_ENDPOINT_MODEL_OVERRIDES
+    endpoint_candidates = tuple(
+        _override_endpoint(endpoint)
+        for endpoint in (snapshot.fallback_endpoints if route_via_fallback else snapshot.primary_endpoints)
+    )
+    if route_via_fallback and not endpoint_candidates:
+        endpoint_candidates = (_missing_fallback_endpoint(snapshot),)
+    selected_endpoint = endpoint_candidates[0] if endpoint_candidates else None
     models = settings.models.model_copy(
         update={
             "reason": model,
@@ -48,14 +74,17 @@ def build_runtime_model_override_snapshot(value: str | None) -> LLMRuntimeSnapsh
             "light": model,
         },
     )
+    api_keys = tuple(endpoint.api_key for endpoint in endpoint_candidates if endpoint.api_key is not None)
+    if not api_keys and not route_via_fallback:
+        api_keys = snapshot.api_keys
     return LLMRuntimeSnapshot(
         settings=settings.model_copy(update={"models": models}, deep=True),
-        base_url=snapshot.base_url,
-        api_keys=snapshot.api_keys,
-        provider=snapshot.provider,
-        api_version=snapshot.api_version,
-        primary_endpoints=snapshot.primary_endpoints,
-        fallback_endpoints=snapshot.fallback_endpoints,
+        base_url=selected_endpoint.base_url if selected_endpoint is not None else snapshot.base_url,
+        api_keys=api_keys,
+        provider=selected_endpoint.provider if selected_endpoint is not None else snapshot.provider,
+        api_version=selected_endpoint.api_version if selected_endpoint is not None else snapshot.api_version,
+        primary_endpoints=endpoint_candidates,
+        fallback_endpoints=(),
     )
 
 

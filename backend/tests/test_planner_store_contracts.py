@@ -138,7 +138,7 @@ def _plan(*, plan_text: str = "围绕矩阵和线性映射生成一份可执行�
             "max_chapters": 2,
             "target_chapter_count": 2,
         },
-        "model_override": "qwen-flash",
+        "model_override": "gpt-5.4-mini",
     }
 
 
@@ -150,7 +150,7 @@ def test_planner_snapshot_helpers_keep_history_and_runtime_contracts() -> None:
         user_prompt="学习矩阵",
         digest_mode="systematic",
         selected_file_ids=[" file-a ", "file-a", "", "file-b"],
-        model_override="qwen-flash",
+        model_override="gpt-5.4-mini",
         latest_plan=_plan(),
         latest_summary="已有大纲",
         confirmed_plan_id="plan-1",
@@ -211,7 +211,7 @@ def test_planner_snapshot_helpers_keep_history_and_runtime_contracts() -> None:
             "planner_turns": [planner_store._turn_snapshot(turn) for turn in turns],
             "plan": _plan(),
             "selected_file_ids": ["file-a", "file-b"],
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
             "workflow_elapsed_ms": 150,
             "prepare_ms": 12,
             "compose_ms": 25,
@@ -219,7 +219,7 @@ def test_planner_snapshot_helpers_keep_history_and_runtime_contracts() -> None:
     )
 
     assert snapshot["selected_file_ids"] == ["file-a", "file-b"]
-    assert snapshot["model_override"] == "qwen-flash"
+    assert snapshot["model_override"] == "gpt-5.4-mini"
     assert context["planner_turn_count"] == 3
     assert context["user_revision_count"] == 1
     assert context["assistant_revision_count"] == 1
@@ -241,7 +241,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
             "requested_file_ids": ["file-ready", "file-pending"],
             "user_prompt": "帮我把线性代数整理成可学习的知识文档",
             "digest_mode": "sprint",
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
         }
     )
 
@@ -259,7 +259,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
             "generated_course_name": "线性代数速成",
             "generated_course_icon_key": "math",
             "planning_note": "用两章快速建立矩阵和线性映射主线",
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
         },
         plan=_plan(),
         material_context=_material_context(),
@@ -271,7 +271,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert "线性代数入门材料" in course.description
     assert course.user_intent == "用两章快速建立矩阵和线性映射主线"
     assert saved["planner_record"]["status"] == "draft"
-    assert saved["model_override"] == "qwen-flash"
+    assert saved["model_override"] == "gpt-5.4-mini"
     assert managed_planner_session.exec(select(ChatMessage)).all()[-1].role == "assistant"
 
     appended = planner_store.prepare_planner_run(
@@ -281,7 +281,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
             "course_id": COURSE_ID,
             "user_id": USER_ID,
             "feedback_message": "再补一个习题复盘章节",
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
         }
     )
 
@@ -306,7 +306,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
             "course_id": COURSE_ID,
             "user_id": USER_ID,
             "generated_course_name": "",
-            "model_override": "qwen-flash",
+            "model_override": "gpt-5.4-mini",
         },
         plan=revised_plan,
         material_context=_material_context(),
@@ -340,7 +340,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert repeated.confirmed_plan_id == confirmed.confirmed_plan_id
     assert repeated.version_no == 1
     assert confirmed.selected_file_ids == ["file-ready", "file-pending"]
-    assert confirmed.model_override == "qwen-flash"
+    assert confirmed.model_override == "gpt-5.4-mini"
     assert latest is not None
     assert latest.status == "confirmed"
     assert latest.revision == 4

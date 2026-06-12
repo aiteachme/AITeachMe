@@ -186,7 +186,7 @@ def test_planner_sse_preview_payload_exposes_new_planner_contract() -> None:
             "user_prompt": "线性代数速成入门",
             "digest_mode": "sprint",
             "planner_session_id": "session_1",
-            "model_override": "deepseek-v4-flash",
+            "model_override": "gpt-5.5",
             "planning_note": "用户要速成线性代数。",
             "material_note": "资料重点是矩阵和线性方程组。",
         },
