@@ -119,6 +119,44 @@ def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyP
     assert exams_api._exam_config_hash(snapshot) == exams_api._exam_config_hash(dict(reversed(snapshot.items())))
 
 
+def test_upsert_generated_template_reuses_duplicate_stem_across_units(session: Session) -> None:
+    units = _seed_exam_course(session)
+    first_unit, second_unit = units[0], units[1]
+    existing = exams_api._upsert_generated_template(
+        session,
+        course_id=COURSE_ID,
+        unit=first_unit,
+        question_type="single_choice",
+        difficulty="easy",
+        stem="Which chart best shows parts of a whole?",
+        answer="Pie chart",
+        explanation="A pie chart shows proportions within one whole.",
+        options=["Line chart", "Bar chart", "Pie chart", "Scatter plot"],
+        knowledge_unit_refs=[{"knowledge_unit_id": int(first_unit.id or 0), "coverage_weight": 1.0}],
+        rationale="first unit",
+    )
+
+    reused = exams_api._upsert_generated_template(
+        session,
+        course_id=COURSE_ID,
+        unit=second_unit,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which chart best shows parts of a whole?",
+        answer="Pie chart",
+        explanation="A pie chart is suitable when comparing parts within a total.",
+        options=["Line chart", "Bar chart", "Pie chart", "Scatter plot"],
+        knowledge_unit_refs=[{"knowledge_unit_id": int(second_unit.id or 0), "coverage_weight": 0.6}],
+        rationale="second unit",
+    )
+
+    links = exams_api.exams_repo.find_knowledge_unit_links_by_template(session, int(existing.id or 0))
+
+    assert reused.id == existing.id
+    assert reused.difficulty == "medium"
+    assert {item["knowledge_unit_id"] for item in links} == {int(first_unit.id or 0), int(second_unit.id or 0)}
+
+
 def test_paper_exam_layout_models_content_flow_and_sections() -> None:
     layout = exams_api._build_paper_layout(
         exam_mode="paper_exam",
