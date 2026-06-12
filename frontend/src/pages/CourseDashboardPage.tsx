@@ -319,14 +319,45 @@ function MiniStatsWidget({
   goodCount,
   dueReviewCount,
   totalCount,
+  hasExams,
+  isDocGenerating,
+  isBuilt,
 }: {
   masteredCount: number;
   goodCount: number;
   dueReviewCount: number;
   totalCount: number;
+  hasExams: boolean;
+  isDocGenerating: boolean;
+  isBuilt: boolean;
 }) {
   const percentMastered = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
   const percentGood = totalCount > 0 ? Math.round((goodCount / totalCount) * 100) : 0;
+
+  let emptyStateContent = null;
+  if (isDocGenerating || !isBuilt) {
+    emptyStateContent = (
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+        <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/45 flex items-center justify-center text-slate-400 dark:text-slate-550 mb-3 border border-slate-100 dark:border-slate-800">
+          <BarChart3 className="h-6.5 w-6.5" strokeWidth={1.5} />
+        </div>
+        <p className="text-[13px] text-slate-400 dark:text-slate-550 max-w-[200px] leading-relaxed font-light">
+          知识库构建完成后，将在此展示您的知识掌握度分布。
+        </p>
+      </div>
+    );
+  } else if (!hasExams) {
+    emptyStateContent = (
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+        <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/45 flex items-center justify-center text-slate-400 dark:text-slate-555 mb-3 border border-slate-100 dark:border-slate-800">
+          <Lock className="h-6.5 w-6.5" strokeWidth={1.5} />
+        </div>
+        <p className="text-[13px] text-slate-400 dark:text-slate-555 max-w-[200px] leading-relaxed font-light">
+          需先完成测验，以生成当前学科的学习画像。
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-slate-100/80 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
@@ -335,16 +366,7 @@ function MiniStatsWidget({
         <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100">掌握分布</h3>
       </div>
 
-      {totalCount === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-          <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/45 flex items-center justify-center text-slate-400 dark:text-slate-550 mb-3 border border-slate-100 dark:border-slate-800">
-            <BarChart3 className="h-6 w-6" strokeWidth={1.5} />
-          </div>
-          <p className="text-[13px] text-slate-400 dark:text-slate-505 max-w-[200px] leading-relaxed font-light">
-            知识库构建完成后，将在此展示您的知识掌握度分布。
-          </p>
-        </div>
-      ) : (
+      {emptyStateContent ? emptyStateContent : (
         <div className="flex-1 flex flex-col justify-center space-y-6">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-655 dark:text-slate-350">
@@ -458,6 +480,10 @@ export function CourseDashboardPage() {
 
   const courseProfile = mastery?.course_profile;
   const states = mastery?.knowledge_unit_states ?? [];
+
+  const isBuilt = useMemo(() => {
+    return Boolean(courseProfile?.generated_at);
+  }, [courseProfile]);
 
   // Extract chapters from pre-loaded markdown content for rendering the syllabus preview inside the card
   const chapters = useMemo(() => {
@@ -671,56 +697,153 @@ export function CourseDashboardPage() {
               ) : undefined
             }
             connector={
-              <>
-                {/* Desktop Connector (Horizontal) */}
-                <div className="absolute right-[-36px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
-                  <svg width="48" height="16" viewBox="0 0 48 16" fill="none" className="w-12 h-4 overflow-visible">
-                    <path
-                      d="M0 8H38"
-                      stroke="url(#indigo-violet)"
-                      strokeWidth="2"
-                      strokeDasharray="4 3"
-                    />
-                    <path
-                      d="M34 4L40 8L34 12"
-                      stroke="#8b5cf6"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <defs>
-                      <linearGradient id="indigo-violet" x1="0" y1="8" x2="40" y2="8" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#6366f1" />
-                        <stop offset="1" stopColor="#8b5cf6" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-                {/* Mobile Connector (Vertical) */}
-                <div className="absolute bottom-[-36px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
-                  <svg width="16" height="48" viewBox="0 0 16 48" fill="none" className="w-4 h-12 overflow-visible">
-                    <path
-                      d="M8 0V38"
-                      stroke="url(#indigo-violet-v)"
-                      strokeWidth="2"
-                      strokeDasharray="4 3"
-                    />
-                    <path
-                      d="M4 34L8 40L12 34"
-                      stroke="#8b5cf6"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <defs>
-                      <linearGradient id="indigo-violet-v" x1="8" y1="0" x2="8" y2="40" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#6366f1" />
-                        <stop offset="1" stopColor="#8b5cf6" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-              </>
+              (!isBuilt || isDocGenerating) ? (
+                <>
+                  {/* Desktop Connector (Horizontal) - Disabled */}
+                  <div
+                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
+                  >
+                    <svg width="56" height="24" viewBox="0 0 56 24" fill="none" className="overflow-visible">
+                      <path
+                        d="M6 12H44"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray="4 4"
+                      />
+                      <path
+                        d="M41 7.5L46 12L41 16.5"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  {/* Mobile Connector (Vertical) - Disabled */}
+                  <div
+                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
+                    title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
+                  >
+                    <svg width="24" height="56" viewBox="0 0 24 56" fill="none" className="overflow-visible">
+                      <path
+                        d="M12 6V44"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray="4 4"
+                      />
+                      <path
+                        d="M7.5 41L12 46L16.5 41"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Desktop Connector (Horizontal) */}
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(buildCoursePath(courseId, "exams"));
+                    }}
+                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow"
+                    title="进入 训练中心"
+                  >
+                    <svg width="56" height="24" viewBox="0 0 56 24" fill="none" className="overflow-visible">
+                      {/* Track */}
+                      <path
+                        d="M6 12H46"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-800"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Flowing animated gradient pulse */}
+                      <path
+                        d="M6 12H46"
+                        stroke="url(#pulse-grad-1)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Sleek chevron arrowhead */}
+                      <path
+                        d="M41 7.5L46 12L41 16.5"
+                        stroke="#8b5cf6"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="group-hover/arrow:translate-x-0.5 transition-transform duration-200"
+                      />
+                      <defs>
+                        <linearGradient id="pulse-grad-1" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0" />
+                          <stop offset="30%" stopColor="#6366f1" stopOpacity="1" />
+                          <stop offset="70%" stopColor="#8b5cf6" stopOpacity="1" />
+                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                          <animate attributeName="x1" values="-100%;100%" dur="1.5s" repeatCount="indefinite" />
+                          <animate attributeName="x2" values="0%;200%" dur="1.5s" repeatCount="indefinite" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                  {/* Mobile Connector (Vertical) */}
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(buildCoursePath(courseId, "exams"));
+                    }}
+                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-v"
+                    title="进入 训练中心"
+                  >
+                    <svg width="24" height="56" viewBox="0 0 24 56" fill="none" className="overflow-visible">
+                      {/* Track */}
+                      <path
+                        d="M12 6V46"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-800"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Flowing animated gradient pulse */}
+                      <path
+                        d="M12 6V46"
+                        stroke="url(#pulse-grad-1-v)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Sleek chevron arrowhead */}
+                      <path
+                        d="M7.5 41L12 46L16.5 41"
+                        stroke="#8b5cf6"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="group-hover/arrow-v:translate-y-0.5 transition-transform duration-200"
+                      />
+                      <defs>
+                        <linearGradient id="pulse-grad-1-v" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0" />
+                          <stop offset="30%" stopColor="#6366f1" stopOpacity="1" />
+                          <stop offset="70%" stopColor="#8b5cf6" stopOpacity="1" />
+                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                          <animate attributeName="y1" values="-100%;100%" dur="1.5s" repeatCount="indefinite" />
+                          <animate attributeName="y2" values="0%;200%" dur="1.5s" repeatCount="indefinite" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                </>
+              )
             }
             extra={
               <div className="flex items-center gap-1.5 text-[11.5px] text-slate-455 dark:text-slate-500 font-medium bg-slate-50/50 dark:bg-slate-800/30 px-3 py-1 rounded-full border border-slate-100/50 dark:border-slate-800/20 w-fit shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
@@ -763,8 +886,8 @@ export function CourseDashboardPage() {
             title="考试中心"
             description="查看全部试卷，进行专项练习与题库测试。"
             theme="violet"
-            disabled={isDocGenerating}
-            disabledReason={isDocGenerating ? "知识库构建中" : undefined}
+            disabled={!isBuilt || isDocGenerating}
+            disabledReason={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : undefined}
             onClick={() => navigate(buildCoursePath(courseId, "exams"))}
             badge={
               states.length > 0 ? (
@@ -775,56 +898,153 @@ export function CourseDashboardPage() {
               ) : undefined
             }
             connector={
-              <>
-                {/* Desktop Connector (Horizontal) */}
-                <div className="absolute right-[-36px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
-                  <svg width="48" height="16" viewBox="0 0 48 16" fill="none" className="w-12 h-4 overflow-visible">
-                    <path
-                      d="M0 8H38"
-                      stroke="url(#violet-teal)"
-                      strokeWidth="2"
-                      strokeDasharray="4 3"
-                    />
-                    <path
-                      d="M34 4L40 8L34 12"
-                      stroke="#14b8a6"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <defs>
-                      <linearGradient id="violet-teal" x1="0" y1="8" x2="40" y2="8" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#8b5cf6" />
-                        <stop offset="1" stopColor="#14b8a6" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-                {/* Mobile Connector (Vertical) */}
-                <div className="absolute bottom-[-36px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
-                  <svg width="16" height="48" viewBox="0 0 16 48" fill="none" className="w-4 h-12 overflow-visible">
-                    <path
-                      d="M8 0V38"
-                      stroke="url(#violet-teal-v)"
-                      strokeWidth="2"
-                      strokeDasharray="4 3"
-                    />
-                    <path
-                      d="M4 34L8 40L12 34"
-                      stroke="#14b8a6"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <defs>
-                      <linearGradient id="violet-teal-v" x1="8" y1="0" x2="8" y2="40" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#8b5cf6" />
-                        <stop offset="1" stopColor="#14b8a6" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-              </>
+              (!isBuilt || isDocGenerating || historyItems.length === 0) ? (
+                <>
+                  {/* Desktop Connector (Horizontal) - Disabled */}
+                  <div
+                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                  >
+                    <svg width="56" height="24" viewBox="0 0 56 24" fill="none" className="overflow-visible">
+                      <path
+                        d="M6 12H44"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray="4 4"
+                      />
+                      <path
+                        d="M41 7.5L46 12L41 16.5"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  {/* Mobile Connector (Vertical) - Disabled */}
+                  <div
+                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
+                    title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                  >
+                    <svg width="24" height="56" viewBox="0 0 24 56" fill="none" className="overflow-visible">
+                      <path
+                        d="M12 6V44"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray="4 4"
+                      />
+                      <path
+                        d="M7.5 41L12 46L16.5 41"
+                        stroke="#cbd5e1"
+                        className="dark:stroke-slate-800/60"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Desktop Connector (Horizontal) */}
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(buildCoursePath(courseId, "profile"));
+                    }}
+                    className="absolute right-[-40px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow-2"
+                    title="进入 学习画像"
+                  >
+                    <svg width="56" height="24" viewBox="0 0 56 24" fill="none" className="overflow-visible">
+                      {/* Track */}
+                      <path
+                        d="M6 12H46"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-800"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Flowing animated gradient pulse */}
+                      <path
+                        d="M6 12H46"
+                        stroke="url(#pulse-grad-2)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Sleek chevron arrowhead */}
+                      <path
+                        d="M41 7.5L46 12L41 16.5"
+                        stroke="#14b8a6"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="group-hover/arrow-2:translate-x-0.5 transition-transform duration-200"
+                      />
+                      <defs>
+                        <linearGradient id="pulse-grad-2" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0" />
+                          <stop offset="30%" stopColor="#8b5cf6" stopOpacity="1" />
+                          <stop offset="70%" stopColor="#14b8a6" stopOpacity="1" />
+                          <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
+                          <animate attributeName="x1" values="-100%;100%" dur="1.5s" repeatCount="indefinite" />
+                          <animate attributeName="x2" values="0%;200%" dur="1.5s" repeatCount="indefinite" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                  {/* Mobile Connector (Vertical) */}
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(buildCoursePath(courseId, "profile"));
+                    }}
+                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-2-v"
+                    title="进入 学习画像"
+                  >
+                    <svg width="24" height="56" viewBox="0 0 24 56" fill="none" className="overflow-visible">
+                      {/* Track */}
+                      <path
+                        d="M12 6V46"
+                        stroke="#e2e8f0"
+                        className="dark:stroke-slate-800"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Flowing animated gradient pulse */}
+                      <path
+                        d="M12 6V46"
+                        stroke="url(#pulse-grad-2-v)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      {/* Sleek chevron arrowhead */}
+                      <path
+                        d="M7.5 41L12 46L16.5 41"
+                        stroke="#14b8a6"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="group-hover/arrow-2-v:translate-y-0.5 transition-transform duration-200"
+                      />
+                      <defs>
+                        <linearGradient id="pulse-grad-2-v" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0" />
+                          <stop offset="30%" stopColor="#8b5cf6" stopOpacity="1" />
+                          <stop offset="70%" stopColor="#14b8a6" stopOpacity="1" />
+                          <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
+                          <animate attributeName="y1" values="-100%;100%" dur="1.5s" repeatCount="indefinite" />
+                          <animate attributeName="y2" values="0%;200%" dur="1.5s" repeatCount="indefinite" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </div>
+                </>
+              )
             }
             extra={
               <div className="flex flex-wrap items-center gap-2">
@@ -876,10 +1096,18 @@ export function CourseDashboardPage() {
           <NavTile
             icon={BarChart3}
             title="学习画像"
-            description="基于测验数据、复习进度实时生成的深度诊断报告与今日学习计划。"
+            description="基于测验 data、复习进度实时生成的深度诊断报告与今日学习计划。"
             theme="teal"
-            disabled={isDocGenerating}
-            disabledReason={isDocGenerating ? "知识库构建中" : undefined}
+            disabled={!isBuilt || isDocGenerating || historyItems.length === 0}
+            disabledReason={
+              isDocGenerating
+                ? "知识库构建中"
+                : !isBuilt
+                  ? "请先构建知识库"
+                  : historyItems.length === 0
+                    ? "需先完成测验"
+                    : undefined
+            }
             onClick={() => navigate(buildCoursePath(courseId, "profile"))}
             extra={
               <div className="flex flex-wrap items-center gap-2">
@@ -933,7 +1161,7 @@ export function CourseDashboardPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-indigo-50/15 border border-indigo-100/35 dark:bg-slate-900/35 dark:border-slate-800/40 relative overflow-hidden animate-[fadeIn_0.5s_ease-out]">
             <div className="absolute inset-0 bg-gradient-to-r from-teal-500/[0.02] via-transparent to-indigo-500/[0.02] pointer-events-none" />
             <div className="flex items-center gap-3.5 relative z-10">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/10 text-teal-605 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 shadow-sm shadow-teal-500/5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/10 text-teal-655 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 shadow-sm shadow-teal-500/5">
                 <RefreshCw className="h-4 w-4 animate-spin-slow" />
               </span>
               <div>
@@ -970,6 +1198,9 @@ export function CourseDashboardPage() {
               goodCount={goodCount}
               dueReviewCount={dueReviewCount}
               totalCount={states.length}
+              hasExams={historyItems.length > 0}
+              isDocGenerating={isDocGenerating}
+              isBuilt={isBuilt}
             />
           </div>
         </div>
