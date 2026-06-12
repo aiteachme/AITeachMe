@@ -6059,7 +6059,10 @@ export function KnowledgeDocsPage() {
         <CoursePagePillTitle
           icon={BookOpen}
           label="知识库"
-          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          className={cn(
+            "shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out",
+            !isTocCollapsed ? "lg:-translate-x-[clamp(7rem,8vw,9rem)]" : "lg:-translate-x-[28px]"
+          )}
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
 

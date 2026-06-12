@@ -291,6 +291,7 @@ export function CourseDashboardPage() {
       return response.data;
     },
     enabled: Boolean(courseId),
+    staleTime: 15000,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;

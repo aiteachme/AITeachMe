@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useParams, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  ChevronLeft,
   ChevronDown,
   Compass,
   Sparkles,
@@ -57,7 +56,6 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className }: Cour
   const currentSegment = getCourseRouteSegmentFromPathname(pathname);
 
   const navItems = [
-    { id: "nav", label: "课程大盘", icon: Compass, href: buildCoursePath(courseId, "nav") },
     { id: "build", label: "方案规划", icon: Sparkles, href: buildCoursePath(courseId, "build") },
     { id: "knowledge-docs", label: "知识库", icon: BookOpen, href: buildCoursePath(courseId, "knowledge-docs") },
     { id: "exams", label: "训练中心", icon: FileText, href: buildCoursePath(courseId, "exams") },
@@ -72,10 +70,10 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className }: Cour
         {href && (
           <Link
             to={href}
-            className="flex h-8 items-center pl-3 pr-2 rounded-l-full border-r border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-colors"
+            className="flex h-8 items-center pl-3 pr-2.5 rounded-l-full border-r border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-600 transition-colors"
             title="返回课程大盘"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <Compass className="h-4 w-4" />
           </Link>
         )}
 
