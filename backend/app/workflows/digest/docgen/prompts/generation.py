@@ -99,7 +99,6 @@ def build_docgen_writer_messages(
     mode_label = mode_profile.prompt_label
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})
-    media_quota = dict(execution_contract.get("media_quota") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
     content_role_targets = dict(execution_contract.get("content_role_targets") or {})
     example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
@@ -167,7 +166,7 @@ def build_docgen_writer_messages(
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
-        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}\n"
+        f"- 图示写作：正文写清变量、对象位置、图形关系和图注；静态图节点负责绘制 SVG\n"
         f"- 练习目标：学习活动约 {activity_quota} 个；完整例题/案例 {min_worked_examples} 个；短练习/自测/变式约 {short_practice_quota} 个\n"
         f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"

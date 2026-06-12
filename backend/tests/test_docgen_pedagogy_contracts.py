@@ -5,7 +5,6 @@ from app.workflows.digest.common.contracts import (
     resolve_digest_retrieval_profile,
 )
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
-    _ensure_chapter_overview_mermaid,
     _ensure_requested_placeholders,
 )
 from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
@@ -90,34 +89,6 @@ def test_mermaid_placeholder_not_added_when_writer_already_rendered_diagram() ->
     assert rendered == markdown
     assert rendered.count("```mermaid") == 1
     assert "ATM_DOCGEN_ASSET_REQUEST" not in rendered
-
-
-def test_chapter_overview_mermaid_added_when_chapter_has_no_diagram() -> None:
-    rendered = _ensure_chapter_overview_mermaid(
-        "# 函数图像\n\n## 一次函数\n正文。",
-        chapter_title="函数图像",
-        digest_mode="sprint",
-    )
-
-    assert "ATM_DOCGEN_ASSET_REQUEST" in rendered
-    assert "kind: mermaid" in rendered
-    assert "函数图像" in rendered
-
-
-def test_chapter_overview_mermaid_inserted_after_opening_table() -> None:
-    rendered = _ensure_chapter_overview_mermaid(
-        (
-            "# 绝对值\n\n"
-            "| 考点 | 重要程度 | 常见题型 |\n"
-            "| --- | --- | --- |\n"
-            "| 数轴距离 | 高 | 化简 |\n\n"
-            "## 数轴距离\n正文。"
-        ),
-        chapter_title="绝对值",
-        digest_mode="sprint",
-    )
-
-    assert rendered.index("ATM_DOCGEN_ASSET_REQUEST") < rendered.index("## 数轴距离")
 
 
 def test_document_overview_dedupes_chapters_and_hides_course_ids() -> None:

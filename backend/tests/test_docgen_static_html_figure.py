@@ -2,6 +2,7 @@ from app.shared.infra.tools.builtin.markdown_processing import validate_single_f
 from app.workflows.digest.docgen.lib.figure_spec import (
     FigureElement,
     FigureSpec,
+    build_fallback_figure_spec,
     is_renderable_problem_diagram,
     normalize_figure_spec,
     render_figure_spec_html,
@@ -162,6 +163,28 @@ def test_static_figure_normalization_does_not_fallback_to_fake_diagram() -> None
     assert normalized.elements == []
     assert not is_renderable_problem_diagram(normalized)
     assert "fallback_elements_used" not in report["warnings"]
+
+
+def test_fallback_problem_diagram_draws_coordinate_context() -> None:
+    spec = build_fallback_figure_spec(
+        title="一次函数图像图示",
+        figure_type="problem_diagram",
+        context="一次函数 y=2x+1 的图像是一条直线，斜率决定上升或下降，截距是与 y 轴的交点。",
+    )
+
+    assert is_renderable_problem_diagram(spec)
+    assert {item.kind for item in spec.elements} >= {"axis", "line", "point"}
+
+
+def test_fallback_problem_diagram_draws_parallel_line_angle_context() -> None:
+    spec = build_fallback_figure_spec(
+        title="平行线与角图示",
+        figure_type="problem_diagram",
+        context="两条平行线被一条截线所截，同位角相等，内错角相等；若一个角是 35°，对应角也相等。",
+    )
+
+    assert is_renderable_problem_diagram(spec)
+    assert any(item.kind == "shape" and item.shape_type == "angle" for item in spec.elements)
 
 
 def test_normalize_figure_spec_does_not_invent_diagram_from_table() -> None:

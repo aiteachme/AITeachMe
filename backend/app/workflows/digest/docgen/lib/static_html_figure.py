@@ -16,6 +16,7 @@ from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.figure_spec import (
     FigureSpec,
     FigureType,
+    build_fallback_figure_spec,
     is_renderable_problem_diagram,
     normalize_figure_spec,
     render_figure_spec_html,
@@ -224,44 +225,53 @@ async def generate_static_html_figure_assets(
     async def _generate_one(candidate: _StaticFigureCandidate) -> dict[str, object] | None:
         figure_title = f"{candidate.title} 图示"
         context = "\n".join([candidate.context, *claim_targets]).strip()
-        try:
-            response = await acompletion_with_fallback(
-                build_static_html_figure_messages(
-                    figure_title=figure_title,
-                    figure_goal=candidate.goal,
-                    figure_type=candidate.figure_type,
-                    digest_mode=digest_mode,
-                    section_context=context,
-                ),
-                response_model=FigureSpec,
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.STATIC_HTML_FIGURE,
-                    digest_mode=digest_mode,
-                    extra_metadata=traced_context.trace_metadata(
-                        docgen_stage="static_html_figure",
-                        asset_kind="static_html_figure",
-                        chapter_index=draft.chapter_index,
-                        section_index=candidate.index,
-                        section_title=candidate.title,
-                    ),
-                ),
+        spec_validation: dict[str, object] = {}
+
+        def _fallback_spec(reason: str) -> FigureSpec:
+            fallback = build_fallback_figure_spec(
+                title=figure_title,
+                figure_type="problem_diagram",
+                context=context,
+                goal=candidate.goal,
             )
-            spec = response if isinstance(response, FigureSpec) else FigureSpec.model_validate(response)
-            spec, spec_validation = normalize_figure_spec(
-                spec,
+            normalized, validation = normalize_figure_spec(
+                fallback,
                 fallback_title=figure_title,
                 context=context,
                 allow_fallback_elements=False,
             )
+            spec_validation["fallback_validation"] = validation
+            warnings = list(spec_validation.get("warnings") or [])
+            warnings.append(reason)
+            spec_validation["warnings"] = warnings
+            return normalized
+
+        def _normalize_model_spec(raw_spec: FigureSpec) -> FigureSpec:
+            forced = raw_spec.model_copy(update={"type": "problem_diagram"})
+            normalized, validation = normalize_figure_spec(
+                forced,
+                fallback_title=figure_title,
+                context=context,
+                allow_fallback_elements=False,
+            )
+            spec_validation.update(validation)
+            if is_renderable_problem_diagram(normalized):
+                return normalized
+            fallback = _fallback_spec("fallback_problem_diagram_used")
+            if is_renderable_problem_diagram(fallback):
+                return fallback
+            logger.warning(
+                "docgen_static_html_figure_skipped_after_nonvisual_spec",
+                chapter_index=draft.chapter_index,
+                chapter_title=draft.title,
+                section_title=candidate.title,
+                figure_type=normalized.type,
+                element_kinds=[item.kind for item in normalized.elements[:8]],
+            )
+            return normalized
+
+        async def _store_spec(spec: FigureSpec) -> dict[str, object] | None:
             if not is_renderable_problem_diagram(spec):
-                logger.warning(
-                    "docgen_static_html_figure_skipped_after_nonvisual_spec",
-                    chapter_index=draft.chapter_index,
-                    chapter_title=draft.title,
-                    section_title=candidate.title,
-                    figure_type=spec.type,
-                    element_kinds=[item.kind for item in spec.elements[:8]],
-                )
                 return None
             html = render_figure_spec_html(spec, title=figure_title)
             cleaned_html = _sanitize_static_html(str(html), title=figure_title)
@@ -310,6 +320,31 @@ async def generate_static_html_figure_assets(
                 "figure_spec": spec.model_dump(mode="json"),
                 "validation_report": spec_validation,
             }
+
+        try:
+            response = await acompletion_with_fallback(
+                build_static_html_figure_messages(
+                    figure_title=figure_title,
+                    figure_goal=candidate.goal,
+                    figure_type=candidate.figure_type,
+                    digest_mode=digest_mode,
+                    section_context=context,
+                ),
+                response_model=FigureSpec,
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.STATIC_HTML_FIGURE,
+                    digest_mode=digest_mode,
+                    extra_metadata=traced_context.trace_metadata(
+                        docgen_stage="static_html_figure",
+                        asset_kind="static_html_figure",
+                        chapter_index=draft.chapter_index,
+                        section_index=candidate.index,
+                        section_title=candidate.title,
+                    ),
+                ),
+            )
+            raw_spec = response if isinstance(response, FigureSpec) else FigureSpec.model_validate(response)
+            return await _store_spec(_normalize_model_spec(raw_spec))
         except Exception as exc:
             logger.warning(
                 "docgen_static_html_figure_skipped_after_error",
@@ -318,7 +353,7 @@ async def generate_static_html_figure_assets(
                 section_title=candidate.title,
                 error=str(exc)[:240],
             )
-            return None
+            return await _store_spec(_fallback_spec("fallback_after_model_error"))
 
     results = await run_llm_tasks(
         candidates,

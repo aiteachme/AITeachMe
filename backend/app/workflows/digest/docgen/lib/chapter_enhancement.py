@@ -64,52 +64,6 @@ def _ensure_requested_placeholders(markdown: str, requests: list[dict]) -> str:
     return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
 
 
-def _insert_after_opening_block(markdown: str, addition: str) -> str:
-    """Insert a visual request after the chapter title/opening table or paragraph."""
-
-    text = str(markdown or "").rstrip()
-    if not text.strip():
-        return addition.strip() + "\n"
-
-    lines = text.splitlines()
-    insert_after = 0
-    if lines and lines[0].lstrip().startswith("# "):
-        insert_after = 1
-    while insert_after < len(lines) and not lines[insert_after].strip():
-        insert_after += 1
-
-    if insert_after < len(lines) and lines[insert_after].lstrip().startswith("|"):
-        while insert_after < len(lines) and lines[insert_after].lstrip().startswith("|"):
-            insert_after += 1
-    else:
-        while insert_after < len(lines) and lines[insert_after].strip():
-            if lines[insert_after].lstrip().startswith("## "):
-                break
-            insert_after += 1
-
-    before = "\n".join(lines[:insert_after]).rstrip()
-    after = "\n".join(lines[insert_after:]).lstrip("\n")
-    if not before:
-        return addition.strip() + "\n\n" + after.rstrip() + "\n"
-    if not after:
-        return before + "\n\n" + addition.strip() + "\n"
-    return before + "\n\n" + addition.strip() + "\n\n" + after.rstrip() + "\n"
-
-
-def _ensure_chapter_overview_mermaid(markdown: str, *, chapter_title: str, digest_mode: str) -> str:
-    if _has_rendered_mermaid_block(markdown) or extract_asset_request_descriptions(markdown, kind="mermaid"):
-        return markdown
-    mode_hint = "按快速复习主线串联知识点、典型例题、易错点和单元测试" if digest_mode == "sprint" else "按系统学习顺序串联概念、原理、方法和练习"
-    description = (
-        f"为《{chapter_title}》生成一张中文 Mermaid 思维导图或流程图。"
-        f"{mode_hint}；节点使用短中文短语，不放长句、公式推导或 Markdown。"
-    )
-    request = build_asset_request_block("mermaid", description)
-    if not request:
-        return markdown
-    return _insert_after_opening_block(markdown, request)
-
-
 def _insert_asset_links(markdown: str, assets: list[dict[str, object]]) -> str:
     if not assets:
         return markdown
@@ -148,11 +102,6 @@ async def enhance_chapter_draft(
     """
 
     markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
-    markdown = _ensure_chapter_overview_mermaid(
-        markdown,
-        chapter_title=draft.title,
-        digest_mode=digest_mode,
-    )
     settings = get_settings()
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
     image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]
