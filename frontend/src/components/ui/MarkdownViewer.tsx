@@ -2659,7 +2659,7 @@ export function MarkdownViewer({
             <span
               aria-hidden="true"
               data-heading-number={headingNumber}
-              className="mr-1.5 inline-block select-none whitespace-nowrap text-[#2563EB] [-webkit-user-select:none] dark:text-blue-300"
+              className="mr-1.5 inline-block select-none whitespace-nowrap text-indigo-600 [-webkit-user-select:none] dark:text-indigo-400"
             >
               {headingNumber}&nbsp;
             </span>

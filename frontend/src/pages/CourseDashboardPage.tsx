@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BarChart3,
@@ -29,8 +29,10 @@ import type {
   MasteryOverviewResponse,
   MasteryStateResponse,
   ReviewTaskResponse,
+  DocGenGetResponse,
 } from "../api/generated/model";
-import { getApiErrorMessage } from "../api/client";
+import { apiClient, getApiErrorMessage } from "../api/client";
+import type { ApiResponse } from "../api/types";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 import {
@@ -97,28 +99,52 @@ function NavTile({
   description,
   meta,
   onClick,
+  isGenerating = false,
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
   meta: string;
   onClick: () => void;
+  isGenerating?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white p-6 text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.02)] dark:bg-[#0b0f17] dark:hover:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/80"
+      className={cn(
+        "group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white p-6 text-left transition-all duration-300 border",
+        isGenerating
+          ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/[0.03] dark:bg-indigo-950/[0.04] shadow-[0_0_15px_rgba(99,102,241,0.06)] animate-[pulse_3s_infinite]"
+          : "border-slate-200 dark:border-slate-800 hover:border-indigo-300/80 dark:hover:border-indigo-500/30 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(79,70,229,0.04)] dark:hover:bg-slate-900/60"
+      )}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-transparent to-indigo-50/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:to-indigo-500/5" />
       
       <div className="relative z-10 flex w-full flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors duration-300 group-hover:bg-indigo-50/80 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-500/20 dark:group-hover:text-indigo-300 ring-1 ring-slate-100 dark:ring-slate-800/50">
-              <Icon className="h-5 w-5" strokeWidth={1.5} />
+            <span className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-300 ring-1",
+              isGenerating
+                ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
+                : "bg-slate-50 text-slate-600 group-hover:bg-indigo-50/80 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-500/20 dark:group-hover:text-indigo-300 ring-slate-100 dark:ring-slate-800/50"
+            )}>
+              {isGenerating ? (
+                <Loader2 className="h-5 w-5 animate-spin text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <Icon className="h-5 w-5" strokeWidth={1.5} />
+              )}
             </span>
-            <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h2>
+              {isGenerating && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20">
+                  <span className="h-1 w-1 rounded-full bg-indigo-500 animate-pulse"></span>
+                  生成中
+                </span>
+              )}
+            </div>
           </div>
           <ArrowRight className="h-4 w-4 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400" />
         </div>
@@ -248,6 +274,38 @@ export function CourseDashboardPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { courseName } = useCourseDisplayName(courseId);
+
+  const docMarkdownQuery = useQuery({
+    queryKey: ["docgen-status", courseId],
+    queryFn: async (): Promise<DocGenGetResponse> => {
+      if (!courseId) {
+        throw new Error("缺少课程 ID");
+      }
+      const response = await apiClient<ApiResponse<DocGenGetResponse>>({
+        method: "POST",
+        url: `/api/v1/courses/${courseId}/knowledge/docs`,
+      });
+      if (!response.data) {
+        throw new Error("加载知识文档状态失败");
+      }
+      return response.data;
+    },
+    enabled: Boolean(courseId),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      const status = (data.build?.status ?? "").trim();
+      if (status === "accepted" || status === "running" || status === "publishing") {
+        return 3000;
+      }
+      return false;
+    },
+  });
+
+  const isDocGenerating = useMemo(() => {
+    const status = (docMarkdownQuery.data?.build?.status ?? "").trim();
+    return status === "accepted" || status === "running" || status === "publishing";
+  }, [docMarkdownQuery.data]);
 
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
     courseId ?? "",
@@ -425,6 +483,7 @@ export function CourseDashboardPage() {
             description="查阅课程文档、深度讲义以及全局知识图谱。"
             meta={`${states.length} 个画像知识点`}
             onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+            isGenerating={isDocGenerating}
           />
           <NavTile
             icon={FileText}
