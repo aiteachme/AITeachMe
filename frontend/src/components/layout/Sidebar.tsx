@@ -418,7 +418,7 @@ export function Sidebar({
       <aside
         data-app-sidebar="true"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/80 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/70 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] ring-1 ring-slate-900/5 dark:ring-white/5 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
+          "fixed inset-y-0 left-0 z-40 flex min-h-0 shrink-0 self-stretch flex-col overflow-hidden border-r border-slate-200/50 bg-white pt-[calc(0.75rem+env(safe-area-inset-top))] dark:border-slate-800/40 dark:bg-[#0b0f19] shadow-[6px_0_28px_rgba(15,23,42,0.08)] lg:shadow-none dark:shadow-[6px_0_28px_rgba(0,0,0,0.36)] lg:dark:shadow-none ring-1 ring-slate-900/5 lg:ring-0 dark:ring-white/5 lg:dark:ring-0 transition-[width,transform] duration-200 lg:relative lg:z-[90] lg:pt-0",
           "rounded-none",
           isMobileOpen ? "w-[80vw] lg:w-[240px]" : effectiveCollapsed ? "w-[56px]" : "w-[240px]",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
