@@ -25,9 +25,19 @@ export default {
           "0%": { transform: "translateY(-8px)" },
           "100%": { transform: "translateY(0)" },
         },
+        "dash-scroll": {
+          "0%": { transform: "translateX(-50%)" },
+          "100%": { transform: "translateX(0%)" },
+        },
+        "dash-scroll-v": {
+          "0%": { transform: "translateY(-50%)" },
+          "100%": { transform: "translateY(0%)" },
+        },
       },
       animation: {
         "in": "fade-in 0.2s ease-out, slide-in-from-top 0.2s ease-out",
+        "dash-scroll": "dash-scroll 3s linear infinite",
+        "dash-scroll-v": "dash-scroll-v 3s linear infinite",
       },
     },
   },

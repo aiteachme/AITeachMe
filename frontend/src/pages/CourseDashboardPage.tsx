@@ -703,127 +703,70 @@ export function CourseDashboardPage() {
             connector={
               (!isBuilt || isDocGenerating) ? (
                 <>
-                  {/* Desktop Connector (Horizontal) - Disabled */}
+                  {/* Desktop Connector - Disabled */}
                   <div
-                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-0 pointer-events-auto cursor-not-allowed hidden md:flex items-center justify-center w-[56px]"
                     title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                   >
-                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible">
-                      <path
-                        d="M6 26H48"
-                        stroke="#e2e8f0"
-                        className="dark:stroke-slate-700"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray="8 6"
-                      />
-                      <path
-                        d="M42 6L76 26L42 46Z"
-                        fill="#e2e8f0"
-                        className="dark:fill-slate-700"
-                      />
-                    </svg>
+                    {/* Background Track */}
+                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] border-t-2 border-dashed border-slate-200 dark:border-slate-800 w-full" />
+                    {/* Circle Node */}
+                    <div className="relative w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
+                      <ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600 stroke-[3]" />
+                    </div>
                   </div>
-                  {/* Mobile Connector (Vertical) - Disabled */}
+                  {/* Mobile Connector - Disabled */}
                   <div
-                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
+                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-0 pointer-events-auto cursor-not-allowed block md:hidden h-[24px] flex items-center justify-center"
                     title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                   >
-                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible">
-                      <path
-                        d="M22 6V48"
-                        stroke="#e2e8f0"
-                        className="dark:stroke-slate-700"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray="8 6"
-                      />
-                      <path
-                        d="M6 42L22 68L38 42Z"
-                        fill="#e2e8f0"
-                        className="dark:fill-slate-700"
-                      />
-                    </svg>
+                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] border-l-2 border-dashed border-slate-200 dark:border-slate-800 h-full" />
+                    <div className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
+                      <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
+                    </div>
                   </div>
                 </>
               ) : (
                 <>
-                  {/* Desktop Connector (Horizontal) */}
+                  {/* Desktop Connector */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "exams"));
                     }}
-                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow"
+                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hidden md:flex items-center justify-center w-[56px] group/arrow"
                     title="进入 训练中心"
                   >
-                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible drop-shadow-md">
-                      {/* Soft neon glow backdrop */}
-                      <ellipse cx="40" cy="26" rx="36" ry="22" fill="url(#indigo-violet)" opacity="0.06" className="blur-[6px]" />
-                      {/* Thick gradient track */}
-                      <path
-                        d="M6 26H48"
-                        stroke="url(#indigo-violet)"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
-                      {/* Flowing particle - outer glow */}
-                      <circle r="7" fill="#a78bfa" opacity="0.35">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
-                      </circle>
-                      {/* Flowing particle - bright core */}
-                      <circle r="4" fill="#ffffff">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
-                      </circle>
-                      {/* Massive solid arrowhead */}
-                      <path
-                        d="M42 6L76 26L42 46Z"
-                        fill="url(#indigo-violet)"
-                        className="group-hover/arrow:translate-x-1 transition-transform duration-200"
-                      />
-                      <defs>
-                        <linearGradient id="indigo-violet" x1="6" y1="26" x2="76" y2="26" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#6366f1" />
-                          <stop offset="1" stopColor="#8b5cf6" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
+                    {/* Background Track (Animated Dashed Line) */}
+                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] w-full overflow-hidden">
+                      <div className="w-[200%] h-full border-t-2 border-dashed border-indigo-300/60 dark:border-indigo-600/60 animate-[dash-scroll_3s_linear_infinite]" />
+                    </div>
+                    {/* Circle Node */}
+                    <div className="relative">
+                      <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 opacity-[0.25] blur-md animate-pulse" />
+                      <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-xl shadow-indigo-500/40 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow:scale-110 group-active/arrow:scale-95 transition-all duration-300">
+                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] group-hover/arrow:translate-x-0.5 transition-transform duration-300" />
+                      </div>
+                    </div>
                   </div>
-                  {/* Mobile Connector (Vertical) */}
+                  {/* Mobile Connector */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "exams"));
                     }}
-                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-v"
+                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer block md:hidden h-[24px] flex items-center justify-center group/arrow-v"
                     title="进入 训练中心"
                   >
-                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible drop-shadow-md">
-                      <ellipse cx="22" cy="36" rx="18" ry="32" fill="url(#indigo-violet-v)" opacity="0.06" className="blur-[6px]" />
-                      <path
-                        d="M22 6V48"
-                        stroke="url(#indigo-violet-v)"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
-                      <circle r="7" fill="#a78bfa" opacity="0.35">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
-                      </circle>
-                      <circle r="4" fill="#ffffff">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
-                      </circle>
-                      <path
-                        d="M6 42L22 68L38 42Z"
-                        fill="url(#indigo-violet-v)"
-                        className="group-hover/arrow-v:translate-y-1 transition-transform duration-200"
-                      />
-                      <defs>
-                        <linearGradient id="indigo-violet-v" x1="22" y1="6" x2="22" y2="68" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#6366f1" />
-                          <stop offset="1" stopColor="#8b5cf6" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
+                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] h-full overflow-hidden">
+                      <div className="h-[200%] w-full border-l-2 border-dashed border-indigo-300/60 dark:border-indigo-600/60 animate-[dash-scroll-v_3s_linear_infinite]" />
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-[-4px] rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 opacity-[0.25] blur-md animate-pulse" />
+                      <div className="relative w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 via-violet-500 to-purple-600 shadow-lg shadow-indigo-500/30 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-v:scale-110 transition-all duration-300">
+                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] rotate-90 group-hover/arrow-v:translate-y-0.5 transition-transform duration-300" />
+                      </div>
+                    </div>
                   </div>
                 </>
               )
@@ -884,127 +827,66 @@ export function CourseDashboardPage() {
             connector={
               (!isBuilt || isDocGenerating || historyItems.length === 0) ? (
                 <>
-                  {/* Desktop Connector (Horizontal) - Disabled */}
+                  {/* Desktop Connector - Disabled */}
                   <div
-                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-not-allowed hidden md:block"
+                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-0 pointer-events-auto cursor-not-allowed hidden md:flex items-center justify-center w-[56px]"
                     title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                   >
-                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible">
-                      <path
-                        d="M6 26H48"
-                        stroke="#e2e8f0"
-                        className="dark:stroke-slate-700"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray="8 6"
-                      />
-                      <path
-                        d="M42 6L76 26L42 46Z"
-                        fill="#e2e8f0"
-                        className="dark:fill-slate-700"
-                      />
-                    </svg>
+                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] border-t-2 border-dashed border-slate-200 dark:border-slate-800 w-full" />
+                    <div className="relative w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
+                      <ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600 stroke-[3]" />
+                    </div>
                   </div>
-                  {/* Mobile Connector (Vertical) - Disabled */}
+                  {/* Mobile Connector - Disabled */}
                   <div
-                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-not-allowed block md:hidden"
+                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-0 pointer-events-auto cursor-not-allowed block md:hidden h-[24px] flex items-center justify-center"
                     title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                   >
-                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible">
-                      <path
-                        d="M22 6V48"
-                        stroke="#e2e8f0"
-                        className="dark:stroke-slate-700"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeDasharray="8 6"
-                      />
-                      <path
-                        d="M6 42L22 68L38 42Z"
-                        fill="#e2e8f0"
-                        className="dark:fill-slate-700"
-                      />
-                    </svg>
+                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] border-l-2 border-dashed border-slate-200 dark:border-slate-800 h-full" />
+                    <div className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 shadow-sm z-10">
+                      <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
+                    </div>
                   </div>
                 </>
               ) : (
                 <>
-                  {/* Desktop Connector (Horizontal) */}
+                  {/* Desktop Connector */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "profile"));
                     }}
-                    className="absolute right-[-48px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 hidden md:block group/arrow-2"
+                    className="absolute right-[-56px] top-1/2 -translate-y-1/2 z-20 pointer-events-auto cursor-pointer hidden md:flex items-center justify-center w-[56px] group/arrow-2"
                     title="进入 学习画像"
                   >
-                    <svg width="80" height="52" viewBox="0 0 80 52" fill="none" className="overflow-visible drop-shadow-md">
-                      {/* Soft neon glow backdrop */}
-                      <ellipse cx="40" cy="26" rx="36" ry="22" fill="url(#violet-teal)" opacity="0.06" className="blur-[6px]" />
-                      {/* Thick gradient track */}
-                      <path
-                        d="M6 26H48"
-                        stroke="url(#violet-teal)"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
-                      {/* Flowing particle - outer glow */}
-                      <circle r="7" fill="#2dd4bf" opacity="0.35">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
-                      </circle>
-                      {/* Flowing particle - bright core */}
-                      <circle r="4" fill="#ffffff">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M6 26H48" />
-                      </circle>
-                      {/* Massive solid arrowhead */}
-                      <path
-                        d="M42 6L76 26L42 46Z"
-                        fill="url(#violet-teal)"
-                        className="group-hover/arrow-2:translate-x-1 transition-transform duration-200"
-                      />
-                      <defs>
-                        <linearGradient id="violet-teal" x1="6" y1="26" x2="76" y2="26" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#8b5cf6" />
-                          <stop offset="1" stopColor="#14b8a6" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
+                    <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-[2px] w-full overflow-hidden">
+                      <div className="w-[200%] h-full border-t-2 border-dashed border-teal-300/60 dark:border-teal-600/60 animate-[dash-scroll_3s_linear_infinite]" />
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-violet-400 to-teal-400 opacity-[0.25] blur-md animate-pulse" />
+                      <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-teal-500 shadow-xl shadow-teal-500/40 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-2:scale-110 group-active/arrow-2:scale-95 transition-all duration-300">
+                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] group-hover/arrow-2:translate-x-0.5 transition-transform duration-300" />
+                      </div>
+                    </div>
                   </div>
-                  {/* Mobile Connector (Vertical) */}
+                  {/* Mobile Connector */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(buildCoursePath(courseId, "profile"));
                     }}
-                    className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 block md:hidden group/arrow-2-v"
+                    className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-auto cursor-pointer block md:hidden h-[24px] flex items-center justify-center group/arrow-2-v"
                     title="进入 学习画像"
                   >
-                    <svg width="44" height="72" viewBox="0 0 44 72" fill="none" className="overflow-visible drop-shadow-md">
-                      <ellipse cx="22" cy="36" rx="18" ry="32" fill="url(#violet-teal-v)" opacity="0.06" className="blur-[6px]" />
-                      <path
-                        d="M22 6V48"
-                        stroke="url(#violet-teal-v)"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
-                      <circle r="7" fill="#2dd4bf" opacity="0.35">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
-                      </circle>
-                      <circle r="4" fill="#ffffff">
-                        <animateMotion dur="1.4s" repeatCount="indefinite" path="M22 6V48" />
-                      </circle>
-                      <path
-                        d="M6 42L22 68L38 42Z"
-                        fill="url(#violet-teal-v)"
-                        className="group-hover/arrow-2-v:translate-y-1 transition-transform duration-200"
-                      />
-                      <defs>
-                        <linearGradient id="violet-teal-v" x1="22" y1="6" x2="22" y2="68" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#8b5cf6" />
-                          <stop offset="1" stopColor="#14b8a6" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
+                    <div className="absolute inset-0 left-1/2 -translate-x-1/2 w-[2px] h-full overflow-hidden">
+                      <div className="h-[200%] w-full border-l-2 border-dashed border-teal-300/60 dark:border-teal-600/60 animate-[dash-scroll-v_3s_linear_infinite]" />
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-[-4px] rounded-full bg-gradient-to-br from-violet-400 to-teal-400 opacity-[0.25] blur-md animate-pulse" />
+                      <div className="relative w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 via-purple-500 to-teal-500 shadow-lg shadow-teal-500/30 flex items-center justify-center ring-4 ring-white dark:ring-slate-900 group-hover/arrow-2-v:scale-110 transition-all duration-300">
+                        <ChevronRight className="h-5 w-5 text-white stroke-[3.5] rotate-90 group-hover/arrow-2-v:translate-y-0.5 transition-transform duration-300" />
+                      </div>
+                    </div>
                   </div>
                 </>
               )
