@@ -33,6 +33,10 @@ export default {
           "0%": { transform: "translateY(-50%)" },
           "100%": { transform: "translateY(0%)" },
         },
+        "shine": {
+          "0%": { transform: "translateX(-150%) skewX(-15deg)" },
+          "100%": { transform: "translateX(150%) skewX(-15deg)" },
+        },
       },
       animation: {
         "in": "fade-in 0.2s ease-out, slide-in-from-top 0.2s ease-out",

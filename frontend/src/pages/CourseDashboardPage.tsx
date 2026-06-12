@@ -110,25 +110,25 @@ function NavTile({
 }) {
   const themeStyles = {
     indigo: {
-      border: "border-slate-150/60 dark:border-slate-800 hover:border-indigo-305 dark:hover:border-indigo-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(99,102,241,0.04)]",
-      iconContainer: "bg-indigo-500/10 text-indigo-655 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-500/10 dark:border-indigo-500/20 shadow-sm shadow-indigo-500/5",
-      gradient: "from-indigo-500/[0.005] via-transparent to-indigo-500/[0.02] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.006]",
-      buttonClass: "bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800",
+      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-indigo-400/50 dark:group-hover:border-indigo-500/50",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(99,102,241,0.08)]",
+      iconContainer: "bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-500/10 dark:border-indigo-500/20 group-hover:bg-indigo-500/20 group-hover:shadow-[0_0_16px_rgba(99,102,241,0.2)]",
+      gradient: "from-indigo-500/[0.005] via-transparent to-indigo-500/[0.03] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.01]",
+      buttonClass: "bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600 group-hover:shadow-md dark:group-hover:bg-indigo-600 dark:group-hover:text-white",
     },
     violet: {
-      border: "border-slate-150/60 dark:border-slate-800 hover:border-violet-305 dark:hover:border-violet-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(139,92,246,0.04)]",
-      iconContainer: "bg-violet-500/10 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400 border border-violet-500/10 dark:border-violet-500/20 shadow-sm shadow-violet-505/5",
-      gradient: "from-violet-500/[0.005] via-transparent to-violet-500/[0.02] dark:from-violet-500/[0.002] dark:to-violet-500/[0.006]",
-      buttonClass: "bg-violet-600 hover:bg-violet-700 text-white dark:bg-violet-700 dark:hover:bg-violet-800",
+      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-violet-400/50 dark:group-hover:border-violet-500/50",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(139,92,246,0.08)]",
+      iconContainer: "bg-violet-500/10 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400 border border-violet-500/10 dark:border-violet-500/20 group-hover:bg-violet-500/20 group-hover:shadow-[0_0_16px_rgba(139,92,246,0.2)]",
+      gradient: "from-violet-500/[0.005] via-transparent to-violet-500/[0.03] dark:from-violet-500/[0.002] dark:to-violet-500/[0.01]",
+      buttonClass: "bg-violet-50 text-violet-600 border border-violet-100 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20 group-hover:bg-violet-600 group-hover:text-white group-hover:border-violet-600 group-hover:shadow-md dark:group-hover:bg-violet-600 dark:group-hover:text-white",
     },
     teal: {
-      border: "border-slate-150/60 dark:border-slate-800 hover:border-teal-305 dark:hover:border-teal-900",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:shadow-[0_12px_24px_rgba(20,184,166,0.04)]",
-      iconContainer: "bg-teal-500/10 text-teal-650 dark:bg-teal-950/50 dark:text-teal-400 border border-teal-500/10 dark:border-teal-500/20 shadow-sm shadow-teal-500/5",
-      gradient: "from-teal-500/[0.005] via-transparent to-teal-500/[0.02] dark:from-teal-500/[0.002] dark:to-teal-500/[0.006]",
-      buttonClass: "bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-800",
+      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-teal-400/50 dark:group-hover:border-teal-500/50",
+      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(20,184,166,0.08)]",
+      iconContainer: "bg-teal-500/10 text-teal-650 dark:bg-teal-950/50 dark:text-teal-400 border border-teal-500/10 dark:border-teal-500/20 group-hover:bg-teal-500/20 group-hover:shadow-[0_0_16px_rgba(20,184,166,0.2)]",
+      gradient: "from-teal-500/[0.005] via-transparent to-teal-500/[0.03] dark:from-teal-500/[0.002] dark:to-teal-500/[0.01]",
+      buttonClass: "bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 group-hover:shadow-md dark:group-hover:bg-teal-600 dark:group-hover:text-white",
     },
   }[theme];
 
@@ -136,13 +136,13 @@ function NavTile({
     <div
       onClick={!disabled ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
+        "group relative flex w-full flex-col justify-between rounded-[20px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
         zIndexClass,
         disabled
           ? "opacity-60 bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
-            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(99,102,241,0.06)] cursor-pointer"
-            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 hover:bg-white dark:hover:bg-slate-900 cursor-pointer")
+            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-1 hover:shadow-[0_12px_24px_rgba(99,102,241,0.06)] cursor-pointer"
+            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-1 hover:bg-white dark:hover:bg-slate-900 cursor-pointer")
       )}
     >
       {!disabled && (
@@ -662,20 +662,21 @@ export function CourseDashboardPage() {
               variant="outline"
               size="lg"
               onClick={() => navigate(buildCoursePath(courseId, "build"))}
-              className="h-10 rounded-xl px-5 text-sm font-medium w-full sm:w-auto text-slate-605 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white/60 hover:bg-slate-55 dark:bg-slate-900/40 border border-slate-205 dark:border-slate-800 transition-all duration-300 hover:shadow-sm"
+              className="h-10 rounded-[14px] px-5 text-sm font-medium w-full sm:w-auto text-slate-605 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white/60 hover:bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-sm"
             >
-              <RefreshCw className="h-4 w-4 mr-2 text-slate-550 dark:text-slate-400 transition-transform duration-505 hover:rotate-180" />
-              构建
+              <RefreshCw className="h-4 w-4 mr-2 text-slate-500 dark:text-slate-400 transition-transform duration-500 hover:rotate-180" />
+              重新构建
             </Button>
 
             <Button
               type="button"
               size="lg"
               onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-              className="h-10 rounded-xl px-6 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-650 hover:from-indigo-550 hover:to-violet-600 border-0 shadow-md shadow-indigo-500/15 hover:shadow-lg hover:shadow-indigo-500/25 transition-all duration-300 transform hover:-translate-y-0.5 w-full sm:w-auto flex items-center justify-center gap-1.5"
+              className="group/btn h-10 rounded-[14px] px-6 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 border-0 shadow-md shadow-indigo-500/15 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 transform hover:-translate-y-0.5 w-full sm:w-auto flex items-center justify-center gap-1.5 overflow-hidden relative"
             >
-              <BookOpen className="h-4 w-4 text-white/90" />
-              开始学习
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[150%] group-hover/btn:animate-[shine_1.5s_ease-out_infinite]" />
+              <BookOpen className="h-4 w-4 text-indigo-100 group-hover/btn:scale-110 transition-transform duration-300" />
+              <span className="relative z-10">开始学习</span>
             </Button>
           </div>
         </section>
