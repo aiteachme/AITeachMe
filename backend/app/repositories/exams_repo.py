@@ -293,6 +293,23 @@ def find_template_by_stem_hash(
     return session.exec(stmt).first()
 
 
+def find_template_by_course_stem_hash(
+    session: Session,
+    course_id: str,
+    stem_hash: str,
+) -> QuestionTemplate | None:
+    stmt = (
+        select(QuestionTemplate)
+        .where(
+            QuestionTemplate.course_id == course_id,
+            QuestionTemplate.stem_hash == stem_hash,
+        )
+        .order_by(QuestionTemplate.id.asc())
+        .limit(1)
+    )
+    return session.exec(stmt).first()
+
+
 def find_knowledge_unit_links_by_template(session: Session, template_id: int) -> list[dict[str, object]]:
     return list_links_for_templates(session, [template_id]).get(template_id, [])
 
