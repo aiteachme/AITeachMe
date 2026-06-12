@@ -6,7 +6,6 @@ import {
   FileText,
   Loader2,
   RefreshCw,
-  Sparkles,
   ChevronRight,
   BarChart3,
   Lock,
@@ -135,7 +134,7 @@ function NavTile({
     <div
       onClick={!disabled ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between overflow-hidden rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
+        "group relative flex w-full flex-col justify-between rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
         disabled
           ? "opacity-60 bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
           : isGenerating
@@ -144,7 +143,7 @@ function NavTile({
       )}
     >
       {!disabled && (
-        <div className={cn("absolute inset-0 bg-gradient-to-br opacity-0 transition-opacity duration-555 group-hover:opacity-100 pointer-events-none", themeStyles.gradient)} />
+        <div className={cn("absolute inset-0 rounded-2xl bg-gradient-to-br opacity-0 transition-opacity duration-555 group-hover:opacity-100 pointer-events-none", themeStyles.gradient)} />
       )}
 
       {/* Top Part: Icon, Title, Description and Live Preview */}
@@ -250,7 +249,7 @@ function RecentExamsWidget({
           <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/40 flex items-center justify-center mb-3 text-slate-300 dark:text-slate-700">
             <FileText className="h-6.5 w-6.5" strokeWidth={1.5} />
           </div>
-          <p className="max-w-[280px] leading-relaxed">暂无测验记录，您可以点击右上角“直接闯关”开始第一次测验。</p>
+          <p className="max-w-[280px] leading-relaxed">暂无测验记录，您可以进入“考试中心”开始您的第一次测验。</p>
         </div>
       ) : (
         <div className="flex-1 space-y-3">
@@ -555,11 +554,6 @@ export function CourseDashboardPage() {
 
   const avgMasteryVal = Math.round((courseProfile?.avg_mastery ?? 0) * 100);
 
-  const startMasteryDrill = () => {
-    if (!courseId) return;
-    navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
-  };
-
   const handleChapterClick = (anchorId: string) => {
     if (!courseId) return;
     // Jump straight to the heading inside KnowledgeDocsPage
@@ -648,11 +642,11 @@ export function CourseDashboardPage() {
             <Button
               type="button"
               size="lg"
-              onClick={startMasteryDrill}
+              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
               className="h-10 rounded-xl px-6 text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-650 hover:from-indigo-550 hover:to-violet-600 border-0 shadow-md shadow-indigo-500/15 hover:shadow-lg hover:shadow-indigo-500/25 transition-all duration-300 transform hover:-translate-y-0.5 w-full sm:w-auto flex items-center justify-center gap-1.5"
             >
-              <Sparkles className="h-4 w-4 text-white/90" />
-              直接闯关
+              <BookOpen className="h-4 w-4 text-white/90" />
+              开始学习
             </Button>
           </div>
         </section>
@@ -679,23 +673,23 @@ export function CourseDashboardPage() {
             connector={
               <>
                 {/* Desktop Connector (Horizontal) */}
-                <div className="absolute right-[-24px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
-                  <svg width="32" height="16" viewBox="0 0 32 16" fill="none" className="w-8 h-4 overflow-visible">
+                <div className="absolute right-[-36px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
+                  <svg width="48" height="16" viewBox="0 0 48 16" fill="none" className="w-12 h-4 overflow-visible">
                     <path
-                      d="M0 8H24"
+                      d="M0 8H38"
                       stroke="url(#indigo-violet)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
                     <path
-                      d="M22 4L26 8L22 12"
+                      d="M34 4L40 8L34 12"
                       stroke="#8b5cf6"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <defs>
-                      <linearGradient id="indigo-violet" x1="0" y1="8" x2="26" y2="8" gradientUnits="userSpaceOnUse">
+                      <linearGradient id="indigo-violet" x1="0" y1="8" x2="40" y2="8" gradientUnits="userSpaceOnUse">
                         <stop stopColor="#6366f1" />
                         <stop offset="1" stopColor="#8b5cf6" />
                       </linearGradient>
@@ -703,23 +697,23 @@ export function CourseDashboardPage() {
                   </svg>
                 </div>
                 {/* Mobile Connector (Vertical) */}
-                <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
-                  <svg width="16" height="32" viewBox="0 0 16 32" fill="none" className="w-4 h-8 overflow-visible">
+                <div className="absolute bottom-[-36px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
+                  <svg width="16" height="48" viewBox="0 0 16 48" fill="none" className="w-4 h-12 overflow-visible">
                     <path
-                      d="M8 0V24"
+                      d="M8 0V38"
                       stroke="url(#indigo-violet-v)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
                     <path
-                      d="M4 22L8 26L12 22"
+                      d="M4 34L8 40L12 34"
                       stroke="#8b5cf6"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <defs>
-                      <linearGradient id="indigo-violet-v" x1="8" y1="0" x2="8" y2="26" gradientUnits="userSpaceOnUse">
+                      <linearGradient id="indigo-violet-v" x1="8" y1="0" x2="8" y2="40" gradientUnits="userSpaceOnUse">
                         <stop stopColor="#6366f1" />
                         <stop offset="1" stopColor="#8b5cf6" />
                       </linearGradient>
@@ -783,23 +777,23 @@ export function CourseDashboardPage() {
             connector={
               <>
                 {/* Desktop Connector (Horizontal) */}
-                <div className="absolute right-[-24px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
-                  <svg width="32" height="16" viewBox="0 0 32 16" fill="none" className="w-8 h-4 overflow-visible">
+                <div className="absolute right-[-36px] top-1/2 -translate-y-1/2 z-20 pointer-events-none hidden md:block">
+                  <svg width="48" height="16" viewBox="0 0 48 16" fill="none" className="w-12 h-4 overflow-visible">
                     <path
-                      d="M0 8H24"
+                      d="M0 8H38"
                       stroke="url(#violet-teal)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
                     <path
-                      d="M22 4L26 8L22 12"
+                      d="M34 4L40 8L34 12"
                       stroke="#14b8a6"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <defs>
-                      <linearGradient id="violet-teal" x1="0" y1="8" x2="26" y2="8" gradientUnits="userSpaceOnUse">
+                      <linearGradient id="violet-teal" x1="0" y1="8" x2="40" y2="8" gradientUnits="userSpaceOnUse">
                         <stop stopColor="#8b5cf6" />
                         <stop offset="1" stopColor="#14b8a6" />
                       </linearGradient>
@@ -807,23 +801,23 @@ export function CourseDashboardPage() {
                   </svg>
                 </div>
                 {/* Mobile Connector (Vertical) */}
-                <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
-                  <svg width="16" height="32" viewBox="0 0 16 32" fill="none" className="w-4 h-8 overflow-visible">
+                <div className="absolute bottom-[-36px] left-1/2 -translate-x-1/2 z-20 pointer-events-none block md:hidden">
+                  <svg width="16" height="48" viewBox="0 0 16 48" fill="none" className="w-4 h-12 overflow-visible">
                     <path
-                      d="M8 0V24"
+                      d="M8 0V38"
                       stroke="url(#violet-teal-v)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
                     <path
-                      d="M4 22L8 26L12 22"
+                      d="M4 34L8 40L12 34"
                       stroke="#14b8a6"
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <defs>
-                      <linearGradient id="violet-teal-v" x1="8" y1="0" x2="8" y2="26" gradientUnits="userSpaceOnUse">
+                      <linearGradient id="violet-teal-v" x1="8" y1="0" x2="8" y2="40" gradientUnits="userSpaceOnUse">
                         <stop stopColor="#8b5cf6" />
                         <stop offset="1" stopColor="#14b8a6" />
                       </linearGradient>
