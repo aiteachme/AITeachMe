@@ -698,7 +698,7 @@ function PlannerStreamingBubble({ preview, statusText, plan }: PlannerStreamingB
       </div>
 
       {trimmedPreview ? (
-        <div className="relative mt-3 max-h-56 overflow-hidden text-sm leading-7 text-zinc-600 dark:text-slate-300">
+        <div className="relative mt-3 text-sm leading-7 text-zinc-600 dark:text-slate-300">
           <div className="planner-stream-preview">
             <PlannerPreviewMarkdown markdown={trimmedPreview} />
           </div>

@@ -33,6 +33,20 @@ def _chapter_shape_hint(*, digest_mode: str) -> str:
 """.strip()
 
 
+def _opening_structure_instruction(*, digest_mode: str) -> str:
+    profile = get_docgen_mode_profile(digest_mode)
+    if profile.is_sprint:
+        return "一级标题后给考点速览表，列考点、重要程度、题型或任务场景、抓手；正文按 `## 01 短考点名` 推进"
+    return "一级标题后给 3-5 行导航表；正文按 `## 01 具体知识点名` 推进"
+
+
+def _section_shape_instruction(*, digest_mode: str) -> str:
+    profile = get_docgen_mode_profile(digest_mode)
+    if profile.is_sprint:
+        return "小节内部按规则抓手、公式/步骤、题目或任务、解/答案、易错点组织"
+    return "小节内部用加粗字段组织解释、条件/步骤、例题/任务、解析、答案/结论、易错点"
+
+
 def _presentation_contract(*, digest_mode: str = "") -> str:
     return build_presentation_contract_prompt(digest_mode=digest_mode)
 
@@ -54,8 +68,8 @@ def _build_mode_contract(
 文档模式：{profile.prompt_label}。
 写作优先级：{profile.prompt_priority}。
 关注点：{"；".join(profile.chapter_format)}。
-章节结构：`# 标题` 后给 3-5 行导航表；正文用 `## 01 具体知识点名` 推进。
-小节标题聚焦本章知识对象、方法、任务或场景；小节内部用加粗字段组织解释、条件/步骤、例题/任务、解析、答案/结论、易错点。
+章节结构：{_opening_structure_instruction(digest_mode=profile.mode)}。
+小节标题聚焦本章知识对象、方法、任务或场景；{_section_shape_instruction(digest_mode=profile.mode)}。
 三级标题只用于同一知识点下的并列子主题。{extra_contract}
 {chapter_specific}
 """.strip()
@@ -145,7 +159,7 @@ def build_docgen_writer_messages(
 练习组织原则：
 - 按章节角色选择组织方式：概念章用短例子和反例，方法章用步骤和检查点，训练章按真实题型或任务差异分组。
 - 学习活动目标：训练型约 {training_min_examples} 个，普通方法章至少 {min_worked_examples} 个，概念章至少 {concept_min_examples} 个；完整活动含题目/任务、解析、答案/结论、易错点。
-- 只在正文知识点内安排必要例题、短检查和变式；章末单元测试由后续专门节点生成。
+- 正文知识点内安排必要例题、短检查和变式；章末单元测试由后续专门节点生成。
 """.strip()
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
@@ -189,7 +203,7 @@ def build_docgen_writer_messages(
 
 写作口径：
 1. 只输出本章中文 Markdown 正文，以 `# {title}` 开头。
-2. 一级标题后给 3-5 行导航表；正文按 `## 01 具体知识点名` 推进；章末测试由后续专门节点追加。
+2. {_opening_structure_instruction(digest_mode=normalized_mode)}；章末测试由后续专门节点追加。
 3. 每个知识点小节讲清对象、条件/边界、处理路径、例题/任务、答案/结论和易错点/检查点。
 4. 例题、案例、变式训练和自测贴合本章材料；每个可判断任务给解析、答案或判定依据。
 5. 执行合同中的“本章边界外主题”只作必要前后联系，不扩写成独立小节。

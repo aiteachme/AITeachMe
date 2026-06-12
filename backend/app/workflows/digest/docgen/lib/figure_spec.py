@@ -18,6 +18,17 @@ FigureType = Literal[
     "mistake_card",
 ]
 
+ShapeType = Literal[
+    "ellipse",
+    "circle",
+    "rectangle",
+    "triangle",
+    "polygon",
+    "angle",
+    "arc",
+    "region",
+]
+
 ElementKind = Literal[
     "axis",
     "curve",
@@ -75,6 +86,31 @@ def _positive_number(value: Any, *, default: float = 8.0, max_value: float = 80.
     return max(0.0, min(max_value, parsed))
 
 
+def _angle_degrees(value: Any, *, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(-360.0, min(360.0, parsed))
+
+
+def _point_list(value: Any, *, limit: int = 8) -> list[list[float]]:
+    if not isinstance(value, list):
+        return []
+    points: list[list[float]] = []
+    for item in value[:limit]:
+        if isinstance(item, dict):
+            x = _unit_coord(item.get("x"))
+            y = _unit_coord(item.get("y"))
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            x = _unit_coord(item[0])
+            y = _unit_coord(item[1])
+        else:
+            continue
+        points.append([x, y])
+    return points
+
+
 def _svg_escape(value: Any) -> str:
     return html.escape(_clean_text(value, limit=80), quote=True)
 
@@ -103,6 +139,12 @@ class FigureElement(BaseModel):
     x2: float = 50
     y2: float = 50
     r: float = 8
+    rx: float = 0
+    ry: float = 0
+    shape_type: ShapeType = "ellipse"
+    points: list[list[float]] = Field(default_factory=list)
+    start_angle: float = 0
+    end_angle: float = 90
     cells: list[str] = Field(default_factory=list)
     items: list[str] = Field(default_factory=list)
     style: Literal["solid", "dashed", "highlight", "muted"] = "solid"
@@ -117,10 +159,20 @@ class FigureElement(BaseModel):
     def _coords(cls, value: Any) -> float:
         return _unit_coord(value)
 
-    @field_validator("r", mode="before")
+    @field_validator("r", "rx", "ry", mode="before")
     @classmethod
     def _radius(cls, value: Any) -> float:
         return _positive_number(value)
+
+    @field_validator("start_angle", "end_angle", mode="before")
+    @classmethod
+    def _angles(cls, value: Any) -> float:
+        return _angle_degrees(value)
+
+    @field_validator("points", mode="before")
+    @classmethod
+    def _points(cls, value: Any) -> list[list[float]]:
+        return _point_list(value)
 
     @field_validator("cells", "items", mode="before")
     @classmethod
@@ -194,28 +246,19 @@ def _plain_context_lines(context: str, *, limit: int = 4) -> list[str]:
     return lines[:limit]
 
 
-def _looks_like_coordinate_curve_context(context: str) -> bool:
-    text = str(context or "")
-    return bool(
-        re.search(r"导数|切线|斜率|曲线|函数图像|函数图象|图像|图象|坐标|抛物线|y\s*=|f\(|f\\?'", text, re.IGNORECASE)
-        and re.search(r"函数|导数|切线|斜率|曲线|坐标|x\s*=", text, re.IGNORECASE)
-    )
-
-
-def _looks_like_function_mapping_context(context: str) -> bool:
-    text = str(context or "")
-    return bool(
-        re.search(r"函数|对应关系|定义域|值域|唯一性|复合函数", text)
-        and re.search(r"每个|唯一|对应|定义域|值域|映射|复合", text)
-    )
-
-
 def _has_problem_diagram_geometry(elements: list[FigureElement]) -> bool:
     kinds = {item.kind for item in elements}
     return bool(
         {"axis", "curve"} & kinds
-        or ("point" in kinds and ({"line", "vector", "shape"} & kinds))
+        or "shape" in kinds
+        or ("point" in kinds and ({"line", "vector"} & kinds))
     )
+
+
+def is_renderable_problem_diagram(spec: FigureSpec) -> bool:
+    """Return whether a spec contains actual visual geometry."""
+
+    return spec.type == "problem_diagram" and _has_problem_diagram_geometry(spec.elements)
 
 
 def normalize_figure_spec(
@@ -223,6 +266,7 @@ def normalize_figure_spec(
     *,
     fallback_title: str,
     context: str,
+    allow_fallback_elements: bool = False,
 ) -> tuple[FigureSpec, dict[str, Any]]:
     """Constrain a model spec to facts traceable to the current section."""
 
@@ -243,21 +287,6 @@ def normalize_figure_spec(
     if not source_refs:
         report["warnings"].append("empty_source_refs")
 
-    if (
-        (_looks_like_coordinate_curve_context(context) or _looks_like_function_mapping_context(context))
-        and not _has_problem_diagram_geometry(elements)
-    ):
-        fallback = build_fallback_figure_spec(
-            title=_clean_text(title, limit=120),
-            figure_type="problem_diagram",
-            context=context,
-            goal=spec.summary,
-        )
-        if source_refs:
-            fallback = fallback.model_copy(update={"source_refs": source_refs})
-        report["warnings"].append("visual_context_forced_problem_diagram")
-        return fallback, report
-
     normalized = spec.model_copy(
         update={
             "title": _clean_text(title, limit=120),
@@ -269,7 +298,7 @@ def normalize_figure_spec(
             "elements": elements,
         }
     )
-    if not normalized.elements:
+    if allow_fallback_elements and not normalized.elements:
         normalized = build_fallback_figure_spec(
             title=normalized.title or fallback_title,
             figure_type=normalized.type,
@@ -298,83 +327,16 @@ def build_fallback_figure_spec(
         rows = [FigureElement(kind="formula", label=f"({index})", text=line) for index, line in enumerate(lines[:4], start=1)]
         return FigureSpec(type=figure_type, title=title, summary=goal or "按步骤理解公式关系。", elements=rows, source_refs=lines[:3])
     if figure_type == "problem_diagram":
-        if _looks_like_coordinate_curve_context(context):
-            return _build_coordinate_curve_spec(title=title, context=context, goal=goal, source_refs=lines[:3])
-        if _looks_like_function_mapping_context(context):
-            return _build_function_mapping_spec(title=title, context=context, goal=goal, source_refs=lines[:3])
         return FigureSpec(
             type=figure_type,
             title=title,
             summary=goal or (lines[0] if lines else ""),
-            elements=[
-                FigureElement(kind="point", id="start", label="条件", x=18, y=72),
-                FigureElement(kind="point", id="middle", label="关系", x=48, y=40),
-                FigureElement(kind="point", id="end", label="结论", x=78, y=72),
-                FigureElement(kind="line", from_id="start", to_id="middle"),
-                FigureElement(kind="line", from_id="middle", to_id="end"),
-                FigureElement(kind="vector", from_id="start", to_id="end", label="推得"),
-            ],
+            elements=[],
             annotations=lines[:2],
             source_refs=lines[:3],
         )
     rows = [FigureElement(kind="step", label=str(index), text=line) for index, line in enumerate(lines[:5], start=1)]
     return FigureSpec(type=figure_type, title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
-
-
-def _build_coordinate_curve_spec(
-    *,
-    title: str,
-    context: str,
-    goal: str,
-    source_refs: list[str],
-) -> FigureSpec:
-    summary = goal or (source_refs[0] if source_refs else "用坐标图理解函数图像、切线和斜率关系。")
-    tangent_label = "切线斜率 f'(x0)" if re.search(r"导数|斜率|切线|f\\?'", context) else "变化趋势"
-    return FigureSpec(
-        type="problem_diagram",
-        title=title,
-        summary=summary,
-        elements=[
-            FigureElement(kind="axis", label="x", x=12, y=78, x2=92, y2=78),
-            FigureElement(kind="axis", label="y", x=18, y=88, x2=18, y2=12),
-            FigureElement(kind="curve", label="y=f(x)", x=20, y=76, x2=84, y2=24, style="highlight"),
-            FigureElement(kind="point", id="P", label="P(x0, f(x0))", x=56, y=46),
-            FigureElement(kind="line", label="切线", x=30, y=63, x2=82, y2=31, style="solid"),
-            FigureElement(kind="callout", text=tangent_label, x=55, y=22),
-            FigureElement(kind="callout", text="x0", x=56, y=84),
-        ],
-        annotations=["函数图像与切线示意图"],
-        emphasis=["导数不是孤立公式，而是曲线在一点处的切线斜率。"] if re.search(r"导数|斜率|切线", context) else [],
-        source_refs=source_refs,
-    )
-
-
-def _build_function_mapping_spec(
-    *,
-    title: str,
-    context: str,
-    goal: str,
-    source_refs: list[str],
-) -> FigureSpec:
-    return FigureSpec(
-        type="problem_diagram",
-        title=title,
-        summary=goal or (source_refs[0] if source_refs else "用映射图理解函数的唯一对应关系。"),
-        elements=[
-            FigureElement(kind="shape", id="domain", label="定义域", x=28, y=52, r=18, style="muted"),
-            FigureElement(kind="shape", id="range", label="值域", x=72, y=52, r=18, style="muted"),
-            FigureElement(kind="point", id="x1", label="x1", x=24, y=42),
-            FigureElement(kind="point", id="x2", label="x2", x=24, y=62),
-            FigureElement(kind="point", id="y1", label="y1", x=74, y=42),
-            FigureElement(kind="point", id="y2", label="y2", x=74, y=62),
-            FigureElement(kind="vector", from_id="x1", to_id="y1", label="f"),
-            FigureElement(kind="vector", from_id="x2", to_id="y2", label="f"),
-            FigureElement(kind="callout", text="每个 x 只能对应一个 y", x=31, y=18),
-        ],
-        annotations=["函数对应关系示意图"],
-        emphasis=["先检查定义域，再看对应是否唯一。"],
-        source_refs=source_refs,
-    )
 
 
 def _compact(value: str) -> str:
@@ -641,11 +603,7 @@ def _render_problem_diagram(spec: FigureSpec) -> str:
                 lx, ly = (x1 + x2) / 2 + 6, (y1 + y2) / 2 - 6
                 markup.append(f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="20" font-style="italic">{_svg_escape(label)}</text>')
         elif item.kind == "shape":
-            x, y = _map_point(item.x, item.y)
-            r = max(8.0, item.r * 2.2)
-            markup.append(f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{r * 1.25:.1f}" ry="{r:.1f}" fill="none" stroke="#111" stroke-width="1.8"/>')
-            if item.label:
-                markup.append(f'<text x="{x:.1f}" y="{y - r - 8:.1f}" text-anchor="middle" font-size="18">{_svg_escape(item.label)}</text>')
+            markup.append(_render_shape_primitive(item))
         elif item.kind in {"label", "callout"} and (item.text or item.label):
             x, y = _map_point(item.x, item.y)
             markup.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="19">{_svg_escape(item.text or item.label)}</text>')
@@ -656,6 +614,114 @@ def _render_problem_diagram(spec: FigureSpec) -> str:
         markup.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.8" fill="#111"/>')
         markup.append(f'<text x="{x+8:.1f}" y="{y-8:.1f}" font-size="21" font-style="italic">{_svg_escape(label)}</text>')
     return _svg_shell("".join(markup), caption=spec.annotations[0] if spec.annotations else "题图示意")
+
+
+def _render_shape_primitive(item: FigureElement) -> str:
+    x, y = _map_point(item.x, item.y)
+    stroke = "#777" if item.style in {"dashed", "muted"} else "#111"
+    dash = ' stroke-dasharray="6 5"' if item.style in {"dashed", "muted"} else ""
+    fill = "#f4f4f4" if item.shape_type == "region" or item.style == "highlight" else "none"
+    fill_opacity = ' fill-opacity="0.45"' if fill != "none" else ""
+
+    label_markup = ""
+    if item.label and item.shape_type not in {"angle", "arc"}:
+        label_markup = f'<text x="{x:.1f}" y="{y - _shape_label_offset(item):.1f}" text-anchor="middle" font-size="18">{_svg_escape(item.label)}</text>'
+
+    if item.shape_type == "circle":
+        r = _shape_radius(item)
+        return (
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{fill}"{fill_opacity} '
+            f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type == "rectangle":
+        rx = _shape_rx(item)
+        ry = _shape_ry(item)
+        return (
+            f'<rect x="{x-rx:.1f}" y="{y-ry:.1f}" width="{rx*2:.1f}" height="{ry*2:.1f}" '
+            f'fill="{fill}"{fill_opacity} stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type in {"triangle", "polygon", "region"}:
+        points = _shape_points(item)
+        if len(points) < 3:
+            points = _default_triangle_points(item)
+        mapped = " ".join(f"{px:.1f},{py:.1f}" for px, py in (_map_point(px, py) for px, py in points[:8]))
+        return (
+            f'<polygon points="{mapped}" fill="{fill}"{fill_opacity} '
+            f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+        )
+    if item.shape_type in {"angle", "arc"}:
+        return _render_arc_shape(item)
+
+    rx = _shape_rx(item)
+    ry = _shape_ry(item)
+    return (
+        f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" fill="{fill}"{fill_opacity} '
+        f'stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+    )
+
+
+def _shape_points(item: FigureElement) -> list[list[float]]:
+    return item.points[:8]
+
+
+def _default_triangle_points(item: FigureElement) -> list[list[float]]:
+    radius = max(8.0, item.r)
+    return [
+        [_unit_coord(item.x), _unit_coord(item.y - radius)],
+        [_unit_coord(item.x - radius * 1.15), _unit_coord(item.y + radius * 0.85)],
+        [_unit_coord(item.x + radius * 1.15), _unit_coord(item.y + radius * 0.85)],
+    ]
+
+
+def _shape_radius(item: FigureElement) -> float:
+    return max(8.0, (item.r or 8.0) * 2.2)
+
+
+def _shape_rx(item: FigureElement) -> float:
+    if item.rx:
+        return max(8.0, item.rx * 5.16)
+    return max(14.0, (item.r or 8.0) * 2.8)
+
+
+def _shape_ry(item: FigureElement) -> float:
+    if item.ry:
+        return max(8.0, item.ry * 2.46)
+    return max(10.0, (item.r or 8.0) * 1.8)
+
+
+def _shape_label_offset(item: FigureElement) -> float:
+    if item.shape_type in {"triangle", "polygon", "region"}:
+        return _shape_ry(item) + 12
+    if item.shape_type == "circle":
+        return _shape_radius(item) + 10
+    return _shape_ry(item) + 10
+
+
+def _render_arc_shape(item: FigureElement) -> str:
+    center_x, center_y = _map_point(item.x, item.y)
+    radius = max(10.0, (item.r or 8.0) * 2.0)
+    start = math.radians(item.start_angle)
+    end = math.radians(item.end_angle)
+    x1 = center_x + math.cos(start) * radius
+    y1 = center_y - math.sin(start) * radius
+    x2 = center_x + math.cos(end) * radius
+    y2 = center_y - math.sin(end) * radius
+    delta = abs((item.end_angle - item.start_angle) % 360)
+    large_arc = 1 if delta > 180 else 0
+    sweep = 0 if item.end_angle < item.start_angle else 1
+    stroke = "#777" if item.style in {"dashed", "muted"} else "#111"
+    dash = ' stroke-dasharray="5 4"' if item.style in {"dashed", "muted"} else ""
+    label = item.label or item.text
+    label_markup = ""
+    if label:
+        mid = math.radians((item.start_angle + item.end_angle) / 2)
+        lx = center_x + math.cos(mid) * (radius + 14)
+        ly = center_y - math.sin(mid) * (radius + 14)
+        label_markup = f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="18" text-anchor="middle">{_svg_escape(label)}</text>'
+    return (
+        f'<path d="M{x1:.1f},{y1:.1f} A{radius:.1f},{radius:.1f} 0 {large_arc} {sweep} {x2:.1f},{y2:.1f}" '
+        f'fill="none" stroke="{stroke}" stroke-width="1.8"{dash}/>{label_markup}'
+    )
 
 
 def _map_point(x: float, y: float) -> tuple[float, float]:

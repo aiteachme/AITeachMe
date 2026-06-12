@@ -10,12 +10,16 @@ import structlog
 
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.planner.lib.model_policy import (
     PlannerModelStep,
     planner_completion_kwargs_with_metadata,
 )
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
-from app.workflows.digest.planner.lib.plans import _resolve_course_name, compose_planning_note
+from app.workflows.digest.planner.lib.plans import (
+    _resolve_course_name,
+    compose_planning_note,
+)
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
@@ -95,7 +99,7 @@ def _partial_chapters(text: str) -> list[dict[str, Any]]:
     title_matches = list(re.finditer(r'"title"\s*:\s*"(?P<title>(?:\\.|[^"\\])*)"', content))
     chapters: list[dict[str, Any]] = []
     for index, match in enumerate(title_matches, start=1):
-        title = _decode_json_string_fragment(match.group("title"))
+        title = clean_generated_chapter_title(_decode_json_string_fragment(match.group("title")))
         if not title:
             continue
         next_start = title_matches[index].start() if index < len(title_matches) else len(content)
@@ -145,7 +149,7 @@ def _parse_chapters(value: str) -> list[dict[str, Any]]:
     for index, raw in enumerate(decoded, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"chapter #{index} must be an object")
-        title = _clean_text(raw.get("title"))
+        title = clean_generated_chapter_title(_clean_text(raw.get("title")))
         key_points = _string_list(raw.get("key_points"))
         if not title:
             raise ValueError(f"chapter #{index} is missing title")

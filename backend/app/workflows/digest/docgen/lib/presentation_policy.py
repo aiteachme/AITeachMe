@@ -85,11 +85,17 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
 
     profile = get_docgen_mode_profile(digest_mode)
     relation_text = "、".join(RELATION_LABELS.values())
+    if profile.is_sprint:
+        structure_line = "- 结构：`# 章节标题` -> 考点速览表（考点/重要程度/题型或任务/抓手） -> `## 01 短考点名`。"
+        section_line = "- 快速复习小节按 `规则抓手/公式/步骤 -> 题目或任务 -> 解/答案 -> 易错点` 组织。"
+    else:
+        structure_line = "- 结构：`# 章节标题` -> 3-5 行导航表 -> `## 01 具体知识点名`。"
+        section_line = "- 每个知识点小节包含解释、条件/步骤、例题或任务、答案/结论、易错点/检查点。"
     return f"""
 Markdown 表达：
-- 结构：`# 章节标题` -> 3-5 行导航表 -> `## 01 具体知识点名`。
+{structure_line}
 - 二级标题写本章具体知识、方法、任务或场景；三级标题只服务同一小节下的并列子主题。
-- 每个知识点小节包含解释、条件/步骤、例题或任务、答案/结论、易错点/检查点。
+{section_line}
 - 段落短，长列表改成表格、步骤或任务块；表格优先用于对比、分类、步骤和错因。
 - 重点可加粗或少量高亮；callout 只放短提醒，例题和练习用普通正文块。
 - 公式、代码、Mermaid 使用可渲染 Markdown；Mermaid 关系标签限：{relation_text}。
