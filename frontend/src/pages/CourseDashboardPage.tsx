@@ -659,24 +659,14 @@ export function CourseDashboardPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end shrink-0">
             <Button
               type="button"
-              variant="outline"
               size="lg"
               onClick={() => navigate(buildCoursePath(courseId, "build"))}
-              className="h-10 rounded-[14px] px-5 text-sm font-medium w-full sm:w-auto text-slate-605 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white/60 hover:bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 transition-all duration-300 hover:shadow-sm"
+              className="group/btn h-11 rounded-[16px] px-6 text-[14.5px] font-bold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 flex items-center justify-center gap-2.5 w-full sm:w-auto"
             >
-              <RefreshCw className="h-4 w-4 mr-2 text-slate-500 dark:text-slate-400 transition-transform duration-500 hover:rotate-180" />
-              重新构建
-            </Button>
-
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-              className="group/btn h-10 rounded-[14px] px-6 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 border-0 shadow-md shadow-indigo-500/15 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 transform hover:-translate-y-0.5 w-full sm:w-auto flex items-center justify-center gap-1.5 overflow-hidden relative"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-[150%] group-hover/btn:animate-[shine_1.5s_ease-out_infinite]" />
-              <BookOpen className="h-4 w-4 text-indigo-100 group-hover/btn:scale-110 transition-transform duration-300" />
-              <span className="relative z-10">开始学习</span>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
+                <RefreshCw className="h-3.5 w-3.5 transition-transform duration-700 ease-in-out group-hover/btn:rotate-180" strokeWidth={2.5} />
+              </span>
+              <span>课程配置与重构</span>
             </Button>
           </div>
         </section>
