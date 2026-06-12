@@ -97,17 +97,43 @@ function NavTile({
   icon: Icon,
   title,
   description,
-  meta,
   onClick,
   isGenerating = false,
+  theme = "indigo",
+  extra,
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
-  meta: string;
   onClick: () => void;
   isGenerating?: boolean;
+  theme?: "indigo" | "violet" | "teal";
+  extra?: React.ReactNode;
 }) {
+  const themeStyles = {
+    indigo: {
+      border: "border-slate-200 dark:border-slate-800 hover:border-indigo-300/85 dark:hover:border-indigo-500/30",
+      shadow: "hover:shadow-[0_16px_40px_rgba(99,102,241,0.06)] dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.2)]",
+      iconContainer: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/45 dark:text-indigo-400 ring-indigo-100 dark:ring-indigo-900/30",
+      gradient: "to-indigo-50/10 dark:to-indigo-500/5",
+      textHover: "group-hover:text-indigo-600 dark:group-hover:text-indigo-400",
+    },
+    violet: {
+      border: "border-slate-200 dark:border-slate-800 hover:border-violet-300/85 dark:hover:border-violet-500/30",
+      shadow: "hover:shadow-[0_16px_40px_rgba(139,92,246,0.06)] dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.2)]",
+      iconContainer: "bg-violet-50 text-violet-600 dark:bg-violet-950/45 dark:text-violet-400 ring-violet-100 dark:ring-violet-900/30",
+      gradient: "to-violet-50/10 dark:to-violet-500/5",
+      textHover: "group-hover:text-violet-600 dark:group-hover:text-violet-400",
+    },
+    teal: {
+      border: "border-slate-200 dark:border-slate-800 hover:border-teal-300/85 dark:hover:border-teal-500/30",
+      shadow: "hover:shadow-[0_16px_40px_rgba(20,184,166,0.06)] dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.2)]",
+      iconContainer: "bg-teal-50 text-teal-600 dark:bg-teal-950/45 dark:text-teal-400 ring-teal-100 dark:ring-teal-900/30",
+      gradient: "to-teal-50/10 dark:to-teal-500/5",
+      textHover: "group-hover:text-teal-600 dark:group-hover:text-teal-400",
+    },
+  }[theme];
+
   return (
     <button
       type="button"
@@ -116,43 +142,45 @@ function NavTile({
         "group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white p-6 text-left transition-all duration-300 border",
         isGenerating
           ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/[0.03] dark:bg-indigo-950/[0.04] shadow-[0_0_15px_rgba(99,102,241,0.06)] animate-[pulse_3s_infinite]"
-          : "border-slate-200 dark:border-slate-800 hover:border-indigo-300/80 dark:hover:border-indigo-500/30 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(79,70,229,0.04)] dark:hover:bg-slate-900/60"
+          : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-0.5 dark:hover:bg-[#0f1422]/60")
       )}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-transparent to-indigo-50/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:to-indigo-500/5" />
+      {!isGenerating && (
+        <div className={cn("absolute inset-0 bg-gradient-to-br from-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100", themeStyles.gradient)} />
+      )}
       
-      <div className="relative z-10 flex w-full flex-col gap-3">
+      <div className="relative z-10 flex w-full flex-col gap-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-300 ring-1",
+              "flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ring-1 group-hover:scale-105",
               isGenerating
                 ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/30"
-                : "bg-slate-50 text-slate-600 group-hover:bg-indigo-50/80 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-500/20 dark:group-hover:text-indigo-300 ring-slate-100 dark:ring-slate-800/50"
+                : themeStyles.iconContainer
             )}>
               {isGenerating ? (
                 <Loader2 className="h-5 w-5 animate-spin text-indigo-600 dark:text-indigo-400" />
               ) : (
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
+                <Icon className="h-5 w-5 transition-transform duration-300 group-hover:rotate-1" strokeWidth={1.5} />
               )}
             </span>
             <div className="flex items-center gap-2">
-              <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">{title}</h2>
+              <h2 className="text-[16px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 transition-colors duration-200">{title}</h2>
               {isGenerating && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20">
-                  <span className="h-1 w-1 rounded-full bg-indigo-500 animate-pulse"></span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600 ring-1 ring-indigo-500/10 dark:bg-indigo-500/10 dark:text-indigo-300 dark:ring-indigo-500/20 animate-pulse">
+                  <span className="h-1 w-1 rounded-full bg-indigo-500" />
                   生成中
                 </span>
               )}
             </div>
           </div>
-          <ArrowRight className="h-4 w-4 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400" />
+          <ArrowRight className={cn("h-4 w-4 text-slate-400 transition-all duration-300 group-hover:translate-x-1", themeStyles.textHover)} />
         </div>
         <p className="text-[13.5px] leading-relaxed text-slate-500 dark:text-slate-400 font-light line-clamp-2">{description}</p>
       </div>
 
       <div className="relative z-10 mt-5 w-full border-t border-slate-100/60 pt-3.5 dark:border-slate-800/40">
-        <span className="text-[11px] font-medium tracking-wider text-slate-400 dark:text-slate-500 uppercase">{meta}</span>
+        {extra}
       </div>
     </button>
   );
@@ -482,23 +510,57 @@ export function CourseDashboardPage() {
             icon={BookOpen}
             title="知识库"
             description="查阅课程文档、深度讲义以及全局知识图谱。"
-            meta={`${states.length} 个画像知识点`}
+            theme="indigo"
             onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
             isGenerating={isDocGenerating}
+            extra={
+              <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400 dark:text-slate-500 font-medium">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                <span>{states.length} 个画像知识点已生成</span>
+              </div>
+            }
           />
           <NavTile
             icon={FileText}
             title="考试中心"
             description="查看全部试卷，进行专项练习与题库测试。"
-            meta={`${historyItems.length} 份记录，${activePaperCount} 份进行中`}
+            theme="violet"
             onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+            extra={
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/10 dark:bg-slate-800/50 dark:text-slate-400 dark:ring-slate-700">
+                  {historyItems.length} 份已练试卷
+                </span>
+                {activePaperCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    {activePaperCount} 份正在进行中
+                  </span>
+                )}
+              </div>
+            }
           />
           <NavTile
             icon={BarChart3}
             title="学习画像"
             description="追踪学习掌握度，接收智能复习计划。"
-            meta={`平均掌握 ${formatPercent(courseProfile?.avg_mastery)}，待复习 ${courseProfile?.pending_review_count ?? reviewTasks.length}`}
+            theme="teal"
             onClick={() => navigate(buildCoursePath(courseId, "profile"))}
+            extra={
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700 ring-1 ring-teal-600/15 dark:bg-teal-500/10 dark:text-teal-300 dark:ring-teal-500/20">
+                  平均掌握度: {formatPercent(courseProfile?.avg_mastery)}
+                </span>
+                <span className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1",
+                  dueReviewCount > 0
+                    ? "bg-rose-50 text-rose-700 ring-1 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20"
+                    : "bg-slate-50 text-slate-500 ring-1 ring-slate-500/10 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700"
+                )}>
+                  {dueReviewCount > 0 ? `有 ${dueReviewCount} 个待复习` : "无需复习"}
+                </span>
+              </div>
+            }
           />
         </section>
 
