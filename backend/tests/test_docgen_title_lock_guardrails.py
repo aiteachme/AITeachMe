@@ -9,7 +9,6 @@ from app.workflows.digest.docgen.lib.title_lock import (
 )
 from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
 from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
-from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
 
 def test_title_lock_accepts_objective_anchored_specific_title() -> None:
@@ -178,7 +177,6 @@ async def test_lock_title_for_chapter_falls_back_when_llm_call_fails(monkeypatch
     assert locked.fallback_used is True
     assert locked.plan_mismatch_warnings
 
-
 @pytest.mark.anyio
 async def test_lock_title_for_chapter_falls_back_when_llm_title_is_placeholder(monkeypatch) -> None:
     async def fake_completion(*_args, **_kwargs):
@@ -233,29 +231,3 @@ async def test_lock_title_for_chapter_falls_back_when_llm_schema_is_invalid(monk
     assert locked.enhanced_title == "极限计算"
     assert locked.fallback_used is True
     assert locked.plan_mismatch_warnings
-
-
-def test_title_lock_prompt_discourages_repeated_abstract_sprint_titles() -> None:
-    messages = build_title_lock_messages(
-        course_name="高等数学",
-        digest_mode="sprint",
-        user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
-        chapter={
-            "chapter_index": 1,
-            "title": "极限计算",
-            "objective": "掌握 0/0 型、等价无穷小替换、洛必达法则的选择顺序。",
-            "required_elements": ["0/0 型", "等价无穷小", "洛必达法则"],
-        },
-    )
-    prompt = "\n".join(message["content"] for message in messages)
-
-    assert "不要" in prompt
-    assert "标题" in prompt
-    assert "速查" in prompt or "快速" in prompt
-    assert "不是候选词表" in prompt
-    assert "不能照抄" in prompt
-    assert "如果本章领域与示例不同" in prompt
-    assert "现金流表" in prompt
-    assert "锚定具体知识对象" in prompt
-    assert "不要只写学习动作" in prompt

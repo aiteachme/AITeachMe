@@ -2017,7 +2017,8 @@ export function BuildPlanPage() {
 
   const appendPlannerResponse = useCallback(
     (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
-      const resolvedContent = contentOverride?.trim() || pickAssistantReply(response, fallbackContent);
+      const persistedContent = pickAssistantReply(response, "");
+      const resolvedContent = persistedContent || contentOverride?.trim() || fallbackContent;
       const latestPlan = usablePlannerPlan(response.latest_plan);
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);

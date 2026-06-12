@@ -194,7 +194,13 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         value = result.metadata.get(field_name)
         if value not in (None, "", [], {}):
             outputs[field_name] = value
-    for field_name in ("fallback_used", "purify_used", "repair_applied", "cache_hit"):
+    for field_name in (
+        "fallback_used",
+        "purify_used",
+        "repair_applied",
+        "scaffold_fallback_applied",
+        "cache_hit",
+    ):
         value = result.metadata.get(field_name)
         if value is not None:
             outputs[field_name] = bool(value)

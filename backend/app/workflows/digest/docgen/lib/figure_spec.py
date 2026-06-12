@@ -19,6 +19,8 @@ FigureType = Literal[
 ]
 
 ElementKind = Literal[
+    "axis",
+    "curve",
     "point",
     "line",
     "vector",
@@ -192,6 +194,30 @@ def _plain_context_lines(context: str, *, limit: int = 4) -> list[str]:
     return lines[:limit]
 
 
+def _looks_like_coordinate_curve_context(context: str) -> bool:
+    text = str(context or "")
+    return bool(
+        re.search(r"导数|切线|斜率|曲线|函数图像|函数图象|图像|图象|坐标|抛物线|y\s*=|f\(|f\\?'", text, re.IGNORECASE)
+        and re.search(r"函数|导数|切线|斜率|曲线|坐标|x\s*=", text, re.IGNORECASE)
+    )
+
+
+def _looks_like_function_mapping_context(context: str) -> bool:
+    text = str(context or "")
+    return bool(
+        re.search(r"函数|对应关系|定义域|值域|唯一性|复合函数", text)
+        and re.search(r"每个|唯一|对应|定义域|值域|映射|复合", text)
+    )
+
+
+def _has_problem_diagram_geometry(elements: list[FigureElement]) -> bool:
+    kinds = {item.kind for item in elements}
+    return bool(
+        {"axis", "curve"} & kinds
+        or ("point" in kinds and ({"line", "vector", "shape"} & kinds))
+    )
+
+
 def normalize_figure_spec(
     spec: FigureSpec,
     *,
@@ -216,6 +242,21 @@ def normalize_figure_spec(
         report["source_ref_replacements"] = 1
     if not source_refs:
         report["warnings"].append("empty_source_refs")
+
+    if (
+        (_looks_like_coordinate_curve_context(context) or _looks_like_function_mapping_context(context))
+        and not _has_problem_diagram_geometry(elements)
+    ):
+        fallback = build_fallback_figure_spec(
+            title=_clean_text(title, limit=120),
+            figure_type="problem_diagram",
+            context=context,
+            goal=spec.summary,
+        )
+        if source_refs:
+            fallback = fallback.model_copy(update={"source_refs": source_refs})
+        report["warnings"].append("visual_context_forced_problem_diagram")
+        return fallback, report
 
     normalized = spec.model_copy(
         update={
@@ -257,6 +298,10 @@ def build_fallback_figure_spec(
         rows = [FigureElement(kind="formula", label=f"({index})", text=line) for index, line in enumerate(lines[:4], start=1)]
         return FigureSpec(type=figure_type, title=title, summary=goal or "按步骤理解公式关系。", elements=rows, source_refs=lines[:3])
     if figure_type == "problem_diagram":
+        if _looks_like_coordinate_curve_context(context):
+            return _build_coordinate_curve_spec(title=title, context=context, goal=goal, source_refs=lines[:3])
+        if _looks_like_function_mapping_context(context):
+            return _build_function_mapping_spec(title=title, context=context, goal=goal, source_refs=lines[:3])
         return FigureSpec(
             type=figure_type,
             title=title,
@@ -274,6 +319,62 @@ def build_fallback_figure_spec(
         )
     rows = [FigureElement(kind="step", label=str(index), text=line) for index, line in enumerate(lines[:5], start=1)]
     return FigureSpec(type=figure_type, title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
+
+
+def _build_coordinate_curve_spec(
+    *,
+    title: str,
+    context: str,
+    goal: str,
+    source_refs: list[str],
+) -> FigureSpec:
+    summary = goal or (source_refs[0] if source_refs else "用坐标图理解函数图像、切线和斜率关系。")
+    tangent_label = "切线斜率 f'(x0)" if re.search(r"导数|斜率|切线|f\\?'", context) else "变化趋势"
+    return FigureSpec(
+        type="problem_diagram",
+        title=title,
+        summary=summary,
+        elements=[
+            FigureElement(kind="axis", label="x", x=12, y=78, x2=92, y2=78),
+            FigureElement(kind="axis", label="y", x=18, y=88, x2=18, y2=12),
+            FigureElement(kind="curve", label="y=f(x)", x=20, y=76, x2=84, y2=24, style="highlight"),
+            FigureElement(kind="point", id="P", label="P(x0, f(x0))", x=56, y=46),
+            FigureElement(kind="line", label="切线", x=30, y=63, x2=82, y2=31, style="solid"),
+            FigureElement(kind="callout", text=tangent_label, x=55, y=22),
+            FigureElement(kind="callout", text="x0", x=56, y=84),
+        ],
+        annotations=["函数图像与切线示意图"],
+        emphasis=["导数不是孤立公式，而是曲线在一点处的切线斜率。"] if re.search(r"导数|斜率|切线", context) else [],
+        source_refs=source_refs,
+    )
+
+
+def _build_function_mapping_spec(
+    *,
+    title: str,
+    context: str,
+    goal: str,
+    source_refs: list[str],
+) -> FigureSpec:
+    return FigureSpec(
+        type="problem_diagram",
+        title=title,
+        summary=goal or (source_refs[0] if source_refs else "用映射图理解函数的唯一对应关系。"),
+        elements=[
+            FigureElement(kind="shape", id="domain", label="定义域", x=28, y=52, r=18, style="muted"),
+            FigureElement(kind="shape", id="range", label="值域", x=72, y=52, r=18, style="muted"),
+            FigureElement(kind="point", id="x1", label="x1", x=24, y=42),
+            FigureElement(kind="point", id="x2", label="x2", x=24, y=62),
+            FigureElement(kind="point", id="y1", label="y1", x=74, y=42),
+            FigureElement(kind="point", id="y2", label="y2", x=74, y=62),
+            FigureElement(kind="vector", from_id="x1", to_id="y1", label="f"),
+            FigureElement(kind="vector", from_id="x2", to_id="y2", label="f"),
+            FigureElement(kind="callout", text="每个 x 只能对应一个 y", x=31, y=18),
+        ],
+        annotations=["函数对应关系示意图"],
+        emphasis=["先检查定义域，再看对应是否唯一。"],
+        source_refs=source_refs,
+    )
 
 
 def _compact(value: str) -> str:
@@ -304,12 +405,14 @@ def _comparison_table_as_concept_map(spec: FigureSpec) -> FigureSpec:
 
 
 def render_figure_spec_html(spec: FigureSpec, *, title: str) -> str:
-    """Render a spec as a single-file HTML lecture-note figure."""
+    """Render a spec as a single-file HTML/SVG figure.
+
+    The generated asset is a figure only. Explanatory prose belongs to the
+    Markdown document, not to the image sidecar.
+    """
 
     figure_title = spec.title or title
     body = _render_body(spec)
-    source_line = _render_source_line(spec)
-    emphasis = _render_emphasis(spec)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -326,73 +429,21 @@ def render_figure_spec_html(spec: FigureSpec, *, title: str) -> str:
       line-height: 1.58;
     }}
     .atm-figure {{
-      width: min(760px, calc(100vw - 20px));
-      margin: 14px auto;
-      padding: 8px 2px 16px;
+      width: min(760px, 100vw);
+      margin: 0 auto;
+      padding: 0;
       background: #fff;
     }}
-    .atm-topic {{
-      display: inline;
-      padding: 2px 4px;
-      background: #18d8d4;
-      color: #000;
-      font-size: 20px;
-      line-height: 1.75;
-    }}
-    .atm-summary {{
-      margin: 16px 0 10px;
-      font-size: 19px;
-    }}
     .atm-figure-main {{
-      margin: 8px auto 4px;
-      width: min(640px, 100%);
+      margin: 0 auto;
+      width: min(700px, 100%);
     }}
-    .atm-caption {{
-      margin: 6px 0 12px;
-      text-align: center;
-      font-size: 18px;
-    }}
-    .atm-note {{
-      width: min(620px, 100%);
-      margin: 10px auto 0;
-      border: 1px solid #222;
-      background: #eee;
-      padding: 8px 12px;
-      font-size: 18px;
-    }}
-    .atm-source {{
-      width: min(620px, 100%);
-      margin: 8px auto 0;
-      color: #444;
-      font-size: 15px;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      margin: 10px auto;
-      font-size: 18px;
-    }}
-    th, td {{
-      border: 1px solid #222;
-      padding: 7px 9px;
-      vertical-align: top;
-      text-align: left;
-    }}
-    th {{ background: #eee; font-weight: 700; }}
     svg {{ display: block; width: 100%; height: auto; }}
-    @media (max-width: 520px) {{
-      .atm-topic, .atm-summary, .atm-caption, .atm-note, table {{ font-size: 16px; }}
-      .atm-source {{ font-size: 13px; }}
-    }}
   </style>
 </head>
 <body>
   <main class="atm-figure">
-    <p><span class="atm-topic">{_html_escape(figure_title)}</span></p>
-    {_render_summary(spec)}
     <div class="atm-figure-main">{body}</div>
-    {emphasis}
-    {source_line}
   </main>
 </body>
 </html>
@@ -476,8 +527,11 @@ def _render_mistake_card(spec: FigureSpec) -> str:
     rows = _clean_list(rows, limit=5, item_limit=180)
     if not rows:
         return ""
-    content = "<br/>".join(f"{index}. {_html_escape(text, limit=180)}" for index, text in enumerate(rows, start=1))
-    return f'<div class="atm-note">{content}</div>'
+    elements = [
+        FigureElement(kind="step", label=f"{index}", text=text)
+        for index, text in enumerate(rows, start=1)
+    ]
+    return _render_vertical_flow_svg(elements, caption="易错辨析图", label_prefix="点")
 
 
 def _render_vertical_flow_svg(
@@ -550,13 +604,30 @@ def _render_concept_map(spec: FigureSpec) -> str:
 def _render_problem_diagram(spec: FigureSpec) -> str:
     points = [item for item in spec.elements if item.kind == "point" and (item.id or item.label)]
     point_by_id = {item.id or item.label: item for item in points}
-    primitives = [item for item in spec.elements if item.kind in {"line", "vector", "shape", "label", "callout"}]
-    if not points or not any(item.kind in {"line", "vector", "shape"} for item in primitives):
+    primitives = [item for item in spec.elements if item.kind in {"axis", "curve", "line", "vector", "shape", "label", "callout"}]
+    if not _has_problem_diagram_geometry(spec.elements):
         return _render_concept_map(spec)
 
     markup: list[str] = []
     for item in primitives:
-        if item.kind in {"line", "vector"}:
+        if item.kind == "axis":
+            x1, y1 = _map_point(item.x, item.y)
+            x2, y2 = _map_point(item.x2, item.y2)
+            markup.append(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="#111" stroke-width="1.8" marker-end="url(#arrow)"/>')
+            if item.label:
+                markup.append(f'<text x="{x2 + 8:.1f}" y="{y2 + 5:.1f}" font-size="18" font-style="italic">{_svg_escape(item.label)}</text>')
+        elif item.kind == "curve":
+            x1, y1 = _map_point(item.x, item.y)
+            x2, y2 = _map_point(item.x2, item.y2)
+            c1x = x1 + (x2 - x1) * 0.28
+            c2x = x1 + (x2 - x1) * 0.68
+            c1y = y1 + 18
+            c2y = y2 - 52
+            stroke = "#111" if item.style != "muted" else "#777"
+            markup.append(f'<path d="M{x1:.1f},{y1:.1f} C{c1x:.1f},{c1y:.1f} {c2x:.1f},{c2y:.1f} {x2:.1f},{y2:.1f}" fill="none" stroke="{stroke}" stroke-width="2.4"/>')
+            if item.label:
+                markup.append(f'<text x="{x2 - 32:.1f}" y="{y2 - 8:.1f}" font-size="18" font-style="italic">{_svg_escape(item.label)}</text>')
+        elif item.kind in {"line", "vector"}:
             start = point_by_id.get(item.from_id)
             end = point_by_id.get(item.to_id)
             x1, y1 = _map_point(start.x, start.y) if start else _map_point(item.x, item.y)
@@ -572,7 +643,9 @@ def _render_problem_diagram(spec: FigureSpec) -> str:
         elif item.kind == "shape":
             x, y = _map_point(item.x, item.y)
             r = max(8.0, item.r * 2.2)
-            markup.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="none" stroke="#111" stroke-width="1.8"/>')
+            markup.append(f'<ellipse cx="{x:.1f}" cy="{y:.1f}" rx="{r * 1.25:.1f}" ry="{r:.1f}" fill="none" stroke="#111" stroke-width="1.8"/>')
+            if item.label:
+                markup.append(f'<text x="{x:.1f}" y="{y - r - 8:.1f}" text-anchor="middle" font-size="18">{_svg_escape(item.label)}</text>')
         elif item.kind in {"label", "callout"} and (item.text or item.label):
             x, y = _map_point(item.x, item.y)
             markup.append(f'<text x="{x:.1f}" y="{y:.1f}" font-size="19">{_svg_escape(item.text or item.label)}</text>')
@@ -600,7 +673,6 @@ def _svg_shell(inner: str, *, caption: str) -> str:
   <rect x="8" y="8" width="604" height="314" fill="#fff"/>
   {inner}
 </svg>
-<p class="atm-caption">{_html_escape(caption, limit=120)}</p>
 """
 
 

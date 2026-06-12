@@ -34,10 +34,11 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         """并行增强章节草稿并产出资产 manifest。"""
 
         started_at = perf_counter()
+        draft_items = list(state.get("unit_test_chapter_drafts") or state.get("chapter_drafts") or [])
         drafts = [
             ChapterDraft.model_validate(item)
             for item in sorted(
-                list(state.get("chapter_drafts") or []),
+                draft_items,
                 key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
             )
         ]

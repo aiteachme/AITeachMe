@@ -74,6 +74,8 @@ class DocGenState(TypedDict, total=False):
     total_chapters: int
 
     chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
+    unit_test_chapter_drafts: list[dict[str, Any]]
+    unit_test_items: list[dict[str, Any]]
     enhanced_chapter_drafts: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_draft_items: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_overlay_items: Annotated[list[dict[str, Any]], operator.add]
@@ -122,6 +124,7 @@ class DocGenState(TypedDict, total=False):
     assemble_tasks_ms: int
     research_ms: Annotated[int, operator.add]
     draft_ms: Annotated[int, operator.add]
+    unit_test_ms: int
     enhance_ms: Annotated[int, operator.add]
     review_ms: Annotated[int, operator.add]
     repair_ms: int

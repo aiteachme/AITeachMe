@@ -86,17 +86,25 @@ def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, Fig
     score = 0
     reasons: list[str] = []
     figure_type: FigureType = "concept_map"
+    type_priority: dict[FigureType, int] = {
+        "comparison_table": 0,
+        "concept_map": 1,
+        "mistake_card": 2,
+        "process_steps": 3,
+        "formula_derivation": 4,
+        "problem_diagram": 5,
+    }
 
     def add(points: int, reason: str, kind: FigureType) -> None:
         nonlocal score, figure_type
         score += points
         reasons.append(reason)
-        if points >= 3 or figure_type == "concept_map":
+        if type_priority.get(kind, 0) >= type_priority.get(figure_type, 0):
             figure_type = kind
 
     has_problem_signal = bool(
         re.search(
-            r"图示|如下图|如图|画出|示意图|题图|坐标|函数|几何|三角|圆|斜面|地图|曲线|图像|图象|结构|模型|区域|轴|路径|方向|向量|矢量",
+            r"图示|如下图|如图|画出|示意图|题图|坐标|函数|导数|切线|斜率|曲线|图像|图象|抛物线|几何|三角|圆|斜面|地图|结构|模型|区域|轴|路径|方向|向量|矢量",
             text,
         )
     )
@@ -118,6 +126,8 @@ def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, Fig
         add(2, "包含易错点或判断提示", "mistake_card")
     if re.search(r"定义|概念|含义|本质|特点|作用|关系", text):
         add(1, "包含概念关系", "concept_map")
+    if has_problem_signal and re.search(r"函数|导数|切线|斜率|曲线|坐标|图像|图象|抛物线", text):
+        figure_type = "problem_diagram"
 
     if len(context) < 180 and not (
         (has_problem_signal and has_quantitative_signal)

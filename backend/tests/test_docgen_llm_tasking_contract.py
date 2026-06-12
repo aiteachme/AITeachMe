@@ -193,6 +193,52 @@ async def test_docgen_writer_completion_uses_run_llm_tasks(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
+async def test_docgen_writer_returns_scaffold_when_primary_completion_fails(monkeypatch) -> None:
+    scheduler_calls: list[dict[str, object]] = []
+
+    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
+        queued = list(items)
+        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
+        return [await worker(item) for item in queued]
+
+    async def failing_llm(*args, **kwargs):
+        raise RuntimeError("primary concurrency exhausted")
+
+    monkeypatch.setattr(writer, "run_llm_tasks", fake_run_llm_tasks)
+
+    runtime = DocGenWriterRuntime(
+        TracedExecutionContext(
+            course_id="course_docgen0000",
+            build_session_id="build-1",
+            digest_mode="systematic",
+            llm_caller=failing_llm,
+        )
+    )
+    result = await runtime.execute(
+        chapter_plan={
+            "chapter_index": 1,
+            "total_chapters": 1,
+            "title": "Function Graphs",
+            "objective": "Understand function graph basics.",
+            "required_elements": ["function graph", "worked example"],
+            "writing_instructions": "Compare graph shape with algebraic expression.",
+            "execution_contract": {"min_word_count": 1},
+        },
+        dense_context="Function graphs connect input and output values.\nWorked examples should compare intervals.",
+        digest_mode="systematic",
+    )
+
+    assert "# Function Graphs" in result.content
+    assert "本章目标" in result.content
+    assert "## 核心框架" in result.content
+    assert "function graph" in result.content
+    assert result.metadata["scaffold_fallback_applied"] is True
+    assert "RuntimeError" in result.metadata["writer_fallback_reason"]
+    assert scheduler_calls
+    assert all(call == {"items": [None], "max_concurrent": 1} for call in scheduler_calls)
+
+
+@pytest.mark.anyio
 async def test_chapter_rewrite_uses_run_llm_tasks(monkeypatch) -> None:
     scheduler_calls: list[dict[str, object]] = []
 
