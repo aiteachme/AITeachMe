@@ -196,7 +196,7 @@ export function ProfilePage() {
   return (
     <div className={pageShellClass}>
       <div className="flex w-full flex-col gap-7">
-        <CoursePagePillTitle icon={BarChart3} label="学习画像" />
+        <CoursePagePillTitle icon={BarChart3} label="学习画像" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
         <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl space-y-3">

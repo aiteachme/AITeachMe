@@ -2439,7 +2439,7 @@ export function BuildPlanPage() {
 
       <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent">
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
-          <CoursePagePillTitle icon={Sparkles} label="方案规划" />
+          <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-3">

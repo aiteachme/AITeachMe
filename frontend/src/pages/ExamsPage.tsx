@@ -497,7 +497,7 @@ export function ExamsPage() {
     <>
       <div className={EXAM_PAGE_SHELL_CLASS}>
         <div className="flex flex-col gap-6">
-          <CoursePagePillTitle icon={ClipboardCheck} label="训练中心" />
+          <CoursePagePillTitle icon={ClipboardCheck} label="训练中心" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
           <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl space-y-3">
