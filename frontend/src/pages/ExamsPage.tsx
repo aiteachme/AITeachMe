@@ -519,24 +519,24 @@ export function ExamsPage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   size="lg"
-                  className="!h-12 w-full rounded-[10px] bg-black px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 sm:w-auto sm:min-w-[7rem]"
+                  className="!h-11 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/25 text-white font-semibold transition-all duration-300 sm:w-auto sm:min-w-[7rem] border-none"
                   onClick={handleStartMasteryDrill}
                 >
-                  <Sparkles className="h-4 w-4 shrink-0" />
+                  <Sparkles className="h-4 w-4 shrink-0 mr-1" />
                   闯关
                 </Button>
                 <div className="flex w-full items-center gap-2 sm:w-auto">
-                  <div className="inline-flex h-12 w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto">
+                  <div className="inline-flex h-11 w-full overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition-all hover:border-violet-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-violet-500/30 sm:w-auto">
                     <button
                       type="button"
-                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-6 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] sm:min-w-[7rem] sm:flex-none"
+                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-5 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/40 focus:outline-none active:scale-[0.99] sm:min-w-[7rem] sm:flex-none"
                       onClick={handleStartTest}
                       disabled={generateExam.isPending}
                     >
                       {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-500" />
                       ) : (
-                        <Plus className="h-4 w-4 shrink-0" />
+                        <Plus className="h-4 w-4 shrink-0 text-slate-500" />
                       )}
                       <span className="whitespace-nowrap">
                         {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
@@ -546,7 +546,7 @@ export function ExamsPage() {
                     </button>
                     <button
                       type="button"
-                      className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-550 transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                       onClick={() => setIsCreateConfigOpen(true)}
                       aria-label="测试设置"
                       title="测试设置"
@@ -565,7 +565,7 @@ export function ExamsPage() {
                 <Button
                   size="icon"
                   variant="outline"
-                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  className="!h-11 !w-11 rounded-xl text-slate-600 border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 hover:text-indigo-600 dark:hover:text-indigo-400 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all duration-300 shadow-sm"
                   onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
                   aria-label="题库查看"
                   title="题库查看"
@@ -575,7 +575,7 @@ export function ExamsPage() {
                 <Button
                   size="icon"
                   variant="outline"
-                  className="h-12 w-12 rounded-[10px] text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                  className="!h-11 !w-11 rounded-xl text-slate-600 border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 hover:text-indigo-600 dark:hover:text-indigo-400 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all duration-300 shadow-sm"
                   onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
                   aria-label="题型查看"
                   title="题型查看"
@@ -630,7 +630,7 @@ export function ExamsPage() {
                   </button>
 
                   {expandedGroups[group.key] && (
-                    <div className="mt-2 rounded-[24px] bg-white p-6 shadow-sm ring-1 ring-slate-900/5 dark:bg-slate-900/40 dark:ring-slate-800">
+                    <div className="mt-2 rounded-2xl bg-white p-6 border border-slate-200/60 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.015)] dark:bg-[#0b0f19]/40 backdrop-blur-sm">
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有记录。</div>
                       ) : (
