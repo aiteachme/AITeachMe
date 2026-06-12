@@ -26,6 +26,9 @@ def build_chapter_execution_brief_messages(
     learner_profile_text: str = "",
 ) -> list[dict[str, str]]:
     profile = get_docgen_mode_profile(digest_mode)
+    density_policy = dict(profile.example_density_policy)
+    chapter_end_min = int(density_policy.get("chapter_end_practice_min_tasks", 2) or 2)
+    chapter_end_max = max(chapter_end_min, int(density_policy.get("chapter_end_practice_max_tasks", 4) or 4))
     course_flow = "；".join(profile.course_flow_hints)
     practice_focus = "；".join(profile.practice_focuses)
     content_mix = "\n".join(f"- {key}: {value}" for key, value in profile.content_mix_policy.items())
@@ -129,10 +132,10 @@ Planner handoff:
 1. 这是最小执行简报，不是完整教学大纲。
 2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
 3. `content_role_targets` 是主合同，要按学习图谱 9 类节点列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
-4. `example_coverage_plan` 必须列出本章正文中需要用例题、案例、操作示例、变式训练或自测覆盖的重点；密度要按章节角色决定，不要让每章都长成同一种练习模板。
-5. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：每章默认 2-4 个小题/案例检查/操作任务/边界辨析/迁移任务；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
-6. 快速复习节奏要先由模型根据本章材料判断本章角色：只有天然适合集中练习或任务训练的章节，才围绕真实题型或任务差异规划更多标准例题、变式检查和错误诊断；概念、定义、过渡或铺垫章节只规划必要的短例子、反例、条件辨析或小任务。`content_role_targets.topic` 只在本章确实需要时说明分类、任务整理、方法对照或判断表应覆盖哪些对象。
-7. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 要说明这道例题/案例帮助学生学会什么，不要写成“复习一下”；如果输出的是自测、辨析或思考题，也必须规划参考答案、判定依据或解题要点，不能只给问题。
+4. `example_coverage_plan` 列出本章正文中需要用例题、案例、操作示例、变式训练或自测覆盖的重点；密度按章节角色分配。
+5. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：每章默认 {chapter_end_min}-{chapter_end_max} 个小题/案例检查/操作任务/边界辨析/迁移任务；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
+6. 快速复习节奏先判断本章角色：概念章安排短例子、反例和条件辨析；方法章安排步骤、检查点和例题；训练章围绕真实题型或任务差异安排标准例题、变式检查和错误诊断。
+7. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 写清这道例题/案例帮助学生学会什么；自测、辨析或思考题同步规划参考答案、判定依据或解题要点。
 8. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
 9. `retrieval_queries` 最多 2 条。
 10. 不允许顺带修改标题。
