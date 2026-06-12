@@ -67,6 +67,7 @@ import {
 } from "../components/profile";
 
 const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12";
+const PROFILE_PROMPT_STORAGE_PREFIX = "aiteachme.profile.userPrompt.v1";
 
 
 
@@ -78,6 +79,83 @@ function sortByNewestTimestamp<T>(items: T[], getTimestamp: (item: T) => string 
   return [...items].sort((left, right) =>
     new Date(getTimestamp(right) ?? 0).getTime() - new Date(getTimestamp(left) ?? 0).getTime(),
   );
+}
+
+function toDateKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildLearningCalendarDays(historyItems: ExamHistoryItem[], reviewTasks: ReviewTaskResponse[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    return {
+      key: toDateKey(date),
+      label: date.toLocaleDateString("zh-CN", { weekday: "short" }),
+      day: String(date.getDate()),
+      count: 0,
+    };
+  });
+  const counts = new Map(days.map((day) => [day.key, 0]));
+
+  for (const item of historyItems) {
+    const date = new Date(item.created_at ?? "");
+    if (Number.isNaN(date.getTime())) continue;
+    const key = toDateKey(date);
+    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const task of reviewTasks) {
+    const date = new Date(task.scheduled_at ?? "");
+    if (Number.isNaN(date.getTime())) continue;
+    const key = toDateKey(date);
+    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return days.map((day) => {
+    const count = counts.get(day.key) ?? 0;
+    return {
+      ...day,
+      count,
+      intensity: Math.min(3, count),
+      isToday: day.key === toDateKey(today),
+    };
+  });
+}
+
+function getPlanTimeLabel(index: number): string {
+  const labels = ["09:00-09:20", "09:25-10:05", "10:10-10:25", "20:30-20:45"];
+  return labels[index] ?? "弹性安排";
+}
+
+function getProfilePromptStorageKey(courseId: string) {
+  return `${PROFILE_PROMPT_STORAGE_PREFIX}.${courseId}`;
+}
+
+function readProfilePrompt(courseId?: string): string {
+  if (!courseId || typeof window === "undefined") {
+    return "";
+  }
+  try {
+    return window.localStorage.getItem(getProfilePromptStorageKey(courseId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveProfilePrompt(courseId: string | undefined, value: string) {
+  if (!courseId || typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(getProfilePromptStorageKey(courseId), value);
+  } catch {
+    // The editable prompt is a local convenience; ignore storage failures.
+  }
 }
 
 function RecentPaperRow({
@@ -218,10 +296,26 @@ export function ProfilePage() {
 
   const [isProfileExpanded, setIsProfileExpanded] = useState(false);
   const [recentlyCompletedReviews, setRecentlyCompletedReviews] = useState<ReviewTaskResponse[]>([]);
+  const [profilePromptState, setProfilePromptState] = useState(() => ({
+    courseId: courseId ?? "",
+    value: readProfilePrompt(courseId),
+  }));
+  const profilePrompt = profilePromptState.courseId === (courseId ?? "") ? profilePromptState.value : "";
 
   useEffect(() => {
     setRecentlyCompletedReviews([]);
+    setProfilePromptState({
+      courseId: courseId ?? "",
+      value: readProfilePrompt(courseId),
+    });
   }, [courseId]);
+
+  useEffect(() => {
+    if (profilePromptState.courseId !== (courseId ?? "")) {
+      return;
+    }
+    saveProfilePrompt(courseId, profilePromptState.value);
+  }, [courseId, profilePromptState]);
 
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
     courseId ?? "",
@@ -353,6 +447,10 @@ export function ProfilePage() {
     () => sortByNewestTimestamp(historyItems, (item) => item.created_at).slice(0, 5),
     [historyItems],
   );
+  const learningCalendarDays = useMemo(
+    () => buildLearningCalendarDays(historyItems, reviewTasks),
+    [historyItems, reviewTasks],
+  );
 
   const dueReviewCount = courseProfile?.due_review_count ?? reviewTasks.filter(isReviewDueSoon).length;
   const weakCount = courseProfile?.weak_knowledge_unit_count ?? mastery?.weak_knowledge_unit_count ?? 0;
@@ -376,6 +474,26 @@ export function ProfilePage() {
   );
 
   const focusNames = focusStates.map(getKnowledgeUnitName).slice(0, 3).join("、");
+  const latestLearningTitle = latestPapers[0]
+    ? buildExamTitle(latestPapers[0])
+    : topReviewTasks[0]
+      ? topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`
+      : "暂无最近学习";
+  const latestLearningDetail = latestPapers[0]
+    ? `${formatModeLabel(latestPapers[0].exam_mode)} · ${formatDateTime(latestPapers[0].created_at)}`
+    : topReviewTasks[0]
+      ? `待复习 · ${formatDateTime(topReviewTasks[0].scheduled_at)}`
+      : "完成一次练习后会自动沉淀到画像。";
+  const smartRecommendationTitle = topReviewTasks[0]
+    ? `先复习：${topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`}`
+    : focusStates[0]
+      ? `优先突破：${getKnowledgeUnitName(focusStates[0])}`
+      : "先做一次短诊断";
+  const smartRecommendationDetail = topReviewTasks[0]
+    ? "该知识点已进入复习窗口，优先处理能降低遗忘风险。"
+    : focusStates[0]
+      ? `当前掌握度 ${formatPercent(focusStates[0].mastery_score)}，建议配合知识库回看后再练。`
+      : "系统需要更多测验或对话信号来生成稳定推荐。";
 
   const startProfileExam = () => {
     if (!courseId || generateExam.isPending) return;
@@ -411,6 +529,7 @@ export function ProfilePage() {
       {
         key: "locate",
         label: "定位",
+        timeLabel: getPlanTimeLabel(0),
         title: dueTasks.length ? "先处理高优先级复习" : "锁定薄弱知识点",
         detail: dueTasks.length
           ? `优先完成 ${Math.min(dueTasks.length, 3)} 个高优先级复习任务，避免遗忘继续扩大。`
@@ -421,21 +540,24 @@ export function ProfilePage() {
       {
         key: "practice",
         label: "训练",
+        timeLabel: getPlanTimeLabel(1),
         title: "做一轮专项练习",
         detail: `${formatToken(courseProfile?.recommended_exam_mode, "网页练习")} · 约 ${courseProfile?.recommended_question_count ?? 10} 题 · ${formatToken(courseProfile?.difficulty_focus, "中等")}难度${qTypes ? ` · ${qTypes}` : ""}。`,
       },
       {
         key: "reflect",
         label: "复盘",
+        timeLabel: getPlanTimeLabel(2),
         title: "带着错题回到知识库",
         detail: "练完后把错题、卡点或划选内容拿去伴读追问，画像会继续沉淀你的讲解偏好。",
       },
     ];
 
     return studyPlan?.length
-      ? studyPlan.map((item) => ({
+      ? studyPlan.map((item, index) => ({
         key: item.key,
         label: PLAN_LABEL_BY_KEY[item.key] ?? "计划",
+        timeLabel: getPlanTimeLabel(index),
         title: item.title,
         detail: item.detail,
       }))
@@ -554,6 +676,65 @@ export function ProfilePage() {
               ))}
             </section>
 
+            <section className="grid gap-4 lg:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">学习日历</p>
+                  <CalendarClock className="h-4 w-4 text-slate-400" />
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {learningCalendarDays.map((day) => (
+                    <div key={day.key} className="flex flex-col items-center gap-1">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{day.label}</span>
+                      <span
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition",
+                          day.intensity === 0 && "bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-600",
+                          day.intensity === 1 && "bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300",
+                          day.intensity === 2 && "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200",
+                          day.intensity >= 3 && "bg-indigo-600 text-white dark:bg-indigo-500",
+                          day.isToday && "ring-2 ring-indigo-200 dark:ring-indigo-500/30",
+                        )}
+                        title={`${day.key} · ${day.count} 条学习记录`}
+                      >
+                        {day.day}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">进度总览</p>
+                  <Gauge className="h-4 w-4 text-slate-400" />
+                </div>
+                <div className="space-y-2.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  <p>已跟踪 {states.length} 个知识点，累计 {totalAttempts} 次作答。</p>
+                  <p>薄弱知识点 {weakCount} 个，待复习 {dueReviewCount} 个。</p>
+                  <p>当前稳定度 {formatPercent(avgStability)}，掌握度 {formatPercent(courseProfile?.avg_mastery)}。</p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">最近学习</p>
+                  <FileText className="h-4 w-4 text-slate-400" />
+                </div>
+                <p className="line-clamp-2 text-sm font-medium leading-6 text-slate-800 dark:text-slate-200">{latestLearningTitle}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{latestLearningDetail}</p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">智能推荐</p>
+                  <Sparkles className="h-4 w-4 text-indigo-500" />
+                </div>
+                <p className="line-clamp-2 text-sm font-medium leading-6 text-slate-800 dark:text-slate-200">{smartRecommendationTitle}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{smartRecommendationDetail}</p>
+              </div>
+            </section>
+
             {/* Today's Learning Plan (今日学习计划) */}
             {planItems.length > 0 && (
               <section className="space-y-4">
@@ -573,7 +754,12 @@ export function ProfilePage() {
                         {String(index + 1).padStart(2, "0")}
                       </span>
                       <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                        <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase pt-0.5 sm:w-16 shrink-0">{item.label}</span>
+                        <div className="flex shrink-0 items-center gap-2 pt-0.5 sm:w-32 sm:flex-col sm:items-start sm:gap-1">
+                          <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">{item.label}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                            {item.timeLabel}
+                          </span>
+                        </div>
                         <div className="min-w-0">
                           <h4 className="text-[14px] font-medium text-slate-900 dark:text-slate-100">{item.title}</h4>
                           <p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-405 font-light">{item.detail}</p>
@@ -842,6 +1028,22 @@ export function ProfilePage() {
                   {/* Preference Row & Notes */}
                   <div className="space-y-3 rounded-xl border border-slate-150/80 dark:border-slate-850 p-4 bg-white dark:bg-[#0a0d16]">
                     <p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 mb-2">讲解风格与记忆</p>
+                    <label className="block">
+                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">我的画像提示词</span>
+                      <textarea
+                        value={profilePrompt}
+                        onChange={(event) =>
+                          setProfilePromptState({
+                            courseId: courseId ?? "",
+                            value: event.target.value,
+                          })
+                        }
+                        rows={3}
+                        maxLength={600}
+                        placeholder="例如：我更喜欢先看例题再总结规律，少用公式堆叠，多指出易错点。"
+                        className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200 dark:placeholder:text-slate-600 dark:focus:border-indigo-500/40 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/10"
+                      />
+                    </label>
                     <PreferenceRow
                       label="推荐题型"
                       value={courseProfile?.recommended_question_types?.map((item) => formatToken(item)).join("、") || "单选题、简答题"}

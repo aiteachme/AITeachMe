@@ -484,6 +484,26 @@ def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, A
             }
         )
 
+    diagnose: list[dict[str, Any]] = []
+    for item in _mapping_items(plan.get("diagnose"), limit=10):
+        question = _clean_text(item.get("question") or item.get("title") or item.get("prompt"), max_chars=220)
+        if not question:
+            continue
+        diagnose.append(
+            {
+                "question": question,
+                "purpose": _clean_text(
+                    item.get("purpose") or item.get("diagnosis_target") or item.get("target"),
+                    max_chars=260,
+                ),
+                "sample_answers": _clean_string_list(
+                    item.get("sample_answers") or item.get("quick_answers") or item.get("answers"),
+                    limit=4,
+                    max_chars=120,
+                ),
+            }
+        )
+
     return {
         "plan": _clean_text(plan.get("plan"), max_chars=1200),
         "learning_goal": _clean_text(
@@ -492,6 +512,7 @@ def _confirmed_plan_snapshot(docgen_artifacts: Mapping[str, Any]) -> dict[str, A
         ),
         "constraints": _clean_string_list(plan.get("constraints") or plan.get("requirements"), limit=10, max_chars=160),
         "selected_file_ids": _clean_string_list(plan.get("selected_file_ids"), limit=100, max_chars=120),
+        "diagnose": diagnose,
         "chapters": chapters,
     }
 
@@ -912,6 +933,22 @@ def render_course_llm_context(
     planner_plan = _clean_text(document_summary_json.get("plan"), max_chars=900)
     if planner_plan:
         lines.append(f"- 总体方案：{planner_plan}")
+    confirmed_plan = _as_mapping(document_summary_json.get("confirmed_plan"))
+    diagnose_items = _mapping_items(confirmed_plan.get("diagnose"), limit=10)
+    if diagnose_items:
+        lines.extend(["", "## 前置诊断"])
+        for index, item in enumerate(diagnose_items, start=1):
+            question = _clean_text(item.get("question"), max_chars=220)
+            if not question:
+                continue
+            purpose = _clean_text(item.get("purpose"), max_chars=220)
+            sample_answers = " / ".join(_clean_string_list(item.get("sample_answers"), limit=4, max_chars=80))
+            suffix = ""
+            if purpose:
+                suffix += f"；诊断目标：{purpose}"
+            if sample_answers:
+                suffix += f"；快速回答：{sample_answers}"
+            lines.append(f"{index}. {question}{suffix}")
     if intent_profile:
         strategy = _clean_text(intent_profile.get("content_strategy_text"), max_chars=500)
         example_policy = _clean_text(intent_profile.get("example_practice_policy"), max_chars=360)

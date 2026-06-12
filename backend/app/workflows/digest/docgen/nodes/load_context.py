@@ -24,6 +24,32 @@ from app.workflows.digest.common.indexing import materialize_course_inputs_for_r
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
+def _render_diagnose_brief(items: list[dict]) -> str:
+    lines: list[str] = []
+    for index, raw in enumerate(items[:10], start=1):
+        if not isinstance(raw, dict):
+            continue
+        question = " ".join(str(raw.get("question") or "").split()).strip()
+        if not question:
+            continue
+        purpose = " ".join(str(raw.get("purpose") or "").split()).strip()
+        answers = [
+            " ".join(str(item or "").split()).strip()
+            for item in list(raw.get("sample_answers") or [])[:4]
+            if str(item or "").strip()
+        ]
+        suffix_parts = []
+        if purpose:
+            suffix_parts.append(f"诊断目标：{purpose}")
+        if answers:
+            suffix_parts.append("快速回答：" + " / ".join(answers))
+        suffix = "；" + "；".join(suffix_parts) if suffix_parts else ""
+        lines.append(f"{index}. {question}{suffix}")
+    if not lines:
+        return ""
+    return "前置诊断信号：\n" + "\n".join(lines)
+
+
 def build_load_context_node(*, context: WorkflowContext):
     """构建 DocGen 上下文加载节点。
 
@@ -75,6 +101,12 @@ def build_load_context_node(*, context: WorkflowContext):
         plan_payload["retrieval_profile"] = retrieval_profile
         build_constraints = dict(plan_payload.get("build_constraints") or {})
         planner_context = dict(plan_payload.get("planner_context") or {})
+        diagnose = [
+            dict(item)
+            for item in list(plan_payload.get("diagnose") or [])
+            if isinstance(item, dict)
+        ][:10]
+        diagnose_brief = _render_diagnose_brief(diagnose)
         docgen_history_brief = str(
             plan_payload.get("docgen_history_brief")
             or planner_context.get("docgen_history_brief")
@@ -96,6 +128,10 @@ def build_load_context_node(*, context: WorkflowContext):
                 "course_profile": {},
             }
         learner_profile_text = str(learner_profile_context.get("profile_text") or "").strip()
+        if diagnose_brief:
+            learner_profile_text = "\n\n".join(
+                item for item in [learner_profile_text, diagnose_brief] if item
+            )
 
         has_local_materials = bool(shared_inputs.source_packets)
         plan_course_label = str(plan_contract.course_name or plan_contract.user_prompt or "").strip()
@@ -120,6 +156,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "docgen_history_brief": docgen_history_brief,
             "learner_profile_text": learner_profile_text,
             "learner_profile_context": learner_profile_context,
+            "diagnose": diagnose,
+            "diagnose_brief": diagnose_brief,
             "planner_context": planner_context,
             "build_constraints": build_constraints,
             "source_strategy": "local_first" if has_local_materials else "web_first",
@@ -136,6 +174,7 @@ def build_load_context_node(*, context: WorkflowContext):
             learner_profile_text=learner_profile_text,
             learner_profile_context=learner_profile_context,
             planner_context=planner_context,
+            diagnose=diagnose,
             build_constraints=build_constraints,
             source_strategy="local_first" if has_local_materials else "web_first",
             include_sources=False,

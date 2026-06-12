@@ -9300,6 +9300,13 @@
             "type": "array",
             "title": "Chapters"
           },
+          "diagnose": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerDiagnosticQuestionResponse"
+            },
+            "type": "array",
+            "title": "Diagnose"
+          },
           "status_history": {
             "items": {
               "type": "string"
@@ -9402,6 +9409,31 @@
         "title": "BuildPlannerCreateRequest",
         "description": "Create a new planner session and generate the first plan draft."
       },
+      "BuildPlannerDiagnosticQuestionResponse": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "default": ""
+          },
+          "sample_answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "BuildPlannerDiagnosticQuestionResponse"
+      },
       "BuildPlannerMessageRequest": {
         "properties": {
           "message": {
@@ -9481,6 +9513,13 @@
             },
             "type": "array",
             "title": "Chapters"
+          },
+          "diagnose": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerDiagnosticQuestionResponse"
+            },
+            "type": "array",
+            "title": "Diagnose"
           },
           "status": {
             "type": "string",

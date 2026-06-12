@@ -767,6 +767,12 @@ class BuildPlannerChapterResponse(BaseModel):
     writing_instructions: str = ""
 
 
+class BuildPlannerDiagnosticQuestionResponse(BaseModel):
+    question: str
+    purpose: str = ""
+    sample_answers: list[str] = Field(default_factory=list)
+
+
 class BuildPlannerPlanResponse(BaseModel):
     course_id: str
     selected_file_ids: list[str] = Field(default_factory=list)
@@ -778,6 +784,7 @@ class BuildPlannerPlanResponse(BaseModel):
     suggestion: str = ""
     plan: str = ""
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
+    diagnose: list[BuildPlannerDiagnosticQuestionResponse] = Field(default_factory=list)
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
@@ -813,6 +820,7 @@ class BuildPlannerConfirmResponse(BaseModel):
     suggestion: str = ""
     plan: str
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
+    diagnose: list[BuildPlannerDiagnosticQuestionResponse] = Field(default_factory=list)
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

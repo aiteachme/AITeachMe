@@ -23,6 +23,8 @@ from app.workflows.digest.planner.lib.plans import (
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
+    DIAGNOSE_END,
+    DIAGNOSE_START,
     PLAN_END,
     PLAN_START,
     SUGGESTION_END,
@@ -167,15 +169,52 @@ def _parse_chapters(value: str) -> list[dict[str, Any]]:
     return chapters
 
 
+def _parse_diagnose(value: str) -> list[dict[str, Any]]:
+    if not value.strip():
+        return []
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"diagnose json invalid: {exc}") from exc
+    if not isinstance(decoded, list):
+        raise ValueError("diagnose must be a JSON array")
+    diagnose: list[dict[str, Any]] = []
+    for raw in decoded[:10]:
+        if not isinstance(raw, dict):
+            continue
+        question = _clean_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+        if not question:
+            continue
+        sample_answers = _string_list(
+            raw.get("sample_answers")
+            or raw.get("quick_answers")
+            or raw.get("example_answers")
+            or raw.get("answers")
+        )[:4]
+        diagnose.append(
+            {
+                "question": question,
+                "purpose": _clean_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target")),
+                "sample_answers": sample_answers,
+            }
+        )
+    return diagnose
+
+
 def _parse_planner_response(text: str) -> dict[str, Any]:
     plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
     suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
+    diagnose = _parse_diagnose(
+        _extract_between(text, DIAGNOSE_START, DIAGNOSE_END)
+        if DIAGNOSE_START in text
+        else ""
+    )
     chapters = _parse_chapters(_extract_between(text, CHAPTERS_START, CHAPTERS_END))
     if not plan:
         raise ValueError("planner response is missing plan")
     if not suggestion:
         raise ValueError("planner response is missing suggestion")
-    return {"suggestion": suggestion, "plan": plan, "chapters": chapters}
+    return {"suggestion": suggestion, "plan": plan, "diagnose": diagnose, "chapters": chapters}
 
 
 def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> dict[str, Any]:
@@ -196,6 +235,7 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
         "course_icon": str(latest_plan.get("course_icon") or ""),
         "suggestion": str(payload.get("suggestion") or ""),
         "plan": str(payload.get("plan") or ""),
+        "diagnose": list(payload.get("diagnose") or latest_plan.get("diagnose") or []),
         "chapters": list(payload.get("chapters") or []),
         "status": "planning",
         "planner_session_id": state.get("planner_session_id") or None,

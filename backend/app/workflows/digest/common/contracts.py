@@ -140,6 +140,27 @@ class DigestBuildConstraints(BaseModel):
     def _normalize_target_length(cls, value: Any) -> str:
         return _clean_text(value)
 
+
+class DigestPlannerDiagnosticQuestion(BaseModel):
+    """A pre-diagnosis prompt frozen on the confirmed build plan."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    question: str = ""
+    purpose: str = ""
+    sample_answers: list[str] = Field(default_factory=list)
+
+    @field_validator("question", "purpose", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: Any) -> str:
+        return _clean_text(value)
+
+    @field_validator("sample_answers", mode="before")
+    @classmethod
+    def _normalize_sample_answers(cls, value: Any) -> list[str]:
+        return _clean_string_list(value)
+
+
 class DigestConfirmedPlanContract(BaseModel):
     """Typed confirmed-plan contract shared by planner and docgen lanes."""
 
@@ -150,8 +171,10 @@ class DigestConfirmedPlanContract(BaseModel):
     user_prompt: str = ""
     digest_mode: str = DEFAULT_DIGEST_MODE
     planning_note: str = ""
+    suggestion: str = ""
     plan: str = ""
     chapters: list[DigestChapterContract] = Field(default_factory=list)
+    diagnose: list[DigestPlannerDiagnosticQuestion] = Field(default_factory=list)
     build_constraints: DigestBuildConstraints = Field(default_factory=DigestBuildConstraints)
     selected_file_ids: list[str] = Field(default_factory=list)
     planner_session_id: str = ""
@@ -159,6 +182,8 @@ class DigestConfirmedPlanContract(BaseModel):
     model_override: str = ""
     mode_reason: str = ""
     retrieval_profile: str = ""
+    docgen_history_brief: str = ""
+    planner_context: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator(
         "course_name",
@@ -166,12 +191,14 @@ class DigestConfirmedPlanContract(BaseModel):
         "user_prompt",
         "digest_mode",
         "planning_note",
+        "suggestion",
         "plan",
         "planner_session_id",
         "confirmed_plan_id",
         "model_override",
         "mode_reason",
         "retrieval_profile",
+        "docgen_history_brief",
         mode="before",
     )
     @classmethod
@@ -182,6 +209,11 @@ class DigestConfirmedPlanContract(BaseModel):
     @classmethod
     def _normalize_selected_file_ids(cls, value: Any) -> list[str]:
         return _clean_string_list(value)
+
+    @field_validator("planner_context", mode="before")
+    @classmethod
+    def _normalize_planner_context(cls, value: Any) -> dict[str, Any]:
+        return dict(value) if isinstance(value, Mapping) else {}
 
     def normalized_digest_mode(self) -> str:
         return normalize_digest_mode(self.digest_mode)
@@ -312,6 +344,7 @@ __all__ = [
     "DigestBuildConstraints",
     "DigestChapterContract",
     "DigestConfirmedPlanContract",
+    "DigestPlannerDiagnosticQuestion",
     "PLANNER_RETRIEVAL_PROFILE",
     "SPRINT_DIGEST_MODE",
     "normalize_digest_confirmed_plan_payload",

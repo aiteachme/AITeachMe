@@ -22,6 +22,12 @@ class PlannerChapterPlan(BaseModel):
     writing_instructions: str = ""
 
 
+class PlannerDiagnosticQuestion(BaseModel):
+    question: str
+    purpose: str = ""
+    sample_answers: list[str] = Field(default_factory=list)
+
+
 class BuildPlannerDraft(BaseModel):
     """Stable planner payload consumed by API and DocGen."""
 
@@ -35,6 +41,7 @@ class BuildPlannerDraft(BaseModel):
     suggestion: str = ""
     plan: str = ""
     chapters: list[PlannerChapterPlan] = Field(default_factory=list)
+    diagnose: list[PlannerDiagnosticQuestion] = Field(default_factory=list)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -76,6 +83,12 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _chapter_items(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [_mapping(item) for item in value]
+
+
+def _diagnose_items(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [_mapping(item) for item in value]
@@ -200,6 +213,129 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
         objective=_student_facing_text(raw.get("objective")) or "；".join(key_points),
         required_elements=key_points,
         writing_instructions=_student_facing_text(raw.get("writing_instructions")) or "围绕本章知识点生成清晰讲解。",
+    )
+
+
+def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | None:
+    question = _student_facing_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+    if not question:
+        return None
+    purpose = _student_facing_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
+    sample_answers = _strings(
+        raw.get("sample_answers")
+        or raw.get("quick_answers")
+        or raw.get("example_answers")
+        or raw.get("answers")
+    )[:4]
+    if not sample_answers:
+        sample_answers = ["我能独立讲清楚", "看例题能跟上", "这里还比较陌生"]
+    return PlannerDiagnosticQuestion(
+        question=question,
+        purpose=purpose,
+        sample_answers=sample_answers,
+    )
+
+
+def _fallback_diagnostic_pool(
+    *,
+    chapters: list[PlannerChapterPlan],
+    user_prompt: str,
+    digest_mode: str,
+) -> list[PlannerDiagnosticQuestion]:
+    mode_label = planner_mode_label(digest_mode)
+    result: list[PlannerDiagnosticQuestion] = []
+    for chapter in chapters[:10]:
+        points = _strings(chapter.required_elements)[:2]
+        focus_text = "、".join(points) if points else chapter.objective
+        sample_answers = [
+            f"我能说清{points[0]}" if points else "我能讲清本章核心概念",
+            f"我会做基础题，但{points[1]}还不稳" if len(points) > 1 else "看例题能跟上，独立做题不稳",
+            "这一块基本没学过",
+        ]
+        result.append(
+            PlannerDiagnosticQuestion(
+                question=f"看到“{chapter.title}”这一部分，你现在最有把握和最卡住的点分别是什么？",
+                purpose=f"识别{chapter.title}的已有掌握度和薄弱入口。",
+                sample_answers=sample_answers,
+            )
+        )
+
+    generic_items = [
+        (
+            f"你希望这门课更偏{mode_label}拿分、理解推导，还是实际应用？",
+            "校准知识文档的讲解深度和例题密度。",
+            ["先应付考试", "想真正理解", "要能完成作业/项目"],
+        ),
+        (
+            "最近一次接触这个主题时，你是卡在概念、公式步骤、题型迁移，还是时间不够？",
+            "识别后续考试和伴读的优先补救方向。",
+            ["概念不清", "步骤会忘", "题目一变就不会", "时间不够"],
+        ),
+        (
+            "如果现在让你做一组 10 分钟小测，你预计正确率大概是多少？",
+            "给 Profile 初始掌握度一个自评锚点。",
+            ["80% 以上", "50%-80%", "低于 50%", "完全没底"],
+        ),
+        (
+            "你更想先补哪类内容：基础定义、典型例题、易错辨析，还是综合训练？",
+            "决定 DocGen 章节内部的内容排序。",
+            ["基础定义", "典型例题", "易错辨析", "综合训练"],
+        ),
+        (
+            "你希望 AI 后续解释时更像老师推导、考前提纲，还是错题教练？",
+            "把诊断偏好传给伴读和画像链路。",
+            ["老师推导", "考前提纲", "错题教练"],
+        ),
+    ]
+    for question, purpose, sample_answers in generic_items:
+        result.append(
+            PlannerDiagnosticQuestion(
+                question=question,
+                purpose=purpose,
+                sample_answers=sample_answers,
+            )
+        )
+        if len(result) >= 10:
+            break
+    while len(result) < 10:
+        index = len(result) + 1
+        scope = _text(user_prompt) or "当前主题"
+        result.append(
+            PlannerDiagnosticQuestion(
+                question=f"关于{scope}，第 {index} 个你最想确认自己是否掌握的点是什么？",
+                purpose="补齐前置诊断题数量，收集学习者自评边界。",
+                sample_answers=["已经掌握", "需要例题", "需要从头讲"],
+            )
+        )
+    return result[:10]
+
+
+def _normalize_diagnose(
+    raw_items: list[dict[str, Any]],
+    *,
+    chapters: list[PlannerChapterPlan],
+    user_prompt: str,
+    digest_mode: str,
+) -> list[PlannerDiagnosticQuestion]:
+    result: list[PlannerDiagnosticQuestion] = []
+    seen: set[str] = set()
+    for raw in raw_items:
+        item = _merge_diagnostic(raw)
+        if item is None:
+            continue
+        key = _text(item.question).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= 10:
+            break
+    if result:
+        return result
+    return _fallback_diagnostic_pool(
+        chapters=chapters,
+        user_prompt=user_prompt,
+        digest_mode=digest_mode,
     )
 
 
@@ -405,6 +541,12 @@ def normalize_planner_draft(
     suggestion = _student_facing_text(current.get("suggestion") or previous.get("suggestion"))
     planning_note = _student_facing_text(current.get("planning_note") or previous.get("planning_note"))
     course_icon = _text(current.get("course_icon") or previous.get("course_icon"))
+    diagnose = _normalize_diagnose(
+        _diagnose_items(current.get("diagnose")) or _diagnose_items(previous.get("diagnose")),
+        chapters=chapters,
+        user_prompt=resolved_user_prompt,
+        digest_mode=mode,
+    )
 
     return BuildPlannerDraft(
         course_name=display_course,
@@ -415,6 +557,7 @@ def normalize_planner_draft(
         suggestion=suggestion,
         plan=plan_text,
         chapters=chapters,
+        diagnose=diagnose,
         build_constraints=_build_constraints(
             digest_mode=mode,
             chapter_count=len(chapters),
@@ -447,6 +590,7 @@ def normalize_planner_payload(
 __all__ = [
     "BuildPlannerDraft",
     "PlannerChapterPlan",
+    "PlannerDiagnosticQuestion",
     "compose_planning_note",
     "_resolve_course_name",
     "normalize_planner_draft",

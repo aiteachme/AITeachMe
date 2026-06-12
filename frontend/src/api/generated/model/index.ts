@@ -75,6 +75,7 @@ export * from './buildPlannerAdjustClickResponse';
 export * from './buildPlannerChapterResponse';
 export * from './buildPlannerConfirmResponse';
 export * from './buildPlannerCreateRequest';
+export * from './buildPlannerDiagnosticQuestionResponse';
 export * from './buildPlannerMessageRequest';
 export * from './buildPlannerPlanResponse';
 export * from './buildPlannerSessionResponse';
