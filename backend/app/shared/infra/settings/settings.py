@@ -7,7 +7,7 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.shared.infra.llm_support.defaults import MAX_LLM_CONCURRENCY_LIMIT
 
@@ -66,6 +66,7 @@ class ModelsSettings(_SettingsModel):
 class LLMSettings(_SettingsModel):
     api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
+    primary_model_allowlist: tuple[str, ...] = ()
     native_web_search: Literal["off", "auto", "force"] = "auto"
     native_web_search_external_access: bool = True
     native_file_search: Literal["off", "auto", "force"] = "off"
@@ -73,6 +74,28 @@ class LLMSettings(_SettingsModel):
     native_file_search_max_results: int = Field(default=5, ge=1, le=50)
     concurrency_limit: int = Field(ge=1, le=MAX_LLM_CONCURRENCY_LIMIT)
     enforce_request_timeout: bool
+
+    @field_validator("primary_model_allowlist", mode="before")
+    @classmethod
+    def _normalize_primary_model_allowlist(cls, value: Any) -> tuple[str, ...]:
+        if value in (None, ""):
+            return ()
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        elif isinstance(value, (list, tuple, set)):
+            raw_items = value
+        else:
+            raw_items = (value,)
+
+        items: list[str] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            normalized = str(item or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            items.append(normalized)
+        return tuple(items)
 
 
 class InteractSettings(_SettingsModel):

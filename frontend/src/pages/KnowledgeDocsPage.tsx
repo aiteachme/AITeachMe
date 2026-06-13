@@ -18,6 +18,9 @@ import {
   Send,
   Bot,
   Network,
+  Download,
+  Layers3,
+  StickyNote,
   Loader2,
   Sparkles,
   RefreshCw,
@@ -161,6 +164,13 @@ interface CommentThreadView {
   sourceOrder: number;
 }
 
+interface KnowledgeCard {
+  id: string;
+  front: string;
+  back: string;
+  source: string;
+}
+
 interface CommentThreadLayout {
   top: number;
   aligned: boolean;
@@ -255,6 +265,166 @@ function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function sanitizeExportText(value: string | null | undefined): string {
+  return String(value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function stripMarkdownSyntax(value: string | null | undefined): string {
+  return sanitizeExportText(value)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[\s>*-]+/gm, "")
+    .replace(/[*_~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncatePlainText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function tsvCell(value: string | null | undefined): string {
+  return stripMarkdownSyntax(value).replace(/\t/g, " ").replace(/\r?\n/g, " ").trim();
+}
+
+function downloadTextFile(filename: string, content: string, mimeType = "text/plain;charset=utf-8") {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+  const blob = new Blob([content], { type: mimeType });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function quoteMindmapLabel(value: string): string {
+  return `"${stripMarkdownSyntax(value).replace(/"/g, "'").slice(0, 72)}"`;
+}
+
+function buildAnnotationExportMarkdown(threads: CommentThreadView[], courseId?: string): string {
+  const lines: string[] = [
+    "# AITeachMe 知识文档批注",
+    "",
+    `- 课程：${courseId ?? "当前课程"}`,
+    `- 导出时间：${new Date().toLocaleString("zh-CN")}`,
+    `- 批注片段：${threads.length}`,
+    "",
+    "## 批注列表",
+    "",
+  ];
+
+  threads.forEach((thread, index) => {
+    lines.push(`### ${index + 1}. ${stripMarkdownSyntax(thread.selectedText).slice(0, 48) || "未命名片段"}`);
+    lines.push("");
+    lines.push(`- 位置：${thread.anchorId}`);
+    lines.push(`- 创建：${formatTime(thread.createdAt)}`);
+    lines.push("");
+    lines.push("> 选中文本");
+    lines.push("");
+    lines.push(sanitizeExportText(thread.selectedText));
+    lines.push("");
+    for (const comment of thread.comments) {
+      const role = comment.role === "assistant" ? "AI" : "我";
+      lines.push(`**${role}（${formatTime(comment.createdAt)}）**`);
+      lines.push("");
+      lines.push(sanitizeExportText(comment.content));
+      lines.push("");
+    }
+  });
+
+  lines.push("## 思维导图式批注");
+  lines.push("");
+  lines.push("```mermaid");
+  lines.push("mindmap");
+  lines.push("  root((知识文档批注))");
+  threads.slice(0, 24).forEach((thread, index) => {
+    const title = stripMarkdownSyntax(thread.selectedText).slice(0, 36) || `片段 ${index + 1}`;
+    lines.push(`    ${quoteMindmapLabel(`${index + 1}. ${title}`)}`);
+    thread.comments.slice(0, 3).forEach((comment) => {
+      const role = comment.role === "assistant" ? "AI" : "笔记";
+      lines.push(`      ${quoteMindmapLabel(`${role}: ${comment.content}`)}`);
+    });
+  });
+  lines.push("```");
+  lines.push("");
+  return lines.join("\n");
+}
+
+function buildKnowledgeCardsFromMarkdown(markdown: string, toc: TocItem[]): KnowledgeCard[] {
+  const lines = sanitizeExportText(markdown).split("\n");
+  const cards: KnowledgeCard[] = [];
+  const tocTitleByText = new Map(toc.map((item) => [stripMarkdownSyntax(item.text), item.text]));
+  let currentTitle = "";
+  let buffer: string[] = [];
+
+  const flush = () => {
+    const front = stripMarkdownSyntax(currentTitle);
+    const back = truncatePlainText(stripMarkdownSyntax(buffer.join("\n")), 320);
+    if (front.length >= 2 && back.length >= 18) {
+      cards.push({
+        id: `doc-card-${cards.length + 1}`,
+        front: `请解释：${front}`,
+        back,
+        source: tocTitleByText.get(front) ?? currentTitle,
+      });
+    }
+    buffer = [];
+  };
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^(#{1,4})\s+(.+?)\s*$/);
+    if (headingMatch) {
+      flush();
+      currentTitle = headingMatch[2];
+      continue;
+    }
+    if (!currentTitle) {
+      continue;
+    }
+    const cleanLine = stripMarkdownSyntax(line);
+    if (!cleanLine || cleanLine.length < 8) {
+      continue;
+    }
+    buffer.push(cleanLine);
+  }
+  flush();
+
+  if (cards.length === 0) {
+    const fallbackParagraphs = sanitizeExportText(markdown)
+      .split(/\n{2,}/)
+      .map((item) => stripMarkdownSyntax(item))
+      .filter((item) => item.length >= 32)
+      .slice(0, 12);
+    fallbackParagraphs.forEach((paragraph, index) => {
+      cards.push({
+        id: `doc-card-fallback-${index + 1}`,
+        front: `记忆卡片 ${index + 1}`,
+        back: truncatePlainText(paragraph, 320),
+        source: "知识文档",
+      });
+    });
+  }
+
+  return cards
+    .filter((card) => card.front.trim() && card.back.trim())
+    .slice(0, 24);
+}
+
+function buildKnowledgeCardsTsv(cards: KnowledgeCard[]): string {
+  return cards.map((card) => [tsvCell(card.front), tsvCell(card.back), tsvCell(card.source)].join("\t")).join("\n");
 }
 
 function normalizeGraphSourceTitle(value: string | null | undefined): string {
@@ -2068,6 +2238,7 @@ export function KnowledgeDocsPage() {
   );
   const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(courseId));
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
+  const [isCardsPanelOpen, setIsCardsPanelOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
@@ -2427,6 +2598,7 @@ export function KnowledgeDocsPage() {
 
   const openGraphPanel = useCallback(() => {
     setIsSettingsPanelOpen(false);
+    setIsCardsPanelOpen(false);
     setIsGraphDrawerOpen(true);
   }, []);
 
@@ -2471,12 +2643,12 @@ export function KnowledgeDocsPage() {
 
     const navRect = nav.getBoundingClientRect();
     const activeRect = activeNode.getBoundingClientRect();
-    
+
     // Check if the active node is already comfortably visible in the viewport
     // (e.g., within the middle 60% of the container's height)
     const threshold = nav.clientHeight * 0.2;
-    const isComfortablyVisible = 
-      (activeRect.top >= navRect.top + threshold) && 
+    const isComfortablyVisible =
+      (activeRect.top >= navRect.top + threshold) &&
       (activeRect.bottom <= navRect.bottom - threshold);
 
     if (isComfortablyVisible) return;
@@ -2488,7 +2660,7 @@ export function KnowledgeDocsPage() {
 
     const maxScrollTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
     nextScrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
-    
+
     if (Math.abs(nextScrollTop - nav.scrollTop) < 10) return;
 
     markTocAutoScrolling();
@@ -2801,7 +2973,7 @@ export function KnowledgeDocsPage() {
       }
 
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      
+
       // If the container's scrollHeight is still loading and cannot support the scroll top yet,
       // and we are not at the very top, we should wait and retry
       if (nextScrollTop > 0 && maxScrollTop < nextScrollTop && container.scrollHeight < 500) {
@@ -4328,6 +4500,10 @@ export function KnowledgeDocsPage() {
       .filter((item) => item.anchorId)
       .sort(compareCommentThreadViewOrder)
   ), [commentsByThread, hasRenderedMarkdown, renderedMarkdown, tocOrderMap]);
+  const knowledgeCards = useMemo(
+    () => buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc),
+    [renderedMarkdown, toc],
+  );
   const commentThreadIds = useMemo(
     () => commentThreads.map((item) => item.threadId),
     [commentThreads]
@@ -4336,6 +4512,42 @@ export function KnowledgeDocsPage() {
     () => new Map(commentThreads.map((item) => [item.threadId, item] as const)),
     [commentThreads]
   );
+
+  const exportAnnotations = useCallback(() => {
+    if (commentThreads.length === 0) {
+      toast({
+        title: "暂无可导出的批注",
+        description: "先在正文中划选内容并与 AI 对话，系统会把这些片段整理为批注。",
+        variant: "info",
+      });
+      return;
+    }
+    const filename = `aiteachme-annotations-${courseId ?? "course"}.md`;
+    downloadTextFile(filename, buildAnnotationExportMarkdown(commentThreads, courseId), "text/markdown;charset=utf-8");
+    toast({
+      title: "批注已导出",
+      description: "已生成 Markdown 文件，包含选中文本、笔记和思维导图式批注。",
+      variant: "success",
+    });
+  }, [commentThreads, courseId, toast]);
+
+  const exportKnowledgeCards = useCallback(() => {
+    if (knowledgeCards.length === 0) {
+      toast({
+        title: "暂无可导出的知识卡片",
+        description: "当前知识文档内容较少，暂未识别出适合生成卡片的知识点。",
+        variant: "info",
+      });
+      return;
+    }
+    const filename = `aiteachme-cards-${courseId ?? "course"}.tsv`;
+    downloadTextFile(filename, buildKnowledgeCardsTsv(knowledgeCards), "text/tab-separated-values;charset=utf-8");
+    toast({
+      title: "知识卡片已导出",
+      description: "TSV 文件包含正面、背面和来源三列，可导入 Anki 或 Quizlet。",
+      variant: "success",
+    });
+  }, [courseId, knowledgeCards, toast]);
 
   const centerThreadInViewport = useCallback((threadId: string) => {
     const container = scrollRef.current;
@@ -5539,14 +5751,28 @@ export function KnowledgeDocsPage() {
     >
       <div className="flex h-11 items-center justify-between border-b border-slate-200/80 px-1 dark:border-slate-800">
         <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-          <Bot className="w-4 h-4" />
-          <span className="text-sm font-semibold">问问 AI</span>
+          <StickyNote className="w-4 h-4" />
+          <span className="text-sm font-semibold">批注模式</span>
         </div>
         <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             {commentThreads.length} 个片段
             {activeStreamingCount > 0 ? `（${activeStreamingCount} 条回复中）` : ""}
           </span>
+          <button
+            onClick={exportAnnotations}
+            disabled={commentThreads.length === 0}
+            className={cn(
+              "w-7 h-7 rounded-lg transition-colors flex items-center justify-center",
+              commentThreads.length === 0
+                ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            )}
+            aria-label="导出批注"
+            title="导出批注"
+          >
+            <Download className="w-4 h-4" />
+          </button>
           <button
             onClick={() => jumpCommentThread(-1)}
             disabled={activeCommentIndex <= 0}
@@ -5675,7 +5901,7 @@ export function KnowledgeDocsPage() {
         ) : commentThreads.length === 0 && !floatingComment ? (
           <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-              <p className="text-sm text-slate-500 dark:text-slate-400">选中文本后点击“问问 AI”即可开始对话</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">选中文本后点击“问问 AI”，即可形成可导出的高亮批注</p>
             </div>
           </div>
         ) : isCompactComment ? (
@@ -5911,6 +6137,48 @@ export function KnowledgeDocsPage() {
     );
   }
 
+  if (!hasRenderedMarkdown && showDocLoadingState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadingState />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocBuildFailureState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocLoadErrorState
+          message={buildStatusText}
+          onRetry={() => {
+            void docMarkdownQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!hasRenderedMarkdown && showDocEmptyState) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <DocEmptyState />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
       <div className="relative z-10 flex min-h-0 h-full w-full bg-white dark:bg-slate-900">
@@ -5938,10 +6206,10 @@ export function KnowledgeDocsPage() {
                 "relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
                 isCommentVisible ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300" : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               )}
-              aria-label="切换问答抽屉"
-              title="问问 AI"
+              aria-label="切换批注抽屉"
+              title="批注模式"
             >
-              <Bot className="w-4 h-4" />
+              <StickyNote className="w-4 h-4" />
               {commentThreads.length > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-indigo-500 text-white text-[10px] leading-4 text-center">
                   {Math.min(commentThreads.length, 99)}
@@ -6339,6 +6607,53 @@ export function KnowledgeDocsPage() {
 
       </div>
 
+      {showFloatingActions && isCardsPanelOpen && (
+        <div className="fixed bottom-[17.75rem] right-6 z-[87] flex max-h-[min(30rem,calc(100dvh-10rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">知识卡片</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                自动整理为 Anki/Quizlet 可导入的正反面卡片。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={exportKnowledgeCards}
+              disabled={knowledgeCards.length === 0}
+              className={cn(
+                "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition",
+                knowledgeCards.length === 0
+                  ? "cursor-not-allowed bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600"
+                  : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              )}
+            >
+              <Download className="h-3.5 w-3.5" />
+              导出
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {knowledgeCards.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                当前文档还没有可生成卡片的稳定知识点。
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {knowledgeCards.slice(0, 10).map((card) => (
+                  <div
+                    key={card.id}
+                    className="rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-left dark:border-slate-800 dark:bg-slate-900/70"
+                  >
+                    <p className="text-xs font-semibold leading-5 text-slate-900 dark:text-slate-100">{card.front}</p>
+                    <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{card.back}</p>
+                    <p className="mt-2 truncate text-[11px] text-slate-400 dark:text-slate-500">{card.source}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showFloatingActions && isSettingsPanelOpen && (
         <div
           ref={settingsPanelRef}
@@ -6365,8 +6680,8 @@ export function KnowledgeDocsPage() {
                   <Bot className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示问问 AI 列</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">打开后只展示划词问答记录；新的划词对话仍从右侧 AI 面板开始。</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示批注栏</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">打开后展示划词批注记录；新的划词对话仍从右侧 AI 面板开始。</p>
                 </div>
               </div>
               <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
@@ -6425,9 +6740,67 @@ export function KnowledgeDocsPage() {
 
       {showFloatingActions && (
         <button
+          type="button"
+          onClick={() => {
+            const nextVisible = !viewPrefs.showCommentPanel;
+            updateViewPrefs((prev) => ({ ...prev, showCommentPanel: nextVisible }));
+            setIsCardsPanelOpen(false);
+            setIsSettingsPanelOpen(false);
+            if (nextVisible) {
+              setIsCommentCollapsed(false);
+              if (isCompactComment) {
+                setActiveDrawer("comment");
+              }
+            } else if (activeDrawer === "comment") {
+              setActiveDrawer(null);
+            }
+          }}
+          className={cn(
+            "fixed bottom-[13.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            viewPrefs.showCommentPanel && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
+          )}
+          aria-label={viewPrefs.showCommentPanel ? "关闭批注模式" : "打开批注模式"}
+          aria-pressed={viewPrefs.showCommentPanel}
+        >
+          <span className="relative inline-flex">
+            <StickyNote className="h-4 w-4 shrink-0" />
+            {commentThreads.length > 0 && (
+              <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-indigo-500 px-1 text-center text-[10px] leading-4 text-white">
+                {Math.min(commentThreads.length, 99)}
+              </span>
+            )}
+          </span>
+          <span className="hidden truncate sm:inline">批注模式</span>
+        </button>
+      )}
+
+      {showFloatingActions && (
+        <button
+          type="button"
+          onClick={() => {
+            setIsCardsPanelOpen((prev) => !prev);
+            setIsSettingsPanelOpen(false);
+          }}
+          className={cn(
+            "fixed bottom-[10.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            isCardsPanelOpen && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
+          )}
+          aria-label="打开知识卡片"
+          aria-expanded={isCardsPanelOpen}
+        >
+          <Layers3 className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline">知识卡片</span>
+        </button>
+      )}
+
+      {showFloatingActions && (
+        <button
           ref={settingsButtonRef}
           type="button"
-          onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
+          onClick={() => {
+            setIsSettingsPanelOpen((prev) => !prev);
+            setIsCardsPanelOpen(false);
+          }}
           className={cn(
             "fixed bottom-[7.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
             isSettingsPanelOpen && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"

@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { BuildPlannerChapterResponse } from './buildPlannerChapterResponse';
+import type { BuildPlannerDiagnosticQuestionResponse } from './buildPlannerDiagnosticQuestionResponse';
 
 export interface BuildPlannerConfirmResponse {
   planner_session_id: string;
@@ -22,6 +23,7 @@ export interface BuildPlannerConfirmResponse {
   suggestion?: string;
   plan: string;
   chapters?: BuildPlannerChapterResponse[];
+  diagnose?: BuildPlannerDiagnosticQuestionResponse[];
   status_history?: string[];
   created_at: string;
   updated_at: string;

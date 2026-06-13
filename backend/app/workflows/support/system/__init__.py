@@ -7,6 +7,7 @@ from app.workflows.support.system.community import (
 from app.workflows.support.system.init import build_init_data
 from app.workflows.support.system.settings import (
     build_settings_overview_data,
+    test_settings_model_connection,
     update_user_settings_overview_data,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "build_settings_overview_data",
     "read_community_wechat_qr_bytes",
     "refresh_community_wechat_qr_cache",
+    "test_settings_model_connection",
     "update_user_settings_overview_data",
 ]

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowUp,
+  Brain,
   BookOpen,
   Check,
   CheckCircle2,
@@ -138,6 +139,12 @@ interface PlannerViewChapter {
   writing_instructions?: string;
 }
 
+interface PlannerDiagnosticQuestion {
+  question?: string;
+  purpose?: string;
+  sample_answers?: string[];
+}
+
 type PlannerViewPlan = BuildPlannerPlanResponse & {
   course_name?: string;
   course_icon?: string;
@@ -145,6 +152,7 @@ type PlannerViewPlan = BuildPlannerPlanResponse & {
   suggestion?: string;
   plan?: string;
   chapters?: PlannerViewChapter[];
+  diagnose?: PlannerDiagnosticQuestion[];
 };
 
 type PlannerStreamStepStatus = "active" | "done" | "warning" | "error";
@@ -242,6 +250,10 @@ function plannerPlanText(plan: BuildPlannerPlanResponse | null | undefined): str
 
 function plannerSuggestionText(plan: BuildPlannerPlanResponse | null | undefined): string {
   return String(plannerView(plan)?.suggestion ?? "").trim();
+}
+
+function plannerDiagnose(plan: BuildPlannerPlanResponse | null | undefined): PlannerDiagnosticQuestion[] {
+  return (plannerView(plan)?.diagnose ?? []).filter((item) => String(item?.question ?? "").trim());
 }
 
 function hasUsablePlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): plan is BuildPlannerPlanResponse {
@@ -718,6 +730,7 @@ function PlannerOutlineCard({
   publishedDocReady,
   onConfirm,
   onAdjust,
+  onDiagnosticAnswer,
   onOpenKnowledgeDocs,
 }: {
   plan: BuildPlannerPlanResponse;
@@ -727,10 +740,12 @@ function PlannerOutlineCard({
   publishedDocReady: boolean;
   onConfirm: () => void;
   onAdjust: () => void;
+  onDiagnosticAnswer: (question: string, answer: string) => void;
   onOpenKnowledgeDocs: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
   const adjustmentQuestions = buildPlannerAdjustmentQuestions(plan);
+  const diagnoseItems = plannerDiagnose(plan).slice(0, 10);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
   const courseName = String(view?.course_name ?? "").trim();
@@ -759,6 +774,41 @@ function PlannerOutlineCard({
           </div>
         ) : null}
       </div>
+
+      {diagnoseItems.length ? (
+        <div className="mt-5 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
+            <Brain className="h-3.5 w-3.5" />
+            前置诊断
+          </div>
+          <div className="space-y-3">
+            {diagnoseItems.slice(0, 3).map((item, index) => {
+              const question = String(item.question ?? "").trim();
+              const answers = (item.sample_answers ?? []).filter(Boolean).slice(0, 4);
+              return (
+                <div key={`${index}-${question}`} className="text-sm leading-6 text-zinc-700 dark:text-slate-300">
+                  <p className="font-medium text-zinc-900 dark:text-slate-100">{question}</p>
+                  {answers.length ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {answers.map((answer) => (
+                        <button
+                          key={`${question}-${answer}`}
+                          type="button"
+                          onClick={() => onDiagnosticAnswer(question, answer)}
+                          disabled={isDisabled}
+                          className="rounded-md border border-blue-200/80 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/30 dark:bg-slate-950/70 dark:text-blue-200 dark:hover:bg-blue-500/10"
+                        >
+                          {answer}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 space-y-3">
         {outlineItems.map((item, index) => (
@@ -2007,6 +2057,17 @@ export function BuildPlanPage() {
     focusComposer();
   }, [currentPlan, focusComposer, plannerSessionId, courseId]);
 
+  const handleDiagnosticAnswer = useCallback((question: string, answer: string) => {
+    const nextPrompt = [
+      "前置诊断回答：",
+      `问题：${question}`,
+      `我的回答：${answer}`,
+      "请根据这个诊断更新学习方案，并把后续知识文档、练习重点和画像判断都对齐这个薄弱点。",
+    ].join("\n");
+    setInputValue(nextPrompt);
+    focusComposer();
+  }, [focusComposer]);
+
   const handleStopPlannerStream = useCallback(() => {
     logPlannerDebug("click_stop_plan_message", {
       courseId,
@@ -2526,6 +2587,7 @@ export function BuildPlanPage() {
                           publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                           onConfirm={handleConfirmBuild}
                           onAdjust={handleContinueAdjust}
+                          onDiagnosticAnswer={handleDiagnosticAnswer}
                           onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                         />
                       ) : null}
@@ -2551,6 +2613,7 @@ export function BuildPlanPage() {
                     publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                     onConfirm={handleConfirmBuild}
                     onAdjust={handleContinueAdjust}
+                    onDiagnosticAnswer={handleDiagnosticAnswer}
                     onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                   />
                 </div>

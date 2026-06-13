@@ -62,7 +62,7 @@ function extractChaptersFromMarkdown(markdown: string | undefined): ChapterHeadi
       const level = match[1].length;
       let title = match[2].trim();
       title = title.replace(/\{#.+\}/g, "").replace(/\[(.+?)\]\(.+?\)/g, "$1").trim();
-      
+
       const base = title.toLowerCase().replace(/[^\w\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "") || "section";
       const next = (counts.get(base) ?? 0) + 1;
       counts.set(base, next);
@@ -485,8 +485,8 @@ export function CourseDashboardPage() {
   const states = mastery?.knowledge_unit_states ?? [];
 
   const isBuilt = useMemo(() => {
-    return Boolean(courseProfile?.generated_at);
-  }, [courseProfile]);
+    return Boolean(docMarkdownQuery.data?.exists);
+  }, [docMarkdownQuery.data?.exists]);
 
   // Extract chapters from pre-loaded markdown content for rendering the syllabus preview inside the card
   const chapters = useMemo(() => {
@@ -567,8 +567,8 @@ export function CourseDashboardPage() {
     };
   }, [courseId, queryClient]);
 
-  // Redirect to Build Plan if course profile is empty/unbuilt
-  if (masteryQuery.isSuccess && !masteryQuery.isLoading && !courseProfile?.generated_at && !masteryQuery.isError) {
+  // Redirect to Build Plan if no published knowledge docs exist yet.
+  if (docMarkdownQuery.isSuccess && !docMarkdownQuery.isLoading && !isDocGenerating && !isBuilt) {
     return <Navigate to={buildCoursePath(courseId!, "build")} replace />;
   }
 
@@ -609,7 +609,7 @@ export function CourseDashboardPage() {
       <div className="absolute bottom-1/3 right-1/4 -z-10 h-96 w-96 rounded-full bg-teal-500/[0.04] blur-[120px] dark:bg-teal-500/[0.02] pointer-events-none" />
 
       <div className="flex w-full flex-col gap-8 relative z-10">
-        
+
         {/* Active DocGen Progress Banner */}
         {isDocGenerating && (
           <div className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/50 via-white/80 to-indigo-50/30 p-5 shadow-[0_4px_20px_rgba(99,102,241,0.04)] backdrop-blur-sm dark:border-indigo-950/80 dark:from-indigo-950/20 dark:via-slate-900/70 dark:to-indigo-950/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-300">
@@ -673,7 +673,7 @@ export function CourseDashboardPage() {
 
         {/* Three-Column Nav Tiles Layout */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-[56px] relative z-10">
-          
+
           {/* Card 1: 知识库 */}
           <NavTile
             icon={BookOpen}
@@ -697,7 +697,7 @@ export function CourseDashboardPage() {
                   {/* Desktop Connector - Disabled */}
                   <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-10 pointer-events-none hidden md:flex">
                     <div className="absolute w-full h-[2px] bg-slate-200 dark:bg-slate-800/60" />
-                    <div 
+                    <div
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
                       title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                     >
@@ -708,7 +708,7 @@ export function CourseDashboardPage() {
                   {/* Mobile Connector - Disabled */}
                   <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-10 pointer-events-none block md:hidden">
                     <div className="absolute h-full w-[2px] bg-slate-200 dark:bg-slate-800/60" />
-                    <div 
+                    <div
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
                       title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                     >
@@ -722,7 +722,7 @@ export function CourseDashboardPage() {
                   {/* Desktop Connector */}
                   <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-20 pointer-events-none hidden md:flex group/arrow">
                     <div className="absolute w-full h-[2px] bg-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.3)] transition-colors" />
-                    <div 
+                    <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "exams")); }}
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
                       title="进入 训练中心"
@@ -735,7 +735,7 @@ export function CourseDashboardPage() {
                   {/* Mobile Connector */}
                   <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-20 pointer-events-none block md:hidden group/arrow-v">
                     <div className="absolute h-full w-[2px] bg-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.3)] transition-colors" />
-                    <div 
+                    <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "exams")); }}
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
                       title="进入 训练中心"
@@ -807,7 +807,7 @@ export function CourseDashboardPage() {
                   {/* Desktop Connector - Disabled */}
                   <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-10 pointer-events-none hidden md:flex">
                     <div className="absolute w-full h-[2px] bg-slate-200 dark:bg-slate-800/60" />
-                    <div 
+                    <div
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
                       title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                     >
@@ -818,7 +818,7 @@ export function CourseDashboardPage() {
                   {/* Mobile Connector - Disabled */}
                   <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-10 pointer-events-none block md:hidden">
                     <div className="absolute h-full w-[2px] bg-slate-200 dark:bg-slate-800/60" />
-                    <div 
+                    <div
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
                       title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
                     >
@@ -832,7 +832,7 @@ export function CourseDashboardPage() {
                   {/* Desktop Connector */}
                   <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-20 pointer-events-none hidden md:flex group/arrow-2">
                     <div className="absolute w-full h-[2px] bg-teal-500/40 shadow-[0_0_10px_rgba(20,184,166,0.3)] transition-colors" />
-                    <div 
+                    <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
                       title="进入 学习画像"
@@ -845,7 +845,7 @@ export function CourseDashboardPage() {
                   {/* Mobile Connector */}
                   <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 h-[24px] w-[56px] flex items-center justify-center z-20 pointer-events-none block md:hidden group/arrow-2-v">
                     <div className="absolute h-full w-[2px] bg-teal-500/40 shadow-[0_0_10px_rgba(20,184,166,0.3)] transition-colors" />
-                    <div 
+                    <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
                       title="进入 学习画像"
@@ -986,7 +986,7 @@ export function CourseDashboardPage() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2 shrink-0 text-xs font-semibold text-slate-405 dark:text-slate-500 relative z-10 bg-slate-50/40 dark:bg-slate-900/50 px-3.5 py-1.5 rounded-xl border border-slate-150/30 dark:border-slate-800/40">
               <span>掌握度画像</span>
               <svg width="24" height="12" viewBox="0 0 24 12" fill="none" className="overflow-visible text-teal-500">

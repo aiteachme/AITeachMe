@@ -150,7 +150,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 value_path="llm_provider",
                 restart_required=False,
                 ui_group="统一模型接入",
-                ui_order=15,
+                ui_order=20,
             ),
             env(
                 "llm.api_version",
@@ -160,7 +160,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 value_path="llm_api_version",
                 restart_required=False,
                 ui_group="统一模型接入",
-                ui_order=20,
+                ui_order=25,
             ),
             env(
                 "llm.fallback_api_key",
@@ -186,7 +186,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 "接口模式",
                 description="Auto 会对支持 OpenAI Responses 的推理模型优先使用 Responses；不支持时自动回退一次 Chat Completions。",
                 ui_group="统一模型接入",
-                ui_order=22,
+                ui_order=30,
                 options=(
                     ("auto", "Auto"),
                     ("chat_completions", "Chat Completions"),
@@ -198,7 +198,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 "推理强度",
                 description="Responses reasoning.effort；留空使用模型默认值，不同模型和网关支持范围可能不同。",
                 ui_group="统一模型接入",
-                ui_order=23,
+                ui_order=35,
                 options=(
                     (None, "Model default"),
                     ("none", "none"),
@@ -259,14 +259,14 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 "使用系统最大等待时限",
                 description="开启后按任务类型限制模型调用最长等待时间；关闭后不再由应用层主动中断慢请求，改由上游 SDK 或网关自行超时。",
                 ui_group="统一模型接入",
-                ui_order=30,
+                ui_order=15,
             ),
             setting(
                 "llm.concurrency_limit",
                 "全局 LLM 并发上限",
                 description="限制本进程同时发起的文本、结构化、流式、工具调用、文生图、embedding 和 rerank 模型请求数。可先按上游 RPM/TPM 额度保守设置，触发 429 时下调。",
                 ui_group="统一模型接入",
-                ui_order=35,
+                ui_order=12,
             ),
         ),
     ),

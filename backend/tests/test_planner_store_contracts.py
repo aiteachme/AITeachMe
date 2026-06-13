@@ -117,6 +117,13 @@ def _plan(*, plan_text: str = "围绕矩阵和线性映射生成一份可执行�
         "planning_note": "用两章快速建立矩阵和线性映射主线",
         "suggestion": "如果想更偏考试，可以增加题型和易错点密度。",
         "plan": plan_text,
+        "diagnose": [
+            {
+                "question": "矩阵乘法和秩的直觉里，你现在更卡哪一个？",
+                "purpose": "区分计算规则与空间直觉薄弱点。",
+                "sample_answers": ["矩阵乘法", "秩的直觉", "都还不熟"],
+            }
+        ],
         "chapters": [
             {
                 "chapter_index": 1,
@@ -341,6 +348,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert repeated.version_no == 1
     assert confirmed.selected_file_ids == ["file-ready", "file-pending"]
     assert confirmed.model_override == "gpt-5.4-mini"
+    assert confirmed.diagnose[0].question.startswith("矩阵乘法")
     assert latest is not None
     assert latest.status == "confirmed"
     assert latest.revision == 4
@@ -356,6 +364,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert stored_plan.plan == "加入习题复盘后的三段式学习计划。"
     assert stored_plan.plan_json["planner_context"]["assistant_revision_count"] == 2
     assert "再补一个习题复盘章节" in stored_plan.plan_json["docgen_history_brief"]
+    assert stored_plan.plan_json["diagnose"][0]["sample_answers"] == ["矩阵乘法", "秩的直觉", "都还不熟"]
     assert stored_plan.plan_json["chapters"][2]["title"] == "习题复盘"
 
     planner_store.mark_confirmed_plan_status(

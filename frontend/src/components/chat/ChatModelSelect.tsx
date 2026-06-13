@@ -14,7 +14,12 @@ import { Check, ChevronDown, Network } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-export const CHAT_MODEL_OPTIONS = ["settings", "gpt-5.5", "gpt-5.4-mini", "gemini-3.1-flash-lite"] as const;
+export const CHAT_MODEL_OPTIONS = [
+  "settings",
+  "gpt-5.5",
+  "gpt-5.4-mini",
+  "gemini-3.1-flash-lite",
+] as const;
 
 export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 

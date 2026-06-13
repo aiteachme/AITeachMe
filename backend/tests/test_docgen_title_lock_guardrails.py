@@ -9,6 +9,7 @@ from app.workflows.digest.docgen.lib.title_lock import (
 )
 from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown, build_merged_markdown
 from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
+from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
 
 def test_title_lock_accepts_objective_anchored_specific_title() -> None:

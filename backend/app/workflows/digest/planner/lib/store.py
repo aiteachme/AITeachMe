@@ -112,6 +112,7 @@ def _public_plan_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
         "suggestion": str(plan.get("suggestion") or ""),
         "plan": str(plan.get("plan") or ""),
         "chapters": list(plan.get("chapters") or []),
+        "diagnose": list(plan.get("diagnose") or []),
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
 
@@ -407,6 +408,7 @@ def _plan_response(
         suggestion=str(public_plan.get("suggestion") or ""),
         plan=str(public_plan.get("plan") or ""),
         chapters=list(public_plan.get("chapters") or []),
+        diagnose=list(public_plan.get("diagnose") or []),
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
@@ -1017,6 +1019,11 @@ def _normalized_plan_payload(
         "suggestion": str(plan.get("suggestion") or ""),
         "plan": str(plan.get("plan") or ""),
         "chapters": chapters,
+        "diagnose": [
+            dict(item)
+            for item in list(plan.get("diagnose") or [])
+            if isinstance(item, Mapping)
+        ][:10],
         "build_constraints": build_constraints,
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
@@ -1210,6 +1217,7 @@ def confirm_planner_session(
         suggestion=str(plan_payload.get("suggestion") or ""),
         plan=str(plan_payload.get("plan") or confirmed.plan or ""),
         chapters=list(plan_payload.get("chapters") or []),
+        diagnose=list(plan_payload.get("diagnose") or []),
         status_history=[confirmed.status, _planner_status(record)],
         created_at=confirmed.created_at,
         updated_at=confirmed.updated_at,

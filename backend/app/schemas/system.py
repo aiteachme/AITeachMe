@@ -96,6 +96,30 @@ class UpdateUserSettingsRequest(BaseModel):
     reset: bool = Field(default=False, description="是否清空系统级覆盖，恢复项目默认值。")
 
 
+ModelProbeSlot = Literal["reason", "primary", "light"]
+ModelProbeEndpointRole = Literal["primary", "fallback"]
+
+
+class ModelProbeRequest(BaseModel):
+    """设置页模型连通性测试请求。"""
+
+    model_slot: ModelProbeSlot = Field(description="要测试的模型槽位。")
+    endpoint_role: ModelProbeEndpointRole = Field(description="测试主模型网关或备用模型网关。")
+
+
+class ModelProbeResult(BaseModel):
+    """设置页模型连通性测试结果。"""
+
+    ok: bool = Field(description="测试是否成功。")
+    model_slot: ModelProbeSlot = Field(description="测试的模型槽位。")
+    endpoint_role: ModelProbeEndpointRole = Field(description="实际测试的端点角色。")
+    model: str | None = Field(default=None, description="实际请求的模型名。")
+    provider: str | None = Field(default=None, description="推导出的 provider。")
+    api_mode: Literal["auto", "chat_completions", "responses"] = Field(description="本次测试请求的接口模式。")
+    elapsed_ms: int = Field(default=0, description="测试耗时，毫秒。")
+    message: str = Field(description="用户可读的测试结果。")
+
+
 class FeedbackRequest(BaseModel):
     """用户体验与问题反馈请求。"""
 

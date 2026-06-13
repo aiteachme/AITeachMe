@@ -12,16 +12,16 @@ from app.shared.infra.llm_support.common import (
     get_llm_runtime_snapshot,
     use_llm_runtime_snapshot,
 )
+from app.shared.infra.llm_support.model_catalog import (
+    ALLOWED_RUNTIME_MODEL_OVERRIDES,
+    ALLOWED_RUNTIME_MODEL_OVERRIDES_SET,
+    FALLBACK_RUNTIME_MODEL_OVERRIDES,
+    PRIMARY_GATEWAY_MODEL_ALLOWLIST,
+    PRIMARY_GATEWAY_MODEL_ALLOWLIST_SET,
+)
 
 MODEL_USE_SETTINGS = "settings"
-ALLOWED_RUNTIME_MODEL_OVERRIDES = frozenset(
-    {
-        "gemini-3.1-flash-lite",
-        "gpt-5.4-mini",
-        "gpt-5.5",
-    }
-)
-_PRIMARY_ENDPOINT_MODEL_OVERRIDES = frozenset({"gpt-5.4-mini", "gpt-5.5"})
+_PRIMARY_ENDPOINT_MODEL_OVERRIDES = PRIMARY_GATEWAY_MODEL_ALLOWLIST_SET
 
 
 def normalize_runtime_model_override(value: str | None) -> str | None:
@@ -30,7 +30,7 @@ def normalize_runtime_model_override(value: str | None) -> str | None:
     model = str(value or "").strip()
     if not model or model == MODEL_USE_SETTINGS:
         return None
-    if model not in ALLOWED_RUNTIME_MODEL_OVERRIDES:
+    if model not in ALLOWED_RUNTIME_MODEL_OVERRIDES_SET:
         return None
     return model
 
@@ -103,7 +103,9 @@ def use_runtime_model_override(value: str | None) -> Iterator[LLMRuntimeSnapshot
 
 __all__ = [
     "ALLOWED_RUNTIME_MODEL_OVERRIDES",
+    "FALLBACK_RUNTIME_MODEL_OVERRIDES",
     "MODEL_USE_SETTINGS",
+    "PRIMARY_GATEWAY_MODEL_ALLOWLIST",
     "build_runtime_model_override_snapshot",
     "normalize_runtime_model_override",
     "use_runtime_model_override",

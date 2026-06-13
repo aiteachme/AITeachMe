@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RotateCcw, Save } from "lucide-react";
+import { Info, RotateCcw, Save, Sparkles, Target } from "lucide-react";
 
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -21,6 +21,11 @@ export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
 };
 
 const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
+const QUESTION_COUNT_PRESETS = [
+  { label: "诊断 10", value: 10, description: "快速摸底，适合首次学习前" },
+  { label: "标准 24", value: 24, description: "覆盖主要知识点，适合日常训练" },
+  { label: "冲刺 40", value: 40, description: "接近题海练习，适合考前复盘" },
+] as const;
 
 function getCreateExamConfigStorageKey(courseId: string) {
   return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${courseId}`;
@@ -101,6 +106,15 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
   const { toast } = useToast();
   const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId));
   const displayName = courseName?.trim() || "当前课程";
+  const activeExamMode = PAPER_EXAM_MODES.find((item) => item.value === config.examMode);
+  const activeQuestionPreset = QUESTION_COUNT_PRESETS.find((item) => item.value === config.numQuestions);
+  const questionCountHint =
+    activeQuestionPreset?.description ??
+    (config.numQuestions <= 12
+      ? "偏诊断，适合先找薄弱点"
+      : config.numQuestions <= 30
+        ? "偏标准训练，适合覆盖核心知识点"
+        : "偏冲刺复盘，适合考前集中练习");
 
   useEffect(() => {
     if (!open) return;
@@ -138,9 +152,24 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
           </p>
         </div>
 
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-300" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">新手建议</p>
+              <p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-300">
+                第一次进入课程建议用“诊断 10”快速摸底；日常训练使用“标准 24”；考前复盘再提高到 40 题以上。
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-600 dark:text-slate-300">
-            类型
+            <span className="inline-flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-100">
+              <Target className="h-4 w-4 text-indigo-500" />
+              出题模式
+            </span>
             <select
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               value={config.examMode}
@@ -165,12 +194,12 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
               ))}
             </select>
             <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
-              {PAPER_EXAM_MODES.find((item) => item.value === config.examMode)?.description}
+              {activeExamMode?.description}
             </span>
           </label>
 
           <label className="text-sm text-slate-600 dark:text-slate-300">
-            题目数量
+            <span className="font-medium text-slate-800 dark:text-slate-100">题目数量</span>
             <input
               className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
               type="number"
@@ -184,6 +213,28 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
                 }))
               }
             />
+            <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">{questionCountHint}</span>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {QUESTION_COUNT_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() =>
+                    setConfig((current) => ({
+                      ...current,
+                      numQuestions: preset.value,
+                    }))
+                  }
+                  className={`rounded-xl border px-2 py-2 text-xs font-medium transition ${
+                    config.numQuestions === preset.value
+                      ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </label>
 
           {config.examMode === "paper_exam" && (
@@ -212,10 +263,18 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
           )}
 
           <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">智能策略</p>
-            <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
-              系统会结合知识点覆盖、练习状态和我的要求自动规划题型与难度。
+            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+              <Sparkles className="h-4 w-4 text-indigo-500" />
+              智能策略
             </p>
+            <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
+              系统会结合知识点覆盖、练习状态、前置诊断和我的要求自动规划题型与难度。
+            </p>
+            <div className="mt-3 space-y-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              <p>覆盖：优先补齐未考过或掌握度低的知识点。</p>
+              <p>难度：根据题量和要求自动拉开梯度。</p>
+              <p>反馈：考试结果会回流到学习画像。</p>
+            </div>
           </div>
         </div>
 

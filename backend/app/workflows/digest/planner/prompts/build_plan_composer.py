@@ -20,6 +20,8 @@ PLAN_START = "<PLAN>"
 PLAN_END = "</PLAN>"
 SUGGESTION_START = "<SUGGESTION>"
 SUGGESTION_END = "</SUGGESTION>"
+DIAGNOSE_START = "<DIAGNOSE_JSON>"
+DIAGNOSE_END = "</DIAGNOSE_JSON>"
 CHAPTERS_START = "<CHAPTERS_JSON>"
 CHAPTERS_END = "</CHAPTERS_JSON>"
 
@@ -63,13 +65,14 @@ def build_planner_stream_messages(
 - 用户同时给出学习天数时，天数只分配到 A/B/C 内，最后一天仍属于最后一个列表项。
 - 最后一个列表项的章节任务只围绕该列表项自身的核心概念、例题、小测和纠错。
 
-输出内容由三个标签组成。
+输出内容由四个标签组成。
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
 {SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写用户后续可以继续怎么改。
+{DIAGNOSE_START} 到 {DIAGNOSE_END} 之间放合法 JSON 数组，作为前置诊断提问；每项包含 question、purpose、sample_answers。
 {CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points。
 """.strip()
     prompt = f"""
-请生成方案的 suggestion、plan、chapters。
+请生成方案的 suggestion、plan、diagnose、chapters。
 
 课程/主题：{course_name}
 用户原始输入：{user_prompt or "未提供"}
@@ -107,14 +110,15 @@ def build_planner_stream_messages(
 输出内容要求：
 1. plan：180-360 字，讲清学习范围、模块拆分和先后顺序；用户给出 A/B/C 列表时，按 A/B/C 的名称逐项展开，全段优先使用具体模块名和具体学习任务，最后阶段写成最后一个列表项 E 的核心概念、典型例题、小测与纠错。
 2. suggestion：2-4 句，给出用户可继续调整的方向，例如偏考试、延长周期、增加例题密度、减少拓展、改章节数。
-3. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，命名一个可授课的知识对象、方法模块、题型技能或应用场景。
-4. 每个一级章节负责一块可展开讲解的内容；例题、练习、测验、纠错和巩固安排进入 key_points，用来说明这一章怎样练、怎样查漏。
-5. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数等元信息只放上下文，不进标题。
-6. 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单；chapters 与 A/B/C 逐项对应：第 i 个 chapter 负责第 i 个列表项，数组长度等于列表项数量，标题沿用或自然概括该列表项。
-7. 用户列出的学习活动按其服务的内容模块放进对应 key_points；plan 的顺序以用户给出的列表项为完整路径，各模块内部再安排练习、纠错和小测。
-8. 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算，末尾时间仍属于最后一个列表项。
-9. 没有资料时按用户目标和通用课程常识规划。
-10. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内。
+3. diagnose：输出 5-10 个前置诊断问题，优先覆盖章节主线、先修基础、薄弱点和学习偏好；每项 question 要像在和用户追问，purpose 写内部诊断目标，sample_answers 给 3-4 个可快速点击的示例回答。
+4. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，命名一个可授课的知识对象、方法模块、题型技能或应用场景。
+5. 每个一级章节负责一块可展开讲解的内容；例题、练习、测验、纠错和巩固安排进入 key_points，用来说明这一章怎样练、怎样查漏。
+6. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数等元信息作为上下文处理，标题只呈现目录名。
+7. 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单；chapters 与 A/B/C 逐项对应：第 i 个 chapter 负责第 i 个列表项，数组长度等于列表项数量，标题沿用或自然概括该列表项。
+8. 用户列出的学习活动按其服务的内容模块放进对应 key_points；plan 的顺序以用户给出的列表项为完整路径，各模块内部再安排练习、纠错和小测。
+9. 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算，末尾时间仍属于最后一个列表项。
+10. 没有资料时按用户目标和通用课程常识规划。
+11. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内。
 
 严格按以下格式输出：
 {PLAN_START}
@@ -123,6 +127,9 @@ plan 字段正文
 {SUGGESTION_START}
 suggestion 字段正文
 {SUGGESTION_END}
+{DIAGNOSE_START}
+[{{"question":"你对这一主题最熟的是哪一块？","purpose":"识别已有基础","sample_answers":["基础概念还可以","会做例题但不会变式","几乎没学过"]}}]
+{DIAGNOSE_END}
 {CHAPTERS_START}
 [{{"title":"章节标题","key_points":["要点或任务1","要点或任务2"]}}]
 {CHAPTERS_END}
@@ -162,6 +169,7 @@ def build_planner_repair_messages(
 必须严格包含：
 {PLAN_START}...{PLAN_END}
 {SUGGESTION_START}...{SUGGESTION_END}
+{DIAGNOSE_START}合法 JSON 数组{DIAGNOSE_END}
 {CHAPTERS_START}合法 JSON 数组{CHAPTERS_END}
 
 上一轮错误输出：
@@ -179,6 +187,7 @@ def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
         "course_icon": str(latest_plan.get("course_icon") or ""),
         "suggestion": str(latest_plan.get("suggestion") or ""),
         "plan": str(latest_plan.get("plan") or ""),
+        "diagnose": list(latest_plan.get("diagnose") or []),
         "chapters": list(latest_plan.get("chapters") or []),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
@@ -187,6 +196,8 @@ def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
 __all__ = [
     "CHAPTERS_END",
     "CHAPTERS_START",
+    "DIAGNOSE_END",
+    "DIAGNOSE_START",
     "PLAN_END",
     "PLAN_START",
     "SUGGESTION_END",

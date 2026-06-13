@@ -158,6 +158,7 @@ class DocGenContext(DocGenBaseModel):
     learner_profile_text: str = ""
     learner_profile_context: dict[str, Any] = Field(default_factory=dict)
     planner_context: dict[str, Any] = Field(default_factory=dict)
+    diagnose: list[dict[str, Any]] = Field(default_factory=list)
     build_constraints: dict[str, Any] = Field(default_factory=dict)
     source_strategy: Literal["local_first", "web_first"] = "local_first"
     include_sources: bool = False

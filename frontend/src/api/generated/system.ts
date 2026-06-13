@@ -26,11 +26,13 @@ import type {
 import type {
   ApiResponseBool,
   ApiResponseInitData,
+  ApiResponseModelProbeResult,
   ApiResponseSettingsOverviewData,
   ErrorResponse,
   FeedbackRequest,
   HTTPValidationError,
   InitRequest,
+  ModelProbeRequest,
   UpdateUserSettingsRequest
 } from './model';
 
@@ -448,6 +450,100 @@ export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorRe
         TContext
       > => {
       return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
+    }
+    export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200 = {
+  data: ApiResponseModelProbeResult
+  status: 200
+}
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponseSuccess = (probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200) & {
+  headers: Headers;
+};
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponseError = (probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse422 | probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse500) & {
+  headers: Headers;
+};
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse = (probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponseSuccess | probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponseError)
+
+export const getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostUrl = () => {
+
+
+
+
+  return `/api/v1/system/settings/model-probe`
+}
+
+/**
+ * 按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前接口模式自动路由，备用网关强制 Chat Completions。
+ * @summary 测试设置页模型连通性
+ */
+export const probeSystemSettingsModelApiV1SystemSettingsModelProbePost = async (modelProbeRequest: ModelProbeRequest, options?: RequestInit): Promise<probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse> => {
+
+  return orvalApiClient<probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse>(getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(modelProbeRequest)
+  }
+);}
+
+
+
+
+export const getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>, TError,{data: ModelProbeRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>, TError,{data: ModelProbeRequest}, TContext> => {
+
+const mutationKey = ['probeSystemSettingsModelApiV1SystemSettingsModelProbePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>, {data: ModelProbeRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  probeSystemSettingsModelApiV1SystemSettingsModelProbePost(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProbeSystemSettingsModelApiV1SystemSettingsModelProbePostMutationResult = NonNullable<Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>>
+    export type ProbeSystemSettingsModelApiV1SystemSettingsModelProbePostMutationBody = ModelProbeRequest
+    export type ProbeSystemSettingsModelApiV1SystemSettingsModelProbePostMutationError = ErrorResponse
+
+    /**
+ * @summary 测试设置页模型连通性
+ */
+export const useProbeSystemSettingsModelApiV1SystemSettingsModelProbePost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>, TError,{data: ModelProbeRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof probeSystemSettingsModelApiV1SystemSettingsModelProbePost>>,
+        TError,
+        {data: ModelProbeRequest},
+        TContext
+      > => {
+      return useMutation(getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostMutationOptions(options), queryClient);
     }
     export type submitFeedbackApiV1SystemFeedbackPostResponse200 = {
   data: ApiResponseBool

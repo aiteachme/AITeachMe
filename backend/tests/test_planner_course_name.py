@@ -50,8 +50,8 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
             provider_call = resolve_provider_call(context=context, call_kwargs=prepared.call_kwargs)
 
             assert provider_call.api_mode == "responses"
-            assert provider_call.requested_api_mode == "auto"
-            assert provider_call.route_reason == "auto_reasoning_model"
+            assert provider_call.requested_api_mode == "responses"
+            assert provider_call.route_reason == "forced_responses"
             assert provider_call.kwargs["model"] == "gpt-5.5"
             assert provider_call.provider_native_tool_types == ()
     finally:

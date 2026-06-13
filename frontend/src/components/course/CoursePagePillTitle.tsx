@@ -15,7 +15,6 @@ import {
 import { cn } from "../../lib/utils";
 import { buildCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet } from "../../api/generated/profile";
 import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
@@ -83,18 +82,11 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
     return status === "accepted" || status === "running" || status === "publishing";
   }, [docMarkdownQuery.data]);
 
-  // 2. Query Mastery Overview
-  const masteryQuery = useMasteryOverviewApiV1CoursesCourseIdProfileMasteryGet(
-    courseId ?? "",
-    { query: { enabled: Boolean(courseId) } }
-  );
-
   const isBuilt = useMemo(() => {
-    const masteryData = unwrapOrvalResponse<any>(masteryQuery.data);
-    return Boolean(masteryData?.course_profile?.generated_at);
-  }, [masteryQuery.data]);
+    return Boolean(docMarkdownQuery.data?.exists);
+  }, [docMarkdownQuery.data?.exists]);
 
-  // 3. Query Exam History
+  // 2. Query Exam History
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
     courseId ?? "",
     { page: 1, size: 24 },
@@ -118,7 +110,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
   return (
     <div ref={dropdownRef} className={cn("flex flex-col items-center justify-center pb-2 pt-6 z-30 relative", className)}>
       <div className={cn("inline-flex items-center rounded-full border border-slate-200/80 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all dark:border-slate-800/80 dark:bg-slate-900", innerClassName)}>
-        
+
         {/* Left Back Arrow: Directly links back to dashboard / main navigation page */}
         {href && (
           <Link
@@ -157,7 +149,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
           >
             {navItems.map((item) => {
               const isActive = item.id === currentSegment || (item.id === "exams" && label === "训练中心");
-              
+
               // Define disabled state and reason
               let isDisabled = false;
               let disabledReason = "";

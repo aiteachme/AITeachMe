@@ -14,6 +14,8 @@ from app.workflows.digest.planner.nodes import compose_planner_draft as plan_dra
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
+    DIAGNOSE_END,
+    DIAGNOSE_START,
     PLAN_END,
     PLAN_START,
     SUGGESTION_END,
@@ -35,6 +37,13 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
         "planning_note": "用户想把高数混乱知识整理成可执行复习路径。\n资料显示当前重点集中在极限、导数和积分。",
         "suggestion": "如果更偏考试，可以增加题型和易错点密度。",
         "plan": "本课程会先用极限建立函数变化的基础，再进入导数规则与应用，最后把积分计算和综合题串起来。",
+        "diagnose": [
+            {
+                "question": "极限、导数、积分里你现在最怕哪一块？",
+                "purpose": "识别高数复习的第一薄弱入口。",
+                "sample_answers": ["极限定义", "导数应用", "积分计算"],
+            }
+        ],
         "chapters": [
             {
                 "title": f"任务切片 {index}",
@@ -65,6 +74,24 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
     assert draft.suggestion.startswith("如果更偏考试")
     assert draft.plan.startswith("本课程会先用极限")
     assert [chapter.title for chapter in draft.chapters] == ["任务切片 1", "任务切片 2", "任务切片 3"]
+    assert draft.diagnose[0].question == "极限、导数、积分里你现在最怕哪一块？"
+    assert draft.diagnose[0].sample_answers == ["极限定义", "导数应用", "积分计算"]
+
+
+def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
+    payload = _planner_payload()
+    payload.pop("diagnose")
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="高数",
+        user_prompt="高数速成",
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.diagnose) == 10
+    assert draft.diagnose[0].question.startswith("看到“任务切片 1”")
+    assert len(draft.diagnose[0].sample_answers) >= 3
 
 
 def test_normalize_planner_draft_caps_over_split_chapters() -> None:
@@ -221,6 +248,11 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
 {SUGGESTION_START}
 如果更偏中考，可以增加压轴题比例。
 {SUGGESTION_END}
+{DIAGNOSE_START}
+[
+  {{"question": "函数图像里你最容易混淆什么？", "purpose": "定位函数薄弱点", "sample_answers": ["一次函数", "二次函数", "图像变换"]}}
+]
+{DIAGNOSE_END}
 {CHAPTERS_START}
 [
   {{"title": "数与式基础", "key_points": ["实数与代数式", "方程基本变形"]}},
@@ -232,6 +264,8 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
 
     assert parsed["plan"].startswith("先补数与式")
     assert parsed["suggestion"].startswith("如果更偏中考")
+    assert parsed["diagnose"][0]["question"] == "函数图像里你最容易混淆什么？"
+    assert parsed["diagnose"][0]["sample_answers"] == ["一次函数", "二次函数", "图像变换"]
     assert parsed["chapters"][0]["title"] == "数与式基础"
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
 

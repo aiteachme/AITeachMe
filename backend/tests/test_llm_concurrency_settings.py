@@ -13,6 +13,7 @@ from app.shared.infra.llm_support import (
 )
 from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALLOWLIST
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
     get_settings,
@@ -74,12 +75,74 @@ def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:
     overview = build_settings_overview_data()
     connection = next(section for section in overview.sections if section.id == "connection")
     entry = next(item for item in connection.entries if item.key == "llm.concurrency_limit")
+    unified_entries = [item for item in connection.entries if item.ui_group == "统一模型接入"]
+    unified_keys = [item.key for item in sorted(unified_entries, key=lambda item: item.ui_order)]
 
     assert entry.label == "全局 LLM 并发上限"
     assert entry.ui_group == "统一模型接入"
     assert entry.source == "settings"
     assert entry.editable is True
     assert entry.value == DEFAULT_LLM_CONCURRENCY_LIMIT
+    assert unified_keys.index("llm.concurrency_limit") < unified_keys.index("llm.provider")
+    assert unified_keys.index("llm.concurrency_limit") < unified_keys.index("llm.api_mode")
+
+
+def test_primary_model_allowlist_uses_code_default() -> None:
+    exposed_keys = {
+        entry.key
+        for section in build_settings_overview_data().sections
+        for entry in section.entries
+    }
+
+    assert get_settings().llm.primary_model_allowlist == PRIMARY_GATEWAY_MODEL_ALLOWLIST
+    assert "llm.primary_model_allowlist" not in exposed_keys
+
+
+def test_primary_model_allowlist_remains_supported_as_hidden_override() -> None:
+    set_system_settings_override({
+        "llm": {"primary_model_allowlist": ["gpt-5.4-mini", "gpt-5.5"]},
+    })
+
+    exposed_keys = {
+        entry.key
+        for section in build_settings_overview_data().sections
+        for entry in section.entries
+    }
+
+    assert get_settings().llm.primary_model_allowlist == ("gpt-5.4-mini", "gpt-5.5")
+    assert "llm.primary_model_allowlist" not in exposed_keys
+
+
+def test_existing_advanced_settings_remain_exposed_in_settings_page() -> None:
+    overview = build_settings_overview_data()
+    exposed_keys = {
+        entry.key
+        for section in overview.sections
+        for entry in section.entries
+    }
+
+    useful_existing_keys = {
+        "llm.provider",
+        "llm.api_version",
+        "paddle_ocr.api_token",
+        "mineru.api_token",
+        "models.embedding_dim",
+        "planner.history_turns",
+        "interact.history_turns",
+        "knowledge_graph.prefetch_during_docgen",
+        "knowledge_graph.prefetch_concurrency",
+        "knowledge_graph.max_parallel_extractions",
+        "rag.top_k",
+        "rag.similarity_threshold",
+        "rag.rerank_top_k",
+        "local_rag.min_results",
+        "search.tavily_api_key",
+        "search.google_api_key",
+        "langsmith.tracing",
+        "langsmith.api_key",
+        "langsmith.project",
+    }
+    assert useful_existing_keys.issubset(exposed_keys)
 
 
 @pytest.mark.anyio
