@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   BundledSecretValue,
@@ -122,12 +122,14 @@ interface EditableSettingsRowProps {
   entry: SettingEntry;
   value: SettingPrimitive;
   onChange: (key: string, value: SettingPrimitive) => void;
+  afterControl?: ReactNode;
 }
 
 export const EditableSettingsRow = memo(function EditableSettingsRow({
   entry,
   value,
   onChange,
+  afterControl,
 }: EditableSettingsRowProps) {
   const selectOptions = useMemo(
     () => entry.options?.length ? entry.options : SETTING_SELECT_OPTIONS[entry.key],
@@ -317,13 +319,15 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
             type={resolvedInputType}
           />
         )}
+        {afterControl ? <div className="mt-3">{afterControl}</div> : null}
       </div>
     </div>
   );
 }, (prev, next) => (
   prev.entry === next.entry &&
   prev.value === next.value &&
-  prev.onChange === next.onChange
+  prev.onChange === next.onChange &&
+  prev.afterControl === next.afterControl
 ));
 
 export function EditableSettingsList({

@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useCallback, useState } from "react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 
+import { apiClient, getApiErrorMessage } from "../../api/client";
 import { InfoCard, SectionDivider } from "./SettingsFields";
 import { EditableSettingsRow, ReadonlySettingsRow } from "./SettingsEntryLists";
 import { SETTINGS_STYLES } from "./settingsStyles";
-import type { DraftRecord, SettingEntry, SettingSection } from "./settingsTypes";
+import type { ApiEnvelope, DraftRecord, SettingEntry, SettingSection } from "./settingsTypes";
 
 interface RuntimeSettingsSectionProps {
   section: SettingSection | undefined;
@@ -19,6 +21,91 @@ interface RuntimeSettingsSectionProps {
 interface PreparedEntryGroup {
   label: string;
   entries: SettingEntry[];
+}
+
+type ModelProbeSlot = "reason" | "primary" | "light";
+type ModelProbeEndpointRole = "primary" | "fallback";
+type ProbeStatus = "idle" | "testing" | "success" | "error";
+
+interface ModelProbeResult {
+  ok: boolean;
+  model_slot: ModelProbeSlot;
+  endpoint_role: ModelProbeEndpointRole;
+  model?: string | null;
+  provider?: string | null;
+  api_mode: "auto" | "chat_completions";
+  elapsed_ms: number;
+  message: string;
+}
+
+interface ProbeState {
+  status: ProbeStatus;
+  result?: ModelProbeResult;
+  message?: string;
+}
+
+const MODEL_PROBE_ENTRY_SLOTS: Record<string, ModelProbeSlot> = {
+  "models.reason": "reason",
+  "models.primary": "primary",
+  "models.light": "light",
+};
+
+function probeKey(slot: ModelProbeSlot, endpointRole: ModelProbeEndpointRole): string {
+  return `${slot}:${endpointRole}`;
+}
+
+function ModelProbeBadge({ state }: { state: ProbeState | undefined }) {
+  if (!state || state.status === "idle") return null;
+  if (state.status === "testing") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[12px] font-medium text-zinc-500 dark:text-slate-400">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        测试中
+      </span>
+    );
+  }
+
+  const ok = state.status === "success";
+  const Icon = ok ? CheckCircle2 : XCircle;
+  return (
+    <span className={ok ? "inline-flex items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400" : "inline-flex items-center gap-1 text-[12px] font-medium text-rose-600 dark:text-rose-400"}>
+      <Icon className="h-3.5 w-3.5" />
+      {state.message || (ok ? "通过" : "失败")}
+    </span>
+  );
+}
+
+function ModelProbeInlineControls({
+  slot,
+  probeStates,
+  onRunProbe,
+}: {
+  slot: ModelProbeSlot;
+  probeStates: Record<string, ProbeState>;
+  onRunProbe: (slot: ModelProbeSlot, endpointRole: ModelProbeEndpointRole) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      {(["primary", "fallback"] as const).map((endpointRole) => {
+        const key = probeKey(slot, endpointRole);
+        const state = probeStates[key];
+        const isTesting = state?.status === "testing";
+        return (
+          <div key={endpointRole} className="flex min-h-7 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onRunProbe(slot, endpointRole)}
+              disabled={isTesting}
+              className="inline-flex h-7 items-center justify-center rounded-md border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            >
+              {endpointRole === "primary" ? "主网关" : "备用网关"}
+            </button>
+            <ModelProbeBadge state={state} />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function renderGroupNote(label: string) {
@@ -108,6 +195,45 @@ function RuntimeSettingsGroupList({
   loading: boolean;
   error: string | null;
 }) {
+  const [probeStates, setProbeStates] = useState<Record<string, ProbeState>>({});
+
+  const runProbe = useCallback(async (slot: ModelProbeSlot, endpointRole: ModelProbeEndpointRole) => {
+    const key = probeKey(slot, endpointRole);
+    setProbeStates((prev) => ({
+      ...prev,
+      [key]: { status: "testing" },
+    }));
+    try {
+      const response = await apiClient<ApiEnvelope<ModelProbeResult>>({
+        url: "/api/v1/system/settings/model-probe",
+        method: "POST",
+        data: {
+          model_slot: slot,
+          endpoint_role: endpointRole,
+        },
+      });
+      const result = response.data;
+      setProbeStates((prev) => ({
+        ...prev,
+        [key]: {
+          status: result.ok ? "success" : "error",
+          result,
+          message: result.ok
+            ? `${result.model || "模型"} · ${result.elapsed_ms}ms`
+            : result.message,
+        },
+      }));
+    } catch (error) {
+      setProbeStates((prev) => ({
+        ...prev,
+        [key]: {
+          status: "error",
+          message: getApiErrorMessage(error, "模型测试失败。"),
+        },
+      }));
+    }
+  }, []);
+
   if (loading) return <InfoCard text="正在读取后端当前状态..." />;
   if (error) return <InfoCard text={error} variant="warning" />;
   if (!entries.length) return null;
@@ -119,12 +245,20 @@ function RuntimeSettingsGroupList({
           return <ReadonlySettingsRow key={entry.key} entry={entry} />;
         }
         const isEnvEntry = entry.source === "env";
+        const modelProbeSlot = MODEL_PROBE_ENTRY_SLOTS[entry.key];
         return (
           <EditableSettingsRow
             key={entry.key}
             entry={entry}
             value={(isEnvEntry ? envDraft : settingsDraft)[entry.key] ?? null}
             onChange={isEnvEntry ? onEnvChange : onServerChange}
+            afterControl={modelProbeSlot ? (
+              <ModelProbeInlineControls
+                slot={modelProbeSlot}
+                probeStates={probeStates}
+                onRunProbe={runProbe}
+              />
+            ) : undefined}
           />
         );
       })}

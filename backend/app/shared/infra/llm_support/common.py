@@ -500,6 +500,20 @@ def _model_name_candidates(model: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
+def _model_matches_allowlist(model: Any, allowlist: tuple[str, ...]) -> bool:
+    if not allowlist:
+        return True
+    candidates = {candidate.lower() for candidate in _model_name_candidates(model)}
+    allowed = {str(item or "").strip().lower() for item in allowlist if str(item or "").strip()}
+    return bool(candidates & allowed)
+
+
+def _primary_model_allowed(settings: Settings, model: str, provider: str | None) -> bool:
+    if normalize_llm_provider_name(provider) != "openai_compatible":
+        return True
+    return _model_matches_allowlist(model, settings.llm.primary_model_allowlist)
+
+
 def _canonical_model_name(model: Any) -> str:
     candidates = _model_name_candidates(model)
     value = candidates[-1] if candidates else ""
@@ -641,18 +655,31 @@ def build_completion_contexts(
     snapshot = get_llm_runtime_snapshot()
     contexts: list[CompletionContext] = []
     missing_key_error: MissingLLMApiKeyError | None = None
+    skipped_primary_model: str | None = None
 
     for endpoint in snapshot.completion_endpoints():
         try:
-            contexts.append(
-                _build_completion_context_for_endpoint(
-                    task_type=resolved_task_type,
-                    profile=profile,
-                    snapshot=snapshot,
-                    endpoint=endpoint,
-                    model=model,
-                )
+            context = _build_completion_context_for_endpoint(
+                task_type=resolved_task_type,
+                profile=profile,
+                snapshot=snapshot,
+                endpoint=endpoint,
+                model=model,
             )
+            if endpoint.role == "primary" and not _primary_model_allowed(
+                snapshot.settings,
+                context.model,
+                context.provider,
+            ):
+                skipped_primary_model = context.model
+                logger.warning(
+                    "llm_primary_endpoint_skipped_model_not_allowlisted",
+                    model=context.model,
+                    model_selector=context.model_selector,
+                    allowlist_count=len(snapshot.settings.llm.primary_model_allowlist),
+                )
+                continue
+            contexts.append(context)
         except MissingLLMApiKeyError as exc:
             if missing_key_error is None:
                 missing_key_error = exc
@@ -667,6 +694,14 @@ def build_completion_contexts(
         return tuple(contexts)
     if missing_key_error is not None:
         raise missing_key_error
+    if skipped_primary_model is not None:
+        raise LLMCallError(
+            reason=(
+                f"模型 `{skipped_primary_model}` 不在 llm.primary_model_allowlist 中，"
+                "因此不会发送到主模型网关；同时未找到可用备用模型网关。"
+                "请配置 LLM_FALLBACK_BASE_URL/LLM_FALLBACK_API_KEY，或把该模型加入主网关白名单。"
+            )
+        )
     raise MissingLLMApiKeyError(
         provider=snapshot.provider,
         base_url_configured=bool((snapshot.base_url or "").strip()),

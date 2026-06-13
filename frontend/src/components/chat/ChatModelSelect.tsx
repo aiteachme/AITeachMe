@@ -14,7 +14,15 @@ import { Check, ChevronDown, Network } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
-export const CHAT_MODEL_OPTIONS = ["settings", "gpt-5.5", "gpt-5.4-mini", "gemini-3.1-flash-lite"] as const;
+export const CHAT_MODEL_OPTIONS = [
+  "settings",
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.2",
+  "gpt-5.3-codex",
+  "gemini-3.1-flash-lite",
+] as const;
 
 export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 
@@ -45,12 +53,33 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "复杂规划 · 深入讲解",
     title: "适合复杂推理、规划和讲解",
   },
+  "gpt-5.4": {
+    optionLabel: "高质量",
+    triggerLabel: "高质量",
+    menuLabel: "高质量",
+    caption: "高质量生成 · 复杂任务",
+    title: "适合高质量生成和复杂课程构建",
+  },
   "gpt-5.4-mini": {
     optionLabel: "均衡",
     triggerLabel: "均衡",
     menuLabel: "均衡",
     caption: "稳定生成 · 日常问答",
     title: "适合快速规划、生成和问答",
+  },
+  "gpt-5.2": {
+    optionLabel: "标准",
+    triggerLabel: "标准",
+    menuLabel: "标准",
+    caption: "常规生成 · 稳定问答",
+    title: "适合常规生成、批改和问答",
+  },
+  "gpt-5.3-codex": {
+    optionLabel: "代码",
+    triggerLabel: "代码",
+    menuLabel: "代码",
+    caption: "代码任务 · 结构化修改",
+    title: "适合代码相关解释和修改",
   },
   "gemini-3.1-flash-lite": {
     optionLabel: "快速响应",

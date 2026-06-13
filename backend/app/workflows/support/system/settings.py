@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -20,7 +21,16 @@ from app.repositories.user_settings_repo import (
     get_user_runtime_settings_payload,
     upsert_user_runtime_settings_payload,
 )
-from app.schemas.system import SettingEntry, SettingSection, SettingsOverviewData
+from app.schemas.llm import SYSTEM, USER, ChatMessage
+from app.schemas.system import (
+    ModelProbeEndpointRole,
+    ModelProbeRequest,
+    ModelProbeResult,
+    ModelProbeSlot,
+    SettingEntry,
+    SettingSection,
+    SettingsOverviewData,
+)
 from app.shared.infra.env_support import (
     describe_project_settings_source,
     get_env,
@@ -28,6 +38,14 @@ from app.shared.infra.env_support import (
     set_runtime_env_overrides,
 )
 from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.llm_support.common import (
+    LLMRuntimeSnapshot,
+    build_completion_context,
+    get_llm_runtime_snapshot,
+    use_llm_runtime_snapshot,
+)
+from app.shared.infra.llm_support.routing import TaskType
+from app.shared.infra.llm_support.text import acompletion
 from app.shared.infra.runtime import is_local_mode, resolve_app_mode
 from app.shared.infra.settings import (
     Settings,
@@ -54,6 +72,12 @@ from app.workflows.support.system.catalog import (
 _MISSING = object()
 SECRET_PRESERVE_SENTINEL = "__AITM_SECRET_PRESERVE__"
 logger = structlog.get_logger(__name__)
+_MODEL_PROBE_TIMEOUT_S = 20
+_MODEL_PROBE_SLOT_LABELS: dict[ModelProbeSlot, str] = {
+    "reason": "推理模型",
+    "primary": "主文本模型",
+    "light": "轻量模型",
+}
 
 
 @dataclass(frozen=True)
@@ -571,7 +595,107 @@ def update_user_settings_overview_data(
     return build_settings_overview_data(session=session, user_id=user_id)
 
 
+def _model_probe_endpoint_snapshot(endpoint_role: ModelProbeEndpointRole) -> LLMRuntimeSnapshot | None:
+    snapshot = get_llm_runtime_snapshot()
+    endpoints = snapshot.primary_endpoints if endpoint_role == "primary" else snapshot.fallback_endpoints
+    if not endpoints:
+        return None
+
+    endpoint = endpoints[0]
+    api_keys = tuple(item.api_key for item in endpoints if item.api_key is not None)
+    return LLMRuntimeSnapshot(
+        settings=snapshot.settings,
+        base_url=endpoint.base_url,
+        api_keys=api_keys,
+        provider=endpoint.provider,
+        api_version=endpoint.api_version,
+        primary_endpoints=(endpoint,),
+        fallback_endpoints=(),
+    )
+
+
+def _model_probe_missing_message(endpoint_role: ModelProbeEndpointRole) -> str:
+    if endpoint_role == "fallback":
+        return "备用模型网关未配置。请先配置 LLM_FALLBACK_BASE_URL 和 LLM_FALLBACK_API_KEY。"
+    return "主模型网关未配置。请先配置 LLM_BASE_URL 和 LLM_API_KEY。"
+
+
+async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelProbeResult:
+    """Run a small settings-page LLM probe against one explicit endpoint route."""
+
+    snapshot = _model_probe_endpoint_snapshot(payload.endpoint_role)
+    requested_api_mode = "chat_completions" if payload.endpoint_role == "fallback" else "auto"
+    if snapshot is None:
+        return ModelProbeResult(
+            ok=False,
+            model_slot=payload.model_slot,
+            endpoint_role=payload.endpoint_role,
+            api_mode=requested_api_mode,
+            message=_model_probe_missing_message(payload.endpoint_role),
+        )
+
+    label = _MODEL_PROBE_SLOT_LABELS[payload.model_slot]
+    started_at = time.monotonic()
+    model: str | None = None
+    provider: str | None = None
+    try:
+        with use_llm_runtime_snapshot(snapshot):
+            context = build_completion_context(task_type=TaskType.CHAT, model=payload.model_slot)
+            model = context.model
+            provider = context.provider
+            messages: list[ChatMessage] = [
+                {"role": SYSTEM, "content": "你是 AITeachMe 的模型连通性测试助手。"},
+                {"role": USER, "content": "请只回复 OK。"},
+            ]
+            result = await acompletion(
+                messages,
+                task_type=TaskType.CHAT,
+                model=payload.model_slot,
+                max_tokens=8,
+                temperature=0,
+                timeout=_MODEL_PROBE_TIMEOUT_S,
+                api_mode=requested_api_mode,
+                extra_metadata={
+                    "settings_model_probe": True,
+                    "model_probe_slot": payload.model_slot,
+                    "model_probe_endpoint_role": payload.endpoint_role,
+                },
+            )
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        return ModelProbeResult(
+            ok=bool(str(result or "").strip()),
+            model_slot=payload.model_slot,
+            endpoint_role=payload.endpoint_role,
+            model=model,
+            provider=provider,
+            api_mode=requested_api_mode,
+            elapsed_ms=elapsed_ms,
+            message=f"{label}测试成功。",
+        )
+    except Exception as exc:  # pragma: no cover - exercised by integration and manual settings checks
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        logger.warning(
+            "settings_model_probe_failed",
+            model_slot=payload.model_slot,
+            endpoint_role=payload.endpoint_role,
+            model=model,
+            provider=provider,
+            error=str(exc),
+        )
+        return ModelProbeResult(
+            ok=False,
+            model_slot=payload.model_slot,
+            endpoint_role=payload.endpoint_role,
+            model=model,
+            provider=provider,
+            api_mode=requested_api_mode,
+            elapsed_ms=elapsed_ms,
+            message=f"{label}测试失败：{str(exc)[:240]}",
+        )
+
+
 __all__ = [
     "build_settings_overview_data",
+    "test_settings_model_connection",
     "update_user_settings_overview_data",
 ]

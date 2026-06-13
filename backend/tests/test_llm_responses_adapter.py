@@ -929,6 +929,71 @@ def test_fallback_openai_compatible_uses_compatible_default_model(monkeypatch):
     assert contexts[1].model == "gemini-3.1-flash-lite"
 
 
+def test_primary_model_allowlist_skips_primary_for_unsupported_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gemini-3.1-flash-lite"},
+        "llm": {"primary_model_allowlist": ["gpt-5.4-mini", "gpt-5.5"]},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+    assert [context.endpoint_role for context in contexts] == ["fallback"]
+    assert contexts[0].base_url == "https://fallback-gateway.example.com/v1"
+    assert contexts[0].provider == "openai_compatible"
+    assert contexts[0].model == "gemini-3.1-flash-lite"
+
+
+def test_primary_model_code_default_allowlist_skips_primary_for_unsupported_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gemini-3.1-flash-lite"},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+    assert [context.endpoint_role for context in contexts] == ["fallback"]
+    assert contexts[0].base_url == "https://fallback-gateway.example.com/v1"
+    assert contexts[0].provider == "openai_compatible"
+    assert contexts[0].model == "gemini-3.1-flash-lite"
+
+
+def test_primary_model_allowlist_keeps_primary_for_allowed_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"primary_model_allowlist": "gpt-5.4-mini,gpt-5.5"},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+    assert [context.endpoint_role for context in contexts] == ["primary", "fallback"]
+    assert contexts[0].model == "gpt-5.4-mini"
+
+
+def test_primary_model_allowlist_reports_missing_fallback_for_unsupported_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "")
+    set_system_settings_override({
+        "models": {"primary": "gemini-3.1-flash-lite"},
+        "llm": {"primary_model_allowlist": ["gpt-5.4-mini", "gpt-5.5"]},
+    })
+
+    with pytest.raises(LLMCallError, match="primary_model_allowlist"):
+        build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+
 def test_fallback_api_key_without_base_url_is_ignored(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
