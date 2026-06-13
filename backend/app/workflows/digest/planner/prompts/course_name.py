@@ -27,9 +27,9 @@ def build_course_identity_messages(
 
 字段要求：
 - course_name：用于课程列表的稳定标题，2 到 10 个汉字为佳，最多 16 个字符。
-- course_name 承载核心学习对象：学科、章节范围、能力卡点或任务对象，优先保留用户明确给出的主题。
-- 用户输入包含“我想学习 X，按 A/B/C ...”这类结构时，course_name 取 X 对应的学习主题，A/B/C 进入章节规划。
-- 学习周期、速度、练习安排和后续建议写入 plan、suggestion 或 key_points。
+- course_name 只承载核心学习对象：学科、章节范围、能力卡点或任务对象。
+- 优先使用用户明确给出的学习主题；用户同时给出主题和章节清单时，course_name 取主题，章节清单进入章节规划。
+- 学习节奏、练习安排和后续调整方向由 plan、suggestion 或 key_points 承载。
 - course_icon：只能从候选图标 key 中选一个，必须是英文 key。
 
 用户输入：{user_prompt or '未提供'}

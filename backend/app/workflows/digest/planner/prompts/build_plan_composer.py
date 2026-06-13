@@ -69,7 +69,7 @@ def build_planner_stream_messages(
 
 输出内容由四个标签组成。
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
-{SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写用户后续可以继续怎么改。
+{SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写成可调整参数：章节边界、每章时长、讲解深度、例题数量、图示密度、测试题量。
 {DIAGNOSE_START} 到 {DIAGNOSE_END} 之间放合法 JSON 数组，作为前置诊断提问；每项包含 question、purpose、sample_answers。
 {CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points。
 当用户指定按 A、B、C 知识块划分时，chapters 形如：
@@ -113,7 +113,7 @@ def build_planner_stream_messages(
 
 输出内容要求：
 1. plan：180-360 字，讲清学习范围、模块拆分和先后顺序；用户给出 A/B/C 列表时，按 A/B/C 的名称逐项展开，全段优先使用具体模块名和具体学习任务，末尾落到最后一个列表项的核心概念、典型例题、小测与纠错。
-2. suggestion：2-4 句，给出用户可继续调整的方向，围绕范围、周期、讲解深度、例题密度或章节数。
+2. suggestion：2-4 句，直接给出可继续调整的具体参数，围绕范围、周期、讲解深度、例题密度、图示密度、测试题量或章节数。
 3. diagnose：输出 5-10 个前置诊断问题，优先覆盖章节主线、先修基础、薄弱点和学习偏好；每项 question 要像在和用户追问，purpose 写内部诊断目标，sample_answers 给 3-4 个可快速点击的示例回答。
 4. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，命名一个可授课的知识对象、方法模块、题型技能或应用场景。
 5. 每个一级章节负责一块可展开讲解的内容；例题、练习、测验、纠错和巩固安排进入 key_points，用来说明这一章怎样练、怎样查漏。

@@ -19,6 +19,7 @@ from app.workflows.digest.planner.lib.planner_events import emit_planner_event, 
 from app.workflows.digest.planner.lib.plans import (
     _resolve_course_name,
     compose_planning_note,
+    normalize_planner_draft,
 )
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
@@ -231,8 +232,8 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
         "user_prompt": state.get("user_prompt") or latest_plan.get("user_prompt") or "",
         "digest_mode": state.get("digest_mode") or latest_plan.get("digest_mode") or "systematic",
         "planning_note": planning_note,
-        "course_name": str(latest_plan.get("course_name") or ""),
-        "course_icon": str(latest_plan.get("course_icon") or ""),
+        "course_name": str(payload.get("course_name") or latest_plan.get("course_name") or ""),
+        "course_icon": str(payload.get("course_icon") or latest_plan.get("course_icon") or ""),
         "suggestion": str(payload.get("suggestion") or ""),
         "plan": str(payload.get("plan") or ""),
         "diagnose": list(payload.get("diagnose") or latest_plan.get("diagnose") or []),
@@ -372,12 +373,23 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             **parsed,
             "build_constraints": {},
         }
+        material_context = state["material_context"]
+        digest_mode = state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value
+        normalized_draft = normalize_planner_draft(
+            draft_payload,
+            course_id=state["course_id"],
+            user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+            requested_digest_mode=digest_mode,
+            shared_inputs=material_context,
+            latest_plan=latest_plan or None,
+        )
+        draft_payload = normalized_draft.model_dump(mode="json")
         await emit_planner_event(
             state,
             event="planner.plan.ready",
-            detail=f"方案已生成：{len(parsed.get('chapters') or [])} 个章节。",
+            detail=f"方案已生成：{len(draft_payload.get('chapters') or [])} 个章节。",
             payload={
-                "chapter_count": len(parsed.get("chapters") or []),
+                "chapter_count": len(draft_payload.get("chapters") or []),
                 "plan_preview": _plan_preview_payload(state, draft_payload),
             },
         )
@@ -390,7 +402,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
         )
         return {
             "build_plan_draft": draft_payload,
-            "plan_outline_markdown": str(parsed.get("plan") or ""),
+            "plan_outline_markdown": str(draft_payload.get("plan") or ""),
         }
 
     return compose_planner_draft_node

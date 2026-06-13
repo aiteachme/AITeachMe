@@ -105,7 +105,7 @@ def test_normalize_planner_draft_does_not_use_full_prompt_as_course_name() -> No
         requested_digest_mode="sprint",
     )
 
-    assert draft.course_name == "当前主题"
+    assert draft.course_name == "初中几何"
 
 
 def test_normalize_planner_draft_caps_over_split_chapters() -> None:
@@ -144,6 +144,48 @@ def test_normalize_planner_draft_respects_user_requested_chapter_count() -> None
     assert len(draft.chapters) == requested_count
     assert draft.build_constraints["requested_chapter_count"] == requested_count
     assert draft.build_constraints["chapter_count_source"] == "user_request"
+
+
+def test_normalize_planner_draft_respects_exact_chapter_count_from_user_text() -> None:
+    payload = _planner_payload(chapter_count=5)
+    payload.pop("course_name")
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_titlefallback",
+        user_prompt="我想学习初中函数，请构建一门 2 章课程，每章要有例题和易错点。",
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.course_name == "初中函数"
+    assert len(draft.chapters) == 2
+    assert draft.build_constraints["requested_chapter_count"] == 2
+    assert draft.build_constraints["chapter_count_source"] == "user_request"
+
+
+def test_normalize_planner_draft_aligns_explicit_chapter_titles() -> None:
+    payload = _planner_payload(chapter_count=5)
+    payload.pop("course_name")
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_titlefallback",
+        user_prompt=(
+            "我想学习初中函数，请构建一门 2 章课程："
+            "第 1 章函数概念与自变量取值，第 2 章一次函数图像与斜率截距。"
+            "每章要有清晰图示、例题、易错点和单元测试。"
+        ),
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.course_name == "初中函数"
+    assert [chapter.title for chapter in draft.chapters] == [
+        "函数概念与自变量取值",
+        "一次函数图像与斜率截距",
+    ]
+    assert len(draft.chapters) == 2
+    assert "函数概念与自变量取值" in draft.plan
+    assert "一次函数图像与斜率截距" in draft.plan
 
 
 def test_normalize_planner_draft_respects_user_requested_chapter_range() -> None:

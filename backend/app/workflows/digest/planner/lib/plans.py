@@ -12,6 +12,11 @@ from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract, normalize_planner_mode
+from app.workflows.digest.planner.lib.requested_structure import (
+    extract_explicit_chapter_titles,
+    extract_explicit_learning_topic,
+    extract_requested_chapter_count,
+)
 
 
 class PlannerChapterPlan(BaseModel):
@@ -188,6 +193,9 @@ def _resolve_course_name(
     user_prompt: str = "",
 ) -> str:
     shared = shared_inputs or _minimal_shared_inputs(course_id)
+    explicit_topic = extract_explicit_learning_topic(user_prompt)
+    if explicit_topic:
+        return explicit_topic
     for candidate in [
         shared.course_profile.sub_discipline,
         shared.course_profile.discipline,
@@ -431,6 +439,78 @@ def _cap_chapters_to_maximum(
     )
 
 
+def _activity_point_for_requested_title(title: str, user_prompt: str) -> str:
+    has_visual_request = bool(re.search(r"图示|示意|图像|配图|画图|图片", user_prompt))
+    has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
+    activity_items = ["核心概念", "方法步骤", "典型例题", "易错点", "练习"]
+    if has_visual_request:
+        activity_items.insert(1, "图示")
+    if has_unit_test_request:
+        activity_items.append("单元测试")
+    return f"围绕{title}讲清{'、'.join(activity_items)}。"
+
+
+def _align_chapters_to_requested_titles(
+    chapters: list[PlannerChapterPlan],
+    *,
+    requested_titles: list[str],
+    user_prompt: str,
+) -> list[PlannerChapterPlan]:
+    if not requested_titles:
+        return chapters
+    aligned: list[PlannerChapterPlan] = []
+    for index, title in enumerate(requested_titles, start=1):
+        seed_point = _activity_point_for_requested_title(title, user_prompt)
+        if index <= len(chapters):
+            chapter = chapters[index - 1]
+            title_changed = _text(chapter.title) != title
+            aligned.append(
+                chapter.model_copy(
+                    update={
+                        "chapter_index": index,
+                        "title": title,
+                        "objective": seed_point if title_changed else chapter.objective,
+                        "required_elements": _strings([seed_point, *chapter.required_elements])[:10],
+                    }
+                )
+            )
+            continue
+        aligned.append(
+            PlannerChapterPlan(
+                chapter_index=index,
+                title=title,
+                objective=seed_point,
+                required_elements=[seed_point],
+                writing_instructions="围绕本章知识点生成清晰讲解。",
+            )
+        )
+    return _reindex_chapters(aligned)
+
+
+def _plan_text_for_requested_titles(requested_titles: list[str], *, user_prompt: str) -> str:
+    path = " → ".join(f"《{title}》" for title in requested_titles)
+    has_visual_request = bool(re.search(r"图示|示意|图像|配图|画图|图片", user_prompt))
+    has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
+    activity_items = ["讲解", "例题", "易错点", "练习"]
+    if has_visual_request:
+        activity_items.insert(0, "图示")
+    if has_unit_test_request:
+        activity_items.append("单元测试")
+    activities = "、".join(activity_items)
+    if len(requested_titles) == 2:
+        return (
+            f"课程按{path}两章推进。"
+            f"第一章聚焦{requested_titles[0]}，先把概念边界和判断方法讲清；"
+            f"第二章聚焦{requested_titles[1]}，把前一章的基础用到图像、方法和题目转换中。"
+            f"每章正文内安排{activities}，让定义、方法、常见变式和检查点都落到对应章节。"
+        )
+    return (
+        f"课程按{path}的顺序展开。"
+        f"每个一级章节只负责自己的知识对象，正文内安排{activities}，"
+        "把定义边界、方法步骤、常见变式和检查点落到对应章节。"
+    )
+
+
 def _normalize_chapter_count(
     chapters: list[PlannerChapterPlan],
     *,
@@ -439,6 +519,12 @@ def _normalize_chapter_count(
     requested_chapter_count_range: tuple[int, int] | None = None,
 ) -> list[PlannerChapterPlan]:
     if requested_chapter_count is not None:
+        if len(chapters) > requested_chapter_count:
+            return _cap_chapters_to_limit(
+                chapters,
+                chapter_limit=requested_chapter_count,
+                note_prefix="相邻内容覆盖",
+            )
         if len(chapters) != requested_chapter_count:
             raise ValueError(
                 f"planner chapter count {len(chapters)} does not match requested {requested_chapter_count}"
@@ -509,6 +595,7 @@ def normalize_planner_draft(
     previous = _mapping(latest_plan)
     current_constraints = _mapping(current.get("build_constraints"))
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
+    requested_chapter_titles = extract_explicit_chapter_titles(resolved_user_prompt)
     display_course = (
         _text(current.get("course_name") or previous.get("course_name"))
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
@@ -522,6 +609,11 @@ def normalize_planner_draft(
             requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
         else:
             requested_chapter_count_range = _chapter_count_range_from_text(resolved_user_prompt)
+            if requested_chapter_count_range is None:
+                requested_chapter_count = extract_requested_chapter_count(resolved_user_prompt)
+    if requested_chapter_titles:
+        requested_chapter_count = len(requested_chapter_titles)
+        requested_chapter_count_range = None
 
     current_chapters = _chapter_items(current.get("chapters"))
     previous_chapters = _chapter_items(previous.get("chapters"))
@@ -530,6 +622,11 @@ def normalize_planner_draft(
         raise ValueError("planner plan is missing chapters")
 
     chapters = [_merge_chapter(raw, index) for index, raw in enumerate(raw_chapters, start=1)]
+    chapters = _align_chapters_to_requested_titles(
+        chapters,
+        requested_titles=requested_chapter_titles,
+        user_prompt=resolved_user_prompt,
+    )
     chapters = _normalize_chapter_count(
         chapters,
         digest_mode=mode,
@@ -537,6 +634,8 @@ def normalize_planner_draft(
         requested_chapter_count_range=requested_chapter_count_range,
     )
     plan_text = _student_facing_text(current.get("plan") or previous.get("plan"))
+    if requested_chapter_titles:
+        plan_text = _plan_text_for_requested_titles(requested_chapter_titles, user_prompt=resolved_user_prompt)
     if not plan_text:
         raise ValueError("planner plan is missing plan")
     suggestion = _student_facing_text(current.get("suggestion") or previous.get("suggestion"))
