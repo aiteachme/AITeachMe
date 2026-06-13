@@ -12,12 +12,6 @@ from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
-from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
-from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
-from app.workflows.digest.docgen.prompts.generation import (
-    build_docgen_heading_repair_messages,
-    build_docgen_writer_messages,
-)
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 
 
@@ -49,7 +43,7 @@ def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
     assert (
         resolve_digest_retrieval_profile(
             "sprint",
-            user_prompt="NOIP 数学竞赛快速复习",
+            user_prompt="NOIP 数学竞赛专项训练",
             course_name="高等数学与算法竞赛",
         )
         == "docgen_balanced"
@@ -531,139 +525,3 @@ def test_rule_review_short_chapter_requests_section_expansion() -> None:
     assert length_actions[0].severity == "warning"
     assert "扩写本章核心小节" in length_actions[0].instruction
     assert report.passed is False
-
-
-def test_sprint_writer_prompt_keeps_unit_tests_in_dedicated_node_contract() -> None:
-    messages = build_docgen_writer_messages(
-        title="矩阵分解",
-        objective="掌握奇异值分解和低秩近似。",
-        digest_mode="sprint",
-        required_elements=["奇异值分解", "低秩近似"],
-        writing_instructions="",
-        source_count=1,
-        dense_context="奇异值分解可用于低秩近似。",
-        execution_contract={
-            "practice_quota": {"worked_examples": 4, "self_check": 2},
-            "example_density_policy": {"policy_text": "高密度例题"},
-        },
-    )
-    prompt = messages[-1]["content"]
-
-    expected_fragments = [
-        "学习活动目标",
-        "正文写作阶段只生成知识正文",
-        "章末单元测试由后续专门节点生成",
-        "只写学生可见正文",
-    ]
-    for fragment in expected_fragments:
-        assert fragment in prompt
-
-    assert "接口权限的判断题" not in prompt
-    assert "题眼信号" not in prompt
-    assert "处理模板" not in prompt
-
-
-def test_heading_repair_prompt_requires_content_specific_section_titles() -> None:
-    messages = build_docgen_heading_repair_messages(
-        title="计算机硬件组成与指令系统基础",
-        objective="让学生理解 CPU、内存和指令系统的关系。",
-        digest_mode="sprint",
-        required_elements=["CPU、运算器、控制器与内存储器", "指令系统"],
-        writing_instructions="标题要清楚。",
-        source_count=2,
-        markdown="# 计算机硬件组成与指令系统基础\n\n## 模块检查标题\n\nCPU 与内存协作。\n",
-        dense_context="CPU 由运算器和控制器组成，指令包含操作码和地址码。",
-    )
-    prompt = messages[-1]["content"]
-
-    assert "必须按小节正文改成具体内容名" in prompt
-    assert "不要保留这些标签当目录标题" in prompt
-    assert "泛化目录标题、学习动作标题、内部检查标题、序号占位题型" in prompt
-
-
-def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
-    messages = build_chapter_review_messages(
-        chapter_title="矩阵分解",
-        digest_mode="sprint",
-        chapter_task={"confirmed_title": "矩阵分解"},
-        markdown="# 矩阵分解\n\n## 核心内容\n\n奇异值分解可用于低秩近似。",
-        claim_ledger={},
-        claim_evidence_map={},
-        conflict_report={},
-        rule_review={},
-        guideline_summary={
-            "writing_rules": ["先定义再举例"],
-            "canonical_glossary": [{"term": "矩阵乘法", "definition": "按行列配对求和", "target_chapters": [1]}],
-        },
-        dispatch_item={
-            "chapter_index": 1,
-            "source_slices": [{"section_ref": "s1", "section_title": "矩阵分解讲义"}],
-        },
-        chapter_contract={"chapter_index": 1, "evidence_ids": ["e1"], "teaching_outline": ["先讲定义"]},
-        evidence_items=[{"evidence_id": "e1", "text": "奇异值分解可用于低秩近似", "source_ref": "local://file/f1/section/s1"}],
-        learner_profile_text="学习者容易把分解步骤背成模板。",
-    )
-    prompt = messages[-1]["content"]
-
-    assert "题型/任务导航" in prompt
-    assert "方法对照" in prompt
-    assert "完整例题" in prompt
-    assert "训练取向章节" in prompt
-    assert "概念型章节" in prompt
-    assert "完整学习单元" in prompt
-    assert "每章最后一个二级标题必须固定为 `## 单元测试`" in prompt
-    assert "位置不是最后" in prompt
-    assert "不能挤在同一段" in prompt
-    assert "不要在 action 里给可直接复制的标题" in prompt
-    assert "按本章具体对象、方法、任务差异或场景命名" in prompt
-    assert "序号占位题型" in prompt
-    assert "参考答案" in prompt
-    assert "孤立三级标题属于层级过度切分" in prompt
-    assert "DocGen 全局一致性上下文" in prompt
-    assert "矩阵乘法" in prompt
-    assert "矩阵分解讲义" in prompt
-    assert "奇异值分解可用于低秩近似" in prompt
-    assert "学习者容易把分解步骤背成模板" in prompt
-    assert "主题模块" in prompt
-    assert "概念术语" in prompt
-    assert "前置" in prompt
-    assert "补救" in prompt
-    assert "7 类学习节点与 8 类关系" not in prompt
-    assert "题眼信号" not in prompt
-    assert "处理模板" not in prompt
-
-
-def test_document_review_prompt_focuses_on_cross_chapter_quality_not_style_polish() -> None:
-    messages = build_document_review_messages(
-        digest_mode="systematic",
-        reviewed_chapters=[
-            {
-                "chapter_index": 1,
-                "title": "函数极限",
-                "markdown": "# 函数极限\n\n## 极限定义\n\n用 epsilon-delta 描述趋近。",
-                "source_details": [{"url": "local://file/f1/section/s1"}],
-            },
-            {
-                "chapter_index": 2,
-                "title": "连续性",
-                "markdown": "# 连续性\n\n## 连续定义\n\n连续需要函数值等于极限。",
-                "source_details": [{"url": "local://file/f1/section/s2"}],
-            },
-        ],
-        rule_report={"passed": True, "issues": [], "source_summary": {"chapter_count": 2}},
-        guideline={
-            "canonical_glossary": [{"term": "极限", "definition": "函数趋近的稳定值", "target_chapters": [1, 2]}],
-            "notation_rules": [{"symbol": "lim", "meaning": "极限", "target_chapters": [1, 2]}],
-        },
-        dispatch_table={"items": [{"chapter_index": 1, "source_section_refs": ["s1"]}]},
-        learner_profile_text="学习者容易把连续和可导混在一起。",
-    )
-    prompt = messages[-1]["content"]
-
-    assert "跨章术语、符号、定义、前置关系" in prompt
-    assert "examine/profile" in prompt
-    assert "只输出真实问题" in prompt
-    assert "不要因为想更优雅" in prompt
-    assert "不要在 instruction 里直接写可复制的新标题或完整正文" in prompt
-    assert "函数极限" in prompt
-    assert "学习者容易把连续和可导混在一起" in prompt

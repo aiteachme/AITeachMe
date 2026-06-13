@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from app.shared.infra.llm_support import (
     get_llm_concurrency_limiter,
 )
 from app.shared.infra.llm_support import common as llm_common
+from app.shared.infra.llm_support import scheduler as scheduler_module
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALLOWLIST
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
@@ -409,6 +411,28 @@ async def test_run_llm_tasks_can_be_nested_without_deadlock() -> None:
     )
 
     assert result == [[10, 20]]
+
+
+@pytest.mark.anyio
+async def test_run_llm_tasks_restores_langsmith_parent_for_workers(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 2}})
+    parent_run = object()
+    observed_parents: list[object] = []
+
+    @contextmanager
+    def fake_tracing_context(**kwargs):
+        observed_parents.append(kwargs.get("parent"))
+        yield
+
+    monkeypatch.setattr(scheduler_module, "get_current_run_tree", lambda: parent_run)
+    monkeypatch.setattr(scheduler_module, "tracing_context", fake_tracing_context)
+
+    async def worker(value: int) -> int:
+        await asyncio.sleep(0)
+        return value * 3
+
+    assert await run_llm_tasks([1, 2], worker) == [3, 6]
+    assert observed_parents == [parent_run, parent_run]
 
 
 async def _return_after_event(event: asyncio.Event, value: int) -> int:

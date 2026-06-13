@@ -179,7 +179,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_call_fails(monkeypatch
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",
@@ -208,7 +208,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_title_is_placeholder(m
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",
@@ -234,7 +234,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_schema_is_invalid(monk
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",

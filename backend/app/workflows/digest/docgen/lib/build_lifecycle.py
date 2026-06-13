@@ -513,7 +513,10 @@ def get_knowledge_build_runtime_result(
     )
     manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
-    aggregate_runtime = build_aggregate_knowledge_build_status(runtime)
+    aggregate_runtime = build_aggregate_knowledge_build_status(
+        runtime,
+        graph_expected=bool(get_settings().knowledge_graph.sync_after_docgen),
+    )
     docgen_runtime = runtime.docgen_runtime if runtime is not None else None
     graph_runtime = runtime.graph_runtime if runtime is not None else None
     return KnowledgeBuildRuntimeResponse(

@@ -193,7 +193,6 @@ def _resolve_course_name(
         shared.course_profile.discipline,
         *shared.fast_hints.chapter_candidates[:3],
         *shared.course_profile.key_topics[:3],
-        user_prompt,
         course_id if not re.match(r"^(?:course|subj)_[a-z0-9]+$", _text(course_id), re.IGNORECASE) else "",
     ]:
         text = _text(candidate)

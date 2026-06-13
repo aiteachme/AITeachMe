@@ -185,10 +185,13 @@ class WorkflowTraceBinding:
                 extra_metadata=node_extra_metadata,
                 extra_tags=[f"node:{tag_node_name}"],
             ) as trace_run:
-                with tracing_context(
-                    metadata=node_metadata,
-                    tags=node_tags,
-                ):
+                tracing_kwargs: dict[str, Any] = {
+                    "metadata": node_metadata,
+                    "tags": node_tags,
+                }
+                if trace_run is not None:
+                    tracing_kwargs["parent"] = trace_run
+                with tracing_context(**tracing_kwargs):
                     with llm_trace_scope(
                         course_id=course_id,
                         build_session_id=build_session_id,

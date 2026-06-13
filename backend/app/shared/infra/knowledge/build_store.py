@@ -756,6 +756,8 @@ def _build_runtime_metrics(
 
 def build_aggregate_knowledge_build_status(
     envelope: KnowledgeBuildRuntimeEnvelope | None,
+    *,
+    graph_expected: bool = False,
 ) -> KnowledgeBuildRuntimeStatus | None:
     if envelope is None:
         return None
@@ -833,6 +835,15 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime is None:
+        if graph_expected and docgen_runtime.status == "completed":
+            return _new(
+                requested_at=docgen_runtime.requested_at,
+                status="running",
+                stage="graph_pending",
+                description="知识文档已发布，正在启动知识图谱同步。",
+                started_at=docgen_runtime.started_at,
+                progress_pct=max(95, min(99, int(docgen_runtime.progress_pct or 0))),
+            )
         return _new(
             requested_at=docgen_runtime.requested_at,
             status=docgen_runtime.status,

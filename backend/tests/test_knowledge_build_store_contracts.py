@@ -145,6 +145,15 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     assert graph_active.status == "running"
     assert graph_active.metrics == {"docgen_status": "completed", "graph_status": "running"}
 
+    graph_pending = build_store.build_aggregate_knowledge_build_status(
+        build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done),
+        graph_expected=True,
+    )
+    assert graph_pending is not None
+    assert graph_pending.status == "running"
+    assert graph_pending.stage == "graph_pending"
+    assert graph_pending.progress_pct == 99
+
     partial = build_store.build_aggregate_knowledge_build_status(
         build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done, graph_runtime=graph_failed)
     )

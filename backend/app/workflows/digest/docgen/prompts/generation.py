@@ -43,8 +43,8 @@ def _opening_structure_instruction(*, digest_mode: str) -> str:
 def _section_shape_instruction(*, digest_mode: str) -> str:
     profile = get_docgen_mode_profile(digest_mode)
     if profile.is_sprint:
-        return "小节内部按规则抓手、公式/步骤、题目或任务、解/答案、易错点组织"
-    return "小节内部用加粗字段组织解释、条件/步骤、例题/任务、解析、答案/结论、易错点"
+        return "小节内部围绕具体方法、步骤、例题或任务、解析、结论和易错边界组织"
+    return "小节内部用简短加粗标签区分解释、条件步骤、例题任务、解析结论和易错边界；可见标题仍按具体内容命名"
 
 
 def _presentation_contract(*, digest_mode: str = "") -> str:
@@ -220,7 +220,7 @@ def build_docgen_writer_messages(
 输出要求：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 本阶段只写知识点内的例题、变式和检查点。
+3. 本阶段只写知识正文和知识点内的例题、变式、检查点；正文末尾停在最后一个知识小节，章末测验由后续专门节点追加。
 4. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 
 研究材料：

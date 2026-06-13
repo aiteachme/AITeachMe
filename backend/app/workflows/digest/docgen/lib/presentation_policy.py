@@ -87,10 +87,10 @@ def build_presentation_contract_prompt(*, digest_mode: str = "") -> str:
     relation_text = "、".join(RELATION_LABELS.values())
     if profile.is_sprint:
         structure_line = "- 结构：`# 章节标题` -> 考点速览表（考点/重要程度/题型或任务/抓手） -> `## 01 短考点名`。"
-        section_line = "- 紧凑节奏小节按 `规则抓手/公式/步骤 -> 题目或任务 -> 解/答案 -> 易错点` 组织。"
+        section_line = "- 紧凑节奏小节先讲具体方法或判断口径，再用例题、任务、解析结论和错因边界落地；标题按内容命名。"
     else:
         structure_line = "- 结构：`# 章节标题` -> 3-5 行导航表 -> `## 01 具体知识点名`。"
-        section_line = "- 每个知识点小节包含解释、条件/步骤、例题或任务、答案/结论、易错点/检查点。"
+        section_line = "- 每个知识点小节包含解释、条件步骤、例题任务、解析结论和易错边界；标题按内容命名。"
     return f"""
 Markdown 表达：
 {structure_line}

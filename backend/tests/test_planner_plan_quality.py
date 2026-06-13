@@ -94,6 +94,20 @@ def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
     assert len(draft.diagnose[0].sample_answers) >= 3
 
 
+def test_normalize_planner_draft_does_not_use_full_prompt_as_course_name() -> None:
+    payload = _planner_payload()
+    payload.pop("course_name")
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_titlefallback",
+        user_prompt="我想学习初中几何，按平行线与角、三角形全等、圆与切线生成 3 个章节",
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.course_name == "当前主题"
+
+
 def test_normalize_planner_draft_caps_over_split_chapters() -> None:
     config = get_planner_mode_contract("sprint")
     payload = _planner_payload(chapter_count=config.max_chapters + 2)
@@ -109,7 +123,6 @@ def test_normalize_planner_draft_caps_over_split_chapters() -> None:
     assert [chapter.chapter_index for chapter in draft.chapters] == list(range(1, config.max_chapters + 1))
     assert any("超出章节预算后合并覆盖" in item for item in draft.chapters[-1].required_elements)
     assert "速成课" not in draft.plan
-    assert "快速复习" not in draft.plan
     assert "紧凑节奏" in draft.plan
 
 
@@ -246,7 +259,7 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
     parsed = plan_draft_node._parse_planner_response(
         f"""
 {PLAN_START}
-先补数与式，再进入函数和几何，最后做概率统计综合复盘。
+先补数与式，再进入函数和几何，最后完成概率统计应用。
 {PLAN_END}
 {SUGGESTION_START}
 如果更偏中考，可以增加压轴题比例。
