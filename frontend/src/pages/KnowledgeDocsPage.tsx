@@ -6608,7 +6608,7 @@ export function KnowledgeDocsPage() {
       </div>
 
       {showFloatingActions && isCardsPanelOpen && (
-        <div className="fixed bottom-[14.75rem] right-6 z-[87] flex max-h-[min(30rem,calc(100dvh-10rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]">
+        <div className="fixed bottom-[17.75rem] right-6 z-[87] flex max-h-[min(30rem,calc(100dvh-10rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]">
           <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">知识卡片</p>
@@ -6736,6 +6736,42 @@ export function KnowledgeDocsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showFloatingActions && (
+        <button
+          type="button"
+          onClick={() => {
+            const nextVisible = !viewPrefs.showCommentPanel;
+            updateViewPrefs((prev) => ({ ...prev, showCommentPanel: nextVisible }));
+            setIsCardsPanelOpen(false);
+            setIsSettingsPanelOpen(false);
+            if (nextVisible) {
+              setIsCommentCollapsed(false);
+              if (isCompactComment) {
+                setActiveDrawer("comment");
+              }
+            } else if (activeDrawer === "comment") {
+              setActiveDrawer(null);
+            }
+          }}
+          className={cn(
+            "fixed bottom-[13.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
+            viewPrefs.showCommentPanel && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
+          )}
+          aria-label={viewPrefs.showCommentPanel ? "关闭批注模式" : "打开批注模式"}
+          aria-pressed={viewPrefs.showCommentPanel}
+        >
+          <span className="relative inline-flex">
+            <StickyNote className="h-4 w-4 shrink-0" />
+            {commentThreads.length > 0 && (
+              <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-indigo-500 px-1 text-center text-[10px] leading-4 text-white">
+                {Math.min(commentThreads.length, 99)}
+              </span>
+            )}
+          </span>
+          <span className="hidden truncate sm:inline">批注模式</span>
+        </button>
       )}
 
       {showFloatingActions && (
