@@ -54,9 +54,9 @@ def _text(value: Any) -> str:
 def _student_facing_text(value: Any) -> str:
     return (
         _text(value)
-        .replace("速成课模式", "快速复习节奏")
-        .replace("速成课", "快速复习")
-        .replace("系统课", "系统学习")
+        .replace("速成课模式", "紧凑节奏")
+        .replace("速成课", "紧凑节奏")
+        .replace("系统课", "系统节奏")
         .replace("章节合同", "学习大纲")
     )
 
@@ -129,7 +129,7 @@ def _normalize_digest_mode(value: Any) -> str:
 
 
 def planner_mode_label(value: Any) -> str:
-    return "快速复习" if _normalize_digest_mode(value) == "sprint" else "系统学习"
+    return "紧凑节奏" if _normalize_digest_mode(value) == "sprint" else "系统节奏"
 
 
 def compose_planning_note(*items: Any) -> str:
@@ -165,7 +165,8 @@ def render_planner_chapter_contract(value: Any) -> str:
             "- 章节是可直接授课的内容模块，聚焦具体知识对象、方法步骤、题型技能或应用场景。",
             "- 例题、练习、检测、纠错和巩固是章节内部的学习活动，放进对应模块的 required_elements/key_points。",
             "- 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单，chapters 与 A/B/C 逐项对应，数组长度等于列表项数量。",
-            "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算，末尾时间仍属于最后一个列表项。",
+            "- 用户给出的列表项已是知识块名称时，标题等于该列表项；学习动作、周期和训练安排写进 required_elements/key_points。",
+            "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算，末尾时间仍落到最后一个知识块的具体对象、方法和练习安排。",
             "- 每章承担一个主要学习任务，相邻章节体现依赖、递进或场景切换。",
             "- 标题用真实讲义目录名：清楚直观优先，保留必要限定词；细节枚举放到 required_elements/key_points。",
             "- 用户列出的额外学习活动也按其服务的内容模块安排，形成讲解、例题、练习、小测的章内闭环。",

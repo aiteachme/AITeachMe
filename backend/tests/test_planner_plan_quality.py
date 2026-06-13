@@ -55,8 +55,8 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
 
 
 def test_planner_mode_label_is_student_facing() -> None:
-    assert planner_mode_label("sprint") == "快速复习"
-    assert planner_mode_label("systematic") == "系统学习"
+    assert planner_mode_label("sprint") == "紧凑节奏"
+    assert planner_mode_label("systematic") == "系统节奏"
 
 
 def test_normalize_planner_draft_uses_new_planner_fields() -> None:
@@ -96,8 +96,10 @@ def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
 
 def test_normalize_planner_draft_caps_over_split_chapters() -> None:
     config = get_planner_mode_contract("sprint")
+    payload = _planner_payload(chapter_count=config.max_chapters + 2)
+    payload["plan"] = "这门速成课会先补关键概念，再把典型题串起来。"
     draft = normalize_planner_draft(
-        _planner_payload(chapter_count=config.max_chapters + 2),
+        payload,
         course_id="Python数据分析",
         user_prompt="Python 数据分析想学到能做作业",
         requested_digest_mode="sprint",
@@ -108,6 +110,7 @@ def test_normalize_planner_draft_caps_over_split_chapters() -> None:
     assert any("超出章节预算后合并覆盖" in item for item in draft.chapters[-1].required_elements)
     assert "速成课" not in draft.plan
     assert "快速复习" not in draft.plan
+    assert "紧凑节奏" in draft.plan
 
 
 def test_normalize_planner_draft_respects_user_requested_chapter_count() -> None:

@@ -32,9 +32,9 @@ _MERMAID_FENCE_RE = re.compile(
 def _sanitize_public_doc_terms(markdown: str) -> str:
     return (
         str(markdown or "")
-        .replace("速成课模式", "快速复习节奏")
-        .replace("速成课", "快速复习")
-        .replace("系统课", "系统学习")
+        .replace("速成课模式", "紧凑节奏")
+        .replace("速成课", "紧凑节奏")
+        .replace("系统课", "系统节奏")
         .replace("章节合同", "学习大纲")
     )
 

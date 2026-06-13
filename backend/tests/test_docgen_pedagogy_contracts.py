@@ -608,7 +608,8 @@ def test_sprint_review_prompt_requires_problem_pattern_structure() -> None:
     assert "题型/任务导航" in prompt
     assert "方法对照" in prompt
     assert "完整例题" in prompt
-    assert "固定口号或本地模板" in prompt
+    assert "训练取向章节" in prompt
+    assert "概念型章节" in prompt
     assert "完整学习单元" in prompt
     assert "每章最后一个二级标题必须固定为 `## 单元测试`" in prompt
     assert "位置不是最后" in prompt

@@ -307,9 +307,9 @@ def _build_sample_cards(
                 "title": "构建模式",
                 "card_type": "mode",
                 "summary": (
-                    "速成课模式更强调快速抓重点、贴近题型和考前回顾。"
+                    "紧凑节奏更强调抓住重点、贴近题型和及时回看。"
                     if digest_mode == "sprint"
-                    else "系统课模式更强调概念完整、推导清晰和结构化学习。"
+                    else "系统节奏更强调概念完整、推导清晰和结构化学习。"
                 ),
             }
         )
