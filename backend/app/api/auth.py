@@ -19,6 +19,7 @@ from app.schemas.auth import (
     SendEmailCodeRequest,
 )
 from app.schemas.common import ApiResponse, ok_response
+from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.workflows.support.auth import (
     build_logout_guest_user,
     build_session_from_context,
@@ -31,6 +32,48 @@ from app.workflows.support.auth import (
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+def _email_domain(email: str | None) -> str | None:
+    normalized = str(email or "").strip().lower()
+    if "@" not in normalized:
+        return None
+    return normalized.rsplit("@", 1)[-1] or None
+
+
+def _capture_auth_event(
+    event: str,
+    *,
+    data: AuthSessionData | None = None,
+    user: CurrentUserContext | None = None,
+    properties: dict[str, object] | None = None,
+) -> None:
+    current_user = data.current_user if data is not None else None
+    user_id = current_user.user_id if current_user is not None else (user.user_id if user is not None else None)
+    email = current_user.email if current_user is not None else (user.email if user is not None else None)
+    device_key = current_user.device_key if current_user is not None else (user.device_key if user is not None else None)
+    is_authenticated = (
+        current_user.is_authenticated
+        if current_user is not None
+        else (user.is_authenticated if user is not None else None)
+    )
+    capture_product_event_later(
+        event,
+        user_id=user_id,
+        device_key=device_key,
+        email=email,
+        is_authenticated=is_authenticated,
+        insert_id_parts=[
+            event,
+            str(user_id or "unknown_user"),
+            str(device_key or ""),
+            str(perf_counter()),
+        ],
+        properties={
+            "account_domain": _email_domain(email),
+            **dict(properties or {}),
+        },
+    )
 
 
 @router.post(
@@ -86,6 +129,7 @@ async def register(
         verification_code=body.verification_code,
         device_key=user.device_key,
     )
+    _capture_auth_event("auth_register_succeeded", data=data)
     return ok_response(data)
 
 
@@ -107,6 +151,7 @@ async def login(
         password=body.password,
         device_key=user.device_key,
     )
+    _capture_auth_event("auth_login_succeeded", data=data)
     return ok_response(data)
 
 
@@ -126,6 +171,11 @@ async def logout(
     # 无状态 token：服务端不保存会话，前端删除 token 即可。
     guest = build_logout_guest_user(session, device_key=user.device_key)
     set_guest_cookie_for_user(response, user_id=guest.id)
+    _capture_auth_event(
+        "auth_logout_succeeded",
+        user=user,
+        properties={"was_authenticated": bool(user.is_authenticated)},
+    )
     return ok_response(
         build_session_from_context(
             user_id=guest.id,
@@ -158,7 +208,5 @@ async def user(
             is_authenticated=current.is_authenticated,
         )
     )
-
-
 
 

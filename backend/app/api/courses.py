@@ -17,6 +17,7 @@ from app.schemas.course import (
     CourseNameSuggestionResponse,
     CourseUpdateRequest,
 )
+from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.workflows.support.courses import (
     create_course_record,
     delete_course_record,
@@ -31,13 +32,28 @@ router = APIRouter(prefix="/api/v1/courses", tags=["courses"])
 
 
 def _create_course_draft(session: Session, user: CurrentUserContext) -> CourseItem:
-    return create_course_record(
+    item = create_course_record(
         session,
         owner_user_id=user.user_id,
         name="",
         description="",
         user_intent="",
     )
+    capture_product_event_later(
+        "course_created",
+        user_id=user.user_id,
+        course_id=item.course_id,
+        device_key=user.device_key,
+        email=user.email,
+        is_authenticated=user.is_authenticated,
+        insert_id_parts=[item.course_id, "draft"],
+        properties={
+            "course_creation_mode": "draft",
+            "has_name": bool((item.name or "").strip()),
+            "has_description": bool((item.description or "").strip()),
+        },
+    )
+    return item
 
 
 @router.post(

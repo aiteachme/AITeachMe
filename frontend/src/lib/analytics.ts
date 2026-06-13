@@ -22,22 +22,41 @@ const URL_PROPERTY_RE = /(^|[_\-$])(current[_-]?url|href|pathname|referrer|url)(
 const MAX_PROPERTY_DEPTH = 4;
 const POSTHOG_TRANSPORT_PROPERTY_KEYS = ["api_key", "token"] as const;
 const BACKEND_OWNED_EVENTS = new Set([
+  "auth_login_succeeded",
+  "auth_logout_succeeded",
+  "auth_register_succeeded",
+  "course_created",
   "course_plan_requested",
   "course_plan_generated",
   "course_build_plan_confirmed",
+  "exam_generation_requested",
+  "exam_generated",
+  "exam_graded",
+  "exam_submitted",
   "knowledge_build_submitted",
   "knowledge_build_started",
   "knowledge_build_completed",
   "knowledge_build_failed",
   "knowledge_build_cancelled",
+  "question_template_answer_graded",
 ]);
 
 let initialized = false;
 let enabled = false;
 let identifiedUserId: string | null = null;
+let currentIsAuthenticated = false;
 let lastPageviewKey: string | null = null;
 let lastPageviewAt = 0;
 const capturedOnceKeys = new Set<string>();
+let routeDurationListenersInstalled = false;
+let lastRouteSnapshot: RouteSnapshot | null = null;
+let activeRoute:
+  | {
+      durationMs: number;
+      routePath: string;
+      visibleStartedAt: number | null;
+    }
+  | null = null;
 
 function envFlag(value: string | boolean | undefined, fallback = false): boolean {
   if (typeof value === "boolean") {
@@ -312,6 +331,103 @@ export function trackCourseAnalyticsEventOnce(
   });
 }
 
+function isRouteDurationTrackingSupported(): boolean {
+  return typeof window !== "undefined" && typeof document !== "undefined" && resolveRuntimeSurface() === "web";
+}
+
+function isDocumentVisible(): boolean {
+  return typeof document === "undefined" ? false : document.visibilityState !== "hidden";
+}
+
+function pauseActiveRouteDuration(now = Date.now()): void {
+  if (!activeRoute?.visibleStartedAt) {
+    return;
+  }
+  activeRoute.durationMs += Math.max(0, now - activeRoute.visibleStartedAt);
+  activeRoute.visibleStartedAt = null;
+}
+
+function resumeActiveRouteDuration(now = Date.now()): void {
+  if (!activeRoute || activeRoute.visibleStartedAt) {
+    return;
+  }
+  activeRoute.visibleStartedAt = now;
+}
+
+function flushActiveRouteDuration(reason: string, now = Date.now()): void {
+  if (!activeRoute) {
+    return;
+  }
+  pauseActiveRouteDuration(now);
+  const route = activeRoute;
+  activeRoute = null;
+  const durationMs = Math.round(route.durationMs);
+  if (durationMs <= 0) {
+    return;
+  }
+
+  const client = getAnalyticsClient();
+  if (!client) {
+    return;
+  }
+  const shouldUseBeacon = reason === "pagehide" || reason === "visibility_hidden";
+  const captureOptions = shouldUseBeacon ? { send_instantly: true, transport: "sendBeacon" as const } : undefined;
+  client.capture(
+    "route_active_duration",
+    sanitizeProperties({
+      app_surface: "web",
+      duration_ms: durationMs,
+      is_authenticated: currentIsAuthenticated,
+      reason,
+      route_path: route.routePath,
+    }),
+    captureOptions,
+  );
+}
+
+function ensureRouteDurationListeners(): void {
+  if (routeDurationListenersInstalled || !isRouteDurationTrackingSupported()) {
+    return;
+  }
+  routeDurationListenersInstalled = true;
+  document.addEventListener("visibilitychange", () => {
+    if (isDocumentVisible()) {
+      if (activeRoute) {
+        resumeActiveRouteDuration();
+        return;
+      }
+      if (lastRouteSnapshot) {
+        startAnalyticsRouteDuration(lastRouteSnapshot);
+      }
+      return;
+    }
+    flushActiveRouteDuration("visibility_hidden");
+  });
+  window.addEventListener("pagehide", () => flushActiveRouteDuration("pagehide"), { capture: true });
+}
+
+export function startAnalyticsRouteDuration(route: RouteSnapshot): void {
+  if (!isRouteDurationTrackingSupported()) {
+    return;
+  }
+  ensureRouteDurationListeners();
+  lastRouteSnapshot = {
+    pathname: route.pathname,
+    search: route.search,
+    hash: route.hash,
+  };
+  const routePath = normalizeRoutePath(route.pathname);
+  if (activeRoute?.routePath === routePath) {
+    return;
+  }
+  flushActiveRouteDuration("route_change");
+  activeRoute = {
+    durationMs: 0,
+    routePath,
+    visibleStartedAt: isDocumentVisible() ? Date.now() : null,
+  };
+}
+
 export function captureAnalyticsPageview(route: RouteSnapshot): void {
   const client = getAnalyticsClient();
   if (!client) {
@@ -331,6 +447,7 @@ export function captureAnalyticsPageview(route: RouteSnapshot): void {
     $current_url: buildSafeRouteUrl(routePath),
     $pathname: routePath,
     app_surface: resolveRuntimeSurface(),
+    is_authenticated: currentIsAuthenticated,
     route_hash_present: Boolean(route.hash),
     route_path: routePath,
     route_search_present: Boolean(route.search),
@@ -344,15 +461,17 @@ export function syncAnalyticsUserIdentity(user: RuntimeUserIdentity | null): voi
   }
 
   if (!user?.userId) {
+    currentIsAuthenticated = false;
     client.unregister("app_user_id");
     client.register({ is_authenticated: false });
     return;
   }
 
+  currentIsAuthenticated = Boolean(user.isAuthenticated);
   const superProperties = {
     app_user_id: user.userId,
     account_domain: getEmailDomain(user.email),
-    is_authenticated: Boolean(user.isAuthenticated),
+    is_authenticated: currentIsAuthenticated,
   };
   client.register(superProperties);
 
@@ -360,7 +479,7 @@ export function syncAnalyticsUserIdentity(user: RuntimeUserIdentity | null): voi
     identifiedUserId = user.userId;
     client.identify(user.userId, {
       account_domain: getEmailDomain(user.email),
-      is_authenticated: Boolean(user.isAuthenticated),
+      is_authenticated: currentIsAuthenticated,
     });
   }
 }
@@ -371,6 +490,7 @@ export function resetAnalyticsIdentity(): void {
     return;
   }
   identifiedUserId = null;
+  currentIsAuthenticated = false;
   client.reset();
   client.register({
     app_surface: resolveRuntimeSurface(),

@@ -18,7 +18,7 @@ from sqlmodel import Session, select
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
 from app.api.sse import get_sse_interval, sse_headers
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, exam_mode_value
+from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, User, exam_mode_value
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.course import Course
 from app.repositories import exams_repo, knowledge_relation_repo
@@ -45,6 +45,7 @@ from app.schemas.exams import (
     ExamStudyGuideResponse,
     ExamSubmitRequest,
 )
+from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.live_stream import (
@@ -89,6 +90,104 @@ def _exam_stream_channel(course_id: str, paper_id: int) -> str:
 
 def _publish_exam_event(course_id: str, paper_id: int, event: str, data: dict[str, object]) -> None:
     publish_workflow_stream_event(_exam_stream_channel(course_id, paper_id), event, data)
+
+
+def _suffix(value: object, *, length: int = 8) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized[-length:] if normalized else None
+
+
+def _duration_ms(started_at, finished_at) -> int | None:
+    start = ensure_utc_datetime(started_at)
+    finish = ensure_utc_datetime(finished_at)
+    if start is None or finish is None:
+        return None
+    return max(0, int((finish - start).total_seconds() * 1000))
+
+
+def _capture_exam_event(
+    event: str,
+    *,
+    course_id: str,
+    user: CurrentUserContext,
+    paper: ExamPaper | None = None,
+    insert_id_parts: list[str] | None = None,
+    properties: dict[str, object] | None = None,
+) -> None:
+    paper_id = int(paper.id or 0) if paper is not None and paper.id is not None else None
+    event_properties = dict(properties or {})
+    if paper is not None:
+        event_properties.update(
+            {
+                "exam_paper_id_present": paper_id is not None,
+                "exam_paper_id_suffix": _suffix(paper_id),
+                "exam_mode": paper.exam_mode,
+                "exam_status": paper.status,
+                "question_count": int(paper.total_items or 0),
+                "score_obtained": paper.score_obtained,
+                "total_score": paper.total_score,
+                "submitted_at_present": paper.submitted_at is not None,
+                "graded_at_present": paper.graded_at is not None,
+                "created_to_submitted_ms": _duration_ms(paper.created_at, paper.submitted_at),
+                "submitted_to_graded_ms": _duration_ms(paper.submitted_at, paper.graded_at),
+            }
+        )
+    capture_product_event_later(
+        event,
+        user_id=user.user_id,
+        course_id=course_id,
+        device_key=user.device_key,
+        email=user.email,
+        is_authenticated=user.is_authenticated,
+        insert_id_parts=[
+            str(paper_id or ""),
+            *(insert_id_parts or []),
+        ],
+        properties=event_properties,
+    )
+
+
+def _analytics_user_context_from_db(session: Session, user_id: str) -> CurrentUserContext:
+    user = session.get(User, user_id)
+    if user is None:
+        return CurrentUserContext(user_id=user_id, email=None, is_local=False)
+    return CurrentUserContext(
+        user_id=user.id,
+        email=user.email,
+        is_local=False,
+        device_key=user.device_key,
+        is_authenticated=bool(user.is_registered),
+        auth_source="token" if user.is_registered else "device",
+    )
+
+
+def _capture_exam_generated_event(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    paper: ExamPaper,
+    requested_question_count: int,
+    sample_file_count: int,
+    paper_layout_mode: str | None,
+) -> None:
+    if str(paper.status or "") != "ready" or str(paper.visibility or "visible") != "visible":
+        return
+    user = _analytics_user_context_from_db(session, user_id)
+    _capture_exam_event(
+        "exam_generated",
+        course_id=course_id,
+        user=user,
+        paper=paper,
+        insert_id_parts=["ready", str(paper.updated_at.isoformat())],
+        properties={
+            "served_from_prepared": str(paper.generation_origin or "") == "prewarm",
+            "requested_question_count": requested_question_count,
+            "sample_file_count": sample_file_count,
+            "paper_layout_mode": paper_layout_mode,
+            "generation_origin": paper.generation_origin,
+        },
+    )
 
 
 def _ensure_course(session: Session, course_id: str, user_id: str) -> Course:
@@ -2181,6 +2280,15 @@ async def _run_exam_generation_background(
                 stage="ready",
                 preview=_paper_preview_from_json(paper.paper_preview_json),
             )
+            _capture_exam_generated_event(
+                session,
+                course_id=course_id,
+                user_id=user_id,
+                paper=paper,
+                requested_question_count=question_count,
+                sample_file_count=len(sample_file_ids or []),
+                paper_layout_mode=resolved_paper_layout_mode,
+            )
 
         for order in inferred_missing_orders:
             failed_payload = terminal_failed_by_order.get(order)
@@ -2989,6 +3097,28 @@ async def generate_exam(
             config_hash=config_hash,
             paper_layout_mode=paper_layout_mode,
         )
+        _capture_exam_event(
+            "exam_generation_requested",
+            course_id=normalized,
+            user=user,
+            paper=paper,
+            insert_id_parts=["prepared", str(paper.updated_at.isoformat())],
+            properties={
+                "served_from_prepared": True,
+                "requested_question_count": question_count,
+                "sample_file_count": len(body.sample_file_ids or []),
+                "paper_layout_mode": paper_layout_mode,
+            },
+        )
+        _capture_exam_generated_event(
+            session,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper=paper,
+            requested_question_count=question_count,
+            sample_file_count=len(body.sample_file_ids or []),
+            paper_layout_mode=paper_layout_mode,
+        )
         return ok_response(
             ExamGenerateResponse(
                 id=paper_id,
@@ -3036,6 +3166,19 @@ async def generate_exam(
         config_hash=config_hash,
         paper_layout_mode=paper_layout_mode,
         schedule_replacement=not served_from_prepared,
+    )
+    _capture_exam_event(
+        "exam_generation_requested",
+        course_id=normalized,
+        user=user,
+        paper=paper,
+        insert_id_parts=["new", str(paper.created_at.isoformat())],
+        properties={
+            "served_from_prepared": False,
+            "requested_question_count": question_count,
+            "sample_file_count": len(body.sample_file_ids or []),
+            "paper_layout_mode": paper_layout_mode,
+        },
     )
     return ok_response(
         ExamGenerateResponse(
@@ -3366,14 +3509,30 @@ async def grade_question_template_answer(
             error_code="QUESTION_TEMPLATE_NOT_FOUND",
         )
     assert template is not None
-    return ok_response(
-        await _grade_question_template_answer(
-            course_id=normalized,
-            course_name=course.name,
-            template=template,
-            answer=body.answer,
-        )
+    data = await _grade_question_template_answer(
+        course_id=normalized,
+        course_name=course.name,
+        template=template,
+        answer=body.answer,
     )
+    _capture_exam_event(
+        "question_template_answer_graded",
+        course_id=normalized,
+        user=user,
+        insert_id_parts=[str(question_template_id), str(data.grading_mode), str(utcnow().isoformat())],
+        properties={
+            "question_template_id_present": True,
+            "question_template_id_suffix": _suffix(question_template_id),
+            "question_type": data.question_type,
+            "difficulty": template.difficulty,
+            "is_correct": data.is_correct,
+            "score_obtained": data.score_obtained,
+            "score_max": data.score_max,
+            "grading_mode": data.grading_mode,
+            "error_cause_label": data.error_cause_label,
+        },
+    )
+    return ok_response(data)
 
 
 @router.patch(
@@ -3639,7 +3798,32 @@ async def submit_exam(
     session.add(paper)
     session.commit()
     session.refresh(paper)
+    _capture_exam_event(
+        "exam_submitted",
+        course_id=normalized,
+        user=user,
+        paper=paper,
+        insert_id_parts=["submitted", str(paper.submitted_at.isoformat() if paper.submitted_at else utcnow().isoformat())],
+        properties={
+            "answer_count": len(body.answers),
+            "answered_count": sum(1 for item in body.answers if str(item.answer or "").strip()),
+        },
+    )
     grade_response = await _grade_exam(session, paper)
+    _capture_exam_event(
+        "exam_graded",
+        course_id=normalized,
+        user=user,
+        paper=paper,
+        insert_id_parts=["graded", str(paper.graded_at.isoformat() if paper.graded_at else utcnow().isoformat())],
+        properties={
+            "answer_count": len(body.answers),
+            "answered_count": sum(1 for item in body.answers if str(item.answer or "").strip()),
+            "states_updated": grade_response.states_updated,
+            "tasks_created": grade_response.tasks_created,
+            "mastery_consumed": grade_response.mastery_consumed,
+        },
+    )
     background_tasks.add_task(
         _spawn_exam_study_guide_after_response,
         request,

@@ -126,6 +126,12 @@ def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pyt
             ]
 
         monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
+        analytics_events: list[tuple[str, dict[str, object]]] = []
+        monkeypatch.setattr(
+            exams_api,
+            "capture_product_event_later",
+            lambda event, **kwargs: analytics_events.append((event, kwargs)) or None,
+        )
 
         app = FastAPI()
         app.include_router(exams_api.router)
@@ -161,6 +167,12 @@ def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pyt
         assert graded_item.question_type == "fill_blank"
         assert graded_item.answer_content == "2x"
         assert graded_item.answer_snapshot == "2x"
+        assert analytics_events[0][0] == "question_template_answer_graded"
+        analytics_properties = analytics_events[0][1]["properties"]
+        assert analytics_properties["question_type"] == "fill_blank"
+        assert analytics_properties["grading_mode"] == "subjective_llm"
+        assert analytics_properties["score_obtained"] == 1.0
+        assert "2x" not in str(analytics_properties)
     finally:
         session.close()
 

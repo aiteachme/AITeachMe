@@ -39,11 +39,18 @@ export const DIFFICULTIES = [
   { value: "hard", label: "难" },
 ] as const;
 
+function parseBackendDateTime(value: string) {
+  const normalized = value.trim();
+  const hasExplicitTimeZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  return new Date(hasExplicitTimeZone ? normalized : `${normalized}Z`);
+}
+
 export function formatDateTime(value?: string | null) {
   if (!value) return "暂无记录";
-  const date = new Date(value);
+  const date = parseBackendDateTime(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
@@ -77,6 +84,20 @@ export function formatQuestionTypeLabel(type: string) {
 
 export function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index);
+}
+
+export function formatTrueFalseOptionLabel(value?: string | null) {
+  const normalized = String(value ?? "").trim();
+  const normalizedLower = normalized.toLowerCase();
+  if (["true", "t", "yes", "y", "正确", "对", "是"].includes(normalizedLower)) return "正确";
+  if (["false", "f", "no", "n", "错误", "错", "否"].includes(normalizedLower)) return "错误";
+  return normalized;
+}
+
+export function formatAnswerDisplayValue(questionType: string, value?: string | null, fallback = "未作答") {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return fallback;
+  return questionType === "true_false" ? formatTrueFalseOptionLabel(normalized) : normalized;
 }
 
 export function splitMultiChoiceAnswer(value?: string | null) {
@@ -176,7 +197,9 @@ function buildQuestionOptionsContext(item: ExamPaperItemResponse): string[] {
 
   return options
     .map((option, index) => {
-      const normalizedOption = normalizeQuestionContextText(option);
+      const normalizedOption = normalizeQuestionContextText(
+        item.question_type === "true_false" ? formatTrueFalseOptionLabel(option) : option,
+      );
       if (item.question_type === "true_false") {
         return normalizedOption;
       }
@@ -205,10 +228,11 @@ export function buildQuestionSelectionContext(
   const selectedText = buildQuestionSelectedText(item);
   const knowledgeLabel = buildKnowledgeLabel(item);
   const optionsContext = buildQuestionOptionsContext(item);
-  const answerStatus = answerValue.trim() ? answerValue.trim() : "未作答";
+  const answerStatus = formatAnswerDisplayValue(item.question_type, answerValue);
+  const correctAnswer = formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案");
   const contextLines = [
     `题号：第 ${item.item_order} 题`,
-    `题型：${item.question_type}`,
+    `题型：${formatQuestionTypeLabel(item.question_type)}`,
     `难度：${formatDifficultyLabel(item.difficulty)}`,
     `知识点：${knowledgeLabel}`,
     "",
@@ -224,7 +248,7 @@ export function buildQuestionSelectionContext(
 
   if (isReviewStage) {
     contextLines.push(
-      `正确答案：${normalizeQuestionContextText(item.correct_answer) || "无标准答案"}`,
+      `正确答案：${normalizeQuestionContextText(correctAnswer)}`,
       `批改结果：${item.is_correct ? "正确" : "需要继续巩固"}`,
       "",
       "已有解析：",
@@ -240,9 +264,9 @@ export function buildQuestionSelectionContext(
     anchor_id: anchorId,
     anchor_title: `第 ${item.item_order} 题`,
     heading_path: [formatModeLabel(paper.exam_mode), `第 ${item.item_order} 题`],
-    before_text: `题型：${item.question_type}；难度：${formatDifficultyLabel(item.difficulty)}；知识点：${knowledgeLabel}`,
+    before_text: `题型：${formatQuestionTypeLabel(item.question_type)}；难度：${formatDifficultyLabel(item.difficulty)}；知识点：${knowledgeLabel}`,
     after_text: isReviewStage
-      ? `学生答案：${answerStatus}；正确答案：${normalizeQuestionContextText(item.correct_answer) || "无标准答案"}`
+      ? `学生答案：${answerStatus}；正确答案：${normalizeQuestionContextText(correctAnswer)}`
       : `学生当前答案：${answerStatus}`,
     section_title: `第 ${item.item_order} 题`,
     section_excerpt: excerpt.text,

@@ -1,23 +1,32 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { captureAnalyticsPageview } from "../../lib/analytics";
+import { captureAnalyticsPageview, startAnalyticsRouteDuration } from "../../lib/analytics";
 
-export function RouteAnalyticsBridge() {
+type RouteAnalyticsBridgeProps = {
+  analyticsIdentityReady: boolean;
+};
+
+export function RouteAnalyticsBridge({ analyticsIdentityReady }: RouteAnalyticsBridgeProps) {
   const location = useLocation();
   const lastRouteRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!analyticsIdentityReady) {
+      return;
+    }
     const routeKey = `${location.pathname}${location.search}${location.hash}`;
     if (lastRouteRef.current === routeKey) {
       return;
     }
     lastRouteRef.current = routeKey;
-    captureAnalyticsPageview({
+    const route = {
       pathname: location.pathname,
       search: location.search,
       hash: location.hash,
-    });
-  }, [location.hash, location.pathname, location.search]);
+    };
+    captureAnalyticsPageview(route);
+    startAnalyticsRouteDuration(route);
+  }, [analyticsIdentityReady, location.hash, location.pathname, location.search]);
 
   return null;
 }

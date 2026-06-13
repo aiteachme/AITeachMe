@@ -2,7 +2,12 @@ import { CheckCircle2, XCircle } from "lucide-react";
 
 import type { ExamPaperItemResponse } from "../../api/generated/model";
 import { ExamMarkdown } from "./ExamMarkdown";
-import { buildKnowledgeLabel, formatDifficultyLabel, formatQuestionTypeLabel } from "./examDisplay";
+import {
+  buildKnowledgeLabel,
+  formatAnswerDisplayValue,
+  formatDifficultyLabel,
+  formatQuestionTypeLabel,
+} from "./examDisplay";
 
 interface ExamQuestionAnalysisSheetProps {
   item?: ExamPaperItemResponse | null;
@@ -67,8 +72,8 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
           </div>
         </section>
 
-        <AnalysisBlock title="你的答案" content={item.user_answer || "未作答"} />
-        <AnalysisBlock title="正确答案" content={item.correct_answer || "无标准答案"} />
+        <AnalysisBlock title="你的答案" content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
+        <AnalysisBlock title="正确答案" content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
         <AnalysisBlock title="解析" content={item.explanation || "暂无解析"} />
       </div>
     </aside>
