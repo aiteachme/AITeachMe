@@ -20,6 +20,7 @@ from app.api.deps import (
 from app.api.openapi import build_error_responses
 from app.api.sse import get_sse_interval, sse_headers
 from app.models import Course
+from app.repositories.confirmed_plan_repo import get_confirmed_plan
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
     BuildPlannerAdjustClickResponse,
@@ -64,7 +65,9 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.analytics.posthog import capture_course_build_event_later
+from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
 from app.shared.infra.llm_support import run_llm_tasks
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.observability.trace import (
     langsmith_trace,
     llm_trace_scope,
@@ -130,6 +133,58 @@ def _storage_scope_for_course_record(course: Course) -> CourseStorageScope:
     """Build storage scope from the already-authorized course record."""
 
     return build_course_storage_scope(user_id=course.user_id, course_id=course.id)
+
+
+def _confirmed_plan_model_override(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    confirmed_plan_id: str | None,
+) -> str | None:
+    plan_id = str(confirmed_plan_id or "").strip()
+    if not plan_id:
+        return None
+    plan = get_confirmed_plan(session, course_id=course_id, plan_id=plan_id, user_id=user_id)
+    if plan is None:
+        return None
+    return normalize_runtime_model_override((plan.plan_json or {}).get("model_override"))
+
+
+def _resolve_docgen_runtime_model_override(
+    session: Session,
+    *,
+    course: Course,
+    course_scope: CourseStorageScope,
+    user_id: str,
+) -> str | None:
+    runtime = read_knowledge_build_runtime(course.id, course_scope=course_scope)
+    runtime_lanes = (
+        runtime.docgen_runtime if runtime is not None else None,
+        getattr(runtime, "aggregate", None) if runtime is not None else None,
+        runtime.graph_runtime if runtime is not None else None,
+    )
+    for status in runtime_lanes:
+        if status is None:
+            continue
+        plan_model = _confirmed_plan_model_override(
+            session,
+            course_id=course.id,
+            user_id=user_id,
+            confirmed_plan_id=status.confirmed_plan_id,
+        )
+        if plan_model:
+            return plan_model
+        runtime_model = normalize_runtime_model_override(status.model_override)
+        if runtime_model:
+            return runtime_model
+
+    latest = get_latest_planner_session(session, course=course, user_id=user_id)
+    if latest is None:
+        return None
+    return normalize_runtime_model_override(
+        latest.model_override or getattr(latest.latest_plan, "model_override", None)
+    )
 
 
 def _suffix(value: str | None, *, length: int = 8) -> str | None:
@@ -951,6 +1006,12 @@ async def knowledge_docs_interactive_selection(
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
     course_scope = _storage_scope_for_course_record(course_record)
+    model_override = _resolve_docgen_runtime_model_override(
+        session,
+        course=course_record,
+        course_scope=course_scope,
+        user_id=user.user_id,
+    )
     manifest = ensure_published_knowledge_manifest(session, course_id=normalized, course_scope=course_scope)
     if manifest is None:
         raise HTTPException(status_code=409, detail="请先完成知识文档生成后再创建交互演示。")
@@ -1004,6 +1065,7 @@ async def knowledge_docs_interactive_selection(
             "version_no": version_no,
             "force_regenerate": body.force_regenerate,
             "replace_overlay_id": body.replace_overlay_id or "",
+            "model_override": model_override or "",
         },
     )
     traced_context = TracedExecutionContext(
@@ -1020,6 +1082,7 @@ async def knowledge_docs_interactive_selection(
             "version_no": version_no,
             "force_regenerate": body.force_regenerate,
             "replace_overlay_id": body.replace_overlay_id or "",
+            "model_override": model_override or "",
         },
     )
 
@@ -1028,6 +1091,7 @@ async def knowledge_docs_interactive_selection(
             docgen_stage="interactive_html_generation",
             selected_chars=len(body.selected_text or ""),
             prompt_chars=len(body.prompt or ""),
+            model_override=model_override or "",
         )
         trace_inputs = sanitize_langsmith_input(
             {
@@ -1069,16 +1133,17 @@ async def knowledge_docs_interactive_selection(
                     f"interactive_origin:{interactive_origin}",
                 ],
             ) as trace_run:
-                asset = await generate_selection_interactive_html_asset(
-                    course_id=normalized,
-                    course_scope=course_scope,
-                    traced_context=traced_context,
-                    anchor_title=str(anchor_title or ""),
-                    heading_path=heading_path,
-                    selected_text=body.selected_text,
-                    user_prompt=body.prompt or "",
-                    section_excerpt=nearby_context[:5000],
-                )
+                with use_runtime_model_override(model_override):
+                    asset = await generate_selection_interactive_html_asset(
+                        course_id=normalized,
+                        course_scope=course_scope,
+                        traced_context=traced_context,
+                        anchor_title=str(anchor_title or ""),
+                        heading_path=heading_path,
+                        selected_text=body.selected_text,
+                        user_prompt=body.prompt or "",
+                        section_excerpt=nearby_context[:5000],
+                    )
                 if trace_run is not None:
                     trace_run.end(
                         outputs=sanitize_langsmith_output(
