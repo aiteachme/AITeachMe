@@ -7,12 +7,12 @@ import re
 from pathlib import Path
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.parsing.formats import (
+from app.workflows.ingest.parsing.lib.formats import (
     get_text_language_hint,
     is_markdown_extension,
     is_prose_text_extension,
 )
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
 TEXT_NATIVE_AVAILABLE = True

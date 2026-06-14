@@ -21,7 +21,7 @@ from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.parsing.classifier import ClassificationResult
 from app.workflows.ingest.parsing.orchestrator import deep_enhance_file
 from app.workflows.ingest.parsing.strategy import build_parse_plan
-from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_rows
+from app.workflows.ingest.parsing.lib.runtime_helpers import _build_asset_rows
 
 logger = structlog.get_logger()
 

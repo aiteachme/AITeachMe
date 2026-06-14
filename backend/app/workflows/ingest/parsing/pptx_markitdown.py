@@ -14,7 +14,7 @@ from pathlib import Path
 import structlog
 
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 logger = structlog.get_logger()
 

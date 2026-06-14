@@ -30,7 +30,7 @@ from typing import Any
 
 import structlog
 
-from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
+from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
 
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
 logger = structlog.get_logger(__name__)

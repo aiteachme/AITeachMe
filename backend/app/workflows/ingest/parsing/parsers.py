@@ -7,18 +7,16 @@ from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
 
-import structlog
-
 from app.shared.infra.exceptions import FileParseError
-from app.workflows.ingest.parsing.features import builtin_pdf_parsing_enabled
-from app.workflows.ingest.parsing.formats import TEXT_EXTENSIONS, normalize_extension
+from app.workflows.ingest.parsing.lib.features import builtin_pdf_parsing_enabled
+from app.workflows.ingest.parsing.lib.formats import TEXT_EXTENSIONS, normalize_extension
 from app.workflows.ingest.parsing.text import (
     TEXT_FALLBACK_EXTENSION,
     TEXT_NATIVE_AVAILABLE,
     is_probably_text_file,
     parse_text_with_native,
 )
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 Parser = Callable[[str | Path, Path, ParserRunOptions], Awaitable[str]]
 
@@ -164,8 +162,6 @@ _PARSER_AVAILABILITY: dict[str, dict[str, bool]] = {
     **_build_text_parser_availability(),
 }
 
-SUPPORTED_EXTENSIONS = frozenset(PARSER_REGISTRY)
-
 
 def resolve_parser_extension(file_path: str | Path, extension: str) -> str:
     """Resolve an extension into a parser-registry key."""
@@ -207,36 +203,9 @@ def is_markitdown_available_for_extension(extension: str) -> bool:
     return resolve_markitdown_parser_name(extension) is not None
 
 
-_logger = structlog.get_logger()
-
-
-def log_parser_availability() -> None:
-    """Log active parser availability at startup."""
-
-    core_parsers = {
-        "markitdown (pdf)": _pdf_parser_available("markitdown"),
-        "markitdown (docx)": DOCX_MARKITDOWN_AVAILABLE,
-        "markitdown (pptx)": PPTX_MARKITDOWN_AVAILABLE,
-        "mammoth (docx fallback)": DOCX_MAMMOTH_AVAILABLE,
-        "docx_native": DOCX_NATIVE_AVAILABLE,
-        "text_native": TEXT_NATIVE_AVAILABLE,
-    }
-    available = [name for name, ok in core_parsers.items() if ok]
-    missing = [name for name, ok in core_parsers.items() if not ok]
-
-    _logger.info(
-        "parser_availability_summary",
-        available_count=len(available),
-        missing_count=len(missing),
-        available=available,
-        missing=missing or None,
-    )
-
-
 __all__ = [
     "DEFAULT_PARSER_CHAIN",
     "PARSER_REGISTRY",
-    "SUPPORTED_EXTENSIONS",
     "get_available_parsers",
     "is_markitdown_available_for_extension",
     "log_parser_availability",

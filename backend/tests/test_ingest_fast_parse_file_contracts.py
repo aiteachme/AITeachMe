@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.fast_parse.lib import file as file_nodes
+from app.workflows.ingest.parsing.lib import file as file_nodes
 from app.workflows.ingest.parsing.decision import (
     build_markitdown_capability,
     build_mineru_capability,

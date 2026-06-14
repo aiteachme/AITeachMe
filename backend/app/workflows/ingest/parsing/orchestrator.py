@@ -121,7 +121,7 @@ async def fast_parse_file(
             )
 
             # Determine if Phase 2 is needed
-            from app.workflows.ingest.parsing.formats import is_text_extension
+            from app.workflows.ingest.parsing.lib.formats import is_text_extension
             needs_quality_reparse = False
             needs_asset_ocr = (
                 plan.options.enable_asset_vision_ocr

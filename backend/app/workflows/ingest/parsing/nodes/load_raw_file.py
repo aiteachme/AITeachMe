@@ -23,14 +23,14 @@ from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.path_helpers import build_asset_name_prefix
 from app.workflows.ingest.parsing.classifier import classify_file
-from app.workflows.ingest.parsing.defaults import (
+from app.workflows.ingest.parsing.lib.defaults import (
     DEFAULT_MINERU_ENABLE_FORMULA,
     DEFAULT_MINERU_ENABLE_TABLE,
     DEFAULT_MINERU_IS_OCR,
     DEFAULT_MINERU_MODEL_VERSION,
 )
 from app.workflows.ingest.parsing.decision import build_parse_decision
-from app.workflows.ingest.parsing.formats import (
+from app.workflows.ingest.parsing.lib.formats import (
     categorize_text_extension,
     get_text_language_hint,
     is_image_extension,
@@ -42,9 +42,9 @@ from app.workflows.ingest.parsing.parsers import (
     resolve_markitdown_parser_name,
 )
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
-from app.workflows.ingest.parsing.types import ParserRunOptions
-from app.workflows.ingest.fast_parse.lib.common import workflow_logger
-from app.workflows.ingest.fast_parse.state import IngestParseState
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.common import workflow_logger
+from app.workflows.ingest.parsing.state import IngestParseState
 
 
 def _decode_json_object(raw: str | None) -> dict[str, object]:

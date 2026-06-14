@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.parsing.defaults import DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
+from app.workflows.ingest.parsing.lib.defaults import DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
@@ -25,15 +25,15 @@ from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
 )
 from app.workflows.ingest.parsing.orchestrator import fast_parse_file
-from app.workflows.ingest.parsing.formats import is_image_extension
-from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError
+from app.workflows.ingest.parsing.lib.formats import is_image_extension
+from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
-from app.workflows.ingest.fast_parse.lib.common import workflow_logger
-from app.workflows.ingest.fast_parse.lib.runtime_helpers import (
+from app.workflows.ingest.parsing.lib.common import workflow_logger
+from app.workflows.ingest.parsing.lib.runtime_helpers import (
     _ExternalFastParseResult,
     _compute_quality_score,
 )
-from app.workflows.ingest.fast_parse.state import IngestParseState
+from app.workflows.ingest.parsing.state import IngestParseState
 
 
 def _classification_for_quality_score(state: IngestParseState) -> dict[str, object]:

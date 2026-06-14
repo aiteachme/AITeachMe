@@ -14,9 +14,9 @@ from app.shared.infra.storage import get_content_store
 from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, replace_raw_file_assets, update_raw_file
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.fast_parse.lib.common import workflow_logger
-from app.workflows.ingest.fast_parse.lib.runtime_helpers import _build_asset_rows
-from app.workflows.ingest.fast_parse.state import IngestParseState
+from app.workflows.ingest.parsing.lib.common import workflow_logger
+from app.workflows.ingest.parsing.lib.runtime_helpers import _build_asset_rows
+from app.workflows.ingest.parsing.state import IngestParseState
 
 
 def _cleanup_temp_dir(state: IngestParseState) -> None:

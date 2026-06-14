@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from app.workflows.ingest.parsing.classifier import ClassificationResult
-from app.workflows.ingest.parsing.provider_contracts import ParseDecision
+from app.workflows.ingest.parsing.lib.provider_contracts import ParseDecision
 from app.workflows.ingest.parsing.strategy import ParsePlan
 
 

@@ -16,8 +16,8 @@ import structlog
 from app.shared.infra.database import managed_session
 from app.models import IngestStatus, TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
-from app.workflows.ingest.fast_parse.lib.runtime_helpers import _background_tasks
-from app.workflows.ingest.fast_parse.state import IngestParseState
+from app.workflows.ingest.parsing.lib.runtime_helpers import _background_tasks
+from app.workflows.ingest.parsing.state import IngestParseState
 
 logger = structlog.get_logger(__name__)
 
@@ -65,7 +65,7 @@ def dispatch_enhancement_if_needed(
     if not user_id or not file_id:
         return False
 
-    from app.workflows.ingest.fast_parse.nodes.enhance import _run_deep_enhance_background
+    from app.workflows.ingest.parsing.nodes.enhance import _run_deep_enhance_background
 
     enhance_coro = _run_deep_enhance_background(
         user_id=user_id,

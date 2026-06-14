@@ -16,7 +16,7 @@ from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_resu
 from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.ingest.common.node_tracing import named_route, traced_ingest_node
 from app.workflows.ingest.parsing.prompts import PROMPTS
-from app.workflows.ingest.fast_parse.nodes import (
+from app.workflows.ingest.parsing.nodes import (
     build_classify_file_node,
     build_compute_fingerprint_node,
     build_finalize_failure_node,
@@ -25,12 +25,12 @@ from app.workflows.ingest.fast_parse.nodes import (
     build_parse_file_node,
     build_plan_parse_node,
 )
-from app.workflows.ingest.fast_parse.state import (
+from app.workflows.ingest.parsing.state import (
     IngestParseGraphInput,
     IngestParseGraphOutput,
     IngestParseState,
 )
-from app.workflows.ingest.fast_parse.lib.lifecycle import mark_parse_workflow_failed
+from app.workflows.ingest.parsing.lib.lifecycle import mark_parse_workflow_failed
 
 logger = structlog.get_logger(__name__)
 

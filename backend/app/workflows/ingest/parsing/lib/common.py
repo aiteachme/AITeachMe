@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.fast_parse.state import IngestParseState
+from app.workflows.ingest.parsing.state import IngestParseState
 
 
 def workflow_logger(context: WorkflowContext, state: IngestParseState):

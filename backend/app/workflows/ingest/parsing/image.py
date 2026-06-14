@@ -19,7 +19,7 @@ from app.workflows.ingest.parsing.lib.model_policy import (
     IngestParsingModelStep,
     ingest_parsing_completion_kwargs_with_metadata,
 )
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
 from app.workflows.ingest.parsing.prompts import get_image_parse_prompt
 
@@ -28,48 +28,6 @@ logger = structlog.get_logger()
 
 _UNCLEAR_MARKDOWN = "[unclear]"
 _VisualModelSelector = Literal["vision", "ocr"]
-
-
-async def parse_image_with_llm_vision(
-    file_path: str | Path,
-    asset_dir: Path,
-    options: ParserRunOptions,
-) -> str:
-    """Convert a directly uploaded image into markdown via the vision model."""
-
-    path = Path(file_path)
-    logger.info(
-        "parse_image_start",
-        filename=path.name,
-        ocr_language_mode=options.ocr_language_mode,
-        model_selector="vision",
-    )
-
-    image_bytes = path.read_bytes()
-    original_filename = save_image_bytes(
-        image_bytes,
-        asset_dir,
-        name_hint=f"original_{path.stem}",
-        ext=path.suffix,
-        name_prefix=options.asset_name_prefix,
-    )
-
-    try:
-        mime_type = MIME_MAP.get(path.suffix.lower(), "image/png")
-        text = await parse_image_bytes_with_llm_vision(
-            image_bytes,
-            mime_type=mime_type,
-            language_mode=options.ocr_language_mode,
-            model_selector="vision",
-        )
-    except Exception as exc:
-        logger.error("parse_image_failed", filename=path.name, error=str(exc))
-        raise FileParseError(path.name, reason=f"Image parsing failed: {exc}") from exc
-
-    if not text.strip():
-        raise FileParseError(path.name, reason="Image parsing returned empty markdown.")
-
-    return f"{text.strip()}\n\n![Original image]({original_filename})\n"
 
 
 async def parse_image_bytes_with_llm_vision(
