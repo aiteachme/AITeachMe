@@ -294,13 +294,13 @@ export function TopBar({ className }: TopBarProps) {
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem("token");
     try {
       const response = await apiClient<ApiResponse<AuthSessionData>>({
         url: "/api/v1/auth/logout",
         method: "POST",
         data: {},
       });
+      localStorage.removeItem("token");
       const currentUser = response.data.current_user ?? null;
       trackAnalyticsEvent("auth_logout_succeeded", {
         was_authenticated: Boolean(authUser?.is_authenticated),
@@ -313,6 +313,7 @@ export function TopBar({ className }: TopBarProps) {
       });
       setAuthUser(currentUser);
     } catch {
+      localStorage.removeItem("token");
       resetAnalyticsIdentity();
       setAuthUser(null);
     }

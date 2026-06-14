@@ -59,6 +59,13 @@ def _suffix(value: str | None, *, length: int = 8) -> str | None:
     return normalized[-length:] if normalized else None
 
 
+def _email_domain(email: str | None) -> str | None:
+    normalized = str(email or "").strip().lower()
+    if "@" not in normalized:
+        return None
+    return normalized.rsplit("@", 1)[-1] or None
+
+
 def _insert_id(event: str, parts: list[str]) -> str:
     normalized_parts = [event, *(part.strip() for part in parts if part and part.strip())]
     digest = hashlib.sha256(":".join(normalized_parts).encode("utf-8")).hexdigest()[:32]
@@ -139,6 +146,100 @@ def capture_posthog_event(
             error=str(last_error),
         )
     return False
+
+
+def capture_product_event(
+    event: str,
+    *,
+    user_id: str | None,
+    insert_id_parts: list[str],
+    properties: dict[str, Any] | None = None,
+    course_id: str | None = None,
+    device_key: str | None = None,
+    email: str | None = None,
+    is_authenticated: bool | None = None,
+    timestamp: datetime | str | None = None,
+) -> bool:
+    """Capture one backend product event with privacy-preserving common fields."""
+
+    normalized_user_id = str(user_id or "").strip()
+    normalized_course_id = str(course_id or "").strip()
+    normalized_device_key = str(device_key or "").strip()
+    distinct_id = normalized_user_id or f"device:{_insert_id('device', [normalized_device_key])}"
+    event_properties = dict(properties or {})
+    event_properties.update(
+        {
+            "$insert_id": _insert_id(
+                event,
+                [
+                    normalized_user_id or "unknown_user",
+                    normalized_course_id or "",
+                    normalized_device_key or "",
+                    *insert_id_parts,
+                ],
+            ),
+            "analytics_source": "backend",
+            "is_authenticated": bool(is_authenticated),
+            "user_id_present": bool(normalized_user_id),
+            "user_id_suffix": _suffix(normalized_user_id),
+            "course_id_present": bool(normalized_course_id),
+            "course_id_suffix": _suffix(normalized_course_id),
+            "device_key_present": bool(normalized_device_key),
+            "device_key_suffix": _suffix(normalized_device_key),
+            "account_domain": _email_domain(email),
+        }
+    )
+    return capture_posthog_event(
+        event,
+        distinct_id=distinct_id,
+        properties=event_properties,
+        timestamp=timestamp,
+    )
+
+
+def capture_product_event_later(
+    event: str,
+    *,
+    user_id: str | None,
+    insert_id_parts: list[str],
+    properties: dict[str, Any] | None = None,
+    course_id: str | None = None,
+    device_key: str | None = None,
+    email: str | None = None,
+    is_authenticated: bool | None = None,
+    timestamp: datetime | str | None = None,
+) -> Future[bool] | None:
+    """Queue a backend product event without blocking the API request path."""
+
+    if not is_posthog_enabled():
+        return None
+
+    event_timestamp = timestamp or datetime.now(timezone.utc)
+    future = _POSTHOG_EXECUTOR.submit(
+        capture_product_event,
+        event,
+        user_id=user_id,
+        insert_id_parts=list(insert_id_parts),
+        properties=dict(properties or {}),
+        course_id=course_id,
+        device_key=device_key,
+        email=email,
+        is_authenticated=is_authenticated,
+        timestamp=event_timestamp,
+    )
+
+    def _log_unhandled_exception(done: Future[bool]) -> None:
+        try:
+            done.result()
+        except Exception as exc:  # pragma: no cover - defensive executor guard
+            logger.warning(
+                "posthog_background_capture_failed",
+                posthog_event=event,
+                error=str(exc),
+            )
+
+    future.add_done_callback(_log_unhandled_exception)
+    return future
 
 
 def capture_course_build_event(

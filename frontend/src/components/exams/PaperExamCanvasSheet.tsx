@@ -24,6 +24,8 @@ import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } 
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
+  formatAnswerDisplayValue,
+  formatTrueFalseOptionLabel,
   getExamPaperDisplayTitle,
   getExamTotalScore,
   getOptionLabel,
@@ -670,6 +672,7 @@ function PaperExamQuestionBlock({
               {choiceOptions.map((option, optionIndex) => {
                 const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
                 const optionValue = isTrueFalse ? option : optionLabel;
+                const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
                 const isSelected = isMultipleChoice ? selectedMultiChoice.has(optionValue) : answerValue === optionValue;
                 const isCorrectOption = isMultipleChoice
                   ? correctMultiChoice.has(optionValue)
@@ -699,7 +702,7 @@ function PaperExamQuestionBlock({
                       });
                     }}
                     className={cn(
-                      "flex min-h-6 items-start gap-1.5 rounded-none border-0 bg-transparent px-0 py-0 text-left text-[13px] leading-6 text-slate-950 transition hover:bg-slate-100/60 dark:text-slate-100 dark:hover:bg-slate-900/70",
+                      "flex min-h-6 items-start gap-1.5 rounded-none border-0 bg-transparent px-0 py-0 text-left text-[14px] leading-6 text-slate-950 transition hover:bg-slate-100/60 dark:text-slate-100 dark:hover:bg-slate-900/70",
                       isReviewStage
                         ? isRightOption
                           ? "font-bold text-emerald-700 underline decoration-2 underline-offset-4 dark:text-emerald-300"
@@ -713,8 +716,8 @@ function PaperExamQuestionBlock({
                     )}
                   >
                     <span className="shrink-0">{isTrueFalse ? "" : `${optionLabel}．`}</span>
-                    <span className="min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-[13px] [&_p]:leading-6">
-                      <ExamMarkdown content={option} />
+                    <span className="min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:leading-6">
+                      <ExamMarkdown content={optionDisplay} />
                     </span>
                   </button>
                 );
@@ -723,7 +726,7 @@ function PaperExamQuestionBlock({
           ) : (
             <textarea
               className={cn(
-                "mt-1 min-h-8 w-full resize-none rounded-none border-0 border-b bg-transparent px-1 py-0.5 text-[13px] leading-6 outline-none transition",
+                "mt-1 min-h-8 w-full resize-none rounded-none border-0 border-b bg-transparent px-1 py-0.5 text-[14px] leading-6 outline-none transition",
                 isReviewStage
                   ? isCorrect
                     ? "border-emerald-400 text-emerald-950 dark:border-emerald-400 dark:text-emerald-100"
@@ -784,11 +787,11 @@ function PaperExamQuestionBlock({
           </div>
 
           {isReviewStage && showInlineReviewDetails ? (
-            <div className="mt-3 border-t border-dashed border-slate-200 pt-2 text-[11.5px] leading-5 text-slate-600 dark:border-slate-800 dark:text-slate-300">
+            <div className="mt-3 border-t border-dashed border-slate-200 pt-2 text-[14px] leading-6 text-slate-600 dark:border-slate-800 dark:text-slate-300 [&_p]:mb-1 [&_p]:leading-6">
               <p className="text-xs font-semibold text-slate-400">你的答案</p>
-              <ExamMarkdown content={item.user_answer || "未作答"} />
+              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
               <p className="mt-2 text-xs font-semibold text-slate-400">正确答案</p>
-              <ExamMarkdown content={item.correct_answer || "无标准答案"} />
+              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
               <p className="mt-2 text-xs font-semibold text-slate-400">解析</p>
               <ExamMarkdown content={item.explanation || "暂无解析"} />
             </div>

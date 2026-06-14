@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -65,13 +65,15 @@ import {
   buildQuestionAiDraft,
   buildQuestionSelectedText,
   buildQuestionSelectionContext,
+  formatAnswerDisplayValue,
 } from "../components/exams/examDisplay";
-import { gradeQuestionTemplateAnswer } from "../components/exams/questionTemplateGrading";
+import { gradeQuestionTemplateAnswer, isAiGradedQuestionType } from "../components/exams/questionTemplateGrading";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
 } from "../components/exams/examGenerationStream";
 import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreference";
+import { trackCourseAnalyticsEvent } from "../lib/analytics";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
@@ -563,24 +565,24 @@ export function ExamsPage() {
               </div>
               <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
                 <Button
-                  size="icon"
                   variant="outline"
-                  className="!h-11 !w-11 rounded-xl text-slate-600 border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 hover:text-indigo-600 dark:hover:text-indigo-400 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all duration-300 shadow-sm"
+                  className="!h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 font-semibold text-slate-600 shadow-sm transition-all duration-300 hover:border-indigo-300 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-indigo-500/30 dark:hover:bg-slate-800/40 dark:hover:text-indigo-400 sm:flex-none"
                   onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-templates"))}
                   aria-label="题库查看"
                   title="题库查看"
                 >
-                  <BookOpen className="h-4 w-4" />
+                  <BookOpen className="h-4 w-4 shrink-0" />
+                  <span>题库查看</span>
                 </Button>
                 <Button
-                  size="icon"
                   variant="outline"
-                  className="!h-11 !w-11 rounded-xl text-slate-600 border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 hover:text-indigo-600 dark:hover:text-indigo-400 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-all duration-300 shadow-sm"
+                  className="!h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 font-semibold text-slate-600 shadow-sm transition-all duration-300 hover:border-indigo-300 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-indigo-500/30 dark:hover:bg-slate-800/40 dark:hover:text-indigo-400 sm:flex-none"
                   onClick={() => navigate(buildCourseSubPath(courseId, "exams", "question-types"))}
                   aria-label="题型查看"
                   title="题型查看"
                 >
-                  <Tags className="h-4 w-4" />
+                  <Tags className="h-4 w-4 shrink-0" />
+                  <span>题型查看</span>
                 </Button>
               </div>
             </div>
@@ -798,6 +800,26 @@ function buildStandaloneMasteryDrillPaper(
   };
 }
 
+function buildMasteryDrillAnalyticsProperties(
+  paper: ExamPaperDetailResponse,
+  extraProperties: Record<string, unknown> = {},
+) {
+  const items = paper.items ?? [];
+  const subjectiveQuestionCount = items.filter((item) => isAiGradedQuestionType(item.question_type)).length;
+  const questionCount = items.length;
+
+  return {
+    analytics_source: "frontend",
+    exam_mode: MASTERY_DRILL_EXAM_MODE,
+    drill_surface: "standalone",
+    question_count: questionCount,
+    objective_question_count: Math.max(0, questionCount - subjectiveQuestionCount),
+    subjective_question_count: subjectiveQuestionCount,
+    marked_question_count: items.filter((item) => item.is_marked === true).length,
+    ...extraProperties,
+  };
+}
+
 export function MasteryDrillPage() {
   const { courseId } = useParams();
   const navigate = useNavigate();
@@ -806,7 +828,9 @@ export function MasteryDrillPage() {
   const { openAiInteraction } = useAiInteraction();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [sessionSeed, setSessionSeed] = useState(() => Date.now());
-  const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const startedSessionKeyRef = useRef<string | null>(null);
+  const completedSessionKeyRef = useRef<string | null>(null);
+  const startedAtMsRef = useRef<number | null>(null);
 
   const templatesQueryKey = useMemo(() => ["exam-question-templates", courseId] as const, [courseId]);
   const templatesQuery = useQuery({
@@ -822,11 +846,32 @@ export function MasteryDrillPage() {
     () => (courseId ? buildStandaloneMasteryDrillPaper(courseId, templates, sessionSeed) : null),
     [courseId, sessionSeed, templates],
   );
+  const selectedCount = drillPaper?.items?.length ?? 0;
+
+  useEffect(() => {
+    if (!courseId || !templatesQuery.isSuccess || !drillPaper || selectedCount <= 0) {
+      return;
+    }
+    const sessionKey = `${courseId}:${sessionSeed}`;
+    if (startedSessionKeyRef.current === sessionKey) {
+      return;
+    }
+    startedSessionKeyRef.current = sessionKey;
+    startedAtMsRef.current = Date.now();
+    trackCourseAnalyticsEvent(
+      "mastery_drill_started",
+      courseId,
+      buildMasteryDrillAnalyticsProperties(drillPaper),
+    );
+  }, [courseId, drillPaper, selectedCount, sessionSeed, templatesQuery.isSuccess]);
 
   const restartDrill = () => {
     setAnswers({});
-    setCompletedAt(null);
-    setSessionSeed(Date.now());
+    startedAtMsRef.current = null;
+    setSessionSeed((current) => {
+      const nextSeed = Date.now();
+      return nextSeed === current ? current + 1 : nextSeed;
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -925,7 +970,6 @@ export function MasteryDrillPage() {
     );
   }
 
-  const selectedCount = drillPaper?.items?.length ?? 0;
   const markingQuestionTemplateId = questionTemplateMarkMutation.isPending
     ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
     : null;
@@ -981,16 +1025,29 @@ export function MasteryDrillPage() {
             onRestart={restartDrill}
             completionDescription="本轮结果只保留在当前页面，不会生成试卷记录，也不会出现在历史记录里。"
             onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
-            onComplete={(finalAnswers) => {
+            onComplete={(finalAnswers, summary) => {
               setAnswers(finalAnswers);
-              if (!completedAt) {
+              const sessionKey = `${courseId}:${sessionSeed}`;
+              const isFirstCompletion = completedSessionKeyRef.current !== sessionKey;
+              if (isFirstCompletion) {
+                completedSessionKeyRef.current = sessionKey;
+                const startedAtMs = startedAtMsRef.current;
+                const durationMs = startedAtMs === null ? undefined : Math.max(0, Date.now() - startedAtMs);
+                trackCourseAnalyticsEvent(
+                  "mastery_drill_completed",
+                  courseId,
+                  buildMasteryDrillAnalyticsProperties(drillPaper, {
+                    duration_ms: durationMs,
+                    total_attempt_count: summary.totalAttemptCount,
+                    wrong_attempt_count: summary.wrongAttemptCount,
+                  }),
+                );
                 toast({
                   title: "闯关完成",
                   description: "本轮没有生成试卷记录，可直接再来一轮。",
                   variant: "success",
                 });
               }
-              setCompletedAt((current) => current ?? new Date().toISOString());
             }}
             onQuestionAi={openQuestionAi}
             onQuestionMarkToggle={toggleQuestionMark}
@@ -1255,7 +1312,7 @@ function QuestionTemplateDetailCard({
           </header>
 
           <QuestionTemplatePlainSection title="标准答案" showDivider={false}>
-            <ExamMarkdown content={item.answer || "暂无答案"} />
+            <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.answer, "暂无答案")} />
           </QuestionTemplatePlainSection>
 
           <QuestionTemplatePlainSection title="解析">
@@ -1306,11 +1363,11 @@ function QuestionTemplateDetailCard({
                       <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
                         <div>
                           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">我的答案</p>
-                          <ExamMarkdown content={record.user_answer || "未作答"} />
+                          <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, record.user_answer)} />
                         </div>
                         <div>
                           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">参考答案</p>
-                          <ExamMarkdown content={record.correct_answer || "暂无答案"} />
+                          <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, record.correct_answer, "暂无答案")} />
                         </div>
                         {record.feedback_text || record.error_cause_label ? (
                           <div className="border-t border-dashed border-slate-200 pt-3 dark:border-slate-800">

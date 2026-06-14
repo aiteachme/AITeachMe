@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type ReactElement } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { apiClient, BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
@@ -121,9 +121,14 @@ type ApiResponse<T> = {
   data: T;
 };
 
-function AnalyticsIdentityBootstrap() {
+function AnalyticsIdentityBootstrap({ onReady }: { onReady: () => void }) {
   useEffect(() => {
     let cancelled = false;
+    const markReady = () => {
+      if (!cancelled) {
+        onReady();
+      }
+    };
 
     const syncCurrentUser = async () => {
       try {
@@ -141,9 +146,11 @@ function AnalyticsIdentityBootstrap() {
           email: currentUser?.email,
           isAuthenticated: currentUser?.is_authenticated,
         });
+        markReady();
       } catch {
         if (!cancelled) {
           syncAnalyticsUserIdentity(null);
+          markReady();
         }
       }
     };
@@ -152,7 +159,7 @@ function AnalyticsIdentityBootstrap() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onReady]);
 
   return null;
 }
@@ -196,6 +203,8 @@ function DesktopUpdatePromptMount() {
 
 function App() {
   const Router = isElectronRuntime() ? HashRouter : BrowserRouter;
+  const [analyticsIdentityReady, setAnalyticsIdentityReady] = useState(false);
+  const markAnalyticsIdentityReady = useCallback(() => setAnalyticsIdentityReady(true), []);
 
   return (
     <ThemeProvider defaultTheme="system" storageKey={THEME_STORAGE_KEY}>
@@ -203,11 +212,11 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <BackendConnectivityBridge />
           <RuntimeSettingsBootstrap />
-          <AnalyticsIdentityBootstrap />
+          <AnalyticsIdentityBootstrap onReady={markAnalyticsIdentityReady} />
           <ToastProvider>
             <DesktopUpdatePromptMount />
             <Router unstable_useTransitions={false}>
-              <RouteAnalyticsBridge />
+              <RouteAnalyticsBridge analyticsIdentityReady={analyticsIdentityReady} />
               <ElectronWindowFrame>
                 <Routes>
                   <Route path="/" element={<Layout />}>

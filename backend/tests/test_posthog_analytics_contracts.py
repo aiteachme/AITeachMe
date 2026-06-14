@@ -74,6 +74,44 @@ def test_capture_posthog_event_sends_top_level_timestamp(monkeypatch) -> None:
     assert calls[0]["timestamp"] == "2026-06-05T09:30:00+00:00"
 
 
+def test_capture_product_event_adds_safe_common_properties(monkeypatch) -> None:
+    captured: list[tuple[str, str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        posthog,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {})
+        )
+        or True,
+    )
+
+    assert posthog.capture_product_event(
+        "course_created",
+        user_id="user_analytics_12345678",
+        course_id="course_analytics_87654321",
+        device_key="device-key-sensitive-abcdef12",
+        email="Learner@Example.COM",
+        is_authenticated=True,
+        insert_id_parts=["course_analytics_87654321"],
+        properties={"course_creation_mode": "draft"},
+    )
+
+    event, distinct_id, properties = captured[0]
+    assert event == "course_created"
+    assert distinct_id == "user_analytics_12345678"
+    assert properties["analytics_source"] == "backend"
+    assert properties["is_authenticated"] is True
+    assert properties["account_domain"] == "example.com"
+    assert properties["user_id_suffix"] == "12345678"
+    assert properties["course_id_suffix"] == "87654321"
+    assert properties["device_key_suffix"] == "abcdef12"
+    assert properties["course_creation_mode"] == "draft"
+    assert str(properties["$insert_id"]).startswith("course_created:")
+    assert "course_analytics_87654321" not in str(properties["$insert_id"])
+    assert "device-key-sensitive-abcdef12" not in str(properties)
+
+
 def test_capture_course_build_event_later_queues_without_inline_capture(monkeypatch) -> None:
     submitted: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
     inline_calls: list[str] = []

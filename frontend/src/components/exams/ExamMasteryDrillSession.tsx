@@ -15,15 +15,26 @@ import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/g
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/Button";
 import { ExamMarkdown } from "./ExamMarkdown";
-import { getOptionLabel, splitMultiChoiceAnswer } from "./examDisplay";
+import {
+  formatAnswerDisplayValue,
+  formatQuestionTypeLabel,
+  formatTrueFalseOptionLabel,
+  getOptionLabel,
+  splitMultiChoiceAnswer,
+} from "./examDisplay";
 import { isAiGradedQuestionType, type QuestionTemplateGradeResult } from "./questionTemplateGrading";
+
+export interface MasteryDrillCompletionSummary {
+  totalAttemptCount: number;
+  wrongAttemptCount: number;
+}
 
 interface ExamMasteryDrillSessionProps {
   paper: ExamPaperDetailResponse;
   answers: Record<number, string>;
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   isCompleting: boolean;
-  onComplete: (finalAnswers: Record<number, string>) => void;
+  onComplete: (finalAnswers: Record<number, string>, summary: MasteryDrillCompletionSummary) => void;
   onBack?: () => void;
   onRestart?: () => void;
   completionDescription?: string;
@@ -86,15 +97,15 @@ function isAnswerCorrect(item: ExamPaperItemResponse, answer: string) {
   return normalizeTextAnswer(item.correct_answer) === normalizeTextAnswer(answer);
 }
 
-function formatAnswerForDisplay(value?: string | null) {
-  return String(value ?? "").trim() || "未作答";
+function formatAnswerForDisplay(questionType: string, value?: string | null) {
+  return formatAnswerDisplayValue(questionType, value);
 }
 
 function DrillAnswerBlock({ title, content }: { title: string; content: string }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950/80">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{title}</p>
-      <div className="mt-2 text-sm leading-7 text-slate-700 dark:text-slate-300 [&_p]:mb-1 [&_.katex-display]:my-3">
+      <div className="mt-2 font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-1 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
         <ExamMarkdown content={content} />
       </div>
     </section>
@@ -196,11 +207,22 @@ export function ExamMasteryDrillSession({
         ...answers,
         [currentItem.item_order]: feedback.answer,
       };
+      const finalAttemptStats = {
+        ...attemptStats,
+        [currentItem.id]: {
+          attempts: Math.max(1, attemptStats[currentItem.id]?.attempts ?? 0),
+          wrong: attemptStats[currentItem.id]?.wrong ?? 0,
+          correct: true,
+        },
+      };
       setCompletedIds((current) => new Set([...current, currentItem.id]));
       setQueue(remainingQueue);
       setFeedback(null);
       if (remainingQueue.length === 0) {
-        onComplete(finalAnswers);
+        onComplete(finalAnswers, {
+          totalAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.attempts, 0),
+          wrongAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.wrong, 0),
+        });
       }
       return;
     }
@@ -309,7 +331,7 @@ export function ExamMasteryDrillSession({
                 {currentItem.item_order}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {currentItem.question_type}
+                {formatQuestionTypeLabel(currentItem.question_type)}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -341,7 +363,7 @@ export function ExamMasteryDrillSession({
             </div>
           </div>
 
-          <div className="break-words font-serif text-lg font-semibold leading-8 text-slate-950 dark:text-slate-100 [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+          <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 dark:text-slate-100 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
             <ExamMarkdown content={currentItem.stem} />
           </div>
 
@@ -350,6 +372,7 @@ export function ExamMasteryDrillSession({
               {choiceOptions.map((option, optionIndex) => {
                 const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
                 const optionValue = isTrueFalse ? option : optionLabel;
+                const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
                 const isSelected = isMultipleChoice
                   ? selectedMultiChoice.has(optionValue)
                   : answerValue === optionValue;
@@ -380,7 +403,7 @@ export function ExamMasteryDrillSession({
                       setCurrentAnswer(currentItem, Array.from(next).sort().join(","));
                     }}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm leading-7 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-base",
+                      "flex items-center gap-3 rounded-lg border px-3 py-3 text-left font-serif text-base leading-8 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-lg",
                       showCorrect
                         ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
                         : showWrong
@@ -421,8 +444,8 @@ export function ExamMasteryDrillSession({
                     <div className="min-w-0 flex-1">
                       <div className="flex gap-3">
                         {!isTrueFalse ? <span className="shrink-0 font-semibold">{optionLabel}.</span> : null}
-                        <div className="min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-7 sm:[&_p]:text-base">
-                          <ExamMarkdown content={option} />
+                        <div className="min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-base [&_p]:leading-8 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex]:text-inherit">
+                          <ExamMarkdown content={optionDisplay} />
                         </div>
                       </div>
                     </div>
@@ -432,7 +455,7 @@ export function ExamMasteryDrillSession({
             </div>
           ) : (
             <textarea
-              className="min-h-32 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-base leading-8 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70"
+              className="min-h-32 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 font-serif text-base leading-8 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70 sm:text-lg"
               placeholder="输入你的作答"
               value={answerValue}
               disabled={Boolean(hasFeedback) || isCompleting || isCheckingAnswer}
@@ -463,8 +486,8 @@ export function ExamMasteryDrillSession({
                 </div>
               </div>
               <div className="mt-4 grid gap-3">
-                <DrillAnswerBlock title="你的答案" content={formatAnswerForDisplay(activeFeedback.answer)} />
-                <DrillAnswerBlock title="正确答案" content={formatAnswerForDisplay(currentItem.correct_answer)} />
+                <DrillAnswerBlock title="你的答案" content={formatAnswerForDisplay(currentItem.question_type, activeFeedback.answer)} />
+                <DrillAnswerBlock title="正确答案" content={formatAnswerForDisplay(currentItem.question_type, currentItem.correct_answer)} />
                 {activeFeedback.feedbackText ? (
                   <DrillAnswerBlock title="判题反馈" content={activeFeedback.feedbackText} />
                 ) : null}

@@ -17,9 +17,10 @@ from app.api.deps import CurrentUserContext
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 from app.models import Course, ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge_unit import KnowledgeUnit
-from app.schemas.exams import ExamGenerateRequest, PaperPreview
+from app.schemas.exams import ExamGenerateRequest, ExamSubmitRequest, PaperPreview
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
+from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 from app.workflows.examine.question_build.lib import generator
 
 
@@ -416,12 +417,18 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     units = _seed_exam_course(managed_exam_session)
     unit_ids = [int(unit.id or 0) for unit in units]
     events: list[tuple[str, int, str, dict[str, object]]] = []
+    captured: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(exams_api, "load_course_llm_context", lambda *args, **kwargs: "course context")
     monkeypatch.setattr(
         exams_api,
         "_publish_exam_event",
         lambda course_id, paper_id, event, data: events.append((course_id, paper_id, event, data)),
+    )
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
     )
 
     async def fake_question_build_workflow(**kwargs):
@@ -588,6 +595,14 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     assert context["paper_layout"]["pages"][0]["question_orders"] == [1, 2]
     assert [row.generation_status for row in preview.rows] == ["generated", "generated", "failed"]
     assert any(event == "done" and data["status"] == "ready" for _course, _paper, event, data in events)
+    assert captured[0][0] == "exam_generated"
+    assert captured[0][1]["course_id"] == COURSE_ID
+    assert captured[0][1]["properties"]["exam_mode"] == "web_practice"
+    assert captured[0][1]["properties"]["exam_status"] == "ready"
+    assert captured[0][1]["properties"]["requested_question_count"] == 3
+    assert captured[0][1]["properties"]["sample_file_count"] == 2
+    assert captured[0][1]["properties"]["served_from_prepared"] is False
+    assert "matrix practice" not in str(captured[0][1]["properties"])
 
 
 @pytest.mark.anyio
@@ -706,10 +721,16 @@ async def test_exam_generation_background_marks_failed_when_units_are_missing(
 ) -> None:
     _seed_exam_course(managed_exam_session, with_units=False)
     events: list[tuple[str, dict[str, object]]] = []
+    captured: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
         exams_api,
         "_publish_exam_event",
         lambda _course_id, _paper_id, event, data: events.append((event, data)),
+    )
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
     )
     config_snapshot = exams_api._build_exam_config_snapshot(
         course_id=COURSE_ID,
@@ -756,12 +777,22 @@ async def test_exam_generation_background_marks_failed_when_units_are_missing(
     assert "No persisted KnowledgeUnits" in context["error_message"]
     assert events[-1][0] == "done"
     assert events[-1][1]["status"] == "failed"
+    assert all(event != "exam_generated" for event, _kwargs in captured)
 
 
 @pytest.mark.anyio
-async def test_generate_exam_endpoint_creates_paper_and_schedules_background(session: Session) -> None:
+async def test_generate_exam_endpoint_creates_paper_and_schedules_background(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     units = _seed_exam_course(session)
     background_tasks = BackgroundTasks()
+    captured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
+    )
     response = await exams_api.generate_exam(
         request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
         background_tasks=background_tasks,
@@ -786,6 +817,145 @@ async def test_generate_exam_endpoint_creates_paper_and_schedules_background(ses
     assert json.loads(papers[0].config_snapshot_json)["knowledge_unit_ids"] == [
         int(unit.id or 0) for unit in units
     ]
+    assert captured[0][0] == "exam_generation_requested"
+    assert captured[0][1]["course_id"] == COURSE_ID
+    assert captured[0][1]["properties"]["exam_mode"] == "web_practice"
+    assert captured[0][1]["properties"]["requested_question_count"] == 2
+    assert "focus on matrices" not in str(captured[0][1]["properties"])
+
+
+@pytest.mark.anyio
+async def test_submit_exam_endpoint_captures_submit_and_grade_events(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_exam_course(session, with_units=False)
+    template_a = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="fill_blank",
+        difficulty="easy",
+        stem="A matrix with nonzero determinant is {{blank}}.",
+        stem_hash="analytics-submit-a",
+        answer="invertible",
+        explanation="Nonzero determinant implies invertibility.",
+    )
+    template_b = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="true_false",
+        difficulty="easy",
+        stem="Every square matrix is invertible.",
+        stem_hash="analytics-submit-b",
+        answer="False",
+        explanation="Singular square matrices are not invertible.",
+    )
+    session.add_all([template_a, template_b])
+    session.commit()
+    session.refresh(template_a)
+    session.refresh(template_b)
+
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="ready",
+        total_items=2,
+        total_score=2.0,
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    session.add_all(
+        [
+            ExamPaperItem(
+                exam_paper_id=int(paper.id or 0),
+                question_template_id=int(template_a.id or 0),
+                item_order=1,
+                stem_snapshot=template_a.stem,
+                answer_snapshot=template_a.answer,
+                explanation_snapshot=template_a.explanation,
+                difficulty=template_a.difficulty,
+                question_type=template_a.question_type,
+                score=1.0,
+            ),
+            ExamPaperItem(
+                exam_paper_id=int(paper.id or 0),
+                question_template_id=int(template_b.id or 0),
+                item_order=2,
+                stem_snapshot=template_b.stem,
+                answer_snapshot=template_b.answer,
+                explanation_snapshot=template_b.explanation,
+                difficulty=template_b.difficulty,
+                question_type=template_b.question_type,
+                score=1.0,
+            ),
+        ]
+    )
+    session.commit()
+
+    captured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
+    )
+
+    async def fake_run_exam_grade_workflow(**_kwargs):
+        return [
+            ExamItemGradeDecision(
+                is_correct=True,
+                score_obtained=1.0,
+                score_max=1.0,
+                feedback_text="Correct.",
+                error_cause_label=None,
+                grading_mode="objective_rule",
+            ),
+            ExamItemGradeDecision(
+                is_correct=False,
+                score_obtained=0.0,
+                score_max=1.0,
+                feedback_text="Incorrect.",
+                error_cause_label="concept_gap",
+                grading_mode="objective_rule",
+            ),
+        ]
+
+    async def fake_profile_update_workflow(**_kwargs):
+        return _workflow_result(
+            {
+                "mastery_result": {"states_updated": 1},
+                "review_task_ids": ["review-1"],
+            }
+        )
+
+    monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
+    monkeypatch.setattr(exams_api, "run_profile_update_workflow", fake_profile_update_workflow)
+
+    response = await exams_api.submit_exam(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        exam_paper_id=int(paper.id or 0),
+        body=ExamSubmitRequest(
+                answers=[
+                    {"item_order": 1, "answer": "invertible"},
+                    {"item_order": 2, "answer": "submitted_false_choice_sentinel"},
+                ]
+            ),
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data.score == 1.0
+    assert [event for event, _kwargs in captured] == ["exam_submitted", "exam_graded"]
+    submitted_properties = captured[0][1]["properties"]
+    graded_properties = captured[1][1]["properties"]
+    assert submitted_properties["answer_count"] == 2
+    assert submitted_properties["answered_count"] == 2
+    assert graded_properties["score_obtained"] == 1.0
+    assert graded_properties["total_score"] == 2.0
+    assert graded_properties["states_updated"] == 1
+    assert "invertible" not in str(submitted_properties)
+    assert "submitted_false_choice_sentinel" not in str(graded_properties)
 
 
 def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:

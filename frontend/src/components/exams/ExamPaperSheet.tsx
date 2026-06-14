@@ -6,6 +6,9 @@ import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import { PaperExamCanvasSheet } from "./PaperExamCanvasSheet";
 import {
+  formatAnswerDisplayValue,
+  formatQuestionTypeLabel,
+  formatTrueFalseOptionLabel,
   getAnsweredCount,
   getEstimatedExamMinutes,
   getExamPaperDisplayTitle,
@@ -448,6 +451,11 @@ export function ExamPaperSheet({
                           </aside>
 
                           <div className="min-w-0 overflow-hidden">
+                            <div className="mb-3 flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold leading-4 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                {formatQuestionTypeLabel(item.question_type)}
+                              </span>
+                            </div>
                             <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 dark:text-slate-100 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
                               <ExamMarkdown content={item.stem} />
                             </div>
@@ -460,6 +468,7 @@ export function ExamPaperSheet({
                               {choiceOptions.map((option: string, optionIndex: number) => {
                                 const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
                                 const optionValue = isTrueFalse ? option : optionLabel;
+                                const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
                                 const isSelected = isMultipleChoice
                                   ? selectedMultiChoice.has(optionValue)
                                   : answerValue === optionValue;
@@ -495,7 +504,7 @@ export function ExamPaperSheet({
                                         };
                                       });
                                     }}
-                                    className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm leading-7 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-base ${
+                                    className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left font-serif text-base leading-8 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-lg ${
                                       isReviewStage
                                         ? isRightOption
                                            ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -546,7 +555,7 @@ export function ExamPaperSheet({
                                         }`}
                                       />
                                     </span>
-                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-7 sm:[&_p]:text-base sm:[&_p]:leading-7 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
+                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-base [&_p]:leading-8 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
                                       isReviewStage
                                         ? isRightOption
                                           ? "[&_p]:text-emerald-900 dark:[&_p]:text-emerald-100"
@@ -566,7 +575,7 @@ export function ExamPaperSheet({
                                           <span className="shrink-0 font-semibold">{optionLabel}.</span>
                                         )}
                                         <div className="min-w-0 flex-1">
-                                          <ExamMarkdown content={option} />
+                                          <ExamMarkdown content={optionDisplay} />
                                         </div>
                                       </div>
                                     </div>
@@ -577,7 +586,7 @@ export function ExamPaperSheet({
                           ) : (
                             <div className="mt-6 min-w-0">
                               <textarea
-                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 text-base leading-8 outline-none transition ${
+                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 font-serif text-base leading-8 outline-none transition sm:text-lg ${
                                   isReviewStage
                                     ? isCorrect
                                       ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -599,16 +608,16 @@ export function ExamPaperSheet({
 
                         {isReviewStage && showInlineReviewDetails && (
                           <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300 md:col-start-2">
-                            <div className="[&_p]:mb-2 [&_.katex-display]:my-3">
-                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
-                              <ExamMarkdown content={item.user_answer || "未作答"} />
+                            <div className="font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                              <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
+                              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
                             </div>
-                            <div className="mt-3 [&_p]:mb-2 [&_.katex-display]:my-3">
-                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">正确答案</p>
-                              <ExamMarkdown content={item.correct_answer || "无标准答案"} />
+                            <div className="mt-3 font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                              <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">正确答案</p>
+                              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
                             </div>
-                            <div className="mt-3 [&_p]:mb-2 [&_.katex-display]:my-3">
-                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
+                            <div className="mt-3 font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                              <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
                               <ExamMarkdown content={item.explanation || "暂无解析"} />
                             </div>
                             <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
