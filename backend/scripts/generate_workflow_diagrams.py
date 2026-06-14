@@ -239,10 +239,24 @@ def parse_args() -> argparse.Namespace:
 def resolve_keys(modules: list[str]) -> list[str]:
     if not modules or "all" in modules:
         return list(REGISTRY)
-    bad = [m for m in modules if m not in REGISTRY]
+    resolved: list[str] = []
+    bad: list[str] = []
+    for item in modules:
+        if item in REGISTRY:
+            resolved.append(item)
+            continue
+        module_keys = [key for key in REGISTRY if _module_of(key) == item]
+        if module_keys:
+            resolved.extend(module_keys)
+            continue
+        bad.append(item)
     if bad:
-        raise ValueError(f"Unknown: {bad}. Available: {sorted(REGISTRY)}")
-    return modules
+        available_modules = sorted({_module_of(key) for key in REGISTRY})
+        raise ValueError(
+            f"Unknown: {bad}. Available modules: {available_modules}; "
+            f"available workflow keys: {sorted(REGISTRY)}"
+        )
+    return list(dict.fromkeys(resolved))
 
 
 # ── Graph analysis ───────────────────────────────────────────────────────────
@@ -306,6 +320,19 @@ def _analyze_graph(export: WorkflowGraphExport) -> dict:
     for edge in edges:
         out_edges[edge.source].append(edge)
         in_edges[edge.target].append(edge)
+
+    disconnected = [
+        nid
+        for nid in node_ids
+        if nid not in ("__start__", "__end__")
+        and (not in_edges.get(nid) or not out_edges.get(nid))
+    ]
+    if disconnected:
+        raise RuntimeError(
+            f"Workflow export {export.key!r} has disconnected nodes after merging "
+            f"compiled LangGraph edges and extra_edges: {disconnected}. "
+            "Update the export's extra_edges for dynamic Send/fan-in routes."
+        )
 
     # Trace the happy path (main success flow)
     happy_path = _trace_happy_path(out_edges, node_ids)

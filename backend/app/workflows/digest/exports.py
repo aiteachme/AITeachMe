@@ -10,11 +10,14 @@ from app.workflows.digest.docgen.graph import (
     NODE_DOCUMENT_CONSISTENCY_REVIEW,
     NODE_ENHANCE_CHAPTERS,
     NODE_GENERATE_CHAPTERS,
+    NODE_GENERATE_UNIT_TESTS,
+    NODE_DISPLAY_NAMES as DOCGEN_NODE_DISPLAY_NAMES,
     NODE_MERGE_REVIEW,
     NODE_PUBLISH,
     NODE_REPAIR_OR_ROUTE,
     NODE_REVIEW_CHAPTERS,
     NODE_SYNC_LOCKED_TITLES,
+    NODE_SYNC_KNOWLEDGE_GRAPH,
     build_docgen_graph,
 )
 from app.workflows.digest.kg_doc_sync.graph import get_langgraph_dev_kg_doc_sync_graph
@@ -54,14 +57,16 @@ def _build_docgen_graph_for_export():
 
 _DOCGEN_SEND_EDGES = (
     f"{NODE_ASSEMBLE_CHAPTER_TASKS} -. Send xN .-> {NODE_GENERATE_CHAPTERS}",
-    f"{NODE_GENERATE_CHAPTERS} --> {NODE_ENHANCE_CHAPTERS}",
+    f"{NODE_GENERATE_CHAPTERS} --> {NODE_GENERATE_UNIT_TESTS}",
+    f"{NODE_GENERATE_UNIT_TESTS} --> {NODE_ENHANCE_CHAPTERS}",
     f"{NODE_ENHANCE_CHAPTERS} -. Send xN .-> {NODE_REVIEW_CHAPTERS}",
     f"{NODE_REVIEW_CHAPTERS} --> {NODE_DOCUMENT_CONSISTENCY_REVIEW}",
     f"{NODE_DOCUMENT_CONSISTENCY_REVIEW} --> {NODE_REPAIR_OR_ROUTE}",
     f"{NODE_REPAIR_OR_ROUTE} --> {NODE_MERGE_REVIEW}",
     f"{NODE_MERGE_REVIEW} --> {NODE_SYNC_LOCKED_TITLES}",
     f"{NODE_SYNC_LOCKED_TITLES} --> {NODE_PUBLISH}",
-    f"{NODE_PUBLISH} --> __end__",
+    f"{NODE_PUBLISH} --> {NODE_SYNC_KNOWLEDGE_GRAPH}",
+    f"{NODE_SYNC_KNOWLEDGE_GRAPH} --> __end__",
 )
 
 
@@ -80,6 +85,7 @@ WORKFLOW_EXPORTS = (
         description="Knowledge document generation workflow with fan-out parallelism.",
         build_graph=_build_docgen_graph_for_export,
         extra_edges=_DOCGEN_SEND_EDGES,
+        node_labels=DOCGEN_NODE_DISPLAY_NAMES,
         prompts=DOCGEN_PROMPTS,
     ),
     WorkflowGraphExport(
