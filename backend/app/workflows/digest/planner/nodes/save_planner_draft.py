@@ -7,6 +7,7 @@ import structlog
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import normalize_planner_draft
+from app.workflows.digest.planner.lib.requested_structure import extract_explicit_learning_topic
 from app.workflows.digest.planner.lib.store import save_planner_result
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -36,19 +37,23 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
         )
         material_context = state["material_context"]
         digest_mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+        raw_draft = dict(state.get("build_plan_draft") or {})
+        request_prompt = str(state.get("user_prompt") or raw_draft.get("user_prompt") or "")
         # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
         draft = normalize_planner_draft(
-            state.get("build_plan_draft") or {},
+            raw_draft,
             course_id=state["course_id"],
-            user_prompt=state.get("user_prompt") or "",
+            user_prompt=request_prompt,
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
         )
+        explicit_topic = extract_explicit_learning_topic(request_prompt)
         generated_course_name = str(state.get("generated_course_name") or "").strip()
         generated_course_icon = str(state.get("generated_course_icon_key") or "").strip()
-        if generated_course_name:
-            draft.course_name = generated_course_name
+        effective_course_name = explicit_topic or generated_course_name
+        if effective_course_name:
+            draft.course_name = effective_course_name
         if generated_course_icon:
             draft.course_icon = generated_course_icon
         logger.info(
@@ -58,7 +63,7 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
             digest_mode=draft.digest_mode,
             plan_chars=len(draft.plan or ""),
             suggestion_chars=len(draft.suggestion or ""),
-            generated_course_name=generated_course_name or None,
+            generated_course_name=effective_course_name or None,
             generated_course_icon_key=generated_course_icon or None,
         )
         plan = draft.model_dump(mode="json")
@@ -83,7 +88,7 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
         result = {
             "plan": plan,
             "digest_mode": draft.digest_mode,
-            "generated_course_name": generated_course_name,
+            "generated_course_name": effective_course_name,
         }
         persist_update = save_planner_result(
             {**state, **result},

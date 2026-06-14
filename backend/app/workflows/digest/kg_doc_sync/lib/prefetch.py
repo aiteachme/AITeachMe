@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Any
 
 import structlog
+from langsmith import tracing_context
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.llm_support.common import (
@@ -15,6 +16,7 @@ from app.shared.infra.llm_support.common import (
     capture_llm_runtime_snapshot,
     use_llm_runtime_snapshot,
 )
+from app.shared.infra.observability.trace import suppress_langsmith_child_runs
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _graph_llm_concurrency_cap,
@@ -46,6 +48,30 @@ _CACHES: dict[tuple[str, str], _PrefetchCache] = {}
 
 def _key(course_id: str, build_session_id: str) -> tuple[str, str]:
     return str(course_id or "").strip(), str(build_session_id or "").strip()
+
+
+def _drop_cache_if_current(key: tuple[str, str], cache: _PrefetchCache) -> None:
+    with _LOCK:
+        if _CACHES.get(key) is cache:
+            _CACHES.pop(key, None)
+
+
+def _cleanup_consumed_cache_when_done(key: tuple[str, str], cache: _PrefetchCache) -> None:
+    task = cache.task
+    if task is None:
+        _drop_cache_if_current(key, cache)
+        return
+
+    def _cleanup(_task: asyncio.Task[None]) -> None:
+        try:
+            _task.exception()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        _drop_cache_if_current(key, cache)
+
+    task.add_done_callback(_cleanup)
 
 
 def _clean_string_list(value: object) -> list[str]:
@@ -173,13 +199,14 @@ def start_docgen_kg_prefetch(
             with managed_session() as session:
                 course_context = load_course_llm_context(session, course_id=course_id)
             with use_llm_runtime_snapshot(snapshot):
-                _records, metrics = await extract_knowledge_graph_section_records_async(
-                    markdown=markdown,
-                    course_context=course_context,
-                    structured_context=structured_context,
-                    concurrency_limit=concurrency,
-                    on_record=_on_record,
-                )
+                with tracing_context(enabled=False), suppress_langsmith_child_runs():
+                    _records, metrics = await extract_knowledge_graph_section_records_async(
+                        markdown=markdown,
+                        course_context=course_context,
+                        structured_context=structured_context,
+                        concurrency_limit=concurrency,
+                        on_record=_on_record,
+                    )
             with _LOCK:
                 active = _CACHES.get(key)
                 if active is cache:
@@ -231,11 +258,11 @@ async def consume_docgen_kg_prefetch(
     build_session_id: str,
     wait_timeout_s: float = _PREFETCH_CONSUME_GRACE_S,
 ) -> tuple[list[SectionExtractionRecord], dict[str, int | str]]:
-    """Return current prefetch records and stop any unfinished sidecar task."""
+    """Return finished prefetch records and stop any leftover sidecar calls."""
 
     key = _key(course_id, build_session_id)
     with _LOCK:
-        cache = _CACHES.pop(key, None)
+        cache = _CACHES.get(key)
     if cache is None:
         return [], {"prefetch_status": "missing"}
     task = cache.task
@@ -249,9 +276,11 @@ async def consume_docgen_kg_prefetch(
         except Exception:
             pass
     if task is not None and not task.done():
-        cache.status = "consumed"
+        cache.status = "consumed_cancelled"
         task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        _cleanup_consumed_cache_when_done(key, cache)
+    else:
+        _drop_cache_if_current(key, cache)
     with _LOCK:
         records = list(cache.records)
         metrics = dict(cache.metrics)

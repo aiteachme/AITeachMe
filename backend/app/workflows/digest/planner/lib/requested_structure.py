@@ -28,6 +28,13 @@ _ORDINAL_CHAPTER_RE = re.compile(
     rf"第\s*(?P<number>{_NUMBER_TOKEN})\s*章\s*(?P<title>.*?)(?=(?:[，,；;。.!！?？]\s*)?第\s*{_NUMBER_TOKEN}\s*章|[。.!！?？\n]|$)",
     re.S,
 )
+_INLINE_CHAPTER_LIST_RE = re.compile(
+    rf"(?:按|按照)\s*(?P<items>[^。.!！?？\n]{{3,180}}?)\s*"
+    rf"(?:分成|分为|划分为|划分成|拆成|拆为)\s*"
+    rf"(?:(?P<count>{_NUMBER_TOKEN})\s*)?{_CHAPTER_UNIT}",
+    re.S,
+)
+_INLINE_TITLE_SPLIT_RE = re.compile(r"\s*(?:、|，|,|；|;)\s*")
 _TITLE_TAIL_RE = re.compile(
     r"(?:，|,|；|;)\s*(?:每章|每个章节|并且|同时|要求|需要|要有|包含|适合|用于|请).*$",
     re.S,
@@ -105,13 +112,36 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
         return []
     result: list[str] = []
     seen: set[str] = set()
-    for match in _ORDINAL_CHAPTER_RE.finditer(text):
-        title = _clean_heading(match.group("title"))
+
+    def add_title(raw: str) -> None:
+        title = _clean_heading(raw)
         key = title.casefold()
         if not title or key in seen:
-            continue
+            return
         seen.add(key)
         result.append(title)
+
+    for match in _ORDINAL_CHAPTER_RE.finditer(text):
+        add_title(match.group("title"))
+    if result:
+        return result
+
+    for match in _INLINE_CHAPTER_LIST_RE.finditer(text):
+        raw_items = _clean_heading(match.group("items"))
+        titles = [
+            _clean_heading(part)
+            for part in _INLINE_TITLE_SPLIT_RE.split(raw_items)
+            if _clean_heading(part)
+        ]
+        count = _parse_small_number(match.group("count") or "")
+        if count is not None and len(titles) != count:
+            continue
+        if len(titles) < 2:
+            continue
+        for title in titles:
+            add_title(title)
+        if result:
+            return result
     return result
 
 

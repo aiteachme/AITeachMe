@@ -62,7 +62,7 @@ def build_planner_stream_messages(
 你是 AITeachMe 的课程规划输出器。
 高优先级规划规则：
 - 用户给出 A/B/C 列表时，A/B/C 是唯一一级章节路径。
-- 一级章节 title 采用知识目录名；用户列出 A/B/C 知识块时，title 序列等于 A/B/C。
+- 一级章节 title 取最小知识目录名，只承载知识对象、方法模块、题型技能或应用场景；用户列出 A/B/C 知识块时，title 序列等于 A/B/C。
 - key_points 描述所属章节内部的目标、概念、例题、易错点、练习、检测、纠错、巩固和时间安排。
 - 用户同时给出学习天数时，天数按 A/B/C 的学习量分配到各知识块。
 - 最后一个列表项与其他列表项保持同等授课粒度，围绕其自身的核心概念、例题、小测和纠错展开。
@@ -72,9 +72,7 @@ def build_planner_stream_messages(
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
 {SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写成可调整参数：章节边界、每章时长、讲解深度、例题数量、图示密度、测试题量。
 {DIAGNOSE_START} 到 {DIAGNOSE_END} 之间放合法 JSON 数组，作为前置诊断提问；每项包含 question、purpose、sample_answers。
-{CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points。
-当用户指定按 A、B、C 知识块划分时，chapters 形如：
-[{{"title":"A","key_points":["A 的学习目标、例题、练习或检测安排"]}}, {{"title":"B","key_points":["B 的学习目标、例题、练习或检测安排"]}}, {{"title":"C","key_points":["C 的学习目标、例题、练习或检测安排"]}}]
+{CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组，数组元素包含 title 和 key_points；用户指定知识块列表时，数组顺序与列表顺序一致。
 """.strip()
     prompt = f"""
 请生成方案的 suggestion、plan、diagnose、chapters。
@@ -113,12 +111,12 @@ def build_planner_stream_messages(
 {render_planner_chapter_contract(digest_mode)}
 
 输出内容要求：
-1. plan：180-360 字，讲清学习范围、模块拆分和先后顺序；用户给出 A/B/C 列表时，按 A/B/C 的名称逐项展开，全段优先使用具体模块名和具体学习任务；章节串联使用“学习、进入、转入、安排”这类课程路径动词；最后一个列表项与前面列表项保持同等粒度，结尾说明它自身的核心概念、典型例题、小测与纠错。
+1. plan：180-360 字，讲清学习范围、模块拆分和先后顺序；用户给出 A/B/C 列表时，按 A/B/C 的名称逐项展开，全段优先使用具体模块名和具体学习任务；最后一个列表项与前面列表项保持同等粒度，结尾说明它自身的核心概念、例题、小测与纠错。
 2. suggestion：2-4 句，直接给出可继续调整的具体参数，围绕范围、周期、讲解深度、例题密度、图示密度、测试题量或章节数。
 3. diagnose：输出 5-10 个前置诊断问题，优先覆盖章节主线、先修基础、薄弱点和学习偏好；每项 question 要像在和用户追问，purpose 写内部诊断目标，sample_answers 给 3-4 个可快速点击的示例回答。
-4. chapters：输出完整章节列表；title 用清楚直观的课程目录名，通常 6-18 字，命名一个可授课的知识对象、方法模块、题型技能或应用场景。
+4. chapters：输出完整章节列表；title 取最小知识目录名，通常 4-14 字，只命名一个可授课的知识对象、方法模块、题型技能或应用场景。
 5. 每个一级章节负责一块可展开讲解的内容；例题、练习、测验、纠错和巩固安排进入 key_points，用来说明这一章的概念、方法、题型和易错点怎样练、怎样查。
-6. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数等元信息作为上下文处理，标题只呈现目录名。
+6. 标题保留必要限定词，细节枚举放进 key_points；资料来源、文件名、页码、天数、学习动作、训练节奏等上下文信息进入 plan 或 key_points，标题只呈现目录名。
 7. 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单；chapters 与 A/B/C 逐项对应：第 i 个 chapter 负责第 i 个列表项，数组长度等于列表项数量；如果列表项已是知识块名称，title 等于该列表项，学习动作、周期和训练安排放进 key_points。
 8. 用户列出的学习活动按其服务的内容模块放进对应 key_points；plan 的顺序以用户给出的列表项为完整路径，各模块内部再安排练习、纠错和小测；最后一个列表项的检测也围绕该列表项自身的题型和易错点。
 9. 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个列表项按它自身的具体对象、方法和练习安排展开。
@@ -133,7 +131,7 @@ plan 字段正文
 suggestion 字段正文
 {SUGGESTION_END}
 {DIAGNOSE_START}
-[{{"question":"你对这一主题最熟的是哪一块？","purpose":"识别已有基础","sample_answers":["基础概念还可以","会做例题但不会变式","几乎没学过"]}}]
+[{{"question":"问题文本","purpose":"诊断目标","sample_answers":["选项一","选项二","选项三"]}}]
 {DIAGNOSE_END}
 {CHAPTERS_START}
 [{{"title":"知识块名称","key_points":["学习目标、例题、练习或检测安排"]}}]

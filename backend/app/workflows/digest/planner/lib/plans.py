@@ -167,14 +167,14 @@ def render_planner_chapter_contract(value: Any) -> str:
                 "仅用于判断章节颗粒度。"
             ),
             f"- 划分主线：{granularity}",
-            "- 章节是可直接授课的内容模块，聚焦具体知识对象、方法步骤、题型技能或应用场景。",
+            "- 章节是可直接授课的内容模块，标题取最小知识目录名，只承载具体知识对象、方法步骤、题型技能或应用场景。",
             "- required_elements/key_points 描述所属章节内部的目标、概念、例题、易错点、练习、检测、纠错和巩固安排。",
             "- 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单，chapters 与 A/B/C 逐项对应，数组长度等于列表项数量。",
             "- 用户给出的列表项已是知识块名称时，标题等于该列表项；学习动作、周期和训练安排写进 required_elements/key_points。",
             "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个知识块按它自身的具体对象、方法和练习安排展开。",
             "- 全程巩固、检测和纠错按服务对象拆入各章节；方案说明结尾落到最后一个知识块自身的学习内容。",
             "- 每章承担一个主要学习任务，相邻章节体现依赖、递进或场景切换。",
-            "- 标题用真实讲义目录名：清楚直观优先，保留必要限定词；细节枚举放到 required_elements/key_points。",
+            "- 标题用真实讲义目录名：清楚直观优先，保留必要限定词；学习动作、周期、训练节奏和细节枚举放到 required_elements/key_points。",
             "- 用户列出的额外学习活动也按其服务的内容模块安排，形成讲解、例题、练习、小测的章内闭环；最后一个知识块的检测也围绕自身题型和易错点。",
         ]
     )
@@ -597,8 +597,10 @@ def normalize_planner_draft(
     current_constraints = _mapping(current.get("build_constraints"))
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
     requested_chapter_titles = extract_explicit_chapter_titles(resolved_user_prompt)
+    explicit_topic = extract_explicit_learning_topic(resolved_user_prompt)
     display_course = (
-        _text(current.get("course_name") or previous.get("course_name"))
+        explicit_topic
+        or _text(current.get("course_name") or previous.get("course_name"))
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
     requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
