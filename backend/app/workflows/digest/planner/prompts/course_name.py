@@ -27,8 +27,8 @@ def build_course_identity_messages(
 
 字段要求：
 - course_name：用于课程列表的稳定标题，最多 16 个字符。
-- course_name 取最小主题名，保留用户要学的学段、学科、知识对象、资料名或考试科目。
-- 主题名之外的学习动作、节奏、周期、训练安排和用途，由 plan、suggestion 或 key_points 承载。
+- course_name 直接命名学习主题，优先覆盖用户要学的学段、学科、知识对象、资料名或考试科目。
+- 进度、训练、用途和其他安排写入 plan、suggestion 或 key_points，course_name 保持为主题本身。
 - 用户同时给出主题和章节清单时，course_name 取主题，章节清单进入章节规划。
 - course_icon：只能从候选图标 key 中选一个，必须是英文 key。
 
