@@ -74,7 +74,7 @@ workflows/<module>/
 当前稳定链路如下：
 
 - `ingest/intake`
-- `ingest/fast_parse`
+- `ingest/parsing`
 - `digest/planner`
 - `digest/docgen`
 - `digest/kg_doc_sync`

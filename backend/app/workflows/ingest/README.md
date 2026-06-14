@@ -33,29 +33,30 @@ ingest/
     uploads.py
     parse_dispatch.py
     deletion.py
-  fast_parse/
-    README.md
+  parsing/
     graph.py
     state.py
+    classifier.py
+    decision.py
+    orchestrator.py
+    parsers.py
     nodes/
     lib/
       enhance.py
       recovery.py
-  parsing/
 ```
 
 说明：
 
 - `__init__.py` 只提供稳定导入面，不承载业务实现。
 - `intake/` 承接上传、列表、删除和 parse 派发等 Phase 0 文件接入用例。
-- `fast_parse/` 是 Phase 1 快速解析链路。
-- `fast_parse/graph.py` 是单文件 parse workflow 的真实入口，并负责统一 graph/state/node 的运行收口。
-- `fast_parse/lib/enhance.py` 承接 Phase 2 后台增强 worker。
-- `fast_parse/lib/lifecycle.py` 承接 graph 外的失败兜底和 Phase 2 派发。
-- `fast_parse/lib/recovery.py` 承接增强恢复。
-- `parsing/` 放分类、策略、解析器、Markdown 规范化与 OCR 实现。
+- `parsing/` 是 Phase 1 快速解析链路，也是分类、策略、解析器、Markdown 规范化与 OCR 实现的统一目录。
+- `parsing/graph.py` 是单文件 parse workflow 的真实入口，并负责统一 graph/state/node 的运行收口。
+- `parsing/nodes/enhance.py` 承接 Phase 2 后台增强 worker。
+- `parsing/lib/lifecycle.py` 承接 graph 外的失败兜底和 Phase 2 派发。
+- `parsing/lib/recovery.py` 承接增强恢复。
 
-当前真实运行主线以 `fast_parse/graph.py::run_parse_file_workflow()` 和 `fast_parse/lib/enhance.py::_run_deep_enhance_background()` 为准。Ingest 只有 `fast_parse` 一条 workflow graph；后台增强只是 parse 完成后的异步补强步骤，不再作为第二条 LangGraph lane。
+当前真实运行主线以 `parsing/graph.py::run_parse_file_workflow()` 和 `parsing/nodes/enhance.py::_run_deep_enhance_background()` 为准。Ingest 只有 `parsing` 一条 workflow graph；后台增强只是 parse 完成后的异步补强步骤，不再作为第二条 LangGraph lane。
 
 ## 容易误会的功能
 
@@ -76,7 +77,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 如果只看图结构，可以看：
 
-- `app.workflows.ingest.fast_parse.graph`
+- `app.workflows.ingest.parsing.graph`
 
 ## 端到端链路
 
@@ -110,7 +111,7 @@ from app.workflows.ingest import run_parse_file_workflow
 
 ## Phase 1：Fast Parse 快速解析
 
-真实入口是 `fast_parse/graph.py::run_parse_file_workflow()`。
+真实入口是 `parsing/graph.py::run_parse_file_workflow()`。
 
 ### 1. 读取 RawFile 与物化原始文件
 
@@ -227,7 +228,7 @@ Digest 当前允许消费以下状态：
 
 ## Phase 2：后台增强
 
-真实入口是 `fast_parse/lib/enhance.py::_run_deep_enhance_background()`。
+真实入口是 `parsing/nodes/enhance.py::_run_deep_enhance_background()`。
 
 Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 state 派发。API 运行时优先进入 `background_task_registry`；脚本或非 API 调用场景仍保留 `_background_tasks` 兜底引用，避免 task 被回收。
 
@@ -270,7 +271,7 @@ Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 sta
 
 ## 恢复链路
 
-`fast_parse/lib/recovery.py::recover_stalled_enhancements()` 会扫描：
+`parsing/lib/recovery.py::recover_stalled_enhancements()` 会扫描：
 
 - `fast_parsed`
 - `enhancing`
@@ -281,7 +282,7 @@ Phase 2 由 `ingest/intake/parse_dispatch.py` 在 Phase 1 成功后按最终 sta
 
 ### 已处理
 
-- `run_parse_file_workflow()` 已经切回 `fast_parse/graph.py`，真实运行路径与 LangGraph 图定义统一，不再维护一套图外手写主流程。
+- `run_parse_file_workflow()` 已经切回 `parsing/graph.py`，真实运行路径与 LangGraph 图定义统一，不再维护一套图外手写主流程。
 - 文本快通道、MinerU 分支、常规 parser chain 与最终持久化都收口到同一条 graph state 上；Phase 2 派发则回到 graph 外 lifecycle/support 边界。
 - 上传触发的 Phase 2 和启动恢复任务都接入 `background_task_registry`，脚本调用保留 `_background_tasks` 兜底。
 - Phase 2 会先物化 Phase 1 资产，增强后重新上传资产并同步 `image_count`，避免 Markdown 图片引用悬空。

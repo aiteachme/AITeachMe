@@ -12,7 +12,7 @@
 ## Notes
 
 - This module is part of the Ingest engine, but it is not a LangGraph lane.
-- It is not a generic file service; it owns RawFile intake and hands parsing off to `workflows/ingest/fast_parse`.
+- It is not a generic file service; it owns RawFile intake and hands parsing off to `workflows/ingest/parsing`.
 - Persisted upload artifacts are keyed by stable file ID plus a sanitized filename stem:
   `users/{user}/files/{file_id}__{safe_stem}/raw.ext`, `markdown.md`, and `assets/`.
   The database keeps the original filename for display; storage keys should not use bare auto-increment ids.

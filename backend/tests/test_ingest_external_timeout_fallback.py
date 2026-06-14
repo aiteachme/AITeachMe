@@ -5,11 +5,11 @@ import json
 import pytest
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.parsing.lib import parse as parse_lib
+from app.workflows.ingest.parsing.nodes import parse_file as parse_lib
 from app.workflows.ingest.parsing.orchestrator import FastParseResult
-from app.workflows.ingest.parsing.provider_contracts import ExternalProviderTimeoutError, ParseDecision
+from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError, ParseDecision
 from app.workflows.ingest.parsing.strategy import ParsePlan
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
 @pytest.mark.anyio

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.parsing.lib import file as file_nodes
+from app.workflows.ingest.parsing.nodes import load_raw_file as file_nodes
 from app.workflows.ingest.parsing.decision import (
     build_markitdown_capability,
     build_mineru_capability,
@@ -15,7 +15,7 @@ from app.workflows.ingest.parsing.decision import (
 )
 from app.workflows.ingest.parsing.parsers import DEFAULT_PARSER_CHAIN, PARSER_REGISTRY
 from app.workflows.ingest.parsing.strategy import ParsePlan
-from app.workflows.ingest.parsing.types import ParserRunOptions
+from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
 def _context() -> WorkflowContext:
