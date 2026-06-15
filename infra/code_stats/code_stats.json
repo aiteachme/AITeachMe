@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-08T03:40:08.552658",
-  "total_commits_analyzed": 1807,
+  "generated_at": "2026-06-15T03:57:12.549736",
+  "total_commits_analyzed": 1864,
   "stats": [
     {
       "date": "2026-03-11",
@@ -14457,6 +14457,462 @@
       "code_lines": 193626,
       "other_lines": 36943,
       "message": "style: 优化首页输入反馈与示例提示词布局"
+    },
+    {
+      "date": "2026-06-08",
+      "commit": "24c53b0",
+      "total_lines": 230569,
+      "code_lines": 193626,
+      "other_lines": 36943,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-06-09",
+      "commit": "8591d86",
+      "total_lines": 230405,
+      "code_lines": 193503,
+      "other_lines": 36902,
+      "message": "refactor: 精简课程规划字段合同"
+    },
+    {
+      "date": "2026-06-10",
+      "commit": "479b939",
+      "total_lines": 232316,
+      "code_lines": 195121,
+      "other_lines": 37195,
+      "message": "fix: 增强模型接入与工具流兼容"
+    },
+    {
+      "date": "2026-06-10",
+      "commit": "11d136f",
+      "total_lines": 232986,
+      "code_lines": 195696,
+      "other_lines": 37290,
+      "message": "fix: 兼容模型原生检索工具接入"
+    },
+    {
+      "date": "2026-06-10",
+      "commit": "f3258f9",
+      "total_lines": 233106,
+      "code_lines": 195804,
+      "other_lines": 37302,
+      "message": "fix: 收紧模型原生文件检索触发时机"
+    },
+    {
+      "date": "2026-06-10",
+      "commit": "859290e",
+      "total_lines": 233211,
+      "code_lines": 195892,
+      "other_lines": 37319,
+      "message": "fix: 优化模型接入与规划流式预览"
+    },
+    {
+      "date": "2026-06-11",
+      "commit": "54aa927",
+      "total_lines": 235251,
+      "code_lines": 197662,
+      "other_lines": 37589,
+      "message": "fix: 完善 Responses 接口与模型工具兼容"
+    },
+    {
+      "date": "2026-06-11",
+      "commit": "3f0ddfd",
+      "total_lines": 235252,
+      "code_lines": 197663,
+      "other_lines": 37589,
+      "message": "test: 修复工具流测试环境隔离"
+    },
+    {
+      "date": "2026-06-11",
+      "commit": "bb61962",
+      "total_lines": 239442,
+      "code_lines": 201383,
+      "other_lines": 38059,
+      "message": "refactor: 收敛知识文档生成与图谱链路"
+    },
+    {
+      "date": "2026-06-11",
+      "commit": "65d7feb",
+      "total_lines": 239442,
+      "code_lines": 201383,
+      "other_lines": 38059,
+      "message": "refactor: 收敛知识文档生成与图谱链路"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "ab23b18",
+      "total_lines": 240157,
+      "code_lines": 201930,
+      "other_lines": 38227,
+      "message": "fix: 稳定知识构建与文档阅读体验"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "a8c4173",
+      "total_lines": 240157,
+      "code_lines": 201930,
+      "other_lines": 38227,
+      "message": "fix: 稳定知识构建与文档阅读体验"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "8ec7027",
+      "total_lines": 240298,
+      "code_lines": 202050,
+      "other_lines": 38248,
+      "message": "fix: 优化章节标题约束与静态图示渲染"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "d05dd81",
+      "total_lines": 240354,
+      "code_lines": 202106,
+      "other_lines": 38248,
+      "message": "chore: 同步 OpenAPI 客户端"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "a6adb9d",
+      "total_lines": 240348,
+      "code_lines": 202066,
+      "other_lines": 38282,
+      "message": "style: 优化仪表盘布局并移除失效版本切换下拉框"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "a2aed46",
+      "total_lines": 240888,
+      "code_lines": 202557,
+      "other_lines": 38331,
+      "message": "feat: 优化 DocGen 图示与单元测试链路"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "764a81e",
+      "total_lines": 240832,
+      "code_lines": 202501,
+      "other_lines": 38331,
+      "message": "chore: 同步 OpenAPI 客户端"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "36f9444",
+      "total_lines": 240826,
+      "code_lines": 202461,
+      "other_lines": 38365,
+      "message": "chore: 合并远程 dev_ywl 最新功能更新"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "d68a090",
+      "total_lines": 240985,
+      "code_lines": 202611,
+      "other_lines": 38374,
+      "message": "feat: 核心卡片样式及生成状态升级，重构头部面包屑为快捷切换下拉菜单，统一品牌蓝紫色视觉"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "4b2a296",
+      "total_lines": 240988,
+      "code_lines": 202614,
+      "other_lines": 38374,
+      "message": "feat: 优化头部胶囊导航图标与选项，添加动态平移动效以居中对齐，并增加缓存新鲜时间优化卡顿"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "4321057",
+      "total_lines": 240988,
+      "code_lines": 202614,
+      "other_lines": 38374,
+      "message": "style: 限制侧边栏课程列表的最大显示高度并启用滚动条，确保对话栏始终可见"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "66da084",
+      "total_lines": 241050,
+      "code_lines": 202675,
+      "other_lines": 38375,
+      "message": "feat: 深度优化首页核心功能卡片样式，引入主题色彩、悬停微移动效以及高密度元数据徽章"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "dbb040b",
+      "total_lines": 241090,
+      "code_lines": 202696,
+      "other_lines": 38394,
+      "message": "feat: 重构首页主导航与学习画像页面布局，实现 极简高阶 风格的极简高阶设计"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "ebdd350",
+      "total_lines": 241090,
+      "code_lines": 202696,
+      "other_lines": 38394,
+      "message": "style: 优化侧边栏物理分隔线并升级中英文排版字体"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "387f3bd",
+      "total_lines": 241278,
+      "code_lines": 202869,
+      "other_lines": 38409,
+      "message": "feat(style): 重构课程大盘为双栏看板布局并升级全局字体排版细节"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "3cebb9c",
+      "total_lines": 241361,
+      "code_lines": 202940,
+      "other_lines": 38421,
+      "message": "feat(style): 新增底置全宽 活跃度 风格蓝紫色学习统计看板并优化整体布局填充"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "9824443",
+      "total_lines": 241361,
+      "code_lines": 202940,
+      "other_lines": 38421,
+      "message": "fix(style): 修复课程大盘中非标准 Tailwind 颜色类引起的显示不一致问题"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "aa4539c",
+      "total_lines": 241303,
+      "code_lines": 202889,
+      "other_lines": 38414,
+      "message": "style: 优化界面阴影、去除冗余分割线并迁移学习活跃度打卡墙至用户头像下拉菜单"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "318179a",
+      "total_lines": 241326,
+      "code_lines": 202908,
+      "other_lines": 38418,
+      "message": "refactor: 移除大盘冗余的AI学习助手卡片，将核心功能平铺为三栏网格并增加最近测验历史列表"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "9d76b82",
+      "total_lines": 241326,
+      "code_lines": 202908,
+      "other_lines": 38418,
+      "message": "style: 调整大盘底部卡片最小高度为340px，并在卡片内垂直居中排列内容以占满高度"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "37830fc",
+      "total_lines": 241385,
+      "code_lines": 202966,
+      "other_lines": 38419,
+      "message": "style: 优化课程大盘视觉细节并在构建与加载页面引入顶部胶囊导航"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "4aa4594",
+      "total_lines": 241386,
+      "code_lines": 202927,
+      "other_lines": 38459,
+      "message": "fix: 改进 DocGen 静态教学图示生成"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "178203c",
+      "total_lines": 241415,
+      "code_lines": 202952,
+      "other_lines": 38463,
+      "message": "fix: 优化规划章节边界与速成讲义体验"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "156d6e8",
+      "total_lines": 241415,
+      "code_lines": 202952,
+      "other_lines": 38463,
+      "message": "fix: 精简规划提示词正向引导"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "562bab4",
+      "total_lines": 241673,
+      "code_lines": 203223,
+      "other_lines": 38450,
+      "message": "style: 统一各课程子页面的导航胶囊标题对齐位置并优化加载性能"
+    },
+    {
+      "date": "2026-06-12",
+      "commit": "0a1cc01",
+      "total_lines": 241703,
+      "code_lines": 203209,
+      "other_lines": 38494,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "34849fe",
+      "total_lines": 241707,
+      "code_lines": 203213,
+      "other_lines": 38494,
+      "message": "fix: 明确规划章节逐项映射"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "591c234",
+      "total_lines": 241714,
+      "code_lines": 203219,
+      "other_lines": 38495,
+      "message": "fix: 明确规划列表章节边界"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "76b05a2",
+      "total_lines": 241868,
+      "code_lines": 203371,
+      "other_lines": 38497,
+      "message": "style: 优化大盘三个功能卡片的渐进流向展示并升级整体圆角视觉"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "6d29628",
+      "total_lines": 241792,
+      "code_lines": 203290,
+      "other_lines": 38502,
+      "message": "fix: 修复闯关出题重复模板与图示提示"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "d2d1d40",
+      "total_lines": 241862,
+      "code_lines": 203366,
+      "other_lines": 38496,
+      "message": "style: 修复卡片连接线裁剪缺陷并用开始学习按钮替换直接闯关按钮"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "2c2d5be",
+      "total_lines": 241946,
+      "code_lines": 203442,
+      "other_lines": 38504,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "44e1610",
+      "total_lines": 241940,
+      "code_lines": 203437,
+      "other_lines": 38503,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "74718e6",
+      "total_lines": 242180,
+      "code_lines": 203669,
+      "other_lines": 38511,
+      "message": "feat: 优化课程大盘渐进锁定逻辑与连接线视觉动效"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "9c33b7e",
+      "total_lines": 242258,
+      "code_lines": 203740,
+      "other_lines": 38518,
+      "message": "Merge branch 'dev_ywl' of github.com:aiteachme/AiT"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "d6248c2",
+      "total_lines": 242262,
+      "code_lines": 203744,
+      "other_lines": 38518,
+      "message": "style: 升级大盘连接线为粗体高亮实心箭头并修复z-index覆盖裁剪"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "d737abd",
+      "total_lines": 242222,
+      "code_lines": 203704,
+      "other_lines": 38518,
+      "message": "style: 彻底重新设计大盘连接箭头，放大4倍并增加卡片间距"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "4af97b8",
+      "total_lines": 242114,
+      "code_lines": 203596,
+      "other_lines": 38518,
+      "message": "style: 抛弃传统的SVG箭头，完全重构为现代化渐变圆形向导节点"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "4f3b033",
+      "total_lines": 242090,
+      "code_lines": 203572,
+      "other_lines": 38518,
+      "message": "style: 彻底重构连接节点为极简线框样式"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "1775367",
+      "total_lines": 242095,
+      "code_lines": 203577,
+      "other_lines": 38518,
+      "message": "style: 优化课程导航区域的UI质感与微交互"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "4e0c1b4",
+      "total_lines": 242085,
+      "code_lines": 203568,
+      "other_lines": 38517,
+      "message": "style: 移除无用的'开始学习'按钮，重构头部配置操作"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "1701cd9",
+      "total_lines": 242016,
+      "code_lines": 203499,
+      "other_lines": 38517,
+      "message": "fix: 调整模型档位显示与运行时路由"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "f7fa34c",
+      "total_lines": 242161,
+      "code_lines": 203630,
+      "other_lines": 38531,
+      "message": "Merge remote-tracking branch 'origin/dev_ywl' into"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "2ad9350",
+      "total_lines": 242363,
+      "code_lines": 203812,
+      "other_lines": 38551,
+      "message": "chore: 合并 origin/dev_ywl 远程更新"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "afdf2b9",
+      "total_lines": 242355,
+      "code_lines": 203806,
+      "other_lines": 38549,
+      "message": "fix: 修正课程导航构建状态判断"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "bc3f0e8",
+      "total_lines": 243355,
+      "code_lines": 204728,
+      "other_lines": 38627,
+      "message": "feat: 完善诊断规划与学习辅助能力"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "d8b4040",
+      "total_lines": 244350,
+      "code_lines": 205484,
+      "other_lines": 38866,
+      "message": "fix: 修正模型路由与设置页测试"
     }
   ]
 }
