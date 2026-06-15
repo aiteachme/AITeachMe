@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path as FilePath
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, UploadFile
 from fastapi.responses import Response
@@ -28,6 +29,8 @@ from app.workflows.support.courses import get_course_record
 
 router = APIRouter(prefix="/api/v1/courses/{course_id}/files", tags=["files"])
 
+_DOCGEN_STATIC_FIGURE_PREFIX = "docgen/figures/"
+
 
 def _normalize_safe_asset_path(asset_path: str) -> str | None:
     """Return a storage-relative asset path, or None when traversal is attempted."""
@@ -36,6 +39,85 @@ def _normalize_safe_asset_path(asset_path: str) -> str | None:
     if not normalized or ".." in FilePath(normalized.replace("\\", "/")).parts:
         return None
     return normalized
+
+
+def _normalize_manifest_asset_path(value: object) -> str:
+    return str(value or "").replace("\\", "/").strip().lstrip("/")
+
+
+def _iter_docgen_asset_manifest_items(manifest: Any) -> list[dict[str, Any]]:
+    if not isinstance(manifest, dict):
+        return []
+    asset_manifest = manifest.get("asset_manifest")
+    if not isinstance(asset_manifest, dict):
+        return []
+    assets = asset_manifest.get("assets")
+    if not isinstance(assets, list):
+        return []
+    return [asset for asset in assets if isinstance(asset, dict)]
+
+
+async def _restore_static_docgen_figure_asset(
+    *,
+    content_store: Any,
+    manifest_key: str,
+    storage_key: str,
+    normalized_asset_path: str,
+) -> bytes | None:
+    """Rebuild missing static DocGen figure HTML from the published manifest.
+
+    Static figure manifests keep the structured ``figure_spec``. If an object
+    store write was missed or an asset was pruned, the public asset route can
+    safely re-render the script-free HTML and write it back.
+    """
+
+    normalized_asset_path = _normalize_manifest_asset_path(normalized_asset_path)
+    if not (
+        normalized_asset_path.startswith(_DOCGEN_STATIC_FIGURE_PREFIX)
+        and normalized_asset_path.endswith(".html")
+    ):
+        return None
+
+    try:
+        manifest = await content_store.read_json_raw(manifest_key)
+    except Exception:
+        return None
+
+    matched_asset: dict[str, Any] | None = None
+    for asset in _iter_docgen_asset_manifest_items(manifest):
+        if asset.get("kind") != "static_html_figure":
+            continue
+        if _normalize_manifest_asset_path(asset.get("asset_path")) == normalized_asset_path:
+            matched_asset = asset
+            break
+    if matched_asset is None:
+        return None
+
+    try:
+        from app.shared.infra.tools.builtin.markdown_processing import validate_single_file_html
+        from app.workflows.digest.docgen.lib.figure_spec import FigureSpec, render_figure_spec_html
+        from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
+
+        raw_spec = matched_asset.get("figure_spec")
+        if not isinstance(raw_spec, dict):
+            return None
+        spec = FigureSpec.model_validate(raw_spec)
+        title = str(matched_asset.get("title") or spec.title or "静态图示").strip() or "静态图示"
+        html = normalize_single_file_html(
+            render_figure_spec_html(spec, title=title),
+            title=title,
+            allow_scripts=False,
+        )
+        if validate_single_file_html(html):
+            return None
+        data = html.encode("utf-8")
+        try:
+            await content_store.write_text(storage_key, html)
+        except Exception:
+            pass
+        return data
+    except Exception:
+        return None
 
 
 @router.post(
@@ -249,4 +331,12 @@ async def serve_file_asset(
         data = await cs.read_bytes(storage_key)
         return Response(content=data, media_type=media_type)
     except Exception:
+        restored = await _restore_static_docgen_figure_asset(
+            content_store=cs,
+            manifest_key=f"{course_scope.namespace}/knowledge_markdowns/docgen_manifest.json",
+            storage_key=storage_key,
+            normalized_asset_path=normalized_asset_path,
+        )
+        if restored is not None:
+            return Response(content=restored, media_type=media_type)
         return Response(status_code=404, content=b"Not found")
