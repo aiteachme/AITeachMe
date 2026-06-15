@@ -1,37 +1,88 @@
 # Export Import Support
 
-`workflows/support/export_import/` is the canonical home for course-level package export and import use cases.
+最后更新：2026-06-15
 
-## Responsibilities
+职责：导出和导入课程级 `.atmx` 包，并支持远程 demo course 列表和导入。
 
-- Preview course export size and table counts.
-- Export a course into an `.atmx` package. Download filenames use `course-name-course-id.atmx`; the manifest keeps stable ids and extension metadata. Original uploaded files are intentionally not packaged.
-- Import an `.atmx` package as a new course.
-- List remote demo-course packages from the fixed public `aiteachme/assets` catalog.
+```text
+输入: course_id 或 .atmx package
+输出: export package / imported course / demo course catalog
+```
 
-## Module Split
+## 文件
 
-- `exports.py`: export preview, package building, manifest generation, and shared export rules.
-- `imports.py`: import transaction, id remapping, file restore, and failed-import cleanup.
-- `courses.py`: demo-course catalog loading and remote `.atmx` download from the public assets repo.
+```text
+exports.py   # 导出预览、manifest、打包
+imports.py   # 导入事务、ID 重映射、失败清理
+courses.py   # demo course 目录和远程包下载
+limits.py    # 导入导出限制
+```
 
-## Runtime Paths
+## 1. 导出预览
 
-- Demo-course root: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/`
-- Default catalog index: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/catalog/v1/index.json`
-- Course packages: `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/atmx/*.atmx`
-- Backend catalog reads use no-cache headers plus a cache-buster query, with short in-process descriptor and package-availability caches to avoid repeated remote probes. Downloaded packages with a catalog `sha256` are cached under the runtime data dir. If the public catalog is unavailable, `GET /api/v1/demo-courses` returns an empty list and manual `.atmx` upload import remains available.
+输入：`course_id`, `user_id`, 导出选项
 
-## Demo Course Paths
+动作：统计表数量、预计包大小和可导出内容。
 
-- `GET /api/v1/demo-courses`: list demo-course cards for the frontend.
-- `POST /api/v1/demo-courses/{identifier}/import`: download one `.atmx` package from the public catalog and import it into the current account; after a successful import it appears in the sidebar course list. Demo-course vector indexing is scheduled in the background so the course card can appear quickly.
+输出：导出预览 payload。
 
-## Export Data Boundary
+## 2. 导出课程包
 
-- Always included: course metadata plus `knowledge_unit` / `knowledge_edge` graph tables.
-- Optional: generated knowledge documents, exam history, chat history, learning profile, and parsed source metadata/retrieval cache.
-- Not exported: original uploaded binaries (`PDF/DOCX/PPT/...`), duplicated `files/raw_markdowns/*.md`, vector embeddings, build locks, temporary `_build/` files, and derived `merged_knowledge_base.md` files.
-- Published knowledge-document markdown is restored from `knowledge_document.markdown_content`; import rebuilds the published-doc manifest so downstream document APIs can treat the restored docs as ready. The archive only carries docgen assets that are not in DB, such as the cover image.
+输入：`course_id`, `user_id`, 导出选项
 
-This module is a support workflow. It should coordinate repositories, schemas, storage, and models without introducing a parallel engine lane.
+动作：生成 `.atmx` 归档和 manifest。
+
+输出：
+
+```text
+course-name-course-id.atmx
+manifest.json
+```
+
+默认包含：
+
+```text
+course metadata
+knowledge_unit
+knowledge_edge
+published knowledge documents
+docgen assets not stored in DB
+```
+
+默认不包含：
+
+```text
+原始上传二进制文件
+vector embeddings
+build locks
+临时 _build 文件
+derived merged_knowledge_base.md
+```
+
+## 3. 导入课程包
+
+输入：`.atmx` 文件、当前用户
+
+动作：校验包、重映射 ID、恢复课程、文件元数据、文档和图谱。
+
+输出：新课程 ID 和导入结果。
+
+## 4. Demo Course
+
+输入：远程 demo course 标识
+
+动作：读取公开 catalog，下载 `.atmx`，导入为当前用户课程。
+
+输出：demo course 列表或导入结果。
+
+远程目录：
+
+```text
+https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/
+```
+
+## 边界
+
+`export_import` 不重新生成知识文档或图谱；导入后需要的索引/构建任务由对应 workflow 接手。
+
+这是 support 用例，不是 LangGraph lane。

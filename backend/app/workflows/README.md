@@ -1,6 +1,6 @@
 # Workflows 说明
 
-最后更新：2026-05-10
+最后更新：2026-06-15
 
 `backend/app/workflows/` 是 AITeachMe 后端当前唯一的业务层。这里承接五大引擎的 workflow 编排，也承接直接面向 API 的业务用例。
 
@@ -10,6 +10,39 @@
 
 - 调试方式：[Workflows 调试指南](../../../docs/workflows/debugging.md)
 - 进度事件约定：[进度事件规范](../../../docs/workflows/progress-events.md)
+
+## 当前文档索引
+
+五大引擎：
+
+- [ingest](ingest/README.md)
+  - [intake](ingest/intake/README.md)
+  - [parsing](ingest/parsing/README.md)
+- [digest](digest/README.md)
+  - [planner](digest/planner/README.md)
+  - [docgen](digest/docgen/README.md)
+  - [kg_doc_sync](digest/kg_doc_sync/README.md)
+- [interact](interact/README.md)
+  - [chat](interact/chat/README.md)
+- [examine](examine/README.md)
+  - [question_build](examine/question_build/README.md)
+  - [exam_grade](examine/exam_grade/README.md)
+- [profile](profile/README.md)
+  - [update](profile/update/README.md)
+  - [snapshot](profile/snapshot/README.md)
+  - [study_plan](profile/study_plan/README.md)
+
+支撑业务：
+
+- [support](support/README.md)
+  - [auth](support/auth/README.md)
+  - [courses](support/courses/README.md)
+  - [export_import](support/export_import/README.md)
+  - [system](support/system/README.md)
+
+公共辅助：
+
+- [common](common/README.md)
 
 ## 当前分区
 

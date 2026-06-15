@@ -1,53 +1,57 @@
-# Support 模块说明
+# Support 工作流
 
-最后更新：2026-04-16
+最后更新：2026-06-15
 
-`backend/app/workflows/support/` 是 workflows 单层化后的支撑业务区，承接原本不属于五大 AI 引擎、但仍属于后端业务层的模块。
+`support/` 承接不属于五大 AI 引擎、但仍属于后端业务层的 API-facing 用例。
 
-## 目标
+```text
+api route
+  -> workflows/support/<module>
+  -> repositories / schemas / shared infra
+```
 
-- 放置 `auth`、`courses`、`system`、`export_import` 这类非引擎业务模块
-- 避免把这类逻辑重新塞回 `api/` 或 `shared.infra/`
-- 与 `ingest / digest / interact / examine / profile` 保持平级，但不强制使用 LangGraph
+## 目录
 
-## 默认模板
+```text
+support/
+  auth/           # 访客、注册登录、token、验证码
+  courses/        # 课程 CRUD、删除、图标、学习上下文
+  export_import/  # .atmx 课程包导入导出、demo course
+  system/         # 前端初始化、设置页、运行时信息
+```
+
+对应文档：
+
+- [auth/README.md](auth/README.md)
+- [courses/README.md](courses/README.md)
+- [export_import/README.md](export_import/README.md)
+- [system/README.md](system/README.md)
+
+## 边界
+
+Support 默认不是 LangGraph。
+
+Support 不复制五大引擎能力；需要 AI 长链路时调用 `ingest/digest/interact/examine/profile` 的稳定入口。
+
+Support 不放进 `api/`，也不下沉到 `shared.infra`；它是业务用例层。
+
+## 当前模块
+
+| 模块 | 输入 | 输出 |
+| --- | --- | --- |
+| `auth` | 登录注册、访客身份、验证码请求 | 用户身份、token、会话响应 |
+| `courses` | 课程创建/更新/删除请求 | Course、删除预览、学习上下文 |
+| `export_import` | `.atmx` 包、课程 ID、demo course 标识 | 导出包、导入课程、demo course 列表 |
+| `system` | 当前运行环境和设置请求 | 前端初始化 payload、设置页数据 |
+
+## 文件规则
 
 ```text
 workflows/support/<module>/
   __init__.py
   README.md
-  <use_case_a>.py
-  <use_case_b>.py
-  streams.py                # 可选
-  lib/                      # 可选
+  <use_case>.py
+  lib/        # 仅放该模块内部共享实现
 ```
 
-推荐做法：
-
-- 按用例或链路命名文件，例如 `catalog.py`、`sessions.py`、`settings.py`、`deletion.py`
-- 没有真实调用方的旧兼容壳直接删除，不保留空门面
-
-## 当前已落地模块
-
-- `auth/`
-  访客身份、邮箱注册登录、token 与验证码的 canonical 代码位置，承接原 `app.services.auth_service`。
-- `auth/identity.py`、`auth/sessions.py`、`auth/smtp.py`
-  当前鉴权模块的 canonical 子入口。
-- `export_import/`
-  课程级课程包导入导出的 canonical 代码位置，承接原 `app.services.export_import_service`。
-- `export_import/exports.py`、`export_import/imports.py`、`export_import/courses.py`
-  当前课程包模块的 canonical 子入口。
-- `system/`
-  系统初始化与运行时信息查询的 canonical 代码位置，承接原 `app.services.system_service`。
-- `system/init.py`、`system/settings.py`
-  当前系统模块的 canonical 子入口。
-- `courses/`
-  课程注册、归属校验、删除预览与级联删除的 canonical 代码位置，承接原 `app.services.course_service` 与 `course_deletion_service`。
-- `courses/catalog.py`、`courses/deletion.py`
-  当前课程模块的 canonical 子入口。
-
-## 一句话总结
-
-`support/` 不是新的杂项目录，而是 workflows 单层化之后承接“非引擎业务用例”的正式区域。
-
-文件上传、列表、删除与解析触发已经收口到 `workflows/ingest/intake/`，因为它们直接管理 Ingest 的 `RawFile` 生命周期。
+新增文件按用例命名，例如 `catalog.py`、`settings.py`、`deletion.py`。

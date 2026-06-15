@@ -1,54 +1,267 @@
-# Interact Chat 链路说明
+# Interact Chat 链路
 
-最后更新：2026-04-24
+最后更新：2026-06-15
 
-`interact/chat/` 是 interact 模块的 canonical lane，负责聊天图、初始状态、运行入口以及 API-facing 聊天用例。
-
-目录角色：
-
-- `graph.py`：chat 图入口，同时承接单次运行入口与 `WORKFLOW_EXPORTS`
-- `state.py`：chat 状态类型
-- `use_cases.py`：聊天会话、历史记录、SSE 外壳等 API-facing 用例
-- `prompts/`：聊天 prompt 构造
-- `lib/`：流式输出、策略、检索、工具计划等 helper
-- `nodes/`：LangGraph 节点
-
-当前链路：
+职责：把用户问题、课程资料、划选上下文和学习画像组织成一次流式教学回答。
 
 ```text
-解析或创建会话
-  -> 读取对话状态
-  -> 检索学习上下文
-  -> 选择教学策略
-  -> 选择执行模式
-  -> 组装伴读提示词
-  -> 流式生成回答
-  -> 保存对话轮次
-  -> 更新会话元信息
+输入: question + course context + selection context + profile context
+输出: SSE token + assistant_response + chat turn
 ```
 
-节点说明：
+## 主流程
 
-- `解析或创建会话`：读取 `chat_session`，如果请求里没有可用 `session_id` 就创建新会话；同时发出 `status:session_resolved`，让前端先拿到真实会话 ID。
-- `读取对话状态`：读取近期对话、课程展示信息、用户整体画像、薄弱知识点和近期错题。它们只做个性化背景，不能覆盖本轮划选主题。
-- `检索学习上下文`：普通闲聊且没有入口上下文时跳过课程检索；学习问题会把用户问题和划选内容合成检索 query，优先查 KnowledgeUnit/知识图谱证据；只有图谱没有命中时才使用向量检索兜底。LangSmith 中该节点下会出现 `interact.retrieval.knowledge_unit_search` 和按需出现的 `interact.retrieval.vector_fallback_search` 子 span。
-- `选择教学策略`：根据问题和入口上下文选择讲解、引导、复盘、规划或练习策略。
-- `选择执行模式`：决定本轮是 `single_pass` 直接回答还是 `plan_execute` 受控工具模式；划词问答和通用闲聊默认直接回答，避免工具调用稀释划选上下文或把通用对话拉回课程。
-- `组装伴读提示词`：先解析场景，再选择专属 system prompt：通用对话、常规学习、知识文档划词、考试题讲解、知识库构建各自独立；没有入口上下文且用户只是闲聊时，课程只保留为会话归属，不展开完整背景。划词和考试题场景只保留极简课程背景；划词入口上下文足够时，不再把重复检索正文追加成 `参考资料`。
-- `流式生成回答`：调用主模型或受控工具，持续发出 SSE token；如果客户端断开，会标记 `stream_interrupted` 并停止后续写库。
-- `保存对话轮次`：将 user/assistant 两条消息写入同一个 `turn_id`，并保存引用上下文、划选 anchor 和 source 信息。
-- `更新会话元信息`：更新 `last_message_at`；如果仍是默认标题，生成或回退一个短标题。
+```text
+resolve_chat_session
+  -> load_history_state
+  -> retrieve_context
+  -> select_teaching_strategy
+  -> select_execution_mode
+  -> build_prompt
+  -> stream_answer
+  -> persist_turn
+  -> finalize_chat_session
+```
 
-关键约定：
+## 入口
 
-- 所有入口都走同一张图：普通对话、知识文档划选提问、构建过程触发只通过 `source` 标记区分，不再使用旁路 direct chat。
-- 图内节点 id 保持稳定英文，LangSmith 展示名、路由名和文档链路统一使用中文。
-- 每个 LangSmith 节点 metadata 都带 `node_key`、`node_description`、`reads`、`writes`、`emits`、`state_inputs`、`state_outputs`，排障时先看这些字段判断节点职责。
-- 所有 LLM 输出的模型选择器、`max_tokens` 和 metadata 统一从 `lib/model_policy.py` 读取；`流式生成回答` 节点的最终回答必须以 SSE token 形式推送。
-- 工具扩展只改 `lib/tooling.py` 的工具计划策略；节点不直接硬编码工具清单。
-- Prompt 面向模型时使用 `course.name` 作为课程展示名；`course.id`/内部 id 只作为状态和数据库定位字段，不应该出现在“围绕某课程教学”的自然语言位置。
-- 课程背景由 `course_context` 提供，包括课程说明、学习目标、课程简介、教学背景摘要和用户整体画像。
-- 划选文本会进入检索 query 和 prompt，但会做长度截断，避免大段选区挤占上下文。
-- 如果用户在划词入口问“看不懂这个”，prompt 必须把“这个”绑定到划选内容；近期错题只作为个性化背景。
+`stream_chat_workflow`
 
-API 层如果需要聊天会话 / 历史 / SSE 外壳，应直接依赖 `interact/chat/use_cases.py` 或 `interact.chat` 的稳定导出。
+输入：
+
+```text
+course_id
+user_id
+session_id
+question
+scene
+source
+model_override
+anchor_id
+selected_text
+selected_context
+selection_context
+source_chunk_id
+attached_file_ids
+```
+
+输出：
+
+```text
+session_id
+assistant_response
+client_actions
+turn_id
+stream_interrupted
+error
+```
+
+## 1. `resolve_chat_session`
+
+输入：`course_id`, `user_id`, `session_id`, `question`, `source`, `model_override`
+
+动作：确认本轮写入哪个 `ChatSession`；没有可用会话则创建新会话，并通过 SSE 返回会话 ID。
+
+输出：
+
+```text
+session_id
+session_title
+session_created
+```
+
+SSE：
+
+```text
+status:session_resolved
+```
+
+## 2. `load_history_state`
+
+输入：`course_id`, `user_id`, `session_id`
+
+动作：读取近期对话、课程展示信息、用户画像、薄弱知识点和近期错题。
+
+输出：
+
+```text
+recent_messages
+course_context
+weak_points
+recent_mistakes
+```
+
+关键字段：
+
+| 字段 | 作用 |
+| --- | --- |
+| `course_context` | 课程名、说明、学习目标、用户画像摘要 |
+| `weak_points` | Profile 薄弱知识点，用于个性化提醒 |
+| `recent_mistakes` | 近期错题摘要，用于复盘式教学 |
+
+## 3. `retrieve_context`
+
+输入：`question`, `selected_context`, `selection_context`, `course_id`, `user_id`
+
+动作：把用户问题和划选内容合成检索 query；优先查 KnowledgeUnit/知识图谱，必要时向量检索兜底。
+
+输出：
+
+```text
+retrieval_results
+contexts
+```
+
+关键字段：
+
+| 字段 | 作用 |
+| --- | --- |
+| `retrieval_results` | 图谱或向量检索证据，供 prompt 使用 |
+| `contexts` | 保存到聊天消息里的引用上下文 |
+| `selection_context` | 划选来源、标题、段落、chunk 等定位信息 |
+
+## 4. `select_teaching_strategy`
+
+输入：`question`, `selected_context`
+
+动作：判断本轮应该讲解、引导、复盘、规划还是练习。
+
+输出：
+
+```text
+strategy_mode
+```
+
+## 5. `select_execution_mode`
+
+输入：`question`, `selected_context`, `strategy_mode`, `retrieval_results`
+
+动作：决定直接回答还是进入受控工具模式。
+
+输出：
+
+```text
+execution_mode
+```
+
+常见值：
+
+```text
+single_pass
+plan_execute
+```
+
+## 6. `build_prompt`
+
+输入：
+
+```text
+course_context
+question
+selection_context
+retrieval_results
+recent_messages
+weak_points
+recent_mistakes
+strategy_mode
+execution_mode
+```
+
+动作：按优先级组装最终 LLM messages。
+
+输出：
+
+```text
+messages
+```
+
+上下文优先级：
+
+```text
+划选上下文 > 用户问题 > 检索证据 > 近期历史 > Profile 背景
+```
+
+## 7. `stream_answer`
+
+输入：`messages`, `execution_mode`, `retrieval_results`, `model_override`, `source`, `attached_file_ids`
+
+动作：调用模型或工具计划，持续发送 SSE token；客户端断开时停止后续写库。
+
+输出：
+
+```text
+assistant_response
+client_actions
+stream_interrupted
+error
+```
+
+SSE：
+
+```text
+status:answering
+status:home_intake
+token
+```
+
+## 8. `persist_turn`
+
+输入：
+
+```text
+course_id
+user_id
+session_id
+question
+assistant_response
+contexts
+source
+anchor_id
+selected_text
+source_chunk_id
+```
+
+动作：保存 user/assistant 两条消息，并关联同一个 `turn_id`。
+
+输出：
+
+```text
+turn_id
+ChatMessage(user)
+ChatMessage(assistant)
+```
+
+## 9. `finalize_chat_session`
+
+输入：`course_id`, `user_id`, `session_id`, `question`, `assistant_response`, `turn_id`
+
+动作：更新 `last_message_at`；如果还是默认标题，则生成或回退短标题。
+
+输出：
+
+```text
+session_title
+```
+
+## API 用例
+
+`use_cases.py` 负责图外 HTTP 用例：
+
+```text
+list_chat_sessions
+list_recent_chat_sessions
+create_session
+list_chat_threads
+delete_session
+clear_messages
+```
+
+这些函数只管理会话/历史列表；真正生成回答必须走 `stream_chat_workflow`。
+
+## 模型策略
+
+模型选择、输出 token 预算和 trace metadata 统一在 `lib/model_policy.py`。
+
+工具计划策略在 `lib/tooling.py`。
+
+LangSmith 节点读写字段在 `graph.py` 的 `NODE_TRACE_DETAILS`。
